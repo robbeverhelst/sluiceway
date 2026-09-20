@@ -4,7 +4,7 @@ Research for issue #5. Paper exercise only, no adapter code. Checked on 2026-09-
 
 ## Answer
 
-**Verdict: yes, the interface survives.** The five-method shape (`discover`, `preview`, `detectDrift`, `apply`, plus `NormalizedDiff`) maps onto OpenTofu without a rewrite. `tofu show -json <planfile>` gives everything `NormalizedDiff` needs: a stable per-resource identity, an action list, before and after values to derive changed keys, and explicit sensitivity masks. Drift comes from a refresh-only plan, and apply is non-interactive. The hash design (identities + ops + changed keys, never values) works unchanged.
+**Verdict: yes, the interface survives.** The four-method shape (`discover`, `preview`, `detectDrift`, `apply`) and the `NormalizedDiff` type maps onto OpenTofu without a rewrite. `tofu show -json <planfile>` gives everything `NormalizedDiff` needs: a stable per-resource identity, an action list, before and after values to derive changed keys, and explicit sensitivity masks. Drift comes from a refresh-only plan, and apply is non-interactive. The hash design (identities + ops + changed keys, never values) works unchanged.
 
 What does not survive is a set of Pulumi-shaped names and assumptions. These must change before a second adapter exists:
 
