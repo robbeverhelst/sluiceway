@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="320" height="80" role="img" aria-label="Render test, light variant">
+  <style>
+    .css { animation: slide 2s ease-in-out infinite alternate; }
+    @keyframes slide { from { transform: translateX(0); } to { transform: translateX(120px); } }
+    text { font: 12px sans-serif; fill: #1f2328; }
+  </style>
+  <rect width="320" height="80" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="8" y="16">LIGHT variant. Top: SMIL. Bottom: CSS.</text>
+  <circle cx="20" cy="36" r="8" fill="#0969da">
+    <animate attributeName="cx" values="20;300;20" dur="3s" repeatCount="indefinite"/>
+  </circle>
+  <rect class="css" x="12" y="54" width="16" height="16" fill="#1a7f37"/>
+</svg>
