@@ -623,7 +623,7 @@ describe("the job of a narrowed scan", () => {
     expect(scanned.log.warnings).toHaveLength(1);
   });
 
-  test("costs six requests: the first read, the comparison, and the write loop with its list", async () => {
+  test("costs seven requests: the first read, the comparison, and the write loop with its list and its late read of the deployment records", async () => {
     const scanned = await pushed(TABLE, ahead("site/index.ts"), {
       next: { "site:prod": pending("site:prod", change("page")) },
     });
@@ -634,6 +634,7 @@ describe("the job of a narrowed scan", () => {
       "compareCommits",
       "listIssues",
       "getIssue",
+      "listNewestDeployments",
       "updateIssueBody",
       "getIssue",
     ]);

@@ -10,6 +10,13 @@ import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import { applyConfig, type ConfiguredStack } from "../core/config.ts";
 import { loadConfig } from "../core/config-file.ts";
+import {
+  type DeployFact,
+  type DeployFacts,
+  deployFacts,
+  type PreviewFirstWhy,
+  rowAtLateRead,
+} from "../core/deployment.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
 import { runPool } from "../core/pool.ts";
 import {
@@ -26,6 +33,7 @@ import {
 import { everyPreviewFailed } from "../core/scan-result.ts";
 import { stackId } from "../core/stack.ts";
 import { type DashboardResult, findDashboard, writeDashboard } from "../github/dashboard.ts";
+import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts";
 import type { JobLog } from "../github/job-log.ts";
 import type { GitHubPort } from "../github/port.ts";
 import {
@@ -37,7 +45,7 @@ import {
 import { diffLogLines, logGroupTitle } from "../render/log-text.ts";
 import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
-import { byCodeUnit, plural } from "../render/row.ts";
+import { byCodeUnit, type FailureLine, isDestroy, plural, type Row } from "../render/row.ts";
 import { renderSummary } from "../render/summary.ts";
 
 // Everything a scan needs, handed in as data and seams (build plan, section
@@ -82,6 +90,9 @@ export class ScanFailedError extends Error {
 interface Previewed {
   id: string;
   result: PreviewResult;
+  // When the preview started. A deploy that ended after it is fresher than
+  // the preview (record 0004).
+  startedAt: Date;
   milliseconds: number;
 }
 
@@ -90,8 +101,8 @@ interface Previewed {
 // returns to its late read (record 0011).
 class PreviewFirst extends Error {
   constructor(
-    readonly ids: string[],
-    // Absent when the stacks simply have no row in the live body.
+    readonly stacks: { id: string; why: PreviewFirstWhy }[],
+    // Set when the scan falls back to a full scan as a whole.
     readonly why?: FullScanReason,
   ) {
     super("More stacks have to be previewed before the dashboard can be written.");
@@ -143,6 +154,8 @@ export async function scan(context: ScanContext): Promise<void> {
   let versionChecked = false;
   let composed: Composed | undefined;
   let written: DashboardResult;
+  // Stacks this scan previewed a second time for a deploy that ended under it.
+  const again = new Set<string>();
   for (;;) {
     if (next.length > 0 && !versionChecked) {
       await checkVersion(context);
@@ -159,10 +172,11 @@ export async function scan(context: ScanContext): Promise<void> {
     if (round.length > 0 || rounds === 0) await writeSummary(context, all);
     rounds++;
 
-    // All slow work is done. The body is built from the late read of the live
-    // one: a fresh row for every previewed stack, the live row block for every
-    // other, byte for byte (record 0011).
-    const compose = (liveBody: string | undefined): Composed => {
+    // All slow work is done. The body is built from the late read: the live
+    // body and the deployment records (record 0004). A fresh row for every
+    // previewed stack, the live row block for every other, byte for byte
+    // (record 0011), and at every stack the scan defers to fresher facts.
+    const compose = (liveBody: string | undefined, deploys: LateDeploys): Composed => {
       const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
       // Rows under a root marker that is missing or of another version are not
       // rows this version can carry. Every stack then counts as having none,
@@ -172,13 +186,52 @@ export async function scan(context: ScanContext): Promise<void> {
         // One row per stack: of two blocks with one stack id the first stays.
         for (const row of live.rows) if (!liveRows.has(row.stackId)) liveRows.set(row.stackId, row);
       }
-      const rule = oneRowPerStack(ids, new Set(previewed.keys()), [...liveRows.keys()]);
-      if (rule.missing.length > 0) throw new PreviewFirst(rule.missing);
+      const { dropped } = oneRowPerStack(ids, new Set(previewed.keys()), [...liveRows.keys()]);
 
-      const carried = rule.carried.flatMap((id) => liveRows.get(id) ?? []);
-      // A scan that has a fresh row for every stack is a full scan, whatever
-      // it set out as.
-      const full = carried.length === 0;
+      const rows: Row[] = [];
+      const carried: ParsedRow[] = [];
+      const first: { id: string; why: PreviewFirstWhy }[] = [];
+      const deploying: string[] = [];
+      const deferred: string[] = [];
+      for (const id of ids) {
+        const mine = previewed.get(id);
+        const liveRow = liveRows.get(id);
+        const fact = deploys.facts.byStack.get(id);
+        const decided = rowAtLateRead({
+          previewedAt: mine?.startedAt,
+          liveState: liveRow?.state,
+          fact,
+          settledHere: deploys.settled.has(id),
+          again: again.has(id),
+        });
+        if (decided.row === "preview-first") first.push({ id, why: decided.why });
+        else if (decided.row === "fresh" && mine) {
+          rows.push(previewRow(id, mine.result, runUrl, failureLine(context, fact)));
+        } else if (
+          decided.row === "deploying" &&
+          decided.from === "record" &&
+          fact?.kind === "open"
+        ) {
+          deploying.push(id);
+          rows.push({
+            state: "deploying",
+            stackId: id,
+            ticker: fact.ticker,
+            runUrl: runUrlOf(context, fact.run),
+            waiting: fact.waiting,
+            destroys: destroysOf(mine, liveRow),
+          });
+        } else if (liveRow) {
+          if (decided.row === "deploying") deploying.push(id);
+          else if (mine) deferred.push(id);
+          carried.push(liveRow);
+        }
+      }
+      if (first.length > 0) throw new PreviewFirst(first);
+
+      // A full scan is a scan that previews every stack, whatever row each
+      // stack then gets.
+      const full = ids.every((id) => previewed.has(id));
       const fitted = fitBody(
         {
           root: {
@@ -189,10 +242,17 @@ export async function scan(context: ScanContext): Promise<void> {
             fullScanAt: full ? at : live?.root?.fullScanAt,
             fullScanRun: full ? context.runId : live?.root?.fullScanRun,
           },
-          rows: all.map(({ id, result }) => previewRow(id, result, runUrl)),
+          rows,
           carried,
           redact: config.dashboard.redact,
-          recentlyDeployed: [],
+          recentlyDeployed: deploys.facts.succeeded.map(
+            ({ stackId: id, ticker, run, at: when }) => ({
+              stackId: id,
+              ticker,
+              at: when,
+              runUrl: runUrlOf(context, run),
+            }),
+          ),
           repoUrl: context.repoUrl,
           actionRef: context.actionRef,
           personality: config.dashboard.personality,
@@ -206,33 +266,45 @@ export async function scan(context: ScanContext): Promise<void> {
         // 0028). Only a fresh row can be shortened, so a scan that carries
         // rows previews those too and can then shorten everything.
         if (full) throw new ScanFailedError(bodyDoesNotFitMessage(fitted.size));
-        throw new PreviewFirst(rule.carried, { kind: "does-not-fit", carried: carried.length });
+        throw new PreviewFirst(
+          ids.filter((id) => !previewed.has(id)).map((id) => ({ id, why: "no-row" })),
+          { kind: "does-not-fit", carried: carried.length },
+        );
       }
-      return { body: fitted.body, shortened: fitted.shortened, full, ...rule };
+      return {
+        body: fitted.body,
+        shortened: fitted.shortened,
+        full,
+        carried: carried.map((row) => row.stackId).filter((id) => !previewed.has(id)),
+        dropped,
+        deploying,
+        deferred,
+        unread: deploys.facts.unread,
+      };
     };
 
     try {
-      // With a fresh row for every stack the body does not depend on the live
-      // one. A body that does not fit then fails the scan before any request.
-      if (previewed.size === ids.length) compose(undefined);
-      written = await writeDashboard(context.github, config.dashboard, (liveBody) => {
-        composed = compose(liveBody);
+      // With a fresh row for every stack the body depends on the live one only
+      // through the deployment records, which change a few lines. A body that
+      // does not fit on its own fails the scan before any request.
+      if (previewed.size === ids.length) compose(undefined, NO_DEPLOYS);
+      written = await writeDashboard(context.github, config.dashboard, async (liveBody) => {
+        composed = compose(liveBody, await lateDeploys(context, stacks, previewed, liveBody));
         return composed.body;
       });
       break;
     } catch (error) {
       if (!(error instanceof PreviewFirst)) throw error;
-      const late = new Set(error.ids);
+      const late = new Set(error.stacks.map(({ id }) => id));
       next = stacks.filter(({ stack }) => late.has(stackId(stack)));
       if (error.why) {
         log.info(
           `This scan falls back to a full scan: ${fullScanReasonText(error.why)}. Previewing the other ${plural(next.length, "stack")} now.`,
         );
       } else {
-        for (const id of error.ids) {
-          log.info(
-            `${logGroupTitle(id)} is previewed now: the dashboard has no row for it any more.`,
-          );
+        for (const { id, why } of error.stacks) {
+          if (why === "deploy-ended") again.add(id);
+          log.info(`${logGroupTitle(id)} ${PREVIEW_FIRST[why]}`);
         }
       }
     }
@@ -253,8 +325,103 @@ interface Composed {
   body: string;
   shortened: number;
   full: boolean;
+  // Stacks this scan did not preview, whose live row stays as it is.
   carried: string[];
   dropped: string[];
+  // Stacks with an open deployment.
+  deploying: string[];
+  // Previewed stacks that keep their live row, because a deploy of them ended
+  // after the preview started.
+  deferred: string[];
+  // Deployment records with a payload this version cannot read.
+  unread: number;
+}
+
+const PREVIEW_FIRST: Record<PreviewFirstWhy, string> = {
+  "no-row": "is previewed now: the dashboard has no row for it any more.",
+  "no-open-deployment": "is previewed now: its row says deploying and no deployment is open.",
+  "deploy-ended": "is previewed again: a deploy of it ended after its preview started.",
+};
+
+// The deploy facts of one late read (record 0003).
+interface LateDeploys {
+  facts: DeployFacts;
+  // Stacks whose open deployment this scan ended, because its run was over.
+  settled: Set<string>;
+}
+
+const NO_DEPLOYS: LateDeploys = {
+  facts: { byStack: new Map(), succeeded: [], unread: 0 },
+  settled: new Set(),
+};
+
+function runUrlOf(context: ScanContext, run: string): string {
+  return `${context.repoUrl}/actions/runs/${run}`;
+}
+
+// A deploy fact from the deployment record, never from the old row.
+function failureLine(context: ScanContext, fact: DeployFact | undefined): FailureLine | undefined {
+  if (fact?.kind !== "failed") return undefined;
+  return {
+    reason: fact.reason,
+    ticker: fact.ticker,
+    at: fact.at,
+    runUrl: runUrlOf(context, fact.run),
+  };
+}
+
+// The header and the counts line need to know whether a deploying stack
+// destroys something (record 0027). The preview knows. Without one, the
+// marker of the row that is replaced does.
+function destroysOf(mine: Previewed | undefined, liveRow: ParsedRow | undefined): number {
+  if (mine?.result.ok) return mine.result.diff.changes.filter(isDestroy).length;
+  return liveRow?.known ? liveRow.destroys : 0;
+}
+
+// The late read of the deployment records: bounded reads, then every open
+// deployment whose run is over gets its result (record 0003). It runs inside
+// the builder of the write loop, so every try sees the records as they are.
+async function lateDeploys(
+  context: ScanContext,
+  stacks: ConfiguredStack[],
+  previewed: ReadonlyMap<string, Previewed>,
+  liveBody: string,
+): Promise<LateDeploys> {
+  const { log, github } = context;
+  const liveStates = new Map(
+    parseDashboard(liveBody).rows.map((row) => [row.stackId, row.state] as const),
+  );
+  // In sync stacks need no lookup (record 0003). A pending stack does, and so
+  // does a stack whose live row says deploying.
+  const fallBack = stacks
+    .map(({ stack, environment }) => ({ stackId: stackId(stack), environment }))
+    .filter(({ stackId: id }) => {
+      const result = previewed.get(id)?.result;
+      return (
+        (result?.ok === true && result.diff.changes.length > 0) ||
+        liveStates.get(id) === "deploying"
+      );
+    });
+  try {
+    const records = await readDeploymentRecords(
+      github,
+      stacks.map(({ environment }) => environment),
+      fallBack,
+    );
+    const before = deployFacts(records).byStack;
+    const settled = await settleEndedRuns(github, records, context.repoUrl);
+    for (const id of settled.stackIds) {
+      const fact = before.get(id);
+      log.info(
+        `Ended the open deployment of ${logGroupTitle(id)}: run ${fact?.kind === "open" ? fact.run : ""} is over and never reported a result.`,
+      );
+    }
+    return { facts: deployFacts(settled.records), settled: new Set(settled.stackIds) };
+  } catch (error) {
+    throw new Error(
+      `The deployment records could not be read: ${error instanceof Error ? error.message : error}. The scan job needs the permissions \`deployments: write\` and \`actions: read\` next to \`contents: read\` and \`issues: write\` (record 0003).`,
+    );
+  }
 }
 
 // The first read and the compare call (record 0010). A scan that does not
@@ -384,7 +551,8 @@ async function previewAll(context: ScanContext, stacks: ConfiguredStack[]): Prom
   const poolStarted = now().getTime();
   const previewed = await runPool(stacks, context.concurrency, async (configured) => {
     const id = stackId(configured.stack);
-    const started = now().getTime();
+    const startedAt = now();
+    const started = startedAt.getTime();
     const result = await adapter.preview(configured.stack, {
       ...tool,
       timeoutMinutes: configured.previewTimeout ?? context.previewTimeoutMinutes,
@@ -393,7 +561,7 @@ async function previewAll(context: ScanContext, stacks: ConfiguredStack[]): Prom
     log.info(
       `Previewed ${logGroupTitle(id)} in ${seconds(milliseconds)}: ${previewOutcome(result)}`,
     );
-    return { id, result, milliseconds };
+    return { id, result, startedAt, milliseconds };
   });
   const total = now().getTime() - poolStarted;
 
@@ -478,6 +646,24 @@ function reportDashboard(
   }
   for (const id of composed?.dropped ?? []) {
     log.info(`Dropped the row of ${logGroupTitle(id)}: discovery knows no such stack.`);
+  }
+  for (const id of composed?.deploying ?? []) {
+    log.info(
+      `${logGroupTitle(id)} has an open deployment, so its row says deploying and has no box, whatever the preview says.`,
+    );
+  }
+  for (const id of composed?.deferred ?? []) {
+    log.info(
+      `Kept the live row of ${logGroupTitle(id)}: a deploy of it ended after its preview started.`,
+    );
+  }
+  const unread = composed?.unread ?? 0;
+  if (unread > 0) {
+    log.info(
+      unread === 1
+        ? "1 deployment record carries a payload this version of Sluiceway cannot read. It was left alone."
+        : `${unread} deployment records carry a payload this version of Sluiceway cannot read. They were left alone.`,
+    );
   }
   for (const duplicate of written.closedDuplicates) {
     log.info(`Closed #${duplicate}, a second dashboard.`);
