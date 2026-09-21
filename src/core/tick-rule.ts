@@ -20,6 +20,10 @@ export interface Editor {
   type: string;
 }
 
+// What a box belongs to. The rescan box has no rule of its own: it needs only
+// the first half of the test, a person with write access.
+export type TickTarget = { kind: "stack"; stackId: string; rule: TickRule } | { kind: "rescan" };
+
 // Why a tick is refused. "unverified" is not one of these: a lookup that
 // failed gave no answer to judge.
 export type RefusalReason = "no-write-access" | "below-level" | "not-on-list";
