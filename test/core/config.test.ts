@@ -332,7 +332,7 @@ describe("the error", () => {
   });
 });
 
-describe("scan.logDiff (record 0045)", () => {
+describe("scan.logDiff (record 0048)", () => {
   test("is off unless the file turns it on", () => {
     expect(parseConfig(undefined).scan.logDiff).toBe(false);
     expect(parseConfig("scan:\n  unrelated: ['**/*.md']\n").scan.logDiff).toBe(false);

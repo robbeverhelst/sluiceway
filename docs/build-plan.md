@@ -80,7 +80,7 @@ The file is optional and sits at the repo root. Unknown keys are an error, becau
 | `tickers` | `write` | Default tick rule: `write`, `maintain`, `admin` or a list of usernames | 0018 |
 | `ignore` | `[]` | Globs matched against the stack id | 0010 |
 | `scan.unrelated` | `[]` | Globs for files that claim nothing and force nothing | 0010 |
-| `scan.logDiff` | `false` | Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else | 0045 |
+| `scan.logDiff` | `false` | Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else | 0048 |
 | `stacks[].path` | required per entry | Directory of the stack, relative to the repo root | 0006 |
 | `stacks[].name` | none | Name of the stack. Without it the entry covers every stack in `path` | 0006 |
 | `stacks[].environment` | `sluiceway` | Label on the deployment record, and the GitHub Environment where one is used | 0003 |

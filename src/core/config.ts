@@ -124,7 +124,7 @@ export const configSchema = z.strictObject({
       unrelated: globs
         .describe("Globs for files that claim nothing and force nothing, such as **/*.md.")
         .default([]),
-      // The one setting that lets a value reach the job log (record 0045).
+      // The one setting that lets a value reach the job log (record 0048).
       logDiff: z
         .boolean()
         .describe(

@@ -31,7 +31,7 @@ describe("the job log on a real runner", () => {
     expect(out.printed()).toBe("::group::network:dev\n1 update\nupdate x y\n::endgroup::\n");
   });
 
-  // Record 0045: the tool's own diff can quote any value, and a value on a
+  // Record 0048: the tool's own diff can quote any value, and a value on a
   // line of its own must never act as a workflow command, such as an
   // annotation that would show it on the run's page.
   test("the verbatim part is printed with workflow commands stopped by a token nobody can guess", () => {

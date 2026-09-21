@@ -71,7 +71,7 @@ describe("the payload file of the runner", () => {
   });
 });
 
-// Record 0045: a scan with scan.logDiff on warns in a public repo. The payload
+// Record 0048: a scan with scan.logDiff on warns in a public repo. The payload
 // of most events names the repository and whether it is private.
 describe("whether the repo is public", () => {
   test("a repository that is not private is public", () => {

@@ -83,7 +83,7 @@ export interface TableAdapter extends Adapter {
   // The stack id of every deploy, in order.
   applied: string[];
   // The stack id of every run of the tool's own diff, in the order they were
-  // started, and the time limit of each (record 0045).
+  // started, and the time limit of each (record 0048).
   toolDiffs: string[];
   toolDiffTimeouts: Record<string, number>;
 }

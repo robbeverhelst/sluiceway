@@ -76,7 +76,7 @@ Anyone who can edit the dashboard can start the `resolve` job. It is built to be
 
 ## The tool's own diff in the job log
 
-Off by default. With `scan.logDiff: true` in `sluiceway.yaml`, a scan runs the tool a second time for every pending stack and prints what the tool displays, values included, in that stack's group of the job log. `apply` does the same for its fresh preview. Nothing of it reaches the issue, a comment, the summary, the result file, an output, an annotation or a deployment record, and a test holds that ([record 0045](adr/0045-the-tools-own-diff-may-reach-the-job-log-when-a-repo-asks.md)).
+Off by default. With `scan.logDiff: true` in `sluiceway.yaml`, a scan runs the tool a second time for every pending stack and prints what the tool displays, values included, in that stack's group of the job log. `apply` does the same for its fresh preview. Nothing of it reaches the issue, a comment, the summary, the result file, an output, an annotation or a deployment record, and a test holds that ([record 0048](adr/0048-the-tools-own-diff-may-reach-the-job-log-when-a-repo-asks.md)).
 
 Who can read it:
 

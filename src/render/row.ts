@@ -33,7 +33,7 @@ export interface PendingRow {
   // 0044).
   runUrl: string;
   // Where the `preview` link lands when it is not the summary: the job log
-  // that holds the tool's own diff of the stack (record 0045).
+  // that holds the tool's own diff of the stack (record 0048).
   previewUrl?: string | undefined;
   // Absent when the lookup failed. Attribution never blocks.
   attribution?: AttributionLines | undefined;

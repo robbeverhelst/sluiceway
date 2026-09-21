@@ -78,7 +78,7 @@ Never edit a file under `test/fixtures/pulumi/` by hand.
 
 - TypeScript, strict, ESM.
 - `src/core/`, `src/adapters/` and `src/render/` never import `@actions/*`, `@octokit/*`, anything under `src/github/` or `src/modes/`, or the entry point. They never read a GitHub event payload. A lint rule and `test/boundary.test.ts` enforce this. See [src/README.md](src/README.md).
-- No property value ever leaves an adapter. Do not add a field that could hold one. The one exception is the tool's own diff of record 0045, which only the job log takes, and only when a repo turned on `scan.logDiff`.
+- No property value ever leaves an adapter. Do not add a field that could hold one. The one exception is the tool's own diff of record 0048, which only the job log takes, and only when a repo turned on `scan.logDiff`.
 - Do not print, log or store anything from the environment.
 - Ask in an issue before you add a runtime dependency. Everything in `dependencies` ends up in the bundle that every user downloads on every run.
 - No license headers in source files. The [LICENSE](LICENSE) file covers the repository.

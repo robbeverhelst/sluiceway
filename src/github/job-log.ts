@@ -6,7 +6,7 @@ import * as core from "@actions/core";
 export interface JobLog {
   info(line: string): void;
   // A foldable group of lines under a title. `verbatim` is the tool's own
-  // diff (record 0045): printed after the lines with the runner's workflow
+  // diff (record 0048): printed after the lines with the runner's workflow
   // commands stopped, so no line of it can act as one.
   group(title: string, lines: string[], verbatim?: string[]): void;
   // A warning annotation on the run (record 0012). Sluiceway's own words only,
@@ -27,7 +27,7 @@ export function actionsLog(): JobLog {
       if (verbatim.length > 0) {
         // The runner reads no workflow command until it sees the token again,
         // and the token is new for every group, so no text before it can
-        // know it (record 0045). Masks still apply.
+        // know it (record 0048). Masks still apply.
         const token = randomUUID();
         core.info(`::stop-commands::${token}`);
         for (const line of verbatim) core.info(line);

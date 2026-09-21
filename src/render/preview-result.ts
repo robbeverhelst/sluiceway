@@ -16,7 +16,7 @@ import type { SummaryMerge, SummaryStack } from "./summary.ts";
 // which holds the tool's own words. The failure line is a deploy fact from the stack's newest deployment record
 // (record 0003), and rides on whatever row the preview gives. When the job
 // log holds the tool's own diff of the stack, a pending row's `preview` link
-// lands there instead (record 0045). Whether the tool's diff could be shown
+// lands there instead (record 0048). Whether the tool's diff could be shown
 // never changes the row.
 export function previewRow(
   stackId: string,

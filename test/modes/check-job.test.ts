@@ -45,7 +45,7 @@ describe("the check job never constructs the process runner or the GitHub port",
 
   // @actions/core is the job log and the summary. node:crypto makes the
   // token that stops workflow commands around the tool's own diff (record
-  // 0045). Nothing here starts a process or opens a connection.
+  // 0048). Nothing here starts a process or opens a connection.
   test("the packages it imports", () => {
     expect(packages).toEqual([
       "@actions/core",

@@ -5,7 +5,7 @@ import { pulumiEnvironment } from "./environment.ts";
 import { STACK_NOT_FOUND_EXIT_CODE } from "./preview.ts";
 import { stripAnsi } from "./tool-log.ts";
 
-// The preview as the tool displays it (record 0045). `--diff` shows every
+// The preview as the tool displays it (record 0048). `--diff` shows every
 // changed property with its old and new value, and the tool prints `[secret]`
 // for a value it holds as secret. `--suppress-outputs` keeps the stack outputs
 // out, as on the deploy, because a change to outputs alone is not shown in v1

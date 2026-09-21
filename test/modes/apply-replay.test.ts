@@ -122,7 +122,7 @@ for (const version of VERSIONS) {
       ]);
     });
 
-    // Record 0045: with scan.logDiff on, the scan and `apply` each run the
+    // Record 0048: with scan.logDiff on, the scan and `apply` each run the
     // tool's own diff once, and the value is in their log groups and in no
     // summary, body, record or result file.
     test("with scan.logDiff on the recorded tool diff is printed by the scan and by apply, and the deploy goes out", async () => {

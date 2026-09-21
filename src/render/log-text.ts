@@ -50,7 +50,7 @@ export function diffLogLines(diff: Diff): string[] {
   return [counts(changes).replaceAll("*", ""), ...changes.map(changeLogLine)];
 }
 
-// Sluiceway's own words about the tool's own diff of a stack (record 0045).
+// Sluiceway's own words about the tool's own diff of a stack (record 0048).
 // The diff itself is printed after them, verbatim, with workflow commands
 // stopped, and never passes through here. A second run that failed says why,
 // and changes nothing else.
@@ -67,7 +67,7 @@ export function toolDiffLogLines(toolDiff: ToolDiffResult | undefined): string[]
 }
 
 // The warning on the run of a public repo with `scan.logDiff` on (record
-// 0045). Its words are Sluiceway's own.
+// 0048). Its words are Sluiceway's own.
 export const PUBLIC_LOG_DIFF = {
   title: "Values in the job log of a public repo",
   message:

@@ -100,7 +100,7 @@ const APPLIED = { deployment: 1, outcome: "deployed", stack: "a", ticker: "alice
 type Command = ReturnType<typeof readRecording>["commands"][number];
 
 // The preview whose document the adapter parses, and the second run of the
-// tool that displays the diff for the job log (record 0045).
+// tool that displays the diff for the job log (record 0048).
 function isPreview(command: Command): boolean {
   return command.argv[1] === "preview" && command.argv.includes("--json");
 }
@@ -145,7 +145,7 @@ for (const version of VERSIONS) {
 
       test(scenario, async () => {
         const runner = replay(version, scenario);
-        // The tool's own diff holds values on purpose (record 0045). Only its
+        // The tool's own diff holds values on purpose (record 0048). Only its
         // text may, and only the job log takes that. What else the adapter
         // hands over holds none.
         for (const command of toolDiffs) {
@@ -206,7 +206,7 @@ test("every scenario but the version check is covered", () => {
   }
 });
 
-// Record 0045: with `scan.logDiff` on, the canary value is in the tool's own
+// Record 0048: with `scan.logDiff` on, the canary value is in the tool's own
 // diff on purpose. It reaches the stack's group of the job log, after the
 // point where workflow commands stop, and nothing else: not the issue, the
 // summary, the result file, an annotation, an output, another log line or any

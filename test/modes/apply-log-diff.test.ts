@@ -1,4 +1,4 @@
-// Record 0045: with `scan.logDiff` on, `apply` prints the tool's own diff of
+// Record 0048: with `scan.logDiff` on, `apply` prints the tool's own diff of
 // its fresh preview, values included, in that preview's group of the job log.
 // It never decides anything: the diff hash comes from the preview alone.
 

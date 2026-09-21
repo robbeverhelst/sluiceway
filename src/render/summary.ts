@@ -61,7 +61,7 @@ export interface SummaryOptions {
   // Without it the summary names the job log and does not link it.
   jobLogUrl?: string | undefined;
   // The job log holds the tool's own diff of every pending stack (record
-  // 0045), and the summary says so under its counts.
+  // 0048), and the summary says so under its counts.
   toolDiffInLog?: boolean | undefined;
 }
 

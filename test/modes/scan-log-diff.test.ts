@@ -1,4 +1,4 @@
-// Record 0045: with `scan.logDiff` on, a scan runs the tool a second time for
+// Record 0048: with `scan.logDiff` on, a scan runs the tool a second time for
 // every pending stack and prints the tool's own diff, values included, in that
 // stack's group of the job log. Nowhere else. Off by default, and then there
 // is no second run at all.

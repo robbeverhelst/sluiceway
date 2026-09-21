@@ -45,7 +45,7 @@ export type ApplyResult = (
   toolLog: string;
 };
 
-// The tool's own diff (record 0045): what a deploy would change as the tool
+// The tool's own diff (record 0048): what a deploy would change as the tool
 // displays it, values included, except the ones the tool holds as secret. It
 // exists only for the job log, in the group of its stack, and only when a repo
 // turned `scan.logDiff` on. Nothing else may take `text`: not a row, the
@@ -94,7 +94,7 @@ export interface Adapter {
   preview(stack: Stack, options: PreviewOptions): Promise<PreviewResult>;
 
   // Runs the tool a second time for a stack whose preview is pending, and
-  // gives the tool's own diff (record 0045). Same directory, environment and
+  // gives the tool's own diff (record 0048). Same directory, environment and
   // time limit as the preview. It always resolves, and nothing Sluiceway
   // decides depends on it: the row and the diff hash come from the preview.
   toolDiff(stack: Stack, options: PreviewOptions): Promise<ToolDiffResult>;

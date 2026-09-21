@@ -84,7 +84,7 @@ export interface ApplyContext {
   deploymentId: number;
   // The payload of the event that started the run: the edit of the dashboard
   // that `resolve` acted on. The `dashboard-url` output reads it, and so does
-  // the warning for a public repo with `scan.logDiff` on (record 0045).
+  // the warning for a public repo with `scan.logDiff` on (record 0048).
   event?: unknown;
   // The step outputs and the result file (record 0041). A test that does not
   // look at them leaves them out.
@@ -335,7 +335,7 @@ interface Attempt {
   // left to the next scan, which previews a deploying row whose record ended.
   row?: PreviewResult | undefined;
   // This job's log holds the tool's own diff of the preview the row is made
-  // from, so the row's `preview` link lands there (record 0045).
+  // from, so the row's `preview` link lands there (record 0048).
   toolDiffInLog?: boolean | undefined;
   summary?: ApplyOutcome | undefined;
   setup?: Setup | undefined;
@@ -426,7 +426,7 @@ async function deploy(
   const fresh = await preview();
   // With `scan.logDiff` on, the tool's own diff of the fresh preview goes to
   // the job log before anything is decided, so a person reading this job sees
-  // what went out, or what moved (record 0045). It decides nothing.
+  // what went out, or what moved (record 0048). It decides nothing.
   const { logDiff } = setup.config.scan;
   if (logDiff && publicRepo(context.event)) {
     log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);

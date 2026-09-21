@@ -183,7 +183,7 @@ Keep `sluiceway.yaml` itself off the list, and lockfiles and package manifests t
 
 Default: `false`
 
-Prints the tool's own diff of every pending stack, values included, in that stack's group of the job log. It is the one way to see what a property changes to before you tick. The dashboard, the summary, the result file, annotations and deployment records never hold a value, with this on or off ([record 0045](adr/0045-the-tools-own-diff-may-reach-the-job-log-when-a-repo-asks.md)).
+Prints the tool's own diff of every pending stack, values included, in that stack's group of the job log. It is the one way to see what a property changes to before you tick. The dashboard, the summary, the result file, annotations and deployment records never hold a value, with this on or off ([record 0048](adr/0048-the-tools-own-diff-may-reach-the-job-log-when-a-repo-asks.md)).
 
 ```yaml
 scan:

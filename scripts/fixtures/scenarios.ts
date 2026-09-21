@@ -56,7 +56,7 @@ function preview(cwd: string, stack: string, expect: Expectation, id = "preview"
   };
 }
 
-// The tool's own diff, for the job log only (record 0045): the preview as the
+// The tool's own diff, for the job log only (record 0048): the preview as the
 // tool displays it, with every value it does not hold as secret. The stack
 // outputs stay out, as on the deploy (record 0036).
 function toolDiff(cwd: string, stack: string, expect: Expectation): Step {

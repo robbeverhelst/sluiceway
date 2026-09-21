@@ -102,7 +102,7 @@ export interface ScanContext {
   // real run. A test that does not look at it leaves it out.
   requests?: (() => number) | undefined;
   // Whether the repo is public, from the payload of the event. Absent when
-  // the payload does not say (record 0045).
+  // the payload does not say (record 0048).
   publicRepo?: boolean | undefined;
   // Only a test has a reason to set these.
   limits?: { body?: BudgetOptions; summaryBudget?: number } | undefined;
@@ -125,7 +125,7 @@ interface Previewed {
   startedAt: Date;
   milliseconds: number;
   // The tool's own diff, for the stack's group of the job log and nothing
-  // else (record 0045). Only a pending stack of a scan with `scan.logDiff` on
+  // else (record 0048). Only a pending stack of a scan with `scan.logDiff` on
   // has one.
   toolDiff?: ToolDiffResult | undefined;
 }
@@ -822,7 +822,7 @@ async function previewAll(
       `Previewed ${logGroupTitle(id)} in ${seconds(milliseconds)}: ${previewOutcome(result)}`,
     );
     // The second run of the tool takes the same slot of the pool and the same
-    // time limit, and only a pending stack gets one (record 0045).
+    // time limit, and only a pending stack gets one (record 0048).
     if (!logDiff || !result.ok || result.diff.changes.length === 0) {
       return { id, result, startedAt, milliseconds };
     }

@@ -7,7 +7,7 @@ import { pulumi } from "../../../src/adapters/pulumi/index.ts";
 import type { Stack } from "../../../src/core/stack.ts";
 import { answering, FIXTURES, type Replay, ROOT, replay, VERSIONS } from "./replay.ts";
 
-// The tool's own diff (record 0045): the preview as the tool displays it,
+// The tool's own diff (record 0048): the preview as the tool displays it,
 // values included, for the job log of a repo that turned `scan.logDiff` on.
 // It is a second run of the tool, with the same directory, environment and
 // time limit as the preview.
@@ -44,7 +44,7 @@ for (const version of VERSIONS) {
     });
 
     // What masks a secret there is the tool's own marking, and nothing
-    // Sluiceway guesses (record 0045).
+    // Sluiceway guesses (record 0048).
     test("a changed secret shows as changed, and the tool masks both of its values", async () => {
       const result = await toolDiffWith(NETWORK_DEV, replay(version, "log-diff-changed-secret"));
 
