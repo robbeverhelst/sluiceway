@@ -38,8 +38,9 @@ First real run, 2026-09-21: 58 stacks, a full scan in 172 s with the default poo
 
 ## Living with it
 
-Filled in from the days after.
+First real deploys, 2026-09-21: two stacks ticked by the owner a few minutes apart, each deployed by its own run and nothing else. Each record went `queued`, `in_progress`, `success`, the first kept its `success` when the second succeeded (`auto_inactive: false`), both rows went to in sync, and both are listed under recently deployed with who ticked and when. A deploy took about two minutes of tool time. From tick to in sync took five to six minutes, most of it waiting for a runner.
 
 | # | Hurdle | What a new user feels | Decision |
 |---|---|---|---|
-| | | | |
+| 16 | In the read-only trial the dashboard draws checkboxes that do nothing. The first user ticked one. Nothing happened and nothing said why, and the tick sat there until the next full scan. | "I ticked it. Is it deploying? Is it broken?" | **open.** Recommended: **product**, a scan that runs in a workflow without the `issues` trigger cannot know that by itself, so add a `dashboard.readOnly: true` setting (or a `read-only` input) that renders pending rows without boxes and says so in one line under the Pending heading. The README's read-only trial turns it on. |
+| 17 | With `resolve` and `settle` on the same self-hosted runners as `scan`, `apply` and the repo's own CI, a tick waited three minutes for a runner before anything on the dashboard changed. | "I ticked and nothing happened for minutes." | **docs**: the README already says `resolve` and `settle` hold no secrets and can stay on hosted runners. Say why it matters, tick to "waiting to start" in seconds, and make the self-hosted example do it. **open:** whether the row should show something the moment GitHub accepts the tick, which no workflow can do, only an app. |
