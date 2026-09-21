@@ -44,6 +44,10 @@ _Avoid_: Workers, threads, matrix, batch
 A stack claims a changed file when the file lies inside the stack's directory or matches one of the inputs configured for that stack. Several stacks can claim one file.
 _Avoid_: Affects, owns, touches, depends on
 
+**Scan plan**:
+What a scan decides before it previews anything: a full scan with the reason for it, or a narrowed scan with the stacks to preview and why each one. A narrowed scan that cannot trust its comparison falls back to a full scan.
+_Avoid_: Strategy, scan mode, selection
+
 ### Diffs
 
 **Diff**:

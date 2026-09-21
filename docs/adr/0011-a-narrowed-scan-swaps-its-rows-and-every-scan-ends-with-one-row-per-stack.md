@@ -16,3 +16,16 @@ Keeping the last full scan's results as a workflow artifact and rendering from t
 - Every scan, full or narrowed, does the late read, defers to open deployments and to deployments that changed after it started (0004), and sweeps orphan ticks (0005). These cost API reads only.
 - A narrowed scan that cannot use the body (no root marker, another version) is a full scan, decided at its first read (0010). If the body becomes unusable between the first read and the late read, the invariant above turns the scan into a full one by itself: every stack without a row gets previewed.
 - Spreading one scan over several runners later needs no new merge rule. A shard would be a narrowed scan whose stacks are picked by another selector, writing through the same swap. It is left out of v1 (0012). The one thing it would add is several scan writers finishing close together, which the write loop of 0004 allows for but was not sized for.
+
+## Settled while building (slice 1.12)
+
+- The rule of one row per stack runs inside the builder of the write loop (0004), so it sees the late read on every try. When a stack has neither a fresh preview nor a row in that body, the builder stops, the scan previews those stacks through the pool, prints their groups in the job log, writes the summary again with every stack it has previewed so far, and starts the write again. The summary of a step is replaced, never added to.
+- Rows under a root marker that is missing or of another version are not carried. Every stack then counts as having no row, which is how such a body turns the scan into a full one by itself.
+- Of two row blocks with the same stack id the first in the body stays and the other is dropped. The log names every dropped row of a stack that discovery does not know.
+- A scan that ends with a fresh row for every stack is a full scan, whatever it set out as, and writes `full-scan-at` and `full-scan-run`. That follows the glossary: a full scan is a scan that previews every stack. Any scan that carries at least one row carries the two keys through as they stand, and writes none when the live root has none.
+- A narrowed scan is a writer that swaps rows, so it aims at the hard limit and shortens only its own rows (0028). Where 0028 has such a writer dispatch a scan when that is not enough, a narrowed scan is already one: it previews the stacks it carried, in the same job, and can then shorten every row. The log says `This scan falls back to a full scan: the body does not fit in one issue with 12 rows carried through`. If the body still does not fit, the scan fails and the old body stays, as before.
+- With a fresh row for every stack the body does not depend on the live one, so a body that does not fit still fails the scan before any request to GitHub, as slice 1.11 had it.
+- The version check of the tool runs only when there is something to preview. A push that changes only unrelated files needs no tool.
+- The job result of 0012 counts the previews of the whole scan, the late ones included. The rows that were carried do not count.
+- The late read of open deployments and the sweep of orphan ticks are not part of this slice (slices 2.1 and 2.7). Until then a carried row keeps its tick, byte for byte, and a fresh row has none.
+
