@@ -78,6 +78,8 @@ export function stepEnvironment(
     GITHUB_RUN_ID: facts.runId,
     GITHUB_SHA: facts.sha,
     GITHUB_EVENT_NAME: facts.event,
+    // The workflow file of the README. The orphan tick sweep asks for its runs.
+    GITHUB_WORKFLOW_REF: `${facts.repository}/.github/workflows/sluiceway.yml@refs/heads/main`,
     // A local action (`uses: ./`) has no ref.
     GITHUB_ACTION_REF: "",
     GITHUB_ACTION_PATH: facts.actionPath,

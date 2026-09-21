@@ -14,6 +14,9 @@ export interface Job {
   sha: string;
   // What started the run, as GitHub names it: "push", "schedule" and so on.
   event: string;
+  // The file name of the running workflow, such as `sluiceway.yml`. GitHub
+  // takes it where it asks for the id of a workflow.
+  workflow: string;
 }
 
 export function readJob(env: Readonly<Record<string, string | undefined>>): Job {
@@ -32,6 +35,15 @@ export function readJob(env: Readonly<Record<string, string | undefined>>): Job 
       `GITHUB_REPOSITORY is ${JSON.stringify(repository)}, which is not an owner and a repo.`,
     );
   }
+  // `<owner>/<repo>/.github/workflows/<file>@<ref>`. Workflow files sit in one
+  // directory, and a ref may hold an `@` of its own.
+  const workflowRef = need("GITHUB_WORKFLOW_REF");
+  const workflow = /^[^/]+\/[^/]+\/\.github\/workflows\/([^/]+?\.ya?ml)@/.exec(workflowRef)?.[1];
+  if (!workflow) {
+    throw new Error(
+      `GITHUB_WORKFLOW_REF is ${JSON.stringify(workflowRef)}, which names no workflow file.`,
+    );
+  }
   const server = (env.GITHUB_SERVER_URL || "https://github.com").replace(/\/+$/, "");
   return {
     root,
@@ -41,5 +53,6 @@ export function readJob(env: Readonly<Record<string, string | undefined>>): Job 
     runId: need("GITHUB_RUN_ID"),
     sha: need("GITHUB_SHA"),
     event: need("GITHUB_EVENT_NAME"),
+    workflow,
   };
 }

@@ -72,6 +72,7 @@ describe("the environment of a step", () => {
       GITHUB_RUN_ID: "4242",
       GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
       GITHUB_EVENT_NAME: "push",
+      GITHUB_WORKFLOW_REF: "acme/infra/.github/workflows/sluiceway.yml@refs/heads/main",
       GITHUB_ACTION_PATH: "/work/action",
       GITHUB_STEP_SUMMARY: "/work/summary.md",
       RUNNER_TEMP: "/work/temp",
