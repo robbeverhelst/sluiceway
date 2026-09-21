@@ -92,6 +92,22 @@ describe("the workflows in the docs", () => {
     expect(wrong).toEqual([]);
   });
 
+  // actions/cache v4 runs on Node 20, which the runner forces onto Node 24 with
+  // a warning in every run. v5 and newer run on Node 24.
+  test("actions/cache is v5 or newer", () => {
+    const wrong = all.flatMap(({ where, workflow }) =>
+      Object.values(workflow.jobs)
+        .flatMap((job) => job.steps)
+        .filter((step) => /^actions\/cache(\/(restore|save))?@/.test(step.uses ?? ""))
+        .filter((step) => Number(step.uses?.match(/@v(\d+)$/)?.[1] ?? 0) < 5)
+        .map((step) => `${where}: ${step.uses}`),
+    );
+    expect(wrong).toEqual([]);
+    expect(all.some(({ workflow }) => JSON.stringify(workflow).includes("actions/cache"))).toBe(
+      true,
+    );
+  });
+
   // A scan writes the dashboard from the code it checked out. On a pull request
   // or in a merge queue that is code that is not on the default branch.
   test("a workflow that scans never runs on pull requests or in a merge queue", () => {
