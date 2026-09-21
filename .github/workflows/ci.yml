@@ -111,6 +111,14 @@ jobs:
           persist-credentials: false
           path: action
 
+      # The check reads files and talks to nobody (record 0042), so it runs for
+      # real: on this workspace, which holds this repo and its example project
+      # under action/, it has to pass.
+      - name: The check passes on a valid workspace
+        uses: ./action
+        with:
+          mode: check
+
       # A real step can only talk to the real GitHub, and a scan that works
       # would write a dashboard issue into this repo. So the scan runs in a
       # workspace whose sluiceway.yaml is broken on purpose. A config error
@@ -133,5 +141,20 @@ jobs:
         run: |
           if [ "$OUTCOME" != "failure" ]; then
             echo "::error::Expected the scan to fail on the broken sluiceway.yaml, got: $OUTCOME"
+            exit 1
+          fi
+
+      - id: check
+        uses: ./action
+        continue-on-error: true
+        with:
+          mode: check
+
+      - name: Expect the check to fail on the config
+        env:
+          OUTCOME: ${{ steps.check.outcome }}
+        run: |
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "::error::Expected the check to fail on the broken sluiceway.yaml, got: $OUTCOME"
             exit 1
           fi
