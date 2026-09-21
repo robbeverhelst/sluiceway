@@ -54,6 +54,7 @@ Collected here so nobody has to search the records. The record in the last colum
 | `preview-timeout` | input | `scan`, `apply` | `10` | Time limit for one preview, whole minutes | 0012, 0035 |
 | `github-token` | input | all | the workflow token | Always the workflow's own `GITHUB_TOKEN` | 0017, 0035 |
 | `deployment-id` | input | `apply` | required there | The deployment record to deploy | 0035 |
+| `job-id` | input | `scan`, `apply` | `${{ job.check_run_id }}` | The id of the running job, for links to its log. Never set by hand | 0044 |
 | `matrix` | output | `resolve` | `[]` | `[{ stack, environment, deployment }]` | 0035 |
 | `dashboard-url` | output | `scan`, `apply`, `settle` | none | Web address of the dashboard issue | 0041 |
 | `pending` | output | `scan` | `0` | Number of pending stacks after this scan | 0041 |

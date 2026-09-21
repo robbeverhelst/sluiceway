@@ -1,5 +1,7 @@
 # The summary has a budget too, and the job log holds what does not fit
 
+> Amended by 0044: the summary opens with an index of the stacks that rows link to, and every stack has an anchor.
+
 Records 0021 and 0028 call the summary the full version that a shortened or redacted row links to, with no budget. GitHub does set one: a step's summary may be 1 MiB, and a larger one is dropped whole. The upload fails with an error annotation and the step stays green (Actions research). Every link to the summary would then point at nothing, on exactly the scan where the most is happening.
 
 So the summary gets a budget of 1,000,000 UTF-8 bytes, counted on the final text, and the full list moves one step down when it does not fit: Sluiceway also prints every stack's diff to the job log, in its own words, grouped per stack. The job log has no size limit that matters here.
