@@ -38,3 +38,8 @@ Rows do not all drop to the same level. That was rejected because one stack with
 - On the 100 stack fixture (53 pending, 439,001 characters of rows in full) the body comes out at 57,687 characters: 14 rows in full, 36 at level 2, and the three rows with more than 450 deletes at level 3. No other row loses a delete or replace line.
 
 Prototype: the over budget issue in the private lab repo, generated from the `prototype/dashboard` branch.
+
+## Settled while building (slice 3.1)
+
+- The scan mode, not only the renderer, holds these numbers (`test/modes/hundred-stacks.test.ts`). The 100 stack fixture scanned through the mode writes 55,983 characters, 38 rows shortened and the three rows with 450 deletes at level 3. It differs from the 57,687 above because the mode's own links and attribution lines are not the prototype's.
+- A level 3 row with its attribution line averages 547 characters, so "about 550" holds. With 21 character stack ids, 100 stacks that are all pending with deletes fit in 57,529 characters, 115 fit under the hard limit and 116 do not, and the scan then fails before it writes. So "roughly 100" holds too, on the safe side.

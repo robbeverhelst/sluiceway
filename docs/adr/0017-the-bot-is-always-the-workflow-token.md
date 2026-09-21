@@ -19,6 +19,21 @@ A `token` input that accepts any token is what most actions offer, and it was re
 - A duplicate can take a tick until the next scan closes it. That is accepted, because deploy safety rests on the deployment record and the hash check, never on which issue was ticked (0004).
 - A supported App token can be added later as a new input without breaking anyone. It would bring the identity input and the loop guard with it, and those are the cost that is not paid now.
 
+## Settled while building (slice 3.1)
+
+- The scan logs how many requests it made, as its last line: `The scan made 6 requests to the GitHub API. GitHub allows the workflow token at least 1,000 an hour in a repo.` It is also printed on a red scan. The count is taken on the wire, by a hook on the Octokit client, so each page of a list, each GraphQL query and each refused request counts once, as GitHub counts them. The e2e run holds the logged count to the count of the fake GitHub server. The line says "at least" because GitHub Enterprise Cloud gives the token 15,000. Only the scan logs a count in v1, because the acceptance test asks it of the scan and the scan is the mode that runs on every push.
+- Measured on the fake with 100 stacks (`test/modes/hundred-stacks.test.ts`). Previews cost no request, so the number of stacks alone changes nothing:
+
+| Scan | Requests |
+|---|---|
+| The first scan, no dashboard yet | 7: find (two lists, open and closed), records, create, pin, read back, records again |
+| Any later full scan, 3 stacks or 100, records on one page | 5: find, read, records, write, read back |
+| 100 pending stacks, the page of the environment full, every change a direct push | 304: the 5 above, two requests for each of the 99 stacks off the page (0003), the walk and 100 commit files (0026) |
+| The same, with a write that has to be tried again | 201 more for each try: the records and their fall back are read again (0004), the walk and the commit files are not |
+
+- One environment name costs one page per try. A config that gives each of 100 stacks its own `environment` pays 100 pages per try instead of 1.
+- The worst case is 706 requests for one scan: the last row of the table with three tries. It needs a full environment page, pending stacks that fell off it, a lookback of nothing but direct pushes, and another writer twice in the few seconds between a write and its read back. Every number in it is the one records 0003, 0004 and 0026 give. The ordinary scan costs 5. So the budget holds, with the note that a repo which deploys one stack very often in a shared environment pays for every other pending stack on each scan.
+
 Research:
 - https://github.com/sluiceway/sluiceway/blob/research/github-actions-behaviors/docs/research/github-actions-behaviors.md
 - https://github.com/sluiceway/sluiceway/blob/research/renovate-dashboard-mechanics/docs/research/renovate-dashboard-mechanics.md

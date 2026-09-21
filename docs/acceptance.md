@@ -62,7 +62,7 @@ When: first after M1, read only, at a pinned commit SHA with only the `scan` job
 - [ ] Set `concurrency` from those numbers. On a runner with 1 CPU the default of 4 may be too many. Try 2 and 4 and keep the faster. Set `preview-timeout` to at least three times the slowest preview. Write the chosen values here: `____`. If the defaults are wrong for an ordinary hosted runner too, that is a change to `action.yml` and record 0012.
 - [ ] Merge a change to one app's directory. The scan that follows previews that one stack (and `workspaces/pi` when the change is under a `dashboards` folder) and no other.
 - [ ] Merge a change to the shared components package. The scan that follows is a full scan.
-- [ ] The API budget holds: a full scan stays far below 1,000 requests. The job log prints the count.
+- [ ] The API budget holds: a full scan stays far below 1,000 requests. The last line of the scan's job log prints the count (`The scan made N requests to the GitHub API.`). Write it here: `____`.
 - [ ] Look at the dashboard on a phone, and in light and dark theme. It is readable without scrolling sideways.
 - [ ] Leave the scheduled scan on for three days. Every morning the dashboard is true, and no run is red for a reason that is not a broken scan.
 

@@ -25,3 +25,8 @@ Parallel previews inside one job are safe: previews of different stacks share no
 - The job log says how long each preview took, as each one finishes, and then the total, the sum of all previews and the slowest stack. The right `concurrency` and `preview-timeout` for a runner are read from these lines.
 - Each stack's group in the job log is printed after the pool is done, in stack id order, so previews that ran side by side never mix their lines. The tool's own words are printed as they are (0022), which includes a line that the runner reads as a workflow command. A stack program is the user's own code and has the same standing in the job as any other step of their workflow.
 - An error thrown by the adapter past its own preview failures is a fault of Sluiceway's. It stops the pool from starting new previews and fails the job.
+
+## Settled while building (slice 3.1)
+
+- With a replayed tool that answers at once, a full scan of 100 stacks through the real adapter, ten of them previews of 300 resources, takes about 0.2 s of Sluiceway's own work: discovery, parsing, the body, the budget, the summary and the write. A scan is as long as its previews.
+- With every preview taking 40 ms, the pool of 4 previews 100 stacks in 1.0 s, which is 100 divided by 4 times 40 ms. That is the formula for the worst case above, with the time limit in place of the 40 ms.
