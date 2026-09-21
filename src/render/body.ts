@@ -12,7 +12,7 @@ import {
   type RootFacts,
   rootMarker,
 } from "./marker.ts";
-import { type PendingLevel, pendingLevel } from "./pending-level.ts";
+import { type Crates, MAX_CRATES, pendingCrates } from "./pending-crates.ts";
 import { type Row, type RowOptions, renderRow } from "./row.ts";
 import { utcMinute } from "./time.ts";
 import {
@@ -60,20 +60,25 @@ export const RECENTLY_DEPLOYED = 10;
 const ACTION_REPO = "sluiceway/sluiceway";
 const ACTION_URL = `https://github.com/${ACTION_REPO}`;
 
-// Plain and fixed per state. The counts line right under it carries the numbers.
-const ALT: Record<HeaderState, string> = {
+// Plain and fixed per state. The pending picture shows how many stacks wait,
+// so its alt text says the same number in words (record 0047).
+const ALT: Record<Exclude<HeaderState, "pending">, string> = {
   failing: "Sluiceway: something failed",
   deploying: "Sluiceway: deploying",
-  pending: "Sluiceway: changes are pending",
   "first-run": "Sluiceway: no stacks yet",
   "in-sync": "Sluiceway: everything is in sync",
 };
 
-// The state's alt text plus the fact, for the two states whose picture can
-// carry the destroy sign (record 0043).
-const SIGNED_ALT = {
-  pending: "Sluiceway: changes are pending, some delete or replace resources",
-  deploying: "Sluiceway: deploying, some changes delete or replace resources",
+function pendingAlt(crates: Crates): string {
+  if (crates === "more") return `Sluiceway: more than ${MAX_CRATES} stacks are pending`;
+  return crates === 1 ? "Sluiceway: 1 stack is pending" : `Sluiceway: ${crates} stacks are pending`;
+}
+
+// The alt text plus the fact, for the two states whose picture can carry the
+// destroy sign (record 0043).
+const SIGNED_FACT = {
+  pending: ", some delete or replace resources",
+  deploying: ", some changes delete or replace resources",
 } as const;
 
 type KnownRow = Extract<ParsedRow, { known: true }>;
@@ -105,21 +110,22 @@ export function rowBlock(row: Row, options: RowOptions = {}): ParsedRow {
 
 // One file per theme, because `<picture>` follows the reader's GitHub theme
 // and a media query inside an SVG follows the operating system (record 0033).
-// Pending has one picture per pending level (record 0039). The pending and
-// deploying pictures exist once more with the destroy sign, and no other
-// picture does (record 0043). The picture is as wide as the issue and centered
-// in it (record 0040).
+// Pending has one picture per crate count up to the maximum, and one past it
+// (record 0047). The pending and deploying pictures exist once more with the
+// destroy sign, and no other picture does (record 0043). The picture is as
+// wide as the issue and centered in it (record 0040).
 function picture(
   state: HeaderState,
-  level: PendingLevel | undefined,
+  crates: Crates | undefined,
   sign: boolean,
   actionRef: string,
 ): string[] {
-  // A pending header always has a pending row, so it always has a level.
-  const base = state === "pending" ? `pending-${level ?? 1}` : state;
+  // A pending header always has a pending row, so it always has crates.
+  const base = state === "pending" ? `pending-${crates ?? 1}` : state;
   const signed = sign && (state === "pending" || state === "deploying");
   const name = signed ? `${base}-destroys` : base;
-  const alt = signed ? SIGNED_ALT[state] : ALT[state];
+  const plainAlt = state === "pending" ? pendingAlt(crates ?? 1) : ALT[state];
+  const alt = signed ? `${plainAlt}${SIGNED_FACT[state]}` : plainAlt;
   const file = (theme: string) =>
     `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef)}/assets/mascot/${name}-${theme}.svg`;
   return [
@@ -229,7 +235,7 @@ export function renderBody(input: BodyInput): string {
   const scan = scanLine(input.root, input.repoUrl);
   if (input.personality)
     out.push(
-      picture(state, pendingLevel(rows), destroySign(rows), input.actionRef).join("\n"),
+      picture(state, pendingCrates(rows), destroySign(rows), input.actionRef).join("\n"),
       '<div align="center">',
       counts,
       scan,

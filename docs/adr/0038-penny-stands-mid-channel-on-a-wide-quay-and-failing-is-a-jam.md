@@ -1,5 +1,7 @@
 # Penny stands mid-channel on a wide quay, and failing is a jam
 
+> Amended by 0047: the gauge staff has one amber mark per water step, five in all, and pending shows one crate per pending stack up to 12.
+
 > Amended by 0043: there is no plain picture any more. When a pending or deploying row has a delete or replace, the pending or deploying picture carries the destroy sign: an amber warning triangle painted on the wall downstream, between Penny and the wordmark.
 
 The first header (0030, 0033) was 440 by 120 and sat left-aligned in an issue column about twice as wide. Penny took the left third, the wordmark the middle, and the right third was empty apart from a thin waterline. The picture said which state the dashboard was in and nothing more. The owner asked for a header that is impressive, fun and useful, and in brand.

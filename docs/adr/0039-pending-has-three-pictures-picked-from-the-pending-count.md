@@ -1,5 +1,7 @@
 # Pending has three pictures, picked from the pending count, which makes sixteen files of 880 by 160
 
+> Superseded in part by 0047: pending has one picture per pending stack up to 12 and one past it, `pending-1` to `pending-12` and `pending-more`, and the water rises in five steps. The pending level is gone. The file rules, the cap and the reasons against a share of all stacks stay.
+
 > Amended by 0043: `plain` is gone, and the three pending pictures and deploying exist once more with the destroy sign, which makes seven pictures and twenty-two files. The pending level picks the file with or without the sign in the same way.
 
 The header could not carry a quantity. The images are static files served from the release tag (0033), so they can never hold a live number, and a badge or image service is ruled out. What a static file set can do is offer more than one picture for a state and let the renderer pick one.

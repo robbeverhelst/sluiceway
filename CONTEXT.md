@@ -273,23 +273,31 @@ The exact release tag of the running action, or its commit SHA. Never a moving t
 _Avoid_: Action version, image tag, release
 
 **Header state**:
-Which of five states the header shows: failing, deploying, pending, first run or in sync. The first that applies wins, in that order. It is computed from the row markers and decides nothing. A destroy does not change it. Pending has three pictures, one per pending level, so there are seven pictures for five states, and four of them exist once more with the destroy sign.
+Which of five states the header shows: failing, deploying, pending, first run or in sync. The first that applies wins, in that order. It is computed from the row markers and decides nothing. A destroy does not change it. Pending has thirteen pictures, one per crate count, so there are seventeen pictures for five states, and fourteen of them exist once more with the destroy sign.
 _Avoid_: Mood, dashboard status, health
 
 **Destroy sign**:
-The amber warning triangle painted on the quay wall in the header, between Penny and the wordmark. The pending and deploying pictures carry it whenever a pending or deploying row has a destroy. It does not move, and the rest of the picture is unchanged. It is computed from the row markers and decides nothing. It took the place of a grey header state called plain.
+The amber warning triangle on a pole in the water in the header, right of the wordmark. The pending and deploying pictures carry it whenever a pending or deploying row has a destroy. It does not move, and the rest of the picture is unchanged. It is computed from the row markers and decides nothing. It took the place of a grey header state called plain.
 _Avoid_: Plain, careful state, warning header, danger state, alarm
 
-**Pending level**:
-Which of the three pending pictures the header shows: 1 for 1 or 2 pending rows, 2 for 3 to 9, 3 for 10 or more. The water upstream is higher and carries more crates with each level. It is computed from the row markers and decides nothing.
-_Avoid_: Tier, severity, load
+**Crate count**:
+Which of the thirteen pending pictures the header shows: the number of pending rows, from 1 to 12, or `more` above 12. It is computed from the row markers and decides nothing. It replaced the pending level.
+_Avoid_: Pending level, tier, severity, load
+
+**Water step**:
+How high the water stands upstream in a pending picture, one of five: 1 or 2 pending, 3 or 4, 5 to 7, 8 to 10, 11 or more. The gauge on the wall has one amber mark per step. It follows from the crate count.
+_Avoid_: Pending level, water level (for the count)
+
+**Overflow**:
+The pending picture past the maximum of 12 crates: the row runs on with a half crate cut by the left edge, which reads as more than 12.
+_Avoid_: Cap picture, max picture
 
 **Upstream and downstream**:
 The two sides of Penny in the header. Upstream is on the left, where water and crates pile up while changes are pending. Downstream is on the right, where water rushes while deploying. Level water on both sides is the picture of in sync. Water always moves left to right.
 _Avoid_: Before and after, input and output, left and right side
 
 **Crate**:
-A box floating upstream in the header. Crates stand for waiting stacks. A picture never shows more crates than there are pending rows, and may show fewer.
+A box floating upstream in the header. One crate stands for one pending stack. Up to 12 the picture shows exactly as many crates as there are pending rows, some stacked on two others. Above 12 it shows the overflow.
 _Avoid_: Package, box per stack, queue item
 
 **Jam**:

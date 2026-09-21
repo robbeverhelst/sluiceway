@@ -56,7 +56,7 @@ function input(rows: Row[], overrides: Partial<BodyInput> = {}): BodyInput {
 
 const IMAGES = "https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot";
 
-// Written out by hand from records 0029, 0033 and 0040, not from the code.
+// Written out by hand from records 0029, 0033, 0040 and 0047, not from the code.
 describe("the body of record 0029", () => {
   test("one pending stack and one in sync", () => {
     expect(renderBody(input([inSync("apps/web:prod"), pending("apps/api:prod")]))).toBe(
@@ -66,7 +66,7 @@ describe("the body of record 0029", () => {
         '<p align="center">',
         "  <picture>",
         `    <source media="(prefers-color-scheme: dark)" srcset="${IMAGES}/pending-1-dark.svg">`,
-        `    <img alt="Sluiceway: changes are pending" width="880" src="${IMAGES}/pending-1-light.svg">`,
+        `    <img alt="Sluiceway: 1 stack is pending" width="880" src="${IMAGES}/pending-1-light.svg">`,
         "  </picture>",
         "</p>",
         "",
@@ -179,17 +179,18 @@ function lineUnderPending(body: string): string {
 }
 
 describe("the picture", () => {
-  // The alt texts of record 0031 and the file names of record 0033.
+  // The alt texts of record 0031 and the file names of record 0033. The
+  // pending alt text says the number of crates (record 0047), here for one.
   const ALT: Record<HeaderState, string> = {
     "first-run": "Sluiceway: no stacks yet",
     "in-sync": "Sluiceway: everything is in sync",
-    pending: "Sluiceway: changes are pending",
+    pending: "Sluiceway: 1 stack is pending",
     deploying: "Sluiceway: deploying",
     failing: "Sluiceway: something failed",
   };
   // Record 0043: the state's alt text plus the fact.
   const SIGNED_ALT = {
-    pending: "Sluiceway: changes are pending, some delete or replace resources",
+    pending: "Sluiceway: 1 stack is pending, some delete or replace resources",
     deploying: "Sluiceway: deploying, some changes delete or replace resources",
   };
 
@@ -204,27 +205,27 @@ describe("the picture", () => {
       "</p>",
     ].join("\n");
 
-  // Pending has one file pair per pending level (record 0039). Every other
-  // header state is its own file name.
+  // Pending has one file pair per crate count up to 12 and one past it
+  // (record 0047). Every other header state is its own file name.
   test.each(HEADER_STATES.filter((state) => state !== "pending"))("%s", (state) => {
     const body = renderBody(input(DASHBOARDS[state]));
     expect(paragraphs(body)[1]).toBe(centered(state, ALT[state]));
   });
 
-  test.each([
-    [1, 1],
-    [2, 1],
-    [3, 2],
-    [9, 2],
-    [10, 3],
-    [58, 3],
-  ])("%i pending rows show pending level %i, with the same alt text", (count, level) => {
+  test.each<[number, string, string]>([
+    [1, "pending-1", "Sluiceway: 1 stack is pending"],
+    [2, "pending-2", "Sluiceway: 2 stacks are pending"],
+    [7, "pending-7", "Sluiceway: 7 stacks are pending"],
+    [12, "pending-12", "Sluiceway: 12 stacks are pending"],
+    [13, "pending-more", "Sluiceway: more than 12 stacks are pending"],
+    [58, "pending-more", "Sluiceway: more than 12 stacks are pending"],
+  ])("%i pending rows show %s", (count, file, alt) => {
     const rows = Array.from({ length: count }, (_, index) => pending(`stack-${index}`));
     const body = renderBody(input([...rows, inSync("calm")]));
-    expect(paragraphs(body)[1]).toBe(centered(`pending-${level}`, ALT.pending));
+    expect(paragraphs(body)[1]).toBe(centered(file, alt));
   });
 
-  test("a row of an unknown state does not raise the pending level", () => {
+  test("a row of an unknown state does not add a crate", () => {
     const later: ParsedRow[] = Array.from({ length: 12 }, (_, index) => ({
       known: false,
       stackId: `later-${index}`,
@@ -233,11 +234,11 @@ describe("the picture", () => {
     }));
     const base = input([pending("a"), pending("b")]);
     const body = renderBody({ ...base, rows: [...base.rows, ...later] });
-    expect(paragraphs(body)[1]).toBe(centered("pending-1", ALT.pending));
+    expect(paragraphs(body)[1]).toBe(centered("pending-2", "Sluiceway: 2 stacks are pending"));
   });
 
-  // When bad news wins, the level is not shown (record 0039).
-  test("ten pending rows under a header state that is not pending show no level", () => {
+  // When bad news wins, the crates are not shown.
+  test("ten pending rows under a header state that is not pending show no crates", () => {
     const ten = Array.from({ length: 10 }, (_, index) => pending(`stack-${index}`));
     const cases: [HeaderState, Row[]][] = [
       ["deploying", [...ten, deploying("z")]],
@@ -247,22 +248,20 @@ describe("the picture", () => {
       expect(paragraphs(renderBody(input(rows)))[1]).toBe(centered(state, ALT[state]));
   });
 
-  // Record 0043: the sign is added to the picture of the real state, at the
-  // pending level that state already had.
-  test.each([
-    [1, 1],
-    [3, 2],
-    [10, 3],
-  ])(
-    "a pending header with a destroy at %i pending rows is pending-%i-destroys",
-    (count, level) => {
-      const rows = Array.from({ length: count }, (_, index) =>
-        pending(`stack-${index}`, index === 0 ? ["delete"] : ["update"]),
-      );
-      const body = renderBody(input([...rows, inSync("calm")]));
-      expect(paragraphs(body)[1]).toBe(centered(`pending-${level}-destroys`, SIGNED_ALT.pending));
-    },
-  );
+  // Record 0043: the sign is added to the picture of the real state, with the
+  // crates that state already had.
+  test.each<[number, string, string]>([
+    [1, "pending-1-destroys", "Sluiceway: 1 stack is pending"],
+    [3, "pending-3-destroys", "Sluiceway: 3 stacks are pending"],
+    [12, "pending-12-destroys", "Sluiceway: 12 stacks are pending"],
+    [13, "pending-more-destroys", "Sluiceway: more than 12 stacks are pending"],
+  ])("a pending header with a destroy at %i pending rows is %s", (count, file, alt) => {
+    const rows = Array.from({ length: count }, (_, index) =>
+      pending(`stack-${index}`, index === 0 ? ["delete"] : ["update"]),
+    );
+    const body = renderBody(input([...rows, inSync("calm")]));
+    expect(paragraphs(body)[1]).toBe(centered(file, `${alt}, some delete or replace resources`));
+  });
 
   test("a deploying header gets the sign from a deploying row", () => {
     const body = renderBody(input([deploying("a", 1), pending("b"), inSync("c")]));
@@ -955,32 +954,33 @@ describe("snapshots", () => {
     });
   }
 
-  // Pending has three pictures (record 0039). The header state snapshot above
-  // is level 1.
-  for (const [level, count] of [
-    [2, 3],
-    [3, 10],
-  ]) {
-    test(`pending level ${level}`, () => {
-      const rows = Array.from({ length: count ?? 0 }, (_, index) => pending(`stack-${index}`));
+  // Pending has one picture per crate count and one past the maximum (record
+  // 0047). The header state snapshot above is one crate. Three whole bodies,
+  // and the picture alone for every count, with and without the destroy sign
+  // (record 0043), so the snapshots name every file.
+  for (const count of [3, 12, 13]) {
+    test(`${count} pending`, () => {
+      const rows = Array.from({ length: count }, (_, index) => pending(`stack-${index}`));
       expect(`${renderBody(input([...rows, inSync("calm")]))}\n`).toMatchSnapshot();
     });
-  }
-
-  // Record 0043: the three pending pictures and deploying exist once more with
-  // the destroy sign.
-  for (const [level, count] of [
-    [1, 1],
-    [2, 3],
-    [3, 10],
-  ]) {
-    test(`pending level ${level} with the destroy sign`, () => {
-      const rows = Array.from({ length: count ?? 0 }, (_, index) =>
+    test(`${count} pending with the destroy sign`, () => {
+      const rows = Array.from({ length: count }, (_, index) =>
         pending(`stack-${index}`, index === 0 ? ["create", "delete"] : ["update"]),
       );
       expect(`${renderBody(input([...rows, inSync("calm")]))}\n`).toMatchSnapshot();
     });
   }
+
+  for (const sign of [false, true])
+    test(`the pending picture at 1 to 13 pending${sign ? ", with the destroy sign" : ""}`, () => {
+      const pictures = Array.from({ length: 13 }, (_, index) => {
+        const rows = Array.from({ length: index + 1 }, (_, row) =>
+          pending(`stack-${row}`, sign && row === 0 ? ["delete"] : ["update"]),
+        );
+        return paragraphs(renderBody(input(rows)))[1];
+      });
+      expect(`${pictures.join("\n\n")}\n`).toMatchSnapshot();
+    });
 
   test("deploying with the destroy sign", () => {
     expect(
@@ -1056,7 +1056,7 @@ describe("the image urls in the snapshots", () => {
       readFileSync(join(import.meta.dir, "__snapshots__/body.test.ts.snap"), "utf8"),
     );
     const files = readdirSync(MASCOT).filter((name) => name.endsWith(".svg"));
-    expect(files).toHaveLength(22);
+    expect(files).toHaveLength(62);
     expect([...new Set(own.map((url) => url.split("/").at(-1) ?? ""))].sort()).toEqual(
       files.sort(),
     );
