@@ -1,0 +1,63 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`a valid setup the summary 1`] = `
+"## Sluiceway check
+
+The setup is valid.
+
+### Stacks
+
+Found 2 stacks.
+
+| Stack | Environment | Tickers | Inputs |
+|---|---|---|---|
+| app:prod | sluiceway | alice, bob | shared/&#42;&#42; |
+| network:prod | production | maintain | none |
+
+### Ignore
+
+| Glob | Leaves out |
+|---|---|
+| playground | No stack. It is matched against the stack id, not the directory. &quot;playground:&#42;&quot; would leave out playground:dev. |
+| &#42;&#42;/&#42;:dev | network:dev, playground:dev |
+
+### Files that no stack claims
+
+10 files are claimed by no stack. A push that changes one of them gives a full scan.
+
+- The repo root, 4 files: LICENSE, README.md, package.json, sluiceway.yaml
+- .github/, 1 file: .github/workflows/deploy-dashboard.yml
+- docs/, 2 files: docs/diagram.png, docs/setup.md
+- packages/, 1 file: packages/lib/index.ts
+- playground/, 2 files: playground/Pulumi.dev.yaml, playground/Pulumi.yaml
+
+A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.
+
+The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.
+
+\`\`\`yaml
+scan:
+  unrelated:
+    - "**/*.md"
+    - "docs/**"
+    - ".github/**"
+    - "LICENSE*"
+\`\`\`
+
+### What a check cannot tell
+
+A check reads files only, so it cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan.
+"
+`;
+
+exports[`a setup that is not valid the summary of a config that is not valid 1`] = `
+"## Sluiceway check
+
+sluiceway.yaml is not valid.
+
+- unknown key &quot;tickerz&quot;. Known keys here: dashboard, tickers, ignore, scan, stacks.
+- &quot;drift&quot; is not in this version of Sluiceway yet. Remove it.
+
+Fix these and run the check again. A scan stops at the same place.
+"
+`;
