@@ -36,6 +36,9 @@ export interface PendingRow {
   failure?: FailureLine | undefined;
   // A tick on the old row that nothing picked up (record 0025).
   orphanTick?: boolean | undefined;
+  // A tick on the old row, at this same diff hash, that a scan carries
+  // through because a `resolve` run is on its way (record 0025).
+  ticked?: boolean | undefined;
 }
 
 // Written by `resolve` without a diff (record 0014), so it has no box, no
@@ -166,7 +169,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
   const summary = `[summary](${row.runUrl})`;
 
   const lines = [
-    `- [ ] **${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.runUrl}) ${rowMarker(
+    `- [${row.ticked ? "x" : " "}] **${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.runUrl}) ${rowMarker(
       {
         stackId: row.diff.stackId,
         state: "pending",
