@@ -107,3 +107,49 @@ exports[`a full scan of the example project gives the same dashboard and summary
 - network:prod
 "
 `;
+
+exports[`a stack of the example project that does not exist in the backend gives the same row and summary from both CLI versions: row 1`] = `
+"- **network:prod** · preview failed: the stack does not exist in the backend · [run](https://github.com/acme/infra/actions/runs/4242) <!-- sluiceway:row stack="network:prod" state="preview-failed" -->
+  <!-- /sluiceway:row -->"
+`;
+
+exports[`a stack of the example project that does not exist in the backend gives the same row and summary from both CLI versions: summary 1`] = `
+"## Sluiceway scan
+
+4 stacks previewed: 2 pending, 2 preview failed.
+
+### Pending
+
+#### app:prod
+
+3 creates
+
+<details><summary>3 changes</summary>
+
+- <kbd>create</kbd> <code>command:local:Command</code> <b>start</b>
+- <kbd>create</kbd> <code>pulumi:pulumi:Stack</code> <b>app-prod</b>
+- <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>release</b>
+
+</details>
+
+#### network:dev
+
+1 create, 1 update, **2 replaces**, **1 delete**
+
+- :warning: <kbd>DELETE</kbd> <code>random:index/randomString:RandomString</code> <b>subnet</b>
+- :warning: <kbd>REPLACE</kbd> <code>local:index/file:File</code> <b>notes</b> · forced by <code>content</code> · also changes <code>contentBase64sha256</code>, <code>contentBase64sha512</code>, <code>contentMd5</code>, <code>contentSha1</code>, <code>contentSha256</code>, <code>contentSha512</code>, <code>id</code>
+- :warning: <kbd>REPLACE</kbd> <code>random:index/randomPet:RandomPet</code> <b>name</b> · forced by <code>prefix</code>
+
+<details><summary>2 other changes</summary>
+
+- <kbd>update</kbd> <code>command:local:Command</code> <b>banner</b> · <code>environment</code>
+- <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>extra</b>
+
+</details>
+
+### Preview failed
+
+- **network:prod** · the stack does not exist in the backend · create it, or take it off the dashboard with <code>&quot;network:prod&quot;</code> under <code>ignore</code> in <code>sluiceway.yaml</code>
+- **site:prod** · the tool exited with an error (exit code 1)
+"
+`;

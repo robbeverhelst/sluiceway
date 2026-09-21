@@ -8,3 +8,9 @@ export function globMatcher(globs: string[]): (text: string) => boolean {
   if (globs.length === 0) return () => false;
   return picomatch(globs, { dot: true });
 }
+
+// A glob that matches exactly this text, for a line a person pastes under
+// `ignore`: every character a glob acts on is escaped with a backslash.
+export function globOf(text: string): string {
+  return text.replace(/[\\*?[\]{}()!+@|]/g, "\\$&");
+}

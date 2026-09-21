@@ -4,6 +4,7 @@
 import type { PreviewResult } from "../adapters/adapter.ts";
 import { diffHash } from "../core/diff-hash.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
+import { globOf } from "../core/glob.ts";
 import type { FailureLine, Row } from "./row.ts";
 import type { SummaryMerge, SummaryStack } from "./summary.ts";
 
@@ -38,9 +39,16 @@ export function previewSummary(
   result: PreviewResult,
   merges?: SummaryMerge[] | undefined,
 ): SummaryStack {
-  return result.ok
-    ? { kind: "diff", diff: result.diff, merges }
-    : { kind: "preview-failed", stackId, reason: previewFailureText(result.reason) };
+  if (result.ok) return { kind: "diff", diff: result.diff, merges };
+  return {
+    kind: "preview-failed",
+    stackId,
+    reason: previewFailureText(result.reason),
+    // A stack file with no stack behind it is often one nobody meant to
+    // create (onboarding log, hurdle 9). The glob is built from the stack id,
+    // a name Sluiceway derived from the repo's files (record 0022).
+    ignore: result.reason.kind === "stack-not-found" ? globOf(stackId) : undefined,
+  };
 }
 
 // The row state a preview result leads to, in the words of the counts line.

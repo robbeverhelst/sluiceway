@@ -30,7 +30,12 @@ export type SummaryStack =
       stackId: string;
       // A failure reason from the fixed list (record 0022), as display text.
       reason: string;
+      // The `ignore` glob that takes the stack off the dashboard, for a stack
+      // that does not exist in the backend (onboarding log, hurdle 9).
+      ignore?: string | undefined;
     };
+
+type FailedStack = Extract<SummaryStack, { kind: "preview-failed" }>;
 
 type DiffStack = Extract<SummaryStack, { kind: "diff" }>;
 
@@ -118,6 +123,15 @@ function diffParts(stack: DiffStack, level: SummaryLevel): string[] {
   return parts;
 }
 
+// The glob is written as a quoted string, which is valid YAML whatever the
+// stack id holds, so it can be pasted under `ignore` as it is.
+function failedLine(stack: FailedStack): string {
+  const line = `- **${escapeText(stack.stackId)}** · ${escapeText(stack.reason)}`;
+  if (stack.ignore === undefined) return line;
+  const glob = escapeText(JSON.stringify(stack.ignore));
+  return `${line} · create it, or take it off the dashboard with <code>${glob}</code> under <code>ignore</code> in <code>sluiceway.yaml</code>`;
+}
+
 function stackIdOf(stack: SummaryStack): string {
   return stack.kind === "diff" ? stack.diff.stackId : stack.stackId;
 }
@@ -201,12 +215,7 @@ export function renderSummary(stacks: SummaryStack[], options: SummaryOptions = 
           .join(", ")}.`;
   const tail: string[] = [];
   if (failed.length > 0) {
-    tail.push(
-      "### Preview failed",
-      failed
-        .map((stack) => `- **${escapeText(stack.stackId)}** · ${escapeText(stack.reason)}`)
-        .join("\n"),
-    );
+    tail.push("### Preview failed", failed.map(failedLine).join("\n"));
   }
   if (inSync.length > 0) {
     tail.push(

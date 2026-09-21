@@ -24,7 +24,7 @@ const SCENARIO_OF: Record<string, string> = {
   "site prod": "program-error",
 };
 
-function replayedTool(version: string): ProcessRunner {
+function replayedTool(version: string, scenarios = SCENARIO_OF): ProcessRunner {
   const answer = (scenario: string) => {
     const [command] = readRecording(version, scenario).commands;
     if (command === undefined) throw new Error(`${scenario} holds no command.`);
@@ -38,7 +38,7 @@ function replayedTool(version: string): ProcessRunner {
   };
   return async (run) => {
     if (run.argv.join(" ") === "pulumi version") return answer("version");
-    const scenario = SCENARIO_OF[`${relative(ROOT, run.cwd)} ${run.argv.at(-1)}`];
+    const scenario = scenarios[`${relative(ROOT, run.cwd)} ${run.argv.at(-1)}`];
     if (scenario === undefined) {
       throw new Error(`No scenario for "${run.argv.join(" ")}" in ${run.cwd}.`);
     }
@@ -58,6 +58,63 @@ test("a full scan of the example project gives the same dashboard and summary fr
   expect(results[0]?.summaries).toHaveLength(1);
   expect(results[0]?.dashboard).toMatchSnapshot("dashboard");
   expect(results[0]?.summaries[0]).toMatchSnapshot("summary");
+});
+
+// Onboarding log, hurdle 9, and record 0022 as amended: network:prod has a
+// stack file and no stack in the backend. It answers with what the real CLI
+// printed for such a stack.
+describe("a stack of the example project that does not exist in the backend", () => {
+  const MISSING = { ...SCENARIO_OF, "network prod": "missing-stack" };
+
+  async function scanned(version: string) {
+    const { context, github, log } = harness(pulumi, {
+      root: ROOT,
+      run: replayedTool(version, MISSING),
+    });
+    await scan(context);
+    return { dashboard: dashboardBody(github), summaries: log.summaries, log };
+  }
+
+  test("gives the same row and summary from both CLI versions", async () => {
+    const results = [];
+    for (const version of VERSIONS) {
+      const { dashboard, summaries } = await scanned(version);
+      results.push({ dashboard, summaries });
+    }
+    expect(results[1]).toEqual(results[0]);
+    const row = parseDashboard(results[0]?.dashboard ?? "").rows.find(
+      (candidate) => candidate.stackId === "network:prod",
+    );
+    expect(row?.text).toMatchSnapshot("row");
+    expect(results[0]?.summaries[0]).toMatchSnapshot("summary");
+  });
+
+  test.each(VERSIONS)(
+    "says so on the row, in the summary and on the run, replayed from %s",
+    async (version) => {
+      const { dashboard, summaries, log } = await scanned(version);
+      expect(dashboard).toContain(
+        "- **network:prod** · preview failed: the stack does not exist in the backend · [run](",
+      );
+      expect(summaries[0]).toContain(
+        "- **network:prod** · the stack does not exist in the backend · create it, or take it off the dashboard with <code>&quot;network:prod&quot;</code> under <code>ignore</code> in <code>sluiceway.yaml</code>\n",
+      );
+      expect(log.warnings).toContainEqual({
+        title: "Preview failed",
+        message: "The preview of network:prod failed: the stack does not exist in the backend.",
+      });
+      // The tool's words, which name the stack, stay in the job log (record 0022).
+      const written = [dashboard, ...summaries, ...log.lines].join("\n");
+      expect(written).not.toContain("no stack named");
+      expect(log.groups.find((group) => group.title === "network:prod")?.lines).toContain(
+        "error: no stack named 'ghost' found",
+      );
+      // Any other failure is still "the tool exited with an error".
+      expect(dashboard).toContain(
+        "- **site:prod** · preview failed: the tool exited with an error (exit code 1) · [run](",
+      );
+    },
+  );
 });
 
 describe.each(VERSIONS)("a full scan of the example project, replayed from %s", (version) => {

@@ -147,6 +147,42 @@ describe("the summary of a scan", () => {
     );
   });
 
+  // Onboarding log, hurdle 9: a stack file with no stack in the backend. The
+  // summary names the `ignore` glob that takes the stack off the dashboard, as
+  // a quoted string that can be pasted into sluiceway.yaml as it is.
+  test("a stack that does not exist in the backend names the ignore glob that takes it off", () => {
+    const { text } = renderSummary([
+      {
+        kind: "preview-failed",
+        stackId: "apps/grafana:dev",
+        reason: "the stack does not exist in the backend",
+        ignore: "apps/grafana:dev",
+      },
+      { kind: "preview-failed", stackId: "b:prod", reason: "the tool exited with an error" },
+      {
+        kind: "preview-failed",
+        stackId: "c/[x]:dev",
+        reason: "the stack does not exist in the backend",
+        ignore: "c/\\[x\\]:dev",
+      },
+    ]);
+
+    expect(text).toBe(
+      [
+        "## Sluiceway scan",
+        "",
+        "3 stacks previewed: 3 preview failed.",
+        "",
+        "### Preview failed",
+        "",
+        "- **apps/grafana:dev** · the stack does not exist in the backend · create it, or take it off the dashboard with <code>&quot;apps/grafana:dev&quot;</code> under <code>ignore</code> in <code>sluiceway.yaml</code>",
+        "- **b:prod** · the tool exited with an error",
+        "- **c/&#91;x&#93;:dev** · the stack does not exist in the backend · create it, or take it off the dashboard with <code>&quot;c/&#92;&#92;&#91;x&#92;&#92;&#93;:dev&quot;</code> under <code>ignore</code> in <code>sluiceway.yaml</code>",
+        "",
+      ].join("\n"),
+    );
+  });
+
   test("a scan that previewed nothing says so", () => {
     expect(renderSummary([]).text).toBe("## Sluiceway scan\n\nNo stacks previewed.\n");
   });
