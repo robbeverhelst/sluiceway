@@ -84,17 +84,20 @@ describe("a tick by a person who may tick", () => {
     expect(after["c:prod"]).toBe(before["c:prod"] as string);
   });
 
-  test("regenerates everything around the row blocks: the counts, the sections and the plain header", async () => {
+  test("regenerates everything around the row blocks: the counts, the sections and the header", async () => {
     const h = await scanned(TABLE);
     tick(h, ALICE, ["a:prod"]);
 
     await wake(h);
 
     const body = h.github.issue(h.number).body;
-    expect(body).toContain("**1 pending** · 1 deploying · 0 preview failed · 1 in sync");
+    expect(body).toContain(
+      "🟡&nbsp;**1 pending** · 🔵&nbsp;1 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync",
+    );
     expect(body.indexOf("## Deploying")).toBeGreaterThan(body.indexOf("## Pending"));
-    // A deploying row that destroys something keeps the header plain (0031).
-    expect(body).toContain('alt="Sluiceway"');
+    // A deploying row that destroys something shows the deploying picture
+    // with the destroy sign (0043).
+    expect(body).toContain('alt="Sluiceway: deploying, some changes delete or replace resources"');
     // The scan facts on the root marker are the scan's, carried through.
     expect(body.split("\n")[0]).toBe(h.github.issue(h.number).body.split("\n")[0] as string);
     expect(body.split("\n")[0]).toContain('scan-run="4242"');

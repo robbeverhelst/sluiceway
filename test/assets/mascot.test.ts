@@ -10,14 +10,11 @@ import { HEADER_STATES } from "../../src/render/header-state.ts";
 const DIR = resolve(import.meta.dir, "../../assets/mascot");
 const MAX_BYTES = 10 * 1024;
 // Pending has one picture per pending level (record 0039). Every other header
-// state has one. There is no plain picture any more (record 0043). Until slice
-// 1.7c the renderer still has a `plain` state, which is skipped here.
+// state has one. There is no plain picture any more (record 0043).
 const PENDING_LEVELS = [1, 2, 3];
-const STATE_PICTURES = (HEADER_STATES as readonly string[])
-  .filter((state) => state !== "plain")
-  .flatMap((state) =>
-    state === "pending" ? PENDING_LEVELS.map((level) => `pending-${level}`) : [state],
-  );
+const STATE_PICTURES = HEADER_STATES.flatMap((state) =>
+  state === "pending" ? PENDING_LEVELS.map((level) => `pending-${level}`) : [state],
+);
 // The pictures of a state that can hold a pending or deploying row exist once
 // more with the destroy sign painted on the wall (record 0043).
 const SIGNED = STATE_PICTURES.filter(

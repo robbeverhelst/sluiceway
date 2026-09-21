@@ -1,74 +1,5 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`snapshots header state plain 1`] = `
-"<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-dark.svg">
-    <img alt="Sluiceway" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-light.svg">
-  </picture>
-</p>
-
-<div align="center">
-
-**2 pending** · 1 deploying · 1 preview failed · 1 in sync · :warning: **1 pending stack destroys resources**
-
-Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
-
-</div>
-
-## Pending
-
-Tick a box to deploy that stack exactly as its row shows it.
-
-- [ ] **a:destroys** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="a:destroys" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" -->
-  :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-1</b>
-  <details><summary>1 other change</summary>
-  <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b><br>
-  </details>
-  <!-- /sluiceway:row -->
-- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" -->
-  <details><summary>1 change</summary>
-  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
-  </details>
-  <!-- /sluiceway:row -->
-
-## Deploying
-
-- **c:deploying** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="c:deploying" state="deploying" -->
-  <!-- /sluiceway:row -->
-
-## Preview failed
-
-These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.
-
-- **b:broken** · preview failed: the tool exited with an error (exit code 255) · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="b:broken" state="preview-failed" -->
-  <!-- /sluiceway:row -->
-
-## In sync
-
-<details><summary>1 stack in sync</summary>
-
-- e:calm <!-- sluiceway:row stack="e:calm" state="in-sync" -->
-  <!-- /sluiceway:row -->
-
-</details>
-
-## Recently deployed
-
-- apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
-
----
-
-- [ ] Rescan all stacks <!-- sluiceway:rescan -->
-
-<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
-"
-`;
-
 exports[`snapshots header state failing 1`] = `
 "<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->
 
@@ -471,6 +402,255 @@ Tick a box to deploy that stack exactly as its row shows it.
 "
 `;
 
+exports[`snapshots pending level 1 with the destroy sign 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/pending-1-destroys-dark.svg">
+    <img alt="Sluiceway: changes are pending, some delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/pending-1-destroys-light.svg">
+  </picture>
+</p>
+
+<div align="center">
+
+🟡&nbsp;**1 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack destroys resources**
+
+Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
+
+</div>
+
+## Pending
+
+Tick a box to deploy that stack exactly as its row shows it.
+
+- [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" -->
+  :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-1</b>
+  <details><summary>1 other change</summary>
+  <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b><br>
+  </details>
+  <!-- /sluiceway:row -->
+
+## In sync
+
+<details><summary>1 stack in sync</summary>
+
+- calm <!-- sluiceway:row stack="calm" state="in-sync" -->
+  <!-- /sluiceway:row -->
+
+</details>
+
+---
+
+- [ ] Rescan all stacks <!-- sluiceway:rescan -->
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
+"
+`;
+
+exports[`snapshots pending level 2 with the destroy sign 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/pending-2-destroys-dark.svg">
+    <img alt="Sluiceway: changes are pending, some delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/pending-2-destroys-light.svg">
+  </picture>
+</p>
+
+<div align="center">
+
+🟡&nbsp;**3 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack destroys resources**
+
+Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
+
+</div>
+
+## Pending
+
+Tick a box to deploy that stack exactly as its row shows it.
+
+- [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" -->
+  :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-1</b>
+  <details><summary>1 other change</summary>
+  <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+
+## In sync
+
+<details><summary>1 stack in sync</summary>
+
+- calm <!-- sluiceway:row stack="calm" state="in-sync" -->
+  <!-- /sluiceway:row -->
+
+</details>
+
+---
+
+- [ ] Rescan all stacks <!-- sluiceway:rescan -->
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
+"
+`;
+
+exports[`snapshots pending level 3 with the destroy sign 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/pending-3-destroys-dark.svg">
+    <img alt="Sluiceway: changes are pending, some delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/pending-3-destroys-light.svg">
+  </picture>
+</p>
+
+<div align="center">
+
+🟡&nbsp;**10 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack destroys resources**
+
+Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
+
+</div>
+
+## Pending
+
+Tick a box to deploy that stack exactly as its row shows it.
+
+- [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" -->
+  :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-1</b>
+  <details><summary>1 other change</summary>
+  <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **stack-3** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-3" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **stack-4** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-4" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **stack-5** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-5" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **stack-6** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-6" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **stack-7** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-7" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **stack-8** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-8" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **stack-9** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-9" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+
+## In sync
+
+<details><summary>1 stack in sync</summary>
+
+- calm <!-- sluiceway:row stack="calm" state="in-sync" -->
+  <!-- /sluiceway:row -->
+
+</details>
+
+---
+
+- [ ] Rescan all stacks <!-- sluiceway:rescan -->
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
+"
+`;
+
+exports[`snapshots deploying with the destroy sign 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/deploying-destroys-dark.svg">
+    <img alt="Sluiceway: deploying, some changes delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/deploying-destroys-light.svg">
+  </picture>
+</p>
+
+<div align="center">
+
+🟡&nbsp;**1 pending** · 🔵&nbsp;1 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync
+
+Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
+
+</div>
+
+## Pending
+
+Tick a box to deploy that stack exactly as its row shows it.
+
+- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+
+## Deploying
+
+- **c:deploying** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="c:deploying" state="deploying" destroys="2" -->
+  <!-- /sluiceway:row -->
+
+## In sync
+
+<details><summary>1 stack in sync</summary>
+
+- e:calm <!-- sluiceway:row stack="e:calm" state="in-sync" -->
+  <!-- /sluiceway:row -->
+
+</details>
+
+## Recently deployed
+
+- apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+
+---
+
+- [ ] Rescan all stacks <!-- sluiceway:rescan -->
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
+"
+`;
+
 exports[`snapshots personality off, in sync 1`] = `
 "<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->
 
@@ -581,14 +761,14 @@ exports[`snapshots the 58 stack body 1`] = `
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-dark.svg">
-    <img alt="Sluiceway" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/failing-dark.svg">
+    <img alt="Sluiceway: something failed" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/failing-light.svg">
   </picture>
 </p>
 
 <div align="center">
 
-**11 pending** · 2 deploying · 2 preview failed · 43 in sync · :warning: **4 pending stacks destroy resources** · 2 failed deploys
+🟡&nbsp;**11 pending** · 🔵&nbsp;2 deploying · 🔴&nbsp;2 preview failed · 🟢&nbsp;43 in sync · :warning: **4 pending stacks destroy resources** · 🔴&nbsp;2 failed deploys
 
 Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 
@@ -986,14 +1166,14 @@ exports[`snapshots the 58 stack body, redacted 1`] = `
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-dark.svg">
-    <img alt="Sluiceway" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/failing-dark.svg">
+    <img alt="Sluiceway: something failed" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/failing-light.svg">
   </picture>
 </p>
 
 <div align="center">
 
-**11 pending** · 2 deploying · 2 preview failed · 43 in sync · :warning: **4 pending stacks destroy resources** · 2 failed deploys
+🟡&nbsp;**11 pending** · 🔵&nbsp;2 deploying · 🔴&nbsp;2 preview failed · 🟢&nbsp;43 in sync · :warning: **4 pending stacks destroy resources** · 🔴&nbsp;2 failed deploys
 
 Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 

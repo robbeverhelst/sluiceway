@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { HEADER_STATES, type HeaderState, headerState } from "../../src/render/header-state.ts";
 import type { ParsedRow } from "../../src/render/marker.ts";
 
@@ -20,16 +22,9 @@ function row(state: Known["state"], facts: { destroys?: number; failed?: boolean
 
 const unknown: ParsedRow = { known: false, stackId: "later", state: "drift", text: "" };
 
-describe("the six header states of record 0031", () => {
-  test("they are listed in the order in which they win", () => {
-    expect(HEADER_STATES).toEqual([
-      "plain",
-      "failing",
-      "deploying",
-      "pending",
-      "first-run",
-      "in-sync",
-    ]);
+describe("the five header states of records 0031 and 0043", () => {
+  test("they are listed in the order in which they win, and plain is gone", () => {
+    expect(HEADER_STATES).toEqual(["failing", "deploying", "pending", "first-run", "in-sync"]);
   });
 
   test("no rows at all is the first run", () => {
@@ -57,14 +52,18 @@ describe("the six header states of record 0031", () => {
     expect(headerState([row("pending", { failed: true })])).toBe("failing");
   });
 
-  test("a delete or replace on a pending row is plain", () => {
-    expect(headerState([row("pending", { destroys: 1 })])).toBe("plain");
+  // Record 0043: the header always shows the real state. A destroy adds the
+  // destroy sign to the picture and leaves the state alone.
+  test("a delete or replace on a pending row is still pending", () => {
+    expect(headerState([row("pending", { destroys: 1 })])).toBe("pending");
   });
 
-  // This widens 0029: a stack that is deleting something right now must not
-  // run under a grinning gate.
-  test("a delete or replace on a deploying row is plain", () => {
-    expect(headerState([row("deploying", { destroys: 2 })])).toBe("plain");
+  test("a delete or replace on a deploying row is still deploying", () => {
+    expect(headerState([row("deploying", { destroys: 2 }), row("pending")])).toBe("deploying");
+  });
+
+  test("a delete or replace does not hide a failure", () => {
+    expect(headerState([row("pending", { destroys: 1 }), row("preview-failed")])).toBe("failing");
   });
 });
 
@@ -73,12 +72,12 @@ describe("the six header states of record 0031", () => {
 describe("precedence: bad news wins", () => {
   const cases: [HeaderState, ParsedRow[]][] = [
     [
-      "plain",
+      "failing",
       [
         row("pending", { destroys: 1 }),
         row("preview-failed"),
         row("in-sync", { failed: true }),
-        row("deploying"),
+        row("deploying", { destroys: 1 }),
         row("pending"),
         row("in-sync"),
       ],
@@ -89,7 +88,9 @@ describe("precedence: bad news wins", () => {
       [row("in-sync", { failed: true }), row("deploying"), row("pending"), row("in-sync")],
     ],
     ["deploying", [row("deploying"), row("pending"), row("in-sync")]],
+    ["deploying", [row("deploying", { destroys: 1 }), row("pending", { destroys: 1 })]],
     ["pending", [row("pending"), row("in-sync")]],
+    ["pending", [row("pending", { destroys: 3 }), row("in-sync")]],
     ["in-sync", [row("in-sync")]],
   ];
 
@@ -113,4 +114,16 @@ describe("what the header state does not look at", () => {
   test("whether a box is ticked", () => {
     expect(headerState([{ ...row("pending"), ticked: true }])).toBe("pending");
   });
+});
+
+// Record 0043: the plain state is gone, and nothing in the code still names it
+// as a state. A comment may still tell where the destroy sign's rule came from.
+test("no code in src/ names plain as a header state", () => {
+  const SRC = resolve(import.meta.dir, "../../src");
+  const files = [...new Bun.Glob("**/*.ts").scanSync(SRC)];
+  expect(files.length).toBeGreaterThan(0);
+  const naming = files.filter((file) =>
+    /["'`]plain["'`]|plain-(?:light|dark|\$\{)/.test(readFileSync(join(SRC, file), "utf8")),
+  );
+  expect(naming).toEqual([]);
 });

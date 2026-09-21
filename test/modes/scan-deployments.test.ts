@@ -65,7 +65,9 @@ describe("a stack with an open deployment", () => {
         "  <!-- /sluiceway:row -->",
       ].join("\n"),
     );
-    expect(body).toContain("**0 pending** · 1 deploying · 0 preview failed · 1 in sync");
+    expect(body).toContain(
+      "⚪&nbsp;**0 pending** · 🔵&nbsp;1 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync",
+    );
     expect(body).not.toContain("- [ ] **a:prod**");
   });
 

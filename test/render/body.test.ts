@@ -132,13 +132,6 @@ const previewFailed = (stackId: string): Row => ({
 // One small dashboard per header state, each holding everything that loses
 // against its own state (record 0031).
 const DASHBOARDS: Record<HeaderState, Row[]> = {
-  plain: [
-    pending("a:destroys", ["create", "delete"]),
-    previewFailed("b:broken"),
-    deploying("c:deploying"),
-    pending("d:pending"),
-    inSync("e:calm"),
-  ],
   failing: [
     previewFailed("b:broken"),
     deploying("c:deploying"),
@@ -151,6 +144,20 @@ const DASHBOARDS: Record<HeaderState, Row[]> = {
   "first-run": [],
   "in-sync": [inSync("e:calm"), inSync("f:calm")],
 };
+
+// The two header states whose picture can carry the destroy sign (record
+// 0043), each with a destroy on a row of its own state.
+const SIGNED: Record<"pending" | "deploying", Row[]> = {
+  pending: [pending("a:destroys", ["create", "delete"]), pending("d:pending"), inSync("e:calm")],
+  deploying: [deploying("c:deploying", 2), pending("d:pending"), inSync("e:calm")],
+};
+
+// Every dashboard above, by name.
+const NAMED_DASHBOARDS: [string, Row[]][] = [
+  ...HEADER_STATES.map((state): [string, Row[]] => [state, DASHBOARDS[state]]),
+  ["pending with the destroy sign", SIGNED.pending],
+  ["deploying with the destroy sign", SIGNED.deploying],
+];
 
 const RECENT: RecentDeploy[] = [
   ["apps/auth:prod", "alice", "2026-09-21T09:41:07Z", "17034388102"],
@@ -179,7 +186,11 @@ describe("the picture", () => {
     pending: "Sluiceway: changes are pending",
     deploying: "Sluiceway: deploying",
     failing: "Sluiceway: something failed",
-    plain: "Sluiceway",
+  };
+  // Record 0043: the state's alt text plus the fact.
+  const SIGNED_ALT = {
+    pending: "Sluiceway: changes are pending, some delete or replace resources",
+    deploying: "Sluiceway: deploying, some changes delete or replace resources",
   };
 
   // The markup of record 0040: centered, and as wide as the issue (0039).
@@ -231,10 +242,72 @@ describe("the picture", () => {
     const cases: [HeaderState, Row[]][] = [
       ["deploying", [...ten, deploying("z")]],
       ["failing", [...ten, previewFailed("z")]],
-      ["plain", [...ten, pending("z", ["delete"])]],
     ];
     for (const [state, rows] of cases)
       expect(paragraphs(renderBody(input(rows)))[1]).toBe(centered(state, ALT[state]));
+  });
+
+  // Record 0043: the sign is added to the picture of the real state, at the
+  // pending level that state already had.
+  test.each([
+    [1, 1],
+    [3, 2],
+    [10, 3],
+  ])(
+    "a pending header with a destroy at %i pending rows is pending-%i-destroys",
+    (count, level) => {
+      const rows = Array.from({ length: count }, (_, index) =>
+        pending(`stack-${index}`, index === 0 ? ["delete"] : ["update"]),
+      );
+      const body = renderBody(input([...rows, inSync("calm")]));
+      expect(paragraphs(body)[1]).toBe(centered(`pending-${level}-destroys`, SIGNED_ALT.pending));
+    },
+  );
+
+  test("a deploying header gets the sign from a deploying row", () => {
+    const body = renderBody(input([deploying("a", 1), pending("b"), inSync("c")]));
+    expect(paragraphs(body)[1]).toBe(centered("deploying-destroys", SIGNED_ALT.deploying));
+  });
+
+  test("a deploying header gets the sign from a pending row", () => {
+    const body = renderBody(input([deploying("a"), pending("b", ["create", "delete"])]));
+    expect(paragraphs(body)[1]).toBe(centered("deploying-destroys", SIGNED_ALT.deploying));
+  });
+
+  // The jam already says a person is needed, and the counts line under it
+  // still carries the destroy warning.
+  test("a failing header with a destroy is failing, with its usual alt text", () => {
+    for (const rows of [
+      [pending("a", ["delete"]), previewFailed("b")],
+      [deploying("a", 1), { ...inSync("b"), failure: FAILURE }],
+    ]) {
+      const body = renderBody(input(rows));
+      expect(paragraphs(body)[1]).toBe(centered("failing", ALT.failing));
+      expect(body).not.toContain("-destroys-");
+    }
+  });
+
+  test("an in sync or preview failed row does not turn the sign on", () => {
+    const carried = parseDashboard(
+      [
+        '- a <!-- sluiceway:row stack="a" state="in-sync" destroys="2" -->',
+        "  <!-- /sluiceway:row -->",
+        '- **b** · update <!-- sluiceway:row stack="b" state="pending" hash="3fa9c1e2aabbccdd" -->',
+        "  <!-- /sluiceway:row -->",
+      ].join("\n"),
+    ).rows;
+    expect(paragraphs(renderBody(input([], { rows: carried })))[1]).toBe(
+      centered("pending-1", ALT.pending),
+    );
+  });
+
+  test("a row of an unknown state with destroys does not turn the sign on", () => {
+    const later = parseDashboard(
+      '- later <!-- sluiceway:row stack="later" state="drift" destroys="3" -->\n  <!-- /sluiceway:row -->',
+    ).rows;
+    const base = input([pending("a")]);
+    const body = renderBody({ ...base, rows: [...base.rows, ...later] });
+    expect(paragraphs(body)[1]).toBe(centered("pending-1", ALT.pending));
   });
 
   test("is served from the exact ref it is given, a commit SHA as well", () => {
@@ -253,8 +326,9 @@ describe("the picture", () => {
     const [, picture, , counts] = paragraphs(renderBody({ ...input([]), rows: blocks(true) }));
     const full = paragraphs(renderBody({ ...input([]), rows: blocks(false) }));
     expect([full[1], full[3]]).toEqual([picture ?? "", counts ?? ""]);
-    // The fixture destroys, so its header is plain and has no dots.
-    expect(counts).toStartWith("**11 pending** · ");
+    // The fixture has preview failures, so its header is failing, with dots.
+    expect(picture).toContain("/failing-light.svg");
+    expect(counts).toStartWith("🟡&nbsp;**11 pending** · ");
   });
 });
 
@@ -262,10 +336,10 @@ describe("the picture", () => {
 // paragraphs are the root marker, the picture, the opening tag, the counts
 // line, the scan line and the closing tag.
 describe("the centered block", () => {
-  test.each([...HEADER_STATES])(
+  test.each(NAMED_DASHBOARDS)(
     "%s: both lines sit inside one div, each still Markdown",
-    (state) => {
-      const body = renderBody(input(DASHBOARDS[state]));
+    (_name, rows) => {
+      const body = renderBody(input(rows));
       const all = paragraphs(body);
       expect(all[2]).toBe('<div align="center">');
       expect(all[3]).toContain(" pending** · ");
@@ -293,8 +367,8 @@ describe("the centered block", () => {
   });
 });
 
-// The wording is record 0029's and has no dots when there is no header in
-// colour: with personality off (0034) and under the plain header (0040).
+// The wording is record 0029's and has no dots when there is no header: with
+// personality off (0034).
 describe("the counts line", () => {
   const OFF = { personality: false };
   const ONE_OF_EACH = [
@@ -324,20 +398,13 @@ describe("the counts line", () => {
     );
   });
 
-  // The 58 stack fixture destroys, so its header is plain: centered, no dots.
-  test("the plain header has the same line as personality off, centered", () => {
-    for (const rows of [DASHBOARDS.plain, ONE_OF_EACH]) {
-      const on = paragraphs(renderBody(input(rows)));
-      expect(on[1]).toContain("/plain-light.svg");
-      expect(on[2]).toBe('<div align="center">');
-      expect(on[3]).toBe(paragraphs(renderBody(input(rows, OFF)))[1] ?? "");
-      expect(on[3]).toContain(":warning: **");
-    }
+  // Record 0043: there is no plain header any more, so a body with a destroy
+  // has the dots of whatever header it shows.
+  test("the 58 stack fixture under a header has dots, and none on the destroy warning", () => {
     const big = renderBody({ ...input([]), rows: rows58().map((row) => rowBlock(row)) });
     expect(paragraphs(big)[3]).toBe(
-      "**11 pending** · 2 deploying · 2 preview failed · 43 in sync · :warning: **4 pending stacks destroy resources** · 2 failed deploys",
+      "🟡&nbsp;**11 pending** · 🔵&nbsp;2 deploying · 🔴&nbsp;2 preview failed · 🟢&nbsp;43 in sync · :warning: **4 pending stacks destroy resources** · 🔴&nbsp;2 failed deploys",
     );
-    expect(big).not.toMatch(/🟡|🔵|🔴|🟢|⚪|&nbsp;/u);
   });
 });
 
@@ -377,18 +444,28 @@ describe("the count dots", () => {
     );
   });
 
-  // A destroy makes the header plain, and plain has no dots, so under a header
-  // in colour the warning never shows. It has no dot wherever it does.
+  // Record 0043: the dots are shown whenever there is a header, also when the
+  // picture carries the destroy sign. The warning keeps its `:warning:`.
+  test("the body with the sign has dots, the white dot at 0, and no dot on the warning", () => {
+    expect(paragraphs(renderBody(input(SIGNED.pending)))[3]).toBe(
+      "🟡&nbsp;**2 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack destroys resources**",
+    );
+    expect(paragraphs(renderBody(input(SIGNED.deploying)))[3]).toBe(
+      "🟡&nbsp;**1 pending** · 🔵&nbsp;1 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync",
+    );
+  });
+
   test("the destroy warning gets no dot", () => {
     for (const personality of [true, false]) {
-      const body = renderBody(input(DASHBOARDS.plain, { personality }));
+      const body = renderBody(input(SIGNED.pending, { personality }));
       expect(body).toContain(" · :warning: **1 pending stack destroys resources**");
+      expect(body).not.toMatch(/&nbsp;:warning:/);
     }
   });
 
   test("the dots are nowhere but on the counts line", () => {
-    for (const state of HEADER_STATES) {
-      const all = paragraphs(renderBody(input(DASHBOARDS[state], { recentlyDeployed: RECENT })));
+    for (const [, rows] of NAMED_DASHBOARDS) {
+      const all = paragraphs(renderBody(input(rows, { recentlyDeployed: RECENT })));
       const rest = all.filter((_, index) => index !== 3).join("\n");
       expect(rest).not.toMatch(/🟡|🔵|🔴|🟢|⚪|&nbsp;/u);
     }
@@ -619,7 +696,7 @@ describe("the line under the Pending heading", () => {
     ["pending", DASHBOARDS.pending, INSTRUCTION, INSTRUCTION],
     ["deploying with rows pending", DASHBOARDS.deploying, INSTRUCTION, INSTRUCTION],
     ["failing with rows pending", DASHBOARDS.failing, INSTRUCTION, INSTRUCTION],
-    ["plain with rows pending", DASHBOARDS.plain, INSTRUCTION, INSTRUCTION],
+    ["a destroy with rows pending", SIGNED.pending, INSTRUCTION, INSTRUCTION],
     [
       "failing with nothing pending",
       [previewFailed("a"), inSync("b")],
@@ -632,8 +709,10 @@ describe("the line under the Pending heading", () => {
       "Nothing to deploy.",
       "Nothing to deploy.",
     ],
+    // This body was plain before record 0043 and is deploying now. Its line
+    // does not change.
     [
-      "plain with nothing pending",
+      "a destroy with nothing pending",
       [deploying("a", 1), inSync("b")],
       "Nothing to deploy.",
       "Nothing to deploy.",
@@ -661,10 +740,10 @@ describe("dashboard.personality: false", () => {
   // The header is the picture, the two tags of the centered block and the
   // dots. Take those and the voice away and the two bodies are the same.
   test("nothing else changes", () => {
-    for (const state of HEADER_STATES) {
-      const on = paragraphs(renderBody(input(DASHBOARDS[state], { recentlyDeployed: RECENT })));
+    for (const [, rows] of NAMED_DASHBOARDS) {
+      const on = paragraphs(renderBody(input(rows, { recentlyDeployed: RECENT })));
       const off = paragraphs(
-        renderBody(input(DASHBOARDS[state], { recentlyDeployed: RECENT, personality: false })),
+        renderBody(input(rows, { recentlyDeployed: RECENT, personality: false })),
       );
       const voiced = on.indexOf("## Pending") + 1;
       expect(on[1]).toStartWith('<p align="center">\n  <picture>');
@@ -705,12 +784,9 @@ describe("a row of a state this version does not know", () => {
 });
 
 const ALL_BODIES = (): [string, BodyInput][] => [
-  ...HEADER_STATES.flatMap((state): [string, BodyInput][] => [
-    [state, input(DASHBOARDS[state], { recentlyDeployed: RECENT })],
-    [
-      `${state}, no personality`,
-      input(DASHBOARDS[state], { recentlyDeployed: RECENT, personality: false }),
-    ],
+  ...NAMED_DASHBOARDS.flatMap(([name, rows]): [string, BodyInput][] => [
+    [name, input(rows, { recentlyDeployed: RECENT })],
+    [`${name}, no personality`, input(rows, { recentlyDeployed: RECENT, personality: false })],
   ]),
   [
     "58 stacks",
@@ -816,6 +892,27 @@ describe("snapshots", () => {
     });
   }
 
+  // Record 0043: the three pending pictures and deploying exist once more with
+  // the destroy sign.
+  for (const [level, count] of [
+    [1, 1],
+    [2, 3],
+    [3, 10],
+  ]) {
+    test(`pending level ${level} with the destroy sign`, () => {
+      const rows = Array.from({ length: count ?? 0 }, (_, index) =>
+        pending(`stack-${index}`, index === 0 ? ["create", "delete"] : ["update"]),
+      );
+      expect(`${renderBody(input([...rows, inSync("calm")]))}\n`).toMatchSnapshot();
+    });
+  }
+
+  test("deploying with the destroy sign", () => {
+    expect(
+      `${renderBody(input(SIGNED.deploying, { recentlyDeployed: RECENT }))}\n`,
+    ).toMatchSnapshot();
+  });
+
   test("personality off, in sync", () => {
     expect(
       `${renderBody(input(DASHBOARDS["in-sync"], { personality: false }))}\n`,
@@ -847,7 +944,8 @@ describe("snapshots", () => {
 
 // The renderer names files it cannot see, so the committed snapshots are held
 // against the files on disk. Until slice 1.7b the body asked for
-// `pending-<theme>.svg`, which record 0039 removed.
+// `pending-<theme>.svg`, which record 0039 removed, and until slice 1.7c for
+// `plain-<theme>.svg`, which record 0043 removed.
 describe("the image urls in the snapshots", () => {
   const SNAPSHOTS = resolve(import.meta.dir, "..");
   const MASCOT = resolve(import.meta.dir, "../../assets/mascot");
@@ -863,9 +961,6 @@ describe("the image urls in the snapshots", () => {
     for (const url of new Set(found)) {
       const [, name] = /\/assets\/mascot\/([a-z0-9-]+\.svg)$/.exec(url) ?? [];
       expect(name, url).toBeDefined();
-      // The plain files are gone (record 0043) and the renderer still asks
-      // for them. Slice 1.7c ends that and takes this line out.
-      if (name?.startsWith("plain-")) continue;
       expect(existsSync(join(MASCOT, name ?? "")), url).toBe(true);
     }
   });
@@ -874,17 +969,10 @@ describe("the image urls in the snapshots", () => {
     const own = urls(
       readFileSync(join(import.meta.dir, "__snapshots__/body.test.ts.snap"), "utf8"),
     );
-    // Until slice 1.7c the renderer asks for plain files and not yet for the
-    // files with the destroy sign (record 0043). That slice takes both filters
-    // out and expects twenty-two.
-    const files = readdirSync(MASCOT).filter(
-      (name) => name.endsWith(".svg") && !name.includes("-destroys-"),
+    const files = readdirSync(MASCOT).filter((name) => name.endsWith(".svg"));
+    expect(files).toHaveLength(22);
+    expect([...new Set(own.map((url) => url.split("/").at(-1) ?? ""))].sort()).toEqual(
+      files.sort(),
     );
-    expect(files).toHaveLength(14);
-    expect(
-      [...new Set(own.map((url) => url.split("/").at(-1) ?? ""))]
-        .filter((name) => !name.startsWith("plain-"))
-        .sort(),
-    ).toEqual(files.sort());
   });
 });

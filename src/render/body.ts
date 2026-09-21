@@ -2,6 +2,7 @@
 // of the root facts, the row blocks and the deployment records. Every writer
 // regenerates it, and nothing in it is ever patched or carried through.
 
+import { destroySign } from "./destroy-sign.ts";
 import { escapeText } from "./escape.ts";
 import { type HeaderState, headerState } from "./header-state.ts";
 import {
@@ -56,13 +57,19 @@ const ACTION_URL = `https://github.com/${ACTION_REPO}`;
 
 // Plain and fixed per state. The counts line right under it carries the numbers.
 const ALT: Record<HeaderState, string> = {
-  plain: "Sluiceway",
   failing: "Sluiceway: something failed",
   deploying: "Sluiceway: deploying",
   pending: "Sluiceway: changes are pending",
   "first-run": "Sluiceway: no stacks yet",
   "in-sync": "Sluiceway: everything is in sync",
 };
+
+// The state's alt text plus the fact, for the two states whose picture can
+// carry the destroy sign (record 0043).
+const SIGNED_ALT = {
+  pending: "Sluiceway: changes are pending, some delete or replace resources",
+  deploying: "Sluiceway: deploying, some changes delete or replace resources",
+} as const;
 
 type KnownRow = Extract<ParsedRow, { known: true }>;
 
@@ -93,27 +100,37 @@ export function rowBlock(row: Row, options: RowOptions = {}): ParsedRow {
 
 // One file per theme, because `<picture>` follows the reader's GitHub theme
 // and a media query inside an SVG follows the operating system (record 0033).
-// Pending has one picture per pending level (record 0039). The picture is as
-// wide as the issue and centered in it (record 0040).
-function picture(state: HeaderState, level: PendingLevel | undefined, actionRef: string): string[] {
+// Pending has one picture per pending level (record 0039). The pending and
+// deploying pictures exist once more with the destroy sign, and no other
+// picture does (record 0043). The picture is as wide as the issue and centered
+// in it (record 0040).
+function picture(
+  state: HeaderState,
+  level: PendingLevel | undefined,
+  sign: boolean,
+  actionRef: string,
+): string[] {
   // A pending header always has a pending row, so it always has a level.
-  const name = state === "pending" ? `pending-${level ?? 1}` : state;
+  const base = state === "pending" ? `pending-${level ?? 1}` : state;
+  const signed = sign && (state === "pending" || state === "deploying");
+  const name = signed ? `${base}-destroys` : base;
+  const alt = signed ? SIGNED_ALT[state] : ALT[state];
   const file = (theme: string) =>
     `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef)}/assets/mascot/${name}-${theme}.svg`;
   return [
     '<p align="center">',
     "  <picture>",
     `    <source media="(prefers-color-scheme: dark)" srcset="${file("dark")}">`,
-    `    <img alt="${ALT[state]}" width="880" src="${file("light")}">`,
+    `    <img alt="${alt}" width="880" src="${file("light")}">`,
     "  </picture>",
     "</p>",
   ];
 }
 
 // The count dots of record 0040. They are signals, like the signal colours in
-// the picture, so they are shown exactly when a header in colour is shown. A
-// count of 0 gets the white dot, so a red dot always means there is something
-// to look at.
+// the picture, so they are shown whenever there is a header, also when the
+// picture carries the destroy sign (record 0043). A count of 0 gets the white
+// dot, so a red dot always means there is something to look at.
 const DOT = {
   pending: "🟡",
   deploying: "🔵",
@@ -203,11 +220,11 @@ export function renderBody(input: BodyInput): string {
   // Under a header the two lines are one centered block, and the blank lines
   // inside it keep both rendered as Markdown (record 0040). Without a header
   // they are what record 0029 made them.
-  const counts = countsLine(known, input.personality && state !== "plain");
+  const counts = countsLine(known, input.personality);
   const scan = scanLine(input.root, input.repoUrl);
   if (input.personality)
     out.push(
-      picture(state, pendingLevel(rows), input.actionRef).join("\n"),
+      picture(state, pendingLevel(rows), destroySign(rows), input.actionRef).join("\n"),
       '<div align="center">',
       counts,
       scan,
