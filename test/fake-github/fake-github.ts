@@ -390,8 +390,10 @@ export class FakeGitHub implements GitHubPort {
   async walkCommits(head: string): Promise<CommitWalk> {
     this.#count("walkCommits");
     const walk = this.#commits.walk(head);
-    // Real GitHub answers with no object, which the port turns into this.
-    if (!walk) throw new FakeGitHubError(404, `GitHub has no commit ${head.slice(0, 7)}`);
+    // Real GitHub answers with no object, which the port turns into this, in
+    // the port's own words.
+    if (!walk)
+      throw new FakeGitHubError(404, `GitHub has no commit ${head.slice(0, 7)} to walk back from.`);
     return walk;
   }
 

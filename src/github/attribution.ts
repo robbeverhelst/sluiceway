@@ -25,7 +25,8 @@ export interface AttributionSource {
 export function attributionSource(
   github: GitHubPort,
   input: Omit<AttributionInput, "walk" | "pushFiles">,
-  // Called once, with GitHub's words, when a read fails.
+  // Called once, with GitHub's words, when a read fails. The words come
+  // without a full stop at the end, so the caller can end the sentence.
   onFailure: (message: string) => void,
 ): AttributionSource {
   let walk: CommitWalk | undefined;
@@ -48,7 +49,8 @@ export function attributionSource(
         // Not tried again in this job: the dashboard is written in a loop, and
         // a row that has the line on one try and not on the next helps nobody.
         failed = true;
-        onFailure(error instanceof Error ? error.message : String(error));
+        const words = error instanceof Error ? error.message : String(error);
+        onFailure(words.replace(/\.+$/, ""));
         return new Map();
       }
       const of = attributor({
