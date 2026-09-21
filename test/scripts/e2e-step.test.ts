@@ -15,6 +15,7 @@ const ACTION: ActionMetadata = {
     concurrency: { default: "4" },
     "preview-timeout": { default: "10" },
     "github-token": { default: expression("github.token") },
+    "job-id": { default: expression("job.check_run_id") },
     "no default": {},
   },
   runs: { using: "node24", main: "dist/index.js" },
@@ -26,6 +27,8 @@ const FACTS: StepFacts = {
   repository: "acme/infra",
   apiUrl: "http://127.0.0.1:4000",
   runId: "4242",
+  runAttempt: "1",
+  jobId: "777",
   sha: "0123456789abcdef0123456789abcdef01234567",
   event: "push",
   token: "not-a-real-token",
@@ -46,6 +49,13 @@ describe("the environment of a step", () => {
   test("the token default is the token of the run", () => {
     const env = stepEnvironment(ACTION, { mode: "scan" }, FACTS, {});
     expect(env["INPUT_GITHUB-TOKEN"]).toBe("not-a-real-token");
+  });
+
+  // Record 0044: a runner gives the id of the job, which the lab saw equal the
+  // id in the address of the job's page.
+  test("the job id default is the id of the job", () => {
+    const env = stepEnvironment(ACTION, { mode: "scan" }, FACTS, {});
+    expect(env["INPUT_JOB-ID"]).toBe("777");
   });
 
   test("a default with any other expression is refused, because only a runner can work it out", () => {
@@ -75,6 +85,7 @@ describe("the environment of a step", () => {
       GITHUB_API_URL: "http://127.0.0.1:4000",
       GITHUB_GRAPHQL_URL: "http://127.0.0.1:4000/graphql",
       GITHUB_RUN_ID: "4242",
+      GITHUB_RUN_ATTEMPT: "1",
       GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
       GITHUB_EVENT_NAME: "push",
       GITHUB_WORKFLOW_REF: "acme/infra/.github/workflows/sluiceway.yml@refs/heads/main",

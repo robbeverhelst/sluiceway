@@ -44,6 +44,21 @@ export function readScanInputs(getInput: GetInput): ScanInputs {
   return { concurrency, previewTimeoutMinutes, token: readToken(getInput) };
 }
 
+// The id of the running job (record 0044). GitHub puts it in no variable of
+// the job's environment, so action.yml takes it from `job.check_run_id` as the
+// default of the `job-id` input, which needs no permission. A runner that
+// does not know it gives "", and the links then fall back to the summary.
+export function readJobId(getInput: GetInput): string | undefined {
+  const text = getInput("job-id").trim();
+  if (text === "") return undefined;
+  if (!/^[1-9]\d*$/.test(text)) {
+    throw new Error(
+      `The "job-id" input must be the id of the running job, a whole number, and it is ${JSON.stringify(text)}. Leave it out of the workflow, so it takes the id GitHub gives the job.`,
+    );
+  }
+  return text;
+}
+
 export interface ApplyInputs {
   // The deployment record to deploy (record 0035).
   deploymentId: number;

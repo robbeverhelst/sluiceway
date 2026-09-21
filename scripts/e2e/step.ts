@@ -20,6 +20,8 @@ export interface StepFacts {
   // The fake GitHub server.
   apiUrl: string;
   runId: string;
+  // What `${{ job.check_run_id }}` gives: the id of the job (record 0044).
+  jobId: string;
   sha: string;
   event: string;
   // What `${{ github.token }}` gives. The fake asks for none, so it is no token.
@@ -37,6 +39,7 @@ export interface StepFacts {
 
 const EXPRESSION = "$".concat("{{");
 const TOKEN_EXPRESSION = `${EXPRESSION} github.token }}`;
+const JOB_ID_EXPRESSION = `${EXPRESSION} job.check_run_id }}`;
 
 // A runner names the variable of an input like this: spaces become
 // underscores, upper case, and a dash stays a dash.
@@ -62,6 +65,7 @@ export function stepEnvironment(
   for (const [name, input] of Object.entries(action.inputs)) {
     let value = inputs[name] ?? input.default;
     if (value === TOKEN_EXPRESSION) value = facts.token;
+    if (value === JOB_ID_EXPRESSION) value = facts.jobId;
     if (value?.includes(EXPRESSION)) {
       throw new Error(
         `The default of the input "${name}" is ${value}, and only a runner can work that out.`,

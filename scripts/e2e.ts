@@ -185,6 +185,7 @@ async function step(mode: string, options: StepOptions): Promise<Stepped> {
         repository: "acme/infra",
         apiUrl: server.url,
         runId: options.runId,
+        jobId: String(9000 + stepNumber),
         sha: options.sha,
         event: options.event,
         token: "not-a-token",

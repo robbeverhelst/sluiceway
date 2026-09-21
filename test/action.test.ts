@@ -36,6 +36,14 @@ describe("action.yml", () => {
     });
   });
 
+  // Record 0044: the id of the running job is in no variable of its
+  // environment. As the default of an input it costs no permission, and the
+  // lab saw it equal the job's id on real GitHub on 2026-09-21.
+  test("takes the id of the running job from job.check_run_id", () => {
+    expect(action.inputs["job-id"]?.default).toBe("${{ job.check_run_id }}");
+    expect(action.inputs["job-id"]?.required).toBe(false);
+  });
+
   test("requires the mode input and names every mode", () => {
     expect(action.inputs.mode?.required).toBe(true);
     for (const mode of MODES) {
@@ -67,12 +75,13 @@ describe("action.yml", () => {
     }
   });
 
-  // Record 0035: the five inputs of v1.
+  // Record 0035: the five inputs of v1, and `job-id` of record 0044.
   test("declares only the inputs the decision records fix", () => {
     expect(Object.keys(action.inputs).sort()).toEqual([
       "concurrency",
       "deployment-id",
       "github-token",
+      "job-id",
       "mode",
       "preview-timeout",
     ]);

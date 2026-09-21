@@ -31,6 +31,12 @@ inputs:
       Required in apply mode and an error in every other mode. The deployment record to deploy:
       the deployment field of a matrix entry of resolve.
     required: false
+  job-id:
+    description: >-
+      Leave it at the default. The id of the running job, which GitHub gives no step in any other
+      way. Links on the dashboard use it to land on this job's log.
+    required: false
+    default: ${{ job.check_run_id }}
 
 outputs:
   matrix:

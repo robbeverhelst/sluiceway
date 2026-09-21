@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   readApplyInputs,
+  readJobId,
   readScanInputs,
   readToken,
   refuseDeploymentId,
@@ -91,5 +92,24 @@ describe("the inputs of apply", () => {
     );
     expect(() => refuseDeploymentId("apply", () => "12")).not.toThrow();
     expect(() => refuseDeploymentId("resolve", () => " ")).not.toThrow();
+  });
+});
+
+// Record 0044: GitHub puts the id of a job in no variable of its environment.
+// The action takes it from `job.check_run_id` as the default of an input,
+// which needs no permission.
+describe("the id of the running job", () => {
+  test("is the job-id input", () => {
+    expect(readJobId((name) => (name === "job-id" ? " 106502264185 " : ""))).toBe("106502264185");
+  });
+
+  test("is unknown where the runner has no job.check_run_id, and links fall back", () => {
+    expect(readJobId(() => "")).toBeUndefined();
+  });
+
+  test("anything but a whole number is refused", () => {
+    expect(() => readJobId(() => "abc")).toThrow(
+      'The "job-id" input must be the id of the running job, a whole number, and it is "abc". Leave it out of the workflow, so it takes the id GitHub gives the job.',
+    );
   });
 });

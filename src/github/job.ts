@@ -10,6 +10,9 @@ export interface Job {
   // `https://github.com/<owner>/<repo>`, or the same on another server.
   repoUrl: string;
   runId: string;
+  // Which attempt of the run this is. A re-run is a new attempt, with new jobs
+  // and new summaries (record 0044).
+  runAttempt: string;
   // The commit the job checked out.
   sha: string;
   // What started the run, as GitHub names it: "push", "schedule" and so on.
@@ -51,6 +54,7 @@ export function readJob(env: Readonly<Record<string, string | undefined>>): Job 
     repo,
     repoUrl: `${server}/${owner}/${repo}`,
     runId: need("GITHUB_RUN_ID"),
+    runAttempt: need("GITHUB_RUN_ATTEMPT"),
     sha: need("GITHUB_SHA"),
     event: need("GITHUB_EVENT_NAME"),
     workflow,
