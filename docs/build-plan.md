@@ -234,6 +234,7 @@ The fake implements the port in memory and copies the real behavior that the lab
 
 - A body over 65,536 characters is refused on create. On update a body over the limit answers success and stores nothing (issue 17).
 - An edit by the bot starts no event. An edit by a person does.
+- A workflow dispatch is the one thing the workflow token may start, and without `actions: write` it answers 403.
 - The edit history keeps the original body and the newest 99 edits, each with its editor, time and full body. An entry's body can be deleted (0025). An issue that was never edited has no entries at all, and the history names the bot as `github-actions`, without `[bot]`.
 - An `issues.edited` payload carries the newest body, not the body of its own edit (issue 28).
 - Deployments: with the default `auto_inactive`, a later success flips every earlier success in the same environment to `inactive`, whatever its `task`, and a moment later, not at once (issue 27). Only the list filters that GitHub has.

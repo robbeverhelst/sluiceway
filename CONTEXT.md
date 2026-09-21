@@ -120,6 +120,14 @@ _Avoid_: Failed tick, errored tick, unknown tick
 A tick that nothing picked up, so the box is checked but no deploy exists for it and none is on its way. A scan clears it and never deploys it.
 _Avoid_: Stale tick, missed tick, lost tick
 
+**Dropped tick**:
+A tick on a stack that already has an open deployment. Nothing new starts for it, nobody is checked or told, and the row is brought back to deploying.
+_Avoid_: Duplicate tick, ignored tick, second deploy
+
+**Rescan box**:
+The one checkbox on the dashboard that belongs to no stack. Ticked by a person with write access, it starts a full scan and deploys nothing.
+_Avoid_: Refresh button, rescan tick, scan trigger
+
 **Reviewer**:
 A person who approves a waiting deploy in GitHub's own interface, where the repo's plan offers that. A second gate after the tick, owned by GitHub. Sluiceway only waits for it.
 _Avoid_: Approver, second ticker

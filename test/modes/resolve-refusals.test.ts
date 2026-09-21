@@ -157,6 +157,32 @@ describe("a refused tick", () => {
   });
 });
 
+describe("a box that is ticked again at another hash before the write", () => {
+  test("is not cleared: the refusal was about the tick that was judged, and this is another tick", async () => {
+    const h = await scanned(TABLE, { config: ADMIN_ONLY });
+    tick(h, ALICE, ["a:prod"]);
+    let moved = false;
+    h.github.onRequest = (request) => {
+      // The late read of the write loop. A scan wrote a fresh row in between
+      // and Bob ticked it.
+      if (request !== "getIssue" || moved) return;
+      moved = true;
+      h.github.editBody(
+        h.number,
+        h.github
+          .issue(h.number)
+          .body.replace(/hash="[0-9a-f]{16}" destroys="1"/, 'hash="ffffffffffffffff" destroys="1"'),
+        BOB,
+      );
+    };
+
+    await wake(h);
+
+    expect(rowsOf(h)["a:prod"]).toStartWith("- [x] **a:prod**");
+    expect(rowsOf(h)["a:prod"]).toContain('hash="ffffffffffffffff"');
+  });
+});
+
 describe("an unverified tick", () => {
   test("fails closed: no record, a cleared box, a comment that asks for a fresh tick, and a red job", async () => {
     const h = await scanned(TABLE);
@@ -288,5 +314,19 @@ describe("a deployment record that cannot be written", () => {
     expect(rowsOf(h)["a:prod"]).toContain("waiting to start");
     // The tick that started nothing stays for the next run.
     expect(rowsOf(h)["b:prod"]).toStartWith("- [x] **b:prod**");
+  });
+
+  test("stops at the first record that fails, so a missing permission costs one request", async () => {
+    const h = await scanned(TABLE);
+    tick(h, ALICE, ["a:prod", "b:prod"]);
+    h.github.createDeployment = async () => {
+      h.github.requests.push("createDeployment");
+      throw new Error("Resource not accessible");
+    };
+
+    await expect(wake(h)).rejects.toThrow("The deployment record of a:prod could not be written");
+
+    expect(h.github.requests.filter((request) => request === "createDeployment")).toHaveLength(1);
+    expect(matrix(h)).toEqual([]);
   });
 });

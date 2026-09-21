@@ -63,6 +63,15 @@ Keeping 0005's shape was considered: find the entry that belongs to this event (
 - A scan never creates a deployment record and never calls `resolve`. The sweep only ever writes a row.
 - The scan writes the rescan box unticked, as it always has. Whether a ticked rescan box should survive a scan while a `resolve` run is on its way is `resolve`'s to settle (slice 2.4).
 
+## Settled while building (slice 2.4)
+
+- "Reads again" is at most three reads in one run. A tick that the newest entry still does not hold after the third read is left alone, with no swap and no comment. The edit that moved the body woke a run of its own, and that run sees it.
+- A tick on a row whose stack discovery does not know is left alone: no walk, no lookup, no swap. The next scan drops the row, because every scan ends with one row per discovered stack (0011).
+- A tick on a stack with an open deployment is dropped before anybody is looked up, so it gets no comment, whoever made it. Its row is swapped for the deploying row of the open record, which is the repair that 0004 describes. An open deployment whose run is over gets its result first (0003), and then the tick is a tick like any other.
+- `resolve` has no diff (0014) and never reads a row's text (0009), so it cannot render a pending row again. It clears a box by changing the box itself, the one thing the tick regex reads at the start of the first line, and carries every other byte of the block. The note that asks for a fresh tick goes right under the first line, because a writer without a diff cannot tell the lines under it apart. A row that already has the note does not get a second one. The next scan renders the row in the order of 0027.
+- A box is cleared only while the live row is still ticked at the hash that was judged. A row that a scan wrote again in between, ticked again at its new hash, is another tick and belongs to the next run.
+- The rescan box sits outside the row blocks, so writing the body again clears it. That happens for a rescan tick that was allowed, refused, unverified or nameless. A rescan tick by a bot is left alone like a row's, and is cleared as a side effect when the same run writes the body for another reason.
+
 Research:
 - Observed entries, the reproduced race and the history cap: https://github.com/sluiceway/sluiceway/issues/28
 - The payload finding: https://github.com/sluiceway/sluiceway/issues/27

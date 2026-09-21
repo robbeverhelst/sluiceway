@@ -5,7 +5,7 @@ Sluiceway keeps one GitHub issue, the dashboard, that shows which infrastructure
 It is a GitHub Action and nothing else. There is no server, no database and no hosted part. Previews and deploys run in your own runners.
 
 > [!WARNING]
-> Sluiceway is not released yet, and only the first half works. `scan` works: it previews your stacks and writes the dashboard. `resolve`, `apply` and `settle` still fail with "not implemented yet", so a ticked box deploys nothing. You can already run the scan read only, pinned to a commit: see [Try the scan, read only](#try-the-scan-read-only). Watch the releases to hear when the rest lands.
+> Sluiceway is not released yet, and only the first half works. `scan` works: it previews your stacks and writes the dashboard. `resolve` works too: it checks who ticked and records the deploy. `apply` and `settle` still fail with "not implemented yet", so a ticked box deploys nothing. You can already run the scan read only, pinned to a commit: see [Try the scan, read only](#try-the-scan-read-only). Watch the releases to hear when the rest lands.
 
 ## How it works
 
@@ -46,7 +46,7 @@ One action, four modes, chosen with the `mode` input.
 
 | Output | Set by | What it is |
 |---|---|---|
-| `matrix` | `resolve` | A JSON list with one `{ stack, environment, deployment }` entry per deploy that was started, or `[]`. Not in `action.yml` yet. |
+| `matrix` | `resolve` | A JSON list with one `{ stack, environment, deployment }` entry per deploy that was started, or `[]`. |
 
 ## Try the scan, read only
 
@@ -166,7 +166,7 @@ jobs:
 
   apply:
     needs: resolve
-    if: needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'
+    if: ${{ !cancelled() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]' }}
     strategy:
       fail-fast: false
       matrix:
@@ -206,6 +206,7 @@ What the parts are for:
 - **`queue: max`** on `apply` keeps a waiting deploy from being cancelled by a newer one. Never add `cancel-in-progress` to this job.
 - **The `if:` on `resolve`** keeps an edit of an ordinary issue from starting a runner. If you change `dashboard.label`, change it here too.
 - **`resolve` hands `apply` a deployment record.** It creates one record per ticked stack in GitHub's Deployments list and puts `{ stack, environment, deployment }` in `matrix`. `apply` deploys only while that record is still open. "Re-run failed jobs" therefore deploys nothing. To try again, tick the box again.
+- **`!cancelled()` on `apply`** lets the deploys that `resolve` started go ahead when `resolve` itself ended red, for example because one of several ticks could not be verified or the dashboard could not be written. Without a status check in its `if:`, GitHub skips a job whose `needs` failed. Every entry in `matrix` is a record that `resolve` created after it checked the ticker, so nothing else can get through here.
 - **`settle`** gives a deploy a result when its job was cancelled or rejected, so a row never stays "deploying" for ever.
 - **`v0`** is the moving tag until 1.0.0. Pin a commit SHA instead if you want to review every update.
 

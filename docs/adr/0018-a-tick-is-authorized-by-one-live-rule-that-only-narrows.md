@@ -41,6 +41,12 @@ Teams are not supported in v1. The workflow token cannot read team membership (0
 - A refused tick of the rescan box is a refused tick like any other: the box is cleared and the comment names the rescan box.
 - The rule and the words are pure (`src/core/tick-rule.ts`, `src/render/refused-ticks.ts`). `src/github/ticks.ts` makes the lookups and writes the comment, and hands `resolve` one outcome per tick: `allowed`, `refused`, `unverified` or `not-a-person`. Clearing the boxes, creating records and the red job belong to `resolve` (slice 2.4).
 
+## Settled while building (slice 2.4)
+
+- The body write comes before the comment. The comment says the box is cleared, so it is written only once that is true. When the body write fails, no comment is written, the box stays ticked, and the next `resolve` run refuses the tick again and says so then. When the comment fails after the body write, the job goes red with GitHub's words and the person finds a cleared box. A fresh tick gets them the comment.
+- An unverified tick turns the job red after everything else is done: the verified ticks of the same run are started, handed on and shown first (0035).
+- A refused tick is cleared without a note on the row. The comment is the message, as this record says. The note that asks for a fresh tick is for the ticks nobody can be told about (0025) and for the ticks beyond the cap (0035).
+
 Research:
 - https://github.com/sluiceway/sluiceway/blob/research/github-actions-behaviors/docs/research/github-actions-behaviors.md
 - Observed payloads: https://github.com/sluiceway/sluiceway/issues/17

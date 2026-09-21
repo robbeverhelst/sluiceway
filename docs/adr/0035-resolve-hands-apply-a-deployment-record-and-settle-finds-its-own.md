@@ -28,3 +28,17 @@ The two names the bootstrap chose stay: the `github-token` input, which is also 
 - The `settle` job in the example runs with `if: always()` and only when `resolve` started at least one deploy, so a refused tick or a rescan costs no third runner.
 - The per stack time limit of 0012 is the config key `previewTimeout` on a stack's entry, in whole minutes like the input.
 - A later `stack` input for a deploy without a tick (`docs/later.md`) stays free, because nothing uses that name now.
+
+## Settled while building (slice 2.4)
+
+- The order of one `resolve` run: the cheap check on the payload, the body and the history in one read, the open deployments of the ticked stacks, the permission lookups, the deployment records as `queued` in stack id order, the `matrix` output, the dispatch for the rescan box, the body write, the comment for refused ticks, and only then a red job.
+- `resolve` sets `matrix` on every path, also when it fails before it created a record. The output is then `[]`.
+- A failure after the first record does not stop the run. What was started is handed on and shown on the dashboard, and the job goes red at the end with every reason. Creating records is the exception: it stops at the first record that cannot be written, so a missing `deployments: write` costs one request and not 256.
+- A red `resolve` job would make GitHub skip `apply`, because a job whose `if:` has no status check is skipped when a job it `needs` failed. Then `settle` would give every record of the run `error`, and the hand-off this record protects would be lost after all. So the `if:` of the example's `apply` job starts with `!cancelled()`. Every entry in `matrix` is a record that `resolve` created after it checked the ticker, so a red `resolve` lets nothing else through.
+- A record whose `queued` status could not be written is still handed on. A record without a status is an open deployment (0003), so `apply` takes it.
+- The `sha` on a record is `GITHUB_SHA` of the `resolve` job. An `issues` event always runs on the head of the default branch.
+- The cheap check reads the payload in two halves. Open, authored by the bot and a root marker on the first line need no config. Only then is `sluiceway.yaml` read for the label. A broken config file therefore never turns an edit of an ordinary issue red.
+- `resolve` acts on the issue of its event and lists no issues. A duplicate dashboard can take a tick until the next scan closes it, which 0017 accepts.
+- 258 pending rows as a scan writes them do not fit in one issue: the smallest shortened row is about 280 characters and the hard limit is 65,536. The cap of 256 is kept, because a body can also be edited by hand, and it costs nothing.
+- The dispatch for the rescan box, and for a body of another version (0009), is `POST /repos/{owner}/{repo}/actions/workflows/{file}/dispatches` with the file and the ref of `GITHUB_WORKFLOW_REF`: this same workflow, on the ref this job runs on. The example's scan job runs for every event that is not `issues`, so the dispatched run is a full scan. Without `actions: write` GitHub answers 403, and the job goes red with a message that names the permission.
+

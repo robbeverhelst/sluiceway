@@ -131,6 +131,41 @@ describe("a tick by a person who may tick", () => {
     expect(matrix(h)).toHaveLength(1);
   });
 
+  test("a body that does not fit with the rows swapped is not written, after the hand-off", async () => {
+    const h = await scanned(TABLE);
+    h.context.limits = { body: { limit: 500 } };
+    tick(h, ALICE, ["a:prod"]);
+    const body = h.github.issue(h.number).body;
+
+    await expect(wake(h)).rejects.toThrow("GitHub drops a body over 65,536 without an error");
+
+    expect(matrix(h)).toHaveLength(1);
+    expect(h.github.issue(h.number).body).toBe(body);
+  });
+
+  test("a live body that turned into another version before the write is left alone", async () => {
+    const h = await scanned(TABLE);
+    tick(h, ALICE, ["a:prod"]);
+    let moved = false;
+    h.github.onRequest = (request) => {
+      if (request !== "getIssue" || moved) return;
+      moved = true;
+      h.github.editBody(
+        h.number,
+        h.github
+          .issue(h.number)
+          .body.replace('sluiceway:dashboard v="1"', 'sluiceway:dashboard v="2"'),
+        BOB,
+      );
+    };
+
+    await wake(h);
+
+    expect(matrix(h)).toHaveLength(1);
+    expect(h.github.requests).not.toContain("updateIssueBody");
+    expect(h.github.issue(h.number).body).toContain('sluiceway:dashboard v="2"');
+  });
+
   test("reads the body and the history in one request, and never runs the tool", async () => {
     const h = await scanned(TABLE);
     tick(h, ALICE, ["a:prod"]);
