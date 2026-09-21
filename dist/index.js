@@ -27382,6 +27382,15 @@ function readScanInputs(getInput2) {
   const previewTimeoutMinutes = wholeNumber(getInput2, "preview-timeout", " It is a number of whole minutes.");
   return { concurrency, previewTimeoutMinutes, token: readToken(getInput2) };
 }
+function readJobId(getInput2) {
+  const text = getInput2("job-id").trim();
+  if (text === "")
+    return;
+  if (!/^[1-9]\d*$/.test(text)) {
+    throw new Error(`The "job-id" input must be the id of the running job, a whole number, and it is ${JSON.stringify(text)}. Leave it out of the workflow, so it takes the id GitHub gives the job.`);
+  }
+  return text;
+}
 function readApplyInputs(getInput2) {
   const text = getInput2("deployment-id").trim();
   if (text === "") {
@@ -51457,6 +51466,7 @@ function readJob(env) {
     repo,
     repoUrl: `${server}/${owner}/${repo}`,
     runId: need("GITHUB_RUN_ID"),
+    runAttempt: need("GITHUB_RUN_ATTEMPT"),
     sha: need("GITHUB_SHA"),
     event: need("GITHUB_EVENT_NAME"),
     workflow
@@ -53295,6 +53305,13 @@ function renderApplySummary(input2) {
 `;
 }
 
+// src/render/links.ts
+function runLinks(run) {
+  const base = `${run.repoUrl}/actions/runs/${run.runId}`;
+  const summary2 = `${base}/attempts/${run.runAttempt}`;
+  return { summary: summary2, log: run.jobId === undefined ? summary2 : `${base}/job/${run.jobId}` };
+}
+
 // src/render/log-text.ts
 function oneLine(text3) {
   return text3.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ");
@@ -53324,19 +53341,25 @@ function diffLogLines(diff) {
 }
 
 // src/render/preview-result.ts
-function previewRow(stackId2, result, runUrl, failure2) {
+function previewRow(stackId2, result, links, failure2) {
   if (!result.ok) {
     return {
       state: "preview-failed",
       stackId: stackId2,
       reason: previewFailureText(result.reason),
-      runUrl,
+      runUrl: links.log,
       failure: failure2
     };
   }
   if (result.diff.changes.length === 0)
     return { state: "in-sync", stackId: stackId2, failure: failure2 };
-  return { state: "pending", diff: result.diff, hash: diffHash(result.diff), runUrl, failure: failure2 };
+  return {
+    state: "pending",
+    diff: result.diff,
+    hash: diffHash(result.diff),
+    runUrl: links.summary,
+    failure: failure2
+  };
 }
 function previewSummary(stackId2, result, merges) {
   if (result.ok)
@@ -53656,7 +53679,7 @@ ${ALREADY_ENDED}
           at: fact.at,
           runUrl: `${context3.repoUrl}/actions/runs/${fact.run}`
         } : undefined;
-        const row = previewRow(id_, made, runUrl, failure2);
+        const row = previewRow(id_, made, runLinks(context3), failure2);
         return row.state === "pending" ? { ...row, attribution } : row;
       });
     } catch (error63) {
@@ -53882,6 +53905,8 @@ async function runApply() {
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
     repoUrl: job.repoUrl,
     runId: job.runId,
+    runAttempt: job.runAttempt,
+    jobId: readJobId(getInput),
     sha: job.sha,
     actionRef: readActionRef(env, (path) => readFileSync3(path, "utf8")),
     deploymentId: inputs.deploymentId,
@@ -54827,6 +54852,22 @@ function everyPreviewFailed(attempted, failed) {
 
 // src/render/summary.ts
 var SUMMARY_BUDGET = 1e6;
+function stackAnchor(stackId2) {
+  let encoded = "";
+  for (const char of stackId2) {
+    encoded += /^[a-z0-9]$/.test(char) ? char : `-${char.codePointAt(0)?.toString(16)}-`;
+  }
+  return `sluiceway-${encoded}`;
+}
+function anchorTag(stackId2) {
+  return `<a id="${stackAnchor(stackId2)}"></a>`;
+}
+function indexLink(stackId2) {
+  return `[${escapeText(stackId2)}](#user-content-${stackAnchor(stackId2)})`;
+}
+function jobLog(options) {
+  return options.jobLogUrl === undefined ? "job log" : `[job log](${options.jobLogUrl})`;
+}
 var LEVELS2 = [0, 1, 2, 3];
 function firstLine(message3) {
   return message3.split(/\r?\n/, 1)[0] ?? "";
@@ -54843,18 +54884,21 @@ function mergeCounts(merges) {
     of("push") && `${of("push")} direct push${of("push") === 1 ? "" : "es"}`
   ].filter(Boolean).join(" and ");
 }
-function diffParts2(stack, level) {
+function diffParts2(stack, level, options) {
   const { deletes, replaces, others } = orderChanges(stack.diff);
   const destroys = [...deletes, ...replaces];
-  const parts = [`#### ${escapeText(stack.diff.stackId)}`, counts([...destroys, ...others])];
+  const parts = [
+    `#### ${anchorTag(stack.diff.stackId)}${escapeText(stack.diff.stackId)}`,
+    counts([...destroys, ...others])
+  ];
   if (destroys.length > 0) {
-    parts.push(level >= 3 ? `:warning: **${destroyWords(deletes.length, replaces.length)}, too many to list here.** Read the job log before you tick.` : destroys.map((change) => `- :warning: ${changeLine(change)}`).join(`
+    parts.push(level >= 3 ? `:warning: **${destroyWords(deletes.length, replaces.length)}, too many to list here.** Read the ${jobLog(options)} before you tick.` : destroys.map((change) => `- :warning: ${changeLine(change)}`).join(`
 `));
   }
   if (others.length > 0) {
     const inside2 = plural2(others.length, destroys.length > 0 ? "other change" : "change");
     if (level >= 2)
-      parts.push(`${inside2} not listed here, see the job log.`);
+      parts.push(`${inside2} not listed here, see the ${jobLog(options)}.`);
     else {
       parts.push(`<details><summary>${inside2}</summary>`, others.map((change) => `- ${changeLine(change)}`).join(`
 `), "</details>");
@@ -54870,8 +54914,12 @@ function diffParts2(stack, level) {
   }
   return parts;
 }
-function failedLine(stack) {
-  const line3 = `- **${escapeText(stack.stackId)}** · ${escapeText(stack.reason)}`;
+function failedLine(stack, options) {
+  const id = escapeText(stack.stackId);
+  let line3 = `- ${anchorTag(stack.stackId)}**${id}** · ${escapeText(stack.reason)}`;
+  if (options.jobLogUrl !== undefined) {
+    line3 += ` · the tool's own words are in the ${jobLog(options)}, in the group <code>${id}</code>`;
+  }
   if (stack.ignore === undefined)
     return line3;
   const glob = escapeText(JSON.stringify(stack.ignore));
@@ -54887,9 +54935,9 @@ function byteLength2(text3) {
 function cost(parts) {
   return parts.reduce((sum, part) => sum + byteLength2(part) + 2, 0);
 }
-function note(shortened, pending) {
+function note(shortened, pending, options) {
   const shows = shortened === 1 ? "shows less than its" : "show less than their";
-  return `> **This summary is shortened: ${shortened} of ${plural2(pending, "pending stack")} ${shows} whole diff.** Every diff is in full in the job log of this run, in the group that has the stack id as its title. Deletes and replaces are cut last.`;
+  return `> **This summary is shortened: ${shortened} of ${plural2(pending, "pending stack")} ${shows} whole diff.** Every diff is in full in the ${jobLog(options)} of this run, in the group that has the stack id as its title. Deletes and replaces are cut last.`;
 }
 function fitToBudget(entries, frameCost, budget) {
   let blocks2 = entries.reduce((sum, entry) => sum + (entry.costs[0] ?? 0), 0);
@@ -54933,21 +54981,27 @@ function renderSummary(stacks, options = {}) {
   ].filter(Boolean).join(", ")}.`;
   const tail = [];
   if (failed.length > 0) {
-    tail.push("### Preview failed", failed.map(failedLine).join(`
+    tail.push("### Preview failed", failed.map((stack) => failedLine(stack, options)).join(`
 `));
   }
   if (inSync.length > 0) {
-    tail.push("### In sync", inSync.map((stack) => `- ${escapeText(stack.diff.stackId)}`).join(`
+    tail.push("### In sync", inSync.map((stack) => `- ${anchorTag(stack.diff.stackId)}${escapeText(stack.diff.stackId)}`).join(`
 `));
   }
+  const index = [
+    pending.length > 0 && `- Pending: ${pending.map((stack) => indexLink(stack.diff.stackId)).join(" · ")}`,
+    failed.length > 0 && `- Preview failed: ${failed.map((stack) => indexLink(stack.stackId)).join(" · ")}`
+  ].filter((line3) => line3 !== false);
   const frame = (shortened2) => [
     "## Sluiceway scan",
-    ...shortened2 > 0 ? [note(shortened2, pending.length)] : [],
+    ...shortened2 > 0 ? [note(shortened2, pending.length, options)] : [],
     counted,
+    ...index.length > 0 ? [index.join(`
+`)] : [],
     ...pending.length > 0 ? ["### Pending"] : []
   ];
   const entries = pending.map((stack) => {
-    const parts = LEVELS2.map((level) => diffParts2(stack, level));
+    const parts = LEVELS2.map((level) => diffParts2(stack, level, options));
     return { stackId: stack.diff.stackId, parts, costs: parts.map(cost), level: 0 };
   });
   const tailCost = cost(tail);
@@ -55041,7 +55095,7 @@ async function scanning(context3, report) {
   const startedAt = now();
   report.startedAt = startedAt;
   const at = startedAt.toISOString();
-  const runUrl2 = `${context3.repoUrl}/actions/runs/${context3.runId}`;
+  const links = runLinks(context3);
   const config2 = loadConfig(context3.root);
   const stacks = applyConfig(config2, await context3.adapter.discover(context3.root)).sort((a, b) => byCodeUnit2(stackId(a.stack), stackId(b.stack)));
   const ids = stacks.map(({ stack }) => stackId(stack));
@@ -55117,7 +55171,7 @@ async function scanning(context3, report) {
         if (decided.row === "preview-first")
           first.push({ id, why: decided.why });
         else if (decided.row === "fresh" && mine) {
-          const fresh = previewRow(id, mine.result, runUrl2, failureLine2(context3, fact));
+          const fresh = previewRow(id, mine.result, links, failureLine2(context3, fact));
           const row2 = fresh.state === "pending" ? { ...fresh, attribution: lines3.get(id)?.lines } : fresh;
           if (!ticked) {
             rows.push(row2);
@@ -55427,7 +55481,10 @@ function logResults(context3, previewed) {
 }
 async function writeSummary2(context3, previewed, attributed = new Map) {
   const { log } = context3;
-  const summary3 = renderSummary(previewed.map(({ id, result }) => previewSummary(id, result, attributed.get(id)?.merges)), { budget: context3.limits?.summaryBudget });
+  const summary3 = renderSummary(previewed.map(({ id, result }) => previewSummary(id, result, attributed.get(id)?.merges)), {
+    budget: context3.limits?.summaryBudget,
+    jobLogUrl: context3.jobId === undefined ? undefined : runLinks(context3).log
+  });
   if (!summary3.fits) {
     log.warning("The summary of this run is too large for GitHub even with every stack shortened as far as it goes, so it was not written. The dashboard is still brought up to date, and the job log of this run holds every diff in full.", "Summary not written");
     return;
@@ -55510,6 +55567,8 @@ async function runScan() {
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
     repoUrl: job.repoUrl,
     runId: job.runId,
+    runAttempt: job.runAttempt,
+    jobId: readJobId(getInput),
     sha: job.sha,
     event: job.event,
     workflow: job.workflow,
