@@ -51400,6 +51400,20 @@ function createOctokitPort(octokit, repo) {
         files: (data.files ?? []).map((file2) => file2.previous_filename === undefined ? { path: file2.filename } : { path: file2.filename, previousPath: file2.previous_filename })
       };
     },
+    async getPermission(login) {
+      const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({
+        ...repo,
+        username: login
+      });
+      const permissions = data.user?.permissions;
+      if (!permissions)
+        throw new Error(`GitHub's answer holds no permissions for ${login}.`);
+      return {
+        push: permissions.push === true,
+        maintain: permissions.maintain === true,
+        admin: permissions.admin === true
+      };
+    },
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     }
