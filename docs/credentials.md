@@ -1,0 +1,194 @@
+# Credentials and your own tooling
+
+Sluiceway runs your infrastructure tool, but it never loads a credential. Your workflow puts everything the tool needs into the job environment, in steps that run before Sluiceway, and Sluiceway passes that environment to the tool as it is. This page is the pattern, then recipes for the usual places credentials come from, then what to do when your programs fetch things or you deploy from somewhere else too.
+
+## The pattern
+
+1. **Authenticate** to wherever the credentials live: a GitHub secret, your cloud through OIDC, a secret manager.
+2. **Load everything into the job environment in one step**, once per job. The tool's backend, the passphrase of its secrets, the cloud credentials, anything your programs read.
+3. **That step masks every secret it loads.** Sluiceway never sees a secret as a secret, so it cannot mask one by its value. The step that knows it is a secret has to.
+
+Then:
+
+- **Only the `scan` and `apply` jobs load credentials.** `resolve` and `settle` never run the tool. The job that an issue edit starts, the one thing anybody with issue access can cause, holds no infrastructure secrets. Keep it that way: never add a loading step to `resolve` or `settle`.
+- **`scan` needs no more than read access.** A preview never changes anything. Where your backend and cloud offer credentials that can only read, give those to `scan`, and keep the ones that change things for `apply`.
+- **Load once per job, with one bulk call.** A scan previews every stack in one job, so one load serves them all. Sluiceway has no command wrapper and no hook per stack on purpose: resolving your secrets again for every preview is slow and, on a repo with many stacks, runs into the rate limits of a secret manager.
+- **The GitHub token never reaches the tool.** GitHub hands an action its inputs as `INPUT_*` variables, the token among them. Sluiceway removes every one of them from the tool's environment, so a program or one of its dependencies cannot edit the dashboard.
+
+The job environment is the whole interface. There is no allowlist and no environment per stack: a program may read any variable, so Sluiceway cannot know the names. A stack that needs a value of its own gets it through its own variable name or its stack config.
+
+## What Sluiceway promises about them
+
+Sluiceway never holds credentials. That is five promises you can check against the code:
+
+1. **No credential inputs.** The action takes one secret, the GitHub token. No input and no config key ever carries a cloud, backend or secret manager credential.
+2. **Never read by name.** No Sluiceway code reads a credential variable. The environment goes to the tool as one opaque block.
+3. **Never stored, never sent.** Nothing from the environment reaches the issue, deployment records, job summaries, artifacts or caches. The only network calls are to the GitHub API and whatever the tool itself makes.
+4. **Only the modes that run the tool need credentials.** `scan` and `apply` run the tool. `resolve` and `settle` never do.
+5. **A hosted version would keep all of this.** The tool always runs in your own runners.
+
+The credentials are in the same job as Sluiceway's own process, so the promise is not that Sluiceway cannot see them. It is that its code, which you pin and can read, never looks. The [security page](security.md) says what that protects against and what it does not.
+
+## Recipes
+
+Each recipe is the loading part of a job. [example-workflows.md](example-workflows.md) has them in complete workflows. The snippets say `sluiceway/sluiceway@v0`, which starts to work with the first release, 0.1.0. Until then pin a full commit SHA of this repository in its place.
+
+### GitHub secrets
+
+The simplest source. Put the secrets on Sluiceway's step, not on the job, so that the other steps of the job, such as the install scripts of your package manager, never see them. GitHub masks the value of every secret it hands a step.
+
+```yaml
+      - uses: sluiceway/sluiceway@v0
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        with:
+          mode: scan
+```
+
+For the credentials that change things, use a secret of a GitHub Environment where your plan has them, and name the environment on the `apply` job. Only a job that names the environment, on a branch the environment allows, can read its secrets. The [security page](security.md) has the setups.
+
+### A cloud through OIDC
+
+No cloud key is stored anywhere: the job asks GitHub for a short-lived token and trades it for cloud credentials. The job needs `id-token: write`. A job's `permissions:` replace the workflow's, so repeat the whole block of the workflow and add the one line, on `scan` and `apply` only:
+
+```yaml
+    permissions:
+      contents: read
+      issues: write
+      deployments: write
+      actions: write
+      pull-requests: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_PREVIEW_ROLE }}
+          aws-region: ${{ vars.AWS_REGION }}
+```
+
+Every large cloud has an official action that does this: `google-github-actions/auth` for Google Cloud, `azure/login` for Azure. Trust the role that can only read for the default branch of your repo, and the role that changes things for the environment of the `apply` job only (for AWS, a subject of the form `repo:<owner>/<repo>:environment:<name>`), so that no other workflow and no other branch can assume it.
+
+### A secret manager
+
+Most secret managers have an official action that loads secrets into the job environment and masks them: `hashicorp/vault-action`, `dopplerhq/secrets-fetch-action`, `aws-actions/aws-secretsmanager-get-secrets`, `google-github-actions/get-secretmanager-secrets`, `1password/load-secrets-action`. Check two things in its documentation: whether it exports to the environment by default or only to step outputs, and whether it masks each line of a multi-line value.
+
+Prefer one bulk call per job over one call per secret. A secret manager counts requests, and an action that reads once per reference can make hundreds of them per job. Several official actions do exactly that for an env file of references.
+
+#### An env file of secret references
+
+Many repos keep one env file of secret references next to the code, which the team's own tooling resolves before it runs the tool. The same file can load a CI job. Run your secret manager's `run` command once, which resolves every reference in one go, and let a small script inside it mask the secrets and write every value to `$GITHUB_ENV`. With 1Password:
+
+```yaml
+      - uses: 1password/install-cli-action@v4
+      - name: Load the environment
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_PREVIEW_TOKEN }}
+        run: op run --env-file=ci/preview.env --no-masking -- bash .github/scripts/export-env.sh ci/preview.env
+```
+
+`.github/scripts/export-env.sh`, which is also in this repo as [examples/workflows/export-env.sh](../examples/workflows/export-env.sh) and is tested there with fake values:
+
+```bash
+#!/usr/bin/env bash
+# Loads an env file of secret references into the job environment, masked.
+# Run it inside your secret manager's `run` command, which resolves every
+# reference of the file into this process's environment, for example:
+#
+#   op run --env-file=ci.env --no-masking -- bash export-env.sh ci.env
+#
+# It prints nothing but ::add-mask:: commands. Never add `set -x` or an echo.
+set -euo pipefail
+file="$1"
+# A line whose value holds this is a secret. Every other line is a plain value.
+reference="${SECRET_REFERENCE:-op://}"
+
+while IFS= read -r raw || [ -n "$raw" ]; do
+  raw="${raw%$'\r'}"
+  # Take NAME from lines like `NAME=...`, `NAME = ...` or `export NAME=...`.
+  [[ "$raw" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*= ]] || continue
+  name="${BASH_REMATCH[2]}"
+  # The secret manager's own token and settings stay on this step, and the
+  # runner does not let a step set its own names.
+  case "$name" in OP_* | GITHUB_* | RUNNER_*) continue ;; esac
+  value="${!name-}"
+  [ -n "$value" ] || continue
+
+  # Mask first, every line on its own, because the log is matched line by line.
+  if [[ "$raw" == *"$reference"* ]]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="${line%$'\r'}"
+      [ -n "$line" ] || continue
+      printf '::add-mask::%s\n' "${line//%/%25}"
+    done <<<"$value"
+  fi
+
+  # Then write, in the delimiter form so that newlines survive.
+  delimiter="ghadelimiter_$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+  if [[ "$value" == *"$delimiter"* ]]; then
+    echo "The value of $name holds the delimiter. Run the step again." >&2
+    exit 1
+  fi
+  printf '%s<<%s\n%s\n%s\n' "$name" "$delimiter" "$value" "$delimiter" >>"$GITHUB_ENV"
+done <"$file"
+```
+
+What to know about it:
+
+- **The script masks only the values that come from a secret reference.** A line whose value holds `op://` is a secret, and every line of its value is masked. Every other line is a plain value: it is written to the environment and not masked. Keep values that are not secret, such as a region, a username or an organization name, as plain values in the file. A masked ordinary word turns every place it appears in the log into `***`, links included. The other side of the same rule: a secret pasted into the file as a plain value is not masked, so never do that. For another manager, set `SECRET_REFERENCE` to the prefix its references start with.
+- **`--no-masking` is needed, and it is why the script prints nothing else.** Without it `op run` rewrites the script's output, the mask commands included, and the runner would mask the wrong text. With it, anything the script prints is raw. The runner never echoes a mask command to the log.
+- **It masks before it writes**, masks each line of a multi-line value on its own, and writes each value with a random delimiter so a value cannot end its own entry.
+- **It skips `OP_*`, `GITHUB_*` and `RUNNER_*` names.** The manager's token and settings stay on the loading step, and the runner does not let a step set its own names.
+- **The token of the secret manager sits on the loading step only.** It never reaches Sluiceway or the tool. The values written to `$GITHUB_ENV` reach every later step of the job.
+- **Measure what one load costs once.** How a secret manager counts one `run` over many references is often not documented. With 1Password, run `op service-account ratelimit` before and after one `op run --env-file=ci.env -- true` and compare. A per-account daily limit is shared by every service account of the account.
+
+### State backends
+
+The tool's backend is configured the same way, in the environment: for Pulumi, `PULUMI_ACCESS_TOKEN` for Pulumi Cloud, or `PULUMI_BACKEND_URL` for a bucket or another self-managed backend, and `PULUMI_CONFIG_PASSPHRASE` when stack secrets use a passphrase. Sluiceway never sets or defaults any of them. When one is missing, the tool's own error becomes that stack's preview failure, and the job log shows it.
+
+## What your programs fetch, the runner has to fetch
+
+A preview runs your programs, and your programs fetch things: packages, provider plugins, container images, Helm charts, modules. On a laptop that works because the person is logged in. On a runner nothing is logged in until a step does it. When one stack fails in CI and works on your machine, look here first.
+
+The job has to be able to reach, and log in to:
+
+- **The package registries of your programs**, public and private, for the install step.
+- **The tool's plugins or providers.** Pulumi downloads the provider plugins your programs name, from their public source or from the plugin server you configured.
+- **Private charts and images your programs pull while they run**, such as a Helm chart in a private OCI registry.
+- **The state backend and the cloud APIs**, which the recipes above cover.
+- **Private Git repos** that a program or a package manager clones.
+
+Self-hosted runners behind a firewall need outbound access to all of them.
+
+Log in in a step before Sluiceway, in the `scan` and `apply` jobs, with the same care as any other credential. A registry login writes a credentials file under the home directory, so the tool picks it up without any variable. Two common cases:
+
+```yaml
+      # Private npm packages: the install step reads the token, nothing else does.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://npm.pkg.github.com
+      - run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
+
+      # A private OCI registry that holds Helm charts, for programs that install
+      # them while they run.
+      - name: Log in to the chart registry
+        env:
+          REGISTRY_TOKEN: ${{ secrets.CHARTS_READ_TOKEN }}
+        run: echo "$REGISTRY_TOKEN" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+```
+
+On a self-hosted runner that is not wiped between jobs, that credentials file stays behind for the next job. Log out at the end of the job (`helm registry logout`, `docker logout`) or use runners that start clean.
+
+A preview failure row links to the scan's run. The job log group of that stack holds everything the tool printed, the name of the registry or package it could not fetch included.
+
+## Next to your own tooling
+
+Most repos already run the tool in their own way: a script, a task runner, a laptop, another pipeline. Keep it. Sluiceway only previews and deploys the stacks it finds. Destroying a stack, a refresh and repairing state stay with your own tooling, and Sluiceway writes no lock, puts no marker in the tool's state and never claims to be the only way to deploy.
+
+- **Your wrapper script is not needed in CI.** What a wrapper does around each run of the tool (load an env file, pick a backend, pass fixed flags) becomes the loading step of the job. Sluiceway runs the tool itself, so it can check the tool's version, stop a preview at its time limit, and read its output.
+- **A deploy from somewhere else is legal.** It has no deployment record, so it does not show under recently deployed, and a row it made stale stays pending until the next full scan. Tick the rescan box on the dashboard, or wait for the scheduled scan. A tick on a stale row deploys nothing: the fresh preview finds a different diff and the row is written again.
+- **Two deploys of one stack at the same moment** meet at the tool's own state lock. One of them fails cleanly, and if it was Sluiceway's, the row shows a failure line.
+- **To make the dashboard the only way in**, take the credentials that change things away from every other place. That is access control in your secret manager and your cloud, not a Sluiceway setting.
