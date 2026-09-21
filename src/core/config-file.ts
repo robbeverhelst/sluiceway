@@ -17,6 +17,12 @@ export function loadConfig(root: string): Config {
   return parseConfig(read(join(root, FILE)));
 }
 
+// Whether the repo has a sluiceway.yaml at all. The check says so, because no
+// file and a file that sets nothing load the same (record 0042).
+export function hasConfigFile(root: string): boolean {
+  return existsSync(join(root, FILE));
+}
+
 function read(file: string): string | undefined {
   try {
     return readFileSync(file, "utf8");
