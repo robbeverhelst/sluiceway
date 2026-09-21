@@ -598,6 +598,7 @@ async function swapRow(
         repoUrl: context.repoUrl,
         actionRef: context.actionRef,
         personality: setup.config.dashboard.personality,
+        readOnly: setup.config.dashboard.readOnly,
       },
       // A writer that swaps rows aims at the hard limit (record 0028).
       { ...context.limits?.body, target: Number.POSITIVE_INFINITY },

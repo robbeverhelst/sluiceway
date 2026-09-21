@@ -295,7 +295,10 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       // note (record 0009). Of two blocks for one stack the first counts.
       const liveTicks = new Map<string, string | undefined>();
       const seen = new Set<string>();
-      for (const row of live?.rows ?? []) {
+      // On a read-only dashboard no row has a box, so a tick left from before
+      // the switch goes with the box, with no note and nobody asked (slice
+      // 2.17). The switch changes the config file, so this scan is full.
+      for (const row of config.dashboard.readOnly ? [] : (live?.rows ?? [])) {
         if (seen.has(row.stackId)) continue;
         seen.add(row.stackId);
         if (row.known && row.ticked) liveTicks.set(row.stackId, row.hash);
@@ -402,6 +405,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           repoUrl: context.repoUrl,
           actionRef: context.actionRef,
           personality: config.dashboard.personality,
+          readOnly: config.dashboard.readOnly,
         },
         // A writer that swaps rows aims at the hard limit, because the room
         // between the target and the limit exists for that writer (0028).
@@ -442,7 +446,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         composed = compose(
           liveBody,
           deploys,
-          await resolveWaits(context, liveBody, deploys),
+          !config.dashboard.readOnly && (await resolveWaits(context, liveBody, deploys)),
           attributed,
         );
         return composed.body;

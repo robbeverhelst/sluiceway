@@ -197,7 +197,9 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
     const words = destroyWords(deletes.length, replaces.length);
     if (destroys > 0) {
       const warning = options.redact ? `${words}.` : `${words}, too many to list here.`;
-      const read = options.readOnly ? `Read the ${summary}.` : `Read the ${summary} before you tick.`;
+      const read = options.readOnly
+        ? `Read the ${summary}.`
+        : `Read the ${summary} before you tick.`;
       lines.push(`:warning: **${warning}** ${read}`);
     } else {
       lines.push(
