@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { EXAMPLE_WORKFLOWS, read, USER_DOCS } from "./docs.ts";
 
-// After release 0.1.0 (build plan, section 8): the docs stop saying there is
+// After releases 0.1.0 and 0.1.1 (build plan, section 8): the docs stop saying there is
 // no release, and every example says @v0 until a deliberate 1.0.0.
 
 // Every page a user copies from or reads for the version: the user docs, the
@@ -53,9 +53,9 @@ describe("the version the docs name", () => {
 describe("the README", () => {
   const notice = readme.slice(readme.indexOf("> [!IMPORTANT]"), readme.indexOf("\n\n## "));
 
-  test("the beta notice says beta, released as 0.1.0, and @v0", () => {
+  test("the beta notice says beta, released as 0.1.1, and @v0", () => {
     expect(notice).toContain("**Sluiceway is in beta.**");
-    expect(notice).toContain("(https://github.com/sluiceway/sluiceway/releases/tag/v0.1.0)");
+    expect(notice).toContain("(https://github.com/sluiceway/sluiceway/releases/tag/v0.1.1)");
     expect(notice).toContain("`sluiceway/sluiceway@v0`");
     expect(notice).toContain("(#pin-a-commit)");
   });

@@ -11,7 +11,7 @@ import type { InSyncRow, PendingRow, Row } from "../../src/render/row.ts";
 //   bun -e 'import { exampleDashboard } from "./test/docs/example-dashboard.ts"; console.log(exampleDashboard())'
 
 // The release whose pictures the example names (build plan, section 3).
-export const EXAMPLE_ACTION_REF = "v0.1.0";
+export const EXAMPLE_ACTION_REF = "v0.1.1";
 
 const REPO_URL = "https://github.com/example-org/infra";
 const SCAN_SHA = "8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c";

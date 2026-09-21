@@ -29,9 +29,9 @@ describe("the example dashboard in the README", () => {
     expect(shown).toBe(exampleDashboard());
   });
 
-  // Build plan, section 8: 0.1.0 is out, so the pictures come from its tag.
-  test("takes its header pictures from the v0.1.0 tag", () => {
-    expect(EXAMPLE_ACTION_REF).toBe("v0.1.0");
+  // Build plan, section 8: 0.1.1 is the newest release, so the pictures come from its tag.
+  test("takes its header pictures from the v0.1.1 tag", () => {
+    expect(EXAMPLE_ACTION_REF).toBe("v0.1.1");
     const urls = [...shown.matchAll(/https:\/\/raw\.githubusercontent\.com\/[^"]+/g)].map(
       (match) => match[0],
     );
