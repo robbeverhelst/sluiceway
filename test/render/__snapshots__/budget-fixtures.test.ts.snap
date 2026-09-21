@@ -1,0 +1,566 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`the 100 stack fixture the body 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T10:02:41Z" full-scan-run="17034455121" -->
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-dark.svg">
+  <img alt="Sluiceway" width="440" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-light.svg">
+</picture>
+
+**53 pending** · 2 deploying · 2 preview failed · 43 in sync · :warning: **13 pending stacks destroy resources** · 2 failed deploys
+
+Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 10:02 UTC</sub>
+
+> [!NOTE]
+> This dashboard is too large for one issue, so 39 of 53 pending rows are shortened. The summary that a shortened row links to shows every change. Deletes and replaces are the last thing to be cut.
+
+## Pending
+
+Tick a box to deploy that stack exactly as its row shows it.
+
+- [ ] **apps/api:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="962ea94dcf7ae8b4" -->
+  from #5 by alice, #4 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/4193607...8c41f0e)
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>api</b> · <code>spec</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **apps/billing:staging** · 9 creates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/billing:staging" state="pending" hash="97b512f9290de364" -->
+  not deployed from this dashboard yet
+  <details><summary>9 changes</summary>
+  <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>billing-external-4</b><br>
+  <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>billing-public-5</b><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:Service</code> <b>billing-webhook-2</b><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>billing-default-backend-8</b><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>billing-external-9</b><br>
+  <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>billing-admission-7</b><br>
+  <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>billing-leader-election-6</b><br>
+  <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>billing-public-3</b><br>
+  <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>billing-canary-1</b><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" -->
+  from #427 by dave · [compare](https://github.com/example-org/infra/compare/284fd2d...8c41f0e)
+  :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>legacy-jobs</b>
+  :warning: <kbd>DELETE</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>legacy-worker</b>
+  :warning: <kbd>DELETE</kbd> <code>kubernetes:core/v1:Service</code> <b>legacy-worker</b>
+  <details><summary>1 other change</summary>
+  <kbd>forget</kbd> <code>aws:iam/role:Role</code> <b>legacy-worker</b><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **apps/notifications:prod** · 1 create, 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/notifications:prod" state="pending" hash="abc0050a30343911" -->
+  from #428 by dave, and 3 changes outside this stack, and earlier changes · [compare](https://github.com/example-org/infra/compare/52798b7...8c41f0e)
+  :information_source: a tick on this row was not picked up. Tick again to deploy.
+  <details><summary>2 changes</summary>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>notifications</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:batch/v1:CronJob</code> <b>digest</b><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **apps/search:prod** · 2 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/search:prod" state="pending" hash="571e68c7e24a4543" failed="true" -->
+  from #432 by carol, #426 by carol · [compare](https://github.com/example-org/infra/compare/24988d1...8c41f0e)
+  :x: last deploy failed: the change moved since the tick · ticked by alice · 2026-09-21 08:52 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120077)
+  <details><summary>2 changes</summary>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:StatefulSet</code> <b>search</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>search-config</b> · <code>data</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **apps/web:prod** · 2 creates, 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/web:prod" state="pending" hash="3c2564c67a3d62b5" -->
+  from #418 by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1dfd7ad...8c41f0e)
+  <details><summary>3 changes</summary>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>web</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:autoscaling/v2:HorizontalPodAutoscaler</code> <b>web</b><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>web-feature-flags</b><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **data/postgres:prod** · 2 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/postgres:prod" state="pending" hash="620c897f92719080" destroys="1" -->
+  from #431 by bob · [compare](https://github.com/example-org/infra/compare/912fee8...8c41f0e)
+  :warning: <kbd>REPLACE</kbd> <code>aws:rds/instance:Instance</code> <b>main</b> · forced by <code>engineVersion</code>, <code>storageType</code> · also changes <code>instanceClass</code>
+  <details><summary>2 other changes</summary>
+  <kbd>update</kbd> <code>aws:cloudwatch/metricAlarm:MetricAlarm</code> <b>main-cpu</b> · <code>dimensions</code><br>
+  <kbd>update</kbd> <code>aws:rds/parameterGroup:ParameterGroup</code> <b>main</b> · <code>parameters</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **infra/dns:prod** · 1 update, 2 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="infra/dns:prod" state="pending" hash="58731081e177634d" -->
+  from 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/5bef5d8...8c41f0e)
+  <details><summary>3 changes</summary>
+  <kbd>update</kbd> <code>cloudflare:index/record:Record</code> <b>api</b> · <code>ttl</code><br>
+  <kbd>import</kbd> <code>cloudflare:index/record:Record</code> <b>docs</b><br>
+  <kbd>import</kbd> <code>cloudflare:index/record:Record</code> <b>status-page</b><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **monitoring/dashboards:prod** · 46 creates, 74 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="monitoring/dashboards:prod" state="pending" hash="0e2b9558a96aa3f5" shortened="2" -->
+  from 1 pull request · [compare](https://github.com/example-org/infra/compare/2b772f2...8c41f0e)
+  120 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" shortened="2" -->
+  from 7 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/5990691...8c41f0e)
+  :warning: <kbd>REPLACE</kbd> <code>kubernetes:batch/v1:Job</code> <b>ingress-admission-patch</b> · forced by <code>spec</code>
+  45 other changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-01:prod** · 22 creates, 34 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-01:prod" state="pending" hash="051542f3738bb81d" shortened="2" -->
+  from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1f372f1...8c41f0e)
+  56 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-02:staging** · 9 creates, 21 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-02:staging" state="pending" hash="baea5384ec7b99b9" -->
+  from #442 by carol, #402 by renovate[bot], #382 by dave, and 2 more, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/c4a20e8...8c41f0e)
+  <details><summary>30 changes</summary>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc2-external-10</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc2-leader-election-23</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc2-tcp-services-20</b><br>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc2-admission-26</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc2-default-backend-2</b><br>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc2-public-14</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc2-udp-services-8</b><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc2-canary-15</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc2-config-11</b> · <code>data</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc2-external-13</b> · <code>data</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc2-public-21</b> · <code>data</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc2-tcp-services-12</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc2-udp-services-1</b> · <code>data</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc2-default-backend-19</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc2-tcp-services-30</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc2-webhook-4</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-admission-7</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-controller-25</b> · <code>metadata</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-controller-28</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-controller-9</b> · <code>metadata</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-private-5</b> · <code>metadata</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-tcp-services-16</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-webhook-3</b> · <code>metadata</code><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc2-canary-27</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc2-default-backend-24</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc2-leader-election-17</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc2-metrics-18</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc2-webhook-6</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc2-config-22</b> · <code>rules</code><br>
+  <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc2-config-29</b><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-03:prod** · 20 creates, 40 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-03:prod" state="pending" hash="ff4ce11632bb1c72" shortened="2" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/c1fa18c...8c41f0e)
+  60 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-04:staging** · 10 creates, 20 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-04:staging" state="pending" hash="6f72cc032624a2f2" -->
+  from #444 by carol, #404 by renovate[bot], #384 by dave, and 1 more, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/76500b3...8c41f0e)
+  <details><summary>30 changes</summary>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc4-controller-24</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc4-webhook-7</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc4-default-backend-22</b><br>
+  <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc4-webhook-15</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc4-canary-14</b> · <code>data</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc4-public-23</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc4-tcp-services-2</b> · <code>data</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:Service</code> <b>svc4-config-6</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc4-metrics-8</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc4-public-27</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc4-public-9</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc4-udp-services-10</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc4-webhook-26</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc4-controller-28</b> · <code>metadata</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc4-default-backend-30</b> · <code>metadata</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc4-external-12</b> · <code>metadata</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc4-internal-5</b> · <code>metadata</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc4-udp-services-21</b><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-default-backend-25</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-external-17</b><br>
+  <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-external-4</b><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-internal-3</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-leader-election-19</b><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-private-11</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-private-16</b><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc4-leader-election-13</b> · <code>rules</code><br>
+  <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc4-leader-election-18</b><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc4-private-20</b> · <code>rules</code><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc4-public-1</b> · <code>rules</code><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc4-tcp-services-29</b> · <code>rules</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-05:prod** · 25 creates, 54 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-05:prod" state="pending" hash="0b1aa115415bdbc1" shortened="2" -->
+  from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1db769a...8c41f0e)
+  79 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-06:staging** · 17 creates, 37 updates, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-06:staging" state="pending" hash="7e948ecee2fbd0d5" destroys="1" shortened="2" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/c2ad1da...8c41f0e)
+  :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>svc6-dead-letter</b>
+  54 other changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-07:prod** · 15 creates, 23 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-07:prod" state="pending" hash="f6b733a2d2addbb2" shortened="2" -->
+  from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/fbb8a80...8c41f0e)
+  38 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-08:staging** · 14 creates, 27 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-08:staging" state="pending" hash="3b9d39e057a4c3c2" shortened="2" -->
+  from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/b51bedb...8c41f0e)
+  41 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-09:prod** · 28 creates, 50 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-09:prod" state="pending" hash="ae78c57f0bb0d1b3" destroys="1" shortened="2" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/2846680...8c41f0e)
+  :warning: <kbd>REPLACE</kbd> <code>aws:elasticache/cluster:Cluster</code> <b>svc9-cache</b> · forced by <code>nodeType</code> · also changes <code>engineVersion</code>
+  78 other changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-10:staging** · 20 creates, 29 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-10:staging" state="pending" hash="01a10a8d06eff59b" shortened="2" -->
+  from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/93c3b3e...8c41f0e)
+  49 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-11:prod** · 30 creates, 49 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-11:prod" state="pending" hash="f54dfbf66ab9989b" shortened="2" -->
+  from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/3165a6f...8c41f0e)
+  79 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-12:staging** · 14 creates, 25 updates, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-12:staging" state="pending" hash="0f281f9a693a5bcd" destroys="451" shortened="3" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/ca009d9...8c41f0e)
+  :warning: **deletes 451, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-13:prod** · 19 creates, 60 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-13:prod" state="pending" hash="8999c845325404ca" shortened="2" -->
+  from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/24b2a51...8c41f0e)
+  79 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-14:staging** · 25 creates, 54 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-14:staging" state="pending" hash="bb23f7a56364b31c" shortened="2" -->
+  from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/b3d17c3...8c41f0e)
+  79 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-15:prod** · 22 creates, 34 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-15:prod" state="pending" hash="f4347b0b8fb08fce" shortened="2" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/0f7fbc9...8c41f0e)
+  56 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-16:staging** · 26 creates, 51 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-16:staging" state="pending" hash="f59fe5e1799c1f8a" shortened="2" -->
+  from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1099adc...8c41f0e)
+  77 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-17:prod** · 19 creates, 36 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-17:prod" state="pending" hash="50f7612e33f2e225" shortened="2" -->
+  from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/a4acfa7...8c41f0e)
+  55 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-18:staging** · 10 creates, 34 updates, **1 replace**, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-18:staging" state="pending" hash="daf7c64390ff8794" destroys="2" shortened="2" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/b025414...8c41f0e)
+  :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>svc18-dead-letter</b>
+  :warning: <kbd>REPLACE</kbd> <code>aws:elasticache/cluster:Cluster</code> <b>svc18-cache</b> · forced by <code>nodeType</code> · also changes <code>engineVersion</code>
+  44 other changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-19:prod** · 15 creates, 25 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-19:prod" state="pending" hash="f1883ab4bc020bef" shortened="2" -->
+  from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/fecc5c2...8c41f0e)
+  40 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-20:staging** · 27 creates, 38 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-20:staging" state="pending" hash="98579887d61a27b5" shortened="2" -->
+  from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/6de4c31...8c41f0e)
+  65 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-21:prod** · 21 creates, 29 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-21:prod" state="pending" hash="75d8557de0ca3133" shortened="2" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/8a66a0a...8c41f0e)
+  50 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-22:staging** · 14 creates, 21 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-22:staging" state="pending" hash="fc418ffcb3511ecb" shortened="2" -->
+  from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/9670833...8c41f0e)
+  35 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-23:prod** · 10 creates, 23 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-23:prod" state="pending" hash="5c211f57ad5f1326" -->
+  from #463 by carol, #423 by renovate[bot], #403 by dave, and 2 more, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/43c196b...8c41f0e)
+  <details><summary>33 changes</summary>
+  <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-admission-4</b><br>
+  <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-controller-27</b><br>
+  <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-controller-33</b><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-controller-6</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-metrics-3</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-private-12</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-private-13</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-public-25</b><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-public-30</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-webhook-8</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc23-admission-1</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc23-default-backend-32</b> · <code>data</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc23-public-14</b> · <code>data</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc23-udp-services-26</b> · <code>data</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:Service</code> <b>svc23-canary-15</b><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:Service</code> <b>svc23-canary-23</b><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:Service</code> <b>svc23-external-28</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc23-internal-17</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:Service</code> <b>svc23-public-19</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc23-controller-10</b> · <code>metadata</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc23-internal-31</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc23-tcp-services-11</b> · <code>metadata</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc23-webhook-7</b> · <code>metadata</code><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc23-external-29</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc23-public-16</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc23-tcp-services-22</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-config-18</b> · <code>rules</code><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-default-backend-9</b> · <code>rules</code><br>
+  <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-leader-election-5</b><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-private-24</b> · <code>rules</code><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-tcp-services-2</b> · <code>rules</code><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-tcp-services-21</b> · <code>rules</code><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-udp-services-20</b> · <code>rules</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-24:staging** · 13 creates, 19 updates, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-24:staging" state="pending" hash="70a4c89d680934f4" destroys="451" shortened="3" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/ff5070e...8c41f0e)
+  :warning: **deletes 451, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-25:prod** · 17 creates, 23 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-25:prod" state="pending" hash="08f6cf5d0a8229f5" shortened="2" -->
+  from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/b6f6f8c...8c41f0e)
+  40 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-26:staging** · 8 creates, 22 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-26:staging" state="pending" hash="67c266a938f3c0d8" -->
+  from #466 by alice, #426 by renovate[bot], #406 by dave, and 2 more, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/4efbe1c...8c41f0e)
+  <details><summary>30 changes</summary>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc26-admission-15</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc26-metrics-11</b><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc26-metrics-17</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc26-metrics-5</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc26-public-10</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc26-tcp-services-21</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc26-canary-24</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc26-metrics-30</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc26-webhook-23</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc26-private-27</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc26-public-25</b> · <code>data</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc26-udp-services-19</b><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc26-webhook-6</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc26-admission-12</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc26-default-backend-26</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc26-metrics-9</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc26-webhook-3</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc26-metrics-28</b> · <code>metadata</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc26-public-4</b> · <code>metadata</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc26-public-7</b> · <code>metadata</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc26-tcp-services-13</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc26-udp-services-20</b> · <code>metadata</code><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc26-admission-29</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc26-controller-16</b><br>
+  <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc26-tcp-services-22</b><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc26-controller-1</b> · <code>rules</code><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc26-external-18</b> · <code>rules</code><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc26-tcp-services-14</b> · <code>rules</code><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc26-tcp-services-8</b> · <code>rules</code><br>
+  <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc26-webhook-2</b><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-27:prod** · 23 creates, 47 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-27:prod" state="pending" hash="72d7176b5f17d728" destroys="1" shortened="2" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/e50fd2f...8c41f0e)
+  :warning: <kbd>REPLACE</kbd> <code>aws:elasticache/cluster:Cluster</code> <b>svc27-cache</b> · forced by <code>nodeType</code> · also changes <code>engineVersion</code>
+  70 other changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-28:staging** · 23 creates, 21 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-28:staging" state="pending" hash="dd99554046b943f1" shortened="2" -->
+  from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/4e3af02...8c41f0e)
+  44 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-29:prod** · 19 creates, 39 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-29:prod" state="pending" hash="ce8ede59334bb7f8" shortened="2" -->
+  from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/52f2311...8c41f0e)
+  58 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-30:staging** · 33 creates, 43 updates, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-30:staging" state="pending" hash="7ce22a94221f3144" destroys="1" shortened="2" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/fc1535c...8c41f0e)
+  :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>svc30-dead-letter</b>
+  76 other changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-31:prod** · 22 creates, 56 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-31:prod" state="pending" hash="25ca2943657e2331" shortened="2" -->
+  from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/ef183c0...8c41f0e)
+  78 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-32:staging** · 26 creates, 52 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-32:staging" state="pending" hash="dac9622efdfa1646" shortened="2" -->
+  from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/d1a9c35...8c41f0e)
+  78 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-33:prod** · 13 creates, 31 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-33:prod" state="pending" hash="d79430c2d4b92a9c" shortened="2" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/535de64...8c41f0e)
+  44 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-34:staging** · 12 creates, 26 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-34:staging" state="pending" hash="4577d73cb690d7b7" shortened="2" -->
+  from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/757c1b9...8c41f0e)
+  38 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-35:prod** · 11 creates, 23 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-35:prod" state="pending" hash="e54b2df50e389e7d" -->
+  from #475 by carol, #435 by renovate[bot], #415 by dave, and 2 more, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/bdc2593...8c41f0e)
+  <details><summary>34 changes</summary>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc35-canary-2</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc35-canary-6</b><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc35-config-18</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc35-controller-24</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc35-default-backend-25</b><br>
+  <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc35-default-backend-34</b><br>
+  <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc35-admission-32</b><br>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc35-internal-27</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc35-public-11</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc35-webhook-22</b><br>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc35-webhook-30</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc35-config-9</b> · <code>data</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc35-controller-29</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc35-default-backend-28</b> · <code>data</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc35-internal-23</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc35-internal-7</b> · <code>data</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc35-private-26</b> · <code>data</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc35-udp-services-12</b> · <code>data</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:Service</code> <b>svc35-admission-13</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc35-external-10</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc35-webhook-4</b> · <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc35-canary-5</b><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc35-metrics-1</b> · <code>metadata</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc35-private-15</b> · <code>metadata</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc35-public-16</b> · <code>metadata</code><br>
+  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc35-udp-services-17</b> · <code>metadata</code><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc35-udp-services-19</b><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc35-config-20</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc35-default-backend-3</b><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc35-tcp-services-14</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc35-webhook-21</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc35-webhook-31</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc35-config-8</b> · <code>rules</code><br>
+  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc35-default-backend-33</b> · <code>rules</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-36:staging** · 13 creates, 33 updates, **1 replace**, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-36:staging" state="pending" hash="3d7b97ed54f427c7" destroys="452" shortened="3" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/8756524...8c41f0e)
+  :warning: **deletes 451, replaces 1, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-37:prod** · 11 creates, 29 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-37:prod" state="pending" hash="bb7667d8444c48e8" shortened="2" -->
+  from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/c9dbb4d...8c41f0e)
+  40 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-38:staging** · 21 creates, 21 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-38:staging" state="pending" hash="3864a41fec2fdc53" shortened="2" -->
+  from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/43ae566...8c41f0e)
+  42 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-39:prod** · 24 creates, 38 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-39:prod" state="pending" hash="89e44b62ed0ddf30" shortened="2" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/05e3fef...8c41f0e)
+  62 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-40:staging** · 25 creates, 42 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-40:staging" state="pending" hash="0862683b6cde3075" shortened="2" -->
+  from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/9eca4e3...8c41f0e)
+  67 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-41:prod** · 19 creates, 55 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-41:prod" state="pending" hash="020a4851eeb144c6" shortened="2" -->
+  from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1c21b45...8c41f0e)
+  74 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **services/svc-42:staging** · 16 creates, 43 updates, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-42:staging" state="pending" hash="8e4bfa9b854ce2c0" destroys="1" shortened="2" -->
+  from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/a150c84...8c41f0e)
+  :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>svc42-dead-letter</b>
+  59 other changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
+  <!-- /sluiceway:row -->
+- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="ac75cd9db439bb8e" destroys="2" -->
+  from #433 by alice, #429 by alice, [3fa9c1e](https://github.com/example-org/infra/commit/3fa9c1e) by bob, and 1 change outside this stack · [compare](https://github.com/example-org/infra/compare/7008dda...8c41f0e)
+  :warning: <kbd>DELETE</kbd> <code>aws:s3/bucketPolicy:BucketPolicy</code> <b>uploads-public-read</b>
+  :warning: <kbd>REPLACE</kbd> <code>aws:s3/bucket:Bucket</code> <b>uploads</b> · forced by <code>bucket</code> · also changes <code>tags</code>
+  <details><summary>3 other changes</summary>
+  <kbd>move</kbd> <code>aws:s3/bucket:Bucket</code> <b>archive</b><br>
+  <kbd>update</kbd> <code>aws:s3/bucketLifecycleConfiguration:BucketLifecycleConfiguration</code> <b>logs</b> · <code>rules</code><br>
+  <kbd>create</kbd> <code>aws:s3/bucketVersioning:BucketVersioning</code> <b>uploads</b><br>
+  </details>
+  <!-- /sluiceway:row -->
+
+## Deploying
+
+- **apps/web:staging** · waiting to start · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034502113) <!-- sluiceway:row stack="apps/web:staging" state="deploying" -->
+  from #418 by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/e0b211b...8c41f0e)
+  <!-- /sluiceway:row -->
+- **platform/cert-manager:prod** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034501999) <!-- sluiceway:row stack="platform/cert-manager:prod" state="deploying" -->
+  from #437 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/80ff68e...8c41f0e)
+  <!-- /sluiceway:row -->
+
+## Preview failed
+
+These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.
+
+- **data/redis:staging** · preview failed: the tool exited with an error (exit code 255) · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/redis:staging" state="preview-failed" -->
+  <!-- /sluiceway:row -->
+- **monitoring/loki:prod** · preview failed: the preview timed out after 10 minutes · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="monitoring/loki:prod" state="preview-failed" -->
+  <!-- /sluiceway:row -->
+
+## In sync
+
+- data/warehouse:prod <!-- sluiceway:row stack="data/warehouse:prod" state="in-sync" failed="true" -->
+  :x: last deploy failed: the run ended without reporting a result · ticked by bob · 2026-09-19 16:03 UTC · [run](https://github.com/example-org/infra/actions/runs/17019884120)
+  <!-- /sluiceway:row -->
+
+<details><summary>42 more in sync</summary>
+
+- apps/admin:prod <!-- sluiceway:row stack="apps/admin:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- apps/admin:staging <!-- sluiceway:row stack="apps/admin:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- apps/api:staging <!-- sluiceway:row stack="apps/api:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- apps/auth:prod <!-- sluiceway:row stack="apps/auth:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- apps/auth:staging <!-- sluiceway:row stack="apps/auth:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- apps/billing:prod <!-- sluiceway:row stack="apps/billing:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- apps/docs:prod <!-- sluiceway:row stack="apps/docs:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- apps/notifications:staging <!-- sluiceway:row stack="apps/notifications:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- apps/search:staging <!-- sluiceway:row stack="apps/search:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- apps/worker:prod <!-- sluiceway:row stack="apps/worker:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- apps/worker:staging <!-- sluiceway:row stack="apps/worker:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- data/kafka:prod <!-- sluiceway:row stack="data/kafka:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- data/kafka:staging <!-- sluiceway:row stack="data/kafka:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- data/postgres:staging <!-- sluiceway:row stack="data/postgres:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- data/redis:prod <!-- sluiceway:row stack="data/redis:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- infra/bastion:prod <!-- sluiceway:row stack="infra/bastion:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- infra/cluster:prod <!-- sluiceway:row stack="infra/cluster:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- infra/cluster:staging <!-- sluiceway:row stack="infra/cluster:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- infra/dns:staging <!-- sluiceway:row stack="infra/dns:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- infra/iam:prod <!-- sluiceway:row stack="infra/iam:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- infra/kms:prod <!-- sluiceway:row stack="infra/kms:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- infra/network:prod <!-- sluiceway:row stack="infra/network:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- infra/network:staging <!-- sluiceway:row stack="infra/network:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- infra/registry:prod <!-- sluiceway:row stack="infra/registry:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- infra/vpn:prod <!-- sluiceway:row stack="infra/vpn:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- monitoring/alertmanager:prod <!-- sluiceway:row stack="monitoring/alertmanager:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- monitoring/grafana:prod <!-- sluiceway:row stack="monitoring/grafana:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- monitoring/prometheus:prod <!-- sluiceway:row stack="monitoring/prometheus:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- monitoring/prometheus:staging <!-- sluiceway:row stack="monitoring/prometheus:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- monitoring/tempo:prod <!-- sluiceway:row stack="monitoring/tempo:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- monitoring/uptime:prod <!-- sluiceway:row stack="monitoring/uptime:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- platform/argo-workflows:prod <!-- sluiceway:row stack="platform/argo-workflows:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- platform/cert-manager:staging <!-- sluiceway:row stack="platform/cert-manager:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- platform/external-dns:prod <!-- sluiceway:row stack="platform/external-dns:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- platform/external-secrets:prod <!-- sluiceway:row stack="platform/external-secrets:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- platform/ingress:staging <!-- sluiceway:row stack="platform/ingress:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- platform/karpenter:prod <!-- sluiceway:row stack="platform/karpenter:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- platform/policy:prod <!-- sluiceway:row stack="platform/policy:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- platform/service-mesh:prod <!-- sluiceway:row stack="platform/service-mesh:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- storage/backups:prod <!-- sluiceway:row stack="storage/backups:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- storage/buckets:staging <!-- sluiceway:row stack="storage/buckets:staging" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- storage/cdn:prod <!-- sluiceway:row stack="storage/cdn:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+
+</details>
+
+---
+
+- [ ] Rescan all stacks <!-- sluiceway:rescan -->
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>"
+`;
