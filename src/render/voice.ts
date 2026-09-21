@@ -31,6 +31,11 @@ export const NOTHING_TO_DEPLOY = "Nothing to deploy.";
 
 export const INSTRUCTION_LINE = "Tick a box to deploy that stack exactly as its row shows it.";
 
+// Under the Pending heading of a read-only dashboard while rows are pending
+// (slice 2.17). Plain, like every line but the two of record 0032.
+export const READ_ONLY_LINE =
+  "This dashboard is read only, so rows have no boxes and nothing deploys from here. Rows get their boxes when `dashboard.readOnly` comes out of `sluiceway.yaml`.";
+
 export const PREVIEW_FAILED_LINE =
   "These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.";
 

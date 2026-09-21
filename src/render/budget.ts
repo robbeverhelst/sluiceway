@@ -71,7 +71,9 @@ export function fitBody(input: BudgetInput, options: BudgetOptions = {}): Fitted
   const target = Math.min(options.target ?? BODY_TARGET, limit);
   const entries = input.rows.map((row): Entry => {
     const levels = row.state === "pending" ? LEVELS : LEVELS.slice(0, 1);
-    const blocks = levels.map((level) => rowBlock(row, { level, redact: input.redact }));
+    const blocks = levels.map((level) =>
+      rowBlock(row, { level, redact: input.redact, readOnly: input.readOnly }),
+    );
     return { stackId: blocks[0]?.stackId ?? "", blocks, level: 0 };
   });
   const render = () =>

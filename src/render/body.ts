@@ -20,6 +20,7 @@ import {
   INSTRUCTION_LINE,
   NOTHING_TO_DEPLOY,
   PREVIEW_FAILED_LINE,
+  READ_ONLY_LINE,
   shortenedNote,
   WARM,
 } from "./voice.ts";
@@ -48,6 +49,10 @@ export interface BodyInput {
   actionRef: string;
   // `dashboard.personality` (record 0034).
   personality: boolean;
+  // `dashboard.readOnly` (slice 2.17): no rescan box, and the line under the
+  // Pending heading says why pending rows have no box. The rows themselves
+  // are rendered without one by `rowBlock`.
+  readOnly?: boolean | undefined;
 }
 
 export const RECENTLY_DEPLOYED = 10;
@@ -185,7 +190,7 @@ function scanLine(root: RootFacts, repoUrl: string): string {
 
 // The one line under the Pending heading (records 0029, 0032 and 0034).
 function pendingLine(input: BodyInput, state: HeaderState, pending: number): string {
-  if (pending > 0) return INSTRUCTION_LINE;
+  if (pending > 0) return input.readOnly ? READ_ONLY_LINE : INSTRUCTION_LINE;
   const lines = input.personality ? WARM : DRY;
   if (state === "first-run") return lines.firstRun;
   // A row of a state this version does not know is not known to be calm.
@@ -272,9 +277,10 @@ export function renderBody(input: BodyInput): string {
     .slice(0, RECENTLY_DEPLOYED);
   if (recent.length > 0) out.push("## Recently deployed", recent.map(recentLine).join("\n"));
 
+  // The rescan box needs a `resolve` job as much as a row's box does.
+  out.push("---");
+  if (!input.readOnly) out.push(`- [ ] Rescan all stacks ${RESCAN_MARKER}`);
   out.push(
-    "---",
-    `- [ ] Rescan all stacks ${RESCAN_MARKER}`,
     `<sub>[Sluiceway](${ACTION_URL}) ${version(input.actionRef)} · [docs](${ACTION_URL}#readme)</sub>`,
   );
 

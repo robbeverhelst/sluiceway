@@ -89,6 +89,9 @@ export interface RowOptions {
   // property name reaches the issue. The marker and the hash stay the same.
   redact?: boolean | undefined;
   level?: RowLevel | undefined;
+  // `dashboard.readOnly` (slice 2.17): a pending row has no box, so it holds
+  // no tick and asks for none. The marker and the hash stay the same.
+  readOnly?: boolean | undefined;
 }
 
 export const INDENT = "  ";
@@ -170,9 +173,10 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
   const folded = changes.filter((change) => !isDestroy(change));
   const destroys = deletes.length + replaces.length;
   const summary = `[summary](${row.runUrl})`;
+  const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
 
   const lines = [
-    `- [${row.ticked ? "x" : " "}] **${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.runUrl}) ${rowMarker(
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.runUrl}) ${rowMarker(
       {
         stackId: row.diff.stackId,
         state: "pending",
@@ -185,7 +189,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
   ];
   if (row.attribution) lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
   if (row.failure) lines.push(failureLine(row.failure));
-  if (row.orphanTick) lines.push(ORPHAN_TICK_NOTE);
+  if (row.orphanTick && !options.readOnly) lines.push(ORPHAN_TICK_NOTE);
 
   // A row that lists no delete or replace line still carries the warning, with
   // the counts that caused it. The lines are all there or none are.
@@ -193,7 +197,8 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
     const words = destroyWords(deletes.length, replaces.length);
     if (destroys > 0) {
       const warning = options.redact ? `${words}.` : `${words}, too many to list here.`;
-      lines.push(`:warning: **${warning}** Read the ${summary} before you tick.`);
+      const read = options.readOnly ? `Read the ${summary}.` : `Read the ${summary} before you tick.`;
+      lines.push(`:warning: **${warning}** ${read}`);
     } else {
       lines.push(
         `Changes ${options.redact ? "are listed in the" : "not listed here, see the"} ${summary}`,

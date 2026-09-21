@@ -323,6 +323,24 @@ describe("a redacted dashboard", () => {
   });
 });
 
+// Slice 2.17: a read-only dashboard shortens rows like any other, and no row
+// has a box at any level.
+describe("a read-only dashboard", () => {
+  test("no row has a box at any level, and the rows are shortened as usual", () => {
+    const rows = [pending("a", { creates: 40, deletes: 2 }), pending("b", { creates: 3 })];
+    const fitted = fitBody(input(rows, { readOnly: true }), { target: 0 });
+    expect(levelsOf(fitted.body)).toEqual(levelsOf(fitBody(input(rows), { target: 0 }).body));
+    expect(fitted.body).not.toContain("- [ ]");
+    expect(fitted.body).toBe(
+      renderBody({
+        ...FRAME,
+        readOnly: true,
+        rows: rows.map((row) => rowBlock(row, { readOnly: true, level: 3 })),
+      }),
+    );
+  });
+});
+
 describe("the target and the limit together", () => {
   test("a writer that aims at the hard limit shortens nothing under it", () => {
     const rows = [pending("a", { creates: 50 })];

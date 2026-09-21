@@ -651,6 +651,71 @@ Tick a box to deploy that stack exactly as its row shows it.
 "
 `;
 
+exports[`snapshots read only, failing with rows pending 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/failing-dark.svg">
+    <img alt="Sluiceway: something failed" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/failing-light.svg">
+  </picture>
+</p>
+
+<div align="center">
+
+🟡&nbsp;**1 pending** · 🔵&nbsp;1 deploying · 🔴&nbsp;1 preview failed · 🟢&nbsp;2 in sync · 🔴&nbsp;1 failed deploy
+
+Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
+
+</div>
+
+## Pending
+
+This dashboard is read only, so rows have no boxes and nothing deploys from here. Rows get their boxes when \`dashboard.readOnly\` comes out of \`sluiceway.yaml\`.
+
+- **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+
+## Deploying
+
+- **c:deploying** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="c:deploying" state="deploying" -->
+  <!-- /sluiceway:row -->
+
+## Preview failed
+
+These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.
+
+- **b:broken** · preview failed: the tool exited with an error (exit code 255) · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="b:broken" state="preview-failed" -->
+  <!-- /sluiceway:row -->
+
+## In sync
+
+- e:failed <!-- sluiceway:row stack="e:failed" state="in-sync" failed="true" -->
+  :x: last deploy failed: the run ended without reporting a result · ticked by bob · 2026-09-19 16:03 UTC · [run](https://github.com/example-org/infra/actions/runs/17019884120)
+  <!-- /sluiceway:row -->
+
+<details><summary>1 more in sync</summary>
+
+- f:calm <!-- sluiceway:row stack="f:calm" state="in-sync" -->
+  <!-- /sluiceway:row -->
+
+</details>
+
+## Recently deployed
+
+- apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+
+---
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
+"
+`;
+
 exports[`snapshots personality off, in sync 1`] = `
 "<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->
 

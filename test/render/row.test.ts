@@ -379,6 +379,50 @@ describe("a redacted row", () => {
   });
 });
 
+// Slice 2.17 (onboarding log, hurdle 16): `dashboard.readOnly` is for a
+// workflow with no `resolve` job, where a box would look live and do nothing.
+describe("a row on a read-only dashboard", () => {
+  test("a pending row has no box, and every other line is the same", () => {
+    const [first, ...rest] = renderRow(BUCKETS).split("\n");
+    expect(renderRow(BUCKETS, { readOnly: true }).split("\n")).toEqual([
+      (first ?? "").replace("- [ ] ", "- "),
+      ...rest,
+    ]);
+  });
+
+  test("reads back as a pending row with its hash and no tick", () => {
+    const [block] = parseDashboard(renderRow(BUCKETS, { readOnly: true })).rows;
+    expect(block).toMatchObject({
+      known: true,
+      stackId: "storage/buckets:prod",
+      state: "pending",
+      hash: "2b44350653e84a11",
+      destroys: 2,
+      ticked: false,
+    });
+  });
+
+  test("carries no tick and no note that asks for one", () => {
+    const block = renderRow({ ...BUCKETS, ticked: true, orphanTick: true }, { readOnly: true });
+    expect(block).toStartWith("- **storage/buckets:prod** · ");
+    expect(block).not.toContain(":information_source:");
+    expect(block).not.toContain("tick");
+  });
+
+  test("a warning that sends a person to the summary does not ask for a tick", () => {
+    for (const options of [{ redact: true }, { level: 3 as const }]) {
+      const block = renderRow(BUCKETS, { ...options, readOnly: true });
+      expect(block).toContain("Read the [summary](run-url).");
+      expect(block).not.toContain("tick");
+    }
+  });
+
+  test("rows without a box read the same", () => {
+    const row = { state: "in-sync", stackId: "infra/kms:prod", failure: FAILURE } as const;
+    expect(renderRow(row, { readOnly: true })).toBe(renderRow(row));
+  });
+});
+
 // Records 0024 and 0028: what a pending row shows at each level of the size
 // budget. Choosing the levels is the budget's job, not the row's.
 describe("a shortened row", () => {

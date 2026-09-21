@@ -757,6 +757,70 @@ describe("dashboard.personality: false", () => {
   });
 });
 
+// Slice 2.17 (onboarding log, hurdle 16): a workflow that only scans has
+// nothing that acts on a box, so `dashboard.readOnly` draws none.
+describe("dashboard.readOnly: true", () => {
+  const READ_ONLY_LINE =
+    "This dashboard is read only, so rows have no boxes and nothing deploys from here. Rows get their boxes when `dashboard.readOnly` comes out of `sluiceway.yaml`.";
+
+  function readOnly(rows: Row[], overrides: Partial<BodyInput> = {}): BodyInput {
+    return input([], {
+      rows: rows.map((row) => rowBlock(row, { readOnly: true })),
+      readOnly: true,
+      ...overrides,
+    });
+  }
+
+  test("the line under the Pending heading says so while rows are pending", () => {
+    for (const rows of [DASHBOARDS.pending, DASHBOARDS.failing, SIGNED.deploying]) {
+      expect(lineUnderPending(renderBody(readOnly(rows)))).toBe(READ_ONLY_LINE);
+      expect(lineUnderPending(renderBody(readOnly(rows, { personality: false })))).toBe(
+        READ_ONLY_LINE,
+      );
+    }
+  });
+
+  test("with nothing pending the line is the one it always is", () => {
+    for (const rows of [DASHBOARDS["in-sync"], [], [previewFailed("a"), inSync("b")]]) {
+      expect(lineUnderPending(renderBody(readOnly(rows)))).toBe(
+        lineUnderPending(renderBody(input(rows))),
+      );
+    }
+  });
+
+  test("there is no rescan box and no box on any row", () => {
+    const body = renderBody(readOnly(DASHBOARDS.failing, { recentlyDeployed: RECENT }));
+    expect(body).not.toContain("sluiceway:rescan");
+    expect(body).not.toContain("Rescan all stacks");
+    expect(body).not.toMatch(/^\s*- \[[ xX]\]/m);
+    expect(body).toContain("\n---\n\n<sub>[Sluiceway](");
+    expect(parseDashboard(body).rows.filter((row) => row.known && row.ticked)).toEqual([]);
+  });
+
+  // Take the boxes and the line under the heading away, and the two bodies
+  // are the same.
+  test("nothing else changes", () => {
+    for (const [, rows] of NAMED_DASHBOARDS) {
+      for (const personality of [true, false]) {
+        const unboxed = (text: string) =>
+          text
+            .replace("\n\n- [ ] Rescan all stacks <!-- sluiceway:rescan -->", "")
+            .replace(/^(\s*)- \[ \] /gm, "$1- ");
+        const on = paragraphs(
+          renderBody(readOnly(rows, { recentlyDeployed: RECENT, personality })),
+        );
+        const off = paragraphs(
+          unboxed(renderBody(input(rows, { recentlyDeployed: RECENT, personality }))),
+        );
+        const line = on.indexOf("## Pending") + 1;
+        expect(on.filter((_, index) => index !== line)).toEqual(
+          off.filter((_, index) => index !== line),
+        );
+      }
+    }
+  });
+});
+
 describe("a row of a state this version does not know", () => {
   const later: ParsedRow = {
     known: false,
@@ -797,6 +861,13 @@ const ALL_BODIES = (): [string, BodyInput][] => [
     { ...input([]), rows: rows58().map((row) => rowBlock(row, { redact: true })) },
   ],
   ["100 stacks", { ...input([]), rows: rows100().map((row) => rowBlock(row, { level: 3 })) }],
+  [
+    "58 stacks, read only",
+    {
+      ...input([], { recentlyDeployed: RECENT, readOnly: true }),
+      rows: rows58().map((row) => rowBlock(row, { readOnly: true })),
+    },
+  ],
 ];
 
 // What must hold for every body a writer ever renders.
@@ -844,11 +915,15 @@ describe("every rendered body", () => {
     // by a blank line.
     if (body.personality)
       expect(rendered).toContain('  </picture>\n</p>\n\n<div align="center">\n\n');
-    // One rescan box, unticked.
-    expect(rendered.match(/sluiceway:rescan/g)).toHaveLength(1);
-    expect(rendered).toContain(
-      "\n---\n\n- [ ] Rescan all stacks <!-- sluiceway:rescan -->\n\n<sub>",
-    );
+    // One rescan box, unticked, and none on a read-only dashboard.
+    if (body.readOnly) {
+      expect(rendered).not.toContain("sluiceway:rescan");
+    } else {
+      expect(rendered.match(/sluiceway:rescan/g)).toHaveLength(1);
+      expect(rendered).toContain(
+        "\n---\n\n- [ ] Rescan all stacks <!-- sluiceway:rescan -->\n\n<sub>",
+      );
+    }
   });
 });
 
@@ -910,6 +985,17 @@ describe("snapshots", () => {
   test("deploying with the destroy sign", () => {
     expect(
       `${renderBody(input(SIGNED.deploying, { recentlyDeployed: RECENT }))}\n`,
+    ).toMatchSnapshot();
+  });
+
+  // Slice 2.17: pending rows without boxes, the line that says so, and no
+  // rescan box.
+  test("read only, failing with rows pending", () => {
+    expect(
+      `${renderBody({
+        ...input([], { recentlyDeployed: RECENT, readOnly: true }),
+        rows: DASHBOARDS.failing.map((row) => rowBlock(row, { readOnly: true })),
+      })}\n`,
     ).toMatchSnapshot();
   });
 
