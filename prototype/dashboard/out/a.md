@@ -332,7 +332,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   from #437 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/ee94c0b...8c41f0e)
   <!-- /sluiceway:row -->
 
-- **apps/web:staging** · deploying, waiting for a reviewer · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034502113) <!-- sluiceway:row stack="apps/web:staging" state="deploying" -->
+- **apps/web:staging** · waiting to start · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034502113) <!-- sluiceway:row stack="apps/web:staging" state="deploying" -->
   from #418 by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/04cc4c1...8c41f0e)
   <!-- /sluiceway:row -->
 

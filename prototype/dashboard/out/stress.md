@@ -420,7 +420,7 @@ Tick a box to deploy that stack exactly as its row shows it.
 - **platform/cert-manager:prod** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034501999) <!-- sluiceway:row stack="platform/cert-manager:prod" state="deploying" -->
   from #437 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/740ba86...8c41f0e)
   <!-- /sluiceway:row -->
-- **apps/web:staging** · deploying, waiting for a reviewer · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034502113) <!-- sluiceway:row stack="apps/web:staging" state="deploying" -->
+- **apps/web:staging** · waiting to start · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034502113) <!-- sluiceway:row stack="apps/web:staging" state="deploying" -->
   from #418 by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/32443a6...8c41f0e)
   <!-- /sluiceway:row -->
 

@@ -382,12 +382,16 @@ function pendingRow(v, s, level) {
     `- [ ] **${s.id}** · ${v.counts(n)}${hasDestroy ? v.destroyTag(n, hiddenDestroys) : ""} · [preview](${SUMMARY_URL}) ` +
     openMarker(s.id, "pending", s.hash);
   const out = [first];
-  const a = attribution(s.attr, s.from, level >= 1);
+  const a = attribution(s.attr, s.from, level >= 1 && level !== 9);
   if (a) out.push(a);
   if (s.failure) out.push(failureLine(s.failure));
   if (s.orphan) out.push(ORPHAN_NOTE);
   if (hasDestroy && v.quote) out.push(...v.quote(n, hiddenDestroys));
-  if (level >= 3) {
+  if (level === 9) {
+    out.push(hasDestroy
+      ? `  :warning: **${destroyWords(n)}.** Read the [summary](${SUMMARY_URL}) before you tick.`
+      : `  Changes are listed in the [summary](${SUMMARY_URL})`);
+  } else if (level >= 3) {
     if (v.loose) out.push("");
     if (!v.quote && !v.topAlert && hasDestroy) out.push(`  :warning: **${destroyWords(n)}, too many to list here.** Read the [summary](${SUMMARY_URL}) before you tick.`);
     else out.push(`  Changes not listed here, see the [summary](${SUMMARY_URL})`);
@@ -400,7 +404,7 @@ function pendingRow(v, s, level) {
 
 function deployingRow(v, s) {
   const out = [
-    `- **${s.id}** · deploying${s.waiting ? ", waiting for a reviewer" : ""} · ticked by ${s.by} · [run](${runUrl(s.run)}) ${openMarker(s.id, "deploying")}`,
+    `- **${s.id}** · ${s.waiting ? "waiting to start" : "deploying"} · ticked by ${s.by} · [run](${runUrl(s.run)}) ${openMarker(s.id, "deploying")}`,
     attribution(s.attr, hex(7), false),
     CLOSE,
   ];
@@ -521,12 +525,14 @@ const jobs = [
   { key: "stress", v: VARIANTS.b, pending: stress, title: "[dashboard prototype] Over budget: what truncation looks like (variant B rows)" },
 ];
 
+jobs.push({ key: "redact", v: VARIANTS.b, pending: normal, redact: true, title: "[dashboard prototype] Redacted dashboard (dashboard.redact: true, variant B rows)" });
 const LEVEL_WORDS = ["shown in full", "pull request names cut", "only deletes and replaces listed", "no changes listed"];
 const results = [];
 for (const job of jobs) {
   const raw = body(job.v, job.pending, job.pending.map(() => 0)).length;
-  const { levels, steps } = fit(job.v, job.pending);
+  const { levels, steps } = job.redact ? { levels: job.pending.map(() => 9), steps: [] } : fit(job.v, job.pending);
   const tally = LEVEL_WORDS.map((w, l) => [w, levels.filter((x) => x === l).length]).filter(([, c]) => c);
+  if (job.redact) tally.push(["redacted", levels.length]);
   const note = steps.length
     ? `> [!NOTE]\n> This dashboard is too large for one issue, so ${levels.filter(Boolean).length} of ${levels.length} pending rows are shortened. The [summary](${SUMMARY_URL}) of the scan shows every change. Deletes and replaces are the last thing to be cut.`
     : null;
