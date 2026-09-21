@@ -211,7 +211,7 @@ Why a preview or a deploy failed, in words from a short fixed list that Sluicewa
 _Avoid_: Error message, error text, tool error
 
 **Summary**:
-The page of a scan's workflow run where every stack's diff is shown, with far more room than the dashboard has. It shows the same kind of facts as a row and nothing more. Shortened and redacted rows link to it. On the rare scan that does not fit even there, it says so and points at the job log, which holds every diff in full.
+The page of a scan's workflow run where every stack's diff is shown, with far more room than the dashboard has. It shows the same kind of facts as a row and nothing more. Shortened and redacted rows link to it. On the rare scan that does not fit even there, it says so and points at the job log, which holds every diff in full. An `apply` writes one too, about its one stack: what went out, or why nothing did.
 _Avoid_: Full diff, report, native output
 
 **Size budget**:

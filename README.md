@@ -5,7 +5,7 @@ Sluiceway keeps one GitHub issue, the dashboard, that shows which infrastructure
 It is a GitHub Action and nothing else. There is no server, no database and no hosted part. Previews and deploys run in your own runners.
 
 > [!WARNING]
-> Sluiceway is not released yet, and only the first half works. `scan` works: it previews your stacks and writes the dashboard. `resolve` works too: it checks who ticked and records the deploy, and `settle` gives a result to a deploy that never reported one. `apply` still fails with "not implemented yet", so a ticked box deploys nothing. You can already run the scan read only, pinned to a commit: see [Try the scan, read only](#try-the-scan-read-only). Watch the releases to hear when the rest lands.
+> Sluiceway is not released yet, and every mode works. `scan` previews your stacks and writes the dashboard. `resolve` checks who ticked and records the deploy. `apply` previews the stack again and deploys it when nothing moved since the tick. `settle` gives a result to a deploy that never reported one. You can already run the scan read only, pinned to a commit: see [Try the scan, read only](#try-the-scan-read-only). Watch the releases to hear when the first one is out.
 
 ## How it works
 
@@ -39,9 +39,9 @@ One action, five modes, chosen with the `mode` input.
 |---|---|---|
 | `mode` | required | One of `scan`, `resolve`, `apply`, `settle`, `check`. |
 | `concurrency` | `4` | How many previews a scan runs at the same time. |
-| `preview-timeout` | `10` | Time limit for one preview, in minutes. |
+| `preview-timeout` | `10` | Time limit for one preview, in minutes. `apply` uses it for the preview it runs before the deploy. The deploy itself has no time limit of Sluiceway's: set `timeout-minutes` on the job. |
 | `github-token` | the workflow token | Leave it at the default. Sluiceway always acts as the workflow's own `GITHUB_TOKEN`. A GitHub App token or a personal access token is not supported. `check` never uses it. |
-| `deployment-id` | required in `apply` | The deployment record to deploy. It comes from the `matrix` output of `resolve`. Not in `action.yml` yet. |
+| `deployment-id` | required in `apply` | The deployment record to deploy. It comes from the `matrix` output of `resolve`. An error in every other mode. |
 
 ## Outputs
 
@@ -148,7 +148,7 @@ Under those lines there is one group per previewed stack, titled with the stack 
 
 ## Usage
 
-Only `scan` works yet (see the warning at the top). This is the whole workflow, the one the other modes are being built for. It goes in `.github/workflows/sluiceway.yml` on the default branch. For what runs today, see [Try the scan, read only](#try-the-scan-read-only).
+This is the whole workflow. It goes in `.github/workflows/sluiceway.yml` on the default branch. For what runs today, see [Try the scan, read only](#try-the-scan-read-only).
 
 ```yaml
 name: sluiceway

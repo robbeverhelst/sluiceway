@@ -104,6 +104,11 @@ Left out of v1 on purpose, and v1 was shaped so these can be added without a bre
 | The tool's output in the job log while a preview is still running | Previews run side by side, so live output would mix the stacks. Each stack's group is printed when the pool is done. One line per finished preview shows progress until then. | Slice 1.11, 0022 |
 | Links on a row to the attempt of a run that was run again | A row links to the run. GitHub shows the newest attempt there, which is the one that wrote the row. | Slice 1.11 |
 | A preview failure row for a fault inside Sluiceway itself | The adapter turns everything the tool can do wrong into a preview failure. An error thrown past that is a bug, and a red job is how it gets seen. | Slice 1.11, 0012 |
+| A time limit of Sluiceway's on the deploy itself | Stopping a deploy half way leaves a stack half deployed and its state locked. The fresh preview before it has the limit of 0012. The job's own `timeout-minutes` is the user's limit for the deploy. | 0003, slice 2.5 |
+| A preview after a deploy that went out, to check the row | The row is written in sync straight away: the tool deployed exactly the diff the tick approved. A program that gives another diff on its next run shows pending again after the next scan that previews it. A deploy that failed is previewed again, because it may have gone half way. | 0004, slice 2.5 |
+| A row of its own for a deploy that ended before any preview (the tool missing, the stack gone, a broken `sluiceway.yaml`) | `apply` has no diff to make a row from. The record gets its result, and the next scan previews a deploying row whose record ended, a narrowed scan too, and puts the failure line on it. | 0004, slice 2.5 |
+| Deploying a record from another run | `apply` deploys a record only in the run whose `resolve` created it, because the record lives as long as its run. A deploy started some other way would be a deploy without a tick, which is the later `stack` input. | 0003, 0035, slice 2.5 |
+| A budget for the summary of an apply | It is about one stack, and 0037 says it needs none. A stack of many thousand changes could still pass 1 MiB. The job log holds the diff in full either way. | 0037, slice 2.5 |
 
 ## Rejected on principle
 

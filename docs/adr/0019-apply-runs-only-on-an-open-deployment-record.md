@@ -15,3 +15,9 @@ Checking the permission of the person who pressed re-run was rejected. GitHub do
 - `apply` reads its record before it previews, so a refused re-run costs one API call and never touches the tool or its credentials.
 - The re-run button that people know from CI does not retry a deploy. The message in the summary is the whole mitigation, and the docs say it once where failures are explained.
 - The check also covers a record that `settle` closed after a cancel. A cancelled deploy cannot be brought back by a re-run either.
+
+## Settled while building (slice 2.5)
+
+- "Open" is the rule of 0003 as the scan reads it: no status yet, or any state that is no result. `success`, `inactive`, `failure` and `error` are results. So a record `settle` ended, and one another writer superseded, are refused too.
+- The refusal reads the latest status only, which REST gives in one request. The record itself is read after that, so a re-run costs one request, as this record says.
+- The summary of a refused re-run is the sentence above and nothing else. The record was read and nothing more, so there is no stack to name.
