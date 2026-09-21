@@ -47,6 +47,22 @@ Keeping 0005's shape was considered: find the entry that belongs to this event (
 - The query reads `body` and `userContentEdits(first, after)` with `totalCount`, `pageInfo` and per entry `editedAt`, `deletedAt`, `editor` and `diff`, newest first. GitHub names an end cursor on the last page too, so only `hasNextPage` says that a page follows. Checked with the real port against this repo, read only. Every page carries the body, so a reader can see that it moved.
 - A page is 10 entries. The normal walk needs two, the tick and the write before it.
 
+## Settled while building (slice 2.7)
+
+- The sweep runs at the scan's late read, inside the builder of the write loop (0004), after the deployment records are read. So every try sees the ticks, the records and the runs as they are.
+- "No `issues`-triggered run of the workflow is queued or in progress" is read as: no such run that is not over. A run that waits for its concurrency group is `pending`, one that waits for a runner is `queued`, one that waits for a reviewer is `waiting`, and a run stays `in_progress` while its `apply` jobs deploy. All of them can still hold a `resolve` job that has not read the body yet, or a writer that has not written its row yet, so all of them mean hands off. The scan's own run never counts.
+- The workflow is the one the scan runs in. Its file name comes from `GITHUB_WORKFLOW_REF`, and GitHub takes a file name where it asks for a workflow id (checked against real GitHub, read only). The call is `GET /repos/{owner}/{repo}/actions/workflows/{file}/runs?event=issues&per_page=100`, newest first, one request, and it needs `actions: read`, which the scan already has for the run of an open deployment (0003). It is `listIssuesRuns` on the port.
+- Only a late read that meets a ticked row whose stack has no open deployment makes that request. A scan that meets no tick costs nothing more than before.
+- A failed read of the runs fails the scan and leaves the body alone, as every other API error does. Clearing a tick without knowing whether `resolve` is on its way could take a tick away under a run that is about to act on it.
+- Hands off on a row the scan has a fresh preview for: the fresh row is written, and it carries the tick when its diff hash is the hash of the ticked row. That is the same tick (a row ticked at one hash), and a bot entry inside the stretch is normal. When the hash moved, the tick cannot be carried: on the new row it would be a tick nobody made, and the walk would name the bot. The row is written unticked with the note, whether or not a run is on its way, because `resolve` finds nothing to act on either way.
+- Hands off on a row the scan has no preview for: the row block is carried byte for byte, tick included, as before.
+- An orphan tick on a row the scan has no preview for makes the scan preview that stack, through the same return to the late read that a missing row uses (0011). Only the one row renderer can put the note on a row, and a row block is never patched inside (0004). This amends the line of 0011 that says the sweep costs API reads only: it costs one preview for each orphan on a carried row. An orphan is rare, and the person is asked to tick again, so a fresh hash under the new box is what they should be looking at.
+- When the fresh row has no box (the stack is in sync now, or its preview failed) the tick goes with the box and there is no note, because there is nothing to tick again.
+- One corner is left to the next scan: an orphan tick on a live row that the scan keeps although it previewed the stack, because a deploy ended after the preview started (0004). Previewing again for the tick could repeat for ever under a clock that runs behind GitHub's.
+- A tick is read from the live body whatever the version of its root marker, so a scan that writes a body of another version again in its own clears the outstanding ticks with the note, as 0009 says. The rows of such a body are still not carried.
+- A scan never creates a deployment record and never calls `resolve`. The sweep only ever writes a row.
+- The scan writes the rescan box unticked, as it always has. Whether a ticked rescan box should survive a scan while a `resolve` run is on its way is `resolve`'s to settle (slice 2.4).
+
 Research:
 - Observed entries, the reproduced race and the history cap: https://github.com/sluiceway/sluiceway/issues/28
 - The payload finding: https://github.com/sluiceway/sluiceway/issues/27

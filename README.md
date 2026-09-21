@@ -90,7 +90,7 @@ jobs:
 
 What this does and does not do:
 
-- **Nothing can be deployed.** The workflow has no `resolve` and no `apply` job, and it does not listen to issue edits, so a ticked box starts nothing. A scan only ever asks the tool for a preview. The token can read the code, write issues, and read and write deployment records, and nothing else. A scan reads the deployment records, which is where Sluiceway keeps who deployed what and when, and with no `resolve` job there are none. `actions: read` lets it see whether a workflow run is over.
+- **Nothing can be deployed.** The workflow has no `resolve` and no `apply` job, and it does not listen to issue edits, so a ticked box starts nothing. The next scan clears the box again and leaves a note on the row. A scan only ever asks the tool for a preview. The token can read the code, write issues, and read and write deployment records, and nothing else. A scan reads the deployment records, which is where Sluiceway keeps who deployed what and when, and with no `resolve` job there are none. `actions: read` lets it see whether a workflow run is over, and whether a run that an issue edit started is still on its way.
 - **Pin the action to a full commit SHA**, all 40 characters, of a commit in this repository. No tag exists before the first release, so `@v0` does not resolve yet.
 - **The header image only shows from a release tag or a commit SHA.** The images are served from the exact ref of the running action, never from one that can move, so that a picture never changes behind a dashboard that was already written. Started from a branch such as `@main`, Sluiceway falls back to the release tag of its own version, and before the first release that tag does not exist. Started from a copy inside your own repo (`uses: ./`), it names a commit that this repository does not have. In both cases the scan works and the picture is broken. `dashboard.personality: false` in `sluiceway.yaml` takes the picture out.
 - **A push gives a narrowed scan**: only the stacks that claim a changed file are previewed, and every other row stays as it is. The schedule and "Run workflow" give a full scan. The first scan is always full.
@@ -105,6 +105,7 @@ The job log of a scan says what it did, in fixed lines:
 | `Previewed <stack id> in 8.3 s: pending` | How long one preview took, and how it ended. One line per preview, in the order they finish. |
 | `Previewed 58 stacks in 412.6 s with a pool of 4. Added up, the previews took 1530.2 s. The slowest was <stack id> with 45.1 s.` | The total. The total against the sum shows what the pool gains. The slowest preview is what `preview-timeout` has to clear. |
 | `Wrote the dashboard: <url> (41,210 of 65,536 characters).` | Where the dashboard is, and how full the issue body is. `Carried 56 rows through as they were` follows on a narrowed scan. |
+| `Cleared an orphan tick on <stack id>: ...` | A box was ticked and nothing picked the tick up, so the scan cleared it and the row asks for a fresh one. A scan never deploys. While a run that an issue edit started is queued or in progress the line reads `Left the tick on <stack id> alone: ...` and the box stays ticked. |
 
 Under those lines there is one group per previewed stack, titled with the stack id. It holds the whole diff and everything the tool printed. The tool's own words never leave the job log.
 

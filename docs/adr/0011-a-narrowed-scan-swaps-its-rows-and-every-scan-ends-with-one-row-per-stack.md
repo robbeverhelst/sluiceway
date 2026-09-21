@@ -29,3 +29,6 @@ Keeping the last full scan's results as a workflow artifact and rendering from t
 - The job result of 0012 counts the previews of the whole scan, the late ones included. The rows that were carried do not count.
 - The late read of open deployments and the sweep of orphan ticks are not part of this slice (slices 2.1 and 2.7). Until then a carried row keeps its tick, byte for byte, and a fresh row has none.
 
+## Settled while building (slice 2.7)
+
+- The sweep of orphan ticks does not always cost API reads only. An orphan tick on a row the scan has no preview for makes the scan preview that stack, because only a fresh row can carry the note (0004, 0025). While a run that an issue edit started is on its way, a carried row keeps its tick byte for byte.
