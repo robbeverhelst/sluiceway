@@ -4,8 +4,8 @@
 // 0017, except listIssues, which is one request per page of 100.
 //
 // It holds the calls the dashboard, the narrowed scan, the tick rule, the walk
-// through the edit history, the deployment records and the orphan tick sweep
-// need.
+// through the edit history, the deployment records, the orphan tick sweep and
+// the rescan box need.
 
 import type { HistoryEntry, HistoryPage } from "../core/edit-history.ts";
 import type { IssuesRun } from "../core/orphan-tick.ts";
@@ -131,4 +131,9 @@ export interface GitHubPort {
   // Works with the workflow token and issues: write (issue 17). Fails when
   // the repo already has three pinned issues.
   pinIssue(nodeId: string): Promise<void>;
+
+  // Starts a `workflow_dispatch` run of one workflow file on a branch or tag.
+  // It is the one thing the workflow token may start (record 0017), and it
+  // needs `actions: write`: without it GitHub answers 403.
+  dispatchWorkflow(workflow: string, ref: string): Promise<void>;
 }

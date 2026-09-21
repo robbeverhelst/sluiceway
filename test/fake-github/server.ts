@@ -121,6 +121,14 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
     ],
     [
       "POST",
+      new RegExp(`^${REPO}/actions/workflows/([^/]+)/dispatches$`),
+      async ({ body }, workflow) => {
+        await fake.dispatchWorkflow(workflow, text(body.ref));
+        return { status: 204 };
+      },
+    ],
+    [
+      "POST",
       new RegExp(`^${REPO}/issues/(\\d+)/comments$`),
       async ({ body }, number) => {
         await fake.createComment(Number(number), text(body.body));

@@ -184,6 +184,10 @@ export function createOctokitPort(octokit: Octokit, repo: Repo): GitHubPort {
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     },
+
+    async dispatchWorkflow(workflow, ref) {
+      await octokit.rest.actions.createWorkflowDispatch({ ...repo, workflow_id: workflow, ref });
+    },
   };
 }
 

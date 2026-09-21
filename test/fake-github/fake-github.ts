@@ -22,7 +22,6 @@ import { FakeDeployments, type FakeStatus, type SeedDeployment } from "./deploym
 // An in-memory GitHub behind the port. It copies the real behavior the lab
 // found (issue 17), because those are the things a naive fake gets wrong. It
 // holds what the port holds. Its deployment records are in deployments.ts.
-// Events join it with the slice that adds them to the port.
 
 export const BOT: IssueAuthor = { login: "github-actions[bot]", type: "Bot" };
 // Who edits a body when a test does not say.
@@ -75,6 +74,10 @@ export class FakeGitHub implements GitHubPort {
   readonly #deployments = new FakeDeployments(() => this.#now());
   // The runs an issue edit started, by workflow file name, oldest first.
   readonly #issuesRuns = new Map<string, IssuesRun[]>();
+  // The `issues.edited` events that were started and not delivered yet.
+  readonly #events: { number: number; sender: IssueAuthor }[] = [];
+  readonly #dispatches: { workflow: string; ref: string }[] = [];
+  #actionsWrite = true;
   #nextNumber = 1;
   // The fake's clock. It moves one second each time it is read, so two things
   // never happen at the same time and every run gives the same times.
@@ -163,6 +166,36 @@ export class FakeGitHub implements GitHubPort {
 
   deploymentStatuses(id: number): DeploymentStatus[] {
     return this.#deployments.statuses(id);
+  }
+
+  // The oldest event that was not delivered yet, as the payload of an
+  // `issues.edited` run. The payload is made now, so it carries the newest
+  // body and not the body of its own edit (issue 28). Only the fields
+  // Sluiceway reads are on it.
+  deliverEvent(): unknown {
+    const event = this.#events.shift();
+    if (!event) return undefined;
+    const issue = this.#find(event.number);
+    return {
+      action: "edited",
+      issue: {
+        number: issue.number,
+        state: issue.state,
+        body: issue.body,
+        labels: issue.labels.map((name) => ({ name })),
+        user: { ...issue.author },
+      },
+      sender: { ...event.sender },
+    };
+  }
+
+  // The token of the job has no `actions: write` from now on.
+  withoutActionsWrite(): void {
+    this.#actionsWrite = false;
+  }
+
+  get dispatches(): { workflow: string; ref: string }[] {
+    return this.#dispatches.map((dispatch) => ({ ...dispatch }));
   }
 
   issue(number: number): Issue {
@@ -346,6 +379,14 @@ export class FakeGitHub implements GitHubPort {
     this.#pinned.push(issue.number);
   }
 
+  async dispatchWorkflow(workflow: string, ref: string): Promise<void> {
+    this.#count("dispatchWorkflow");
+    if (!this.#actionsWrite) {
+      throw new FakeGitHubError(403, "Resource not accessible by integration");
+    }
+    this.#dispatches.push({ workflow, ref });
+  }
+
   #now(): string {
     this.#seconds += 1;
     return this.#time();
@@ -363,6 +404,8 @@ export class FakeGitHub implements GitHubPort {
     if (body === issue.body) return;
     issue.body = body;
     this.#edits.get(issue.number)?.push(entry(editor, this.#now(), body));
+    // An edit made with the workflow token starts no workflow run (issue 17).
+    if (editor.login !== BOT.login) this.#events.push({ number: issue.number, sender: editor });
   }
 
   // The history as GitHub lists it, newest first: nothing for an issue that
