@@ -1,0 +1,119 @@
+# Cloud credentials through OpenID Connect, so no cloud key is stored anywhere,
+# and the Pulumi state in a bucket of the same cloud. The example uses AWS;
+# docs/credentials.md says what changes for other clouds. Copy it to
+# .github/workflows/deploy-dashboard.yml on the default branch.
+#
+# `sluiceway/sluiceway@v0` starts to work with the first release, 0.1.0. Until
+# then pin a full commit SHA of sluiceway/sluiceway in its place.
+name: deploy-dashboard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+  issues:
+    types: [edited]
+
+permissions:
+  contents: read
+  issues: write
+  deployments: write
+  actions: write
+  pull-requests: read
+
+jobs:
+  scan:
+    if: github.event_name != 'issues'
+    runs-on: ubuntu-latest
+    concurrency: sluiceway-scan
+    # A job's permissions replace the workflow's, so the whole block is here
+    # again, with id-token: write added for this job only.
+    permissions:
+      contents: read
+      issues: write
+      deployments: write
+      actions: write
+      pull-requests: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pulumi/actions@v7
+        with:
+          pulumi-version: ^3.229.0
+      # A role that can only read, trusted for this repo's default branch.
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_PREVIEW_ROLE }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: sluiceway/sluiceway@v0
+        env:
+          PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+        with:
+          mode: scan
+
+  resolve:
+    if: github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'sluiceway')
+    runs-on: ubuntu-latest
+    concurrency: sluiceway-resolve
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: resolve
+        uses: sluiceway/sluiceway@v0
+        with:
+          mode: resolve
+
+  apply:
+    needs: resolve
+    if: ${{ !cancelled() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.resolve.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: sluiceway-apply-${{ matrix.stack }}
+      queue: max
+    environment:
+      name: ${{ matrix.environment }}
+      deployment: false
+    permissions:
+      contents: read
+      issues: write
+      deployments: write
+      actions: write
+      pull-requests: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pulumi/actions@v7
+        with:
+          pulumi-version: ^3.229.0
+      # A role that can change things. Its trust policy names the environment
+      # (the `environment:<name>` subject), so no other job can assume it.
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: sluiceway/sluiceway@v0
+        env:
+          PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+        with:
+          mode: apply
+          deployment-id: ${{ matrix.deployment }}
+
+  settle:
+    needs: [resolve, apply]
+    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: settle
