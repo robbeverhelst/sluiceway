@@ -8,12 +8,14 @@
 import type { Adapter, PreviewResult } from "../adapters/adapter.ts";
 import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
+import type { Attribution } from "../core/attribution.ts";
 import { applyConfig, type ConfiguredStack } from "../core/config.ts";
 import { loadConfig } from "../core/config-file.ts";
 import {
   type DeployFact,
   type DeployFacts,
   deployFacts,
+  lastDeployedCommit,
   type PreviewFirstWhy,
   rowAtLateRead,
 } from "../core/deployment.ts";
@@ -33,6 +35,7 @@ import {
 } from "../core/scan-plan.ts";
 import { everyPreviewFailed } from "../core/scan-result.ts";
 import { stackId } from "../core/stack.ts";
+import { attributionSource } from "../github/attribution.ts";
 import { type DashboardResult, findDashboard, writeDashboard } from "../github/dashboard.ts";
 import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts";
 import type { JobLog } from "../github/job-log.ts";
@@ -158,6 +161,23 @@ export async function scan(context: ScanContext): Promise<void> {
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
   let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
 
+  // Attribution (record 0026): walked once per job, shared by every stack,
+  // and it never blocks.
+  const attribution = attributionSource(
+    context.github,
+    {
+      stacks: stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
+      unrelated: config.scan.unrelated,
+      repoUrl: context.repoUrl,
+      scanSha: context.sha,
+    },
+    (message) =>
+      log.info(
+        `Attribution was left off the rows: ${message}. It only explains a row, so the scan goes on without it (record 0026).`,
+      ),
+  );
+  let attributed: Attributed = new Map();
+
   const previewed = new Map<string, Previewed>();
   let rounds = 0;
   let versionChecked = false;
@@ -190,6 +210,7 @@ export async function scan(context: ScanContext): Promise<void> {
       deploys: LateDeploys,
       // A run that an issue edit started is queued or in progress.
       waits: boolean,
+      lines: Attributed,
     ): Composed => {
       const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
       // Rows under a root marker that is missing or of another version are not
@@ -234,7 +255,9 @@ export async function scan(context: ScanContext): Promise<void> {
         const ticked = liveTicks.has(id);
         if (decided.row === "preview-first") first.push({ id, why: decided.why });
         else if (decided.row === "fresh" && mine) {
-          const row = previewRow(id, mine.result, runUrl, failureLine(context, fact));
+          const fresh = previewRow(id, mine.result, runUrl, failureLine(context, fact));
+          const row =
+            fresh.state === "pending" ? { ...fresh, attribution: lines.get(id)?.lines } : fresh;
           if (!ticked) {
             rows.push(row);
             continue;
@@ -262,6 +285,7 @@ export async function scan(context: ScanContext): Promise<void> {
             runUrl: runUrlOf(context, fact.run),
             waiting: fact.waiting,
             destroys: destroysOf(mine, liveRow),
+            attribution: lines.get(id)?.lines,
           });
         } else if (liveRow) {
           if (ticked && decided.row === "live") {
@@ -343,10 +367,16 @@ export async function scan(context: ScanContext): Promise<void> {
       // With a fresh row for every stack the body depends on the live one only
       // through the deployment records, which change a few lines. A body that
       // does not fit on its own fails the scan before any request.
-      if (previewed.size === ids.length) compose(undefined, NO_DEPLOYS, false);
+      if (previewed.size === ids.length) compose(undefined, NO_DEPLOYS, false, new Map());
       written = await writeDashboard(context.github, config.dashboard, async (liveBody) => {
         const deploys = await lateDeploys(context, stacks, previewed, liveBody);
-        composed = compose(liveBody, deploys, await resolveWaits(context, liveBody, deploys));
+        attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
+        composed = compose(
+          liveBody,
+          deploys,
+          await resolveWaits(context, liveBody, deploys),
+          attributed,
+        );
         return composed.body;
       });
       break;
@@ -368,6 +398,14 @@ export async function scan(context: ScanContext): Promise<void> {
   }
 
   reportDashboard(context, written, composed);
+
+  // The summary was written before the late read, which is where the commit
+  // of a stack's last deploy comes from. Now that it is known, the summary is
+  // written once more with the pull requests of every previewed stack.
+  if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit(a.id, b.id));
+    await writeSummary(context, all, attributed);
+  }
 
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
   if (everyPreviewFailed(previewed.size, failed.length)) {
@@ -418,6 +456,25 @@ const NO_DEPLOYS: LateDeploys = {
   facts: { byStack: new Map(), succeeded: [], unread: 0 },
   settled: new Set(),
 };
+
+// What attribution found, by stack id. A stack is missing when the lookup
+// failed, and its row then has no such line.
+type Attributed = ReadonlyMap<string, Attribution>;
+
+// The stacks whose row gets an attribution line, each with the commit on its
+// last successful deployment record: a stack this scan found pending, and a
+// stack with an open deployment (record 0026).
+function startingCommits(
+  facts: DeployFacts,
+  previewed: ReadonlyMap<string, Previewed>,
+): Map<string, string | undefined> {
+  const from = new Map<string, string | undefined>();
+  const add = (id: string) => from.set(id, lastDeployedCommit(facts, id));
+  for (const [id, { result }] of previewed)
+    if (result.ok && result.diff.changes.length > 0) add(id);
+  for (const [id, fact] of facts.byStack) if (fact.kind === "open") add(id);
+  return from;
+}
 
 function runUrlOf(context: ScanContext, run: string): string {
   return `${context.repoUrl}/actions/runs/${run}`;
@@ -684,10 +741,14 @@ function logResults(context: ScanContext, previewed: Previewed[]): void {
   }
 }
 
-async function writeSummary(context: ScanContext, previewed: Previewed[]): Promise<void> {
+async function writeSummary(
+  context: ScanContext,
+  previewed: Previewed[],
+  attributed: Attributed = new Map(),
+): Promise<void> {
   const { log } = context;
   const summary = renderSummary(
-    previewed.map(({ id, result }) => previewSummary(id, result)),
+    previewed.map(({ id, result }) => previewSummary(id, result, attributed.get(id)?.merges)),
     { budget: context.limits?.summaryBudget },
   );
   if (!summary.fits) {

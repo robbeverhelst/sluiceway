@@ -53,7 +53,11 @@ describe("a tick that nothing picked up", () => {
     const swept = row(github, "a:prod");
     expect(swept.ticked).toBe(false);
     expect(swept.state).toBe("pending");
-    expect(swept.text.split("\n")[1]).toBe(NOTE);
+    // The fixed order of record 0027: the attribution line, then the note.
+    expect(swept.text.split("\n").slice(1, 3)).toEqual([
+      "  not deployed from this dashboard yet",
+      NOTE,
+    ]);
     // A scan has no business starting a deploy.
     expect(github.requests).not.toContain("createDeployment");
     expect(github.requests).not.toContain("createDeploymentStatus");

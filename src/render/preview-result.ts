@@ -5,7 +5,7 @@ import type { PreviewResult } from "../adapters/adapter.ts";
 import { diffHash } from "../core/diff-hash.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
 import type { FailureLine, Row } from "./row.ts";
-import type { SummaryStack } from "./summary.ts";
+import type { SummaryMerge, SummaryStack } from "./summary.ts";
 
 // A diff with changes is a pending row, a diff without is a stack in sync, and
 // no diff is a preview failure with a reason from the fixed list (record
@@ -31,9 +31,15 @@ export function previewRow(
   return { state: "pending", diff: result.diff, hash: diffHash(result.diff), runUrl, failure };
 }
 
-export function previewSummary(stackId: string, result: PreviewResult): SummaryStack {
+// `merges` is what attribution found for the stack (record 0026), when it is
+// known by the time the summary is written.
+export function previewSummary(
+  stackId: string,
+  result: PreviewResult,
+  merges?: SummaryMerge[] | undefined,
+): SummaryStack {
   return result.ok
-    ? { kind: "diff", diff: result.diff }
+    ? { kind: "diff", diff: result.diff, merges }
     : { kind: "preview-failed", stackId, reason: previewFailureText(result.reason) };
 }
 

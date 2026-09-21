@@ -59,6 +59,9 @@ describe("a stack with an open deployment", () => {
     expect(rows(body)["a:prod"]?.text).toBe(
       [
         `- **a:prod** · waiting to start · ticked by carol · [run](${REPO_URL}/actions/runs/77) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" -->`,
+        // No success of this stack is on record, so attribution has no commit
+        // to start from (record 0026).
+        "  not deployed from this dashboard yet",
         "  <!-- /sluiceway:row -->",
       ].join("\n"),
     );
