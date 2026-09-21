@@ -226,6 +226,10 @@ _Avoid_: Blame, changelog, history, provenance
 The person who opened a pull request that a row names, or who made a direct push. Written as a plain login that notifies no one. An author is never the ticker by role, even when they are the same person.
 _Avoid_: Committer, merger, owner, contributor
 
+**Direct push**:
+A commit on the default branch that no merged pull request brought there. A row names it by its short commit id and the commit's author, so it is never left out.
+_Avoid_: Unreviewed commit, hotfix, loose commit
+
 **Lookback**:
 How many of the newest commits on the default branch a job walks to work out attribution. A stack whose last deploy lies further back gets a line that says earlier changes exist.
 _Avoid_: History depth, window, range
