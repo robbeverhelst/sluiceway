@@ -158,7 +158,7 @@ describe("the result file of a scan", () => {
     }
   });
 
-  // Record 0045: a step that reads the file gets what the summary shows,
+  // Record 0046: a step that reads the file gets what the summary shows,
   // every path whole, and not what a row shortens.
   test("keys are property paths, every one of them and whole", () => {
     const paths = Array.from(

@@ -357,7 +357,7 @@ describe("the target and the limit together", () => {
   });
 });
 
-// Record 0045: one change can hold hundreds of paths, such as every key of a
+// Record 0046: one change can hold hundreds of paths, such as every key of a
 // Helm release's values. A row lists ten of them, each at most 80 characters,
 // so such a row stays small and the budget has no reason to cut it.
 describe("many paths on one change", () => {

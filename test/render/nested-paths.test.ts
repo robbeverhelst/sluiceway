@@ -7,7 +7,7 @@ import { renderRow } from "../../src/render/row.ts";
 import { renderSummary } from "../../src/render/summary.ts";
 import { ROOT, replay, VERSIONS } from "../adapters/pulumi/replay.ts";
 
-// Record 0045, end to end on what the real CLI printed: changes deep inside
+// Record 0046, end to end on what the real CLI printed: changes deep inside
 // properties reach the row, the summary and the job log as paths, the same
 // from both CLI versions, and never with a value.
 

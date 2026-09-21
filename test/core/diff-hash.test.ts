@@ -55,7 +55,7 @@ describe("fixed vectors", () => {
     expect(diffHash(diff)).toBe("c68be72f84c62e58");
   });
 
-  // Record 0045: keys are property paths, written into the document as the
+  // Record 0046: keys are property paths, written into the document as the
   // tool wrote them, quotes escaped like any other text. The same change told
   // by top-level names gives another hash, which is why every pending row got
   // a new hash once when paths came in.

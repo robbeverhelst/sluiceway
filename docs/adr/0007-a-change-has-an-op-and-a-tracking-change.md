@@ -1,6 +1,6 @@
 # A change says what happens to the real object and, separately, what happens to the tool's record of it
 
-> Amended by 0045: `changedKeys` and `replaceKeys` hold property paths as the tool reports them (`values.controller.image.tag`), not top-level names. Still names, list indexes and map keys, never values.
+> Amended by 0046: `changedKeys` and `replaceKeys` hold property paths as the tool reports them (`values.controller.image.tag`), not top-level names. Still names, list indexes and map keys, never values.
 
 The brief's diff has one `op` with four values. Both tools also emit steps that leave the real object alone and only change what the tool tracks: adopting an existing object, letting go of one that survives, renaming one in state. OpenTofu can combine these with a real change in one step, such as import and update. A flat list of seven ops was rejected because it cannot say that without inventing combined values, and because a "forget" sitting next to "delete" in one list invites a destroy warning on something that is not destroyed.
 

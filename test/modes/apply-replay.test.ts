@@ -175,7 +175,7 @@ for (const version of VERSIONS) {
       expect(github.issue(1).body).not.toContain("update failed");
     });
 
-    // Record 0045: keys became paths, so the same change has a new hash. A
+    // Record 0046: keys became paths, so the same change has a new hash. A
     // row written before that, by a scan that named top-level properties, is
     // refused as moved when it is ticked, and the row comes back with the
     // hash of the paths, ready for a fresh tick.

@@ -132,7 +132,7 @@ export function sortedKeys(keys: string[]): string[] {
   return [...new Set(keys)].sort(byCodeUnit);
 }
 
-// How a row shows property paths (record 0045). The summary and the job log
+// How a row shows property paths (record 0046). The summary and the job log
 // show every path in full, so a row can keep to what a person scans.
 export const ROW_PATH_LENGTH = 80;
 export const ROW_PATHS_PER_CHANGE = 10;

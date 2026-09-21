@@ -86,7 +86,7 @@ function typeAndName(urn: string): Pick<Change, "type" | "name"> | undefined {
 }
 
 // Property paths as the tool writes them: a.b, a[0] or a["b.c"] (record
-// 0045). A path is built from the names of properties, list indexes and map
+// 0046). A path is built from the names of properties, list indexes and map
 // keys, and only the keys of detailedDiff and the entries of the two reason
 // lists are read, never what sits under a path. The tool gives paths on an
 // update, and on a replace only when the provider does. Otherwise the reason

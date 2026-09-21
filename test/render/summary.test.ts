@@ -472,7 +472,7 @@ describe("the budget of the summary", () => {
   });
 });
 
-// Record 0045: a row shortens long paths and lists ten per change. The summary
+// Record 0046: a row shortens long paths and lists ten per change. The summary
 // is what a shortened row points at, so it lists every path in full.
 describe("property paths in the summary", () => {
   test("every path of a change is listed, whole", () => {

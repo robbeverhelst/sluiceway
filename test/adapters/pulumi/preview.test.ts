@@ -176,7 +176,7 @@ for (const version of VERSIONS) {
       expect(changesOf(result)).toEqual([FILE_REPLACE, PET_REPLACE]);
     });
 
-    // Record 0045: a path names properties, list indexes and map keys, as
+    // Record 0046: a path names properties, list indexes and map keys, as
     // the tool writes them, and never a value. The canary value sits in both
     // places that change.
     test("changes deep inside properties list their whole paths", async () => {

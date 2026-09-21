@@ -513,7 +513,7 @@ describe("a shortened row", () => {
   });
 });
 
-// Record 0045: a key is a property path, shown as the tool wrote it. A row
+// Record 0046: a key is a property path, shown as the tool wrote it. A row
 // shortens a long path in the middle and lists at most ten paths of one
 // change. The summary and the job log show every path in full.
 describe("property paths on a row", () => {

@@ -86,7 +86,7 @@ describe("the title of a stack's group in the job log", () => {
   });
 });
 
-// Record 0045: the job log holds every path in full, as the summary does.
+// Record 0046: the job log holds every path in full, as the summary does.
 describe("property paths in the log text", () => {
   test("every path of a change is listed, whole", () => {
     const long = `spec.template.spec.containers[0].${"env[3].".repeat(12)}value`;

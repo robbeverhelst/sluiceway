@@ -273,7 +273,7 @@ describe("a step Sluiceway does not know", () => {
 });
 
 describe("the paths of a detailed diff", () => {
-  // Record 0045: the path as the tool writes it, never cut to its first
+  // Record 0046: the path as the tool writes it, never cut to its first
   // segment.
   test("are kept whole, whatever form the path has", async () => {
     const runner = changedOutput((document) => {

@@ -20,7 +20,7 @@ export interface Change {
   // Only with tracking "move".
   previousAddress?: string;
   // Property paths: names of properties, list indexes and map keys, as the
-  // tool writes them. Never values (record 0045).
+  // tool writes them. Never values (record 0046).
   changedKeys: string[];
   // The changed keys that forced a replace.
   replaceKeys: string[];

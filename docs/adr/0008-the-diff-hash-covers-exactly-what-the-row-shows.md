@@ -4,7 +4,7 @@ The hash excludes values, so it has a blind spot. Someone ticks a row that says 
 
 Amended by 0023: on a redacted dashboard the row shows less than the hash covers. The half of the rule that matters stays whole: nothing is shown that is not hashed.
 
-Amended by 0045: the keys in the document are property paths, so every pending row got a new hash once. A row shortens long paths and lists at most ten in its fold, which again shows less than the hash covers and never more.
+Amended by 0046: the keys in the document are property paths, so every pending row got a new hash once. A row shortens long paths and lists at most ten in its fold, which again shows less than the hash covers and never more.
 
 Two ways to close the blind spot were rejected. A digest of the values would sit in an issue that may be public, where a low-entropy value the user forgot to mark secret can be guessed offline, and a salt has nowhere to live without a store. Putting the commit SHA in the hash would make every merge void every outstanding tick until the next full scan ends, which on a repo where Renovate merges all day means ticks that mostly abort. Narrowing that to commits under the stack's path would miss changes that arrive through a shared package.
 
