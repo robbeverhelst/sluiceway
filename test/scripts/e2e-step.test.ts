@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { type ActionMetadata, type StepFacts, stepEnvironment } from "../../scripts/e2e/step.ts";
+import {
+  type ActionMetadata,
+  readStepOutputs,
+  type StepFacts,
+  stepEnvironment,
+} from "../../scripts/e2e/step.ts";
 
 // Escaped, so that nothing reads it as the placeholder of a template string.
 const expression = (name: string): string => `$\{{ ${name} }}`;
@@ -92,5 +97,74 @@ describe("the environment of a step", () => {
     expect(env.PULUMI_BACKEND_URL).toBe("file:///work/backend");
     expect(env.GITHUB_API_URL).toBe("http://127.0.0.1:4000");
     expect(env.INPUT_MODE).toBe("scan");
+  });
+
+  test("an issues run is handed its event, a file for its outputs and its attempt", () => {
+    const env = stepEnvironment(
+      ACTION,
+      { mode: "resolve" },
+      {
+        ...FACTS,
+        event: "issues",
+        eventPath: "/work/event.json",
+        outputFile: "/work/output",
+        runAttempt: "2",
+      },
+      {},
+    );
+    expect(env).toMatchObject({
+      GITHUB_EVENT_NAME: "issues",
+      GITHUB_EVENT_PATH: "/work/event.json",
+      GITHUB_OUTPUT: "/work/output",
+      GITHUB_RUN_ATTEMPT: "2",
+    });
+  });
+
+  test("a run is on its first attempt when nothing says otherwise", () => {
+    const env = stepEnvironment(ACTION, { mode: "scan" }, FACTS, {});
+    expect(env.GITHUB_RUN_ATTEMPT).toBe("1");
+    expect("GITHUB_EVENT_PATH" in env).toBe(false);
+    expect("GITHUB_OUTPUT" in env).toBe(false);
+  });
+});
+
+describe("the outputs of a step", () => {
+  test("are read the way the runner reads the output file", () => {
+    const file = [
+      "matrix<<ghadelimiter_7c1e",
+      '[{"stack":"network:dev","environment":"network","deployment":1}]',
+      "ghadelimiter_7c1e",
+      "outcome<<ghadelimiter_99",
+      "two",
+      "lines",
+      "ghadelimiter_99",
+      "plain=value",
+      "",
+    ].join("\n");
+    expect(readStepOutputs(file)).toEqual({
+      matrix: '[{"stack":"network:dev","environment":"network","deployment":1}]',
+      outcome: "two\nlines",
+      plain: "value",
+    });
+  });
+
+  test("a later value of the same output wins", () => {
+    expect(readStepOutputs("matrix=[]\nmatrix<<d\n[1]\nd\n")).toEqual({ matrix: "[1]" });
+  });
+
+  test("an empty file has no outputs", () => {
+    expect(readStepOutputs("")).toEqual({});
+  });
+
+  test("a value whose delimiter never comes is refused", () => {
+    expect(() => readStepOutputs("matrix<<d\n[]\n")).toThrow(
+      'The output "matrix" has no closing delimiter',
+    );
+  });
+
+  test("a line that is no output is refused", () => {
+    expect(() => readStepOutputs("not an output\n")).toThrow(
+      'The output file has a line that is no output: "not an output"',
+    );
   });
 });

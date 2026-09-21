@@ -26,6 +26,13 @@ export interface StepFacts {
   token: string;
   summaryFile: string;
   temp: string;
+  // The payload of the event, which a runner writes for every run. Only the
+  // modes that read it are handed one here.
+  eventPath?: string;
+  // The file a step writes its outputs to.
+  outputFile?: string;
+  // "2" and up for a re-run of the same run. The run id stays.
+  runAttempt?: string;
 }
 
 const EXPRESSION = "$".concat("{{");
@@ -76,6 +83,7 @@ export function stepEnvironment(
     GITHUB_API_URL: facts.apiUrl,
     GITHUB_GRAPHQL_URL: `${facts.apiUrl}/graphql`,
     GITHUB_RUN_ID: facts.runId,
+    GITHUB_RUN_ATTEMPT: facts.runAttempt ?? "1",
     GITHUB_SHA: facts.sha,
     GITHUB_EVENT_NAME: facts.event,
     // The workflow file of the README. The orphan tick sweep asks for its runs.
@@ -85,5 +93,33 @@ export function stepEnvironment(
     GITHUB_ACTION_PATH: facts.actionPath,
     GITHUB_STEP_SUMMARY: facts.summaryFile,
     RUNNER_TEMP: facts.temp,
+    ...(facts.eventPath === undefined ? {} : { GITHUB_EVENT_PATH: facts.eventPath }),
+    ...(facts.outputFile === undefined ? {} : { GITHUB_OUTPUT: facts.outputFile }),
   };
+}
+
+// The outputs a step wrote to its output file, the way the runner reads them:
+// `name=value` on one line, or `name<<delimiter`, the lines of the value and
+// the delimiter again, which is how @actions/core writes every output.
+export function readStepOutputs(file: string): Record<string, string> {
+  const outputs: Record<string, string> = {};
+  const lines = file.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (line === "") continue;
+    const heredoc = /^([^=<]+)<<(.+)$/.exec(line);
+    if (heredoc) {
+      const [, name = "", delimiter = ""] = heredoc;
+      const end = lines.indexOf(delimiter, i + 1);
+      if (end < 0) throw new Error(`The output "${name}" has no closing delimiter.`);
+      outputs[name] = lines.slice(i + 1, end).join("\n");
+      i = end;
+      continue;
+    }
+    const plain = /^([^=]+)=(.*)$/.exec(line);
+    if (!plain) throw new Error(`The output file has a line that is no output: "${line}".`);
+    const [, name = "", value = ""] = plain;
+    outputs[name] = value;
+  }
+  return outputs;
 }
