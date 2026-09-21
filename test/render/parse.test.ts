@@ -33,6 +33,7 @@ describe("reading a body", () => {
           hash: "3fa9c1e2aabbccdd",
           destroys: 0,
           failed: false,
+          shortened: 0,
           ticked: false,
           text: [
             '- [ ] **apps/grafana:prod** · `+2 ~1 -0` · [preview](run-url) <!-- sluiceway:row stack="apps/grafana:prod" state="pending" hash="3fa9c1e2aabbccdd" -->',
@@ -47,6 +48,7 @@ describe("reading a body", () => {
           hash: undefined,
           destroys: 0,
           failed: false,
+          shortened: 0,
           ticked: false,
           text: [
             '- **apps/loki:prod** · deploying · [run](run-url) <!-- sluiceway:row stack="apps/loki:prod" state="deploying" -->',
@@ -106,6 +108,18 @@ describe("reading a body", () => {
       "  <!-- /sluiceway:row -->",
     ].join("\n");
     expect(parseDashboard(body).rows[0]).toMatchObject({ destroys: 0, failed: false });
+  });
+
+  test("the level of a shortened row is read from the marker, and a row without one is in full", () => {
+    const body = [
+      '- [ ] x <!-- sluiceway:row stack="a" state="pending" hash="00" shortened="2" -->',
+      "  <!-- /sluiceway:row -->",
+      '- [ ] x <!-- sluiceway:row stack="b" state="pending" hash="00" -->',
+      "  <!-- /sluiceway:row -->",
+      '- [ ] x <!-- sluiceway:row stack="c" state="pending" hash="00" shortened="a lot" -->',
+      "  <!-- /sluiceway:row -->",
+    ].join("\n");
+    expect(parseDashboard(body).rows.map((row) => row.known && row.shortened)).toEqual([2, 0, 0]);
   });
 });
 

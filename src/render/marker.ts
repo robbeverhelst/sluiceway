@@ -57,6 +57,10 @@ export interface RowFacts {
   // diff, and whether the row carries a failure line.
   destroys?: number | undefined;
   failed?: boolean | undefined;
+  // A display cache too (record 0028): the level a shortened row is at. The
+  // note under the scan line counts these, and a writer that carries a row
+  // through cannot read its text.
+  shortened?: number | undefined;
 }
 
 export const ROW_CLOSE_MARKER = "<!-- /sluiceway:row -->";
@@ -88,6 +92,7 @@ export function rowMarker(facts: RowFacts): string {
   if (facts.hash !== undefined) pairs.push(["hash", facts.hash]);
   if (facts.destroys) pairs.push(["destroys", String(facts.destroys)]);
   if (facts.failed) pairs.push(["failed", "true"]);
+  if (facts.shortened) pairs.push(["shortened", String(facts.shortened)]);
   return marker("row", pairs);
 }
 
@@ -112,6 +117,8 @@ export type ParsedRow =
       hash: string | undefined;
       destroys: number;
       failed: boolean;
+      // The level of a shortened row, 0 for a row in full.
+      shortened: number;
       ticked: boolean;
       text: string;
     }
@@ -192,14 +199,18 @@ export function parseDashboard(body: string): ParsedDashboard {
       rows.push({ known: false, stackId, state, text });
       continue;
     }
-    const destroys = pairs.get("destroys") ?? "";
+    const count = (key: string) => {
+      const value = pairs.get(key) ?? "";
+      return /^\d+$/.test(value) ? Number(value) : 0;
+    };
     rows.push({
       known: true,
       stackId,
       state,
       hash: pairs.get("hash"),
-      destroys: /^\d+$/.test(destroys) ? Number(destroys) : 0,
+      destroys: count("destroys"),
       failed: pairs.get("failed") === "true",
+      shortened: count("shortened"),
       ticked: match[1] === "x" || match[1] === "X",
       text,
     });

@@ -173,6 +173,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
         hash: row.hash,
         destroys,
         failed: row.failure !== undefined,
+        shortened: level,
       },
     )}`,
   ];

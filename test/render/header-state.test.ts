@@ -12,6 +12,7 @@ function row(state: Known["state"], facts: { destroys?: number; failed?: boolean
     hash: undefined,
     destroys: facts.destroys ?? 0,
     failed: facts.failed ?? false,
+    shortened: 0,
     ticked: false,
     text: "",
   };

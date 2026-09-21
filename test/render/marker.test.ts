@@ -107,6 +107,26 @@ describe("writing markers", () => {
     );
   });
 
+  // Record 0028, settled in slice 1.8: a writer that carries a row through
+  // cannot read its text, and the note under the scan line counts these.
+  test("shortened follows failed and holds the level, and is left out for a row in full", () => {
+    expect(
+      rowMarker({
+        stackId: "storage/buckets:prod",
+        state: "pending",
+        hash: "2b44350653e84a11",
+        destroys: 2,
+        failed: true,
+        shortened: 3,
+      }),
+    ).toBe(
+      '<!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="2b44350653e84a11" destroys="2" failed="true" shortened="3" -->',
+    );
+    expect(rowMarker({ stackId: "a", state: "pending", hash: "00", shortened: 0 })).toBe(
+      '<!-- sluiceway:row stack="a" state="pending" hash="00" -->',
+    );
+  });
+
   test("a stack id is encoded on the marker", () => {
     expect(rowMarker({ stackId: 'my dir/"x":prod', state: "in-sync" })).toBe(
       '<!-- sluiceway:row stack="my%20dir/%22x%22:prod" state="in-sync" -->',

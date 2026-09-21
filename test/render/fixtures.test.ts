@@ -97,6 +97,7 @@ describe("every rendered block", () => {
           hash: row.state === "pending" ? row.hash : undefined,
           destroys: destroysOf(row),
           failed: "failure" in row && row.failure !== undefined,
+          shortened: row.state === "pending" ? level : 0,
           ticked: false,
           text: block,
         },
@@ -181,11 +182,12 @@ describe("sizes", () => {
     }
   });
 
-  // `#418 by carol` is one character shorter than `1 pull request`. The size
+  // `#418 by carol` is one character shorter than `1 pull request`, and the
+  // marker of a shortened row says so in 14 more: ` shortened="1"`. The size
   // budget has to know that level 1 is not a saving on every row.
   test("level 1 saves nothing on a row that names a single pull request", () => {
     const web = rows58().find((row) => stackIdOf(row) === "apps/web:prod");
     if (!web) throw new Error("the fixture lost apps/web:prod");
-    expect(renderRow(web, { level: 1 }).length - renderRow(web).length).toBe(1);
+    expect(renderRow(web, { level: 1 }).length - renderRow(web).length).toBe(1 + 14);
   });
 });

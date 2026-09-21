@@ -384,6 +384,16 @@ describe("a redacted row", () => {
 describe("a shortened row", () => {
   const level = (n: 0 | 1 | 2 | 3) => renderRow(BUCKETS, { level: n }).split("\n");
   const full = level(0);
+  // The first line is never shortened (record 0028). Only its marker says
+  // which level the row is at, for the writers that cannot read the rest.
+  const first = (n: 1 | 2 | 3) => (full[0] ?? "").replace(" -->", ` shortened="${n}" -->`);
+
+  test("the marker of a shortened row holds its level, after every other key", () => {
+    expect(level(2)[0]).toBe(
+      '- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](run-url) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="2b44350653e84a11" destroys="2" shortened="2" -->',
+    );
+    expect(full[0]).not.toContain("shortened");
+  });
 
   test("level 0 is the row in full", () => {
     expect(full.join("\n")).toBe(renderRow(BUCKETS));
@@ -391,7 +401,7 @@ describe("a shortened row", () => {
 
   test("level 1 replaces the named pull requests with a count and nothing else", () => {
     expect(level(1)).toEqual([
-      full[0] ?? "",
+      first(1),
       "  from 3 pull requests, and 1 change outside this stack · [compare](compare-url)",
       ...full.slice(2),
     ]);
@@ -399,7 +409,7 @@ describe("a shortened row", () => {
 
   test("level 2 replaces the fold with one line and keeps every delete and replace line", () => {
     expect(level(2)).toEqual([
-      full[0] ?? "",
+      first(2),
       "  from 3 pull requests, and 1 change outside this stack · [compare](compare-url)",
       full[2] ?? "",
       full[3] ?? "",
@@ -410,7 +420,7 @@ describe("a shortened row", () => {
 
   test("level 3 lists no change, and the warning carries the full count", () => {
     expect(level(3)).toEqual([
-      full[0] ?? "",
+      first(3),
       "  from 3 pull requests, and 1 change outside this stack · [compare](compare-url)",
       "  :warning: **deletes 1, replaces 1, too many to list here.** Read the [summary](run-url) before you tick.",
       "  <!-- /sluiceway:row -->",
@@ -439,7 +449,8 @@ describe("a shortened row", () => {
       ...BUCKETS,
       diff: { stackId: "a", changes: [change("delete", "t", "1")] },
     };
-    expect(renderRow(row, { level: 2 })).toBe(renderRow(row, { level: 1 }));
+    const rest = (n: 1 | 2) => renderRow(row, { level: n }).split("\n").slice(1);
+    expect(rest(2)).toEqual(rest(1));
   });
 
   test("the first line, the failure line and the orphan tick note survive every level", () => {
@@ -447,7 +458,7 @@ describe("a shortened row", () => {
     const lines = renderRow(row).split("\n");
     for (const n of [1, 2, 3] as const) {
       const short = renderRow(row, { level: n }).split("\n");
-      expect(short[0]).toBe(lines[0] ?? "");
+      expect(short[0]).toBe((lines[0] ?? "").replace(" -->", ` shortened="${n}" -->`));
       expect(short.slice(2, 4)).toEqual(lines.slice(2, 4));
     }
   });
