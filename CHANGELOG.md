@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/sluiceway/sluiceway/compare/v0.1.0...v0.1.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* find the action's own version next to its bundle, not through GITHUB_ACTION_PATH ([5018c8a](https://github.com/sluiceway/sluiceway/commit/5018c8a598b7e554a88d771e64c6fe1388832c07))
+
 ## 0.1.0 (2026-09-21)
 
 
