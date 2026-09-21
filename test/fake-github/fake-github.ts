@@ -93,12 +93,29 @@ export class FakeGitHub implements GitHubPort {
   // The port.
 
   async listIssues(query: { label: string; state: "open" | "closed" }): Promise<Issue[]> {
+    const issues: Issue[] = [];
+    for (let page = 1; ; page++) {
+      const found = await this.listIssuesPage(query, page, PAGE_SIZE);
+      issues.push(...found.issues);
+      if (!found.more) return issues;
+    }
+  }
+
+  // One page of the list, which is one request. The port's list is made of
+  // these, and the HTTP server hands them out one by one as GitHub does.
+  async listIssuesPage(
+    query: { label: string; state: "open" | "closed" },
+    page: number,
+    perPage: number,
+  ): Promise<{ issues: Issue[]; more: boolean }> {
+    this.#count("listIssues");
     const found = [...this.#issues.values()]
       .filter((issue) => issue.state === query.state && issue.labels.includes(query.label))
       .sort((a, b) => a.number - b.number);
-    const pages = Math.max(1, Math.ceil(found.length / PAGE_SIZE));
-    for (let page = 0; page < pages; page++) this.#count("listIssues");
-    return found.map(copy);
+    return {
+      issues: found.slice((page - 1) * perPage, page * perPage).map(copy),
+      more: page * perPage < found.length,
+    };
   }
 
   async getIssue(number: number): Promise<Issue> {
