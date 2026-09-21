@@ -14,6 +14,13 @@ function previewCommand(name: string): string[] {
   return ["pulumi", "preview", "--json", "--non-interactive", "--color", "never", "--stack", name];
 }
 
+// The exit code the tool documents for "the requested stack does not exist,
+// cannot be found, or no stack is selected" (Pulumi docs, CLI exit codes). The
+// mapping is fixed from v3.226.1 on, below the minimum version (record 0001).
+// A stack is always passed, so for a preview it means that the backend holds
+// no such stack. The recorded missing-stack scenario shows it on both versions.
+const STACK_NOT_FOUND_EXIT_CODE = 6;
+
 export async function preview(stack: Stack, options: PreviewOptions): Promise<PreviewResult> {
   if (stack.name === undefined) throw new Error("A Pulumi stack always has a name.");
   const result = await options.run({
@@ -37,10 +44,13 @@ export async function preview(stack: Stack, options: PreviewOptions): Promise<Pr
   // Any exit code but 0 is a failure. The document of a failed preview is not
   // read for steps: it may be whole, empty or no JSON at all (Pulumi research).
   if (result.exitCode !== 0) {
-    return failed(
-      { kind: "tool-error", exitCode: result.exitCode },
-      toolLog(result.stderr, parseDiagnostics(result.stdout)),
-    );
+    // The reason comes from the exit code alone. The tool's message is never
+    // read for it, so none of it can reach a row (record 0022 as amended).
+    const reason: PreviewFailureReason =
+      result.exitCode === STACK_NOT_FOUND_EXIT_CODE
+        ? { kind: "stack-not-found" }
+        : { kind: "tool-error", exitCode: result.exitCode };
+    return failed(reason, toolLog(result.stderr, parseDiagnostics(result.stdout)));
   }
 
   const parsed = parsePreview(result.stdout);

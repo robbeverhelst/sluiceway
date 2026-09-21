@@ -35,13 +35,15 @@ for (const version of VERSIONS) {
       });
     });
 
-    test("a stack the backend does not hold gives the exit code and the tool's stderr", async () => {
+    // Record 0022 as amended. The tool's words still go to the job log, and
+    // the reason holds none of them, not even the stack's name.
+    test("a stack the backend does not hold is a reason of its own, with the tool's stderr", async () => {
       const ghost: Stack = { path: "network", name: "ghost", options: {} };
       const result = await previewWith(ghost, replay(version, "missing-stack"));
 
       expect(result).toEqual({
         ok: false,
-        reason: { kind: "tool-error", exitCode: 6 },
+        reason: { kind: "stack-not-found" },
         detail: [],
         toolLog: "error: no stack named 'ghost' found\n",
       });
@@ -60,6 +62,42 @@ for (const version of VERSIONS) {
     });
   });
 }
+
+// The reason is picked from the exit code the tool documents for a stack that
+// is not found, and from nothing else (record 0022 as amended). The tool's
+// message is never read, so no part of it can reach a row.
+describe("which exit code means that the stack does not exist", () => {
+  const MISSING = "error: no stack named 'ghost' found\n";
+
+  test("exit code 6 gives the reason whatever the tool printed", async () => {
+    const runner = answering({
+      status: "exited",
+      exitCode: 6,
+      stdout: "",
+      stderr: `${CANARY_VALUE}\n`,
+    });
+
+    expect(await previewWith(NETWORK_DEV, runner)).toEqual({
+      ok: false,
+      reason: { kind: "stack-not-found" },
+      detail: [],
+      toolLog: `${CANARY_VALUE}\n`,
+    });
+  });
+
+  for (const exitCode of [1, 2, 3, 4, 5, 7, 8, 9, 255]) {
+    test(`exit code ${exitCode} stays a tool error, also when the tool's words say the stack is missing`, async () => {
+      const runner = answering({ status: "exited", exitCode, stdout: "", stderr: MISSING });
+
+      expect(await previewWith(NETWORK_DEV, runner)).toEqual({
+        ok: false,
+        reason: { kind: "tool-error", exitCode },
+        detail: [],
+        toolLog: MISSING,
+      });
+    });
+  }
+});
 
 describe("what a recording cannot hold", () => {
   test("a preview that ran out of time says how long it had", async () => {

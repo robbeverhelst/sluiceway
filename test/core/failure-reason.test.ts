@@ -27,6 +27,14 @@ describe("why a preview failed, in Sluiceway's own words", () => {
     );
   });
 
+  // Record 0022 as amended: a constant string with nothing filled in, not the
+  // stack's name and not the exit code the adapter picked it from.
+  test("the stack does not exist in the backend", () => {
+    expect(previewFailureText({ kind: "stack-not-found" })).toBe(
+      "the stack does not exist in the backend",
+    );
+  });
+
   test("the tool's output could not be read", () => {
     expect(previewFailureText({ kind: "unreadable-output" })).toBe(
       "the tool's output could not be read",

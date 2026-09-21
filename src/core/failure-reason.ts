@@ -4,6 +4,10 @@
 export type PreviewFailureReason =
   // exitCode is null when the tool could not be started or a signal ended it.
   | { kind: "tool-error"; exitCode: number | null }
+  // The stack has files in the repo and the backend holds no stack of that
+  // name (record 0022 as amended). The adapter picks it from a fact of its
+  // own, never from the tool's message.
+  | { kind: "stack-not-found" }
   | { kind: "timed-out"; minutes: number }
   | { kind: "unreadable-output" }
   | { kind: "unknown-step" };
@@ -19,6 +23,8 @@ export function previewFailureText(reason: PreviewFailureReason): string {
       return reason.exitCode === null
         ? "the tool exited with an error"
         : `the tool exited with an error (exit code ${reason.exitCode})`;
+    case "stack-not-found":
+      return "the stack does not exist in the backend";
     case "timed-out":
       return `the preview timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}`;
     case "unreadable-output":
