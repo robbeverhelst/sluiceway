@@ -4,8 +4,6 @@ Sluiceway keeps one GitHub issue, the dashboard, that shows which infrastructure
 
 It is a GitHub Action and nothing else. There is no server, no database and no hosted part. Previews and deploys run in your own runners.
 
-> [!WARNING]
-> Sluiceway is not released yet, and every mode works. `scan` previews your stacks and writes the dashboard. `resolve` checks who ticked and records the deploy. `apply` previews the stack again and deploys it when nothing moved since the tick. `settle` gives a result to a deploy that never reported one. You can already run the scan read only, pinned to a commit: see [Try the scan, read only](#try-the-scan-read-only). Watch the releases to hear when the first one is out.
 
 ## How it works
 
@@ -49,12 +47,37 @@ One action, five modes, chosen with the `mode` input.
 |---|---|---|
 | `matrix` | `resolve` | A JSON list with one `{ stack, environment, deployment }` entry per deploy that was started, or `[]`. |
 
-## Check your setup first
 
-Start here. The `check` mode tells you, in a pull request, whether Sluiceway will understand your repo, before any workflow that previews or deploys is merged. It reads files and nothing else: no credentials, no infrastructure tool, no GitHub API, no write. It needs `contents: read`, so it is safe on `pull_request`, also from forks. Put this in `.github/workflows/sluiceway-check.yml`:
+## Requirements
+
+- **A GitHub repo with issues turned on.** The dashboard is an issue.
+- **GitHub Actions runners with runner version 2.328.0 or newer.** Hosted runners qualify. Self-hosted runners need that version at least, and ARM32 is not supported.
+- **Pulumi CLI 3.229.0 or newer** on the runners that preview and deploy. `pulumi/actions` installs it. With an older one every preview fails, and the job log says which version is needed.
+- **Your programs' own needs:** a language runtime, dependencies, credentials. The workflow installs and loads them, the same way your own CI or laptop does.
+
+## Setup
+
+Four steps. The first one needs no credentials and changes nothing, so you learn whether Sluiceway understands your repo before anything can deploy.
+
+The examples say `sluiceway/sluiceway@v0`. That tag starts to work with the first release, 0.1.0, which is not out yet. Until then, put a full commit SHA of this repository in its place, all 40 characters. Watch the releases to hear when 0.1.0 is out.
+
+### What goes where
+
+Two files have nearly the same name and do different jobs. Keep the workflow file's name different from `sluiceway.yaml`; the examples call it `deploy-dashboard.yml`.
+
+| File | Belongs to | What it says |
+|---|---|---|
+| `.github/workflows/deploy-dashboard.yml` | GitHub Actions | When Sluiceway runs, on which runners, with which permissions, and the steps that install your tools and load your credentials before it. You choose the name. All four jobs stay in this one file. |
+| `.github/workflows/deploy-dashboard-check.yml` | GitHub Actions | The check that runs on every pull request. |
+| `sluiceway.yaml` | Sluiceway, optional, at the repo root | Settings about your stacks: who may tick them, which ones to leave out, which files outside a stack's directory it reads. Never credentials, never runner settings. [Reference](docs/configuration.md). |
+| Your secrets | GitHub secrets, your cloud, your secret manager | Credentials, backend settings, anything your programs read. They reach the job through the workflow, never through Sluiceway. [Credentials](docs/credentials.md). |
+
+### 1. Check your setup
+
+Start here. The `check` mode tells you, in a pull request, whether Sluiceway will understand your repo, before any workflow that previews or deploys is merged. It reads files and nothing else: no credentials, no infrastructure tool, no GitHub API, no write. It needs `contents: read`, so it is safe on `pull_request`, also from forks. Put this in `.github/workflows/deploy-dashboard-check.yml`:
 
 ```yaml
-name: sluiceway-check
+name: deploy-dashboard-check
 
 on:
   pull_request:
@@ -69,8 +92,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      # Replace the zeros with a full commit SHA of sluiceway/sluiceway.
-      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+      - uses: sluiceway/sluiceway@v0
         with:
           mode: check
 ```
@@ -84,74 +106,14 @@ The job log and the summary of the run say:
 
 The job is red only when the config is not valid or discovery fails. A check cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan. The check reads the files of the checkout, so run it right after `actions/checkout`, before anything writes files into the workspace.
 
-## Try the scan, read only
+If your repo uses a merge queue and you make this check required, add `merge_group:` next to `pull_request:` in this file, so the queue gets its result. This is the only Sluiceway workflow that may have it.
 
-Until the first release you can run the scan alone. Put this in `.github/workflows/sluiceway.yml` on the default branch. It is the workflow under [Usage](#usage) with everything that can deploy taken out.
+### 2. Add the workflow
 
-```yaml
-name: sluiceway
-
-on:
-  push:
-    branches: [main]
-  schedule:
-    - cron: "0 6 * * *"
-  workflow_dispatch:
-
-# This block is everything Sluiceway can do in your repo.
-permissions:
-  contents: read
-  issues: write
-  deployments: write
-  actions: read
-  pull-requests: read
-
-jobs:
-  scan:
-    runs-on: ubuntu-latest
-    concurrency: sluiceway-scan
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pulumi/actions@v7 # without a command this only installs the CLI
-        with:
-          pulumi-version: ^3.229.0
-      # Install what your programs need, once, for example: npm ci
-      # Load your credentials and your state backend settings into the job
-      # environment here. Credentials that can only read are enough. Whatever
-      # loads a secret must also mask it.
-      # Replace the zeros with a full commit SHA of sluiceway/sluiceway.
-      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
-        with:
-          mode: scan
-```
-
-What this does and does not do:
-
-- **Nothing can be deployed.** The workflow has no `resolve` and no `apply` job, and it does not listen to issue edits, so a ticked box starts nothing. The next scan clears the box again and leaves a note on the row. A scan only ever asks the tool for a preview. The token can read the code, write issues, and read and write deployment records, and nothing else. A scan reads the deployment records, which is where Sluiceway keeps who deployed what and when, and with no `resolve` job there are none. `actions: read` lets it see whether a workflow run is over, and whether a run that an issue edit started is still on its way. `pull-requests: read` lets a row name the pull requests that made it pending.
-- **Pin the action to a full commit SHA**, all 40 characters, of a commit in this repository. No tag exists before the first release, so `@v0` does not resolve yet.
-- **The header image only shows from a release tag or a commit SHA.** The images are served from the exact ref of the running action, never from one that can move, so that a picture never changes behind a dashboard that was already written. Started from a branch such as `@main`, Sluiceway falls back to the release tag of its own version, and before the first release that tag does not exist. Started from a copy inside your own repo (`uses: ./`), it names a commit that this repository does not have. In both cases the scan works and the picture is broken. `dashboard.personality: false` in `sluiceway.yaml` takes the picture out.
-- **A push gives a narrowed scan**: only the stacks that claim a changed file are previewed, and every other row stays as it is. The schedule and "Run workflow" give a full scan. The first scan is always full.
-
-The job log of a scan says what it did, in fixed lines:
-
-| Line | What it tells you |
-|---|---|
-| `This is a full scan: ...` | Every stack is previewed, and why. After a push it reads `This is a full scan. A push gives a narrowed scan, and this one fell back to a full scan: ...` with the reason. When the reason is a changed file that no stack claims, the group `Changed files that no stack claims` lists them. |
-| `This is a narrowed scan: it previews 2 of 58 stacks and keeps the rows of the other 56 as they are.` | Only those stacks are previewed. One line per stack follows: `<stack id> is previewed: it claims <file>.` |
-| `Previewing 58 stacks with a pool of 4 and a time limit of 10 minutes for each preview.` | The `concurrency` and `preview-timeout` this scan ran with. |
-| `Previewed <stack id> in 8.3 s: pending` | How long one preview took, and how it ended. One line per preview, in the order they finish. |
-| `Previewed 58 stacks in 412.6 s with a pool of 4. Added up, the previews took 1530.2 s. The slowest was <stack id> with 45.1 s.` | The total. The total against the sum shows what the pool gains. The slowest preview is what `preview-timeout` has to clear. |
-| `Wrote the dashboard: <url> (41,210 of 65,536 characters).` | Where the dashboard is, and how full the issue body is. `Carried 56 rows through as they were` follows on a narrowed scan. |
-| `Cleared an orphan tick on <stack id>: ...` | A box was ticked and nothing picked the tick up, so the scan cleared it and the row asks for a fresh one. A scan never deploys. While a run that an issue edit started is queued or in progress the line reads `Left the tick on <stack id> alone: ...` and the box stays ticked. |
-
-Under those lines there is one group per previewed stack, titled with the stack id. It holds the whole diff and everything the tool printed. The tool's own words never leave the job log.
-
-## Usage
-
-This is the whole workflow. It goes in `.github/workflows/sluiceway.yml` on the default branch. For what runs today, see [Try the scan, read only](#try-the-scan-read-only).
+This is the whole workflow. It goes in `.github/workflows/deploy-dashboard.yml` on the default branch. The comments mark where your own steps go. [docs/example-workflows.md](docs/example-workflows.md) has it complete for a Node monorepo, a secret manager and a cloud with OIDC.
 
 ```yaml
-name: sluiceway
+name: deploy-dashboard
 
 on:
   push:
@@ -238,7 +200,10 @@ jobs:
 
 What the parts are for:
 
-- **`actions: write`** lets the rescan box and `settle` start a scan, and lets a scan see whether a run is still on its way. `id-token: write` is not in the block. Add it only to the jobs that run the tool, and only if your credential step uses OIDC.
+- **All four jobs stay in one file.** A scan looks for waiting ticks among the runs of its own workflow, and the rescan box and `settle` start a scan by starting that same workflow again. Name the file as you like, and keep the name different from `sluiceway.yaml`.
+- **The daily schedule stays.** A push previews only the stacks that claim a changed file. A program can read something that is not a file in the repo (another stack's output, a remote chart, a secret), and the daily full scan is what catches that.
+- **Never add `pull_request` or `merge_group` to this workflow.** A scan writes the dashboard from the code it checked out, and on a pull request or in a merge queue that is code that is not on the default branch yet. A merge queue ends in a push to the default branch, and the scan runs on that push.
+- **`actions: write`** lets the rescan box and `settle` start a scan, and lets a scan see whether a run is still on its way. `id-token: write` is not in the block. Add it only to the jobs that run the tool, and only if your credential step uses OIDC. A job's own `permissions:` replace the workflow's, so repeat the whole block there.
 - **`sluiceway-scan`** makes scans run one at a time. A running scan finishes, and of the waiting ones only the newest runs.
 - **`sluiceway-resolve`** does the same for ticks. Any `resolve` run handles every ticked box it finds, so a replaced run loses nothing. Replaced runs show as cancelled in the Actions list. That is normal.
 - **`queue: max`** on `apply` keeps a waiting deploy from being cancelled by a newer one. Never add `cancel-in-progress` to this job.
@@ -246,11 +211,12 @@ What the parts are for:
 - **`resolve` hands `apply` a deployment record.** It creates one record per ticked stack in GitHub's Deployments list and puts `{ stack, environment, deployment }` in `matrix`. `apply` deploys only while that record is still open. "Re-run failed jobs" therefore deploys nothing. To try again, tick the box again.
 - **`!cancelled()` on `apply`** lets the deploys that `resolve` started go ahead when `resolve` itself ended red, for example because one of several ticks could not be verified or the dashboard could not be written. Without a status check in its `if:`, GitHub skips a job whose `needs` failed. Every entry in `matrix` is a record that `resolve` created after it checked the ticker, so nothing else can get through here.
 - **`settle`** gives a deploy a result when its job was cancelled or rejected, so a row never stays "deploying" for ever. It touches only the deployment records of its own run. When it ended one it starts a full scan, which writes the row again with the failure line, so it needs `actions: write` as well.
-- **`v0`** is the moving tag until 1.0.0. Pin a commit SHA instead if you want to review every update.
+- **A deploy has no time limit of Sluiceway's.** Set `timeout-minutes` on the `apply` job.
+- **`v0`** is the moving tag until 1.0.0, from the first release on. Pin a commit SHA instead if you want to review every update.
 
-Self-hosted runners work the same way: change `runs-on` for `scan` and `apply`. They need runner version 2.328.0 or newer, and ARM32 is not supported. `resolve` and `settle` hold no infrastructure secrets, so they can stay on hosted runners.
+Self-hosted runners work the same way: change `runs-on` for `scan` and `apply`. `resolve` and `settle` hold no infrastructure secrets, so they can stay on hosted runners.
 
-### With GitHub Environments
+#### With GitHub Environments
 
 The tick is always a gate. Where your plan has environments, they make it a stronger one: store the credentials that can change things as secrets of an environment that is limited to the default branch, and add required reviewers where you have them. Give every stack an `environment` in `sluiceway.yaml`, and add this to the `apply` job:
 
@@ -264,14 +230,129 @@ GitHub lists an environment for every name a deployment record uses, so your rep
 
 Without `deployment: false` GitHub records every deploy a second time. Custom deployment protection rules do not work with `deployment: false`. If you use them, leave it out and accept the second record. Sluiceway ignores it.
 
-## Configuration
+[docs/security.md](docs/security.md) has the three setups, from what every repo has to required reviewers, and what each one protects against.
 
-<!-- PLACEHOLDER: sluiceway.yaml reference. -->
+### 3. Tell it about your stacks
 
-> [!NOTE]
-> **Placeholder.** Sluiceway reads an optional `sluiceway.yaml` at the repo root. The full reference arrives with the docs of M2. Until then the keys are listed in [docs/build-plan.md](docs/build-plan.md), section 3, and [schema/sluiceway.schema.json](schema/sluiceway.schema.json) describes them for editors. Unknown keys are an error.
+Optional. Without `sluiceway.yaml` every stack that discovery finds gets a row and anyone with write access can tick. A stack's id is its directory and its name, `apps/web:prod`, and that is what `ignore` matches. A typical file:
 
-## Credentials
+```yaml
+# Only maintainers may tick, unless a stack says otherwise.
+tickers: maintain
+
+# A stack config file with no stack in the backend.
+ignore:
+  - "apps/web:dev"
+
+# Files no program reads: changing them previews nothing.
+scan:
+  unrelated:
+    - "**/*.md"
+
+stacks:
+  # The program in apps/web also reads packages/ui.
+  - path: apps/web
+    inputs:
+      - packages/ui/**
+```
+
+Every key, its default and its messages are in [docs/configuration.md](docs/configuration.md). The check of step 1 tells you whether the file is valid.
+
+### 4. Load your credentials
+
+The workflow puts everything the tool needs into the job environment, in steps before Sluiceway: the state backend, the cloud credentials, anything your programs read. Sluiceway passes that environment to the tool as it is and never loads a credential itself.
+
+- Only `scan` and `apply` load credentials. `resolve` and `settle` never run the tool, so the job an issue edit starts holds no infrastructure secrets.
+- `scan` needs no more than read access. Keep the credentials that change things for `apply`.
+- The step that loads a secret has to mask it. Sluiceway never sees a secret as a secret.
+- What your programs fetch, the runner has to be able to fetch: private packages, plugins, charts, images. Log in to those registries before Sluiceway too.
+
+[docs/credentials.md](docs/credentials.md) has recipes for GitHub secrets, a cloud with OIDC, a secret manager and private registries, and how Sluiceway fits next to the tooling you already have.
+
+### Start read only
+
+You can run the scan alone first, to see your dashboard with nothing that can deploy. It is the workflow of step 2 with everything that can deploy taken out.
+
+```yaml
+name: deploy-dashboard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+# This block is everything Sluiceway can do in your repo.
+permissions:
+  contents: read
+  issues: write
+  deployments: write
+  actions: read
+  pull-requests: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    concurrency: sluiceway-scan
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pulumi/actions@v7 # without a command this only installs the CLI
+        with:
+          pulumi-version: ^3.229.0
+      # Install what your programs need, once, for example: npm ci
+      # Load your credentials and your state backend settings into the job
+      # environment here. Credentials that can only read are enough. Whatever
+      # loads a secret must also mask it.
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: scan
+```
+
+What this does and does not do:
+
+- **Nothing can be deployed.** The workflow has no `resolve` and no `apply` job, and it does not listen to issue edits, so a ticked box starts nothing. The next scan clears the box again and leaves a note on the row. A scan only ever asks the tool for a preview. The token can read the code, write issues, and read and write deployment records, and nothing else. A scan reads the deployment records, which is where Sluiceway keeps who deployed what and when, and with no `resolve` job there are none. `actions: read` lets it see whether a workflow run is over, and whether a run that an issue edit started is still on its way. `pull-requests: read` lets a row name the pull requests that made it pending.
+- **The header image only shows from a release tag or a commit SHA.** The images are served from the exact ref of the running action, never from one that can move, so that a picture never changes behind a dashboard that was already written. Started from a branch such as `@main`, Sluiceway falls back to the release tag of its own version, and before the first release that tag does not exist. Started from a copy inside your own repo (`uses: ./`), it names a commit that this repository does not have. In both cases the scan works and the picture is broken. `dashboard.personality: false` in `sluiceway.yaml` takes the picture out.
+- **A push gives a narrowed scan**: only the stacks that claim a changed file are previewed, and every other row stays as it is. The schedule and "Run workflow" give a full scan. The first scan is always full.
+
+To turn it into the whole workflow later, replace the file with the one of step 2 and change `actions: read` to `actions: write`.
+
+## Using the dashboard
+
+- **A row with a box has changes waiting.** Its details show the resources that would change and the names of the properties that change. A delete or a replace is always shown open under the row, never folded away. When the dashboard grows past what an issue holds, the biggest rows are shortened first and link to the full diff in the run's summary.
+- **Tick the box to deploy that stack.** Sluiceway checks that you may tick it, previews the stack again, and deploys only if the fresh preview still matches what the row showed. The row says deploying, then goes back to in sync, or shows a failure line with a link to the run.
+- **A tick approves the change as shown.** The row shows which properties change, never their values, so a tick means "change these properties on these resources, at whatever value the code has when the deploy runs". A new resource, a delete or a different property stops the deploy and brings the row back with the fresh diff. [docs/security.md](docs/security.md#what-a-tick-promises) has the whole promise.
+- **A refused tick deploys nothing.** The box is cleared and one comment on the dashboard says why.
+- **The rescan box**, `Rescan all stacks` at the bottom, starts a full scan, for example after you deployed a stack from somewhere else. It deploys nothing.
+- **To try a failed deploy again, tick the box again.** Re-running the job deploys nothing.
+
+## Reading the job log
+
+The job log of a scan says what it did, in fixed lines:
+
+| Line | What it tells you |
+|---|---|
+| `This is a full scan: ...` | Every stack is previewed, and why. After a push it reads `This is a full scan. A push gives a narrowed scan, and this one fell back to a full scan: ...` with the reason. When the reason is a changed file that no stack claims, the group `Changed files that no stack claims` lists them. |
+| `This is a narrowed scan: it previews 2 of 58 stacks and keeps the rows of the other 56 as they are.` | Only those stacks are previewed. One line per stack follows: `<stack id> is previewed: it claims <file>.` |
+| `Previewing 58 stacks with a pool of 4 and a time limit of 10 minutes for each preview.` | The `concurrency` and `preview-timeout` this scan ran with. |
+| `Previewed <stack id> in 8.3 s: pending` | How long one preview took, and how it ended. One line per preview, in the order they finish. |
+| `Previewed 58 stacks in 412.6 s with a pool of 4. Added up, the previews took 1530.2 s. The slowest was <stack id> with 45.1 s.` | The total. The total against the sum shows what the pool gains. The slowest preview is what `preview-timeout` has to clear. |
+| `Wrote the dashboard: <url> (41,210 of 65,536 characters).` | Where the dashboard is, and how full the issue body is. `Carried 56 rows through as they were` follows on a narrowed scan. |
+| `Cleared an orphan tick on <stack id>: ...` | A box was ticked and nothing picked the tick up, so the scan cleared it and the row asks for a fresh one. A scan never deploys. While a run that an issue edit started is queued or in progress the line reads `Left the tick on <stack id> alone: ...` and the box stays ticked. |
+
+Under those lines there is one group per previewed stack, titled with the stack id. It holds the whole diff and everything the tool printed. The tool's own words never leave the job log.
+
+## Limits
+
+- **A change that touches only a stack's outputs is not shown.** The tool's preview does not report it, so a stack whose only change is an added, removed or changed output is in sync and has no box. Deploy it from outside Sluiceway. Another stack that reads that output keeps failing its preview until then. An output nearly always changes together with a resource, and then the row is pending anyway.
+- **Deploys from somewhere else are allowed and not detected.** They do not show under recently deployed, and a row they made stale stays pending until the next full scan or the rescan box. A tick on a stale row deploys nothing.
+- **Sluiceway only previews and deploys.** Destroying a stack, a refresh and repairing state stay with your own tooling.
+- **No values, ever.** Rows show resource types, resource names and property names. `dashboard.redact: true` keeps even those out of the issue.
+- **One tool so far.** Pulumi is the first. The adapter interface is built so that OpenTofu and Terraform can follow.
+
+[docs/later.md](docs/later.md) lists everything that was left out of this version, and why.
+
+## Security
 
 Sluiceway never holds credentials. That is five promises you can check against the code:
 
@@ -283,8 +364,14 @@ Sluiceway never holds credentials. That is five promises you can check against t
 
 The dashboard shows resource types, resource names and the names of changed properties. It never shows a property value, whether or not the tool marks it secret.
 
+A tick rule protects against the wrong person ticking. On its own it does not protect against a collaborator with write access who means harm, because anyone with write access can push a workflow that reads the repo's secrets. Where your plan has GitHub Environments, lock the credentials that change things into one and the tick rules can be relied on. [docs/security.md](docs/security.md) explains the three setups.
+
 ## Documentation
 
+- [docs/configuration.md](docs/configuration.md): every key of `sluiceway.yaml`.
+- [docs/credentials.md](docs/credentials.md): how credentials reach the tool, recipes, private registries, and your own tooling.
+- [docs/example-workflows.md](docs/example-workflows.md): complete workflows for common setups.
+- [docs/security.md](docs/security.md): what a tick promises, and the three setups.
 - [CONTEXT.md](CONTEXT.md): the glossary.
 - [docs/build-plan.md](docs/build-plan.md): what is being built, in which order, and how it is proven.
 - [docs/adr](docs/adr): the decision records. Where a record and the brief disagree, the record wins.
