@@ -327,7 +327,9 @@ const VARIANTS = {
       for (const c of shown.filter(isDestroy)) out.push(`  :warning: ${line(c)}`);
       if (hiddenDestroys) out.push(`  :warning: **${destroyWords(n)}, not listed here, see the [summary](${SUMMARY_URL})**`);
       const plain = shown.filter((c) => !isDestroy(c));
-      if (plain.length || hiddenPlain) {
+      if (!plain.length && hiddenPlain) {
+        out.push(`  ${plural(hiddenPlain, n.delete || n.replace ? "other change" : "change")} not listed here, see the [summary](${SUMMARY_URL})`);
+      } else if (plain.length) {
         out.push(`  <details><summary>${plural(plain.length + hiddenPlain, n.delete || n.replace ? "other change" : "change")}</summary>`);
         plain.forEach((c) => out.push(`  ${line(c)}<br>`));
         if (hiddenPlain) out.push(`  ${plural(hiddenPlain, "change")} not shown here, see the <a href="${SUMMARY_URL}">summary</a>`);
@@ -386,9 +388,9 @@ function pendingRow(v, s, level) {
   if (s.orphan) out.push(ORPHAN_NOTE);
   if (hasDestroy && v.quote) out.push(...v.quote(n, hiddenDestroys));
   if (level >= 3) {
-    if (!v.quote && !v.topAlert && hasDestroy) out.push(`  :warning: **${destroyWords(n, hiddenDestroys)}**`);
     if (v.loose) out.push("");
-    out.push(`  Changes not listed here, see the [summary](${SUMMARY_URL})`);
+    if (!v.quote && !v.topAlert && hasDestroy) out.push(`  :warning: **${destroyWords(n)}, too many to list here.** Read the [summary](${SUMMARY_URL}) before you tick.`);
+    else out.push(`  Changes not listed here, see the [summary](${SUMMARY_URL})`);
   } else {
     out.push(...v.details(shown, hiddenPlain, hiddenDestroys, n));
   }
@@ -512,7 +514,7 @@ const stress = withIds([...PENDING, ...stressPending()]);
 
 const jobs = [
   ...Object.entries(VARIANTS).map(([key, v]) => ({ key, v, pending: normal, title: `[dashboard prototype] ${v.title}` })),
-  { key: "stress", v: VARIANTS.a, pending: stress, title: "[dashboard prototype] Over budget: what truncation looks like (variant A rows)" },
+  { key: "stress", v: VARIANTS.b, pending: stress, title: "[dashboard prototype] Over budget: what truncation looks like (variant B rows)" },
 ];
 
 const LEVEL_WORDS = ["shown in full", "pull request names cut", "only deletes and replaces listed", "no changes listed"];
