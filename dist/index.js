@@ -51350,6 +51350,29 @@ var PIN_ISSUE = `mutation ($issueId: ID!) {
     }
   }
 }`;
+var EDIT_HISTORY = `query ($owner: String!, $repo: String!, $number: Int!, $first: Int!, $after: String) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      body
+      userContentEdits(first: $first, after: $after) {
+        totalCount
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          editedAt
+          deletedAt
+          editor {
+            __typename
+            login
+          }
+          diff
+        }
+      }
+    }
+  }
+}`;
 function createOctokitPort(octokit, repo) {
   return {
     async listIssues({ label, state }) {
@@ -51389,6 +51412,24 @@ function createOctokitPort(octokit, repo) {
     async createComment(number4, body) {
       await octokit.rest.issues.createComment({ ...repo, issue_number: number4, body });
     },
+    async readEditHistory(number4, { size, after }) {
+      const data = await octokit.graphql(EDIT_HISTORY, {
+        ...repo,
+        number: number4,
+        first: size,
+        after: after ?? null
+      });
+      const issue3 = data.repository?.issue;
+      if (!issue3)
+        throw new Error(`GitHub gave no issue ${number4} when the edit history was read.`);
+      const { totalCount, pageInfo, nodes } = issue3.userContentEdits;
+      return {
+        body: issue3.body ?? "",
+        entries: (nodes ?? []).map(toHistoryEntry),
+        total: totalCount,
+        next: pageInfo.hasNextPage && pageInfo.endCursor !== null ? pageInfo.endCursor : undefined
+      };
+    },
     async compareCommits(base, head) {
       const { data } = await octokit.rest.repos.compareCommitsWithBasehead({
         ...repo,
@@ -51417,6 +51458,13 @@ function createOctokitPort(octokit, repo) {
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     }
+  };
+}
+function toHistoryEntry(edit) {
+  return {
+    editor: edit?.editor ? { login: edit.editor.login, type: edit.editor.__typename } : { login: "", type: "" },
+    editedAt: edit?.editedAt ?? "",
+    body: !edit || edit.deletedAt !== null ? null : edit.diff
   };
 }
 function toIssue(issue3) {
