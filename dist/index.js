@@ -51342,6 +51342,136 @@ function actionsLog() {
   };
 }
 
+// src/github/octokit-deployments.ts
+var NEWEST_DEPLOYMENTS = `query ($owner: String!, $repo: String!, $environment: String!) {
+  repository(owner: $owner, name: $repo) {
+    deployments(environments: [$environment], first: 100, orderBy: {field: CREATED_AT, direction: DESC}) {
+      pageInfo {
+        hasNextPage
+      }
+      nodes {
+        databaseId
+        task
+        environment
+        commitOid
+        payload
+        createdAt
+        latestStatus {
+          state
+          description
+          createdAt
+        }
+      }
+    }
+  }
+}`;
+function parsePayload(payload) {
+  let parsed = payload;
+  for (let depth = 0;depth < 2 && typeof parsed === "string"; depth++) {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      break;
+    }
+  }
+  return parsed;
+}
+function toDeployment(deployment) {
+  return {
+    id: deployment.id,
+    task: deployment.task,
+    environment: deployment.environment,
+    sha: deployment.sha,
+    payload: parsePayload(deployment.payload),
+    createdAt: deployment.created_at
+  };
+}
+function toStatus(status) {
+  return {
+    state: status.state,
+    description: status.description ?? "",
+    createdAt: status.created_at
+  };
+}
+function deploymentCalls(octokit, repo) {
+  return {
+    async createDeployment({ sha, task, environment, payload }) {
+      const { data } = await octokit.rest.repos.createDeployment({
+        ...repo,
+        ref: sha,
+        task,
+        environment,
+        payload,
+        auto_merge: false,
+        required_contexts: []
+      });
+      if (!("id" in data))
+        throw new Error("GitHub created no deployment record.");
+      return toDeployment(data);
+    },
+    async createDeploymentStatus(id, { state, description, logUrl }) {
+      const { data } = await octokit.rest.repos.createDeploymentStatus({
+        ...repo,
+        deployment_id: id,
+        state,
+        auto_inactive: false,
+        ...description === undefined ? {} : { description },
+        ...logUrl === undefined ? {} : { log_url: logUrl }
+      });
+      return toStatus(data);
+    },
+    async listNewestDeployments(environment) {
+      const { repository } = await octokit.graphql(NEWEST_DEPLOYMENTS, {
+        ...repo,
+        environment
+      });
+      if (!repository)
+        throw new Error("GitHub gave no repository to read deployments from.");
+      return {
+        records: repository.deployments.nodes.flatMap((node2) => node2 === null || node2.databaseId === null ? [] : {
+          id: node2.databaseId,
+          task: node2.task ?? "",
+          environment: node2.environment ?? "",
+          sha: node2.commitOid,
+          payload: parsePayload(node2.payload),
+          createdAt: node2.createdAt,
+          status: node2.latestStatus ? {
+            state: node2.latestStatus.state.toLowerCase(),
+            description: node2.latestStatus.description ?? "",
+            createdAt: node2.latestStatus.createdAt
+          } : undefined
+        }),
+        more: repository.deployments.pageInfo.hasNextPage
+      };
+    },
+    async newestDeploymentOfTask(task) {
+      const { data } = await octokit.rest.repos.listDeployments({ ...repo, task, per_page: 1 });
+      return data[0] ? toDeployment(data[0]) : undefined;
+    },
+    async latestDeploymentStatus(id) {
+      const { data } = await octokit.rest.repos.listDeploymentStatuses({
+        ...repo,
+        deployment_id: id,
+        per_page: 1
+      });
+      return data[0] ? toStatus(data[0]) : undefined;
+    },
+    async getWorkflowRun(runId) {
+      try {
+        const { data } = await octokit.rest.actions.getWorkflowRun({
+          ...repo,
+          run_id: Number(runId)
+        });
+        return { completed: data.status === "completed" };
+      } catch (error63) {
+        if (error63.status === 404)
+          return;
+        throw error63;
+      }
+    }
+  };
+}
+
 // src/github/octokit-port.ts
 var PIN_ISSUE = `mutation ($issueId: ID!) {
   pinIssue(input: {issueId: $issueId}) {
@@ -51455,6 +51585,7 @@ function createOctokitPort(octokit, repo) {
         admin: permissions.admin === true
       };
     },
+    ...deploymentCalls(octokit, repo),
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     }
@@ -51744,6 +51875,90 @@ function read(file2) {
   }
 }
 
+// src/core/deployment.ts
+var TASK_PREFIX = "sluiceway:";
+function deploymentTask(stackId2) {
+  return `${TASK_PREFIX}${stackId2}`;
+}
+function taskStackId(task) {
+  if (!task.startsWith(TASK_PREFIX) || task.length === TASK_PREFIX.length)
+    return;
+  return task.slice(TASK_PREFIX.length);
+}
+var PAYLOAD_VERSION = 1;
+var RUN_ID = /^[1-9]\d*$/;
+function readDeploymentPayload(payload) {
+  if (typeof payload !== "object" || payload === null)
+    return;
+  const { v, hash: hash2, ticker, run } = payload;
+  if (v !== PAYLOAD_VERSION)
+    return;
+  if (typeof hash2 !== "string" || typeof ticker !== "string" || typeof run !== "string") {
+    return;
+  }
+  return RUN_ID.test(run) ? { hash: hash2, ticker, run } : undefined;
+}
+var SUCCEEDED = new Set(["success", "inactive"]);
+var FAILED = new Set(["failure", "error"]);
+var NO_REASON_RECORDED = "no reason was recorded";
+function newestLast(a, b) {
+  return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id;
+}
+function factOf(record2, payload) {
+  const { ticker, run } = payload;
+  const state = record2.status?.state ?? "";
+  const at = new Date(record2.status?.createdAt ?? record2.createdAt);
+  if (SUCCEEDED.has(state))
+    return { kind: "succeeded", ticker, run, at };
+  if (FAILED.has(state)) {
+    return {
+      kind: "failed",
+      reason: record2.status?.description || NO_REASON_RECORDED,
+      ticker,
+      run,
+      at
+    };
+  }
+  return { kind: "open", deployment: record2.id, waiting: state !== "in_progress", ticker, run };
+}
+function deployFacts(records) {
+  const facts = { byStack: new Map, succeeded: [], unread: 0 };
+  for (const record2 of [...records].sort(newestLast)) {
+    const stackId2 = taskStackId(record2.task);
+    if (stackId2 === undefined)
+      continue;
+    const payload = readDeploymentPayload(record2.payload);
+    if (!payload) {
+      facts.unread++;
+      continue;
+    }
+    const fact = factOf(record2, payload);
+    facts.byStack.set(stackId2, fact);
+    if (fact.kind === "succeeded") {
+      facts.succeeded.push({ stackId: stackId2, ticker: fact.ticker, run: fact.run, at: fact.at });
+    }
+  }
+  return facts;
+}
+function rowAtLateRead(stack) {
+  const { previewedAt, liveState, fact } = stack;
+  if (fact?.kind === "open") {
+    return { row: "deploying", from: liveState === "deploying" ? "live" : "record" };
+  }
+  const usableLive = liveState !== undefined && liveState !== "deploying";
+  if (previewedAt === undefined) {
+    if (usableLive)
+      return { row: "live" };
+    return { row: "preview-first", why: liveState === undefined ? "no-row" : "no-open-deployment" };
+  }
+  const predates = fact !== undefined && !stack.settledHere && fact.at > previewedAt;
+  if (!predates)
+    return { row: "fresh" };
+  if (usableLive)
+    return { row: "live" };
+  return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
+}
+
 // src/core/failure-reason.ts
 function previewFailureText(reason) {
   switch (reason.kind) {
@@ -51755,6 +51970,12 @@ function previewFailureText(reason) {
       return "the tool's output could not be read";
     case "unknown-step":
       return "the tool reported a step Sluiceway does not know";
+  }
+}
+function deployFailureText(reason) {
+  switch (reason.kind) {
+    case "run-ended":
+      return "the run ended without a result";
   }
 }
 
@@ -52552,6 +52773,48 @@ async function openMatches(github, label) {
   return open2.filter((issue3) => isDashboard(issue3, label)).sort((a, b) => a.number - b.number);
 }
 
+// src/github/deployments.ts
+async function readDeploymentRecords(github, environments, fallBack) {
+  const records = [];
+  const more = new Set;
+  for (const environment of [...new Set(environments)]) {
+    const page = await github.listNewestDeployments(environment);
+    records.push(...page.records);
+    if (page.more)
+      more.add(environment);
+  }
+  const onAPage = new Set(records.map(({ task }) => task));
+  for (const { stackId: stackId2, environment } of fallBack) {
+    const task = deploymentTask(stackId2);
+    if (!more.has(environment) || onAPage.has(task))
+      continue;
+    const newest = await github.newestDeploymentOfTask(task);
+    if (!newest)
+      continue;
+    records.push({ ...newest, status: await github.latestDeploymentStatus(newest.id) });
+    onAPage.add(task);
+  }
+  return records;
+}
+async function settleEndedRuns(github, records, repoUrl) {
+  const settled = { records: [...records], stackIds: [] };
+  for (const [stackId2, fact] of deployFacts(records).byStack) {
+    if (fact.kind !== "open")
+      continue;
+    const run = await github.getWorkflowRun(fact.run);
+    if (run && !run.completed)
+      continue;
+    const status = await github.createDeploymentStatus(fact.deployment, {
+      state: "error",
+      description: deployFailureText({ kind: "run-ended" }),
+      logUrl: `${repoUrl}/actions/runs/${fact.run}`
+    });
+    settled.records = settled.records.map((record2) => record2.id === fact.deployment && taskStackId(record2.task) === stackId2 ? { ...record2, status } : record2);
+    settled.stackIds.push(stackId2);
+  }
+  return settled;
+}
+
 // src/render/changes.ts
 function orderChanges(diff) {
   const changes = [...diff.changes].sort((a, b) => byCodeUnit2(a.address, b.address));
@@ -52630,18 +52893,19 @@ function diffHash(diff) {
 }
 
 // src/render/preview-result.ts
-function previewRow(stackId2, result, runUrl) {
+function previewRow(stackId2, result, runUrl, failure2) {
   if (!result.ok) {
     return {
       state: "preview-failed",
       stackId: stackId2,
       reason: previewFailureText(result.reason),
-      runUrl
+      runUrl,
+      failure: failure2
     };
   }
   if (result.diff.changes.length === 0)
-    return { state: "in-sync", stackId: stackId2 };
-  return { state: "pending", diff: result.diff, hash: diffHash(result.diff), runUrl };
+    return { state: "in-sync", stackId: stackId2, failure: failure2 };
+  return { state: "pending", diff: result.diff, hash: diffHash(result.diff), runUrl, failure: failure2 };
 }
 function previewSummary(stackId2, result) {
   return result.ok ? { kind: "diff", diff: result.diff } : { kind: "preview-failed", stackId: stackId2, reason: previewFailureText(result.reason) };
@@ -52794,11 +53058,11 @@ class ScanFailedError extends Error {
 }
 
 class PreviewFirst extends Error {
-  ids;
+  stacks;
   why;
-  constructor(ids, why) {
+  constructor(stacks, why) {
     super("More stacks have to be previewed before the dashboard can be written.");
-    this.ids = ids;
+    this.stacks = stacks;
     this.why = why;
     this.name = "PreviewFirst";
   }
@@ -52836,6 +53100,7 @@ async function scan(context3) {
   let versionChecked = false;
   let composed;
   let written;
+  const again = new Set;
   for (;; ) {
     if (next.length > 0 && !versionChecked) {
       await checkVersion2(context3);
@@ -52849,7 +53114,7 @@ async function scan(context3) {
     if (round.length > 0 || rounds === 0)
       await writeSummary(context3, all);
     rounds++;
-    const compose = (liveBody) => {
+    const compose = (liveBody, deploys) => {
       const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
       const liveRows = new Map;
       if (live?.root?.version === MARKER_VERSION) {
@@ -52857,11 +53122,48 @@ async function scan(context3) {
           if (!liveRows.has(row.stackId))
             liveRows.set(row.stackId, row);
       }
-      const rule = oneRowPerStack(ids, new Set(previewed.keys()), [...liveRows.keys()]);
-      if (rule.missing.length > 0)
-        throw new PreviewFirst(rule.missing);
-      const carried = rule.carried.flatMap((id) => liveRows.get(id) ?? []);
-      const full = carried.length === 0;
+      const { dropped } = oneRowPerStack(ids, new Set(previewed.keys()), [...liveRows.keys()]);
+      const rows = [];
+      const carried = [];
+      const first = [];
+      const deploying = [];
+      const deferred = [];
+      for (const id of ids) {
+        const mine = previewed.get(id);
+        const liveRow = liveRows.get(id);
+        const fact = deploys.facts.byStack.get(id);
+        const decided = rowAtLateRead({
+          previewedAt: mine?.startedAt,
+          liveState: liveRow?.state,
+          fact,
+          settledHere: deploys.settled.has(id),
+          again: again.has(id)
+        });
+        if (decided.row === "preview-first")
+          first.push({ id, why: decided.why });
+        else if (decided.row === "fresh" && mine) {
+          rows.push(previewRow(id, mine.result, runUrl, failureLine2(context3, fact)));
+        } else if (decided.row === "deploying" && decided.from === "record" && fact?.kind === "open") {
+          deploying.push(id);
+          rows.push({
+            state: "deploying",
+            stackId: id,
+            ticker: fact.ticker,
+            runUrl: runUrlOf(context3, fact.run),
+            waiting: fact.waiting,
+            destroys: destroysOf(mine, liveRow)
+          });
+        } else if (liveRow) {
+          if (decided.row === "deploying")
+            deploying.push(id);
+          else if (mine)
+            deferred.push(id);
+          carried.push(liveRow);
+        }
+      }
+      if (first.length > 0)
+        throw new PreviewFirst(first);
+      const full = ids.every((id) => previewed.has(id));
       const fitted = fitBody({
         root: {
           scanSha: context3.sha,
@@ -52870,10 +53172,15 @@ async function scan(context3) {
           fullScanAt: full ? at : live?.root?.fullScanAt,
           fullScanRun: full ? context3.runId : live?.root?.fullScanRun
         },
-        rows: all.map(({ id, result }) => previewRow(id, result, runUrl)),
+        rows,
         carried,
         redact: config2.dashboard.redact,
-        recentlyDeployed: [],
+        recentlyDeployed: deploys.facts.succeeded.map(({ stackId: id, ticker, run, at: when }) => ({
+          stackId: id,
+          ticker,
+          at: when,
+          runUrl: runUrlOf(context3, run)
+        })),
         repoUrl: context3.repoUrl,
         actionRef: context3.actionRef,
         personality: config2.dashboard.personality
@@ -52881,28 +53188,39 @@ async function scan(context3) {
       if (!fitted.fits) {
         if (full)
           throw new ScanFailedError(bodyDoesNotFitMessage(fitted.size));
-        throw new PreviewFirst(rule.carried, { kind: "does-not-fit", carried: carried.length });
+        throw new PreviewFirst(ids.filter((id) => !previewed.has(id)).map((id) => ({ id, why: "no-row" })), { kind: "does-not-fit", carried: carried.length });
       }
-      return { body: fitted.body, shortened: fitted.shortened, full, ...rule };
+      return {
+        body: fitted.body,
+        shortened: fitted.shortened,
+        full,
+        carried: carried.map((row) => row.stackId).filter((id) => !previewed.has(id)),
+        dropped,
+        deploying,
+        deferred,
+        unread: deploys.facts.unread
+      };
     };
     try {
       if (previewed.size === ids.length)
-        compose(undefined);
-      written = await writeDashboard(context3.github, config2.dashboard, (liveBody) => {
-        composed = compose(liveBody);
+        compose(undefined, NO_DEPLOYS);
+      written = await writeDashboard(context3.github, config2.dashboard, async (liveBody) => {
+        composed = compose(liveBody, await lateDeploys(context3, stacks, previewed, liveBody));
         return composed.body;
       });
       break;
     } catch (error63) {
       if (!(error63 instanceof PreviewFirst))
         throw error63;
-      const late = new Set(error63.ids);
+      const late = new Set(error63.stacks.map(({ id }) => id));
       next = stacks.filter(({ stack }) => late.has(stackId(stack)));
       if (error63.why) {
         log.info(`This scan falls back to a full scan: ${fullScanReasonText(error63.why)}. Previewing the other ${plural2(next.length, "stack")} now.`);
       } else {
-        for (const id of error63.ids) {
-          log.info(`${logGroupTitle(id)} is previewed now: the dashboard has no row for it any more.`);
+        for (const { id, why } of error63.stacks) {
+          if (why === "deploy-ended")
+            again.add(id);
+          log.info(`${logGroupTitle(id)} ${PREVIEW_FIRST[why]}`);
         }
       }
     }
@@ -52911,6 +53229,53 @@ async function scan(context3) {
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
   if (everyPreviewFailed(previewed.size, failed.length)) {
     throw new ScanFailedError(`Every preview failed (${failed.length} of ${previewed.size}). That nearly always means the environment is broken, such as missing credentials or a backend that cannot be reached. The dashboard was written first and shows a preview failure on every row of a previewed stack, which is true: nothing can be deployed either. The job log holds what the tool printed, in the group of each stack.`);
+  }
+}
+var PREVIEW_FIRST = {
+  "no-row": "is previewed now: the dashboard has no row for it any more.",
+  "no-open-deployment": "is previewed now: its row says deploying and no deployment is open.",
+  "deploy-ended": "is previewed again: a deploy of it ended after its preview started."
+};
+var NO_DEPLOYS = {
+  facts: { byStack: new Map, succeeded: [], unread: 0 },
+  settled: new Set
+};
+function runUrlOf(context3, run) {
+  return `${context3.repoUrl}/actions/runs/${run}`;
+}
+function failureLine2(context3, fact) {
+  if (fact?.kind !== "failed")
+    return;
+  return {
+    reason: fact.reason,
+    ticker: fact.ticker,
+    at: fact.at,
+    runUrl: runUrlOf(context3, fact.run)
+  };
+}
+function destroysOf(mine, liveRow) {
+  if (mine?.result.ok)
+    return mine.result.diff.changes.filter(isDestroy).length;
+  return liveRow?.known ? liveRow.destroys : 0;
+}
+async function lateDeploys(context3, stacks, previewed, liveBody) {
+  const { log, github } = context3;
+  const liveStates = new Map(parseDashboard(liveBody).rows.map((row) => [row.stackId, row.state]));
+  const fallBack = stacks.map(({ stack, environment }) => ({ stackId: stackId(stack), environment })).filter(({ stackId: id }) => {
+    const result = previewed.get(id)?.result;
+    return result?.ok === true && result.diff.changes.length > 0 || liveStates.get(id) === "deploying";
+  });
+  try {
+    const records = await readDeploymentRecords(github, stacks.map(({ environment }) => environment), fallBack);
+    const before = deployFacts(records).byStack;
+    const settled = await settleEndedRuns(github, records, context3.repoUrl);
+    for (const id of settled.stackIds) {
+      const fact = before.get(id);
+      log.info(`Ended the open deployment of ${logGroupTitle(id)}: run ${fact?.kind === "open" ? fact.run : ""} is over and never reported a result.`);
+    }
+    return { facts: deployFacts(settled.records), settled: new Set(settled.stackIds) };
+  } catch (error63) {
+    throw new Error(`The deployment records could not be read: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permissions \`deployments: write\` and \`actions: read\` next to \`contents: read\` and \`issues: write\` (record 0003).`);
   }
 }
 async function makePlan(context3, config2, stacks) {
@@ -52992,14 +53357,15 @@ async function previewAll(context3, stacks) {
   const poolStarted = now().getTime();
   const previewed = await runPool(stacks, context3.concurrency, async (configured) => {
     const id = stackId(configured.stack);
-    const started = now().getTime();
+    const startedAt = now();
+    const started = startedAt.getTime();
     const result = await adapter.preview(configured.stack, {
       ...tool,
       timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes
     });
     const milliseconds = now().getTime() - started;
     log.info(`Previewed ${logGroupTitle(id)} in ${seconds(milliseconds)}: ${previewOutcome(result)}`);
-    return { id, result, milliseconds };
+    return { id, result, startedAt, milliseconds };
   });
   const total = now().getTime() - poolStarted;
   const addedUp = previewed.reduce((sum, { milliseconds }) => sum + milliseconds, 0);
@@ -53055,6 +53421,16 @@ function reportDashboard(context3, written, composed) {
   }
   for (const id of composed?.dropped ?? []) {
     log.info(`Dropped the row of ${logGroupTitle(id)}: discovery knows no such stack.`);
+  }
+  for (const id of composed?.deploying ?? []) {
+    log.info(`${logGroupTitle(id)} has an open deployment, so its row says deploying and has no box, whatever the preview says.`);
+  }
+  for (const id of composed?.deferred ?? []) {
+    log.info(`Kept the live row of ${logGroupTitle(id)}: a deploy of it ended after its preview started.`);
+  }
+  const unread = composed?.unread ?? 0;
+  if (unread > 0) {
+    log.info(unread === 1 ? "1 deployment record carries a payload this version of Sluiceway cannot read. It was left alone." : `${unread} deployment records carry a payload this version of Sluiceway cannot read. They were left alone.`);
   }
   for (const duplicate of written.closedDuplicates) {
     log.info(`Closed #${duplicate}, a second dashboard.`);
