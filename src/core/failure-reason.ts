@@ -27,3 +27,18 @@ export function previewFailureText(reason: PreviewFailureReason): string {
       return "the tool reported a step Sluiceway does not know";
   }
 }
+
+// Why a deploy failed, from the same fixed list (record 0022). It goes on the
+// final status of the deployment record and from there on the failure line.
+// The reasons of `apply` join with the slice that builds it.
+export type DeployFailureReason =
+  // The workflow run of the deploy is over and the record never got a result
+  // (record 0003).
+  { kind: "run-ended" };
+
+export function deployFailureText(reason: DeployFailureReason): string {
+  switch (reason.kind) {
+    case "run-ended":
+      return "the run ended without a result";
+  }
+}

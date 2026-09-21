@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { previewFailureText } from "../../src/core/failure-reason.ts";
+import { deployFailureText, previewFailureText } from "../../src/core/failure-reason.ts";
 
 // The fixed list of record 0022, in the one form every place shows it: lower
 // case and no full stop, as the row of record 0027 reads. Only an exit code and
@@ -37,5 +37,13 @@ describe("why a preview failed, in Sluiceway's own words", () => {
     expect(previewFailureText({ kind: "unknown-step" })).toBe(
       "the tool reported a step Sluiceway does not know",
     );
+  });
+});
+
+describe("why a deploy failed, in Sluiceway's own words", () => {
+  test("the run ended without a result", () => {
+    // The wording of the list in record 0022. It fits GitHub's 140 characters
+    // for the description of a deployment status.
+    expect(deployFailureText({ kind: "run-ended" })).toBe("the run ended without a result");
   });
 });
