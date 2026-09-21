@@ -28,13 +28,19 @@ describe("parseMode", () => {
 });
 
 describe("run", () => {
-  // The scan (slice 1.11) and resolve (slice 2.4) are wired and have their own
-  // tests under test/modes/.
-  const stubs = MODES.filter((mode) => mode !== "scan" && mode !== "resolve");
+  // The scan (slice 1.11), resolve (slice 2.4) and settle (slice 2.6) are
+  // wired and have their own tests under test/modes/.
+  const wired = ["scan", "resolve", "settle"];
+  const stubs = MODES.filter((mode) => !wired.includes(mode));
 
   test.each(stubs)("%s fails as not implemented yet", async (mode) => {
     const result = run(mode);
     await expect(result).rejects.toBeInstanceOf(NotImplementedError);
     await expect(result).rejects.toThrow(`Mode "${mode}" is not implemented yet.`);
+  });
+
+  test("settle is wired: outside a job it stops at the runner's environment", async () => {
+    const result = run("settle");
+    await expect(result).rejects.not.toBeInstanceOf(NotImplementedError);
   });
 });

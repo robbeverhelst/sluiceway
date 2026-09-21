@@ -1,5 +1,6 @@
 import { runResolve } from "./modes/resolve-job.ts";
 import { runScan } from "./modes/scan-job.ts";
+import { runSettle } from "./modes/settle-job.ts";
 
 export const MODES = ["scan", "resolve", "apply", "settle"] as const;
 
@@ -37,7 +38,7 @@ const handlers: Record<Mode, Handler> = {
   scan: runScan,
   resolve: runResolve,
   apply: notImplemented("apply"),
-  settle: notImplemented("settle"),
+  settle: runSettle,
 };
 
 export function run(mode: Mode): Promise<void> {
