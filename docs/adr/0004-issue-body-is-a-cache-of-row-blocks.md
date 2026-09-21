@@ -15,4 +15,13 @@ The issue stays a rendered view. Nothing is decided from a cached row. The only 
 - At its late read the scan defers to fresher facts. A stack with an open deployment renders as deploying. A stack with a Sluiceway deployment that changed after the scan started keeps its live row, because the scan's preview of it predates the deploy.
 - A write lost in the remaining window heals itself. A "deploying" row that reverts to pending is repaired by the next tick (dropped because the record is open), by `apply`, or by `settle`. A finished row that reverts to a stale diff leads to an apply that aborts and renders the fresh diff. The dashboard can be briefly wrong. A deploy never is, because deploy safety rests on the deployment record and the hash check, not on the body.
 
+## Settled while building (slice 2.1)
+
+- "Changed after the scan started" is measured per stack: the time of the record's latest status against the moment the scan started its preview of that stack. That is the reason the record gives ("the scan's preview of it predates the deploy"), and a scan that previews a stack again late has a preview that does not predate it.
+- When such a stack has no live row to keep, or a live row that still says deploying, the scan previews it once more and returns to its late read. Only once for each stack in a scan, then its fresh row is taken.
+- A row says deploying exactly as long as a deployment is open. A scan that meets a deploying row with no open deployment previews that stack, a narrowed scan too, because the writer that would have replaced the row is gone. A live deploying row of an open deployment is kept byte for byte, since only `resolve` has its attribution line. Without one the row is made from the record, and its `destroys` come from the preview or from the marker of the row it replaces.
+- A record that the scan itself ended has no writer behind it, so the stack gets the row of the scan's own preview, with the failure line.
+- The late read of the deployment records runs inside the builder of the write loop, so every try sees the records as they are. It costs one request per environment name, per try.
+- A full scan is a scan that previewed every stack, also when a stack then keeps its live row for one of the reasons above.
+
 Research: https://github.com/sluiceway/sluiceway/blob/research/renovate-dashboard-mechanics/docs/research/renovate-dashboard-mechanics.md

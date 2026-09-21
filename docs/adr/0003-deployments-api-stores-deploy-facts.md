@@ -17,4 +17,16 @@ A preview can recompute what is pending, but not that a deploy is running, how t
 - Only the latest status of a record survives 90 days. Nothing the dashboard needs sits in the pruned history.
 - The workflow needs `deployments: write` and `actions: read` (already covered by `actions: write`).
 
+## Settled while building (slice 2.1)
+
+- The REST fall back is two requests for a stack that has a record, not one: GitHub's REST list of deployments gives a record without its status, so the latest status is a request of its own. A stack without any record costs one. GraphQL has no filter on `task`, which is why the fall back is REST at all.
+- A page that is not full holds every record of its environment, so a stack that is not on it has no record and needs no fall back. The fall back runs only when GitHub says the environment holds more than the page, and then for a pending stack and for a stack whose live row says deploying. The second is needed so that a deploying row is never taken for one that outlived its record.
+- GraphQL gives `payload` as a string that holds the JSON text of a JSON string, so it is encoded twice, and gives `null` for an empty payload. REST gives the payload as JSON. The port reads both into the same value. Seen in the lab repo on 2026-09-21.
+- A record whose payload is not `v: 1`, or misses a fact, is not read at all. The `run` in a payload must be a run id in digits, so no request and no link is built from text a person typed.
+- A record with no status yet, or with a state that is no result, is an open deployment. Results are `success`, `inactive`, `failure` and `error`. So a stack that may be deploying never gets a box, also in a state GitHub adds later.
+- The run links on the dashboard are built from the `run` in the payload, not read from the status, because the status GitHub writes for `inactive` has no link.
+- The reason on a settled record is `the run ended without a result`, the wording of the list in 0022. Its `log_url` is the run of the deploy.
+- A run that GitHub does not have any more (404) counts as over. Any other failure to read a run or a record fails the scan with GitHub's words and the permissions it needs, as every other API error does (slice 1.10).
+- The scan job now needs `deployments: write` and `actions: read` too, because every scan does the late read. The scan-only workflow in the README has them.
+
 Research: https://github.com/sluiceway/sluiceway/blob/research/github-actions-behaviors/docs/research/github-actions-behaviors.md

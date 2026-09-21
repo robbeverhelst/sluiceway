@@ -66,6 +66,8 @@ on:
 permissions:
   contents: read
   issues: write
+  deployments: write
+  actions: read
 
 jobs:
   scan:
@@ -88,7 +90,7 @@ jobs:
 
 What this does and does not do:
 
-- **Nothing can be deployed.** The workflow has no `resolve` and no `apply` job, and it does not listen to issue edits, so a ticked box starts nothing. A scan only ever asks the tool for a preview. The token can read the code and write issues, and nothing else.
+- **Nothing can be deployed.** The workflow has no `resolve` and no `apply` job, and it does not listen to issue edits, so a ticked box starts nothing. A scan only ever asks the tool for a preview. The token can read the code, write issues, and read and write deployment records, and nothing else. A scan reads the deployment records, which is where Sluiceway keeps who deployed what and when, and with no `resolve` job there are none. `actions: read` lets it see whether a workflow run is over.
 - **Pin the action to a full commit SHA**, all 40 characters, of a commit in this repository. No tag exists before the first release, so `@v0` does not resolve yet.
 - **The header image only shows from a release tag or a commit SHA.** The images are served from the exact ref of the running action, never from one that can move, so that a picture never changes behind a dashboard that was already written. Started from a branch such as `@main`, Sluiceway falls back to the release tag of its own version, and before the first release that tag does not exist. Started from a copy inside your own repo (`uses: ./`), it names a commit that this repository does not have. In both cases the scan works and the picture is broken. `dashboard.personality: false` in `sluiceway.yaml` takes the picture out.
 - **A push gives a narrowed scan**: only the stacks that claim a changed file are previewed, and every other row stays as it is. The schedule and "Run workflow" give a full scan. The first scan is always full.
