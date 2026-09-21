@@ -56,6 +56,20 @@ function preview(cwd: string, stack: string, expect: Expectation, id = "preview"
   };
 }
 
+// The tool's own diff, for the job log only (record 0045): the preview as the
+// tool displays it, with every value it does not hold as secret. The stack
+// outputs stay out, as on the deploy (record 0036).
+function toolDiff(cwd: string, stack: string, expect: Expectation): Step {
+  return {
+    kind: "record",
+    id: "diff",
+    cwd,
+    argv: ["pulumi", "preview", "--diff", "--suppress-outputs", ...QUIET, "--stack", stack],
+    stdout: "text",
+    expect,
+  };
+}
+
 const NETWORK = "network/Pulumi.yaml";
 
 function edit(find: string, replace: string, file = NETWORK): Step {
@@ -97,6 +111,22 @@ const addedResource = edit(
       version: 4.21.2
 ${OUTPUTS}`,
 );
+
+const rotateSecret: Step = {
+  kind: "setup",
+  cwd: "network",
+  argv: [
+    "pulumi",
+    "config",
+    "set",
+    "--secret",
+    "token",
+    "CANARY-SECRET-ROTATED",
+    ...QUIET,
+    "--stack",
+    "dev",
+  ],
+};
 
 // A deployed network:dev stack, then the given edits, then one preview.
 function afterDeploy(
@@ -391,6 +421,39 @@ ${OUTPUTS}`,
       nestedEdit('example.com/revision: "1"\n', 'example.com/revision: "2"\n'),
       nestedEdit("app.properties: CANARY-VALUE\n", "app.properties: CANARY-VALUE-3\n"),
       preview("generated/nested", "dev", { exit: "zero", ops: ["update", "replace"] }),
+    ],
+  },
+  {
+    name: "log-diff-deploy",
+    description:
+      "What apply runs for a stack that was never deployed with scan.logDiff on: the fresh preview, the tool's own diff, then the deploy. Every value is in the diff, the secret as the tool marks it.",
+    steps: [
+      init("network", "dev"),
+      preview("network", "dev", { exit: "zero", ops: ["create"] }),
+      toolDiff("network", "dev", { exit: "zero" }),
+      deploy("network", "dev", { exit: "zero" }),
+    ],
+  },
+  {
+    name: "log-diff-changed-secret",
+    description:
+      "What a scan with scan.logDiff on runs when the secret config value has a new value: the preview, then the tool's own diff, which shows the change and masks both values.",
+    steps: [
+      init("network", "dev"),
+      up("network", "dev"),
+      rotateSecret,
+      preview("network", "dev", { exit: "zero", ops: ["update"] }),
+      toolDiff("network", "dev", { exit: "zero" }),
+    ],
+  },
+  {
+    name: "log-diff-missing-config",
+    description:
+      "The tool's own diff of a stack whose config lacks a value the program requires. It fails like the preview does.",
+    steps: [
+      init("network", "dev"),
+      edit("  network:zone: dev-a\n", "", "network/Pulumi.dev.yaml"),
+      toolDiff("network", "dev", { exit: "nonzero" }),
     ],
   },
   {
