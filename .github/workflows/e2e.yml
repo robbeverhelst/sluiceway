@@ -1,0 +1,61 @@
+name: e2e
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    # The committed bundle on a real runner, with the real CLI, the example
+    # project and the fake GitHub server (build plan, section 6). A full scan,
+    # then a narrowed one.
+    #
+    # The bundle is started by scripts/e2e.ts and not by a `uses: ./` step. A
+    # runner sets GITHUB_API_URL, GITHUB_WORKSPACE, GITHUB_SHA and
+    # GITHUB_EVENT_NAME itself and lets neither a step nor a job replace them,
+    # so a real step can only ever talk to the real GitHub. The script hands
+    # the bundle what a runner would: the inputs with the defaults of
+    # action.yml, and the GITHUB_* variables, with the fake server as GitHub.
+    # The smoke job of ci.yml is the `uses: ./` half.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # The minimum version that record 0001 supports and the newest one the
+        # fixtures were recorded with.
+        pulumi: [v3.229.0, v3.263.0]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      # Stands in for the runner's own node24, which starts the bundle in a
+      # real step. It also runs the TypeScript program of the example.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      # Without a command this only installs the CLI.
+      - uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+        with:
+          pulumi-version: ${{ matrix.pulumi }}
+
+      - run: bun install --frozen-lockfile
+
+      - name: Scan the example project with the committed bundle
+        env:
+          PULUMI_VERSION: ${{ matrix.pulumi }}
+        run: bun run e2e --work-dir "$RUNNER_TEMP/e2e" --expect-version "$PULUMI_VERSION"

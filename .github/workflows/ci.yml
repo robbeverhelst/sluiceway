@@ -99,30 +99,39 @@ jobs:
           if-no-files-found: error
 
   smoke:
-    # Runs the committed bundle the way a consumer would, on the real node24 runtime.
+    # Runs the committed bundle the way a consumer would: a `uses:` step, read
+    # through action.yml, on the runner's own node24. The e2e workflow proves
+    # that a scan works. This job proves the one thing e2e cannot, because e2e
+    # has to start the bundle itself to point it at the fake GitHub.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          path: action
 
-      # The scan is wired now, and running it here would preview the example
-      # project and write a dashboard issue into this repo. The e2e workflow of
-      # slice 1.13 runs it against the fake GitHub and changes this job. Until
-      # then the job proves what it always did: the bundle loads on node24 and
-      # dispatches on the mode input, with a mode that is still a stub.
-      - id: stub
-        uses: ./
+      # A real step can only talk to the real GitHub, and a scan that works
+      # would write a dashboard issue into this repo. So the scan runs in a
+      # workspace whose sluiceway.yaml is broken on purpose. A config error
+      # fails the job before the tool or GitHub is touched (record 0012), and
+      # to get there the bundle has loaded, read `mode` and the defaults of
+      # action.yml, and read the workspace.
+      - name: A workspace with a broken sluiceway.yaml
+        run: |
+          printf 'tickerz: write\n' > sluiceway.yaml
+
+      - id: scan
+        uses: ./action
         continue-on-error: true
         with:
-          mode: resolve
+          mode: scan
 
-      - name: Expect the stub to fail
+      - name: Expect the scan to fail on the config
         env:
-          OUTCOME: ${{ steps.stub.outcome }}
+          OUTCOME: ${{ steps.scan.outcome }}
         run: |
           if [ "$OUTCOME" != "failure" ]; then
-            echo "::error::Expected the resolve stub to fail as not implemented yet, got: $OUTCOME"
+            echo "::error::Expected the scan to fail on the broken sluiceway.yaml, got: $OUTCOME"
             exit 1
           fi
