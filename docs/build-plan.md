@@ -121,7 +121,7 @@ Rules for config loading:
 The header images are served from the exact release tag of the running action, or its commit SHA, never from a moving tag (0033). There are twenty-two of them, 880 by 160 (0039, 0043). The glue works the ref out once per job and hands it to the renderer as data:
 
 1. If `GITHUB_ACTION_REF` is a full commit SHA or an exact version tag (`v1.2.3`), use it.
-2. Otherwise read `version` from the `package.json` next to the action (`GITHUB_ACTION_PATH`) and use `v<version>`.
+2. Otherwise read `version` from the `package.json` next to the action and use `v<version>`. The action finds that file from the address of its own entry point (`import.meta.url` of `dist/index.js`, one directory below `package.json`). Not from `GITHUB_ACTION_PATH`: GitHub sets it for composite actions only, so a JavaScript action never gets it, which broke every run of 0.1.0 on `v0` (hotfix 0.1.1, seen in the lab).
 3. For `uses: ./` there is no action ref. Use `GITHUB_SHA`.
 
 The version is read at run time and is not compiled into `dist/`. release-please changes `package.json` in its release pull request and cannot rebuild `dist/`, so a compiled-in version would turn every release pull request red. The footer's version line uses the same value.
