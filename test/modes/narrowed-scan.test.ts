@@ -205,9 +205,30 @@ describe("falling back to a full scan (record 0010)", () => {
     });
   });
 
-  test("sluiceway.yaml and a workflow file lie outside every stack, so they need no special case", async () => {
+  // Record 0010 needs no special case for them. The words say that the config
+  // file changed, and only the other files are listed as unclaimed, since no
+  // stack is meant to claim the config file (onboarding log, hurdle 14).
+  test("sluiceway.yaml and a workflow file lie outside every stack, and the log says the config file changed", async () => {
     const scanned = await pushed(TABLE, ahead("sluiceway.yaml", ".github/workflows/sluiceway.yml"));
-    await expectFull(scanned, "no stack claims sluiceway.yaml and 1 more changed file");
+    await expectFull(
+      scanned,
+      "sluiceway.yaml changed, so every stack is previewed, and no stack claims .github/workflows/sluiceway.yml",
+    );
+    expect(scanned.log.groups[0]).toEqual({
+      title: "Changed files that no stack claims",
+      lines: [
+        "unclaimed: .github/workflows/sluiceway.yml",
+        "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.",
+      ],
+    });
+  });
+
+  test("a change to sluiceway.yaml alone lists no unclaimed files", async () => {
+    const scanned = await pushed(TABLE, ahead("sluiceway.yaml"));
+    await expectFull(scanned, "sluiceway.yaml changed, so every stack is previewed");
+    expect(scanned.log.groups.map((group) => group.title)).not.toContain(
+      "Changed files that no stack claims",
+    );
   });
 
   test("a file in the directory of an ignored stack has no claimant either", async () => {

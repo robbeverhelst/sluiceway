@@ -207,6 +207,15 @@ describe("a narrowed scan of the example project", () => {
     ]);
   });
 
+  test("a change to sluiceway.yaml is a full scan, and the log says the config file changed", async () => {
+    const { started, log } = await afterPush("sluiceway.yaml");
+    expect(started).toEqual(["app", "network", "network", "site"]);
+    expect(log.lines).toContain(
+      "This is a full scan. A push gives a narrowed scan, and this one fell back to a full scan: sluiceway.yaml changed, so every stack is previewed.",
+    );
+    expect(log.lines.join("\n")).not.toContain("no stack claims");
+  });
+
   test("the ignored playground stack claims nothing, so a change there is a full scan", async () => {
     const { started, log } = await afterPush("playground/Pulumi.yaml");
     expect(started).toEqual(["app", "network", "network", "site"]);

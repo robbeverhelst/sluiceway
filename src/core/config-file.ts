@@ -2,7 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Config, ConfigError, parseConfig } from "./config.ts";
 
-const FILE = "sluiceway.yaml";
+// At the repo root, and nowhere else.
+export const CONFIG_FILE = "sluiceway.yaml";
+const FILE = CONFIG_FILE;
 // Never read. A config under this name would be passed over without a word,
 // and its tick rule with it, so it is refused instead.
 const WRONG_FILE = "sluiceway.yml";

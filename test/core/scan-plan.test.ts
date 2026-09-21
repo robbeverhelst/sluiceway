@@ -216,6 +216,22 @@ describe("the words for why a scan is a full scan", () => {
       { kind: "unclaimed", files: ["package.json", "bun.lock", "tsconfig.json"] },
       "no stack claims package.json and 2 more changed files",
     ],
+    // Onboarding log, hurdle 14: the config file is not a file a stack should
+    // claim, so the words say what happened instead (record 0010).
+    [
+      { kind: "unclaimed", files: ["sluiceway.yaml"] },
+      "sluiceway.yaml changed, so every stack is previewed",
+    ],
+    [
+      { kind: "unclaimed", files: ["package.json", "sluiceway.yaml"] },
+      "sluiceway.yaml changed, so every stack is previewed, and no stack claims package.json",
+    ],
+    [
+      { kind: "unclaimed", files: ["package.json", "sluiceway.yaml", "bun.lock", "a.json"] },
+      "sluiceway.yaml changed, so every stack is previewed, and no stack claims package.json and 2 more changed files",
+    ],
+    // Only the file at the repo root is the config file.
+    [{ kind: "unclaimed", files: ["docs/sluiceway.yaml"] }, "no stack claims docs/sluiceway.yaml"],
     [
       { kind: "does-not-fit", carried: 12 },
       "the body does not fit in one issue with 12 rows carried through, and only a fresh row can be shortened",

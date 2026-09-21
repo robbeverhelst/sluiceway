@@ -4,6 +4,7 @@
 // wrong, so every doubt ends in a full scan.
 
 import { type Claimant, claim } from "./claim.ts";
+import { CONFIG_FILE } from "./config-file.ts";
 
 // GitHub's compare call lists at most this many files. A list this long may
 // be missing files (record 0010).
@@ -145,6 +146,20 @@ export function oneRowPerStack(
   };
 }
 
+// The unclaimed files that ask for `inputs` or `scan.unrelated`: all of them
+// but the config file, which no stack is meant to claim (onboarding log,
+// hurdle 14).
+export function unclaimedToPlace(files: string[]): string[] {
+  return files.filter((file) => file !== CONFIG_FILE);
+}
+
+function noClaimant(files: string[]): string {
+  const [first = "", ...rest] = files;
+  return rest.length === 0
+    ? `no stack claims ${first}`
+    : `no stack claims ${first} and ${rest.length} more changed ${rest.length === 1 ? "file" : "files"}`;
+}
+
 // For the job log, after "This is a full scan:". Lower case and no full stop,
 // so the place that prints it builds its own sentence.
 export function fullScanReasonText(reason: FullScanReason): string {
@@ -166,10 +181,13 @@ export function fullScanReasonText(reason: FullScanReason): string {
     case "file-cap":
       return `the comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, so files may be missing from it`;
     case "unclaimed": {
-      const [first = "", ...rest] = reason.files;
-      return rest.length === 0
-        ? `no stack claims ${first}`
-        : `no stack claims ${first} and ${rest.length} more changed ${rest.length === 1 ? "file" : "files"}`;
+      // The config file lies outside every stack, so changing it is a full
+      // scan with no special case (record 0010). Only the words differ: no
+      // stack is meant to claim it (onboarding log, hurdle 14).
+      const others = unclaimedToPlace(reason.files);
+      if (others.length === reason.files.length) return noClaimant(others);
+      const changed = `${CONFIG_FILE} changed, so every stack is previewed`;
+      return others.length === 0 ? changed : `${changed}, and ${noClaimant(others)}`;
     }
     case "does-not-fit":
       return `the body does not fit in one issue with ${reason.carried} ${reason.carried === 1 ? "row" : "rows"} carried through, and only a fresh row can be shortened`;

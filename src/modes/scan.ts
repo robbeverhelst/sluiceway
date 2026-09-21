@@ -32,6 +32,7 @@ import {
   type PreviewWhy,
   planScan,
   type ScanPlan,
+  unclaimedToPlace,
 } from "../core/scan-plan.ts";
 import { everyPreviewFailed } from "../core/scan-result.ts";
 import { stackId } from "../core/stack.ts";
@@ -647,9 +648,10 @@ function logPlan(context: ScanContext, plan: ScanPlan, stackCount: number): void
     log.info(
       `This is a full scan. A push gives a narrowed scan, and this one fell back to a full scan: ${fullScanReasonText(safe)}.`,
     );
-    if (why.kind === "unclaimed") {
+    const toPlace = why.kind === "unclaimed" ? unclaimedToPlace(why.files) : [];
+    if (toPlace.length > 0) {
       log.group("Changed files that no stack claims", [
-        ...why.files.map((file) => `unclaimed: ${fileName(file)}`),
+        ...toPlace.map((file) => `unclaimed: ${fileName(file)}`),
         "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.",
       ]);
     }
