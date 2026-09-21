@@ -1,0 +1,27 @@
+Updating (dev):
+
+ +  pulumi:pulumi:Stack network-dev creating (0s) 
+ +  random:index:RandomString subnet creating (0s) 
+ +  random:index:RandomString subnet created (0.01s) 
+ +  random:index:RandomPet name creating (0s) 
+ +  random:index:RandomPet name created (0.00s) 
+ +  command:local:Command banner creating (0s) 
+ +  command:local:Command banner creating (0s) error: exit status 1: running "exit 1":
+ +  command:local:Command banner **creating failed** error: exit status 1: running "exit 1":
+ +  local:index:File notes creating (0s) 
+ +  local:index:File notes created (0.01s) 
+ +  pulumi:pulumi:Stack network-dev creating (0s) error: update failed
+ +  pulumi:pulumi:Stack network-dev **creating failed (0.15s)** 1 error
+Diagnostics:
+  command:local:Command (banner):
+    error: exit status 1: running "exit 1":
+
+  pulumi:pulumi:Stack (network-dev):
+    error: update failed
+
+Resources:
+    + 4 created
+    2 errored
+
+Duration: 1s
+

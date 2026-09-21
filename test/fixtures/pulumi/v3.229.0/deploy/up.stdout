@@ -1,0 +1,18 @@
+Updating (dev):
+
+ +  pulumi:pulumi:Stack network-dev creating (0s) 
+ +  random:index:RandomPet name creating (0s) 
+ +  random:index:RandomString subnet creating (0s) 
+ +  random:index:RandomPet name created (0.01s) 
+ +  random:index:RandomString subnet created (0.01s) 
+ +  command:local:Command banner creating (0s) 
+ +  local:index:File notes creating (0s) 
+ +  command:local:Command banner creating (0s) network ready
+ +  command:local:Command banner created (0.01s) network ready
+ +  local:index:File notes created (0.00s) 
+ +  pulumi:pulumi:Stack network-dev created (0.14s) 
+Resources:
+    + 5 created
+
+Duration: 1s
+

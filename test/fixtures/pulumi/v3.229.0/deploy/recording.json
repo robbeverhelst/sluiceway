@@ -1,0 +1,45 @@
+{
+  "scenario": "deploy",
+  "description": "What apply runs for a stack that was never deployed: the fresh preview, then the deploy.",
+  "cliVersion": "v3.229.0",
+  "commands": [
+    {
+      "id": "preview",
+      "argv": [
+        "pulumi",
+        "preview",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "preview.stdout",
+      "stderr": "preview.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "up",
+      "argv": [
+        "pulumi",
+        "up",
+        "--yes",
+        "--skip-preview",
+        "--suppress-outputs",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "up.stdout",
+      "stderr": "up.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}
