@@ -51394,6 +51394,42 @@ function readActionRef(env, readFile2) {
   });
 }
 
+// src/github/event.ts
+function record2(value) {
+  return typeof value === "object" && value !== null ? value : undefined;
+}
+function text(value) {
+  return typeof value === "string" ? value : "";
+}
+function editedIssue(payload) {
+  const issue3 = record2(record2(payload)?.issue);
+  if (!issue3 || typeof issue3.number !== "number" || issue3.pull_request !== undefined) {
+    return;
+  }
+  const user = record2(issue3.user);
+  const labels = Array.isArray(issue3.labels) ? issue3.labels : [];
+  return {
+    number: issue3.number,
+    state: issue3.state === "open" ? "open" : "closed",
+    body: text(issue3.body),
+    labels: labels.flatMap((label) => {
+      const name = typeof label === "string" ? label : record2(label)?.name;
+      return typeof name === "string" ? [name] : [];
+    }),
+    author: { login: text(user?.login), type: text(user?.type) }
+  };
+}
+function readEventPayload(env, readFile2) {
+  const path = env.GITHUB_EVENT_PATH;
+  if (!path)
+    return;
+  try {
+    return JSON.parse(readFile2(path));
+  } catch {
+    return;
+  }
+}
+
 // src/github/job.ts
 function readJob(env) {
   const need = (name) => {
@@ -51438,8 +51474,8 @@ function actionsLog() {
       endGroup();
     },
     warning: (message, title) => warning(message, { title }),
-    async writeSummary(text) {
-      await summary.emptyBuffer().addRaw(text).write({ overwrite: true });
+    async writeSummary(text2) {
+      await summary.emptyBuffer().addRaw(text2).write({ overwrite: true });
     }
   };
 }
@@ -51829,445 +51865,13 @@ function toIssue(issue3) {
   };
 }
 
-// src/core/config.ts
-var username = exports_external.string().regex(/^[A-Za-z0-9_-]+$/);
-var tickers = exports_external.union([
-  exports_external.enum(["write", "maintain", "admin"]),
-  exports_external.array(username).min(1).transform((names) => [...new Set(names.map((name) => name.toLowerCase()))])
-]);
-var text = exports_external.string().min(1);
-var globs = exports_external.array(text);
-var stackPath = text.superRefine((path, context3) => {
-  const refuse = (message) => context3.addIssue({ code: "custom", message });
-  if (path.includes("\\"))
-    refuse(`${show(path)} must use forward slashes.`);
-  else if (path.startsWith("/"))
-    refuse(`${show(path)} must be relative to the repo root.`);
-  else if (path.split("/").includes(".."))
-    refuse(`${show(path)} must stay inside the repo, so ".." is not allowed.`);
-}).transform((path) => {
-  const segments = path.split("/").filter((segment) => segment !== "" && segment !== ".");
-  return segments.length === 0 ? "." : segments.join("/");
-});
-var stackEntry = exports_external.strictObject({
-  path: stackPath.describe("Directory of the stack, relative to the repo root."),
-  name: text.describe("Name of the stack. Without it the entry covers every stack in path.").exactOptional(),
-  environment: text.describe("Label on the deployment record, and the GitHub Environment where one is used. Default: sluiceway.").exactOptional(),
-  tickers: tickers.describe("Tick rule for this stack. Default: the top level tickers.").exactOptional(),
-  inputs: globs.describe("Extra globs this stack claims, relative to the repo root.").exactOptional(),
-  previewTimeout: exports_external.int().min(1).describe("Time limit for one preview of this stack, in whole minutes. Default: the preview-timeout input.").exactOptional(),
-  options: exports_external.strictObject({}).describe("Named adapter options. None exist in this version.").exactOptional()
-});
-var stackEntries = exports_external.array(stackEntry).superRefine((entries, context3) => {
-  const seen = new Map;
-  entries.forEach((entry, index) => {
-    const id = stackId(entry);
-    const first = seen.get(id);
-    if (first === undefined)
-      seen.set(id, index);
-    else
-      context3.addIssue({
-        code: "custom",
-        path: [index],
-        message: `says the same path and name as stacks[${first}] (${show(id)}). Put the settings in one entry.`
-      });
-  });
-});
-var configSchema = exports_external.strictObject({
-  dashboard: exports_external.strictObject({
-    title: text.describe("Title of the dashboard issue.").default("Sluiceway dashboard"),
-    label: text.describe("Label the dashboard issue is found by.").default("sluiceway"),
-    pin: exports_external.boolean().describe("Pin the dashboard issue, best effort.").default(true),
-    redact: exports_external.boolean().describe("Keep resource types, resource names and property names out of the issue. The summary stays full. Not access control.").default(false),
-    personality: exports_external.boolean().describe("Show the header image and use the voice. false removes both.").default(true)
-  }).prefault({}),
-  tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
-  ignore: globs.describe("Globs matched against the stack id. An ignored stack has no row.").default([]),
-  scan: exports_external.strictObject({
-    unrelated: globs.describe("Globs for files that claim nothing and force nothing, such as **/*.md.").default([])
-  }).prefault({}),
-  stacks: stackEntries.describe("Settings for stacks that discovery found. An entry never creates a stack.").default([])
-});
-
-class ConfigError extends Error {
-  problems;
-  constructor(problems) {
-    super(["sluiceway.yaml is not valid:", ...problems.map((problem2) => `- ${problem2}`)].join(`
-`));
-    this.name = "ConfigError";
-    this.problems = problems;
-  }
-}
-function parseConfig(text2) {
-  const raw = text2 === undefined ? null : readYaml(text2);
-  const result = configSchema.safeParse(raw ?? {});
-  if (!result.success) {
-    const problems = result.error.issues.flatMap((issue3) => describe4(issue3, raw));
-    throw new ConfigError(inFileOrder(problems, raw).map((problem2) => problem2.text));
-  }
-  return result.data;
-}
-function readYaml(text2) {
-  const lineCounter2 = new $LineCounter;
-  const document = $parseDocument(text2, { lineCounter: lineCounter2, prettyErrors: false });
-  if (document.errors.length > 0) {
-    throw new ConfigError(document.errors.map((error63) => {
-      const { line, col } = lineCounter2.linePos(error63.pos[0]);
-      return `line ${line}, column ${col}: not valid YAML. ${error63.message}`;
-    }));
-  }
-  return document.toJS();
-}
-function describe4(issue3, raw) {
-  const at = where(issue3.path);
-  const value = valueAt(raw, issue3.path);
-  const problem2 = (text2) => [{ path: issue3.path, text: `${at}${text2}` }];
-  const key = issue3.path.at(-1);
-  if (issue3.code === "unrecognized_keys") {
-    const known = knownKeys(issue3.path);
-    const unknown2 = (name) => {
-      if (RESERVED_KEYS.includes(name))
-        return `"${name}" is not in this version of Sluiceway yet. Remove it.`;
-      if (key === "options")
-        return `unknown option "${name}". No adapter options exist in this version.`;
-      return `unknown key "${name}". Known keys here: ${known.join(", ")}.`;
-    };
-    return issue3.keys.map((name) => ({
-      path: [...issue3.path, name],
-      text: `${at}${unknown2(name)}`
-    }));
-  }
-  if (value === undefined && key === "path") {
-    return problem2("is required. It is the directory of the stack, relative to the repo root.");
-  }
-  if (key === "previewTimeout" && issue3.code !== "custom") {
-    return problem2(`expected a whole number of minutes, 1 or more, got ${show(value)}.`);
-  }
-  if (issue3.code === "invalid_union") {
-    if (!Array.isArray(value)) {
-      return problem2(`expected "write", "maintain", "admin" or a list of usernames, got ${show(value)}.`);
-    }
-    return (issue3.errors[1] ?? []).flatMap((inner) => describe4({ ...inner, path: [...issue3.path, ...inner.path] }, raw));
-  }
-  if (issue3.code === "invalid_format") {
-    return problem2(String(value).includes("/") ? `${show(value)} looks like a team. Teams are not supported yet. Use a level ("write", "maintain", "admin") or usernames.` : `${show(value)} is not a GitHub username. Write the login alone, without "@".`);
-  }
-  if (issue3.code === "too_small") {
-    return problem2(issue3.origin === "array" ? "the list is empty, so nobody could tick. Name at least one username or use a level." : key === "path" ? 'must not be empty. Use "." for the repo root.' : "must not be empty.");
-  }
-  if (issue3.code === "invalid_type") {
-    return problem2(`expected ${EXPECTED2[issue3.expected] ?? issue3.expected}, got ${show(value)}.`);
-  }
-  return problem2(issue3.message);
-}
-var EXPECTED2 = {
-  string: "text",
-  boolean: "true or false",
-  array: "a list",
-  object: "a mapping"
-};
-function valueAt(raw, path) {
-  let value = raw;
-  for (const segment of path) {
-    if (typeof value !== "object" || value === null)
-      return;
-    value = value[segment];
-  }
-  return value;
-}
-function show(value) {
-  if (value === null || value === undefined)
-    return "nothing";
-  if (Array.isArray(value))
-    return "a list";
-  if (typeof value === "object")
-    return "a mapping";
-  return JSON.stringify(value);
-}
-function inFileOrder(problems, raw) {
-  const position = (path) => {
-    let value = raw;
-    return path.map((segment) => {
-      const keys2 = typeof value === "object" && value !== null ? Object.keys(value) : [];
-      const index = keys2.indexOf(String(segment));
-      value = index === -1 ? undefined : value[String(segment)];
-      return index === -1 ? keys2.length : index;
-    });
-  };
-  const compare2 = (a, b) => {
-    for (let i = 0;i < Math.min(a.length, b.length); i++) {
-      const difference = (a[i] ?? 0) - (b[i] ?? 0);
-      if (difference !== 0)
-        return difference;
-    }
-    return a.length - b.length;
-  };
-  return problems.map((problem2) => ({ problem: problem2, at: position(problem2.path) })).sort((a, b) => compare2(a.at, b.at)).map(({ problem: problem2 }) => problem2);
-}
-var RESERVED_KEYS = ["dependsOn", "drift"];
-function where(path) {
-  const text2 = path.map((segment) => typeof segment === "number" ? `[${segment}]` : `.${String(segment)}`).join("").replace(/^\./, "");
-  return text2 === "" ? "" : `${text2}: `;
-}
-function knownKeys(path) {
-  let schema = configSchema;
-  for (const segment of path) {
-    schema = unwrap(schema);
-    if (schema instanceof exports_external.ZodObject)
-      schema = schema.shape[String(segment)];
-    else if (schema instanceof exports_external.ZodArray)
-      schema = schema.element;
-  }
-  schema = unwrap(schema);
-  return schema instanceof exports_external.ZodObject ? Object.keys(schema.shape) : [];
-}
-function unwrap(schema) {
-  let inner = schema;
-  while (inner instanceof exports_external.ZodDefault || inner instanceof exports_external.ZodPrefault) {
-    inner = inner.def.innerType;
-  }
-  return inner;
-}
-var DEFAULT_ENVIRONMENT = "sluiceway";
-function applyConfig(config2, found) {
-  const stacks = knownStacks(found, config2.ignore);
-  const problems = config2.stacks.flatMap((entry, index) => {
-    const inPath = stacks.filter((stack) => stack.path === entry.path);
-    if (inPath.some((stack) => covers(entry, stack)))
-      return [];
-    const ignored = found.filter((stack) => covers(entry, stack));
-    return [`stacks[${index}]: ${describeMiss(entry, inPath, ignored)}`];
-  });
-  if (problems.length > 0)
-    throw new ConfigError(problems);
-  return stacks.map((stack) => {
-    const entries = config2.stacks.filter((entry) => covers(entry, stack)).sort((a, b) => Number(a.name !== undefined) - Number(b.name !== undefined));
-    const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
-    return {
-      stack,
-      environment: entries.findLast((entry) => entry.environment)?.environment ?? DEFAULT_ENVIRONMENT,
-      tickers: entries.findLast((entry) => entry.tickers)?.tickers ?? config2.tickers,
-      inputs: [...new Set(entries.flatMap((entry) => entry.inputs ?? []))],
-      ...previewTimeout === undefined ? {} : { previewTimeout }
-    };
-  });
-}
-function covers(entry, stack) {
-  return entry.path === stack.path && (entry.name === undefined || entry.name === stack.name);
-}
-function describeMiss(entry, inPath, ignored) {
-  if (ignored.length > 0) {
-    const ids = ignored.map((stack) => show(stackId(stack))).join(", ");
-    const subject = ignored.length === 1 ? `the stack ${ids} is` : `the stacks ${ids} are`;
-    return `${subject} left out by ignore, so these settings would do nothing. Remove the entry, or change ignore.`;
-  }
-  if (entry.name === undefined || inPath.length === 0) {
-    return `no stack was found in ${show(entry.path)}. An entry adds settings to a stack that exists, it never creates one.`;
-  }
-  const names = inPath.flatMap((stack) => stack.name === undefined ? [] : [stack.name]);
-  const found = names.length === 0 ? "The stack found there has no name." : `Found there: ${names.join(", ")}.`;
-  return `no stack named ${show(entry.name)} was found in ${show(entry.path)}. ${found}`;
-}
-
-// src/core/config-file.ts
-import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
+// src/github/outputs.ts
+import { writeFileSync } from "node:fs";
 import { join as join4 } from "node:path";
-var CONFIG_FILE = "sluiceway.yaml";
-var FILE = CONFIG_FILE;
-var WRONG_FILE = "sluiceway.yml";
-function loadConfig(root) {
-  if (existsSync3(join4(root, WRONG_FILE))) {
-    throw new ConfigError([`found ${WRONG_FILE}. The file must be named ${FILE}. Rename it.`]);
-  }
-  return parseConfig(read(join4(root, FILE)));
-}
-function hasConfigFile(root) {
-  return existsSync3(join4(root, FILE));
-}
-function read(file2) {
-  try {
-    return readFileSync2(file2, "utf8");
-  } catch (error63) {
-    const code = error63.code;
-    if (code === "ENOENT")
-      return;
-    if (code === "EISDIR")
-      throw new ConfigError(["it is not a file."]);
-    throw error63;
-  }
-}
 
-// src/core/deployment.ts
-var TASK_PREFIX = "sluiceway:";
-function deploymentTask(stackId2) {
-  return `${TASK_PREFIX}${stackId2}`;
-}
-function taskStackId(task) {
-  if (!task.startsWith(TASK_PREFIX) || task.length === TASK_PREFIX.length)
-    return;
-  return task.slice(TASK_PREFIX.length);
-}
-var PAYLOAD_VERSION = 1;
-function deploymentPayload(payload) {
-  return { v: PAYLOAD_VERSION, hash: payload.hash, ticker: payload.ticker, run: payload.run };
-}
-var RUN_ID = /^[1-9]\d*$/;
-function readDeploymentPayload(payload) {
-  if (typeof payload !== "object" || payload === null)
-    return;
-  const { v, hash: hash2, ticker, run } = payload;
-  if (v !== PAYLOAD_VERSION)
-    return;
-  if (typeof hash2 !== "string" || typeof ticker !== "string" || typeof run !== "string") {
-    return;
-  }
-  return RUN_ID.test(run) ? { hash: hash2, ticker, run } : undefined;
-}
-var SUCCEEDED = new Set(["success", "inactive"]);
-var FAILED = new Set(["failure", "error"]);
-var NO_REASON_RECORDED = "no reason was recorded";
-function isOpenStatus(status) {
-  const state = status?.state ?? "";
-  return !SUCCEEDED.has(state) && !FAILED.has(state);
-}
-function newestLast(a, b) {
-  return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id;
-}
-function factOf(record2, payload) {
-  const { ticker, run } = payload;
-  const state = record2.status?.state ?? "";
-  const at = new Date(record2.status?.createdAt ?? record2.createdAt);
-  if (SUCCEEDED.has(state))
-    return { kind: "succeeded", ticker, run, at };
-  if (FAILED.has(state)) {
-    return {
-      kind: "failed",
-      reason: record2.status?.description || NO_REASON_RECORDED,
-      ticker,
-      run,
-      at
-    };
-  }
-  return { kind: "open", deployment: record2.id, waiting: state !== "in_progress", ticker, run };
-}
-function deployFacts(records) {
-  const facts = { byStack: new Map, succeeded: [], unread: 0 };
-  for (const record2 of [...records].sort(newestLast)) {
-    const stackId2 = taskStackId(record2.task);
-    if (stackId2 === undefined)
-      continue;
-    const payload = readDeploymentPayload(record2.payload);
-    if (!payload) {
-      facts.unread++;
-      continue;
-    }
-    const fact = factOf(record2, payload);
-    facts.byStack.set(stackId2, fact);
-    if (fact.kind === "succeeded") {
-      facts.succeeded.push({
-        stackId: stackId2,
-        ticker: fact.ticker,
-        run: fact.run,
-        at: fact.at,
-        sha: record2.sha
-      });
-    }
-  }
-  return facts;
-}
-function lastDeployedCommit(facts, stackId2) {
-  return facts.succeeded.findLast((deploy) => deploy.stackId === stackId2)?.sha;
-}
-function rowAtLateRead(stack) {
-  const { previewedAt, liveState, fact } = stack;
-  if (fact?.kind === "open") {
-    return { row: "deploying", from: liveState === "deploying" ? "live" : "record" };
-  }
-  const usableLive = liveState !== undefined && liveState !== "deploying";
-  if (previewedAt === undefined) {
-    if (usableLive)
-      return { row: "live" };
-    return { row: "preview-first", why: liveState === undefined ? "no-row" : "no-open-deployment" };
-  }
-  const predates = fact !== undefined && !stack.settledHere && fact.at > previewedAt;
-  if (!predates)
-    return { row: "fresh" };
-  if (usableLive)
-    return { row: "live" };
-  return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
-}
-
-// src/core/diff-hash.ts
-import { createHash } from "node:crypto";
-function byCodeUnit2(a, b) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-function sortedSet2(keys2) {
-  return [...new Set(keys2)].sort(byCodeUnit2);
-}
-function canonicalJson(value) {
-  if (typeof value === "string")
-    return JSON.stringify(value);
-  if (Array.isArray(value))
-    return `[${value.map(canonicalJson).join(",")}]`;
-  const members2 = Object.keys(value).sort(byCodeUnit2).flatMap((key) => {
-    const member = value[key];
-    return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
-  });
-  return `{${members2.join(",")}}`;
-}
-function canonicalChange(change) {
-  return {
-    address: change.address,
-    type: change.type,
-    name: change.name,
-    op: change.op,
-    tracking: change.tracking,
-    previousAddress: change.previousAddress,
-    changedKeys: sortedSet2(change.changedKeys),
-    replaceKeys: sortedSet2(change.replaceKeys)
-  };
-}
-function canonicalDiff(diff) {
-  const changes = diff.changes.map((change) => ({ address: change.address, text: canonicalJson(canonicalChange(change)) })).sort((a, b) => byCodeUnit2(a.address, b.address) || byCodeUnit2(a.text, b.text)).map((change) => change.text);
-  return `{"changes":[${changes.join(",")}],"stackId":${JSON.stringify(diff.stackId)}}`;
-}
-function diffHash(diff) {
-  return createHash("sha256").update(canonicalDiff(diff), "utf8").digest("hex").slice(0, 16);
-}
-
-// src/core/failure-reason.ts
-function previewFailureText(reason) {
-  switch (reason.kind) {
-    case "tool-error":
-      return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
-    case "stack-not-found":
-      return "the stack does not exist in the backend";
-    case "timed-out":
-      return `the preview timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}`;
-    case "unreadable-output":
-      return "the tool's output could not be read";
-    case "unknown-step":
-      return "the tool reported a step Sluiceway does not know";
-  }
-}
-function deployFailureText(reason) {
-  switch (reason.kind) {
-    case "run-ended":
-      return "the run ended without a result";
-    case "moved":
-      return "the change moved since the tick";
-    case "tool-error":
-      return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
-    case "preview-failed":
-      return `the preview before the deploy failed: ${previewFailureText(reason.reason)}`;
-    case "tool-missing":
-      return "the tool is missing or older than Sluiceway needs";
-    case "unknown-stack":
-      return "the stack is not in the repo any more";
-    case "not-started":
-      return "the deploy stopped before the tool ran";
-  }
+// src/render/destroy-sign.ts
+function destroySign(rows) {
+  return rows.some((row) => row.known && (row.state === "pending" || row.state === "deploying") && row.destroys > 0);
 }
 
 // src/render/escape.ts
@@ -52279,6 +51883,21 @@ var NAMED = {
 };
 function escapeText(text2) {
   return text2.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
+}
+
+// src/render/header-state.ts
+function headerState(rows) {
+  if (rows.length === 0)
+    return "first-run";
+  const known = rows.filter((row) => row.known);
+  const is = (state) => known.some((row) => row.state === state);
+  if (is("preview-failed") || known.some((row) => row.failed))
+    return "failing";
+  if (is("deploying"))
+    return "deploying";
+  if (is("pending"))
+    return "pending";
+  return "in-sync";
 }
 
 // src/render/marker.ts
@@ -52409,6 +52028,16 @@ function parseDashboard(body) {
   return { root: readRoot(lines[0] ?? ""), rows, rescanTicked };
 }
 
+// src/render/pending-level.ts
+function pendingLevel(rows) {
+  const pending = rows.filter((row) => row.known && row.state === "pending").length;
+  if (pending === 0)
+    return;
+  if (pending <= 2)
+    return 1;
+  return pending <= 9 ? 2 : 3;
+}
+
 // src/render/time.ts
 function utcMinute(at) {
   const iso = at.toISOString();
@@ -52417,7 +52046,7 @@ function utcMinute(at) {
 
 // src/render/row.ts
 var INDENT = "  ";
-function byCodeUnit3(a, b) {
+function byCodeUnit2(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function isDestroy(change) {
@@ -52441,7 +52070,7 @@ function codes(keys2) {
   return keys2.map((key) => `<code>${escapeText(key)}</code>`).join(", ");
 }
 function sortedKeys(keys2) {
-  return [...new Set(keys2)].sort(byCodeUnit3);
+  return [...new Set(keys2)].sort(byCodeUnit2);
 }
 function changeLine(change) {
   const word = [change.op === "none" ? undefined : change.op, change.tracking].filter((part) => part !== undefined).join(" + ");
@@ -52466,7 +52095,7 @@ function destroyWords(deletes, replaces) {
 }
 function pendingRow(row, options) {
   const level = options.level ?? 0;
-  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit3(a.address, b.address));
+  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit2(a.address, b.address));
   const deletes = changes.filter((change) => change.op === "delete");
   const replaces = changes.filter((change) => change.op === "replace");
   const folded = changes.filter((change) => !isDestroy(change));
@@ -52564,210 +52193,6 @@ function renderRow(row, options = {}) {
 `);
 }
 
-// src/core/claim.ts
-function inside(directory, file2) {
-  return directory === "." || file2.startsWith(`${directory}/`);
-}
-function claim2(stacks, changed, unrelated) {
-  const isUnrelated = globMatcher(unrelated);
-  const matchers = stacks.map((stack) => ({ stack, matches: globMatcher(stack.inputs) }));
-  const claims = new Map;
-  const unclaimed = [];
-  for (const file2 of new Set(changed)) {
-    if (isUnrelated(file2))
-      continue;
-    const claimants = matchers.filter(({ stack, matches }) => inside(stack.path, file2) || matches(file2));
-    if (claimants.length === 0)
-      unclaimed.push(file2);
-    for (const { stack } of claimants)
-      claims.set(stack.id, [...claims.get(stack.id) ?? [], file2]);
-  }
-  return { claims, unclaimed };
-}
-
-// src/core/attribution.ts
-var NAMED_ON_A_ROW = 5;
-var COMMIT_FILE_CAP = 300;
-function isCommitId(text2) {
-  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(text2);
-}
-var NEVER_DEPLOYED = "not deployed from this dashboard yet";
-function pullRequestOf(commit, walk) {
-  return commit.pullRequests.find((pullRequest) => pullRequest.merged && pullRequest.base === walk.defaultBranch);
-}
-function inRange(walk, from) {
-  const bySha = new Map(walk.commits.map((commit) => [commit.sha, commit]));
-  if (!bySha.has(from))
-    return { commits: walk.commits, earlier: true };
-  const reached = new Set;
-  const queue = [from];
-  for (let sha = queue.pop();sha !== undefined; sha = queue.pop()) {
-    if (reached.has(sha))
-      continue;
-    reached.add(sha);
-    queue.push(...bySha.get(sha)?.parents.filter((parent) => bySha.has(parent)) ?? []);
-  }
-  return { commits: walk.commits.filter(({ sha }) => !reached.has(sha)), earlier: false };
-}
-function directPushesToRead(walk, from) {
-  const wanted = new Set;
-  for (const start of new Set(from)) {
-    for (const commit of inRange(walk, start).commits) {
-      if (!pullRequestOf(commit, walk))
-        wanted.add(commit.sha);
-    }
-  }
-  return walk.commits.filter(({ sha }) => wanted.has(sha)).map(({ sha }) => sha);
-}
-function by(author) {
-  return author === undefined ? "" : ` by ${escapeText(author)}`;
-}
-function nameOf(merge3) {
-  return merge3.kind === "pull-request" ? `#${merge3.number}${by(merge3.author)}` : `[${merge3.sha.slice(0, 7)}](${merge3.url})${by(merge3.author)}`;
-}
-function countOf(merges) {
-  const pushes = merges.filter((merge3) => merge3.kind === "push").length;
-  return [
-    merges.length - pushes && plural2(merges.length - pushes, "pull request"),
-    pushes && `${pushes} direct push${pushes === 1 ? "" : "es"}`
-  ].filter(Boolean).join(" and ");
-}
-function inLink(sha) {
-  return sha.slice(0, 12);
-}
-function attributor(input2) {
-  const { walk, repoUrl } = input2;
-  const mergedBy = new Map;
-  const mergeOf = new Map;
-  const judge = (merge3, files) => {
-    if (files === undefined)
-      return { merge: merge3, claimedBy: new Set, outside: true };
-    const { claims, unclaimed } = claim2(input2.stacks, [...files], input2.unrelated);
-    return { merge: merge3, claimedBy: new Set(claims.keys()), outside: unclaimed.length > 0 };
-  };
-  for (const commit of walk.commits) {
-    const pullRequest = pullRequestOf(commit, walk);
-    const key = pullRequest ? `#${pullRequest.number}` : commit.sha;
-    let merged = mergedBy.get(key);
-    if (!merged && pullRequest) {
-      const known = pullRequest.changedFiles <= pullRequest.files.length;
-      merged = judge({
-        kind: "pull-request",
-        number: pullRequest.number,
-        title: pullRequest.title,
-        url: `${repoUrl}/pull/${pullRequest.number}`,
-        ...pullRequest.author === undefined ? {} : { author: pullRequest.author }
-      }, known ? pullRequest.files : undefined);
-    } else if (!merged) {
-      const files = input2.pushFiles.get(commit.sha);
-      merged = judge({
-        kind: "push",
-        sha: commit.sha,
-        message: commit.message,
-        url: `${repoUrl}/commit/${commit.sha}`,
-        ...commit.author === undefined ? {} : { author: commit.author }
-      }, files !== undefined && files.length < COMMIT_FILE_CAP ? files : undefined);
-    }
-    mergedBy.set(key, merged);
-    mergeOf.set(commit.sha, merged);
-  }
-  const ranges = new Map;
-  return (stackId2, from) => {
-    if (from === undefined) {
-      return { lines: { full: NEVER_DEPLOYED, counted: NEVER_DEPLOYED }, merges: [] };
-    }
-    const range = ranges.get(from) ?? inRange(walk, from);
-    ranges.set(from, range);
-    const merged = [...new Set(range.commits.flatMap(({ sha }) => mergeOf.get(sha) ?? []))];
-    const claimed = merged.filter(({ claimedBy }) => claimedBy.has(stackId2)).map((m) => m.merge);
-    const outside = merged.filter((m) => !m.claimedBy.has(stackId2) && m.outside).length;
-    const line = (names) => {
-      const parts = [...names];
-      const and = () => parts.length > 0 ? "and " : "";
-      if (outside > 0)
-        parts.push(`${and()}${plural2(outside, "change")} outside this stack`);
-      if (range.earlier)
-        parts.push(`${and()}earlier changes`);
-      const text2 = parts.length > 0 ? `from ${parts.join(", ")}` : "nothing this stack claims has changed since its last deploy";
-      return `${text2} · [compare](${repoUrl}/compare/${inLink(from)}...${inLink(input2.scanSha)})`;
-    };
-    const named = claimed.slice(0, NAMED_ON_A_ROW).map(nameOf);
-    const more = claimed.length - named.length;
-    return {
-      lines: {
-        full: line([named.join(", "), more > 0 ? `and ${more} more` : ""].filter(Boolean)),
-        counted: line(claimed.length > 0 ? [countOf(claimed)] : [])
-      },
-      merges: claimed
-    };
-  };
-}
-
-// src/github/attribution.ts
-function attributionSource(github, input2, onFailure) {
-  let walk;
-  let failed = false;
-  const pushFiles = new Map;
-  return {
-    async attribute(from) {
-      const starts = [...from.values()].filter((sha) => sha !== undefined);
-      try {
-        if (failed)
-          return new Map;
-        if (!isCommitId(input2.scanSha))
-          throw new Error("the scanned commit is no commit id");
-        if (starts.length > 0) {
-          walk ??= await github.walkCommits(input2.scanSha);
-          for (const sha of directPushesToRead(walk, starts)) {
-            if (!pushFiles.has(sha))
-              pushFiles.set(sha, await github.listCommitFiles(sha));
-          }
-        }
-      } catch (error63) {
-        failed = true;
-        onFailure(error63 instanceof Error ? error63.message : String(error63));
-        return new Map;
-      }
-      const of = attributor({
-        ...input2,
-        walk: walk ?? { defaultBranch: "", commits: [] },
-        pushFiles
-      });
-      return new Map([...from].map(([stackId2, sha]) => [stackId2, of(stackId2, sha)]));
-    }
-  };
-}
-
-// src/render/destroy-sign.ts
-function destroySign(rows) {
-  return rows.some((row) => row.known && (row.state === "pending" || row.state === "deploying") && row.destroys > 0);
-}
-
-// src/render/header-state.ts
-function headerState(rows) {
-  if (rows.length === 0)
-    return "first-run";
-  const known = rows.filter((row) => row.known);
-  const is = (state) => known.some((row) => row.state === state);
-  if (is("preview-failed") || known.some((row) => row.failed))
-    return "failing";
-  if (is("deploying"))
-    return "deploying";
-  if (is("pending"))
-    return "pending";
-  return "in-sync";
-}
-
-// src/render/pending-level.ts
-function pendingLevel(rows) {
-  const pending = rows.filter((row) => row.known && row.state === "pending").length;
-  if (pending === 0)
-    return;
-  if (pending <= 2)
-    return 1;
-  return pending <= 9 ? 2 : 3;
-}
-
 // src/render/voice.ts
 var WARM = {
   goodNews: () => "Gate closed, water calm. Nothing to deploy.",
@@ -52801,7 +52226,7 @@ var SIGNED_ALT = {
   pending: "Sluiceway: changes are pending, some delete or replace resources",
   deploying: "Sluiceway: deploying, some changes delete or replace resources"
 };
-function byCodeUnit4(a, b) {
+function byCodeUnit3(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function plural3(count, word) {
@@ -52895,7 +52320,7 @@ function version2(actionRef2) {
   return /^[0-9a-f]{40,}$/.test(actionRef2) ? `\`${actionRef2.slice(0, 7)}\`` : escapeText(actionRef2);
 }
 function renderBody(input2) {
-  const rows = [...input2.rows].sort((a, b) => byCodeUnit4(a.stackId, b.stackId));
+  const rows = [...input2.rows].sort((a, b) => byCodeUnit3(a.stackId, b.stackId));
   const known = rows.filter((row) => row.known);
   const of = (state2) => known.filter((row) => row.state === state2);
   const state = headerState(rows);
@@ -52932,7 +52357,7 @@ function renderBody(input2) {
       out.push(`<details><summary>${summary2}</summary>`, blocks(quiet), "</details>");
     }
   }
-  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit4(a.stackId, b.stackId)).slice(0, RECENTLY_DEPLOYED);
+  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit3(a.stackId, b.stackId)).slice(0, RECENTLY_DEPLOYED);
   if (recent.length > 0)
     out.push("## Recently deployed", recent.map(recentLine).join(`
 `));
@@ -52970,7 +52395,7 @@ function fitBody(input2, options = {}) {
   });
   const fits = () => render().length <= target;
   for (const level of LEVELS.slice(1)) {
-    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit3(a.stackId, b.stackId));
+    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit2(a.stackId, b.stackId));
     for (const entry of biggestFirst) {
       if (fits())
         break;
@@ -52978,7 +52403,7 @@ function fitBody(input2, options = {}) {
         entry.level = level;
     }
   }
-  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit3(a.stackId, b.stackId));
+  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit2(a.stackId, b.stackId));
   for (const entry of smallestFirst) {
     const reached = entry.level;
     for (const level of LEVELS.slice(0, reached)) {
@@ -53115,6 +52540,660 @@ async function openMatches(github, label) {
   return open2.filter((issue3) => isDashboard(issue3, label)).sort((a, b) => a.number - b.number);
 }
 
+// src/github/outputs.ts
+function resultFileName(mode) {
+  return `sluiceway-${mode}-result.json`;
+}
+function actionsOutputs(runnerTemp) {
+  return {
+    set: (name, value) => setOutput(name, value),
+    writeResultFile(mode, text2) {
+      if (!runnerTemp) {
+        throw new Error("RUNNER_TEMP is not set, so there is no directory for the result file");
+      }
+      const path = join4(runnerTemp, resultFileName(mode));
+      writeFileSync(path, text2);
+      return path;
+    }
+  };
+}
+function eventDashboardUrl(repoUrl, event) {
+  const issue3 = editedIssue(event);
+  if (!issue3 || !isBotIssueWithRootMarker(issue3))
+    return;
+  return dashboardUrl(repoUrl, issue3.number);
+}
+function dashboardUrl(repoUrl, number4) {
+  return `${repoUrl}/issues/${number4}`;
+}
+function writeResultFile(outputs, log, mode, text2) {
+  let path;
+  try {
+    path = outputs.writeResultFile(mode, text2);
+  } catch (error63) {
+    log.info(`Writing the result file failed: ${error63 instanceof Error ? error63.message : String(error63)}`);
+    log.warning("The result file of this step could not be written. The job log says why. Nothing else changes.", "Result file not written");
+    return;
+  }
+  outputs.set("result-file", path);
+  log.info(`Wrote the result file: ${path}`);
+}
+
+// src/core/config.ts
+var username = exports_external.string().regex(/^[A-Za-z0-9_-]+$/);
+var tickers = exports_external.union([
+  exports_external.enum(["write", "maintain", "admin"]),
+  exports_external.array(username).min(1).transform((names) => [...new Set(names.map((name) => name.toLowerCase()))])
+]);
+var text2 = exports_external.string().min(1);
+var globs = exports_external.array(text2);
+var stackPath = text2.superRefine((path, context3) => {
+  const refuse = (message) => context3.addIssue({ code: "custom", message });
+  if (path.includes("\\"))
+    refuse(`${show(path)} must use forward slashes.`);
+  else if (path.startsWith("/"))
+    refuse(`${show(path)} must be relative to the repo root.`);
+  else if (path.split("/").includes(".."))
+    refuse(`${show(path)} must stay inside the repo, so ".." is not allowed.`);
+}).transform((path) => {
+  const segments = path.split("/").filter((segment) => segment !== "" && segment !== ".");
+  return segments.length === 0 ? "." : segments.join("/");
+});
+var stackEntry = exports_external.strictObject({
+  path: stackPath.describe("Directory of the stack, relative to the repo root."),
+  name: text2.describe("Name of the stack. Without it the entry covers every stack in path.").exactOptional(),
+  environment: text2.describe("Label on the deployment record, and the GitHub Environment where one is used. Default: sluiceway.").exactOptional(),
+  tickers: tickers.describe("Tick rule for this stack. Default: the top level tickers.").exactOptional(),
+  inputs: globs.describe("Extra globs this stack claims, relative to the repo root.").exactOptional(),
+  previewTimeout: exports_external.int().min(1).describe("Time limit for one preview of this stack, in whole minutes. Default: the preview-timeout input.").exactOptional(),
+  options: exports_external.strictObject({}).describe("Named adapter options. None exist in this version.").exactOptional()
+});
+var stackEntries = exports_external.array(stackEntry).superRefine((entries, context3) => {
+  const seen = new Map;
+  entries.forEach((entry, index) => {
+    const id = stackId(entry);
+    const first = seen.get(id);
+    if (first === undefined)
+      seen.set(id, index);
+    else
+      context3.addIssue({
+        code: "custom",
+        path: [index],
+        message: `says the same path and name as stacks[${first}] (${show(id)}). Put the settings in one entry.`
+      });
+  });
+});
+var configSchema = exports_external.strictObject({
+  dashboard: exports_external.strictObject({
+    title: text2.describe("Title of the dashboard issue.").default("Sluiceway dashboard"),
+    label: text2.describe("Label the dashboard issue is found by.").default("sluiceway"),
+    pin: exports_external.boolean().describe("Pin the dashboard issue, best effort.").default(true),
+    redact: exports_external.boolean().describe("Keep resource types, resource names and property names out of the issue. The summary stays full. Not access control.").default(false),
+    personality: exports_external.boolean().describe("Show the header image and use the voice. false removes both.").default(true)
+  }).prefault({}),
+  tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
+  ignore: globs.describe("Globs matched against the stack id. An ignored stack has no row.").default([]),
+  scan: exports_external.strictObject({
+    unrelated: globs.describe("Globs for files that claim nothing and force nothing, such as **/*.md.").default([])
+  }).prefault({}),
+  stacks: stackEntries.describe("Settings for stacks that discovery found. An entry never creates a stack.").default([])
+});
+
+class ConfigError extends Error {
+  problems;
+  constructor(problems) {
+    super(["sluiceway.yaml is not valid:", ...problems.map((problem2) => `- ${problem2}`)].join(`
+`));
+    this.name = "ConfigError";
+    this.problems = problems;
+  }
+}
+function parseConfig(text3) {
+  const raw = text3 === undefined ? null : readYaml(text3);
+  const result = configSchema.safeParse(raw ?? {});
+  if (!result.success) {
+    const problems = result.error.issues.flatMap((issue3) => describe4(issue3, raw));
+    throw new ConfigError(inFileOrder(problems, raw).map((problem2) => problem2.text));
+  }
+  return result.data;
+}
+function readYaml(text3) {
+  const lineCounter2 = new $LineCounter;
+  const document = $parseDocument(text3, { lineCounter: lineCounter2, prettyErrors: false });
+  if (document.errors.length > 0) {
+    throw new ConfigError(document.errors.map((error63) => {
+      const { line, col } = lineCounter2.linePos(error63.pos[0]);
+      return `line ${line}, column ${col}: not valid YAML. ${error63.message}`;
+    }));
+  }
+  return document.toJS();
+}
+function describe4(issue3, raw) {
+  const at = where(issue3.path);
+  const value = valueAt(raw, issue3.path);
+  const problem2 = (text3) => [{ path: issue3.path, text: `${at}${text3}` }];
+  const key = issue3.path.at(-1);
+  if (issue3.code === "unrecognized_keys") {
+    const known = knownKeys(issue3.path);
+    const unknown2 = (name) => {
+      if (RESERVED_KEYS.includes(name))
+        return `"${name}" is not in this version of Sluiceway yet. Remove it.`;
+      if (key === "options")
+        return `unknown option "${name}". No adapter options exist in this version.`;
+      return `unknown key "${name}". Known keys here: ${known.join(", ")}.`;
+    };
+    return issue3.keys.map((name) => ({
+      path: [...issue3.path, name],
+      text: `${at}${unknown2(name)}`
+    }));
+  }
+  if (value === undefined && key === "path") {
+    return problem2("is required. It is the directory of the stack, relative to the repo root.");
+  }
+  if (key === "previewTimeout" && issue3.code !== "custom") {
+    return problem2(`expected a whole number of minutes, 1 or more, got ${show(value)}.`);
+  }
+  if (issue3.code === "invalid_union") {
+    if (!Array.isArray(value)) {
+      return problem2(`expected "write", "maintain", "admin" or a list of usernames, got ${show(value)}.`);
+    }
+    return (issue3.errors[1] ?? []).flatMap((inner) => describe4({ ...inner, path: [...issue3.path, ...inner.path] }, raw));
+  }
+  if (issue3.code === "invalid_format") {
+    return problem2(String(value).includes("/") ? `${show(value)} looks like a team. Teams are not supported yet. Use a level ("write", "maintain", "admin") or usernames.` : `${show(value)} is not a GitHub username. Write the login alone, without "@".`);
+  }
+  if (issue3.code === "too_small") {
+    return problem2(issue3.origin === "array" ? "the list is empty, so nobody could tick. Name at least one username or use a level." : key === "path" ? 'must not be empty. Use "." for the repo root.' : "must not be empty.");
+  }
+  if (issue3.code === "invalid_type") {
+    return problem2(`expected ${EXPECTED2[issue3.expected] ?? issue3.expected}, got ${show(value)}.`);
+  }
+  return problem2(issue3.message);
+}
+var EXPECTED2 = {
+  string: "text",
+  boolean: "true or false",
+  array: "a list",
+  object: "a mapping"
+};
+function valueAt(raw, path) {
+  let value = raw;
+  for (const segment of path) {
+    if (typeof value !== "object" || value === null)
+      return;
+    value = value[segment];
+  }
+  return value;
+}
+function show(value) {
+  if (value === null || value === undefined)
+    return "nothing";
+  if (Array.isArray(value))
+    return "a list";
+  if (typeof value === "object")
+    return "a mapping";
+  return JSON.stringify(value);
+}
+function inFileOrder(problems, raw) {
+  const position = (path) => {
+    let value = raw;
+    return path.map((segment) => {
+      const keys2 = typeof value === "object" && value !== null ? Object.keys(value) : [];
+      const index = keys2.indexOf(String(segment));
+      value = index === -1 ? undefined : value[String(segment)];
+      return index === -1 ? keys2.length : index;
+    });
+  };
+  const compare3 = (a, b) => {
+    for (let i = 0;i < Math.min(a.length, b.length); i++) {
+      const difference = (a[i] ?? 0) - (b[i] ?? 0);
+      if (difference !== 0)
+        return difference;
+    }
+    return a.length - b.length;
+  };
+  return problems.map((problem2) => ({ problem: problem2, at: position(problem2.path) })).sort((a, b) => compare3(a.at, b.at)).map(({ problem: problem2 }) => problem2);
+}
+var RESERVED_KEYS = ["dependsOn", "drift"];
+function where(path) {
+  const text3 = path.map((segment) => typeof segment === "number" ? `[${segment}]` : `.${String(segment)}`).join("").replace(/^\./, "");
+  return text3 === "" ? "" : `${text3}: `;
+}
+function knownKeys(path) {
+  let schema = configSchema;
+  for (const segment of path) {
+    schema = unwrap(schema);
+    if (schema instanceof exports_external.ZodObject)
+      schema = schema.shape[String(segment)];
+    else if (schema instanceof exports_external.ZodArray)
+      schema = schema.element;
+  }
+  schema = unwrap(schema);
+  return schema instanceof exports_external.ZodObject ? Object.keys(schema.shape) : [];
+}
+function unwrap(schema) {
+  let inner = schema;
+  while (inner instanceof exports_external.ZodDefault || inner instanceof exports_external.ZodPrefault) {
+    inner = inner.def.innerType;
+  }
+  return inner;
+}
+var DEFAULT_ENVIRONMENT = "sluiceway";
+function applyConfig(config2, found) {
+  const stacks = knownStacks(found, config2.ignore);
+  const problems = config2.stacks.flatMap((entry, index) => {
+    const inPath = stacks.filter((stack) => stack.path === entry.path);
+    if (inPath.some((stack) => covers(entry, stack)))
+      return [];
+    const ignored = found.filter((stack) => covers(entry, stack));
+    return [`stacks[${index}]: ${describeMiss(entry, inPath, ignored)}`];
+  });
+  if (problems.length > 0)
+    throw new ConfigError(problems);
+  return stacks.map((stack) => {
+    const entries = config2.stacks.filter((entry) => covers(entry, stack)).sort((a, b) => Number(a.name !== undefined) - Number(b.name !== undefined));
+    const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
+    return {
+      stack,
+      environment: entries.findLast((entry) => entry.environment)?.environment ?? DEFAULT_ENVIRONMENT,
+      tickers: entries.findLast((entry) => entry.tickers)?.tickers ?? config2.tickers,
+      inputs: [...new Set(entries.flatMap((entry) => entry.inputs ?? []))],
+      ...previewTimeout === undefined ? {} : { previewTimeout }
+    };
+  });
+}
+function covers(entry, stack) {
+  return entry.path === stack.path && (entry.name === undefined || entry.name === stack.name);
+}
+function describeMiss(entry, inPath, ignored) {
+  if (ignored.length > 0) {
+    const ids = ignored.map((stack) => show(stackId(stack))).join(", ");
+    const subject = ignored.length === 1 ? `the stack ${ids} is` : `the stacks ${ids} are`;
+    return `${subject} left out by ignore, so these settings would do nothing. Remove the entry, or change ignore.`;
+  }
+  if (entry.name === undefined || inPath.length === 0) {
+    return `no stack was found in ${show(entry.path)}. An entry adds settings to a stack that exists, it never creates one.`;
+  }
+  const names = inPath.flatMap((stack) => stack.name === undefined ? [] : [stack.name]);
+  const found = names.length === 0 ? "The stack found there has no name." : `Found there: ${names.join(", ")}.`;
+  return `no stack named ${show(entry.name)} was found in ${show(entry.path)}. ${found}`;
+}
+
+// src/core/config-file.ts
+import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
+import { join as join5 } from "node:path";
+var CONFIG_FILE = "sluiceway.yaml";
+var FILE = CONFIG_FILE;
+var WRONG_FILE = "sluiceway.yml";
+function loadConfig(root) {
+  if (existsSync3(join5(root, WRONG_FILE))) {
+    throw new ConfigError([`found ${WRONG_FILE}. The file must be named ${FILE}. Rename it.`]);
+  }
+  return parseConfig(read(join5(root, FILE)));
+}
+function hasConfigFile(root) {
+  return existsSync3(join5(root, FILE));
+}
+function read(file2) {
+  try {
+    return readFileSync2(file2, "utf8");
+  } catch (error63) {
+    const code = error63.code;
+    if (code === "ENOENT")
+      return;
+    if (code === "EISDIR")
+      throw new ConfigError(["it is not a file."]);
+    throw error63;
+  }
+}
+
+// src/core/deployment.ts
+var TASK_PREFIX = "sluiceway:";
+function deploymentTask(stackId2) {
+  return `${TASK_PREFIX}${stackId2}`;
+}
+function taskStackId(task) {
+  if (!task.startsWith(TASK_PREFIX) || task.length === TASK_PREFIX.length)
+    return;
+  return task.slice(TASK_PREFIX.length);
+}
+var PAYLOAD_VERSION = 1;
+function deploymentPayload(payload) {
+  return { v: PAYLOAD_VERSION, hash: payload.hash, ticker: payload.ticker, run: payload.run };
+}
+var RUN_ID = /^[1-9]\d*$/;
+function readDeploymentPayload(payload) {
+  if (typeof payload !== "object" || payload === null)
+    return;
+  const { v, hash: hash2, ticker, run } = payload;
+  if (v !== PAYLOAD_VERSION)
+    return;
+  if (typeof hash2 !== "string" || typeof ticker !== "string" || typeof run !== "string") {
+    return;
+  }
+  return RUN_ID.test(run) ? { hash: hash2, ticker, run } : undefined;
+}
+var SUCCEEDED = new Set(["success", "inactive"]);
+var FAILED = new Set(["failure", "error"]);
+var NO_REASON_RECORDED = "no reason was recorded";
+function isOpenStatus(status) {
+  const state = status?.state ?? "";
+  return !SUCCEEDED.has(state) && !FAILED.has(state);
+}
+function newestLast(a, b) {
+  return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id;
+}
+function factOf(record3, payload) {
+  const { ticker, run } = payload;
+  const state = record3.status?.state ?? "";
+  const at = new Date(record3.status?.createdAt ?? record3.createdAt);
+  if (SUCCEEDED.has(state))
+    return { kind: "succeeded", ticker, run, at };
+  if (FAILED.has(state)) {
+    return {
+      kind: "failed",
+      reason: record3.status?.description || NO_REASON_RECORDED,
+      ticker,
+      run,
+      at
+    };
+  }
+  return { kind: "open", deployment: record3.id, waiting: state !== "in_progress", ticker, run };
+}
+function deployFacts(records) {
+  const facts = { byStack: new Map, succeeded: [], unread: 0 };
+  for (const record3 of [...records].sort(newestLast)) {
+    const stackId2 = taskStackId(record3.task);
+    if (stackId2 === undefined)
+      continue;
+    const payload = readDeploymentPayload(record3.payload);
+    if (!payload) {
+      facts.unread++;
+      continue;
+    }
+    const fact = factOf(record3, payload);
+    facts.byStack.set(stackId2, fact);
+    if (fact.kind === "succeeded") {
+      facts.succeeded.push({
+        stackId: stackId2,
+        ticker: fact.ticker,
+        run: fact.run,
+        at: fact.at,
+        sha: record3.sha
+      });
+    }
+  }
+  return facts;
+}
+function lastDeployedCommit(facts, stackId2) {
+  return facts.succeeded.findLast((deploy) => deploy.stackId === stackId2)?.sha;
+}
+function rowAtLateRead(stack) {
+  const { previewedAt, liveState, fact } = stack;
+  if (fact?.kind === "open") {
+    return { row: "deploying", from: liveState === "deploying" ? "live" : "record" };
+  }
+  const usableLive = liveState !== undefined && liveState !== "deploying";
+  if (previewedAt === undefined) {
+    if (usableLive)
+      return { row: "live" };
+    return { row: "preview-first", why: liveState === undefined ? "no-row" : "no-open-deployment" };
+  }
+  const predates = fact !== undefined && !stack.settledHere && fact.at > previewedAt;
+  if (!predates)
+    return { row: "fresh" };
+  if (usableLive)
+    return { row: "live" };
+  return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
+}
+
+// src/core/diff-hash.ts
+import { createHash } from "node:crypto";
+function byCodeUnit4(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function sortedSet2(keys2) {
+  return [...new Set(keys2)].sort(byCodeUnit4);
+}
+function canonicalJson(value) {
+  if (typeof value === "string")
+    return JSON.stringify(value);
+  if (Array.isArray(value))
+    return `[${value.map(canonicalJson).join(",")}]`;
+  const members2 = Object.keys(value).sort(byCodeUnit4).flatMap((key) => {
+    const member = value[key];
+    return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
+  });
+  return `{${members2.join(",")}}`;
+}
+function canonicalChange(change) {
+  return {
+    address: change.address,
+    type: change.type,
+    name: change.name,
+    op: change.op,
+    tracking: change.tracking,
+    previousAddress: change.previousAddress,
+    changedKeys: sortedSet2(change.changedKeys),
+    replaceKeys: sortedSet2(change.replaceKeys)
+  };
+}
+function canonicalDiff(diff) {
+  const changes = diff.changes.map((change) => ({ address: change.address, text: canonicalJson(canonicalChange(change)) })).sort((a, b) => byCodeUnit4(a.address, b.address) || byCodeUnit4(a.text, b.text)).map((change) => change.text);
+  return `{"changes":[${changes.join(",")}],"stackId":${JSON.stringify(diff.stackId)}}`;
+}
+function diffHash(diff) {
+  return createHash("sha256").update(canonicalDiff(diff), "utf8").digest("hex").slice(0, 16);
+}
+
+// src/core/failure-reason.ts
+function previewFailureText(reason) {
+  switch (reason.kind) {
+    case "tool-error":
+      return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
+    case "stack-not-found":
+      return "the stack does not exist in the backend";
+    case "timed-out":
+      return `the preview timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}`;
+    case "unreadable-output":
+      return "the tool's output could not be read";
+    case "unknown-step":
+      return "the tool reported a step Sluiceway does not know";
+  }
+}
+function deployFailureText(reason) {
+  switch (reason.kind) {
+    case "run-ended":
+      return "the run ended without a result";
+    case "moved":
+      return "the change moved since the tick";
+    case "tool-error":
+      return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
+    case "preview-failed":
+      return `the preview before the deploy failed: ${previewFailureText(reason.reason)}`;
+    case "tool-missing":
+      return "the tool is missing or older than Sluiceway needs";
+    case "unknown-stack":
+      return "the stack is not in the repo any more";
+    case "not-started":
+      return "the deploy stopped before the tool ran";
+  }
+}
+
+// src/core/claim.ts
+function inside(directory, file2) {
+  return directory === "." || file2.startsWith(`${directory}/`);
+}
+function claim2(stacks, changed, unrelated) {
+  const isUnrelated = globMatcher(unrelated);
+  const matchers = stacks.map((stack) => ({ stack, matches: globMatcher(stack.inputs) }));
+  const claims = new Map;
+  const unclaimed = [];
+  for (const file2 of new Set(changed)) {
+    if (isUnrelated(file2))
+      continue;
+    const claimants = matchers.filter(({ stack, matches }) => inside(stack.path, file2) || matches(file2));
+    if (claimants.length === 0)
+      unclaimed.push(file2);
+    for (const { stack } of claimants)
+      claims.set(stack.id, [...claims.get(stack.id) ?? [], file2]);
+  }
+  return { claims, unclaimed };
+}
+
+// src/core/attribution.ts
+var NAMED_ON_A_ROW = 5;
+var COMMIT_FILE_CAP = 300;
+function isCommitId(text3) {
+  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(text3);
+}
+var NEVER_DEPLOYED = "not deployed from this dashboard yet";
+function pullRequestOf(commit, walk) {
+  return commit.pullRequests.find((pullRequest) => pullRequest.merged && pullRequest.base === walk.defaultBranch);
+}
+function inRange(walk, from) {
+  const bySha = new Map(walk.commits.map((commit) => [commit.sha, commit]));
+  if (!bySha.has(from))
+    return { commits: walk.commits, earlier: true };
+  const reached = new Set;
+  const queue = [from];
+  for (let sha = queue.pop();sha !== undefined; sha = queue.pop()) {
+    if (reached.has(sha))
+      continue;
+    reached.add(sha);
+    queue.push(...bySha.get(sha)?.parents.filter((parent) => bySha.has(parent)) ?? []);
+  }
+  return { commits: walk.commits.filter(({ sha }) => !reached.has(sha)), earlier: false };
+}
+function directPushesToRead(walk, from) {
+  const wanted = new Set;
+  for (const start of new Set(from)) {
+    for (const commit of inRange(walk, start).commits) {
+      if (!pullRequestOf(commit, walk))
+        wanted.add(commit.sha);
+    }
+  }
+  return walk.commits.filter(({ sha }) => wanted.has(sha)).map(({ sha }) => sha);
+}
+function by(author) {
+  return author === undefined ? "" : ` by ${escapeText(author)}`;
+}
+function nameOf(merge3) {
+  return merge3.kind === "pull-request" ? `#${merge3.number}${by(merge3.author)}` : `[${merge3.sha.slice(0, 7)}](${merge3.url})${by(merge3.author)}`;
+}
+function countOf(merges) {
+  const pushes = merges.filter((merge3) => merge3.kind === "push").length;
+  return [
+    merges.length - pushes && plural2(merges.length - pushes, "pull request"),
+    pushes && `${pushes} direct push${pushes === 1 ? "" : "es"}`
+  ].filter(Boolean).join(" and ");
+}
+function inLink(sha) {
+  return sha.slice(0, 12);
+}
+function attributor(input2) {
+  const { walk, repoUrl } = input2;
+  const mergedBy = new Map;
+  const mergeOf = new Map;
+  const judge = (merge3, files) => {
+    if (files === undefined)
+      return { merge: merge3, claimedBy: new Set, outside: true };
+    const { claims, unclaimed } = claim2(input2.stacks, [...files], input2.unrelated);
+    return { merge: merge3, claimedBy: new Set(claims.keys()), outside: unclaimed.length > 0 };
+  };
+  for (const commit of walk.commits) {
+    const pullRequest = pullRequestOf(commit, walk);
+    const key = pullRequest ? `#${pullRequest.number}` : commit.sha;
+    let merged = mergedBy.get(key);
+    if (!merged && pullRequest) {
+      const known = pullRequest.changedFiles <= pullRequest.files.length;
+      merged = judge({
+        kind: "pull-request",
+        number: pullRequest.number,
+        title: pullRequest.title,
+        url: `${repoUrl}/pull/${pullRequest.number}`,
+        ...pullRequest.author === undefined ? {} : { author: pullRequest.author }
+      }, known ? pullRequest.files : undefined);
+    } else if (!merged) {
+      const files = input2.pushFiles.get(commit.sha);
+      merged = judge({
+        kind: "push",
+        sha: commit.sha,
+        message: commit.message,
+        url: `${repoUrl}/commit/${commit.sha}`,
+        ...commit.author === undefined ? {} : { author: commit.author }
+      }, files !== undefined && files.length < COMMIT_FILE_CAP ? files : undefined);
+    }
+    mergedBy.set(key, merged);
+    mergeOf.set(commit.sha, merged);
+  }
+  const ranges = new Map;
+  return (stackId2, from) => {
+    if (from === undefined) {
+      return { lines: { full: NEVER_DEPLOYED, counted: NEVER_DEPLOYED }, merges: [] };
+    }
+    const range = ranges.get(from) ?? inRange(walk, from);
+    ranges.set(from, range);
+    const merged = [...new Set(range.commits.flatMap(({ sha }) => mergeOf.get(sha) ?? []))];
+    const claimed = merged.filter(({ claimedBy }) => claimedBy.has(stackId2)).map((m) => m.merge);
+    const outside = merged.filter((m) => !m.claimedBy.has(stackId2) && m.outside).length;
+    const line = (names) => {
+      const parts = [...names];
+      const and = () => parts.length > 0 ? "and " : "";
+      if (outside > 0)
+        parts.push(`${and()}${plural2(outside, "change")} outside this stack`);
+      if (range.earlier)
+        parts.push(`${and()}earlier changes`);
+      const text3 = parts.length > 0 ? `from ${parts.join(", ")}` : "nothing this stack claims has changed since its last deploy";
+      return `${text3} · [compare](${repoUrl}/compare/${inLink(from)}...${inLink(input2.scanSha)})`;
+    };
+    const named = claimed.slice(0, NAMED_ON_A_ROW).map(nameOf);
+    const more = claimed.length - named.length;
+    return {
+      lines: {
+        full: line([named.join(", "), more > 0 ? `and ${more} more` : ""].filter(Boolean)),
+        counted: line(claimed.length > 0 ? [countOf(claimed)] : [])
+      },
+      merges: claimed
+    };
+  };
+}
+
+// src/github/attribution.ts
+function attributionSource(github, input2, onFailure) {
+  let walk;
+  let failed = false;
+  const pushFiles = new Map;
+  return {
+    async attribute(from) {
+      const starts = [...from.values()].filter((sha) => sha !== undefined);
+      try {
+        if (failed)
+          return new Map;
+        if (!isCommitId(input2.scanSha))
+          throw new Error("the scanned commit is no commit id");
+        if (starts.length > 0) {
+          walk ??= await github.walkCommits(input2.scanSha);
+          for (const sha of directPushesToRead(walk, starts)) {
+            if (!pushFiles.has(sha))
+              pushFiles.set(sha, await github.listCommitFiles(sha));
+          }
+        }
+      } catch (error63) {
+        failed = true;
+        onFailure(error63 instanceof Error ? error63.message : String(error63));
+        return new Map;
+      }
+      const of = attributor({
+        ...input2,
+        walk: walk ?? { defaultBranch: "", commits: [] },
+        pushFiles
+      });
+      return new Map([...from].map(([stackId2, sha]) => [stackId2, of(stackId2, sha)]));
+    }
+  };
+}
+
 // src/github/deployments.ts
 async function readDeploymentRecords(github, environments, fallBack) {
   const records = [];
@@ -53154,7 +53233,7 @@ async function settleEndedRuns(github, records, repoUrl) {
       description: deployFailureText({ kind: "run-ended" }),
       logUrl: `${repoUrl}/actions/runs/${fact.run}`
     });
-    settled.records = settled.records.map((record2) => record2.id === fact.deployment && taskStackId(record2.task) === stackId2 ? { ...record2, status } : record2);
+    settled.records = settled.records.map((record3) => record3.id === fact.deployment && taskStackId(record3.task) === stackId2 ? { ...record3, status } : record3);
     settled.stackIds.push(stackId2);
   }
   return settled;
@@ -53162,7 +53241,7 @@ async function settleEndedRuns(github, records, repoUrl) {
 
 // src/render/changes.ts
 function orderChanges(diff) {
-  const changes = [...diff.changes].sort((a, b) => byCodeUnit3(a.address, b.address));
+  const changes = [...diff.changes].sort((a, b) => byCodeUnit2(a.address, b.address));
   return {
     deletes: changes.filter((change) => change.op === "delete"),
     replaces: changes.filter((change) => change.op === "replace"),
@@ -53217,8 +53296,8 @@ function renderApplySummary(input2) {
 }
 
 // src/render/log-text.ts
-function oneLine(text2) {
-  return text2.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ");
+function oneLine(text3) {
+  return text3.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ");
 }
 function logGroupTitle(stackId2) {
   return oneLine(stackId2);
@@ -53275,6 +53354,162 @@ function previewOutcome(result) {
   return result.diff.changes.length === 0 ? "in sync" : "pending";
 }
 
+// src/render/result-file.ts
+var RESULT_FILE_VERSION = 1;
+var count2 = () => exports_external.int().min(0);
+var countsSchema = exports_external.strictObject({
+  create: count2(),
+  update: count2(),
+  replace: count2(),
+  delete: count2(),
+  trackingOnly: count2()
+});
+var changeSchema = exports_external.strictObject({
+  type: exports_external.string(),
+  name: exports_external.string(),
+  op: exports_external.enum(["create", "update", "replace", "delete", "none"]),
+  tracking: exports_external.enum(["import", "forget", "move"]).optional(),
+  changedKeys: exports_external.array(exports_external.string()),
+  replaceKeys: exports_external.array(exports_external.string())
+});
+var diffSchema = {
+  state: exports_external.enum(["pending", "in-sync"]),
+  counts: countsSchema,
+  changes: exports_external.array(changeSchema)
+};
+var failedSchema = {
+  state: exports_external.literal("preview-failed"),
+  reason: exports_external.string()
+};
+var scanStackSchema = exports_external.union([
+  exports_external.strictObject({ stack: exports_external.string(), seconds: exports_external.number(), ...diffSchema }),
+  exports_external.strictObject({
+    stack: exports_external.string(),
+    seconds: exports_external.number(),
+    ...failedSchema,
+    ignore: exports_external.string().optional()
+  })
+]);
+var scanResultSchema = exports_external.strictObject({
+  version: exports_external.literal(RESULT_FILE_VERSION),
+  mode: exports_external.literal("scan"),
+  run: exports_external.string(),
+  commit: exports_external.string(),
+  seconds: exports_external.number(),
+  dashboard: exports_external.strictObject({
+    url: exports_external.string(),
+    changed: exports_external.boolean(),
+    pending: count2(),
+    deploying: count2(),
+    previewFailed: count2(),
+    inSync: count2(),
+    failedDeploys: count2()
+  }).nullable(),
+  stacks: exports_external.array(scanStackSchema)
+});
+var previewSchema = exports_external.union([exports_external.strictObject(diffSchema), exports_external.strictObject(failedSchema)]);
+var applyResultSchema = exports_external.strictObject({
+  version: exports_external.literal(RESULT_FILE_VERSION),
+  mode: exports_external.literal("apply"),
+  run: exports_external.string(),
+  commit: exports_external.string(),
+  deployment: count2(),
+  dashboard: exports_external.strictObject({ url: exports_external.string() }).nullable(),
+  outcome: exports_external.enum(["deployed", "refused", "failed"]),
+  stack: exports_external.string().nullable(),
+  ticker: exports_external.string().nullable(),
+  reason: exports_external.string().nullable(),
+  preview: previewSchema.nullable(),
+  after: previewSchema.nullable()
+});
+function dashboardCounts(rows) {
+  const known = rows.filter((row) => row.known);
+  const of = (state) => known.filter((row) => row.state === state).length;
+  return {
+    pending: of("pending"),
+    deploying: of("deploying"),
+    previewFailed: of("preview-failed"),
+    inSync: of("in-sync"),
+    failedDeploys: known.filter((row) => row.failed).length
+  };
+}
+function seconds(milliseconds) {
+  return milliseconds / 1000;
+}
+function changeOf(change) {
+  return {
+    type: change.type,
+    name: change.name,
+    op: change.op,
+    ...change.tracking === undefined ? {} : { tracking: change.tracking },
+    changedKeys: sortedKeys(change.changedKeys),
+    replaceKeys: sortedKeys(change.replaceKeys)
+  };
+}
+function diffOf(diff) {
+  const { deletes, replaces, others } = orderChanges(diff);
+  const of = (op) => diff.changes.filter((change) => change.op === op).length;
+  return {
+    state: diff.changes.length === 0 ? "in-sync" : "pending",
+    counts: {
+      create: of("create"),
+      update: of("update"),
+      replace: of("replace"),
+      delete: of("delete"),
+      trackingOnly: diff.changes.filter((change) => change.op === "none" && change.tracking).length
+    },
+    changes: [...deletes, ...replaces, ...others].map(changeOf)
+  };
+}
+function stackIdOf(stack) {
+  return stack.kind === "diff" ? stack.diff.stackId : stack.stackId;
+}
+function json2(value) {
+  return `${JSON.stringify(value, null, 2)}
+`;
+}
+function scanResultFile(input2) {
+  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit2(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? { stack: stack.diff.stackId, seconds: seconds(milliseconds), ...diffOf(stack.diff) } : {
+    stack: stack.stackId,
+    seconds: seconds(milliseconds),
+    state: "preview-failed",
+    reason: stack.reason,
+    ...stack.ignore === undefined ? {} : { ignore: stack.ignore }
+  });
+  const { dashboard } = input2;
+  return json2(scanResultSchema.parse({
+    version: RESULT_FILE_VERSION,
+    mode: "scan",
+    run: input2.run,
+    commit: input2.commit,
+    seconds: seconds(input2.milliseconds),
+    dashboard: dashboard ? { url: dashboard.url, changed: dashboard.changed, ...dashboard.counts } : null,
+    stacks
+  }));
+}
+function previewOf(preview2) {
+  if (preview2 === undefined)
+    return null;
+  return preview2.kind === "diff" ? diffOf(preview2.diff) : { state: "preview-failed", reason: preview2.reason };
+}
+function applyResultFile(input2) {
+  const { applied } = input2;
+  return json2(applyResultSchema.parse({
+    version: RESULT_FILE_VERSION,
+    mode: "apply",
+    run: input2.run,
+    commit: input2.commit,
+    deployment: input2.deployment,
+    dashboard: input2.dashboardUrl === undefined ? null : { url: input2.dashboardUrl },
+    outcome: input2.outcome,
+    stack: input2.stack ?? null,
+    ticker: input2.ticker ?? null,
+    reason: input2.reason ?? null,
+    preview: applied?.kind === "deployed" ? diffOf(applied.diff) : previewOf(applied?.kind === "not-deployed" ? applied.checked : undefined),
+    after: previewOf(applied?.kind === "not-deployed" ? applied.after : undefined)
+  }));
+}
+
 // src/modes/apply.ts
 class ApplyFailedError extends Error {
   constructor(message) {
@@ -53285,22 +53520,56 @@ class ApplyFailedError extends Error {
 function message(error63) {
   return error63 instanceof Error ? error63.message : String(error63);
 }
-function lines(text2) {
-  const all = text2.split(/\r?\n/);
+function lines(text3) {
+  const all = text3.split(/\r?\n/);
   if (all.at(-1) === "")
     all.pop();
   return all;
 }
 var RECORD_PERMISSIONS = "The apply job needs the permission `deployments: write`, and `deployment-id` has to be the `deployment` of a matrix entry that `resolve` set (record 0035).";
 async function apply2(context3) {
+  const report = {};
+  try {
+    await applying(context3, report);
+  } finally {
+    reportOutputs(context3, report);
+  }
+}
+function reportOutputs(context3, report) {
+  const { outputs } = context3;
+  if (!outputs)
+    return;
+  const url2 = eventDashboardUrl(context3.repoUrl, context3.event);
+  const outcome = report.outcome ?? "failed";
+  if (url2 !== undefined)
+    outputs.set("dashboard-url", url2);
+  outputs.set("outcome", outcome);
+  if (report.stack !== undefined)
+    outputs.set("stack", report.stack);
+  const text3 = applyResultFile({
+    run: `${context3.repoUrl}/actions/runs/${context3.runId}`,
+    commit: context3.sha,
+    deployment: context3.deploymentId,
+    dashboardUrl: url2,
+    outcome,
+    stack: report.stack,
+    ticker: report.ticker,
+    reason: report.reason,
+    applied: report.applied
+  });
+  writeResultFile(outputs, context3.log, "apply", text3);
+}
+async function applying(context3, report) {
   const { github, log } = context3;
   const id = context3.deploymentId;
   let status;
   try {
     status = await github.latestDeploymentStatus(id);
   } catch (error63) {
+    report.outcome = "failed";
     throw new ApplyFailedError(`Deployment record ${id} could not be read: ${message(error63)}. ${RECORD_PERMISSIONS}`);
   }
+  report.outcome = "refused";
   if (!isOpenStatus(status)) {
     log.info(`Deployment record ${id} already ended as ${status?.state}. Nothing is deployed. A re-run never deploys (record 0019).`);
     await writeSummary(context3, `## Sluiceway apply
@@ -53316,12 +53585,14 @@ ${ALREADY_ENDED}
     task = deployment.task;
     payload = readDeploymentPayload(deployment.payload);
   } catch (error63) {
+    report.outcome = "failed";
     throw new ApplyFailedError(`Deployment record ${id} could not be read: ${message(error63)}. ${RECORD_PERMISSIONS}`);
   }
   const id_ = taskStackId(task);
   if (id_ === undefined) {
     throw new ApplyFailedError(`Deployment record ${id} is not one of Sluiceway's: its task does not start with "sluiceway:". Nothing was deployed and the record was left alone.`);
   }
+  report.stack = id_;
   const name = logGroupTitle(id_);
   if (!payload) {
     throw new ApplyFailedError(`Deployment record ${id} of ${name} carries a payload this version of Sluiceway cannot read. Nothing was deployed and the record was left alone.`);
@@ -53329,6 +53600,8 @@ ${ALREADY_ENDED}
   if (payload.run !== context3.runId) {
     throw new ApplyFailedError(`Deployment record ${id} of ${name} belongs to run ${payload.run}, and this is run ${context3.runId}. \`apply\` deploys a record only in the run whose \`resolve\` job created it. Nothing was deployed and the record was left alone.`);
   }
+  report.ticker = payload.ticker;
+  report.outcome = "failed";
   const runUrl = `${context3.repoUrl}/actions/runs/${context3.runId}`;
   try {
     await github.createDeploymentStatus(id, { state: "in_progress", logUrl: runUrl });
@@ -53348,6 +53621,9 @@ ${ALREADY_ENDED}
       failed: `${name} was not deployed: ${deployFailureText(reason)}. ${message(error63)}`
     };
   }
+  report.outcome = attempt.state === "success" ? "deployed" : attempt.reason?.kind === "moved" ? "refused" : "failed";
+  report.reason = attempt.reason && deployFailureText(attempt.reason);
+  report.applied = attempt.summary;
   const failures = [];
   let ended = false;
   try {
@@ -53524,9 +53800,9 @@ function logPreview(context3, id, what, result) {
     ...words.length > 0 ? ["The tool's own words:", ...words] : []
   ]);
 }
-async function writeSummary(context3, text2) {
+async function writeSummary(context3, text3) {
   try {
-    await context3.log.writeSummary(text2);
+    await context3.log.writeSummary(text3);
   } catch (error63) {
     context3.log.info(`Writing the summary failed: ${message(error63)}`);
     context3.log.warning("The summary of this run could not be written. The job log holds what happened.", "Summary not written");
@@ -53608,7 +53884,9 @@ async function runApply() {
     runId: job.runId,
     sha: job.sha,
     actionRef: readActionRef(env, (path) => readFileSync3(path, "utf8")),
-    deploymentId: inputs.deploymentId
+    deploymentId: inputs.deploymentId,
+    event: readEventPayload(env, (path) => readFileSync3(path, "utf8")),
+    outputs: actionsOutputs(env.RUNNER_TEMP)
   });
 }
 
@@ -53656,12 +53934,12 @@ function byCodeUnit5(a, b) {
 
 // src/core/repo-files.ts
 import { readdir as readdir3 } from "node:fs/promises";
-import { join as join5 } from "node:path";
+import { join as join6 } from "node:path";
 var SKIPPED2 = new Set([".git", "node_modules"]);
 async function repoFiles(root) {
   const files = [];
   const walk = async (relative2) => {
-    const entries = await readdir3(join5(root, ...relative2), { withFileTypes: true });
+    const entries = await readdir3(join6(root, ...relative2), { withFileTypes: true });
     for (const entry of entries) {
       if (entry.name === ".git")
         continue;
@@ -53684,8 +53962,8 @@ var CANNOT_TELL = "A check reads files only, so it cannot say that a preview wil
 var WHERE_FILES_BELONG = "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.";
 var PASTE_NOTE = "The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.";
 var FILES_PER_DIRECTORY = 20;
-function foundText(count2) {
-  return count2 === 0 ? "Found no stacks." : `Found ${plural2(count2, "stack")}.`;
+function foundText(count3) {
+  return count3 === 0 ? "Found no stacks." : `Found ${plural2(count3, "stack")}.`;
 }
 function settingsText({ environment, tickers: tickers2, inputs }) {
   const rule = typeof tickers2 === "string" ? tickers2 : tickers2.join(", ");
@@ -53702,8 +53980,8 @@ function unmatchedWhy({ hint }) {
   const why = "It is matched against the stack id, not the directory.";
   return hint === undefined ? why : `${why} ${JSON.stringify(hint.glob)} would leave out ${hint.stacks.join(", ")}.`;
 }
-function unclaimedText(count2) {
-  return `${plural2(count2, "file")} ${count2 === 1 ? "is" : "are"} claimed by no stack. A push that changes one of them gives a full scan.`;
+function unclaimedText(count3) {
+  return `${plural2(count3, "file")} ${count3 === 1 ? "is" : "are"} claimed by no stack. A push that changes one of them gives a full scan.`;
 }
 function unrelatedBlock(existing, suggested) {
   const globs2 = [...new Set([...existing, ...suggested])];
@@ -53742,11 +54020,11 @@ function renderCheckSummary({ report, unrelated, hasConfigFile: hasConfigFile2 }
 `));
   }
   parts.push("### Files that no stack claims");
-  const count2 = report.unclaimed.reduce((sum, group) => sum + group.files.length, 0);
-  if (count2 === 0) {
+  const count3 = report.unclaimed.reduce((sum, group) => sum + group.files.length, 0);
+  if (count3 === 0) {
     parts.push("Every file is claimed by a stack or covered by scan.unrelated.");
   } else {
-    parts.push(unclaimedText(count2), report.unclaimed.map(groupLine).join(`
+    parts.push(unclaimedText(count3), report.unclaimed.map(groupLine).join(`
 `), WHERE_FILES_BELONG);
     if (report.suggested.length > 0) {
       parts.push(PASTE_NOTE, ["```yaml", ...unrelatedBlock(unrelated, report.suggested), "```"].join(`
@@ -53825,9 +54103,9 @@ async function check2(context3) {
   log.info(VALID);
   log.info(CANNOT_TELL);
 }
-async function summary2(context3, text2) {
+async function summary2(context3, text3) {
   try {
-    await context3.log.writeSummary(text2);
+    await context3.log.writeSummary(text3);
   } catch (error63) {
     context3.log.info(`Writing the summary failed: ${error63 instanceof Error ? error63.message : error63}`);
   }
@@ -53844,42 +54122,6 @@ async function runCheck() {
 
 // src/modes/resolve-job.ts
 import { readFileSync as readFileSync4 } from "node:fs";
-
-// src/github/event.ts
-function record2(value) {
-  return typeof value === "object" && value !== null ? value : undefined;
-}
-function text2(value) {
-  return typeof value === "string" ? value : "";
-}
-function editedIssue(payload) {
-  const issue3 = record2(record2(payload)?.issue);
-  if (!issue3 || typeof issue3.number !== "number" || issue3.pull_request !== undefined) {
-    return;
-  }
-  const user = record2(issue3.user);
-  const labels = Array.isArray(issue3.labels) ? issue3.labels : [];
-  return {
-    number: issue3.number,
-    state: issue3.state === "open" ? "open" : "closed",
-    body: text2(issue3.body),
-    labels: labels.flatMap((label) => {
-      const name = typeof label === "string" ? label : record2(label)?.name;
-      return typeof name === "string" ? [name] : [];
-    }),
-    author: { login: text2(user?.login), type: text2(user?.type) }
-  };
-}
-function readEventPayload(env, readFile2) {
-  const path = env.GITHUB_EVENT_PATH;
-  if (!path)
-    return;
-  try {
-    return JSON.parse(readFile2(path));
-  } catch {
-    return;
-  }
-}
 
 // src/github/workflow-ref.ts
 function readWorkflowRef(env) {
@@ -54635,7 +54877,7 @@ function failedLine(stack) {
   const glob = escapeText(JSON.stringify(stack.ignore));
   return `${line3} · create it, or take it off the dashboard with <code>${glob}</code> under <code>ignore</code> in <code>sluiceway.yaml</code>`;
 }
-function stackIdOf(stack) {
+function stackIdOf2(stack) {
   return stack.kind === "diff" ? stack.diff.stackId : stack.stackId;
 }
 var ENCODER = new TextEncoder;
@@ -54658,7 +54900,7 @@ function fitToBudget(entries, frameCost, budget) {
     entry.level = level;
   };
   const fits = () => frameCost(shortened) + blocks2 - 1 <= budget;
-  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit3(a.stackId, b.stackId);
+  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit2(a.stackId, b.stackId);
   for (const level of LEVELS2.slice(1)) {
     for (const entry of [...entries].sort(bySize((entry2) => entry2.level, -1))) {
       if (fits())
@@ -54679,7 +54921,7 @@ function fitToBudget(entries, frameCost, budget) {
   }
 }
 function renderSummary(stacks, options = {}) {
-  const sorted = [...stacks].sort((a, b) => byCodeUnit3(stackIdOf(a), stackIdOf(b)));
+  const sorted = [...stacks].sort((a, b) => byCodeUnit2(stackIdOf2(a), stackIdOf2(b)));
   const diffs = sorted.filter((stack) => stack.kind === "diff");
   const pending = diffs.filter((stack) => stack.diff.changes.length > 0);
   const inSync = diffs.filter((stack) => stack.diff.changes.length === 0);
@@ -54741,11 +54983,11 @@ class PreviewFirst extends Error {
     this.name = "PreviewFirst";
   }
 }
-function seconds(milliseconds) {
+function seconds2(milliseconds) {
   return `${(milliseconds / 1000).toFixed(1)} s`;
 }
-function minutes(count2) {
-  return plural2(count2, "minute");
+function minutes(count3) {
+  return plural2(count3, "minute");
 }
 function lines2(text3) {
   const all = text3.split(/\r?\n/);
@@ -54757,12 +54999,51 @@ function short(sha) {
   return sha.slice(0, 7);
 }
 async function scan(context3) {
+  context3.outputs?.set("pending", "0");
+  context3.outputs?.set("preview-failed", "0");
+  context3.outputs?.set("in-sync", "0");
+  context3.outputs?.set("dashboard-changed", "false");
+  const report = {};
+  try {
+    await scanning(context3, report);
+  } finally {
+    reportOutputs2(context3, report);
+  }
+}
+function reportOutputs2(context3, report) {
+  const { outputs } = context3;
+  if (!outputs)
+    return;
+  const { dashboard, previewed, startedAt } = report;
+  if (dashboard) {
+    outputs.set("dashboard-url", dashboard.url);
+    outputs.set("pending", String(dashboard.counts.pending));
+    outputs.set("preview-failed", String(dashboard.counts.previewFailed));
+    outputs.set("in-sync", String(dashboard.counts.inSync));
+    outputs.set("dashboard-changed", String(dashboard.changed));
+  }
+  if (!previewed || !startedAt)
+    return;
+  const text3 = scanResultFile({
+    run: runUrlOf(context3, context3.runId),
+    commit: context3.sha,
+    milliseconds: context3.now().getTime() - startedAt.getTime(),
+    dashboard,
+    stacks: previewed.map(({ id, result, milliseconds }) => ({
+      stack: previewSummary(id, result),
+      milliseconds
+    }))
+  });
+  writeResultFile(outputs, context3.log, "scan", text3);
+}
+async function scanning(context3, report) {
   const { log, now } = context3;
   const startedAt = now();
+  report.startedAt = startedAt;
   const at = startedAt.toISOString();
   const runUrl2 = `${context3.repoUrl}/actions/runs/${context3.runId}`;
   const config2 = loadConfig(context3.root);
-  const stacks = applyConfig(config2, await context3.adapter.discover(context3.root)).sort((a, b) => byCodeUnit3(stackId(a.stack), stackId(b.stack)));
+  const stacks = applyConfig(config2, await context3.adapter.discover(context3.root)).sort((a, b) => byCodeUnit2(stackId(a.stack), stackId(b.stack)));
   const ids = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural2(stacks.length, "stack")}.`);
   const plan = await makePlan(context3, config2, stacks);
@@ -54791,9 +55072,11 @@ async function scan(context3) {
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit3(a.id, b.id));
-    if (round.length > 0 || rounds === 0)
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit2(a.id, b.id));
+    if (round.length > 0 || rounds === 0) {
       await writeSummary2(context3, all);
+      report.previewed = all;
+    }
     rounds++;
     const compose = (liveBody, deploys, waits, lines3) => {
       const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
@@ -54948,8 +55231,13 @@ async function scan(context3) {
     }
   }
   reportDashboard(context3, written, composed);
+  report.dashboard = {
+    url: dashboardUrl(context3.repoUrl, written.number),
+    changed: written.written,
+    counts: dashboardCounts(parseDashboard(written.body).rows)
+  };
   if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit3(a.id, b.id));
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit2(a.id, b.id));
     await writeSummary2(context3, all, attributed);
   }
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
@@ -55113,13 +55401,13 @@ async function previewAll(context3, stacks) {
       timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes
     });
     const milliseconds = now().getTime() - started;
-    log.info(`Previewed ${logGroupTitle(id)} in ${seconds(milliseconds)}: ${previewOutcome(result)}`);
+    log.info(`Previewed ${logGroupTitle(id)} in ${seconds2(milliseconds)}: ${previewOutcome(result)}`);
     return { id, result, startedAt, milliseconds };
   });
   const total = now().getTime() - poolStarted;
   const addedUp = previewed.reduce((sum, { milliseconds }) => sum + milliseconds, 0);
   const slowest = previewed.reduce((a, b) => b.milliseconds > a.milliseconds ? b : a);
-  log.info(`Previewed ${plural2(previewed.length, "stack")} in ${seconds(total)} with a pool of ${context3.concurrency}. Added up, the previews took ${seconds(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds(slowest.milliseconds)}.`);
+  log.info(`Previewed ${plural2(previewed.length, "stack")} in ${seconds2(total)} with a pool of ${context3.concurrency}. Added up, the previews took ${seconds2(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds2(slowest.milliseconds)}.`);
   return previewed;
 }
 function logResults(context3, previewed) {
@@ -55225,7 +55513,8 @@ async function runScan() {
     sha: job.sha,
     event: job.event,
     workflow: job.workflow,
-    actionRef: readActionRef(env, (path) => readFileSync5(path, "utf8"))
+    actionRef: readActionRef(env, (path) => readFileSync5(path, "utf8")),
+    outputs: actionsOutputs(env.RUNNER_TEMP)
   });
 }
 
@@ -55253,6 +55542,9 @@ function message3(error63) {
 }
 async function settle2(context3) {
   const { github, log } = context3;
+  const url2 = eventDashboardUrl(context3.repoUrl, context3.event);
+  if (url2 !== undefined)
+    context3.outputs?.set("dashboard-url", url2);
   const config2 = loadConfig(context3.root);
   const stacks = applyConfig(config2, await context3.adapter.discover(context3.root));
   const open2 = openRecordsOfRun(await readRecords2(context3, stacks), context3.runId);
@@ -55315,7 +55607,8 @@ async function runSettle() {
     repoUrl: job.repoUrl,
     runId: job.runId,
     event: readEventPayload(env, (path) => readFileSync6(path, "utf8")),
-    workflow: readWorkflowRef(env)
+    workflow: readWorkflowRef(env),
+    outputs: actionsOutputs(env.RUNNER_TEMP)
   });
 }
 
