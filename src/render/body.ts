@@ -11,6 +11,7 @@ import {
   type RootFacts,
   rootMarker,
 } from "./marker.ts";
+import { type PendingLevel, pendingLevel } from "./pending-level.ts";
 import { type Row, type RowOptions, renderRow } from "./row.ts";
 import { utcMinute } from "./time.ts";
 import {
@@ -92,34 +93,57 @@ export function rowBlock(row: Row, options: RowOptions = {}): ParsedRow {
 
 // One file per theme, because `<picture>` follows the reader's GitHub theme
 // and a media query inside an SVG follows the operating system (record 0033).
-function picture(state: HeaderState, actionRef: string): string[] {
+// Pending has one picture per pending level (record 0039). The picture is as
+// wide as the issue and centered in it (record 0040).
+function picture(state: HeaderState, level: PendingLevel | undefined, actionRef: string): string[] {
+  // A pending header always has a pending row, so it always has a level.
+  const name = state === "pending" ? `pending-${level ?? 1}` : state;
   const file = (theme: string) =>
-    `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef)}/assets/mascot/${state}-${theme}.svg`;
+    `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef)}/assets/mascot/${name}-${theme}.svg`;
   return [
-    "<picture>",
-    `  <source media="(prefers-color-scheme: dark)" srcset="${file("dark")}">`,
-    `  <img alt="${ALT[state]}" width="440" src="${file("light")}">`,
-    "</picture>",
+    '<p align="center">',
+    "  <picture>",
+    `    <source media="(prefers-color-scheme: dark)" srcset="${file("dark")}">`,
+    `    <img alt="${ALT[state]}" width="880" src="${file("light")}">`,
+    "  </picture>",
+    "</p>",
   ];
 }
 
+// The count dots of record 0040. They are signals, like the signal colours in
+// the picture, so they are shown exactly when a header in colour is shown. A
+// count of 0 gets the white dot, so a red dot always means there is something
+// to look at.
+const DOT = {
+  pending: "🟡",
+  deploying: "🔵",
+  "preview-failed": "🔴",
+  "in-sync": "🟢",
+  failed: "🔴",
+} as const;
+const DOT_AT_ZERO = "⚪";
+
 // The four state counts always, so the line keeps its shape. Two more facts
-// only when they are not 0.
-function countsLine(rows: KnownRow[]): string {
+// only when they are not 0. The non-breaking space keeps a dot and its count
+// on one line in a narrow column.
+function countsLine(rows: KnownRow[], dots: boolean): string {
   const of = (state: KnownRow["state"]) => rows.filter((row) => row.state === state).length;
+  const dot = (kind: keyof typeof DOT, count: number) =>
+    dots ? `${count === 0 ? DOT_AT_ZERO : DOT[kind]}&nbsp;` : "";
   const destroying = rows.filter((row) => row.state === "pending" && row.destroys > 0).length;
   const failed = rows.filter((row) => row.failed).length;
   const parts = [
-    `**${of("pending")} pending**`,
-    `${of("deploying")} deploying`,
-    `${of("preview-failed")} preview failed`,
-    `${of("in-sync")} in sync`,
+    `${dot("pending", of("pending"))}**${of("pending")} pending**`,
+    `${dot("deploying", of("deploying"))}${of("deploying")} deploying`,
+    `${dot("preview-failed", of("preview-failed"))}${of("preview-failed")} preview failed`,
+    `${dot("in-sync", of("in-sync"))}${of("in-sync")} in sync`,
   ];
+  // The warning keeps its `:warning:` and gets no dot.
   if (destroying > 0) {
     const words = destroying === 1 ? "stack destroys" : "stacks destroy";
     parts.push(`:warning: **${destroying} pending ${words} resources**`);
   }
-  if (failed > 0) parts.push(plural(failed, "failed deploy"));
+  if (failed > 0) parts.push(`${dot("failed", failed)}${plural(failed, "failed deploy")}`);
   return parts.join(" · ");
 }
 
@@ -176,8 +200,20 @@ export function renderBody(input: BodyInput): string {
 
   // Paragraphs, each followed by a blank line.
   const out: string[] = [rootMarker(input.root)];
-  if (input.personality) out.push(picture(state, input.actionRef).join("\n"));
-  out.push(countsLine(known), scanLine(input.root, input.repoUrl));
+  // Under a header the two lines are one centered block, and the blank lines
+  // inside it keep both rendered as Markdown (record 0040). Without a header
+  // they are what record 0029 made them.
+  const counts = countsLine(known, input.personality && state !== "plain");
+  const scan = scanLine(input.root, input.repoUrl);
+  if (input.personality)
+    out.push(
+      picture(state, pendingLevel(rows), input.actionRef).join("\n"),
+      '<div align="center">',
+      counts,
+      scan,
+      "</div>",
+    );
+  else out.push(counts, scan);
 
   // The note about shortened rows (record 0028) is counted from the markers
   // like everything else up here, so it stays when a writer that is not the

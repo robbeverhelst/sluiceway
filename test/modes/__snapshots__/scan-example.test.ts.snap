@@ -3,14 +3,20 @@
 exports[`a full scan of the example project gives the same dashboard and summary from both CLI versions: dashboard 1`] = `
 "<!-- sluiceway:dashboard v="1" scan-sha="0123456789abcdef0123456789abcdef01234567" scan-run="4242" scan-at="2026-09-21T06:00:00.000Z" full-scan-at="2026-09-21T06:00:00.000Z" full-scan-run="4242" -->
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-dark.svg">
-  <img alt="Sluiceway" width="440" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-light.svg">
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-dark.svg">
+    <img alt="Sluiceway" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-light.svg">
+  </picture>
+</p>
+
+<div align="center">
 
 **2 pending** · 0 deploying · 1 preview failed · 1 in sync · :warning: **1 pending stack destroys resources**
 
 Scanned [\`0123456\`](https://github.com/acme/infra/commit/0123456789abcdef0123456789abcdef01234567) on 2026-09-21 06:00 UTC · [run](https://github.com/acme/infra/actions/runs/4242) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
+
+</div>
 
 ## Pending
 
