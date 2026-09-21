@@ -1,0 +1,101 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`a full scan of the example project gives the same dashboard and summary from both CLI versions: dashboard 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="0123456789abcdef0123456789abcdef01234567" scan-run="4242" scan-at="2026-09-21T06:00:00.000Z" full-scan-at="2026-09-21T06:00:00.000Z" full-scan-run="4242" -->
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-dark.svg">
+  <img alt="Sluiceway" width="440" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-light.svg">
+</picture>
+
+**2 pending** · 0 deploying · 1 preview failed · 1 in sync · :warning: **1 pending stack destroys resources**
+
+Scanned [\`0123456\`](https://github.com/acme/infra/commit/0123456789abcdef0123456789abcdef01234567) on 2026-09-21 06:00 UTC · [run](https://github.com/acme/infra/actions/runs/4242) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
+
+## Pending
+
+Tick a box to deploy that stack exactly as its row shows it.
+
+- [ ] **app:prod** · 3 creates · [preview](https://github.com/acme/infra/actions/runs/4242) <!-- sluiceway:row stack="app:prod" state="pending" hash="6f5afda2b3712163" -->
+  <details><summary>3 changes</summary>
+  <kbd>create</kbd> <code>command:local:Command</code> <b>start</b><br>
+  <kbd>create</kbd> <code>pulumi:pulumi:Stack</code> <b>app-prod</b><br>
+  <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>release</b><br>
+  </details>
+  <!-- /sluiceway:row -->
+- [ ] **network:dev** · 1 create, 1 update, **2 replaces**, **1 delete** · [preview](https://github.com/acme/infra/actions/runs/4242) <!-- sluiceway:row stack="network:dev" state="pending" hash="05bf4ba5424cef76" destroys="3" -->
+  :warning: <kbd>DELETE</kbd> <code>random:index/randomString:RandomString</code> <b>subnet</b>
+  :warning: <kbd>REPLACE</kbd> <code>local:index/file:File</code> <b>notes</b> · forced by <code>content</code> · also changes <code>contentBase64sha256</code>, <code>contentBase64sha512</code>, <code>contentMd5</code>, <code>contentSha1</code>, <code>contentSha256</code>, <code>contentSha512</code>, <code>id</code>
+  :warning: <kbd>REPLACE</kbd> <code>random:index/randomPet:RandomPet</code> <b>name</b> · forced by <code>prefix</code>
+  <details><summary>2 other changes</summary>
+  <kbd>update</kbd> <code>command:local:Command</code> <b>banner</b> · <code>environment</code><br>
+  <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>extra</b><br>
+  </details>
+  <!-- /sluiceway:row -->
+
+## Preview failed
+
+These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.
+
+- **site:prod** · preview failed: the tool exited with an error (exit code 1) · [run](https://github.com/acme/infra/actions/runs/4242) <!-- sluiceway:row stack="site:prod" state="preview-failed" -->
+  <!-- /sluiceway:row -->
+
+## In sync
+
+<details><summary>1 stack in sync</summary>
+
+- network:prod <!-- sluiceway:row stack="network:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+
+</details>
+
+---
+
+- [ ] Rescan all stacks <!-- sluiceway:rescan -->
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>"
+`;
+
+exports[`a full scan of the example project gives the same dashboard and summary from both CLI versions: summary 1`] = `
+"## Sluiceway scan
+
+4 stacks previewed: 2 pending, 1 preview failed, 1 in sync.
+
+### Pending
+
+#### app:prod
+
+3 creates
+
+<details><summary>3 changes</summary>
+
+- <kbd>create</kbd> <code>command:local:Command</code> <b>start</b>
+- <kbd>create</kbd> <code>pulumi:pulumi:Stack</code> <b>app-prod</b>
+- <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>release</b>
+
+</details>
+
+#### network:dev
+
+1 create, 1 update, **2 replaces**, **1 delete**
+
+- :warning: <kbd>DELETE</kbd> <code>random:index/randomString:RandomString</code> <b>subnet</b>
+- :warning: <kbd>REPLACE</kbd> <code>local:index/file:File</code> <b>notes</b> · forced by <code>content</code> · also changes <code>contentBase64sha256</code>, <code>contentBase64sha512</code>, <code>contentMd5</code>, <code>contentSha1</code>, <code>contentSha256</code>, <code>contentSha512</code>, <code>id</code>
+- :warning: <kbd>REPLACE</kbd> <code>random:index/randomPet:RandomPet</code> <b>name</b> · forced by <code>prefix</code>
+
+<details><summary>2 other changes</summary>
+
+- <kbd>update</kbd> <code>command:local:Command</code> <b>banner</b> · <code>environment</code>
+- <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>extra</b>
+
+</details>
+
+### Preview failed
+
+- **site:prod** · the tool exited with an error (exit code 1)
+
+### In sync
+
+- network:prod
+"
+`;
