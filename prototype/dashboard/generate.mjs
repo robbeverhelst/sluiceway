@@ -551,6 +551,7 @@ if (args.includes("--post") || args.includes("--update")) {
   for (const job of jobs) {
     const file = join(outDir, `${job.key}.md`);
     const n = update[job.key];
+    if (args.includes("--update") && !n) continue; // an update never creates
     const cmd = n
       ? ["issue", "edit", n, "--repo", LAB_REPO, "--title", job.title, "--body-file", file]
       : ["issue", "create", "--repo", LAB_REPO, "--title", job.title, "--body-file", file];
