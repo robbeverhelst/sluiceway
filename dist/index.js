@@ -53076,8 +53076,11 @@ async function readDeploymentRecords(github, environments, fallBack) {
     if (page.more)
       more.add(environment);
   }
+  if (more.size === 0)
+    return records;
   const onAPage = new Set(records.map(({ task }) => task));
-  for (const { stackId: stackId2, environment } of fallBack) {
+  const stacks = typeof fallBack === "function" ? await fallBack() : fallBack;
+  for (const { stackId: stackId2, environment } of stacks) {
     const task = deploymentTask(stackId2);
     if (!more.has(environment) || onAPage.has(task))
       continue;
@@ -54535,6 +54538,96 @@ async function runScan() {
   });
 }
 
+// src/modes/settle-job.ts
+import { readFileSync as readFileSync5 } from "node:fs";
+
+// src/core/settle.ts
+function openRecordsOfRun(records, runId) {
+  const found = new Map;
+  for (const record3 of records) {
+    const stackId2 = taskStackId(record3.task);
+    if (stackId2 === undefined)
+      continue;
+    const fact = deployFacts([record3]).byStack.get(stackId2);
+    if (fact?.kind !== "open" || fact.run !== runId)
+      continue;
+    found.set(record3.id, { id: record3.id, stackId: stackId2 });
+  }
+  return [...found.values()].sort((a, b) => a.id - b.id);
+}
+
+// src/modes/settle.ts
+function message2(error63) {
+  return error63 instanceof Error ? error63.message : String(error63);
+}
+async function settle2(context3) {
+  const { github, log } = context3;
+  const config2 = loadConfig(context3.root);
+  const stacks = applyConfig(config2, await context3.adapter.discover(context3.root));
+  const open2 = openRecordsOfRun(await readRecords2(context3, stacks), context3.runId);
+  if (open2.length === 0) {
+    log.info("No deployment record of this run is open. Every deploy it started reported a result.");
+    return;
+  }
+  for (const { id, stackId: stack } of open2) {
+    try {
+      await github.createDeploymentStatus(id, {
+        state: "error",
+        description: deployFailureText({ kind: "run-ended" }),
+        logUrl: `${context3.repoUrl}/actions/runs/${context3.runId}`
+      });
+    } catch (error63) {
+      throw new Error(`The deployment record of ${logGroupTitle(stack)} could not be given its result: ${message2(error63)}. The settle job needs the permission \`deployments: write\` (record 0003).`);
+    }
+    log.info(`Ended the open deployment of ${logGroupTitle(stack)} (record ${id}): this run ended without a result for it.`);
+  }
+  await dispatchScan2(context3);
+  log.info("Started a full scan, which writes the rows of these stacks again with the failure line.");
+}
+async function readRecords2(context3, stacks) {
+  try {
+    return await readDeploymentRecords(context3.github, stacks.map(({ environment }) => environment), () => startedHere(context3, stacks));
+  } catch (error63) {
+    throw new Error(`The deployment records could not be read: ${message2(error63)}. The settle job needs the permission \`deployments: write\` (record 0003).`);
+  }
+}
+async function startedHere(context3, stacks) {
+  const issue3 = editedIssue(context3.event);
+  if (!issue3)
+    return [];
+  const { body } = await context3.github.getIssue(issue3.number);
+  const rows = parseDashboard(body).rows;
+  const hinted = new Set(rows.flatMap((row) => row.known && (row.state === "deploying" || row.ticked) ? [row.stackId] : []));
+  return stacks.flatMap(({ stack, environment }) => hinted.has(stackId(stack)) ? [{ stackId: stackId(stack), environment }] : []);
+}
+async function dispatchScan2(context3) {
+  if (!context3.workflow) {
+    throw new Error("A full scan could not be started: GITHUB_WORKFLOW_REF is not set, so this job does not know which workflow it belongs to. The records are ended, and the next scan writes their rows again.");
+  }
+  try {
+    await context3.github.dispatchWorkflow(context3.workflow.file, context3.workflow.ref);
+  } catch (error63) {
+    throw new Error(`A full scan could not be started: ${message2(error63)}. The settle job needs the permission \`actions: write\`, and the workflow (${context3.workflow.file}) needs a \`workflow_dispatch\` trigger that runs the scan (record 0017). The records are ended, and the next scan writes their rows again.`);
+  }
+}
+
+// src/modes/settle-job.ts
+async function runSettle() {
+  const env = process.env;
+  const token = readToken(getInput);
+  const job = readJob(env);
+  await settle2({
+    root: job.root,
+    adapter: pulumi,
+    github: createOctokitPort(getOctokit(token), { owner: job.owner, repo: job.repo }),
+    log: actionsLog(),
+    repoUrl: job.repoUrl,
+    runId: job.runId,
+    event: readEventPayload(env, (path) => readFileSync5(path, "utf8")),
+    workflow: readWorkflowRef(env)
+  });
+}
+
 // src/mode.ts
 var MODES = ["scan", "resolve", "apply", "settle"];
 
@@ -54565,7 +54658,7 @@ var handlers = {
   scan: runScan,
   resolve: runResolve,
   apply: notImplemented("apply"),
-  settle: notImplemented("settle")
+  settle: runSettle
 };
 function run(mode) {
   return handlers[mode]();
