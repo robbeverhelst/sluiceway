@@ -1,19 +1,27 @@
 import { HISTORY_CAP } from "../../src/core/edit-history.ts";
 import type {
   Comparison,
+  Deployment,
+  DeploymentPage,
+  DeploymentRecord,
+  DeploymentStatus,
   EditHistory,
   GitHubPort,
   HistoryEntry,
   Issue,
   IssueAuthor,
+  NewDeployment,
+  NewDeploymentStatus,
   NewIssue,
   Permission,
+  WorkflowRun,
 } from "../../src/github/port.ts";
+import { FakeDeployments, type FakeStatus, type SeedDeployment } from "./deployments.ts";
 
 // An in-memory GitHub behind the port. It copies the real behavior the lab
 // found (issue 17), because those are the things a naive fake gets wrong. It
-// holds what the port holds. Events and deployment records join it with the
-// slices that add them to the port.
+// holds what the port holds. Its deployment records are in deployments.ts.
+// Events join it with the slice that adds them to the port.
 
 export const BOT: IssueAuthor = { login: "github-actions[bot]", type: "Bot" };
 // Who edits a body when a test does not say.
@@ -63,6 +71,7 @@ export class FakeGitHub implements GitHubPort {
   readonly #permissions = new Map<string, Permission>();
   readonly #failingLookups = new Map<string, number>();
   readonly #updateLimitBytes: number;
+  readonly #deployments = new FakeDeployments(() => this.#now());
   #nextNumber = 1;
   // The fake's clock. It moves one second each time it is read, so two things
   // never happen at the same time and every run gives the same times.
@@ -108,6 +117,37 @@ export class FakeGitHub implements GitHubPort {
   // From now on the lookup of this person fails, as when GitHub is down.
   failPermissionLookup(login: string, status = 500): void {
     this.#failingLookups.set(login.toLowerCase(), status);
+  }
+
+  // A deployment record as it stands, by any writer. Without a payload it
+  // carries one of Sluiceway's, ticked by alice in run 4242.
+  seedDeployment(deployment: SeedDeployment): DeploymentRecord {
+    const { id } = this.#deployments.create(deployment);
+    // It stands as it is: a seeded success flips nothing.
+    if (deployment.status) {
+      this.#deployments.addStatus(id, { ...deployment.status, autoInactive: false });
+    }
+    return this.#deployments.record(id);
+  }
+
+  // Another writer adds a status. It gets GitHub's default `auto_inactive`
+  // unless it says otherwise, which the port always does.
+  addDeploymentStatus(id: number, status: FakeStatus): DeploymentStatus {
+    return this.#deployments.addStatus(id, status);
+  }
+
+  // What GitHub knows about a workflow run. A run that was never seeded is
+  // one GitHub does not have.
+  seedRun(runId: string, run: WorkflowRun): void {
+    this.#deployments.seedRun(runId, run);
+  }
+
+  deployment(id: number): DeploymentRecord {
+    return this.#deployments.record(id);
+  }
+
+  deploymentStatuses(id: number): DeploymentStatus[] {
+    return this.#deployments.statuses(id);
   }
 
   issue(number: number): Issue {
@@ -235,6 +275,42 @@ export class FakeGitHub implements GitHubPort {
     return { ...(this.#permissions.get(login.toLowerCase()) ?? NO_ACCESS) };
   }
 
+  async createDeployment(deployment: NewDeployment): Promise<Deployment> {
+    this.#count("createDeployment");
+    return this.#deployments.create(deployment);
+  }
+
+  // The port always sends `auto_inactive: false`. Only the HTTP server has
+  // another value to hand over, from a writer that left it out.
+  async createDeploymentStatus(
+    id: number,
+    status: NewDeploymentStatus,
+    autoInactive = false,
+  ): Promise<DeploymentStatus> {
+    this.#count("createDeploymentStatus");
+    return this.#deployments.addStatus(id, { ...status, autoInactive });
+  }
+
+  async listNewestDeployments(environment: string): Promise<DeploymentPage> {
+    this.#count("listNewestDeployments");
+    return this.#deployments.page(environment);
+  }
+
+  async newestDeploymentOfTask(task: string): Promise<Deployment | undefined> {
+    this.#count("newestDeploymentOfTask");
+    return this.#deployments.newestOfTask(task);
+  }
+
+  async latestDeploymentStatus(id: number): Promise<DeploymentStatus | undefined> {
+    this.#count("latestDeploymentStatus");
+    return this.#deployments.record(id).status;
+  }
+
+  async getWorkflowRun(runId: string): Promise<WorkflowRun | undefined> {
+    this.#count("getWorkflowRun");
+    return this.#deployments.run(runId);
+  }
+
   async pinIssue(nodeId: string): Promise<void> {
     this.#count("pinIssue");
     const issue = [...this.#issues.values()].find((candidate) => candidate.nodeId === nodeId);
@@ -276,6 +352,7 @@ export class FakeGitHub implements GitHubPort {
 
   #count(request: Request): void {
     this.requests.push(request);
+    this.#deployments.onRequest();
     this.onRequest?.(request);
   }
 

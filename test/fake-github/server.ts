@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import type { Issue } from "../../src/github/port.ts";
 import { type FakeGitHub, FakeGitHubError } from "./fake-github.ts";
+import { deploymentRoutes, deploymentsQuery, isDeploymentsQuery } from "./server-deployments.ts";
 
 // A small HTTP server around the fake, for the e2e workflow (build plan,
 // section 5). It speaks the part of GitHub's REST API that the Octokit port
@@ -14,20 +15,20 @@ export interface FakeGitHubServer {
   close(): Promise<void>;
 }
 
-interface Call {
+export interface Call {
   method: string;
   path: string;
   query: URLSearchParams;
   body: Record<string, unknown>;
 }
 
-interface Answer {
+export interface Answer {
   status: number;
   json?: unknown;
   headers?: Record<string, string>;
 }
 
-type Route = (call: Call, ...parts: string[]) => Promise<Answer>;
+export type Route = (call: Call, ...parts: string[]) => Promise<Answer>;
 
 // GitHub's form of an issue, with the fields the port reads.
 function apiIssue(issue: Issue): unknown {
@@ -143,6 +144,7 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
         };
       },
     ],
+    ...deploymentRoutes(fake, REPO),
     [
       "GET",
       new RegExp(`^${REPO}/collaborators/([^/]+)/permission$`),
@@ -163,6 +165,7 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
       "POST",
       /^\/graphql$/,
       async ({ body }) => {
+        if (isDeploymentsQuery(text(body.query))) return deploymentsQuery(fake, body.variables);
         // The GraphQL calls of the port. GraphQL answers 200 and puts what
         // went wrong in the answer.
         const variables = body.variables as { issueId?: unknown } | undefined;
