@@ -4,7 +4,12 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Adapter, PreviewOptions, PreviewResult } from "../../src/adapters/adapter.ts";
+import type {
+  Adapter,
+  ApplyResult,
+  PreviewOptions,
+  PreviewResult,
+} from "../../src/adapters/adapter.ts";
 import type { Change } from "../../src/core/diff.ts";
 import { type Stack, stackId } from "../../src/core/stack.ts";
 import type { JobLog } from "../../src/github/job-log.ts";
@@ -61,15 +66,27 @@ export interface TableAdapter extends Adapter {
   // The time limit each preview was started with, by stack id.
   timeouts: Record<string, number>;
   versionChecks: number;
+  // The stack id of every deploy, in order.
+  applied: string[];
 }
 
 // An adapter that discovers the stacks named in the table, in the order of
-// the table, and previews each with the answer next to it.
-export function tableAdapter(table: Record<string, Answer>): TableAdapter {
+// the table, and previews each with the answer next to it. A deploy goes out
+// unless `deploys` holds another answer for the stack.
+export function tableAdapter(
+  table: Record<string, Answer>,
+  deploys: Record<string, ApplyResult> = {},
+): TableAdapter {
   const adapter: TableAdapter = {
     previewed: [],
     timeouts: {},
     versionChecks: 0,
+    applied: [],
+    apply: async (applied) => {
+      const id = stackId(applied);
+      adapter.applied.push(id);
+      return deploys[id] ?? { ok: true, toolLog: "" };
+    },
     discover: async () => Object.keys(table).map(stack),
     checkVersion: async () => {
       adapter.versionChecks++;

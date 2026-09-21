@@ -1,5 +1,5 @@
 import type { Diff } from "../core/diff.ts";
-import type { PreviewFailureReason } from "../core/failure-reason.ts";
+import type { DeployFailureReason, PreviewFailureReason } from "../core/failure-reason.ts";
 import type { Stack } from "../core/stack.ts";
 import type { ProcessRunner } from "./process.ts";
 
@@ -33,6 +33,15 @@ export type PreviewResult = (
   // The tool's own words: its stderr and its diagnostics, with ANSI escapes
   // stripped. They can quote a value, so they go to the job log and nowhere
   // else (record 0022).
+  toolLog: string;
+};
+
+export type ApplyResult = (
+  | { ok: true }
+  | { ok: false; reason: Extract<DeployFailureReason, { kind: "tool-error" }> }
+) & {
+  // The tool's own words, with ANSI escapes stripped. They go to the job log
+  // and nowhere else (record 0022).
   toolLog: string;
 };
 
@@ -70,4 +79,11 @@ export interface Adapter {
   // broken stack never stops the others (record 0012). No property value is in
   // the diff, the reason or the detail (record 0021).
   preview(stack: Stack, options: PreviewOptions): Promise<PreviewResult>;
+
+  // Deploys the stack as the code is now. `apply` calls it only right after a
+  // fresh preview gave the diff hash the tick approved (record 0008), and the
+  // command line differs from the preview's only in what makes it a deploy
+  // (record 0015). It has no time limit of its own: a deploy stopped half way
+  // leaves a stack half deployed. It always resolves.
+  apply(stack: Stack, context: ToolContext): Promise<ApplyResult>;
 }

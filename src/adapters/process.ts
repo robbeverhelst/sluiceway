@@ -9,7 +9,9 @@ export interface Run {
   cwd: string;
   // The whole environment of the child. Nothing is added to it.
   env: Record<string, string>;
-  timeoutMs: number;
+  // No time limit when absent. Only a deploy runs without one: stopping it
+  // half way would leave a stack half deployed.
+  timeoutMs?: number | undefined;
 }
 
 export type RunResult =
@@ -65,17 +67,20 @@ export function runProcess(run: Run, graceMs = GRACE_MS): Promise<RunResult> {
     let timedOut = false;
     let killing: ReturnType<typeof setTimeout> | undefined;
     let closing: ReturnType<typeof setTimeout> | undefined;
-    const limit = setTimeout(() => {
-      timedOut = true;
-      signalGroup("SIGINT");
-      killing = setTimeout(() => {
-        signalGroup("SIGKILL");
-        closing = setTimeout(() => {
-          stdout.destroy();
-          stderr.destroy();
-        }, PIPES_MS);
-      }, graceMs);
-    }, run.timeoutMs);
+    const limit =
+      run.timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            timedOut = true;
+            signalGroup("SIGINT");
+            killing = setTimeout(() => {
+              signalGroup("SIGKILL");
+              closing = setTimeout(() => {
+                stdout.destroy();
+                stderr.destroy();
+              }, PIPES_MS);
+            }, graceMs);
+          }, run.timeoutMs);
 
     // An error after the start is a signal that could not be sent. The close
     // event still comes.

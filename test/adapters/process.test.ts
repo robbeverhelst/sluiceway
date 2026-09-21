@@ -37,6 +37,19 @@ describe("the process runner", () => {
     });
   });
 
+  // A deploy has no time limit of Sluiceway's: stopping one half way leaves a
+  // stack half deployed. The job's own time limit is the user's.
+  test("a run without a time limit is never stopped by the runner", async () => {
+    expect(
+      await runProcess({
+        argv: ["sh", "-c", "sleep 0.3; echo done"],
+        cwd: dir,
+        env: { PATH },
+        timeoutMs: undefined,
+      }),
+    ).toEqual({ status: "exited", exitCode: 0, stdout: "done\n", stderr: "" });
+  });
+
   test("runs the command in the working directory it was given", async () => {
     expect(await sh("pwd")).toMatchObject({ exitCode: 0, stdout: `${dir}\n` });
   });
