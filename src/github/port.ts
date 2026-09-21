@@ -4,9 +4,10 @@
 // 0017, except listIssues, which is one request per page of 100.
 //
 // It holds the calls the dashboard, the narrowed scan, the tick rule, the walk
-// through the edit history, the deployment records, the orphan tick sweep and
-// the rescan box need.
+// through the edit history, the deployment records, the orphan tick sweep,
+// the rescan box and attribution need.
 
+import type { CommitWalk } from "../core/attribution.ts";
 import type { HistoryEntry, HistoryPage } from "../core/edit-history.ts";
 import type { IssuesRun } from "../core/orphan-tick.ts";
 import type { Comparison } from "../core/scan-plan.ts";
@@ -22,7 +23,7 @@ import type {
 
 export type * from "./deployment-calls.ts";
 
-export type { Comparison, HistoryEntry, HistoryPage, IssuesRun, Permission };
+export type { CommitWalk, Comparison, HistoryEntry, HistoryPage, IssuesRun, Permission };
 
 // An issue's body together with one page of its edit history.
 export interface EditHistory extends HistoryPage {
@@ -127,6 +128,17 @@ export interface GitHubPort {
   // such as `sluiceway.yml`. Needs `actions: read`. Only a scan that meets a
   // tick makes this call.
   listIssuesRuns(workflow: string): Promise<IssuesRun[]>;
+
+  // The lookback (record 0026): one GraphQL query for the newest 100 commits
+  // from `head` back, children before parents, each with its parents, its
+  // author and its pull requests with their changed files. Works with
+  // `contents: read`. Fails for a commit GitHub does not have.
+  walkCommits(head: string): Promise<CommitWalk>;
+
+  // The changed files of one commit, a renamed file under both paths. The
+  // only call attribution makes per commit, and only for a direct push.
+  // GitHub gives at most 300 files.
+  listCommitFiles(sha: string): Promise<string[]>;
 
   // Works with the workflow token and issues: write (issue 17). Fails when
   // the repo already has three pinned issues.
