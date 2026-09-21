@@ -19,7 +19,8 @@ export interface Change {
   tracking?: Tracking;
   // Only with tracking "move".
   previousAddress?: string;
-  // Top-level property names, never values.
+  // Property paths: names of properties, list indexes and map keys, as the
+  // tool writes them. Never values (record 0045).
   changedKeys: string[];
   // The changed keys that forced a replace.
   replaceKeys: string[];

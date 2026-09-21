@@ -273,7 +273,9 @@ describe("a step Sluiceway does not know", () => {
 });
 
 describe("the paths of a detailed diff", () => {
-  test("give their first segment, whatever form the path has", async () => {
+  // Record 0045: the path as the tool writes it, never cut to its first
+  // segment.
+  test("are kept whole, whatever form the path has", async () => {
     const runner = changedOutput((document) => {
       theUpdateStep(document).detailedDiff = {
         "environment.STAGE": {},
@@ -287,11 +289,37 @@ describe("the paths of a detailed diff", () => {
     const result = await previewWith(NETWORK_DEV, runner);
 
     expect(result.ok && result.diff.changes[0]?.changedKeys).toEqual([
-      "dotted.name",
-      "environment",
+      '["dotted.name"].inner',
+      '["with \\"quotes\\""]',
+      "environment.NOTE",
+      "environment.STAGE",
       "plain",
-      "triggers",
-      'with "quotes"',
+      "triggers[0]",
+    ]);
+  });
+
+  // Onboarding log, hurdle 18: a row said only that `values` changed. No
+  // recording can hold a Helm release, which needs a cluster to preview, so
+  // the recorded update is changed into one in the shape the tool gives.
+  test("say which key inside the values of a Helm release changes", async () => {
+    const release = "kubernetes:helm.sh/v3:Release";
+    const runner = changedOutput((document) => {
+      const step = theUpdateStep(document);
+      step.urn = `urn:pulumi:dev::network::${release}::arc-release`;
+      step.detailedDiff = { "values.controller.image.tag": { kind: "update", inputDiff: false } };
+      step.diffReasons = ["values"];
+    });
+    const result = await previewWith(NETWORK_DEV, runner);
+
+    expect(result.ok && result.diff.changes).toEqual([
+      {
+        address: `urn:pulumi:dev::network::${release}::arc-release`,
+        type: release,
+        name: "arc-release",
+        op: "update",
+        changedKeys: ["values.controller.image.tag"],
+        replaceKeys: [],
+      },
     ]);
   });
 

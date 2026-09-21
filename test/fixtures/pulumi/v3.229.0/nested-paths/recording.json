@@ -1,0 +1,25 @@
+{
+  "scenario": "nested-paths",
+  "description": "A deployed program whose changes sit deep inside properties: a new image and a new canary value inside a list of containers, one annotation under a key that needs quotes, and one key of a config map, which forces a replace.",
+  "cliVersion": "v3.229.0",
+  "commands": [
+    {
+      "id": "preview",
+      "argv": [
+        "pulumi",
+        "preview",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "generated/nested",
+      "exitCode": 0,
+      "stdout": "preview.stdout",
+      "stderr": "preview.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

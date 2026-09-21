@@ -137,7 +137,7 @@ for (const version of VERSIONS) {
       expect(changesOf(result)).toEqual([]);
     });
 
-    test("an update lists the top-level names of the changed properties", async () => {
+    test("an update lists the paths of the changed properties, as the tool writes them", async () => {
       const result = await previewWith(NETWORK_DEV, replay(version, "update"));
 
       expect(changesOf(result)).toEqual([
@@ -146,7 +146,7 @@ for (const version of VERSIONS) {
           type: "command:local:Command",
           name: "banner",
           op: "update",
-          changedKeys: ["environment"],
+          changedKeys: ["environment.STAGE"],
           replaceKeys: [],
         },
       ]);
@@ -162,7 +162,7 @@ for (const version of VERSIONS) {
           type: "command:local:Command",
           name: "banner",
           op: "update",
-          changedKeys: ["environment"],
+          changedKeys: ["environment.TOKEN"],
           replaceKeys: [],
         },
       ]);
@@ -174,6 +174,38 @@ for (const version of VERSIONS) {
       const result = await previewWith(NETWORK_DEV, replay(version, "replace"));
 
       expect(changesOf(result)).toEqual([FILE_REPLACE, PET_REPLACE]);
+    });
+
+    // Record 0045: a path names properties, list indexes and map keys, as
+    // the tool writes them, and never a value. The canary value sits in both
+    // places that change.
+    test("changes deep inside properties list their whole paths", async () => {
+      const stack: Stack = { path: "generated/nested", name: "dev", options: {} };
+      const result = await previewWith(stack, replay(version, "nested-paths"));
+      const nested = (type: string, name: string) => `urn:pulumi:dev::nested::${type}::${name}`;
+
+      expect(changesOf(result)).toEqual([
+        {
+          address: nested("kubernetes:apps/v1:Deployment", "web"),
+          type: "kubernetes:apps/v1:Deployment",
+          name: "web",
+          op: "update",
+          changedKeys: [
+            'metadata.annotations["example.com/revision"]',
+            "spec.template.spec.containers[0].env[0].value",
+            "spec.template.spec.containers[0].image",
+          ],
+          replaceKeys: [],
+        },
+        {
+          address: nested("kubernetes:core/v1:ConfigMap", "settings"),
+          type: "kubernetes:core/v1:ConfigMap",
+          name: "settings",
+          op: "replace",
+          changedKeys: ['data["app.properties"]'],
+          replaceKeys: ['data["app.properties"]'],
+        },
+      ]);
     });
 
     test("a delete lists no keys", async () => {
@@ -191,7 +223,7 @@ for (const version of VERSIONS) {
           type: "command:local:Command",
           name: "banner",
           op: "update",
-          changedKeys: ["environment"],
+          changedKeys: ["environment.STAGE"],
           replaceKeys: [],
         },
         FILE_REPLACE,

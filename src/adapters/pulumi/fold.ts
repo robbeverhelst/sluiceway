@@ -85,25 +85,21 @@ function typeAndName(urn: string): Pick<Change, "type" | "name"> | undefined {
   return type === undefined || type === "" || name === "" ? undefined : { type, name };
 }
 
-// Top-level property names, so a key means the same on an update and on a
-// replace (record 0007). The tool gives paths only on an update in place, and
-// names otherwise. Creates, deletes and tracking changes list no keys.
+// Property paths as the tool writes them: a.b, a[0] or a["b.c"] (record
+// 0045). A path is built from the names of properties, list indexes and map
+// keys, and only the keys of detailedDiff and the entries of the two reason
+// lists are read, never what sits under a path. The tool gives paths on an
+// update, and on a replace only when the provider does. Otherwise the reason
+// lists name what changed, as paths too or as top-level names. Creates,
+// deletes and tracking changes list no keys.
 function keys(step: PreviewStep, op: Op): Pick<Change, "changedKeys" | "replaceKeys"> {
   if (op !== "update" && op !== "replace") return { changedKeys: [], replaceKeys: [] };
   const paths = step.detailedDiff ?? [];
-  const changed = paths.length > 0 ? paths.map(firstSegment) : (step.diffReasons ?? []);
+  const changed = paths.length > 0 ? paths : (step.diffReasons ?? []);
   const replaceKeys = op === "replace" ? sortedSet(step.replaceReasons ?? []) : [];
   // What forced a replace is a changed key too, also when the tool leaves it
   // out of its own list.
   return { changedKeys: sortedSet([...changed, ...replaceKeys]), replaceKeys };
-}
-
-// The tool writes a property path as a.b, a[0] or ["a.b"].c, the last form for
-// a name that holds anything but letters, digits and underscores.
-function firstSegment(path: string): string {
-  const quoted = /^\["((?:[^"\\]|\\.)*)"\]/.exec(path)?.[1];
-  if (quoted !== undefined) return quoted.replace(/\\(.)/g, "$1");
-  return /^[^.[]+/.exec(path)?.[0] ?? path;
 }
 
 function sortedSet(names: string[]): string[] {
