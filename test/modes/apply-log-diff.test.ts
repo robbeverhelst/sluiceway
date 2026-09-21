@@ -136,4 +136,26 @@ describe("apply with scan.logDiff on", () => {
     expect(h.adapter.toolDiffs).toEqual(["a:prod"]);
     expect(rows(h)["a:prod"]).toContain(`· 1 update · [preview](${RESOLVE_RUN_URL}/attempts/1)`);
   });
+
+  test("in a public repo the run gets a warning that anyone can read the values", async () => {
+    const h = await handedOn({ "a:prod": pending("a:prod", change("bucket")) }, ["a:prod"], {
+      config: ON,
+    });
+    const event = { ...(h.context.event as object), repository: { private: false } };
+    await runApply({ ...h, context: { ...h.context, event } });
+    expect(h.log.warnings).toContainEqual({
+      title: "Values in the job log of a public repo",
+      message:
+        "scan.logDiff is on and this repository is public, so anyone can read the values in the tool's own diff in this job log. Turn it off in sluiceway.yaml unless that is what you want.",
+    });
+  });
+
+  test("a private repo gets no such warning", async () => {
+    const h = await handedOn({ "a:prod": pending("a:prod", change("bucket")) }, ["a:prod"], {
+      config: ON,
+    });
+    const event = { ...(h.context.event as object), repository: { private: true } };
+    await runApply({ ...h, context: { ...h.context, event } });
+    expect(h.log.warnings).toEqual([]);
+  });
 });

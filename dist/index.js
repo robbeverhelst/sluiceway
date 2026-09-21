@@ -53433,6 +53433,10 @@ function toolDiffLogLines(toolDiff2) {
     `The tool's own diff could not be shown: ${previewFailureText(toolDiff2.reason)}. The row and the diff hash come from the preview above and do not depend on it.`
   ];
 }
+var PUBLIC_LOG_DIFF = {
+  title: "Values in the job log of a public repo",
+  message: "scan.logDiff is on and this repository is public, so anyone can read the values in the tool's own diff in this job log. Turn it off in sluiceway.yaml unless that is what you want."
+};
 
 // src/render/preview-result.ts
 function previewRow(stackId2, result, links, failure2, options = {}) {
@@ -53845,7 +53849,11 @@ async function deploy(context3, id, payload, runUrl, progress) {
   };
   const preview2 = () => adapter.preview(setup.stack.stack, options);
   const fresh = await preview2();
-  const toolDiff2 = setup.config.scan.logDiff && fresh.ok && fresh.diff.changes.length > 0 ? await adapter.toolDiff(setup.stack.stack, options) : undefined;
+  const { logDiff } = setup.config.scan;
+  if (logDiff && publicRepo(context3.event)) {
+    log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
+  }
+  const toolDiff2 = logDiff && fresh.ok && fresh.diff.changes.length > 0 ? await adapter.toolDiff(setup.stack.stack, options) : undefined;
   logPreview(context3, id, "The fresh preview", fresh, toolDiff2);
   if (!fresh.ok) {
     const reason = { kind: "preview-failed", reason: fresh.reason };
@@ -55229,8 +55237,9 @@ async function scanning(context3, report) {
   const ids = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural2(stacks.length, "stack")}.`);
   const { logDiff } = config2.scan;
-  if (logDiff && context3.publicRepo)
-    log.warning(PUBLIC_LOG_DIFF, "Values in the job log of a public repo");
+  if (logDiff && context3.publicRepo) {
+    log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
+  }
   const plan = await makePlan(context3, config2, stacks);
   logPlan(context3, plan, stacks.length);
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
@@ -55605,7 +55614,6 @@ async function previewAll(context3, stacks, logDiff) {
   log.info(`Previewed ${plural2(previewed.length, "stack")} in ${seconds2(total)} with a pool of ${context3.concurrency}. Added up, the previews took ${seconds2(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds2(slowest.milliseconds)}.`);
   return previewed;
 }
-var PUBLIC_LOG_DIFF = "scan.logDiff is on and this repository is public, so anyone can read the values in the tool's own diff in this job log. Turn it off in sluiceway.yaml unless that is what you want.";
 function logResults(context3, previewed) {
   const { log } = context3;
   for (const { id, result, toolDiff: toolDiff2 } of previewed) {

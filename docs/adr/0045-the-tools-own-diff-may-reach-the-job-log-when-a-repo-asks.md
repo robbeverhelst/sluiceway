@@ -34,7 +34,7 @@ Sluiceway adds no mask of its own and does not look inside the text. What the to
 - **What the tool prints is not what was hashed.** It is a second run of the program. Between the two a data source can change, so the tool's diff is a close reading of what a tick deploys, not the approved thing itself. A tick still approves the diff hash of the preview (0008).
 - **In the group**, the tool's diff follows Sluiceway's own lines and a line of Sluiceway's that says it follows and why. It is printed as it is, ANSI escapes stripped, between `::stop-commands::<token>` and `::<token>::`, with a token that is new for every group. A value that sits at the start of a line can therefore never act as a workflow command, such as an annotation that would show it on the run's page. The tool's other words keep the standing record 0012 gave them.
 - **The type** that carries the text out of the adapter is `ToolDiffResult`. Only the job log takes its `text`. The canary test proves it: with the setting on, the canary value reaches that stack's group of the job log and no other place a scan or an `apply` writes to.
-- **In a public repo** the run gets a warning annotation that says anyone can read the values in its job log. Whether the repo is public is read from the event's payload. A payload that does not say gets no warning, and nothing is guessed.
+- **In a public repo** the run of a scan or an `apply` with the setting on gets a warning annotation that says anyone can read the values in its job log. Whether the repo is public is read from the event's payload. A payload that does not say gets no warning, and nothing is guessed.
 
 ## Where a click lands
 

@@ -29,6 +29,7 @@ import { stackId } from "../core/stack.ts";
 import { type AttributionSource, attributionSource } from "../github/attribution.ts";
 import { findDashboard } from "../github/dashboard.ts";
 import { readDeploymentRecords } from "../github/deployments.ts";
+import { publicRepo } from "../github/event.ts";
 import type { JobLog } from "../github/job-log.ts";
 import { eventDashboardUrl, type StepOutputs, writeResultFile } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
@@ -41,7 +42,12 @@ import {
 } from "../render/apply-summary.ts";
 import { BODY_LIMIT, type BudgetOptions, fitBody } from "../render/budget.ts";
 import { runLinks } from "../render/links.ts";
-import { diffLogLines, logGroupTitle, toolDiffLogLines } from "../render/log-text.ts";
+import {
+  diffLogLines,
+  logGroupTitle,
+  PUBLIC_LOG_DIFF,
+  toolDiffLogLines,
+} from "../render/log-text.ts";
 import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
 import { previewRow } from "../render/preview-result.ts";
 import { type ApplyResultOutcome, applyResultFile } from "../render/result-file.ts";
@@ -77,7 +83,8 @@ export interface ApplyContext {
   // The `deployment-id` input: the record to deploy (record 0035).
   deploymentId: number;
   // The payload of the event that started the run: the edit of the dashboard
-  // that `resolve` acted on. Only the `dashboard-url` output reads it.
+  // that `resolve` acted on. The `dashboard-url` output reads it, and so does
+  // the warning for a public repo with `scan.logDiff` on (record 0045).
   event?: unknown;
   // The step outputs and the result file (record 0041). A test that does not
   // look at them leaves them out.
@@ -420,8 +427,12 @@ async function deploy(
   // With `scan.logDiff` on, the tool's own diff of the fresh preview goes to
   // the job log before anything is decided, so a person reading this job sees
   // what went out, or what moved (record 0045). It decides nothing.
+  const { logDiff } = setup.config.scan;
+  if (logDiff && publicRepo(context.event)) {
+    log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
+  }
   const toolDiff =
-    setup.config.scan.logDiff && fresh.ok && fresh.diff.changes.length > 0
+    logDiff && fresh.ok && fresh.diff.changes.length > 0
       ? await adapter.toolDiff(setup.stack.stack, options)
       : undefined;
   logPreview(context, id, "The fresh preview", fresh, toolDiff);

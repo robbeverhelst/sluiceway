@@ -49,7 +49,12 @@ import {
   fitBody,
 } from "../render/budget.ts";
 import { runLinks } from "../render/links.ts";
-import { diffLogLines, logGroupTitle, toolDiffLogLines } from "../render/log-text.ts";
+import {
+  diffLogLines,
+  logGroupTitle,
+  PUBLIC_LOG_DIFF,
+  toolDiffLogLines,
+} from "../render/log-text.ts";
 import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, dashboardCounts, scanResultFile } from "../render/result-file.ts";
@@ -242,8 +247,9 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   const ids = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural(stacks.length, "stack")}.`);
   const { logDiff } = config.scan;
-  if (logDiff && context.publicRepo)
-    log.warning(PUBLIC_LOG_DIFF, "Values in the job log of a public repo");
+  if (logDiff && context.publicRepo) {
+    log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
+  }
 
   const plan = await makePlan(context, config, stacks);
   logPlan(context, plan, stacks.length);
@@ -836,9 +842,6 @@ async function previewAll(
   );
   return previewed;
 }
-
-const PUBLIC_LOG_DIFF =
-  "scan.logDiff is on and this repository is public, so anyone can read the values in the tool's own diff in this job log. Turn it off in sluiceway.yaml unless that is what you want.";
 
 // The tool's own words and every diff in full go to the job log, grouped per
 // stack, on every scan (records 0022 and 0037). A preview failure is a warning

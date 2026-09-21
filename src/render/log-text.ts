@@ -65,3 +65,11 @@ export function toolDiffLogLines(toolDiff: ToolDiffResult | undefined): string[]
     `The tool's own diff could not be shown: ${previewFailureText(toolDiff.reason)}. The row and the diff hash come from the preview above and do not depend on it.`,
   ];
 }
+
+// The warning on the run of a public repo with `scan.logDiff` on (record
+// 0045). Its words are Sluiceway's own.
+export const PUBLIC_LOG_DIFF = {
+  title: "Values in the job log of a public repo",
+  message:
+    "scan.logDiff is on and this repository is public, so anyone can read the values in the tool's own diff in this job log. Turn it off in sluiceway.yaml unless that is what you want.",
+};
