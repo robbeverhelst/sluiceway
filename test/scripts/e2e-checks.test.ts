@@ -67,6 +67,7 @@ const FULL_LOG = [
   "Previewed site:prod in 1.0 s: pending",
   "Previewed 4 stacks in 1.2 s with a pool of 4. Added up, the previews took 4.0 s. The slowest was app:prod with 1.0 s.",
   "Created the dashboard: https://github.com/acme/infra/issues/1 (1,234 of 65,536 characters).",
+  "The scan made 6 requests to the GitHub API. GitHub allows the workflow token at least 1,000 an hour in a repo.",
 ].join("\n");
 
 function observed(over: Partial<Observed> = {}): Observed {
@@ -85,6 +86,7 @@ function observed(over: Partial<Observed> = {}): Observed {
       },
     ],
     pinned: [1],
+    requests: ["listIssues", "listIssues", "createIssue", "pinIssue", "getIssue", "walkCommits"],
     ...over,
   };
 }
@@ -166,12 +168,19 @@ describe("the checks of a full scan", () => {
     ]);
     expect(checkFullScan(observed({ summary: "" }), EXPECTED)).toEqual(["The summary is empty."]);
     expect(checkFullScan(observed({ log: "Found 4 stacks." }), EXPECTED)).toEqual([
+      'The job log has no line that starts with "The scan made 6 requests to the GitHub API.".',
       'The job log has no line that starts with "This is a full scan".',
       'The job log has no line that starts with "Previewed 4 stacks in ".',
       'The job log has no line that starts with "Previewed app:prod in ".',
       'The job log has no line that starts with "Previewed network:dev in ".',
       'The job log has no line that starts with "Previewed network:prod in ".',
       'The job log has no line that starts with "Previewed site:prod in ".',
+    ]);
+  });
+
+  test("a request count in the log that is not what GitHub saw is a problem", () => {
+    expect(checkFullScan(observed({ requests: ["listIssues"] }), EXPECTED)).toEqual([
+      'The job log has no line that starts with "The scan made 1 request to the GitHub API.".',
     ]);
   });
 });
@@ -194,6 +203,7 @@ describe("the checks of a narrowed scan", () => {
     "app:prod is previewed: it claims shared/motd.txt.",
     "Previewed app:prod in 1.0 s: in sync",
     "Previewed 1 stack in 1.0 s with a pool of 4. Added up, the previews took 1.0 s. The slowest was app:prod with 1.0 s.",
+    "The scan made 6 requests to the GitHub API. GitHub allows the workflow token at least 1,000 an hour in a repo.",
   ].join("\n");
   const narrowed = { previewed: ["app:prod"], before };
 

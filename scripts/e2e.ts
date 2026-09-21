@@ -155,7 +155,6 @@ interface StepOptions {
 }
 
 interface Stepped extends Observed {
-  requests: string[];
   outputs: Record<string, string>;
 }
 

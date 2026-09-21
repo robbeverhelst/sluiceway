@@ -20,6 +20,8 @@ export interface Observed {
   issues: ObservedIssue[];
   // Numbers of the pinned issues.
   pinned: number[];
+  // Every request the fake GitHub answered during the step, by port method.
+  requests: string[];
 }
 
 export interface Expected {
@@ -133,6 +135,16 @@ function checkScan(observed: Observed, expected: Expected): string[] {
   }
 
   if (observed.summary.trim() === "") problems.push("The summary is empty.");
+
+  // The count the scan logs is taken on the wire, so it has to be the count
+  // the fake GitHub saw (record 0017, build plan slice 3.1).
+  const requests = observed.requests.length;
+  problems.push(
+    ...needLine(
+      observed.log,
+      `The scan made ${requests} ${requests === 1 ? "request" : "requests"} to the GitHub API.`,
+    ),
+  );
 
   // Annotations show on the run's page, outside the job log (record 0022).
   const annotations = observed.log
