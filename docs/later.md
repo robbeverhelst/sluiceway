@@ -110,6 +110,7 @@ Not planned. Bringing one of these back means reopening the decision named here,
 |---|---|
 | A hosted GitHub App with an org-wide dashboard | A control plane only. Previews and deploys always run in the user's own runners. It reuses the open source core. |
 | GitLab and Bitbucket | The UI is a GitHub issue, so this is a different product surface. |
-| Slack and other notifications, a policy engine, cost estimation | Non-goals for v1 in the brief. |
+| A notifier built into Sluiceway (Slack, Telegram, webhooks) and a metrics endpoint | It would hold a secret and call a third party. v1 gives step outputs and a result file, and the workflow sends (0041). Native notifications and history fit a hosted version. |
+| A policy engine, cost estimation | Non-goals for v1 in the brief. |
 | Docs site and Marketplace launch | Part of the public launch, after the core loop is proven. |
 | Launch material: screenshots, a note on merge queues, the JSON schema in SchemaStore, the 1.0.0 tag and the `v1` moving tag | Same. Until then the moving tag is `v0`. |

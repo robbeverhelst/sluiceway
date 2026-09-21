@@ -55,6 +55,14 @@ Collected here so nobody has to search the records. The record in the last colum
 | `github-token` | input | all | the workflow token | Always the workflow's own `GITHUB_TOKEN` | 0017, 0035 |
 | `deployment-id` | input | `apply` | required there | The deployment record to deploy | 0035 |
 | `matrix` | output | `resolve` | `[]` | `[{ stack, environment, deployment }]` | 0035 |
+| `dashboard-url` | output | `scan`, `apply`, `settle` | none | Web address of the dashboard issue | 0041 |
+| `pending` | output | `scan` | `0` | Number of pending stacks after this scan | 0041 |
+| `preview-failed` | output | `scan` | `0` | Number of stacks whose preview failed | 0041 |
+| `in-sync` | output | `scan` | `0` | Number of stacks in sync | 0041 |
+| `dashboard-changed` | output | `scan` | `false` | `true` when this scan wrote a different body, so a notify step can stay quiet otherwise | 0041 |
+| `outcome` | output | `apply` | none | `deployed`, `refused` (the change moved or the record was not open) or `failed` | 0041 |
+| `stack` | output | `apply` | none | The stack id this job handled | 0041 |
+| `result-file` | output | `scan`, `apply` | none | Path under `RUNNER_TEMP` of a JSON file with what the summary holds: no values, none of the tool's words | 0041 |
 
 ### `sluiceway.yaml`
 
@@ -274,6 +282,7 @@ Done when: ticking a box deploys exactly that stack and the dashboard returns to
 | 2.8 | Attribution | 0026 | A row says which merges made it pending, and never blocks | The walk with merge commits, squash and rebase merges, direct pushes, `and earlier changes`, a failed lookup leaves the line out, budget level 1 |
 | 2.9 | E2E of the whole loop on the fake: scan, tick, `resolve`, `apply` with the real tool, `settle`. Plus a refused tick, a moved change and a re-run | all of M2 | The loop closes with the committed bundle | The example stack really deploys to the file backend and the next scan shows it in sync |
 | 2.10 | Docs: the README without its warning, the config reference, `docs/security.md` (the three setups of 0020), `docs/credentials.md` (the pattern of 0013, then recipes, and running next to your own tooling), what a tick promises (0008), the outputs limit (0036), and a line that says not to add `merge_group` to this workflow | 0013, 0014, 0016, 0020 | A stranger can set it up from the README alone | The README's workflow is parsed in a test and checked against `action.yml`: every input it uses exists |
+| 2.11 | Outputs and the result file for `scan` and `apply`, and `docs/notifications.md`: GitHub's Slack and Teams apps on deployments, recipes for a Slack step, a Telegram step, a generic webhook and a Pushgateway push, each quiet unless something is pending or failed | 0041, 0021, 0022 | A workflow can tell people and chart numbers without Sluiceway sending anything | Each output per mode, the JSON schema of the result file as a snapshot, the canary test extended to the result file, outputs on a failed scan |
 
 ### M3: proof and the first release
 
