@@ -3,9 +3,13 @@
 // test/fake-github/. Each method is one request of the API budget of record
 // 0017, except listIssues, which is one request per page of 100.
 //
-// It holds the calls the dashboard needs. Deployment records, the edit
-// history, permissions and the compare call join it with the slices that use
+// It holds the calls the dashboard and the narrowed scan need. Deployment
+// records, the edit history and permissions join it with the slices that use
 // them.
+
+import type { Comparison } from "../core/scan-plan.ts";
+
+export type { Comparison };
 
 export interface IssueAuthor {
   login: string;
@@ -54,6 +58,11 @@ export interface GitHubPort {
   reopenIssue(number: number): Promise<void>;
 
   createComment(number: number, body: string): Promise<void>;
+
+  // The comparison from `base` to `head`, two commit ids (record 0010). The
+  // files are the ones of the whole comparison, and GitHub never lists more
+  // than 300. Fails when GitHub does not have a commit, as after a force push.
+  compareCommits(base: string, head: string): Promise<Comparison>;
 
   // Works with the workflow token and issues: write (issue 17). Fails when
   // the repo already has three pinned issues.

@@ -1,4 +1,10 @@
-import type { GitHubPort, Issue, IssueAuthor, NewIssue } from "../../src/github/port.ts";
+import type {
+  Comparison,
+  GitHubPort,
+  Issue,
+  IssueAuthor,
+  NewIssue,
+} from "../../src/github/port.ts";
 
 // An in-memory GitHub behind the port. It copies the real behavior the lab
 // found (issue 17), because those are the things a naive fake gets wrong. It
@@ -11,6 +17,7 @@ const CREATE_LIMIT_CHARACTERS = 65_536;
 const UPDATE_LIMIT_BYTES = 262_144;
 const PAGE_SIZE = 100;
 const MAX_PINNED = 3;
+const COMPARE_FILE_CAP = 300;
 
 export class FakeGitHubError extends Error {
   constructor(
@@ -42,6 +49,7 @@ export class FakeGitHub implements GitHubPort {
   readonly #issues = new Map<number, Issue>();
   readonly #comments = new Map<number, string[]>();
   readonly #pinned: number[] = [];
+  readonly #comparisons = new Map<string, Comparison>();
   readonly #updateLimitBytes: number;
   #nextNumber = 1;
   // The fake's clock. It moves one second each time it is read, so two things
@@ -62,6 +70,12 @@ export class FakeGitHub implements GitHubPort {
   // Another writer edits the body: a person, or another job.
   editBody(number: number, body: string): void {
     this.#find(number).body = body;
+  }
+
+  // What the repo's history says about two commits. A pair that was never
+  // seeded holds a commit the repo does not have.
+  seedComparison(base: string, head: string, comparison: Comparison): void {
+    this.#comparisons.set(`${base}...${head}`, comparison);
   }
 
   issue(number: number): Issue {
@@ -131,6 +145,16 @@ export class FakeGitHub implements GitHubPort {
     this.#count("createComment");
     this.#find(number);
     this.#comments.set(number, [...this.comments(number), body]);
+  }
+
+  async compareCommits(base: string, head: string): Promise<Comparison> {
+    this.#count("compareCommits");
+    const comparison = this.#comparisons.get(`${base}...${head}`);
+    if (!comparison) throw new FakeGitHubError(404, "Not Found");
+    return {
+      status: comparison.status,
+      files: comparison.files.slice(0, COMPARE_FILE_CAP).map((file) => ({ ...file })),
+    };
   }
 
   async pinIssue(nodeId: string): Promise<void> {

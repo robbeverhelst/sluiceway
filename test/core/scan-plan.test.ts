@@ -3,6 +3,7 @@ import type { Claimant } from "../../src/core/claim.ts";
 import {
   changedPaths,
   comparisonBase,
+  type FullScanReason,
   fullScanReasonText,
   oneRowPerStack,
   planScan,
@@ -186,43 +187,41 @@ describe("one row for every discovered stack", () => {
 });
 
 describe("the words for why a scan is a full scan", () => {
-  test.each([
+  const words: [FullScanReason, string][] = [
     [
-      { kind: "event", event: "schedule" } as const,
+      { kind: "event", event: "schedule" },
       "the event is schedule, and only a push gives a narrowed scan",
     ],
-    [{ kind: "no-dashboard" } as const, "there is no dashboard yet"],
-    [{ kind: "no-root-marker" } as const, "the dashboard has no root marker that can be read"],
+    [{ kind: "no-dashboard" }, "there is no dashboard yet"],
+    [{ kind: "no-root-marker" }, "the dashboard has no root marker that can be read"],
     [
-      { kind: "other-version", version: 2 } as const,
+      { kind: "other-version", version: 2 },
       "the root marker of the dashboard has version 2, which this version of Sluiceway does not write",
     ],
+    [{ kind: "no-scan-sha" }, "the root marker of the dashboard names no commit to compare from"],
     [
-      { kind: "no-scan-sha" } as const,
-      "the root marker of the dashboard names no commit to compare from",
-    ],
-    [
-      { kind: "compare-failed" } as const,
+      { kind: "compare-failed" },
       "GitHub did not give the comparison from the commit of the last scan",
     ],
     [
-      { kind: "not-a-straight-line", status: "diverged" } as const,
+      { kind: "not-a-straight-line", status: "diverged" },
       'the checked-out commit does not follow the commit of the last scan in a straight line (GitHub calls it "diverged"), as after a force push or a re-run of an older run',
     ],
     [
-      { kind: "file-cap" } as const,
+      { kind: "file-cap" },
       "the comparison lists 300 files, the most GitHub gives, so files may be missing from it",
     ],
-    [{ kind: "unclaimed", files: ["package.json"] } as const, "no stack claims package.json"],
+    [{ kind: "unclaimed", files: ["package.json"] }, "no stack claims package.json"],
     [
-      { kind: "unclaimed", files: ["package.json", "bun.lock", "tsconfig.json"] } as const,
+      { kind: "unclaimed", files: ["package.json", "bun.lock", "tsconfig.json"] },
       "no stack claims package.json and 2 more changed files",
     ],
     [
-      { kind: "does-not-fit", carried: 12 } as const,
+      { kind: "does-not-fit", carried: 12 },
       "the body does not fit in one issue with 12 rows carried through, and only a fresh row can be shortened",
     ],
-  ])("%j", (reason, text) => {
+  ];
+  test.each(words)("%j", (reason, text) => {
     expect(fullScanReasonText(reason)).toBe(text);
   });
 });

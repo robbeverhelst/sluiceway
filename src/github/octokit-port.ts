@@ -80,6 +80,24 @@ export function createOctokitPort(octokit: Octokit, repo: Repo): GitHubPort {
       await octokit.rest.issues.createComment({ ...repo, issue_number: number, body });
     },
 
+    async compareCommits(base, head) {
+      // Every file of the comparison comes on the first page whatever the page
+      // size, which only counts commits. No commit is read here.
+      const { data } = await octokit.rest.repos.compareCommitsWithBasehead({
+        ...repo,
+        basehead: `${base}...${head}`,
+        per_page: 1,
+      });
+      return {
+        status: data.status,
+        files: (data.files ?? []).map((file) =>
+          file.previous_filename === undefined
+            ? { path: file.filename }
+            : { path: file.filename, previousPath: file.previous_filename },
+        ),
+      };
+    },
+
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     },

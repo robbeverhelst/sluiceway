@@ -232,3 +232,58 @@ describe("pinning", () => {
     await expect(port.pinIssue("I_kwDOabc")).rejects.toThrow("Maximum 3 pinned issues");
   });
 });
+
+describe("comparing two commits", () => {
+  const BASE = "1111111111111111111111111111111111111111";
+  const HEAD = "2222222222222222222222222222222222222222";
+
+  test("one request, with the files of the whole comparison and a single commit", async () => {
+    const { port, sent } = portThatAnswers([
+      {
+        json: {
+          status: "ahead",
+          commits: [{ sha: HEAD }],
+          files: [
+            { filename: "apps/loki/index.ts", status: "modified" },
+            {
+              filename: "apps/loki/new.ts",
+              status: "renamed",
+              previous_filename: "apps/grafana/old.ts",
+            },
+            { filename: "gone.txt", status: "removed" },
+          ],
+        },
+      },
+    ]);
+
+    expect(await port.compareCommits(BASE, HEAD)).toEqual({
+      status: "ahead",
+      files: [
+        { path: "apps/loki/index.ts" },
+        { path: "apps/loki/new.ts", previousPath: "apps/grafana/old.ts" },
+        { path: "gone.txt" },
+      ],
+    });
+    // GitHub gives every file, up to its cap of 300, on the first page
+    // whatever the page size, which only counts commits. Sluiceway reads no
+    // commit here, so it asks for one.
+    expect(sent).toEqual([
+      {
+        method: "GET",
+        path: `/repos/acme/infra/compare/${BASE}...${HEAD}`,
+        query: { per_page: "1" },
+        body: undefined,
+      },
+    ]);
+  });
+
+  test("a comparison without a file list has no files", async () => {
+    const { port } = portThatAnswers([{ json: { status: "identical", commits: [] } }]);
+    expect(await port.compareCommits(HEAD, HEAD)).toEqual({ status: "identical", files: [] });
+  });
+
+  test("a commit GitHub no longer has is an error, as after a force push", async () => {
+    const { port } = portThatAnswers([{ status: 404, json: { message: "Not Found" } }]);
+    await expect(port.compareCommits(BASE, HEAD)).rejects.toThrow("Not Found");
+  });
+});

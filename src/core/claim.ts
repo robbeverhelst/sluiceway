@@ -42,7 +42,8 @@ export function claim(stacks: Claimant[], changed: string[], unrelated: string[]
       ({ stack, matches }) => inside(stack.path, file) || matches(file),
     );
     if (claimants.length === 0) unclaimed.push(file);
-    for (const { stack } of claimants) claims.set(stack.id, [...(claims.get(stack.id) ?? []), file]);
+    for (const { stack } of claimants)
+      claims.set(stack.id, [...(claims.get(stack.id) ?? []), file]);
   }
   return { claims, unclaimed };
 }

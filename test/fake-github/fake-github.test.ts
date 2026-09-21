@@ -188,3 +188,35 @@ describe("the request count", () => {
     expect((await github.getIssue(number)).body).toBe("second");
   });
 });
+
+describe("comparing two commits", () => {
+  test("a seeded comparison is given back as a copy, and costs one request", async () => {
+    const github = new FakeGitHub();
+    github.seedComparison("aaa", "bbb", {
+      status: "ahead",
+      files: [{ path: "new.ts", previousPath: "old.ts" }],
+    });
+
+    const comparison = await github.compareCommits("aaa", "bbb");
+    expect(comparison).toEqual({
+      status: "ahead",
+      files: [{ path: "new.ts", previousPath: "old.ts" }],
+    });
+    comparison.files.pop();
+    expect((await github.compareCommits("aaa", "bbb")).files).toHaveLength(1);
+    expect(github.requests).toEqual(["compareCommits", "compareCommits"]);
+  });
+
+  test("a commit the repo does not have is a 404, as after a force push", async () => {
+    const github = new FakeGitHub();
+    github.seedComparison("aaa", "bbb", { status: "ahead", files: [] });
+    await expect(github.compareCommits("bbb", "aaa")).rejects.toMatchObject({ status: 404 });
+  });
+
+  test("like GitHub, it never lists more than 300 files", async () => {
+    const github = new FakeGitHub();
+    const files = Array.from({ length: 450 }, (_, index) => ({ path: `f${index}` }));
+    github.seedComparison("aaa", "bbb", { status: "ahead", files });
+    expect((await github.compareCommits("aaa", "bbb")).files).toHaveLength(300);
+  });
+});
