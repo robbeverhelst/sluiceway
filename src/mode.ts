@@ -1,3 +1,4 @@
+import { runResolve } from "./modes/resolve-job.ts";
 import { runScan } from "./modes/scan-job.ts";
 
 export const MODES = ["scan", "resolve", "apply", "settle"] as const;
@@ -34,7 +35,7 @@ function notImplemented(mode: Mode): Handler {
 
 const handlers: Record<Mode, Handler> = {
   scan: runScan,
-  resolve: notImplemented("resolve"),
+  resolve: runResolve,
   apply: notImplemented("apply"),
   settle: notImplemented("settle"),
 };

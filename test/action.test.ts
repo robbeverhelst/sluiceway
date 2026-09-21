@@ -8,6 +8,7 @@ const ROOT = resolve(import.meta.dir, "..");
 
 type ActionMetadata = {
   inputs: Record<string, { description: string; required?: boolean; default?: string }>;
+  outputs: Record<string, { description: string }>;
   runs: { using: string; main: string };
 };
 
@@ -40,6 +41,12 @@ describe("action.yml", () => {
     for (const mode of MODES) {
       expect(action.inputs.mode?.description).toContain(mode);
     }
+  });
+
+  // Record 0035. The outputs of record 0041 join with slice 2.11.
+  test("declares the one output that exists so far, `matrix`", () => {
+    expect(Object.keys(action.outputs)).toEqual(["matrix"]);
+    expect(action.outputs.matrix?.description).toContain("resolve");
   });
 
   test("declares only the inputs the decision records fix", () => {

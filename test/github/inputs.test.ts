@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readScanInputs } from "../../src/github/inputs.ts";
+import { readScanInputs, readToken } from "../../src/github/inputs.ts";
 
 // The inputs of scan mode (build plan, section 3). GitHub hands every input
 // over as text, and an input that action.yml gives a default is never empty
@@ -36,6 +36,19 @@ describe("the inputs of a scan", () => {
 
   test("refuses an empty token, and says which token it wants", () => {
     expect(() => inputs({ ...GOOD, "github-token": "" })).toThrow(
+      'The "github-token" input is empty. Leave it out of the workflow, so it takes the GITHUB_TOKEN of the run.',
+    );
+  });
+});
+
+// `resolve` reads one input, the token. It has no pool and starts no preview.
+describe("the token, for a mode that reads nothing else", () => {
+  test("is read without the inputs of a scan", () => {
+    expect(readToken((name) => (name === "github-token" ? "ghs_token" : ""))).toBe("ghs_token");
+  });
+
+  test("an empty token is refused with the same words", () => {
+    expect(() => readToken(() => "")).toThrow(
       'The "github-token" input is empty. Leave it out of the workflow, so it takes the GITHUB_TOKEN of the run.',
     );
   });

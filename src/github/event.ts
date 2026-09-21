@@ -40,3 +40,19 @@ export function editedIssue(payload: unknown): EventIssue | undefined {
     author: { login: text(user?.login), type: text(user?.type) },
   };
 }
+
+// The payload as the runner wrote it, read once by the glue. A job without a
+// readable payload has no issue to look at, which `resolve` treats like an
+// event that is not about an issue.
+export function readEventPayload(
+  env: Readonly<Record<string, string | undefined>>,
+  readFile: (path: string) => string,
+): unknown {
+  const path = env.GITHUB_EVENT_PATH;
+  if (!path) return undefined;
+  try {
+    return JSON.parse(readFile(path));
+  } catch {
+    return undefined;
+  }
+}

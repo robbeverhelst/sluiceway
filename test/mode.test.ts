@@ -28,8 +28,9 @@ describe("parseMode", () => {
 });
 
 describe("run", () => {
-  // The scan is wired (slice 1.11) and has its own tests under test/modes/.
-  const stubs = MODES.filter((mode) => mode !== "scan");
+  // The scan (slice 1.11) and resolve (slice 2.4) are wired and have their own
+  // tests under test/modes/.
+  const stubs = MODES.filter((mode) => mode !== "scan" && mode !== "resolve");
 
   test.each(stubs)("%s fails as not implemented yet", async (mode) => {
     const result = run(mode);

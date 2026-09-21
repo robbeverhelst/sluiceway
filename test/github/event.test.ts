@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { editedIssue } from "../../src/github/event.ts";
+import { editedIssue, readEventPayload } from "../../src/github/event.ts";
 
 // The payload of the event that woke `resolve`. It is only a wake-up (record
 // 0025): all that is read from it is what the cheap check of record 0017 needs.
@@ -50,5 +50,23 @@ describe("the issue of an event payload", () => {
     ],
   ])("%s holds no issue", (_name, given) => {
     expect(editedIssue(given)).toBeUndefined();
+  });
+});
+
+describe("the payload file of the runner", () => {
+  test("is read from GITHUB_EVENT_PATH as JSON", () => {
+    const read = (path: string) => (path === "/runner/event.json" ? '{"action":"edited"}' : "");
+    expect(readEventPayload({ GITHUB_EVENT_PATH: "/runner/event.json" }, read)).toEqual({
+      action: "edited",
+    });
+  });
+
+  test("is nothing when the variable is not set, the file is missing or it is not JSON", () => {
+    const missing = () => {
+      throw new Error("ENOENT");
+    };
+    expect(readEventPayload({}, () => "{}")).toBeUndefined();
+    expect(readEventPayload({ GITHUB_EVENT_PATH: "/gone" }, missing)).toBeUndefined();
+    expect(readEventPayload({ GITHUB_EVENT_PATH: "/text" }, () => "not json")).toBeUndefined();
   });
 });

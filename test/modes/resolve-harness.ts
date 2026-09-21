@@ -50,7 +50,7 @@ export interface ResolveHarness {
 // asked.
 export async function scanned(
   table: Record<string, PreviewResult>,
-  options: { config?: string } = {},
+  options: { config?: string; repoUrl?: string } = {},
 ): Promise<ResolveHarness> {
   const adapter = tableAdapter(table);
   const { context: scanContext, github, log } = harness(adapter, options);
@@ -68,7 +68,7 @@ export async function scanned(
     adapter,
     github,
     log,
-    repoUrl: REPO_URL,
+    repoUrl: scanContext.repoUrl,
     runId: RESOLVE_RUN,
     sha: SHA,
     actionRef: ACTION_REF,

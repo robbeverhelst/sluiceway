@@ -23,6 +23,17 @@ function wholeNumber(getInput: GetInput, name: string, hint = ""): number {
   return Number(text);
 }
 
+// The one input every mode reads: the workflow's own token (record 0017).
+export function readToken(getInput: GetInput): string {
+  const token = getInput("github-token");
+  if (token === "") {
+    throw new Error(
+      'The "github-token" input is empty. Leave it out of the workflow, so it takes the GITHUB_TOKEN of the run.',
+    );
+  }
+  return token;
+}
+
 export function readScanInputs(getInput: GetInput): ScanInputs {
   const concurrency = wholeNumber(getInput, "concurrency");
   const previewTimeoutMinutes = wholeNumber(
@@ -30,11 +41,5 @@ export function readScanInputs(getInput: GetInput): ScanInputs {
     "preview-timeout",
     " It is a number of whole minutes.",
   );
-  const token = getInput("github-token");
-  if (token === "") {
-    throw new Error(
-      'The "github-token" input is empty. Leave it out of the workflow, so it takes the GITHUB_TOKEN of the run.',
-    );
-  }
-  return { concurrency, previewTimeoutMinutes, token };
+  return { concurrency, previewTimeoutMinutes, token: readToken(getInput) };
 }
