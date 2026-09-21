@@ -23,7 +23,6 @@ const ACTION: ActionMetadata = {
 
 const FACTS: StepFacts = {
   workspace: "/work/repo",
-  actionPath: "/work/action",
   repository: "acme/infra",
   apiUrl: "http://127.0.0.1:4000",
   runId: "4242",
@@ -89,12 +88,36 @@ describe("the environment of a step", () => {
       GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
       GITHUB_EVENT_NAME: "push",
       GITHUB_WORKFLOW_REF: "acme/infra/.github/workflows/sluiceway.yml@refs/heads/main",
-      GITHUB_ACTION_PATH: "/work/action",
       GITHUB_STEP_SUMMARY: "/work/summary.md",
       RUNNER_TEMP: "/work/temp",
     });
-    // A local action has no ref (build plan, section 3).
+    // A local action has no ref and no repository (build plan, section 3).
     expect(env.GITHUB_ACTION_REF).toBe("");
+    expect(env.GITHUB_ACTION_REPOSITORY).toBe("");
+  });
+
+  // Seen in the lab: GitHub sets GITHUB_ACTION_PATH for composite actions
+  // only, so a JavaScript action never gets it, whichever way it is started.
+  test("a JavaScript action is not told where it sits", () => {
+    expect("GITHUB_ACTION_PATH" in stepEnvironment(ACTION, { mode: "scan" }, FACTS, {})).toBe(
+      false,
+    );
+    const env = stepEnvironment(ACTION, { mode: "scan" }, FACTS, {
+      GITHUB_ACTION_PATH: "/left/over/from/the/job",
+    });
+    expect("GITHUB_ACTION_PATH" in env).toBe(false);
+  });
+
+  test("an action started from a moving tag is told its ref and its repository", () => {
+    const env = stepEnvironment(
+      ACTION,
+      { mode: "scan" },
+      { ...FACTS, action: { ref: "v0", repository: "sluiceway/sluiceway" } },
+      {},
+    );
+    expect(env.GITHUB_ACTION_REF).toBe("v0");
+    expect(env.GITHUB_ACTION_REPOSITORY).toBe("sluiceway/sluiceway");
+    expect("GITHUB_ACTION_PATH" in env).toBe(false);
   });
 
   test("the job environment comes through, and nothing of it can take the place of a fact", () => {

@@ -128,7 +128,13 @@ function checkScan(observed: Observed, expected: Expected): string[] {
   const imageRefs = dashboard.body.matchAll(
     /https:\/\/raw\.githubusercontent\.com\/[^/\s"]+\/[^/\s"]+\/([^/\s"]+)\/assets\//g,
   );
-  for (const ref of new Set([...imageRefs].map((match) => match[1]))) {
+  const refs = new Set([...imageRefs].map((match) => match[1]));
+  if (refs.size === 0) {
+    problems.push(
+      `The dashboard shows no header image, expected one from the ref ${expected.actionRef}.`,
+    );
+  }
+  for (const ref of refs) {
     if (ref !== expected.actionRef) {
       problems.push(`An image comes from the ref ${ref}, expected ${expected.actionRef}.`);
     }

@@ -18,7 +18,8 @@ jobs:
     # project and the fake GitHub server (build plan, section 6). A full scan
     # and a narrowed one, then the whole loop: ticks, resolve, apply with the
     # real tool and settle, with a refused tick, a cancelled deploy, a moved
-    # change and a re-run.
+    # change and a re-run. Last, a scan started the way a runner starts
+    # `uses: sluiceway/sluiceway@v0`, from a moving tag (hotfix 0.1.1).
     #
     # The bundle is started by scripts/e2e.ts and not by a `uses: ./` step. A
     # runner sets GITHUB_API_URL, GITHUB_WORKSPACE, GITHUB_SHA and

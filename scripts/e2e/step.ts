@@ -13,8 +13,11 @@ export interface ActionMetadata {
 export interface StepFacts {
   // The checked-out repo the step works in.
   workspace: string;
-  // The directory that holds action.yml.
-  actionPath: string;
+  // How the step names the action. Absent for `uses: ./`, which has no ref.
+  // The runner never says where the action sits: it sets GITHUB_ACTION_PATH
+  // for composite actions only (seen in the lab, hotfix 0.1.1), so the bundle
+  // finds its own files.
+  action?: { ref: string; repository: string };
   // `owner/repo`.
   repository: string;
   // The fake GitHub server.
@@ -92,9 +95,9 @@ export function stepEnvironment(
     GITHUB_EVENT_NAME: facts.event,
     // The workflow file of the README. The orphan tick sweep asks for its runs.
     GITHUB_WORKFLOW_REF: `${facts.repository}/.github/workflows/sluiceway.yml@refs/heads/main`,
-    // A local action (`uses: ./`) has no ref.
-    GITHUB_ACTION_REF: "",
-    GITHUB_ACTION_PATH: facts.actionPath,
+    // A local action (`uses: ./`) has no ref and no repository.
+    GITHUB_ACTION_REF: facts.action?.ref ?? "",
+    GITHUB_ACTION_REPOSITORY: facts.action?.repository ?? "",
     GITHUB_STEP_SUMMARY: facts.summaryFile,
     RUNNER_TEMP: facts.temp,
     ...(facts.eventPath === undefined ? {} : { GITHUB_EVENT_PATH: facts.eventPath }),

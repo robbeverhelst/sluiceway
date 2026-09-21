@@ -23,6 +23,10 @@
 //   6. site:prod is ticked again and deployed by hand before its apply job
 //      starts. The change moved: nothing goes out and the record ends as error.
 //   7. A last full scan: every stack in sync.
+//   8. The same scan once more, started the way a runner starts
+//      `uses: sluiceway/sluiceway@v0`: from a copy of the action in a
+//      directory of its own, with the moving tag as its ref and no
+//      GITHUB_ACTION_PATH. Its images come from the tag of package.json.
 //
 // The tool only runs in a copy inside the work directory, against a file
 // backend made there, with an environment built from nothing. `node` on PATH
@@ -152,13 +156,16 @@ interface StepOptions {
   // The payload the runner writes for the event, when the mode reads one.
   payload?: unknown;
   title: string;
+  // How the step names the action, and the directory the runner downloaded
+  // it to. Without it the step is `uses: ./`, the checked out repo.
+  action?: { ref: string; dir: string };
 }
 
 interface Stepped extends Observed {
   outputs: Record<string, string>;
 }
 
-// One step of `uses: ./`, with only the inputs given here set, so every other
+// One step of `uses: ./` or of a downloaded action, with only the inputs given here set, so every other
 // input is the default of action.yml.
 let stepNumber = 0;
 async function step(mode: string, options: StepOptions): Promise<Stepped> {
@@ -180,7 +187,6 @@ async function step(mode: string, options: StepOptions): Promise<Stepped> {
       { mode, ...options.inputs },
       {
         workspace,
-        actionPath: REPO,
         repository: "acme/infra",
         apiUrl: server.url,
         runId: options.runId,
@@ -193,10 +199,14 @@ async function step(mode: string, options: StepOptions): Promise<Stepped> {
         outputFile,
         ...(options.runAttempt === undefined ? {} : { runAttempt: options.runAttempt }),
         ...(eventPath === undefined ? {} : { eventPath }),
+        ...(options.action === undefined
+          ? {}
+          : { action: { ref: options.action.ref, repository: "sluiceway/sluiceway" } }),
       },
       jobEnvironment,
     );
-    const ran = await run(["node", join(REPO, action.runs.main)], workspace, env);
+    const actionDir = options.action?.dir ?? REPO;
+    const ran = await run(["node", join(actionDir, action.runs.main)], workspace, env);
     console.log(`::group::${options.title}: what the step printed`);
     // The step's own groups would end this one, and its annotations would
     // become annotations of this run.
@@ -225,9 +235,16 @@ async function step(mode: string, options: StepOptions): Promise<Stepped> {
 
 // A scan of a push, a schedule or a dispatch. Each is a run of its own.
 let runNumber = 0;
-function scanStep(sha: string, event = "push"): Promise<Stepped> {
+function scanStep(sha: string, event = "push", action?: StepOptions["action"]): Promise<Stepped> {
   runNumber++;
-  return step("scan", { runId: String(runNumber), sha, event, title: `Scan ${runNumber}` });
+  const from = action === undefined ? "" : `, from ${action.ref}`;
+  return step("scan", {
+    runId: String(runNumber),
+    sha,
+    event,
+    title: `Scan ${runNumber}${from}`,
+    ...(action === undefined ? {} : { action }),
+  });
 }
 
 function report(title: string, problems: string[]): boolean {
@@ -620,6 +637,33 @@ good =
       failed: ["site:prod"],
       recentlyDeployed: ["network:dev"],
     }),
+  ]) && good;
+
+// 8. The scan of 7 once more, from the moving tag v0, the way the first user's
+// runs of 0.1.0 started it and failed (hotfix 0.1.1). A runner downloads the
+// repo at the tag to `_actions/<owner>/<repo>/<ref>/`, starts the bundle with
+// the workspace as its working directory, and sets no GITHUB_ACTION_PATH for
+// a JavaScript action. The images come from the exact tag of package.json.
+const downloaded = join(work, "_actions", "sluiceway", "sluiceway", "v0");
+cpSync(REPO, downloaded, {
+  recursive: true,
+  filter: (source) => !/[/\\](?:node_modules|\.git)$/.test(source) && !source.startsWith(work),
+});
+const version: string = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")).version;
+const fromTag = await scanStep(SECOND_SHA, "schedule", { ref: "v0", dir: downloaded });
+good =
+  report("The scan from the moving tag v0", [
+    ...checkFullScan(fromTag, {
+      ...afterLoop,
+      actionRef: `v${version}`,
+      rows: { ...afterLoop.rows, "site:prod": "in-sync" },
+    }),
+    // The footer's version line uses the same value.
+    ...(dashboardBody(fromTag).includes(
+      `[Sluiceway](https://github.com/sluiceway/sluiceway) v${version} · `,
+    )
+      ? []
+      : [`The footer does not name v${version}.`]),
   ]) && good;
 
 console.log("::group::The dashboard after the narrowed scan");

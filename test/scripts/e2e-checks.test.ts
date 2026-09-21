@@ -162,6 +162,15 @@ describe("the checks of a full scan", () => {
     ]);
   });
 
+  // Without an image the check above has nothing to look at, and a scan that
+  // could not tell its own version would pass it.
+  test("a dashboard with no header image is a problem", () => {
+    const noImage = body(ROWS).replace(/^<img .*\n/m, "");
+    expect(checkFullScan(withBody(noImage), EXPECTED)).toEqual([
+      `The dashboard shows no header image, expected one from the ref ${SHA}.`,
+    ]);
+  });
+
   test("a root marker with another commit, an empty summary and a log without its lines are problems", () => {
     expect(checkFullScan(withBody(body(ROWS, { "scan-sha": NEXT_SHA })), EXPECTED)).toEqual([
       `The root marker has scan-sha="${NEXT_SHA}", expected "${SHA}".`,
