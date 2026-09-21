@@ -3691,11 +3691,11 @@ var require_util2 = __commonJS((exports, module) => {
   var { isUint8Array } = __require("node:util/types");
   var { webidl } = require_webidl();
   var supportedHashes = [];
-  var crypto;
+  var crypto2;
   try {
-    crypto = __require("node:crypto");
+    crypto2 = __require("node:crypto");
     const possibleRelevantHashes = ["sha256", "sha384", "sha512"];
-    supportedHashes = crypto.getHashes().filter((hash) => possibleRelevantHashes.includes(hash));
+    supportedHashes = crypto2.getHashes().filter((hash) => possibleRelevantHashes.includes(hash));
   } catch {}
   function responseURL(response) {
     const urlList = response.urlList;
@@ -3954,7 +3954,7 @@ var require_util2 = __commonJS((exports, module) => {
     }
   }
   function bytesMatch(bytes, metadataList) {
-    if (crypto === undefined) {
+    if (crypto2 === undefined) {
       return true;
     }
     const parsedMetadata = parseMetadata(metadataList);
@@ -3969,7 +3969,7 @@ var require_util2 = __commonJS((exports, module) => {
     for (const item of metadata) {
       const algorithm = item.algo;
       const expectedValue = item.hash;
-      let actualValue = crypto.createHash(algorithm).update(bytes).digest("base64");
+      let actualValue = crypto2.createHash(algorithm).update(bytes).digest("base64");
       if (actualValue[actualValue.length - 1] === "=") {
         if (actualValue[actualValue.length - 2] === "=") {
           actualValue = actualValue.slice(0, -2);
@@ -4954,8 +4954,8 @@ var require_body = __commonJS((exports, module) => {
   var { multipartFormDataParser } = require_formdata_parser();
   var random;
   try {
-    const crypto = __require("node:crypto");
-    random = (max) => crypto.randomInt(0, max);
+    const crypto2 = __require("node:crypto");
+    random = (max) => crypto2.randomInt(0, max);
   } catch {
     random = (max) => Math.floor(Math.random(max));
   }
@@ -15796,13 +15796,13 @@ var require_util7 = __commonJS((exports, module) => {
 var require_frame = __commonJS((exports, module) => {
   var { maxUnsigned16Bit } = require_constants5();
   var BUFFER_SIZE = 16386;
-  var crypto;
+  var crypto2;
   var buffer = null;
   var bufIdx = BUFFER_SIZE;
   try {
-    crypto = __require("node:crypto");
+    crypto2 = __require("node:crypto");
   } catch {
-    crypto = {
+    crypto2 = {
       randomFillSync: function randomFillSync(buffer2, _offset, _size) {
         for (let i = 0;i < buffer2.length; ++i) {
           buffer2[i] = Math.random() * 255 | 0;
@@ -15814,7 +15814,7 @@ var require_frame = __commonJS((exports, module) => {
   function generateMask() {
     if (bufIdx === BUFFER_SIZE) {
       bufIdx = 0;
-      crypto.randomFillSync(buffer ??= Buffer.allocUnsafe(BUFFER_SIZE), 0, BUFFER_SIZE);
+      crypto2.randomFillSync(buffer ??= Buffer.allocUnsafe(BUFFER_SIZE), 0, BUFFER_SIZE);
     }
     return [buffer[bufIdx++], buffer[bufIdx++], buffer[bufIdx++], buffer[bufIdx++]];
   }
@@ -15882,9 +15882,9 @@ var require_connection = __commonJS((exports, module) => {
   var { Headers, getHeadersList } = require_headers();
   var { getDecodeSplit } = require_util2();
   var { WebsocketFrameSend } = require_frame();
-  var crypto;
+  var crypto2;
   try {
-    crypto = __require("node:crypto");
+    crypto2 = __require("node:crypto");
   } catch {}
   function establishWebSocketConnection(url, protocols, client, ws, onEstablish, options) {
     const requestURL = url;
@@ -15903,7 +15903,7 @@ var require_connection = __commonJS((exports, module) => {
       const headersList = getHeadersList(new Headers(options.headers));
       request.headersList = headersList;
     }
-    const keyValue = crypto.randomBytes(16).toString("base64");
+    const keyValue = crypto2.randomBytes(16).toString("base64");
     request.headersList.append("sec-websocket-key", keyValue);
     request.headersList.append("sec-websocket-version", "13");
     for (const protocol of protocols) {
@@ -15933,7 +15933,7 @@ var require_connection = __commonJS((exports, module) => {
           return;
         }
         const secWSAccept = response.headersList.get("Sec-WebSocket-Accept");
-        const digest = crypto.createHash("sha1").update(keyValue + uid).digest("base64");
+        const digest = crypto2.createHash("sha1").update(keyValue + uid).digest("base64");
         if (secWSAccept !== digest) {
           failWebsocketConnection(ws, "Incorrect hash received in Sec-WebSocket-Accept header.");
           return;
@@ -24889,14 +24889,14 @@ var require_parser = __commonJS((exports) => {
           case "scalar":
           case "single-quoted-scalar":
           case "double-quoted-scalar": {
-            const fs2 = this.flowScalar(this.type);
+            const fs3 = this.flowScalar(this.type);
             if (atNextItem || it.value) {
-              map.items.push({ start, key: fs2, sep: [] });
+              map.items.push({ start, key: fs3, sep: [] });
               this.onKeyLine = true;
             } else if (it.sep) {
-              this.stack.push(fs2);
+              this.stack.push(fs3);
             } else {
-              Object.assign(it, { key: fs2, sep: [] });
+              Object.assign(it, { key: fs3, sep: [] });
               this.onKeyLine = true;
             }
             return;
@@ -25024,13 +25024,13 @@ var require_parser = __commonJS((exports) => {
           case "scalar":
           case "single-quoted-scalar":
           case "double-quoted-scalar": {
-            const fs2 = this.flowScalar(this.type);
+            const fs3 = this.flowScalar(this.type);
             if (!it || it.value)
-              fc.items.push({ start: [], key: fs2, sep: [] });
+              fc.items.push({ start: [], key: fs3, sep: [] });
             else if (it.sep)
-              this.stack.push(fs2);
+              this.stack.push(fs3);
             else
-              Object.assign(it, { key: fs2, sep: [] });
+              Object.assign(it, { key: fs3, sep: [] });
             return;
           }
           case "flow-map-end":
@@ -27063,8 +27063,36 @@ function escapeProperty(s) {
   return toCommandValue(s).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A").replace(/:/g, "%3A").replace(/,/g, "%2C");
 }
 
+// node_modules/@actions/core/lib/file-command.js
+import * as crypto from "crypto";
+import * as fs from "fs";
+import * as os2 from "os";
+function issueFileCommand(command, message) {
+  const filePath = process.env[`GITHUB_${command}`];
+  if (!filePath) {
+    throw new Error(`Unable to find environment variable for file command ${command}`);
+  }
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Missing file at path: ${filePath}`);
+  }
+  fs.appendFileSync(filePath, `${toCommandValue(message)}${os2.EOL}`, {
+    encoding: "utf8"
+  });
+}
+function prepareKeyValueMessage(key, value) {
+  const delimiter = `ghadelimiter_${crypto.randomUUID()}`;
+  const convertedValue = toCommandValue(value);
+  if (key.includes(delimiter)) {
+    throw new Error(`Unexpected input: name should not contain the delimiter "${delimiter}"`);
+  }
+  if (convertedValue.includes(delimiter)) {
+    throw new Error(`Unexpected input: value should not contain the delimiter "${delimiter}"`);
+  }
+  return `${key}<<${delimiter}${os2.EOL}${convertedValue}${os2.EOL}${delimiter}`;
+}
+
 // node_modules/@actions/core/lib/core.js
-import * as os3 from "os";
+import * as os4 from "os";
 
 // node_modules/@actions/http-client/lib/index.js
 var tunnel = __toESM(require_tunnel(), 1);
@@ -27122,7 +27150,7 @@ var HttpResponseRetryCodes = [
 ];
 
 // node_modules/@actions/core/lib/summary.js
-import { EOL as EOL2 } from "os";
+import { EOL as EOL3 } from "os";
 import { constants, promises } from "fs";
 var __awaiter = function(thisArg, _arguments, P, generator) {
   function adopt(value) {
@@ -27211,7 +27239,7 @@ class Summary {
     return addEOL ? this.addEOL() : this;
   }
   addEOL() {
-    return this.addRaw(EOL2);
+    return this.addRaw(EOL3);
   }
   addCodeBlock(code, lang) {
     const attrs = Object.assign({}, lang && { lang });
@@ -27277,19 +27305,19 @@ class Summary {
 var _summary = new Summary;
 var summary = _summary;
 // node_modules/@actions/core/lib/platform.js
-import os2 from "os";
+import os3 from "os";
 
 // node_modules/@actions/io/lib/io-util.js
-import * as fs from "fs";
+import * as fs2 from "fs";
 var IS_WINDOWS = process.platform === "win32";
-var READONLY = fs.constants.O_RDONLY;
+var READONLY = fs2.constants.O_RDONLY;
 
 // node_modules/@actions/exec/lib/toolrunner.js
 var IS_WINDOWS2 = process.platform === "win32";
 
 // node_modules/@actions/core/lib/platform.js
-var platform = os2.platform();
-var arch = os2.arch();
+var platform = os3.platform();
+var arch = os3.arch();
 // node_modules/@actions/core/lib/core.js
 var ExitCode;
 (function(ExitCode2) {
@@ -27306,6 +27334,14 @@ function getInput(name, options) {
   }
   return val.trim();
 }
+function setOutput(name, value) {
+  const filePath = process.env["GITHUB_OUTPUT"] || "";
+  if (filePath) {
+    return issueFileCommand("OUTPUT", prepareKeyValueMessage(name, value));
+  }
+  process.stdout.write(os4.EOL);
+  issueCommand("set-output", { name }, toCommandValue(value));
+}
 function setFailed(message) {
   process.exitCode = ExitCode.Failure;
   error(message);
@@ -27317,7 +27353,7 @@ function warning(message, properties = {}) {
   issueCommand("warning", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
 function info(message) {
-  process.stdout.write(message + os3.EOL);
+  process.stdout.write(message + os4.EOL);
 }
 function startGroup(name) {
   issue("group", name);
@@ -27326,23 +27362,23 @@ function endGroup() {
   issue("endgroup");
 }
 
-// src/modes/scan-job.ts
+// src/modes/resolve-job.ts
 import { readFileSync as readFileSync3 } from "node:fs";
 
 // node_modules/@actions/github/lib/context.js
-import { readFileSync, existsSync } from "fs";
-import { EOL as EOL4 } from "os";
+import { readFileSync, existsSync as existsSync2 } from "fs";
+import { EOL as EOL5 } from "os";
 
 class Context {
   constructor() {
     var _a, _b, _c;
     this.payload = {};
     if (process.env.GITHUB_EVENT_PATH) {
-      if (existsSync(process.env.GITHUB_EVENT_PATH)) {
+      if (existsSync2(process.env.GITHUB_EVENT_PATH)) {
         this.payload = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, { encoding: "utf8" }));
       } else {
         const path = process.env.GITHUB_EVENT_PATH;
-        process.stdout.write(`GITHUB_EVENT_PATH ${path} does not exist${EOL4}`);
+        process.stdout.write(`GITHUB_EVENT_PATH ${path} does not exist${EOL5}`);
       }
     }
     this.eventName = process.env.GITHUB_EVENT_NAME;
@@ -31400,62 +31436,6 @@ var context2 = new Context;
 function getOctokit(token, options, ...additionalPlugins) {
   const GitHubWithPlugins = GitHub.plugin(...additionalPlugins);
   return new GitHubWithPlugins(getOctokitOptions(token, options));
-}
-
-// src/adapters/process.ts
-import { spawn } from "node:child_process";
-var GRACE_MS = 5000;
-var PIPES_MS = 1000;
-function runProcess(run, graceMs = GRACE_MS) {
-  const [command = "", ...args] = run.argv;
-  return new Promise((done) => {
-    const child = spawn(command, args, {
-      cwd: run.cwd,
-      env: run.env,
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: true
-    });
-    const { pid, stdout, stderr } = child;
-    if (pid === undefined) {
-      child.on("error", () => done({ status: "not-started" }));
-      return;
-    }
-    const out = [];
-    const err = [];
-    stdout.on("data", (chunk) => out.push(chunk));
-    stderr.on("data", (chunk) => err.push(chunk));
-    const signalGroup = (signal) => {
-      try {
-        process.kill(-pid, signal);
-      } catch {
-        child.kill(signal);
-      }
-    };
-    let timedOut = false;
-    let killing;
-    let closing;
-    const limit = setTimeout(() => {
-      timedOut = true;
-      signalGroup("SIGINT");
-      killing = setTimeout(() => {
-        signalGroup("SIGKILL");
-        closing = setTimeout(() => {
-          stdout.destroy();
-          stderr.destroy();
-        }, PIPES_MS);
-      }, graceMs);
-    }, run.timeoutMs);
-    child.on("error", () => {});
-    child.on("close", (exitCode) => {
-      for (const timer of [limit, killing, closing])
-        clearTimeout(timer);
-      const text = {
-        stdout: Buffer.concat(out).toString("utf8"),
-        stderr: Buffer.concat(err).toString("utf8")
-      };
-      done(timedOut ? { status: "timed-out", ...text } : { status: "exited", exitCode, ...text });
-    });
-  });
 }
 
 // src/adapters/pulumi/discover.ts
@@ -51280,22 +51260,61 @@ function readActionRef(env, readFile2) {
   });
 }
 
+// src/github/event.ts
+function record2(value) {
+  return typeof value === "object" && value !== null ? value : undefined;
+}
+function text(value) {
+  return typeof value === "string" ? value : "";
+}
+function editedIssue(payload) {
+  const issue3 = record2(record2(payload)?.issue);
+  if (!issue3 || typeof issue3.number !== "number" || issue3.pull_request !== undefined) {
+    return;
+  }
+  const user = record2(issue3.user);
+  const labels = Array.isArray(issue3.labels) ? issue3.labels : [];
+  return {
+    number: issue3.number,
+    state: issue3.state === "open" ? "open" : "closed",
+    body: text(issue3.body),
+    labels: labels.flatMap((label) => {
+      const name = typeof label === "string" ? label : record2(label)?.name;
+      return typeof name === "string" ? [name] : [];
+    }),
+    author: { login: text(user?.login), type: text(user?.type) }
+  };
+}
+function readEventPayload(env, readFile2) {
+  const path = env.GITHUB_EVENT_PATH;
+  if (!path)
+    return;
+  try {
+    return JSON.parse(readFile2(path));
+  } catch {
+    return;
+  }
+}
+
 // src/github/inputs.ts
 function wholeNumber(getInput2, name, hint = "") {
-  const text = getInput2(name).trim();
-  if (!/^[1-9]\d*$/.test(text)) {
-    throw new Error(`The "${name}" input must be a whole number of 1 or more, and it is ${JSON.stringify(text)}.${hint}`);
+  const text2 = getInput2(name).trim();
+  if (!/^[1-9]\d*$/.test(text2)) {
+    throw new Error(`The "${name}" input must be a whole number of 1 or more, and it is ${JSON.stringify(text2)}.${hint}`);
   }
-  return Number(text);
+  return Number(text2);
 }
-function readScanInputs(getInput2) {
-  const concurrency = wholeNumber(getInput2, "concurrency");
-  const previewTimeoutMinutes = wholeNumber(getInput2, "preview-timeout", " It is a number of whole minutes.");
+function readToken(getInput2) {
   const token = getInput2("github-token");
   if (token === "") {
     throw new Error('The "github-token" input is empty. Leave it out of the workflow, so it takes the GITHUB_TOKEN of the run.');
   }
-  return { concurrency, previewTimeoutMinutes, token };
+  return token;
+}
+function readScanInputs(getInput2) {
+  const concurrency = wholeNumber(getInput2, "concurrency");
+  const previewTimeoutMinutes = wholeNumber(getInput2, "preview-timeout", " It is a number of whole minutes.");
+  return { concurrency, previewTimeoutMinutes, token: readToken(getInput2) };
 }
 
 // src/github/job.ts
@@ -51342,8 +51361,8 @@ function actionsLog() {
       endGroup();
     },
     warning: (message, title) => warning(message, { title }),
-    async writeSummary(text) {
-      await summary.emptyBuffer().addRaw(text).write({ overwrite: true });
+    async writeSummary(text2) {
+      await summary.emptyBuffer().addRaw(text2).write({ overwrite: true });
     }
   };
 }
@@ -51613,6 +51632,9 @@ function createOctokitPort(octokit, repo) {
     ...runCalls(octokit, repo),
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
+    },
+    async dispatchWorkflow(workflow, ref) {
+      await octokit.rest.actions.createWorkflowDispatch({ ...repo, workflow_id: workflow, ref });
     }
   };
 }
@@ -51636,15 +51658,26 @@ function toIssue(issue3) {
   };
 }
 
+// src/github/workflow-ref.ts
+function readWorkflowRef(env) {
+  const value = env.GITHUB_WORKFLOW_REF ?? "";
+  const at = value.indexOf("@");
+  if (at < 0)
+    return;
+  const file2 = value.slice(0, at).split("/").at(-1) ?? "";
+  const ref = value.slice(at + 1);
+  return file2 === "" || ref === "" ? undefined : { file: file2, ref };
+}
+
 // src/core/config.ts
 var username = exports_external.string().regex(/^[A-Za-z0-9_-]+$/);
 var tickers = exports_external.union([
   exports_external.enum(["write", "maintain", "admin"]),
   exports_external.array(username).min(1).transform((names) => [...new Set(names.map((name) => name.toLowerCase()))])
 ]);
-var text = exports_external.string().min(1);
-var globs = exports_external.array(text);
-var stackPath = text.superRefine((path, context3) => {
+var text2 = exports_external.string().min(1);
+var globs = exports_external.array(text2);
+var stackPath = text2.superRefine((path, context3) => {
   const refuse = (message) => context3.addIssue({ code: "custom", message });
   if (path.includes("\\"))
     refuse(`${show(path)} must use forward slashes.`);
@@ -51658,8 +51691,8 @@ var stackPath = text.superRefine((path, context3) => {
 });
 var stackEntry = exports_external.strictObject({
   path: stackPath.describe("Directory of the stack, relative to the repo root."),
-  name: text.describe("Name of the stack. Without it the entry covers every stack in path.").exactOptional(),
-  environment: text.describe("Label on the deployment record, and the GitHub Environment where one is used. Default: sluiceway.").exactOptional(),
+  name: text2.describe("Name of the stack. Without it the entry covers every stack in path.").exactOptional(),
+  environment: text2.describe("Label on the deployment record, and the GitHub Environment where one is used. Default: sluiceway.").exactOptional(),
   tickers: tickers.describe("Tick rule for this stack. Default: the top level tickers.").exactOptional(),
   inputs: globs.describe("Extra globs this stack claims, relative to the repo root.").exactOptional(),
   previewTimeout: exports_external.int().min(1).describe("Time limit for one preview of this stack, in whole minutes. Default: the preview-timeout input.").exactOptional(),
@@ -51682,8 +51715,8 @@ var stackEntries = exports_external.array(stackEntry).superRefine((entries, cont
 });
 var configSchema = exports_external.strictObject({
   dashboard: exports_external.strictObject({
-    title: text.describe("Title of the dashboard issue.").default("Sluiceway dashboard"),
-    label: text.describe("Label the dashboard issue is found by.").default("sluiceway"),
+    title: text2.describe("Title of the dashboard issue.").default("Sluiceway dashboard"),
+    label: text2.describe("Label the dashboard issue is found by.").default("sluiceway"),
     pin: exports_external.boolean().describe("Pin the dashboard issue, best effort.").default(true),
     redact: exports_external.boolean().describe("Keep resource types, resource names and property names out of the issue. The summary stays full. Not access control.").default(false),
     personality: exports_external.boolean().describe("Show the header image and use the voice. false removes both.").default(true)
@@ -51705,8 +51738,8 @@ class ConfigError extends Error {
     this.problems = problems;
   }
 }
-function parseConfig(text2) {
-  const raw = text2 === undefined ? null : readYaml(text2);
+function parseConfig(text3) {
+  const raw = text3 === undefined ? null : readYaml(text3);
   const result = configSchema.safeParse(raw ?? {});
   if (!result.success) {
     const problems = result.error.issues.flatMap((issue3) => describe4(issue3, raw));
@@ -51714,9 +51747,9 @@ function parseConfig(text2) {
   }
   return result.data;
 }
-function readYaml(text2) {
+function readYaml(text3) {
   const lineCounter2 = new $LineCounter;
-  const document = $parseDocument(text2, { lineCounter: lineCounter2, prettyErrors: false });
+  const document = $parseDocument(text3, { lineCounter: lineCounter2, prettyErrors: false });
   if (document.errors.length > 0) {
     throw new ConfigError(document.errors.map((error63) => {
       const { line, col } = lineCounter2.linePos(error63.pos[0]);
@@ -51728,7 +51761,7 @@ function readYaml(text2) {
 function describe4(issue3, raw) {
   const at = where(issue3.path);
   const value = valueAt(raw, issue3.path);
-  const problem2 = (text2) => [{ path: issue3.path, text: `${at}${text2}` }];
+  const problem2 = (text3) => [{ path: issue3.path, text: `${at}${text3}` }];
   const key = issue3.path.at(-1);
   if (issue3.code === "unrecognized_keys") {
     const known = knownKeys(issue3.path);
@@ -51813,8 +51846,8 @@ function inFileOrder(problems, raw) {
 }
 var RESERVED_KEYS = ["dependsOn", "drift"];
 function where(path) {
-  const text2 = path.map((segment) => typeof segment === "number" ? `[${segment}]` : `.${String(segment)}`).join("").replace(/^\./, "");
-  return text2 === "" ? "" : `${text2}: `;
+  const text3 = path.map((segment) => typeof segment === "number" ? `[${segment}]` : `.${String(segment)}`).join("").replace(/^\./, "");
+  return text3 === "" ? "" : `${text3}: `;
 }
 function knownKeys(path) {
   let schema = configSchema;
@@ -51877,12 +51910,12 @@ function describeMiss(entry, inPath, ignored) {
 }
 
 // src/core/config-file.ts
-import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
+import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
 import { join as join3 } from "node:path";
 var FILE = "sluiceway.yaml";
 var WRONG_FILE = "sluiceway.yml";
 function loadConfig(root) {
-  if (existsSync2(join3(root, WRONG_FILE))) {
+  if (existsSync3(join3(root, WRONG_FILE))) {
     throw new ConfigError([`found ${WRONG_FILE}. The file must be named ${FILE}. Rename it.`]);
   }
   return parseConfig(read(join3(root, FILE)));
@@ -51911,6 +51944,9 @@ function taskStackId(task) {
   return task.slice(TASK_PREFIX.length);
 }
 var PAYLOAD_VERSION = 1;
+function deploymentPayload(payload) {
+  return { v: PAYLOAD_VERSION, hash: payload.hash, ticker: payload.ticker, run: payload.run };
+}
 var RUN_ID = /^[1-9]\d*$/;
 function readDeploymentPayload(payload) {
   if (typeof payload !== "object" || payload === null)
@@ -51929,35 +51965,35 @@ var NO_REASON_RECORDED = "no reason was recorded";
 function newestLast(a, b) {
   return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id;
 }
-function factOf(record2, payload) {
+function factOf(record3, payload) {
   const { ticker, run } = payload;
-  const state = record2.status?.state ?? "";
-  const at = new Date(record2.status?.createdAt ?? record2.createdAt);
+  const state = record3.status?.state ?? "";
+  const at = new Date(record3.status?.createdAt ?? record3.createdAt);
   if (SUCCEEDED.has(state))
     return { kind: "succeeded", ticker, run, at };
   if (FAILED.has(state)) {
     return {
       kind: "failed",
-      reason: record2.status?.description || NO_REASON_RECORDED,
+      reason: record3.status?.description || NO_REASON_RECORDED,
       ticker,
       run,
       at
     };
   }
-  return { kind: "open", deployment: record2.id, waiting: state !== "in_progress", ticker, run };
+  return { kind: "open", deployment: record3.id, waiting: state !== "in_progress", ticker, run };
 }
 function deployFacts(records) {
   const facts = { byStack: new Map, succeeded: [], unread: 0 };
-  for (const record2 of [...records].sort(newestLast)) {
-    const stackId2 = taskStackId(record2.task);
+  for (const record3 of [...records].sort(newestLast)) {
+    const stackId2 = taskStackId(record3.task);
     if (stackId2 === undefined)
       continue;
-    const payload = readDeploymentPayload(record2.payload);
+    const payload = readDeploymentPayload(record3.payload);
     if (!payload) {
       facts.unread++;
       continue;
     }
-    const fact = factOf(record2, payload);
+    const fact = factOf(record3, payload);
     facts.byStack.set(stackId2, fact);
     if (fact.kind === "succeeded") {
       facts.succeeded.push({ stackId: stackId2, ticker: fact.ticker, run: fact.run, at: fact.at });
@@ -51982,204 +52018,6 @@ function rowAtLateRead(stack) {
   if (usableLive)
     return { row: "live" };
   return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
-}
-
-// src/core/failure-reason.ts
-function previewFailureText(reason) {
-  switch (reason.kind) {
-    case "tool-error":
-      return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
-    case "timed-out":
-      return `the preview timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}`;
-    case "unreadable-output":
-      return "the tool's output could not be read";
-    case "unknown-step":
-      return "the tool reported a step Sluiceway does not know";
-  }
-}
-function deployFailureText(reason) {
-  switch (reason.kind) {
-    case "run-ended":
-      return "the run ended without a result";
-  }
-}
-
-// src/core/orphan-tick.ts
-function resolveOnItsWay(runs, ownRunId) {
-  return runs.some((run) => !run.completed && run.id !== ownRunId);
-}
-function tickAtLateRead(row) {
-  const { writes } = row;
-  if (writes.row === "live") {
-    if (row.resolveOnItsWay)
-      return "carry";
-    return writes.previewed ? "next-scan" : "preview-first";
-  }
-  const sameTick = writes.hash !== undefined && writes.hash === row.liveHash;
-  return row.resolveOnItsWay && sameTick ? "carry" : "sweep";
-}
-
-// src/core/pool.ts
-async function runPool(items, size, work) {
-  if (!Number.isInteger(size) || size < 1) {
-    throw new Error("The size of the pool must be a whole number of 1 or more.");
-  }
-  const results = new Array(items.length);
-  let next = 0;
-  let failed = false;
-  const slot = async () => {
-    while (!failed && next < items.length) {
-      const index = next++;
-      try {
-        results[index] = await work(items[index]);
-      } catch (error63) {
-        failed = true;
-        throw error63;
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(size, items.length) }, slot));
-  return results;
-}
-
-// src/core/claim.ts
-function inside(directory, file2) {
-  return directory === "." || file2.startsWith(`${directory}/`);
-}
-function claim2(stacks, changed, unrelated) {
-  const isUnrelated = globMatcher(unrelated);
-  const matchers = stacks.map((stack) => ({ stack, matches: globMatcher(stack.inputs) }));
-  const claims = new Map;
-  const unclaimed = [];
-  for (const file2 of new Set(changed)) {
-    if (isUnrelated(file2))
-      continue;
-    const claimants = matchers.filter(({ stack, matches }) => inside(stack.path, file2) || matches(file2));
-    if (claimants.length === 0)
-      unclaimed.push(file2);
-    for (const { stack } of claimants)
-      claims.set(stack.id, [...claims.get(stack.id) ?? [], file2]);
-  }
-  return { claims, unclaimed };
-}
-
-// src/core/scan-plan.ts
-var COMPARE_FILE_CAP = 300;
-var COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-function narrowsOn(event) {
-  return event === "push";
-}
-function comparisonBase(event, dashboard, markerVersion) {
-  if (!narrowsOn(event))
-    return { kind: "event", event };
-  if (dashboard === undefined)
-    return { kind: "no-dashboard" };
-  const { root } = dashboard;
-  if (root === undefined)
-    return { kind: "no-root-marker" };
-  if (root.version !== markerVersion)
-    return { kind: "other-version", version: root.version };
-  if (root.scanSha === undefined || !COMMIT.test(root.scanSha))
-    return { kind: "no-scan-sha" };
-  return { kind: "compare", from: root.scanSha };
-}
-function changedPaths(comparison) {
-  if (comparison.status !== "ahead" && comparison.status !== "identical") {
-    return { kind: "not-a-straight-line", status: comparison.status };
-  }
-  if (comparison.files.length >= COMPARE_FILE_CAP)
-    return { kind: "file-cap" };
-  return {
-    kind: "changed",
-    paths: comparison.files.flatMap(({ path, previousPath }) => previousPath === undefined ? [path] : [path, previousPath])
-  };
-}
-function planScan(stacks, changed, unrelated, rows) {
-  const { claims, unclaimed } = claim2(stacks, changed, unrelated);
-  if (unclaimed.length > 0)
-    return { kind: "full", why: { kind: "unclaimed", files: unclaimed } };
-  const states = new Map(rows.map((row) => [row.stackId, row.state]));
-  const previews = stacks.flatMap(({ id }) => {
-    const files = claims.get(id);
-    if (files)
-      return [{ id, why: { kind: "claims", files } }];
-    if (!states.has(id))
-      return [{ id, why: { kind: "no-row" } }];
-    if (states.get(id) === "preview-failed")
-      return [{ id, why: { kind: "preview-failed" } }];
-    return [];
-  });
-  return { kind: "narrowed", previews };
-}
-function oneRowPerStack(discovered, fresh, live) {
-  const onDashboard = new Set(live);
-  const known = new Set(discovered);
-  const stale = discovered.filter((id) => !fresh.has(id));
-  return {
-    carried: stale.filter((id) => onDashboard.has(id)),
-    missing: stale.filter((id) => !onDashboard.has(id)),
-    dropped: [...onDashboard].filter((id) => !known.has(id))
-  };
-}
-function fullScanReasonText(reason) {
-  switch (reason.kind) {
-    case "event":
-      return `the event is ${reason.event}, and only a push gives a narrowed scan`;
-    case "no-dashboard":
-      return "there is no dashboard yet";
-    case "no-root-marker":
-      return "the dashboard has no root marker that can be read";
-    case "other-version":
-      return `the root marker of the dashboard has version ${reason.version}, which this version of Sluiceway does not write`;
-    case "no-scan-sha":
-      return "the root marker of the dashboard names no commit to compare from";
-    case "compare-failed":
-      return "GitHub did not give the comparison from the commit of the last scan";
-    case "not-a-straight-line":
-      return `the checked-out commit does not follow the commit of the last scan in a straight line (GitHub calls it ${JSON.stringify(reason.status)}), as after a force push or a re-run of an older run`;
-    case "file-cap":
-      return `the comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, so files may be missing from it`;
-    case "unclaimed": {
-      const [first = "", ...rest] = reason.files;
-      return rest.length === 0 ? `no stack claims ${first}` : `no stack claims ${first} and ${rest.length} more changed ${rest.length === 1 ? "file" : "files"}`;
-    }
-    case "does-not-fit":
-      return `the body does not fit in one issue with ${reason.carried} ${reason.carried === 1 ? "row" : "rows"} carried through, and only a fresh row can be shortened`;
-  }
-}
-
-// src/core/scan-result.ts
-function everyPreviewFailed(attempted, failed) {
-  return attempted > 1 && failed === attempted;
-}
-
-// src/render/escape.ts
-var NAMED = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;"
-};
-function escapeText(text2) {
-  return text2.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
-}
-
-// src/render/header-state.ts
-function headerState(rows) {
-  if (rows.length === 0)
-    return "first-run";
-  const known = rows.filter((row) => row.known);
-  const is = (state) => known.some((row) => row.state === state);
-  const destroying = known.some((row) => (row.state === "pending" || row.state === "deploying") && row.destroys > 0);
-  if (destroying)
-    return "plain";
-  if (is("preview-failed") || known.some((row) => row.failed))
-    return "failing";
-  if (is("deploying"))
-    return "deploying";
-  if (is("pending"))
-    return "pending";
-  return "in-sync";
 }
 
 // src/render/marker.ts
@@ -52283,12 +52121,12 @@ function parseDashboard(body) {
       if (end === next || ROW_LINE.test(candidate))
         break;
     }
-    const text2 = lines.slice(index, end + 1).join(`
+    const text3 = lines.slice(index, end + 1).join(`
 `);
     index = end;
     const state = pairs.get("state") ?? "";
     if (!isRowState(state)) {
-      rows.push({ known: false, stackId: stackId2, state, text: text2 });
+      rows.push({ known: false, stackId: stackId2, state, text: text3 });
       continue;
     }
     const count = (key) => {
@@ -52304,10 +52142,113 @@ function parseDashboard(body) {
       failed: pairs.get("failed") === "true",
       shortened: count("shortened"),
       ticked: match[1] === "x" || match[1] === "X",
-      text: text2
+      text: text3
     });
   }
   return { root: readRoot(lines[0] ?? ""), rows, rescanTicked };
+}
+
+// src/core/edit-history.ts
+var HISTORY_CAP = 100;
+var HISTORY_PAGE_SIZE = 10;
+function holds(dashboard, tick) {
+  if (tick.kind === "rescan")
+    return dashboard.rescanTicked;
+  const row = dashboard.rows.find((candidate) => candidate.stackId === tick.stackId);
+  return row?.known === true && row.ticked && row.hash === tick.hash;
+}
+function ticksIn(body) {
+  const dashboard = parseDashboard(body);
+  const ticks = [];
+  const seen = new Set;
+  for (const row of dashboard.rows) {
+    if (seen.has(row.stackId))
+      continue;
+    seen.add(row.stackId);
+    if (row.known && row.ticked && row.hash !== undefined) {
+      ticks.push({ kind: "row", stackId: row.stackId, hash: row.hash });
+    }
+  }
+  if (dashboard.rescanTicked)
+    ticks.push({ kind: "rescan" });
+  return ticks;
+}
+async function nameTickers(ticks, readPage) {
+  const answers = new Array(ticks.length).fill(undefined);
+  const oldest = new Array(ticks.length).fill(undefined);
+  const open2 = () => answers.some((answer) => answer === undefined);
+  let after;
+  let capped = false;
+  while (open2()) {
+    const page = await readPage(after);
+    capped ||= page.total >= HISTORY_CAP;
+    for (const [position, entry] of page.entries.entries()) {
+      if (!open2())
+        break;
+      const last = page.next === undefined && position === page.entries.length - 1;
+      if (capped && last)
+        break;
+      const dashboard = entry.body ? parseDashboard(entry.body) : undefined;
+      ticks.forEach((tick, index) => {
+        if (answers[index] !== undefined)
+          return;
+        if (dashboard === undefined) {
+          answers[index] = { named: false, reason: "entry-without-body" };
+        } else if (holds(dashboard, tick)) {
+          oldest[index] = entry;
+        } else {
+          const made = oldest[index];
+          answers[index] = made ? { named: true, editor: made.editor, editedAt: made.editedAt } : { named: false, reason: "not-in-newest-entry" };
+        }
+      });
+    }
+    if (page.next === undefined)
+      break;
+    after = page.next;
+  }
+  return answers.map((answer, index) => answer ?? {
+    named: false,
+    reason: oldest[index] ? "end-of-history" : "not-in-newest-entry"
+  });
+}
+
+// src/core/resolve.ts
+function matrixOutput(entries) {
+  return JSON.stringify(entries.map(({ stack, environment, deployment }) => ({ stack, environment, deployment })));
+}
+var MAX_DEPLOYS_PER_RUN = 256;
+function capDeploys(allowed) {
+  const sorted = [...allowed].sort((a, b) => a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0);
+  return { start: sorted.slice(0, MAX_DEPLOYS_PER_RUN), over: sorted.slice(MAX_DEPLOYS_PER_RUN) };
+}
+
+// src/render/escape.ts
+var NAMED = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;"
+};
+function escapeText(text3) {
+  return text3.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
+}
+
+// src/render/header-state.ts
+function headerState(rows) {
+  if (rows.length === 0)
+    return "first-run";
+  const known = rows.filter((row) => row.known);
+  const is = (state) => known.some((row) => row.state === state);
+  const destroying = known.some((row) => (row.state === "pending" || row.state === "deploying") && row.destroys > 0);
+  if (destroying)
+    return "plain";
+  if (is("preview-failed") || known.some((row) => row.failed))
+    return "failing";
+  if (is("deploying"))
+    return "deploying";
+  if (is("pending"))
+    return "pending";
+  return "in-sync";
 }
 
 // src/render/pending-level.ts
@@ -52412,11 +52353,11 @@ function pendingRow(row, options) {
   for (const change of [...deletes, ...replaces])
     lines.push(`:warning: ${changeLine(change)}`);
   if (folded.length > 0) {
-    const inside2 = plural2(folded.length, destroys > 0 ? "other change" : "change");
+    const inside = plural2(folded.length, destroys > 0 ? "other change" : "change");
     if (level >= 2) {
-      lines.push(`${inside2} not listed here, see the ${summary2}`);
+      lines.push(`${inside} not listed here, see the ${summary2}`);
     } else {
-      lines.push(`<details><summary>${inside2}</summary>`);
+      lines.push(`<details><summary>${inside}</summary>`);
       for (const change of folded)
         lines.push(`${changeLine(change)}<br>`);
       lines.push("</details>");
@@ -52511,8 +52452,8 @@ function byCodeUnit3(a, b) {
 function plural3(count, word) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
-function urlPart(text2) {
-  return encodeURIComponent(text2).replace(/[()*!'~]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+function urlPart(text3) {
+  return encodeURIComponent(text3).replace(/[()*!'~]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 function rowBlock(row, options = {}) {
   const [block] = parseDashboard(renderRow(row, options)).rows;
@@ -52726,8 +52667,8 @@ async function writeBody(github, number4, build) {
       throw new DashboardWriteError(number4, body);
   }
 }
-function byteLength(text2) {
-  return new TextEncoder().encode(text2).length;
+function byteLength(text3) {
+  return new TextEncoder().encode(text3).length;
 }
 function count(n) {
   return n.toLocaleString("en-US");
@@ -52738,7 +52679,10 @@ var BOT_LOGIN = "github-actions[bot]";
 var BOT_TYPE = "Bot";
 var ROOT_MARKER_LINE = /^<!-- sluiceway:dashboard(?: [^\r\n]*)? -->\r?(?:\n|$)/;
 function isDashboard(issue3, label) {
-  return issue3.labels.includes(label) && issue3.author.login === BOT_LOGIN && issue3.author.type === BOT_TYPE && ROOT_MARKER_LINE.test(issue3.body);
+  return issue3.labels.includes(label) && isBotIssueWithRootMarker(issue3);
+}
+function isBotIssueWithRootMarker(issue3) {
+  return issue3.author.login === BOT_LOGIN && issue3.author.type === BOT_TYPE && ROOT_MARKER_LINE.test(issue3.body);
 }
 async function findDashboard(github, label) {
   return (await openMatches(github, label))[0];
@@ -52813,6 +52757,26 @@ async function openMatches(github, label) {
   return open2.filter((issue3) => isDashboard(issue3, label)).sort((a, b) => a.number - b.number);
 }
 
+// src/core/failure-reason.ts
+function previewFailureText(reason) {
+  switch (reason.kind) {
+    case "tool-error":
+      return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
+    case "timed-out":
+      return `the preview timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}`;
+    case "unreadable-output":
+      return "the tool's output could not be read";
+    case "unknown-step":
+      return "the tool reported a step Sluiceway does not know";
+  }
+}
+function deployFailureText(reason) {
+  switch (reason.kind) {
+    case "run-ended":
+      return "the run ended without a result";
+  }
+}
+
 // src/github/deployments.ts
 async function readDeploymentRecords(github, environments, fallBack) {
   const records = [];
@@ -52849,10 +52813,119 @@ async function settleEndedRuns(github, records, repoUrl) {
       description: deployFailureText({ kind: "run-ended" }),
       logUrl: `${repoUrl}/actions/runs/${fact.run}`
     });
-    settled.records = settled.records.map((record2) => record2.id === fact.deployment && taskStackId(record2.task) === stackId2 ? { ...record2, status } : record2);
+    settled.records = settled.records.map((record3) => record3.id === fact.deployment && taskStackId(record3.task) === stackId2 ? { ...record3, status } : record3);
     settled.stackIds.push(stackId2);
   }
   return settled;
+}
+
+// src/core/tick-rule.ts
+var GHOST = "ghost";
+function isPerson(editor) {
+  return editor.type === "User" && editor.login !== "" && editor.login.toLowerCase() !== GHOST;
+}
+function judgeTick(rule, login, permission) {
+  if (!permission.push)
+    return { allowed: false, reason: "no-write-access" };
+  if (typeof rule !== "string") {
+    return rule.includes(login.toLowerCase()) ? { allowed: true } : { allowed: false, reason: "not-on-list" };
+  }
+  const meets = rule === "write" || (rule === "maintain" ? permission.maintain : permission.admin);
+  return meets ? { allowed: true } : { allowed: false, reason: "below-level" };
+}
+
+// src/render/refused-ticks.ts
+function what(target) {
+  return target.kind === "rescan" ? "the rescan box" : `**${escapeText(target.stackId)}**`;
+}
+function why({ target, reason }) {
+  if (reason === "unverified") {
+    return "The tick could not be verified, because the permission lookup failed. Tick the box again for a fresh try.";
+  }
+  if (reason === "no-write-access" || target.kind === "rescan") {
+    return "The tick was refused: ticking needs write access to this repository.";
+  }
+  if (typeof target.rule === "string") {
+    return `The tick was refused: the tick rule of this stack is \`${target.rule}\`, which takes ${target.rule} access to this repository.`;
+  }
+  const names = target.rule.map(escapeText).join(", ");
+  return `The tick was refused: the tick rule of this stack names who can tick it: ${names}.`;
+}
+function line(refused) {
+  return `@${refused.login} ticked ${what(refused.target)}. ${why(refused)}`;
+}
+function refusedTicksComment(refused) {
+  const [only, ...others] = refused;
+  if (!only)
+    throw new Error("A comment needs a tick to be about, and no refused tick was given.");
+  if (others.length === 0)
+    return `${line(only)} Nothing was started and the box is cleared.`;
+  return [
+    "Nothing was started for these ticks and their boxes are cleared.",
+    "",
+    ...refused.map((one) => `- ${line(one)}`)
+  ].join(`
+`);
+}
+
+// src/github/ticks.ts
+async function judgeTicks(github, ticks) {
+  const lookups = new Map;
+  const outcomes = [];
+  for (const tick of ticks) {
+    if (!isPerson(tick.editor)) {
+      outcomes.push({ tick, outcome: "not-a-person" });
+      continue;
+    }
+    const { login } = tick.editor;
+    const key = login.toLowerCase();
+    let lookup = lookups.get(key);
+    if (!lookup) {
+      lookup = await github.getPermission(login).then((permission) => ({ permission }), (error63) => ({ error: error63 }));
+      lookups.set(key, lookup);
+    }
+    if ("error" in lookup) {
+      outcomes.push({ tick, outcome: "unverified", error: lookup.error });
+      continue;
+    }
+    const rule = tick.target.kind === "rescan" ? "write" : tick.target.rule;
+    const verdict = judgeTick(rule, login, lookup.permission);
+    outcomes.push(verdict.allowed ? { tick, outcome: "allowed" } : { tick, outcome: "refused", reason: verdict.reason });
+  }
+  return outcomes;
+}
+async function commentOnRefusedTicks(github, dashboard, outcomes) {
+  const refused = outcomes.flatMap((outcome) => {
+    if (outcome.outcome !== "refused" && outcome.outcome !== "unverified")
+      return [];
+    return [
+      {
+        target: outcome.tick.target,
+        login: outcome.tick.editor.login,
+        reason: outcome.outcome === "refused" ? outcome.reason : "unverified"
+      }
+    ];
+  });
+  if (refused.length === 0)
+    return false;
+  await github.createComment(dashboard, refusedTicksComment(refused));
+  return true;
+}
+
+// src/render/clear-tick.ts
+var TICKED_BOX = /^- \[[xX]\] /;
+function clearTick(row, options = {}) {
+  if (!row.known || !row.ticked)
+    return row;
+  const [first = "", ...rest] = row.text.split(`
+`);
+  const note = INDENT + ORPHAN_TICK_NOTE;
+  const lines = options.note && !rest.includes(note) ? [note, ...rest] : rest;
+  const [cleared] = parseDashboard([first.replace(TICKED_BOX, "- [ ] "), ...lines].join(`
+`)).rows;
+  if (!cleared)
+    throw new Error("A row block did not read back as a row block.");
+  return cleared;
 }
 
 // src/render/changes.ts
@@ -52866,8 +52939,8 @@ function orderChanges(diff) {
 }
 
 // src/render/log-text.ts
-function oneLine(text2) {
-  return text2.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ");
+function oneLine(text3) {
+  return text3.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ");
 }
 function logGroupTitle(stackId2) {
   return oneLine(stackId2);
@@ -52891,6 +52964,566 @@ function diffLogLines(diff) {
   if (changes.length === 0)
     return ["no changes"];
   return [counts(changes).replaceAll("*", ""), ...changes.map(changeLogLine)];
+}
+
+// src/modes/resolve.ts
+async function resolve(context3) {
+  let handedOn = false;
+  const handOn = (entries) => {
+    context3.setOutput("matrix", matrixOutput(entries));
+    handedOn = true;
+  };
+  try {
+    await resolveTicks(context3, handOn);
+  } finally {
+    if (!handedOn)
+      handOn([]);
+  }
+}
+var MAX_READS = 3;
+function message(error63) {
+  return error63 instanceof Error ? error63.message : String(error63);
+}
+async function resolveTicks(context3, handOn) {
+  const { log, github } = context3;
+  const issue3 = editedIssue(context3.event);
+  if (!issue3) {
+    log.info("The event that started this job is not about an issue. Nothing to do.");
+    return;
+  }
+  const notTheDashboard = `Issue #${issue3.number} is not the open dashboard. Nothing to do.`;
+  if (issue3.state !== "open" || !isBotIssueWithRootMarker(issue3)) {
+    log.info(notTheDashboard);
+    return;
+  }
+  const config2 = loadConfig(context3.root);
+  if (!issue3.labels.includes(config2.dashboard.label)) {
+    log.info(notTheDashboard);
+    return;
+  }
+  let stacks;
+  let named = [];
+  for (let reads = 1;; reads++) {
+    const first = await github.readEditHistory(issue3.number, {
+      size: HISTORY_PAGE_SIZE,
+      after: undefined
+    });
+    const { root } = parseDashboard(first.body);
+    if (!root) {
+      log.info(`The body of #${issue3.number} has no root marker any more. Nothing to do.`);
+      return;
+    }
+    if (root.version !== MARKER_VERSION) {
+      log.info(`The dashboard is written in marker version ${root.version} and this is version ${MARKER_VERSION}. Its body is left alone, and a full scan is started to write it again.`);
+      await dispatchScan(context3);
+      return;
+    }
+    const ticks = ticksIn(first.body);
+    if (ticks.length === 0) {
+      log.info("No box is ticked. Nothing to do.");
+      return;
+    }
+    stacks ??= await discover2(context3, config2);
+    const known = ticks.filter((tick) => {
+      if (tick.kind === "rescan" || stacks?.has(tick.stackId))
+        return true;
+      log.info(`${logGroupTitle(tick.stackId)} is ticked, and discovery knows no such stack. Left alone.`);
+      return false;
+    });
+    const tickers2 = await nameTickers(known, (after) => after === undefined ? Promise.resolve(first) : github.readEditHistory(issue3.number, { size: HISTORY_PAGE_SIZE, after }));
+    named = known.flatMap((tick, index) => {
+      const ticker = tickers2[index];
+      return ticker ? [{ tick, ticker }] : [];
+    });
+    const moved = named.some(({ ticker }) => !ticker.named && ticker.reason === "not-in-newest-entry");
+    if (!moved || reads === MAX_READS)
+      break;
+    log.info("The body moved between the read and the walk. Reading again.");
+  }
+  const hashes = new Map;
+  for (const { tick } of named)
+    if (tick.kind === "row")
+      hashes.set(tick.stackId, tick.hash);
+  const ticked = [...hashes.keys()].flatMap((id) => stacks?.get(id) ?? []);
+  const open2 = await openDeployments(context3, ticked);
+  const dropped = [];
+  const clear = new Map;
+  const toJudge = [];
+  let rescanHandled = false;
+  for (const { tick, ticker } of named) {
+    const name = tick.kind === "row" ? logGroupTitle(tick.stackId) : "The rescan box";
+    const fact = tick.kind === "row" ? open2.get(tick.stackId) : undefined;
+    if (tick.kind === "row" && fact) {
+      dropped.push(tick.stackId);
+      log.info(`${name} is ticked and already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. The tick is dropped.`);
+    } else if (ticker.named) {
+      const stack = tick.kind === "row" ? stacks?.get(tick.stackId) : undefined;
+      toJudge.push({
+        target: stack ? { kind: "stack", stackId: stackId(stack.stack), rule: stack.tickers } : { kind: "rescan" },
+        editor: ticker.editor
+      });
+    } else if (ticker.reason === "not-in-newest-entry") {
+      log.info(`${name} is ticked in a body that kept moving. Left for the run that edit woke.`);
+    } else {
+      log.info(`${name} is ticked and the edit history names nobody for it (${NOBODY[ticker.reason]}). The box is cleared.`);
+      if (tick.kind === "row")
+        clear.set(tick.stackId, { hash: tick.hash, note: true });
+      else
+        rescanHandled = true;
+    }
+  }
+  const outcomes = await judgeTicks(github, toJudge);
+  const allowed = [];
+  let rescan = false;
+  for (const outcome of outcomes) {
+    const { target, editor } = outcome.tick;
+    const name = target.kind === "stack" ? logGroupTitle(target.stackId) : "The rescan box";
+    if (outcome.outcome === "not-a-person") {
+      log.info(`${name} was ticked by ${editor.login || "nobody"}, who is not a person. Left alone.`);
+      continue;
+    }
+    if (outcome.outcome === "allowed") {
+      log.info(`${name} was ticked by ${editor.login}.`);
+      if (target.kind === "stack")
+        allowed.push({ stackId: target.stackId, ticker: editor.login });
+      else
+        rescan = true;
+    } else {
+      log.info(outcome.outcome === "refused" ? `${name} was ticked by ${editor.login}, who may not tick it (${outcome.reason}). The box is cleared.` : `${name} was ticked by ${editor.login}, and GitHub gave no answer about their access: ${message(outcome.error)}. The box is cleared.`);
+      const hash2 = target.kind === "stack" ? hashes.get(target.stackId) : undefined;
+      if (target.kind === "stack" && hash2 !== undefined) {
+        clear.set(target.stackId, { hash: hash2, note: false });
+      }
+    }
+    if (target.kind === "rescan")
+      rescanHandled = true;
+  }
+  const { start, over } = capDeploys(allowed);
+  for (const { stackId: id } of over) {
+    const hash2 = hashes.get(id);
+    if (hash2 !== undefined)
+      clear.set(id, { hash: hash2, note: true });
+  }
+  if (over.length > 0) {
+    log.info(`One run starts at most ${start.length} deploys. ${plural2(over.length, "tick")} beyond that ${over.length === 1 ? "is" : "are"} cleared and ${over.length === 1 ? "needs" : "need"} a fresh tick.`);
+  }
+  const failures = [];
+  const started = [];
+  for (const { stackId: id, ticker } of start) {
+    const stack = stacks?.get(id);
+    const hash2 = hashes.get(id);
+    if (!stack || hash2 === undefined)
+      continue;
+    try {
+      const record3 = await github.createDeployment({
+        sha: context3.sha,
+        task: deploymentTask(id),
+        environment: stack.environment,
+        payload: deploymentPayload({ hash: hash2, ticker, run: context3.runId })
+      });
+      started.push({ stackId: id, environment: stack.environment, deployment: record3.id, ticker });
+      await github.createDeploymentStatus(record3.id, { state: "queued", logUrl: runUrl(context3) });
+      log.info(`${logGroupTitle(id)}: deployment record ${record3.id} is queued.`);
+    } catch (error63) {
+      failures.push(`The deployment record of ${logGroupTitle(id)} could not be written: ${message(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). No further deploy was started, and the ticks that are left stay for the next run.`);
+      break;
+    }
+  }
+  handOn(started.map(({ stackId: stack, environment, deployment }) => ({
+    stack,
+    environment,
+    deployment
+  })));
+  if (rescan) {
+    try {
+      await dispatchScan(context3);
+      log.info("Started a full scan for the rescan box.");
+    } catch (error63) {
+      failures.push(message(error63));
+    }
+  }
+  let written = true;
+  if (started.length > 0 || dropped.length > 0 || clear.size > 0 || rescanHandled) {
+    try {
+      const result = await writeBody(github, issue3.number, (liveBody) => swapRows(context3, config2, [...stacks?.values() ?? []], liveBody, {
+        started,
+        dropped,
+        clear
+      }));
+      log.info(result.written ? `Wrote the dashboard (#${issue3.number}).` : `The dashboard (#${issue3.number}) already says all of this. Nothing was written.`);
+    } catch (error63) {
+      written = false;
+      failures.push(message(error63));
+    }
+  }
+  if (written) {
+    try {
+      await commentOnRefusedTicks(github, issue3.number, outcomes);
+    } catch (error63) {
+      failures.push(`The comment about the refused ticks could not be written: ${message(error63)}.`);
+    }
+  }
+  const unverified = outcomes.filter(({ outcome }) => outcome === "unverified");
+  if (unverified.length > 0)
+    failures.push(unverifiedMessage(unverified));
+  if (failures.length > 0)
+    throw new Error(failures.join(`
+`));
+}
+var NOBODY = {
+  "entry-without-body": "an entry of the edit history has no body",
+  "end-of-history": "the tick is older than the edit history GitHub keeps",
+  "not-in-newest-entry": "the body kept moving"
+};
+function runUrl(context3) {
+  return `${context3.repoUrl}/actions/runs/${context3.runId}`;
+}
+function unverifiedMessage(unverified) {
+  const logins = [...new Set(unverified.map(({ tick }) => tick.editor.login))].join(", ");
+  return `GitHub gave no answer about the access of ${logins}, so ${plural2(unverified.length, "tick")} could not be verified. Nothing was deployed for ${unverified.length === 1 ? "it" : "them"}, and the comment on the dashboard asks for a fresh tick (record 0018).`;
+}
+async function discover2(context3, config2) {
+  const found = applyConfig(config2, await context3.adapter.discover(context3.root));
+  return new Map(found.map((stack) => [stackId(stack.stack), stack]));
+}
+async function dispatchScan(context3) {
+  if (!context3.workflow) {
+    throw new Error("A full scan could not be started: GITHUB_WORKFLOW_REF is not set, so this job does not know which workflow it belongs to.");
+  }
+  try {
+    await context3.github.dispatchWorkflow(context3.workflow.file, context3.workflow.ref);
+  } catch (error63) {
+    throw new Error(`A full scan could not be started: ${message(error63)}. The resolve job needs the permission \`actions: write\`, and the workflow (${context3.workflow.file}) needs a \`workflow_dispatch\` trigger that runs the scan (record 0017).`);
+  }
+}
+async function readRecords(context3, environments, fallBack) {
+  try {
+    return await readDeploymentRecords(context3.github, environments, fallBack.map(({ stack, environment }) => ({ stackId: stackId(stack), environment })));
+  } catch (error63) {
+    throw new Error(`The deployment records could not be read: ${message(error63)}. The resolve job needs the permissions \`deployments: write\` and \`actions: read\` next to \`contents: read\` and \`issues: write\` (record 0003).`);
+  }
+}
+async function openDeployments(context3, ticked) {
+  if (ticked.length === 0)
+    return new Map;
+  const ids = new Set(ticked.map(({ stack }) => stackId(stack)));
+  const records = await readRecords(context3, ticked.map(({ environment }) => environment), ticked);
+  const theirs = records.filter((record3) => ids.has(taskStackId(record3.task) ?? ""));
+  const settled = await settleEndedRuns(context3.github, theirs, context3.repoUrl);
+  for (const id of settled.stackIds) {
+    context3.log.info(`Ended the open deployment of ${logGroupTitle(id)}: its run is over and never reported a result.`);
+  }
+  const open2 = new Map;
+  for (const [id, fact] of deployFacts(settled.records).byStack) {
+    if (fact.kind === "open")
+      open2.set(id, fact);
+  }
+  return open2;
+}
+async function swapRows(context3, config2, stacks, liveBody, swap) {
+  const live = parseDashboard(liveBody);
+  const root = live.root;
+  if (root?.version !== MARKER_VERSION || root.scanSha === undefined || root.scanRun === undefined || root.scanAt === undefined) {
+    context3.log.info("The live body is not one this version can write again. It is left alone.");
+    return liveBody;
+  }
+  const droppedStacks = stacks.filter(({ stack }) => swap.dropped.includes(stackId(stack)));
+  const facts = deployFacts(await readRecords(context3, stacks.map(({ environment }) => environment), droppedStacks));
+  const startedBy = new Map(swap.started.map((one) => [one.stackId, one]));
+  const mine = (one, destroys) => ({
+    state: "deploying",
+    stackId: one.stackId,
+    ticker: one.ticker,
+    runUrl: runUrl(context3),
+    waiting: true,
+    destroys
+  });
+  const rows = [];
+  const carried = [];
+  const seen = new Set;
+  for (const row of live.rows) {
+    const first = !seen.has(row.stackId);
+    seen.add(row.stackId);
+    const one = startedBy.get(row.stackId);
+    const fact = facts.byStack.get(row.stackId);
+    const wanted = swap.clear.get(row.stackId);
+    const destroys = row.known ? row.destroys : 0;
+    if (!first || !row.known) {
+      carried.push(row);
+    } else if (one) {
+      rows.push(mine(one, destroys));
+    } else if (swap.dropped.includes(row.stackId) && fact?.kind === "open" && row.state !== "deploying") {
+      rows.push({
+        state: "deploying",
+        stackId: row.stackId,
+        ticker: fact.ticker,
+        runUrl: `${context3.repoUrl}/actions/runs/${fact.run}`,
+        waiting: fact.waiting,
+        destroys
+      });
+    } else if (wanted && row.ticked && row.hash === wanted.hash) {
+      carried.push(clearTick(row, { note: wanted.note }));
+    } else {
+      carried.push(row);
+    }
+  }
+  for (const one of swap.started)
+    if (!seen.has(one.stackId))
+      rows.push(mine(one, 0));
+  const fitted = fitBody({
+    root: {
+      scanSha: root.scanSha,
+      scanRun: root.scanRun,
+      scanAt: root.scanAt,
+      fullScanAt: root.fullScanAt,
+      fullScanRun: root.fullScanRun
+    },
+    rows,
+    carried,
+    redact: config2.dashboard.redact,
+    recentlyDeployed: facts.succeeded.map(({ stackId: id, ticker, run, at }) => ({
+      stackId: id,
+      ticker,
+      at,
+      runUrl: `${context3.repoUrl}/actions/runs/${run}`
+    })),
+    repoUrl: context3.repoUrl,
+    actionRef: context3.actionRef,
+    personality: config2.dashboard.personality
+  }, { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
+  if (!fitted.fits) {
+    throw new Error(`With these rows swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment records hold what was started, and the next scan brings the rows in line.`);
+  }
+  return fitted.body;
+}
+
+// src/modes/resolve-job.ts
+async function runResolve() {
+  const env = process.env;
+  const read2 = (path) => readFileSync3(path, "utf8");
+  const token = readToken(getInput);
+  const job = readJob(env);
+  await resolve({
+    root: job.root,
+    adapter: pulumi,
+    github: createOctokitPort(getOctokit(token), { owner: job.owner, repo: job.repo }),
+    log: actionsLog(),
+    repoUrl: job.repoUrl,
+    runId: job.runId,
+    sha: job.sha,
+    actionRef: readActionRef(env, read2),
+    event: readEventPayload(env, read2),
+    workflow: readWorkflowRef(env),
+    setOutput: (name, value) => setOutput(name, value)
+  });
+}
+
+// src/modes/scan-job.ts
+import { readFileSync as readFileSync4 } from "node:fs";
+
+// src/adapters/process.ts
+import { spawn } from "node:child_process";
+var GRACE_MS = 5000;
+var PIPES_MS = 1000;
+function runProcess(run, graceMs = GRACE_MS) {
+  const [command = "", ...args] = run.argv;
+  return new Promise((done) => {
+    const child = spawn(command, args, {
+      cwd: run.cwd,
+      env: run.env,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true
+    });
+    const { pid, stdout, stderr } = child;
+    if (pid === undefined) {
+      child.on("error", () => done({ status: "not-started" }));
+      return;
+    }
+    const out = [];
+    const err = [];
+    stdout.on("data", (chunk) => out.push(chunk));
+    stderr.on("data", (chunk) => err.push(chunk));
+    const signalGroup = (signal) => {
+      try {
+        process.kill(-pid, signal);
+      } catch {
+        child.kill(signal);
+      }
+    };
+    let timedOut = false;
+    let killing;
+    let closing;
+    const limit = setTimeout(() => {
+      timedOut = true;
+      signalGroup("SIGINT");
+      killing = setTimeout(() => {
+        signalGroup("SIGKILL");
+        closing = setTimeout(() => {
+          stdout.destroy();
+          stderr.destroy();
+        }, PIPES_MS);
+      }, graceMs);
+    }, run.timeoutMs);
+    child.on("error", () => {});
+    child.on("close", (exitCode) => {
+      for (const timer of [limit, killing, closing])
+        clearTimeout(timer);
+      const text3 = {
+        stdout: Buffer.concat(out).toString("utf8"),
+        stderr: Buffer.concat(err).toString("utf8")
+      };
+      done(timedOut ? { status: "timed-out", ...text3 } : { status: "exited", exitCode, ...text3 });
+    });
+  });
+}
+
+// src/core/orphan-tick.ts
+function resolveOnItsWay(runs, ownRunId) {
+  return runs.some((run) => !run.completed && run.id !== ownRunId);
+}
+function tickAtLateRead(row) {
+  const { writes } = row;
+  if (writes.row === "live") {
+    if (row.resolveOnItsWay)
+      return "carry";
+    return writes.previewed ? "next-scan" : "preview-first";
+  }
+  const sameTick = writes.hash !== undefined && writes.hash === row.liveHash;
+  return row.resolveOnItsWay && sameTick ? "carry" : "sweep";
+}
+
+// src/core/pool.ts
+async function runPool(items, size, work) {
+  if (!Number.isInteger(size) || size < 1) {
+    throw new Error("The size of the pool must be a whole number of 1 or more.");
+  }
+  const results = new Array(items.length);
+  let next = 0;
+  let failed = false;
+  const slot = async () => {
+    while (!failed && next < items.length) {
+      const index = next++;
+      try {
+        results[index] = await work(items[index]);
+      } catch (error63) {
+        failed = true;
+        throw error63;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, slot));
+  return results;
+}
+
+// src/core/claim.ts
+function inside(directory, file2) {
+  return directory === "." || file2.startsWith(`${directory}/`);
+}
+function claim2(stacks, changed, unrelated) {
+  const isUnrelated = globMatcher(unrelated);
+  const matchers = stacks.map((stack) => ({ stack, matches: globMatcher(stack.inputs) }));
+  const claims = new Map;
+  const unclaimed = [];
+  for (const file2 of new Set(changed)) {
+    if (isUnrelated(file2))
+      continue;
+    const claimants = matchers.filter(({ stack, matches }) => inside(stack.path, file2) || matches(file2));
+    if (claimants.length === 0)
+      unclaimed.push(file2);
+    for (const { stack } of claimants)
+      claims.set(stack.id, [...claims.get(stack.id) ?? [], file2]);
+  }
+  return { claims, unclaimed };
+}
+
+// src/core/scan-plan.ts
+var COMPARE_FILE_CAP = 300;
+var COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+function narrowsOn(event) {
+  return event === "push";
+}
+function comparisonBase(event, dashboard, markerVersion) {
+  if (!narrowsOn(event))
+    return { kind: "event", event };
+  if (dashboard === undefined)
+    return { kind: "no-dashboard" };
+  const { root } = dashboard;
+  if (root === undefined)
+    return { kind: "no-root-marker" };
+  if (root.version !== markerVersion)
+    return { kind: "other-version", version: root.version };
+  if (root.scanSha === undefined || !COMMIT.test(root.scanSha))
+    return { kind: "no-scan-sha" };
+  return { kind: "compare", from: root.scanSha };
+}
+function changedPaths(comparison) {
+  if (comparison.status !== "ahead" && comparison.status !== "identical") {
+    return { kind: "not-a-straight-line", status: comparison.status };
+  }
+  if (comparison.files.length >= COMPARE_FILE_CAP)
+    return { kind: "file-cap" };
+  return {
+    kind: "changed",
+    paths: comparison.files.flatMap(({ path, previousPath }) => previousPath === undefined ? [path] : [path, previousPath])
+  };
+}
+function planScan(stacks, changed, unrelated, rows) {
+  const { claims, unclaimed } = claim2(stacks, changed, unrelated);
+  if (unclaimed.length > 0)
+    return { kind: "full", why: { kind: "unclaimed", files: unclaimed } };
+  const states = new Map(rows.map((row) => [row.stackId, row.state]));
+  const previews = stacks.flatMap(({ id }) => {
+    const files = claims.get(id);
+    if (files)
+      return [{ id, why: { kind: "claims", files } }];
+    if (!states.has(id))
+      return [{ id, why: { kind: "no-row" } }];
+    if (states.get(id) === "preview-failed")
+      return [{ id, why: { kind: "preview-failed" } }];
+    return [];
+  });
+  return { kind: "narrowed", previews };
+}
+function oneRowPerStack(discovered, fresh, live) {
+  const onDashboard = new Set(live);
+  const known = new Set(discovered);
+  const stale = discovered.filter((id) => !fresh.has(id));
+  return {
+    carried: stale.filter((id) => onDashboard.has(id)),
+    missing: stale.filter((id) => !onDashboard.has(id)),
+    dropped: [...onDashboard].filter((id) => !known.has(id))
+  };
+}
+function fullScanReasonText(reason) {
+  switch (reason.kind) {
+    case "event":
+      return `the event is ${reason.event}, and only a push gives a narrowed scan`;
+    case "no-dashboard":
+      return "there is no dashboard yet";
+    case "no-root-marker":
+      return "the dashboard has no root marker that can be read";
+    case "other-version":
+      return `the root marker of the dashboard has version ${reason.version}, which this version of Sluiceway does not write`;
+    case "no-scan-sha":
+      return "the root marker of the dashboard names no commit to compare from";
+    case "compare-failed":
+      return "GitHub did not give the comparison from the commit of the last scan";
+    case "not-a-straight-line":
+      return `the checked-out commit does not follow the commit of the last scan in a straight line (GitHub calls it ${JSON.stringify(reason.status)}), as after a force push or a re-run of an older run`;
+    case "file-cap":
+      return `the comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, so files may be missing from it`;
+    case "unclaimed": {
+      const [first = "", ...rest] = reason.files;
+      return rest.length === 0 ? `no stack claims ${first}` : `no stack claims ${first} and ${rest.length} more changed ${rest.length === 1 ? "file" : "files"}`;
+    }
+    case "does-not-fit":
+      return `the body does not fit in one issue with ${reason.carried} ${reason.carried === 1 ? "row" : "rows"} carried through, and only a fresh row can be shortened`;
+  }
+}
+
+// src/core/scan-result.ts
+function everyPreviewFailed(attempted, failed) {
+  return attempted > 1 && failed === attempted;
 }
 
 // src/core/diff-hash.ts
@@ -52933,19 +53566,19 @@ function diffHash(diff) {
 }
 
 // src/render/preview-result.ts
-function previewRow(stackId2, result, runUrl, failure2) {
+function previewRow(stackId2, result, runUrl2, failure2) {
   if (!result.ok) {
     return {
       state: "preview-failed",
       stackId: stackId2,
       reason: previewFailureText(result.reason),
-      runUrl,
+      runUrl: runUrl2,
       failure: failure2
     };
   }
   if (result.diff.changes.length === 0)
     return { state: "in-sync", stackId: stackId2, failure: failure2 };
-  return { state: "pending", diff: result.diff, hash: diffHash(result.diff), runUrl, failure: failure2 };
+  return { state: "pending", diff: result.diff, hash: diffHash(result.diff), runUrl: runUrl2, failure: failure2 };
 }
 function previewSummary(stackId2, result) {
   return result.ok ? { kind: "diff", diff: result.diff } : { kind: "preview-failed", stackId: stackId2, reason: previewFailureText(result.reason) };
@@ -52959,8 +53592,8 @@ function previewOutcome(result) {
 // src/render/summary.ts
 var SUMMARY_BUDGET = 1e6;
 var LEVELS2 = [0, 1, 2, 3];
-function firstLine(message) {
-  return message.split(/\r?\n/, 1)[0] ?? "";
+function firstLine(message2) {
+  return message2.split(/\r?\n/, 1)[0] ?? "";
 }
 function mergeLine(merge3) {
   const label = merge3.kind === "pull-request" ? `#${merge3.number} ${escapeText(merge3.title)}` : `${merge3.sha.slice(0, 7)} ${escapeText(firstLine(merge3.message))}`;
@@ -53005,8 +53638,8 @@ function stackIdOf(stack) {
   return stack.kind === "diff" ? stack.diff.stackId : stack.stackId;
 }
 var ENCODER = new TextEncoder;
-function byteLength2(text2) {
-  return ENCODER.encode(text2).length;
+function byteLength2(text3) {
+  return ENCODER.encode(text3).length;
 }
 function cost(parts) {
   return parts.reduce((sum, part) => sum + byteLength2(part) + 2, 0);
@@ -53077,7 +53710,7 @@ function renderSummary(stacks, options = {}) {
   const tailCost = cost(tail);
   fitToBudget(entries, (shortened2) => cost(frame(shortened2)) + tailCost, options.budget ?? SUMMARY_BUDGET);
   const shortened = entries.filter((entry) => entry.level > 0).length;
-  const text2 = `${[
+  const text3 = `${[
     ...frame(shortened),
     ...entries.flatMap((entry) => entry.parts[entry.level] ?? []),
     ...tail
@@ -53085,14 +53718,14 @@ function renderSummary(stacks, options = {}) {
 
 `)}
 `;
-  const bytes = byteLength2(text2);
-  return { text: text2, bytes, shortened, fits: bytes <= (options.budget ?? SUMMARY_BUDGET) };
+  const bytes = byteLength2(text3);
+  return { text: text3, bytes, shortened, fits: bytes <= (options.budget ?? SUMMARY_BUDGET) };
 }
 
 // src/modes/scan.ts
 class ScanFailedError extends Error {
-  constructor(message) {
-    super(message);
+  constructor(message2) {
+    super(message2);
     this.name = "ScanFailedError";
   }
 }
@@ -53100,10 +53733,10 @@ class ScanFailedError extends Error {
 class PreviewFirst extends Error {
   stacks;
   why;
-  constructor(stacks, why) {
+  constructor(stacks, why2) {
     super("More stacks have to be previewed before the dashboard can be written.");
     this.stacks = stacks;
-    this.why = why;
+    this.why = why2;
     this.name = "PreviewFirst";
   }
 }
@@ -53113,8 +53746,8 @@ function seconds(milliseconds) {
 function minutes(count2) {
   return plural2(count2, "minute");
 }
-function lines(text2) {
-  const all = text2.split(/\r?\n/);
+function lines(text3) {
+  const all = text3.split(/\r?\n/);
   if (all.at(-1) === "")
     all.pop();
   return all;
@@ -53126,7 +53759,7 @@ async function scan(context3) {
   const { log, now } = context3;
   const startedAt = now();
   const at = startedAt.toISOString();
-  const runUrl = `${context3.repoUrl}/actions/runs/${context3.runId}`;
+  const runUrl2 = `${context3.repoUrl}/actions/runs/${context3.runId}`;
   const config2 = loadConfig(context3.root);
   const stacks = applyConfig(config2, await context3.adapter.discover(context3.root)).sort((a, b) => byCodeUnit2(stackId(a.stack), stackId(b.stack)));
   const ids = stacks.map(({ stack }) => stackId(stack));
@@ -53193,7 +53826,7 @@ async function scan(context3) {
         if (decided.row === "preview-first")
           first.push({ id, why: decided.why });
         else if (decided.row === "fresh" && mine) {
-          const row = previewRow(id, mine.result, runUrl, failureLine2(context3, fact));
+          const row = previewRow(id, mine.result, runUrl2, failureLine2(context3, fact));
           if (!ticked) {
             rows.push(row);
             continue;
@@ -53295,10 +53928,10 @@ async function scan(context3) {
       if (error63.why) {
         log.info(`This scan falls back to a full scan: ${fullScanReasonText(error63.why)}. Previewing the other ${plural2(next.length, "stack")} now.`);
       } else {
-        for (const { id, why } of error63.stacks) {
-          if (why === "deploy-ended")
+        for (const { id, why: why2 } of error63.stacks) {
+          if (why2 === "deploy-ended")
             again.add(id);
-          log.info(`${logGroupTitle(id)} ${PREVIEW_FIRST[why]}`);
+          log.info(`${logGroupTitle(id)} ${PREVIEW_FIRST[why2]}`);
         }
       }
     }
@@ -53369,7 +54002,7 @@ async function resolveWaits(context3, liveBody, deploys) {
 }
 async function makePlan(context3, config2, stacks) {
   const { log } = context3;
-  const full = (why) => ({ kind: "full", why });
+  const full = (why2) => ({ kind: "full", why: why2 });
   const dashboard = narrowsOn(context3.event) ? await findDashboard(context3.github, config2.dashboard.label) : undefined;
   const live = dashboard && parseDashboard(dashboard.body);
   const base = comparisonBase(context3.event, live, MARKER_VERSION);
@@ -53391,10 +54024,10 @@ async function makePlan(context3, config2, stacks) {
 function fileName(path) {
   return logGroupTitle(path);
 }
-function whyText(why) {
-  switch (why.kind) {
+function whyText(why2) {
+  switch (why2.kind) {
     case "claims": {
-      const [first = "", ...rest] = why.files;
+      const [first = "", ...rest] = why2.files;
       return rest.length === 0 ? `it claims ${fileName(first)}` : `it claims ${fileName(first)} and ${rest.length} more changed ${rest.length === 1 ? "file" : "files"}`;
     }
     case "no-row":
@@ -53406,16 +54039,16 @@ function whyText(why) {
 function logPlan(context3, plan, stackCount) {
   const { log } = context3;
   if (plan.kind === "full") {
-    const { why } = plan;
-    if (why.kind === "event") {
-      log.info(`This is a full scan: ${fullScanReasonText(why)}.`);
+    const { why: why2 } = plan;
+    if (why2.kind === "event") {
+      log.info(`This is a full scan: ${fullScanReasonText(why2)}.`);
       return;
     }
-    const safe = why.kind === "unclaimed" ? { kind: "unclaimed", files: why.files.map(fileName) } : why;
+    const safe = why2.kind === "unclaimed" ? { kind: "unclaimed", files: why2.files.map(fileName) } : why2;
     log.info(`This is a full scan. A push gives a narrowed scan, and this one fell back to a full scan: ${fullScanReasonText(safe)}.`);
-    if (why.kind === "unclaimed") {
+    if (why2.kind === "unclaimed") {
       log.group("Changed files that no stack claims", [
-        ...why.files.map((file2) => `unclaimed: ${fileName(file2)}`),
+        ...why2.files.map((file2) => `unclaimed: ${fileName(file2)}`),
         "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated."
       ]);
     }
@@ -53423,8 +54056,8 @@ function logPlan(context3, plan, stackCount) {
   }
   const kept = stackCount - plan.previews.length;
   log.info(plan.previews.length === 0 ? "This is a narrowed scan. No stack has to be previewed, so every row is kept as it is." : `This is a narrowed scan: it previews ${plan.previews.length} of ${plural2(stackCount, "stack")}${kept > 0 ? ` and keeps the ${kept === 1 ? "row" : "rows"} of the other ${kept} as ${kept === 1 ? "it is" : "they are"}` : ""}.`);
-  for (const { id, why } of plan.previews) {
-    log.info(`${logGroupTitle(id)} is previewed: ${whyText(why)}.`);
+  for (const { id, why: why2 } of plan.previews) {
+    log.info(`${logGroupTitle(id)} is previewed: ${whyText(why2)}.`);
   }
 }
 async function checkVersion2(context3) {
@@ -53565,7 +54198,7 @@ async function runScan() {
     sha: job.sha,
     event: job.event,
     workflow: job.workflow,
-    actionRef: readActionRef(env, (path) => readFileSync3(path, "utf8"))
+    actionRef: readActionRef(env, (path) => readFileSync4(path, "utf8"))
   });
 }
 
@@ -53597,7 +54230,7 @@ function notImplemented(mode) {
 }
 var handlers = {
   scan: runScan,
-  resolve: notImplemented("resolve"),
+  resolve: runResolve,
   apply: notImplemented("apply"),
   settle: notImplemented("settle")
 };
