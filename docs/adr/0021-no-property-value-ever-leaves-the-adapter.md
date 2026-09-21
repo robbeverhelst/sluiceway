@@ -3,6 +3,8 @@
 > Amended by 0037: the summary is not without a budget. GitHub drops a step summary over 1 MiB, so the summary shortens too, and the job log holds every diff in full.
 >
 > Amended by 0046: changed keys are property paths, not top-level names. A path holds names, list indexes and map keys, never a value, so a map key must not be a secret either.
+>
+> Amended by 0045: a repo that turns `scan.logDiff` on gets the tool's own diff, values included, in each pending stack's group of the job log, and nowhere else.
 
 Sluiceway renders the diff itself (0002), so it chooses what a person sees. In v1 it shows what changes and never what it changes to: addresses by type and name, ops, tracking changes and property names. No old value, no new value, no digest of a value. This holds for every place Sluiceway writes to: the issue body, comments, markers, deployment records, job summaries and its own lines in the job log.
 

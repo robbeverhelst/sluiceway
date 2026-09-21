@@ -71,7 +71,21 @@ Anyone who can edit the dashboard can start the `resolve` job. It is built to be
 - **Never a value.** The dashboard shows resource types, resource names and the paths of changed properties (property names, list indexes and map keys), never what a property is set to, whether or not the tool marks it secret. The job summary and the job log's diff follow the same rule.
 - **Never the tool's own words.** Error messages, warnings and anything else the tool prints stay in the job log. A failure row says why in a fixed phrase and links to the run.
 - **Names, unless you redact.** Resource types, resource names and property paths, map keys included, are in the issue, which is emailed, sent to integrations and indexed on a public repo. `dashboard.redact: true` keeps them out of the issue and leaves the job summary full. It is about reach, not access: anyone who can read the repo can open the run and read the code ([configuration](configuration.md#dashboardredact)).
+- **No value in the job log either, unless you ask for one.** `scan.logDiff: true` prints the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else. See [The tool's own diff in the job log](#the-tools-own-diff-in-the-job-log).
 - **The job log is yours to protect.** The tool's own messages are printed there as they are, grouped per stack, and an error can quote a value. Sluiceway adds no mask of its own: GitHub masks what the step that loaded a secret registered, and nothing else. A secret the tool prints in another shape, base64 or with escaped newlines, is not caught by any mask. Logs are only readable by people who can read the repo, and they expire with the run.
+
+## The tool's own diff in the job log
+
+Off by default. With `scan.logDiff: true` in `sluiceway.yaml`, a scan runs the tool a second time for every pending stack and prints what the tool displays, values included, in that stack's group of the job log. `apply` does the same for its fresh preview. Nothing of it reaches the issue, a comment, the summary, the result file, an output, an annotation or a deployment record, and a test holds that ([record 0045](adr/0045-the-tools-own-diff-may-reach-the-job-log-when-a-repo-asks.md)).
+
+Who can read it:
+
+- **In a public repository, anyone.** Job logs of a public repository are public. The scan puts a warning on the run when the setting is on in a public repository. Leave it off there unless every value your programs set may be public.
+- **In a private or internal repository, everyone with read access**, people and integrations alike, through the web and the API, until the run's logs expire under the repository's retention setting (90 days unless you changed it).
+
+What masks a secret there is what masks it anywhere in the log: the tool's own `[secret]` for a value it holds as secret, and the masks the step that loaded your secrets registered. Nothing else. A value nobody marked as secret, such as a password written into a config map or a token a provider returns unmarked, is printed as it is. Sluiceway prints the tool's text with workflow commands stopped, so a value can never turn into an annotation on the run's page.
+
+What the tool prints comes from a second run of the program, next to the one that was hashed. It shows what a tick is about to deploy, and a tick still approves the diff hash, not the text.
 
 ## What Sluiceway sends
 

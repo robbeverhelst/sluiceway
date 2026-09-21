@@ -119,6 +119,9 @@ Left out of v1 on purpose, and v1 was shaped so these can be added without a bre
 | A row of its own for a deploy that ended before any preview (the tool missing, the stack gone, a broken `sluiceway.yaml`) | `apply` has no diff to make a row from. The record gets its result, and the next scan previews a deploying row whose record ended, a narrowed scan too, and puts the failure line on it. | 0004, slice 2.5 |
 | Deploying a record from another run | `apply` deploys a record only in the run whose `resolve` created it, because the record lives as long as its run. A deploy started some other way would be a deploy without a tick, which is the later `stack` input. | 0003, 0035, slice 2.5 |
 | A budget for the summary of an apply | It is about one stack, and 0037 says it needs none. A stack of many thousand changes could still pass 1 MiB. The job log holds the diff in full either way. | 0037, slice 2.5 |
+| `scan.logDiff` per stack, or as an action input | One switch per repo is enough to launch, and it belongs in the reviewed config, not in each workflow. A `stacks[]` key could narrow it later without a breaking change. | 0045, slice 2.16 |
+| The tool's own diff for the preview after a failed deploy, and for a narrowed scan's carried rows | `apply` prints it for its fresh preview, which is what went out or what moved. The row after a failed deploy links to the summary, and a carried row keeps the link it had. | 0045, slice 2.16 |
+| Stopping workflow commands around the tool's other words (its stderr and diagnostics) | Record 0012 gives them the standing of any other step of the user's workflow. Only the tool's own diff, which holds values on purpose, is printed with workflow commands stopped. | 0012, 0045, slice 2.16 |
 
 ## Rejected on principle
 

@@ -483,12 +483,14 @@ The job log of a scan says what it did, in fixed lines:
 
 Under those lines there is one group per previewed stack, titled with the stack id. It holds the whole diff and everything the tool printed. The tool's own words never leave the job log.
 
+To see the values a tick would deploy, turn on `scan.logDiff` in `sluiceway.yaml`. Every pending stack's group then also holds the tool's own diff, values included, and a pending row's `preview` link opens the job log. It costs one more tool run per pending stack, and anyone who can read the repo can read its job logs: in a public repo, anyone. [docs/configuration.md](docs/configuration.md#scanlogdiff) and [docs/security.md](docs/security.md#the-tools-own-diff-in-the-job-log) say what to weigh first.
+
 ## Limits
 
 - **A change that touches only a stack's outputs is not shown.** The tool's preview does not report it, so a stack whose only change is an added, removed or changed output is in sync and has no box. Deploy it from outside Sluiceway. Another stack that reads that output keeps failing its preview until then. An output nearly always changes together with a resource, and then the row is pending anyway.
 - **Deploys from somewhere else are allowed and not detected.** They do not show under recently deployed, and a row they made stale stays pending until the next full scan or the rescan box. A tick on a stale row deploys nothing.
 - **Sluiceway only previews and deploys.** Destroying a stack, a refresh and repairing state stay with your own tooling.
-- **No values, ever.** Rows show resource types, resource names and property names. `dashboard.redact: true` keeps even those out of the issue.
+- **No values on the dashboard, ever.** Rows show resource types, resource names and property names. `dashboard.redact: true` keeps even those out of the issue. The one place a value can appear is the job log, and only when you turn on `scan.logDiff`.
 - **One tool so far.** Pulumi is the first. The adapter interface is built so that OpenTofu and Terraform can follow.
 
 [docs/later.md](docs/later.md) lists everything that was left out of this version, and why.
@@ -503,7 +505,7 @@ Sluiceway never holds credentials. That is five promises you can check against t
 4. **Only the modes that run the tool need credentials.** `scan` and `apply` run the tool. `resolve` and `settle` never do, so the job that reacts to an issue edit holds no infrastructure secrets.
 5. **A hosted version would keep all of this.** The tool always runs in your own runners.
 
-The dashboard shows resource types, resource names and the paths of changed properties. It never shows a property value, whether or not the tool marks it secret.
+The dashboard shows resource types, resource names and the paths of changed properties. It never shows a property value, whether or not the tool marks it secret. The job log shows values only when you turn on `scan.logDiff`, and then anyone who can read the repo can read them: in a public repo, anyone.
 
 A tick rule protects against the wrong person ticking. On its own it does not protect against a collaborator with write access who means harm, because anyone with write access can push a workflow that reads the repo's secrets. Where your plan has GitHub Environments, lock the credentials that change things into one and the tick rules can be relied on. [docs/security.md](docs/security.md) explains the three setups.
 

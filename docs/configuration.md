@@ -179,6 +179,25 @@ scan:
 
 Keep `sluiceway.yaml` itself off the list, and lockfiles and package manifests too. A change to one of them should preview every stack, and it does, with a line in the job log that says why, as long as no glob here covers it.
 
+### `scan.logDiff`
+
+Default: `false`
+
+Prints the tool's own diff of every pending stack, values included, in that stack's group of the job log. It is the one way to see what a property changes to before you tick. The dashboard, the summary, the result file, annotations and deployment records never hold a value, with this on or off ([record 0045](adr/0045-the-tools-own-diff-may-reach-the-job-log-when-a-repo-asks.md)).
+
+```yaml
+scan:
+  logDiff: true
+```
+
+Read this before you turn it on:
+
+- **Anyone who can read the repo can read its job logs.** In a public repository that is anyone at all, and the scan warns about it on the run. In a private one it is every person and integration with read access, for as long as the repository keeps its logs (90 days unless you changed it).
+- **Only what the tool marks as secret is masked, plus what your workflow registered with `::add-mask::`.** Pulumi prints `[secret]` for a secret config value and for a value a provider marks secret, and every other value in plain text. Sluiceway adds no mask of its own ([credentials](credentials.md)).
+- **It costs one more tool run per pending stack**, in the same pool slot and with the same time limit as the stack's preview. Stacks in sync and failed previews get no second run.
+
+With it on, a pending row's `preview` link opens the job's log instead of the summary. Open the Sluiceway step and the group named after the stack, or type the stack id into the log's search box. The group holds Sluiceway's own list of changes, then the tool's diff. `apply` prints the tool's diff of its fresh preview too, in the group `<stack id>: the fresh preview`. When the second run fails, the group says why and the row does not change: the row and the diff hash always come from the preview itself.
+
 ### `stacks[].path`
 
 Required in every entry.
