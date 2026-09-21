@@ -5,8 +5,9 @@ import { CANARY_SECRET, CANARY_VALUE } from "../../scripts/fixtures/example.ts";
 import type { ProcessRunner } from "../../src/adapters/process.ts";
 import { pulumi } from "../../src/adapters/pulumi/index.ts";
 import { scan } from "../../src/modes/scan.ts";
+import { parseDashboard } from "../../src/render/marker.ts";
 import { FIXTURES, readRecording, VERSIONS } from "../adapters/pulumi/replay.ts";
-import { dashboardBody, harness } from "./harness.ts";
+import { dashboardBody, harness, SHA } from "./harness.ts";
 
 // The scan of the example project with the real adapter and a replayed tool
 // (build plan, section 6): discovery and config read the real files, and each
@@ -92,5 +93,68 @@ describe.each(VERSIONS)("a full scan of the example project, replayed from %s", 
     for (const forbidden of [CANARY_VALUE, CANARY_SECRET, "CANARY", "[secret]"]) {
       expect(written).not.toContain(forbidden);
     }
+  });
+});
+
+// The narrowed scan with real discovery and the real sluiceway.yaml: the paths
+// discovery gives, the inputs of the config file and the paths GitHub names
+// have to meet in one form (record 0010).
+describe("a narrowed scan of the example project", () => {
+  const [version = ""] = VERSIONS;
+  const OLD = "1111111111111111111111111111111111111111";
+
+  async function afterPush(...paths: string[]) {
+    const first = harness(pulumi, { root: ROOT, run: replayedTool(version), sha: OLD });
+    await scan(first.context);
+    const before = dashboardBody(first.github);
+    first.github.seedComparison(OLD, SHA, {
+      status: "ahead",
+      files: paths.map((path) => ({ path })),
+    });
+    const started: string[] = [];
+    const tool = replayedTool(version);
+    const next = harness(pulumi, {
+      root: ROOT,
+      github: first.github,
+      event: "push",
+      run: (run) => {
+        if (run.argv.includes("preview")) started.push(relative(ROOT, run.cwd));
+        return tool(run);
+      },
+    });
+    await scan(next.context);
+    return { started: started.sort(), before, after: dashboardBody(first.github), log: next.log };
+  }
+
+  const rows = (body: string) =>
+    Object.fromEntries(parseDashboard(body).rows.map((row) => [row.stackId, row.text]));
+
+  test("a file under shared/ is claimed by app through its inputs, and the broken site stack is tried again", async () => {
+    const { started, before, after, log } = await afterPush("shared/motd.txt");
+    expect(started).toEqual(["app", "site"]);
+    expect(log.lines).toContain("app:prod is previewed: it claims shared/motd.txt.");
+    expect(log.lines).toContain("site:prod is previewed: its row is a preview failure.");
+    expect(rows(after)["network:dev"]).toBe(rows(before)["network:dev"] as string);
+    expect(rows(after)["network:prod"]).toBe(rows(before)["network:prod"] as string);
+  });
+
+  test("the program of app lies in app/program, inside the stack's directory", async () => {
+    expect((await afterPush("app/program/Main.yaml")).started).toEqual(["app", "site"]);
+  });
+
+  test("a file in network/ is claimed by both of its stacks", async () => {
+    expect((await afterPush("network/Pulumi.yaml")).started).toEqual([
+      "network",
+      "network",
+      "site",
+    ]);
+  });
+
+  test("the ignored playground stack claims nothing, so a change there is a full scan", async () => {
+    const { started, log } = await afterPush("playground/Pulumi.yaml");
+    expect(started).toEqual(["app", "network", "network", "site"]);
+    expect(log.lines).toContain(
+      "This is a full scan. A push gives a narrowed scan, and this one fell back to a full scan: no stack claims playground/Pulumi.yaml.",
+    );
   });
 });
