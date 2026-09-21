@@ -12,6 +12,7 @@ import { readJob } from "../github/job.ts";
 import { actionsLog } from "../github/job-log.ts";
 import { createOctokitPort } from "../github/octokit-port.ts";
 import { actionsOutputs } from "../github/outputs.ts";
+import { countRequests } from "../github/request-count.ts";
 import { scan } from "./scan.ts";
 
 export async function runScan(): Promise<void> {
@@ -19,13 +20,15 @@ export async function runScan(): Promise<void> {
   const env = process.env;
   const inputs = readScanInputs(core.getInput);
   const job = readJob(env);
+  const octokit = getOctokit(inputs.token);
   await scan({
     root: job.root,
     env,
     // The only adapter of v1.
     adapter: pulumi,
     run: runProcess,
-    github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),
+    github: createOctokitPort(octokit, { owner: job.owner, repo: job.repo }),
+    requests: countRequests(octokit),
     log: actionsLog(),
     now: () => new Date(),
     concurrency: inputs.concurrency,

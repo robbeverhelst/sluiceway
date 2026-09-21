@@ -92,6 +92,10 @@ export interface ScanContext {
   // The step outputs and the result file (record 0041). A test that does not
   // look at them leaves them out.
   outputs?: StepOutputs | undefined;
+  // How many requests the port has made so far, counted on the wire. The
+  // scan logs it last, so the API budget of record 0017 can be read from a
+  // real run. A test that does not look at it leaves it out.
+  requests?: (() => number) | undefined;
   // Only a test has a reason to set these.
   limits?: { body?: BudgetOptions; summaryBudget?: number } | undefined;
 }
@@ -173,7 +177,17 @@ export async function scan(context: ScanContext): Promise<void> {
     await scanning(context, report);
   } finally {
     reportOutputs(context, report);
+    logRequests(context);
   }
+}
+
+// GitHub gives the workflow token 1,000 requests an hour per repo, and more
+// on GitHub Enterprise Cloud (record 0017).
+function logRequests(context: ScanContext): void {
+  if (!context.requests) return;
+  context.log.info(
+    `The scan made ${plural(context.requests(), "request")} to the GitHub API. GitHub allows the workflow token at least 1,000 an hour in a repo.`,
+  );
 }
 
 // The outputs are set on every way out, a red one too, from what the scan got

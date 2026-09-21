@@ -54722,6 +54722,15 @@ async function runResolve() {
 // src/modes/scan-job.ts
 import { readFileSync as readFileSync5 } from "node:fs";
 
+// src/github/request-count.ts
+function countRequests(octokit) {
+  let count3 = 0;
+  octokit.hook.before("request", () => {
+    count3++;
+  });
+  return () => count3;
+}
+
 // src/core/orphan-tick.ts
 function resolveOnItsWay(runs, ownRunId) {
   return runs.some((run) => !run.completed && run.id !== ownRunId);
@@ -55072,7 +55081,13 @@ async function scan(context3) {
     await scanning(context3, report);
   } finally {
     reportOutputs2(context3, report);
+    logRequests(context3);
   }
+}
+function logRequests(context3) {
+  if (!context3.requests)
+    return;
+  context3.log.info(`The scan made ${plural2(context3.requests(), "request")} to the GitHub API. GitHub allows the workflow token at least 1,000 an hour in a repo.`);
 }
 function reportOutputs2(context3, report) {
   const { outputs } = context3;
@@ -55566,12 +55581,14 @@ async function runScan() {
   const env = process.env;
   const inputs = readScanInputs(getInput);
   const job = readJob(env);
+  const octokit = getOctokit(inputs.token);
   await scan({
     root: job.root,
     env,
     adapter: pulumi,
     run: runProcess,
-    github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),
+    github: createOctokitPort(octokit, { owner: job.owner, repo: job.repo }),
+    requests: countRequests(octokit),
     log: actionsLog(),
     now: () => new Date,
     concurrency: inputs.concurrency,
