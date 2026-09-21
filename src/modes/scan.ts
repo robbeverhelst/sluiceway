@@ -18,6 +18,7 @@ import {
   rowAtLateRead,
 } from "../core/deployment.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
+import { resolveOnItsWay, type TickAtLateRead, tickAtLateRead } from "../core/orphan-tick.ts";
 import { runPool } from "../core/pool.ts";
 import {
   changedPaths,
@@ -73,6 +74,9 @@ export interface ScanContext {
   // What started the run, as GitHub names it. Only "push" gives a narrowed
   // scan (record 0010).
   event: string;
+  // The file name of the running workflow. The orphan tick sweep asks for the
+  // runs of it that an issue edit started (record 0025).
+  workflow: string;
   actionRef: string;
   // Only a test has a reason to set these.
   limits?: { body?: BudgetOptions; summaryBudget?: number } | undefined;
@@ -101,7 +105,7 @@ interface Previewed {
 // returns to its late read (record 0011).
 class PreviewFirst extends Error {
   constructor(
-    readonly stacks: { id: string; why: PreviewFirstWhy }[],
+    readonly stacks: { id: string; why: LateWhy }[],
     // Set when the scan falls back to a full scan as a whole.
     readonly why?: FullScanReason,
   ) {
@@ -109,6 +113,11 @@ class PreviewFirst extends Error {
     this.name = "PreviewFirst";
   }
 }
+
+// Why a stack is previewed at the late read: for its deployment records
+// (record 0004), or because its row holds an orphan tick and only a fresh row
+// can carry the note (record 0025).
+type LateWhy = PreviewFirstWhy | "orphan-tick";
 
 function seconds(milliseconds: number): string {
   return `${(milliseconds / 1000).toFixed(1)} s`;
@@ -176,7 +185,12 @@ export async function scan(context: ScanContext): Promise<void> {
     // body and the deployment records (record 0004). A fresh row for every
     // previewed stack, the live row block for every other, byte for byte
     // (record 0011), and at every stack the scan defers to fresher facts.
-    const compose = (liveBody: string | undefined, deploys: LateDeploys): Composed => {
+    const compose = (
+      liveBody: string | undefined,
+      deploys: LateDeploys,
+      // A run that an issue edit started is queued or in progress.
+      waits: boolean,
+    ): Composed => {
       const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
       // Rows under a root marker that is missing or of another version are not
       // rows this version can carry. Every stack then counts as having none,
@@ -187,12 +201,23 @@ export async function scan(context: ScanContext): Promise<void> {
         for (const row of live.rows) if (!liveRows.has(row.stackId)) liveRows.set(row.stackId, row);
       }
       const { dropped } = oneRowPerStack(ids, new Set(previewed.keys()), [...liveRows.keys()]);
+      // A tick is read whatever the version of the body: a scan that writes
+      // the body again in its own version clears the ticks it meets with the
+      // note (record 0009). Of two blocks for one stack the first counts.
+      const liveTicks = new Map<string, string | undefined>();
+      const seen = new Set<string>();
+      for (const row of live?.rows ?? []) {
+        if (seen.has(row.stackId)) continue;
+        seen.add(row.stackId);
+        if (row.known && row.ticked) liveTicks.set(row.stackId, row.hash);
+      }
 
       const rows: Row[] = [];
       const carried: ParsedRow[] = [];
-      const first: { id: string; why: PreviewFirstWhy }[] = [];
+      const first: { id: string; why: LateWhy }[] = [];
       const deploying: string[] = [];
       const deferred: string[] = [];
+      const ticks: Composed["ticks"] = [];
       for (const id of ids) {
         const mine = previewed.get(id);
         const liveRow = liveRows.get(id);
@@ -204,9 +229,26 @@ export async function scan(context: ScanContext): Promise<void> {
           settledHere: deploys.settled.has(id),
           again: again.has(id),
         });
+        // A stack with an open deployment gets the deploying row below, so a
+        // tick only matters on the two branches that write a box.
+        const ticked = liveTicks.has(id);
         if (decided.row === "preview-first") first.push({ id, why: decided.why });
         else if (decided.row === "fresh" && mine) {
-          rows.push(previewRow(id, mine.result, runUrl, failureLine(context, fact)));
+          const row = previewRow(id, mine.result, runUrl, failureLine(context, fact));
+          if (!ticked) {
+            rows.push(row);
+            continue;
+          }
+          // Only a pending row has a box, for a tick or for the note.
+          const box = row.state === "pending";
+          const carry =
+            tickAtLateRead({
+              liveHash: liveTicks.get(id),
+              writes: { row: "fresh", hash: box ? row.hash : undefined },
+              resolveOnItsWay: waits,
+            }) === "carry";
+          ticks.push({ id, tick: carry ? "carry" : "sweep", box });
+          rows.push(!box ? row : carry ? { ...row, ticked: true } : { ...row, orphanTick: true });
         } else if (
           decided.row === "deploying" &&
           decided.from === "record" &&
@@ -222,6 +264,18 @@ export async function scan(context: ScanContext): Promise<void> {
             destroys: destroysOf(mine, liveRow),
           });
         } else if (liveRow) {
+          if (ticked && decided.row === "live") {
+            const tick = tickAtLateRead({
+              liveHash: liveTicks.get(id),
+              writes: { row: "live", previewed: mine !== undefined },
+              resolveOnItsWay: waits,
+            });
+            if (tick === "preview-first") {
+              first.push({ id, why: "orphan-tick" });
+              continue;
+            }
+            ticks.push({ id, tick, box: true });
+          }
           if (decided.row === "deploying") deploying.push(id);
           else if (mine) deferred.push(id);
           carried.push(liveRow);
@@ -279,6 +333,8 @@ export async function scan(context: ScanContext): Promise<void> {
         dropped,
         deploying,
         deferred,
+        ticks,
+        resolveWaits: waits,
         unread: deploys.facts.unread,
       };
     };
@@ -287,9 +343,10 @@ export async function scan(context: ScanContext): Promise<void> {
       // With a fresh row for every stack the body depends on the live one only
       // through the deployment records, which change a few lines. A body that
       // does not fit on its own fails the scan before any request.
-      if (previewed.size === ids.length) compose(undefined, NO_DEPLOYS);
+      if (previewed.size === ids.length) compose(undefined, NO_DEPLOYS, false);
       written = await writeDashboard(context.github, config.dashboard, async (liveBody) => {
-        composed = compose(liveBody, await lateDeploys(context, stacks, previewed, liveBody));
+        const deploys = await lateDeploys(context, stacks, previewed, liveBody);
+        composed = compose(liveBody, deploys, await resolveWaits(context, liveBody, deploys));
         return composed.body;
       });
       break;
@@ -333,14 +390,21 @@ interface Composed {
   // Previewed stacks that keep their live row, because a deploy of them ended
   // after the preview started.
   deferred: string[];
+  // What became of every tick the scan met on a stack with no open deployment
+  // (record 0025). `box` says whether the row it wrote has a box.
+  ticks: { id: string; tick: Exclude<TickAtLateRead, "preview-first">; box: boolean }[];
+  // A run that an issue edit started was queued or in progress.
+  resolveWaits: boolean;
   // Deployment records with a payload this version cannot read.
   unread: number;
 }
 
-const PREVIEW_FIRST: Record<PreviewFirstWhy, string> = {
+const PREVIEW_FIRST: Record<LateWhy, string> = {
   "no-row": "is previewed now: the dashboard has no row for it any more.",
   "no-open-deployment": "is previewed now: its row says deploying and no deployment is open.",
   "deploy-ended": "is previewed again: a deploy of it ended after its preview started.",
+  "orphan-tick":
+    "is previewed now: its row holds an orphan tick, and only a fresh row can ask for a fresh tick.",
 };
 
 // The deploy facts of one late read (record 0003).
@@ -420,6 +484,29 @@ async function lateDeploys(
   } catch (error) {
     throw new Error(
       `The deployment records could not be read: ${error instanceof Error ? error.message : error}. The scan job needs the permissions \`deployments: write\` and \`actions: read\` next to \`contents: read\` and \`issues: write\` (record 0003).`,
+    );
+  }
+}
+
+// The other half of the orphan tick rule (record 0025): whether a run that an
+// issue edit started is queued or in progress. Any `resolve` run handles every
+// tick, so while one is on its way the scan keeps its hands off. Only a late
+// read that meets a tick on a stack with no open deployment pays for the
+// lookup, which is one request.
+async function resolveWaits(
+  context: ScanContext,
+  liveBody: string,
+  deploys: LateDeploys,
+): Promise<boolean> {
+  const met = parseDashboard(liveBody).rows.some(
+    (row) => row.known && row.ticked && deploys.facts.byStack.get(row.stackId)?.kind !== "open",
+  );
+  if (!met) return false;
+  try {
+    return resolveOnItsWay(await context.github.listIssuesRuns(context.workflow), context.runId);
+  } catch (error) {
+    throw new Error(
+      `The runs of ${logGroupTitle(context.workflow)} that an issue edit started could not be read: ${error instanceof Error ? error.message : error}. The scan met a ticked box and has to know whether a \`resolve\` run is still on its way before it clears it. The scan job needs the permission \`actions: read\` (record 0025).`,
     );
   }
 }
@@ -622,6 +709,30 @@ async function writeSummary(context: ScanContext, previewed: Previewed[]): Promi
   }
 }
 
+const NOTHING_ON_ITS_WAY =
+  "no deployment of it is open, and no run that an issue edit started is queued or in progress";
+
+// What the scan did with a tick, for the job log (record 0025).
+function tickText(
+  id: string,
+  tick: Exclude<TickAtLateRead, "preview-first">,
+  box: boolean,
+  waits: boolean,
+): string {
+  switch (tick) {
+    case "carry":
+      return `Left the tick on ${id} alone: a run that an issue edit started is queued or in progress, and its \`resolve\` job handles every tick.`;
+    case "next-scan":
+      return `Left the orphan tick on ${id} for the next scan: the row is kept as it is, because a deploy of the stack ended after its preview started.`;
+    case "sweep": {
+      const asks = box ? "The row asks for a fresh tick." : "The row has no box any more.";
+      return waits
+        ? `Cleared the tick on ${id}: the row no longer shows what was ticked, so \`resolve\` has nothing to act on. ${asks}`
+        : `Cleared an orphan tick on ${id}: ${NOTHING_ON_ITS_WAY}. ${asks}`;
+    }
+  }
+}
+
 const FOUND: Record<DashboardResult["found"], string> = {
   open: "Wrote the dashboard",
   reopened: "Reopened the dashboard and wrote it",
@@ -656,6 +767,9 @@ function reportDashboard(
     log.info(
       `Kept the live row of ${logGroupTitle(id)}: a deploy of it ended after its preview started.`,
     );
+  }
+  for (const { id, tick, box } of composed?.ticks ?? []) {
+    log.info(tickText(logGroupTitle(id), tick, box, composed?.resolveWaits ?? false));
   }
   const unread = composed?.unread ?? 0;
   if (unread > 0) {

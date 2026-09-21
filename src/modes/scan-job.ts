@@ -33,6 +33,7 @@ export async function runScan(): Promise<void> {
     runId: job.runId,
     sha: job.sha,
     event: job.event,
+    workflow: job.workflow,
     // A ref that can move, with no version to fall back on, fails the scan
     // here with its own message. It means the action's own files are broken,
     // and a dashboard without its version line would hide that.

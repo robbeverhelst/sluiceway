@@ -478,6 +478,9 @@ describe("what a narrowed scan carries through (records 0009 and 0011)", () => {
         'stack="later:prod" state="drifted" drift="3"',
       );
     scanned.github.editBody(1, body);
+    // The tick rides along because the run its edit started is still on its
+    // way. Without one it is an orphan tick, and the scan sweeps it (0025).
+    scanned.github.seedIssuesRun("sluiceway.yml", { id: "71", completed: false });
     const before = rowTexts(body);
 
     await scan(scanned.context);

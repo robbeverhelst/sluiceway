@@ -144,6 +144,7 @@ export function harness(
     // Anything but a push gives a full scan. A test of the narrowed scan says
     // "push".
     event: "workflow_dispatch",
+    workflow: "sluiceway.yml",
     actionRef: ACTION_REF,
     ...rest,
   };
