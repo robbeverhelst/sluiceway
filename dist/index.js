@@ -52111,8 +52111,9 @@ function pendingRow(row, options) {
   const folded = changes.filter((change) => !isDestroy(change));
   const destroys = deletes.length + replaces.length;
   const summary2 = `[summary](${row.runUrl})`;
+  const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
   const lines = [
-    `- [${row.ticked ? "x" : " "}] **${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.runUrl}) ${rowMarker({
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.runUrl}) ${rowMarker({
       stackId: row.diff.stackId,
       state: "pending",
       hash: row.hash,
@@ -52125,13 +52126,14 @@ function pendingRow(row, options) {
     lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
   if (row.failure)
     lines.push(failureLine(row.failure));
-  if (row.orphanTick)
+  if (row.orphanTick && !options.readOnly)
     lines.push(ORPHAN_TICK_NOTE);
   if (options.redact || level >= 3) {
     const words = destroyWords(deletes.length, replaces.length);
     if (destroys > 0) {
       const warning2 = options.redact ? `${words}.` : `${words}, too many to list here.`;
-      lines.push(`:warning: **${warning2}** Read the ${summary2} before you tick.`);
+      const read = options.readOnly ? `Read the ${summary2}.` : `Read the ${summary2} before you tick.`;
+      lines.push(`:warning: **${warning2}** ${read}`);
     } else {
       lines.push(`Changes ${options.redact ? "are listed in the" : "not listed here, see the"} ${summary2}`);
     }
@@ -52214,6 +52216,7 @@ var DRY = {
 };
 var NOTHING_TO_DEPLOY = "Nothing to deploy.";
 var INSTRUCTION_LINE = "Tick a box to deploy that stack exactly as its row shows it.";
+var READ_ONLY_LINE = "This dashboard is read only, so rows have no boxes and nothing deploys from here. Rows get their boxes when `dashboard.readOnly` comes out of `sluiceway.yaml`.";
 var PREVIEW_FAILED_LINE = "These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.";
 function shortenedNote(shortened, pending) {
   const rows = `${pending} pending row${pending === 1 ? "" : "s"}`;
@@ -52311,7 +52314,7 @@ function scanLine(root, repoUrl) {
 }
 function pendingLine(input2, state, pending) {
   if (pending > 0)
-    return INSTRUCTION_LINE;
+    return input2.readOnly ? READ_ONLY_LINE : INSTRUCTION_LINE;
   const lines = input2.personality ? WARM : DRY;
   if (state === "first-run")
     return lines.firstRun;
@@ -52371,7 +52374,10 @@ function renderBody(input2) {
   if (recent.length > 0)
     out.push("## Recently deployed", recent.map(recentLine).join(`
 `));
-  out.push("---", `- [ ] Rescan all stacks ${RESCAN_MARKER}`, `<sub>[Sluiceway](${ACTION_URL}) ${version2(input2.actionRef)} · [docs](${ACTION_URL}#readme)</sub>`);
+  out.push("---");
+  if (!input2.readOnly)
+    out.push(`- [ ] Rescan all stacks ${RESCAN_MARKER}`);
+  out.push(`<sub>[Sluiceway](${ACTION_URL}) ${version2(input2.actionRef)} · [docs](${ACTION_URL}#readme)</sub>`);
   const unknown2 = rows.filter((row) => !row.known);
   if (unknown2.length > 0)
     out.push(blocks(unknown2));
@@ -52396,7 +52402,7 @@ function fitBody(input2, options = {}) {
   const target = Math.min(options.target ?? BODY_TARGET, limit);
   const entries = input2.rows.map((row) => {
     const levels = row.state === "pending" ? LEVELS : LEVELS.slice(0, 1);
-    const blocks2 = levels.map((level) => rowBlock(row, { level, redact: input2.redact }));
+    const blocks2 = levels.map((level) => rowBlock(row, { level, redact: input2.redact, readOnly: input2.readOnly }));
     return { stackId: blocks2[0]?.stackId ?? "", blocks: blocks2, level: 0 };
   });
   const render = () => renderBody({
@@ -52639,7 +52645,8 @@ var configSchema = exports_external.strictObject({
     label: text2.describe("Label the dashboard issue is found by.").default("sluiceway"),
     pin: exports_external.boolean().describe("Pin the dashboard issue, best effort.").default(true),
     redact: exports_external.boolean().describe("Keep resource types, resource names and property names out of the issue. The summary stays full. Not access control.").default(false),
-    personality: exports_external.boolean().describe("Show the header image and use the voice. false removes both.").default(true)
+    personality: exports_external.boolean().describe("Show the header image and use the voice. false removes both.").default(true),
+    readOnly: exports_external.boolean().describe("Draw no boxes: pending rows have none, there is no rescan box, and a line under the Pending heading says so. For a workflow that only scans.").default(false)
   }).prefault({}),
   tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
   ignore: globs.describe("Globs matched against the stack id. An ignored stack has no row.").default([]),
@@ -53191,7 +53198,8 @@ function attributionSource(github, input2, onFailure) {
         }
       } catch (error63) {
         failed = true;
-        onFailure(error63 instanceof Error ? error63.message : String(error63));
+        const words = error63 instanceof Error ? error63.message : String(error63);
+        onFailure(words.replace(/\.+$/, ""));
         return new Map;
       }
       const of = attributor({
@@ -53880,7 +53888,8 @@ async function swapRow(context3, setup, id, make) {
       })),
       repoUrl: context3.repoUrl,
       actionRef: context3.actionRef,
-      personality: setup.config.dashboard.personality
+      personality: setup.config.dashboard.personality,
+      readOnly: setup.config.dashboard.readOnly
     }, { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
     if (!fitted.fits) {
       throw new Error(`With this row swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment record holds the result, and the next scan brings the row in line.`);
@@ -54680,7 +54689,8 @@ async function swapRows(context3, config2, stacks, liveBody, swap, attribution) 
     })),
     repoUrl: context3.repoUrl,
     actionRef: context3.actionRef,
-    personality: config2.dashboard.personality
+    personality: config2.dashboard.personality,
+    readOnly: config2.dashboard.readOnly
   }, { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
   if (!fitted.fits) {
     throw new Error(`With these rows swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment records hold what was started, and the next scan brings the rows in line.`);
@@ -55143,7 +55153,7 @@ async function scanning(context3, report) {
       const { dropped } = oneRowPerStack(ids, new Set(previewed.keys()), [...liveRows.keys()]);
       const liveTicks = new Map;
       const seen = new Set;
-      for (const row2 of live?.rows ?? []) {
+      for (const row2 of config2.dashboard.readOnly ? [] : live?.rows ?? []) {
         if (seen.has(row2.stackId))
           continue;
         seen.add(row2.stackId);
@@ -55238,7 +55248,8 @@ async function scanning(context3, report) {
         })),
         repoUrl: context3.repoUrl,
         actionRef: context3.actionRef,
-        personality: config2.dashboard.personality
+        personality: config2.dashboard.personality,
+        readOnly: config2.dashboard.readOnly
       }, full ? context3.limits?.body : { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
       if (!fitted.fits) {
         if (full)
@@ -55264,7 +55275,7 @@ async function scanning(context3, report) {
       written = await writeDashboard(context3.github, config2.dashboard, async (liveBody) => {
         const deploys = await lateDeploys(context3, stacks, previewed, liveBody);
         attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
-        composed = compose(liveBody, deploys, await resolveWaits(context3, liveBody, deploys), attributed);
+        composed = compose(liveBody, deploys, !config2.dashboard.readOnly && await resolveWaits(context3, liveBody, deploys), attributed);
         return composed.body;
       });
       break;
