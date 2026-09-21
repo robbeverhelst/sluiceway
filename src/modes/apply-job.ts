@@ -7,10 +7,12 @@ import { getOctokit } from "@actions/github";
 import { runProcess } from "../adapters/process.ts";
 import { pulumi } from "../adapters/pulumi/index.ts";
 import { readActionRef } from "../github/action-ref.ts";
+import { readEventPayload } from "../github/event.ts";
 import { readApplyInputs } from "../github/inputs.ts";
 import { readJob } from "../github/job.ts";
 import { actionsLog } from "../github/job-log.ts";
 import { createOctokitPort } from "../github/octokit-port.ts";
+import { actionsOutputs } from "../github/outputs.ts";
 import { apply } from "./apply.ts";
 
 export async function runApply(): Promise<void> {
@@ -32,5 +34,7 @@ export async function runApply(): Promise<void> {
     sha: job.sha,
     actionRef: readActionRef(env, (path) => readFileSync(path, "utf8")),
     deploymentId: inputs.deploymentId,
+    event: readEventPayload(env, (path) => readFileSync(path, "utf8")),
+    outputs: actionsOutputs(env.RUNNER_TEMP),
   });
 }

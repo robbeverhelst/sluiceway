@@ -12,6 +12,7 @@ import { readToken } from "../github/inputs.ts";
 import { readJob } from "../github/job.ts";
 import { actionsLog } from "../github/job-log.ts";
 import { createOctokitPort } from "../github/octokit-port.ts";
+import { actionsOutputs } from "../github/outputs.ts";
 import { readWorkflowRef } from "../github/workflow-ref.ts";
 import { settle } from "./settle.ts";
 
@@ -30,5 +31,6 @@ export async function runSettle(): Promise<void> {
     runId: job.runId,
     event: readEventPayload(env, (path) => readFileSync(path, "utf8")),
     workflow: readWorkflowRef(env),
+    outputs: actionsOutputs(env.RUNNER_TEMP),
   });
 }

@@ -43,10 +43,28 @@ describe("action.yml", () => {
     }
   });
 
-  // Record 0035. The outputs of record 0041 join with slice 2.11.
-  test("declares the one output that exists so far, `matrix`", () => {
-    expect(Object.keys(action.outputs)).toEqual(["matrix"]);
-    expect(action.outputs.matrix?.description).toContain("resolve");
+  // Records 0035 and 0041, with the modes that set each one (build plan,
+  // section 3).
+  test("declares the outputs of the build plan, each naming the modes that set it", () => {
+    const modes: Record<string, string[]> = {
+      matrix: ["resolve"],
+      "dashboard-url": ["scan", "apply", "settle"],
+      pending: ["scan"],
+      "preview-failed": ["scan"],
+      "in-sync": ["scan"],
+      "dashboard-changed": ["scan"],
+      outcome: ["apply"],
+      stack: ["apply"],
+      "result-file": ["scan", "apply"],
+    };
+    expect(Object.keys(action.outputs)).toEqual(Object.keys(modes));
+    for (const [name, setBy] of Object.entries(modes)) {
+      const description = action.outputs[name]?.description ?? "";
+      const named: string[] = MODES.filter((mode) =>
+        new RegExp(`\\b${mode}\\b`).test(description.split(".")[0] ?? ""),
+      );
+      expect([name, named]).toEqual([name, setBy]);
+    }
   });
 
   // Record 0035: the five inputs of v1.

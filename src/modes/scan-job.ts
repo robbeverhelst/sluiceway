@@ -11,6 +11,7 @@ import { readScanInputs } from "../github/inputs.ts";
 import { readJob } from "../github/job.ts";
 import { actionsLog } from "../github/job-log.ts";
 import { createOctokitPort } from "../github/octokit-port.ts";
+import { actionsOutputs } from "../github/outputs.ts";
 import { scan } from "./scan.ts";
 
 export async function runScan(): Promise<void> {
@@ -38,5 +39,6 @@ export async function runScan(): Promise<void> {
     // here with its own message. It means the action's own files are broken,
     // and a dashboard without its version line would hide that.
     actionRef: readActionRef(env, (path) => readFileSync(path, "utf8")),
+    outputs: actionsOutputs(env.RUNNER_TEMP),
   });
 }
