@@ -433,7 +433,13 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 - **data/redis:staging** · preview failed: the tool exited with an error (exit code 255) · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/redis:staging" state="preview-failed" -->
   <!-- /sluiceway:row -->
 
-<details><summary><b>In sync (43)</b></summary>
+## In sync
+
+- data/warehouse:prod <!-- sluiceway:row stack="data/warehouse:prod" state="in-sync" -->
+  :x: last deploy failed: the run ended without reporting a result · ticked by bob · 2026-09-19 16:03 UTC · [run](https://github.com/example-org/infra/actions/runs/17019884120)
+  <!-- /sluiceway:row -->
+
+<details><summary>42 more in sync</summary>
 
 - apps/admin:prod <!-- sluiceway:row stack="apps/admin:prod" state="in-sync" -->
   <!-- /sluiceway:row -->
@@ -464,9 +470,6 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 - data/postgres:staging <!-- sluiceway:row stack="data/postgres:staging" state="in-sync" -->
   <!-- /sluiceway:row -->
 - data/redis:prod <!-- sluiceway:row stack="data/redis:prod" state="in-sync" -->
-  <!-- /sluiceway:row -->
-- data/warehouse:prod <!-- sluiceway:row stack="data/warehouse:prod" state="in-sync" -->
-  :x: last deploy failed: the run ended without reporting a result · ticked by bob · 2026-09-19 16:03 UTC · [run](https://github.com/example-org/infra/actions/runs/17019884120)
   <!-- /sluiceway:row -->
 - infra/bastion:prod <!-- sluiceway:row stack="infra/bastion:prod" state="in-sync" -->
   <!-- /sluiceway:row -->

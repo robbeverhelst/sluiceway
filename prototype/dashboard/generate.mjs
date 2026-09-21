@@ -456,9 +456,13 @@ function body(v, pending, levels, note) {
   out.push("## Deploying", "", DEPLOYING.map((s) => deployingRow(v, s)).join(sep), "");
   out.push("## Preview failed", "", "These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.", "", PREVIEW_FAILED.map(previewFailedRow).join(sep), "");
 
+  // In sync rows with a failure line stay open above the fold. Their state is still in-sync.
+  const loud = IN_SYNC_IDS.filter((id) => IN_SYNC_FAILURE[id]), quiet = IN_SYNC_IDS.filter((id) => !IN_SYNC_FAILURE[id]);
+  out.push("## In sync", "");
+  if (loud.length) out.push(loud.map(inSyncRow).join("\n"), "");
   out.push(
-    `<details><summary><b>In sync (${IN_SYNC_IDS.length})</b></summary>`, "",
-    IN_SYNC_IDS.map(inSyncRow).join("\n"), "", "</details>", "",
+    `<details><summary>${loud.length ? `${quiet.length} more in sync` : `${quiet.length} stacks in sync`}</summary>`, "",
+    quiet.map(inSyncRow).join("\n"), "", "</details>", "",
   );
 
   out.push("## Recently deployed", "");
