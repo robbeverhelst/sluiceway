@@ -51322,6 +51322,48 @@ function toolLog(stderr, diagnostics2 = []) {
   return stripAnsi([stderr, ...diagnostics2].join(""));
 }
 
+// src/adapters/pulumi/tool-diff.ts
+import { join as join4 } from "node:path";
+function toolDiffCommand(name) {
+  return [
+    "pulumi",
+    "preview",
+    "--diff",
+    "--suppress-outputs",
+    "--non-interactive",
+    "--color",
+    "never",
+    "--stack",
+    name
+  ];
+}
+async function toolDiff(stack, options) {
+  if (stack.name === undefined)
+    throw new Error("A Pulumi stack always has a name.");
+  const result = await options.run({
+    argv: toolDiffCommand(stack.name),
+    cwd: join4(options.root, stack.path),
+    env: pulumiEnvironment(options.env),
+    timeoutMs: options.timeoutMinutes * 60000
+  });
+  if (result.status === "not-started") {
+    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
+  }
+  const words = stripAnsi(result.stdout + result.stderr);
+  if (result.status === "timed-out") {
+    return {
+      ok: false,
+      reason: { kind: "timed-out", minutes: options.timeoutMinutes },
+      toolLog: words
+    };
+  }
+  if (result.exitCode !== 0) {
+    const reason = result.exitCode === STACK_NOT_FOUND_EXIT_CODE ? { kind: "stack-not-found" } : { kind: "tool-error", exitCode: result.exitCode };
+    return { ok: false, reason, toolLog: words };
+  }
+  return { ok: true, text: stripAnsi(result.stdout), toolLog: stripAnsi(result.stderr) };
+}
+
 // src/adapters/adapter.ts
 class ToolVersionError extends Error {
   toolLog;
@@ -51358,7 +51400,7 @@ async function checkVersion(context3) {
 }
 
 // src/adapters/pulumi/index.ts
-var pulumi = { discover, checkVersion, preview, apply };
+var pulumi = { discover, checkVersion, preview, toolDiff, apply };
 
 // src/github/action-ref.ts
 var FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -51432,6 +51474,10 @@ function readEventPayload(env, readFile2) {
     return;
   }
 }
+function publicRepo(payload) {
+  const isPrivate = record2(record2(payload)?.repository)?.private;
+  return typeof isPrivate === "boolean" ? !isPrivate : undefined;
+}
 
 // src/github/job.ts
 function readJob(env) {
@@ -51468,13 +51514,21 @@ function readJob(env) {
 }
 
 // src/github/job-log.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
 function actionsLog() {
   return {
     info: (line) => info(line),
-    group(title, lines) {
+    group(title, lines, verbatim = []) {
       startGroup(title);
       for (const line of lines)
         info(line);
+      if (verbatim.length > 0) {
+        const token = randomUUID2();
+        info(`::stop-commands::${token}`);
+        for (const line of verbatim)
+          info(line);
+        info(`::${token}::`);
+      }
       endGroup();
     },
     warning: (message, title) => warning(message, { title }),
@@ -51871,7 +51925,7 @@ function toIssue(issue3) {
 
 // src/github/outputs.ts
 import { writeFileSync } from "node:fs";
-import { join as join4 } from "node:path";
+import { join as join5 } from "node:path";
 
 // src/render/destroy-sign.ts
 function destroySign(rows) {
@@ -52127,7 +52181,7 @@ function pendingRow(row, options) {
   const summary2 = `[summary](${row.runUrl})`;
   const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
   const lines = [
-    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.runUrl}) ${rowMarker({
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker({
       stackId: row.diff.stackId,
       state: "pending",
       hash: row.hash,
@@ -52586,7 +52640,7 @@ function actionsOutputs(runnerTemp) {
       if (!runnerTemp) {
         throw new Error("RUNNER_TEMP is not set, so there is no directory for the result file");
       }
-      const path = join4(runnerTemp, resultFileName(mode));
+      const path = join5(runnerTemp, resultFileName(mode));
       writeFileSync(path, text2);
       return path;
     }
@@ -52670,7 +52724,8 @@ var configSchema = exports_external.strictObject({
   tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
   ignore: globs.describe("Globs matched against the stack id. An ignored stack has no row.").default([]),
   scan: exports_external.strictObject({
-    unrelated: globs.describe("Globs for files that claim nothing and force nothing, such as **/*.md.").default([])
+    unrelated: globs.describe("Globs for files that claim nothing and force nothing, such as **/*.md.").default([]),
+    logDiff: exports_external.boolean().describe("Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else. Anyone who can read the repo can read its job logs. Costs one more tool run per pending stack.").default(false)
   }).prefault({}),
   stacks: stackEntries.describe("Settings for stacks that discovery found. An entry never creates a stack.").default([])
 });
@@ -52857,18 +52912,18 @@ function describeMiss(entry, inPath, ignored) {
 
 // src/core/config-file.ts
 import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
-import { join as join5 } from "node:path";
+import { join as join6 } from "node:path";
 var CONFIG_FILE = "sluiceway.yaml";
 var FILE = CONFIG_FILE;
 var WRONG_FILE = "sluiceway.yml";
 function loadConfig(root) {
-  if (existsSync3(join5(root, WRONG_FILE))) {
+  if (existsSync3(join6(root, WRONG_FILE))) {
     throw new ConfigError([`found ${WRONG_FILE}. The file must be named ${FILE}. Rename it.`]);
   }
-  return parseConfig(read(join5(root, FILE)));
+  return parseConfig(read(join6(root, FILE)));
 }
 function hasConfigFile(root) {
-  return existsSync3(join5(root, FILE));
+  return existsSync3(join6(root, FILE));
 }
 function read(file2) {
   try {
@@ -53366,9 +53421,21 @@ function diffLogLines(diff) {
     return ["no changes"];
   return [counts(changes).replaceAll("*", ""), ...changes.map(changeLogLine)];
 }
+function toolDiffLogLines(toolDiff2) {
+  if (toolDiff2 === undefined)
+    return [];
+  if (toolDiff2.ok) {
+    return [
+      "The tool's own diff follows, values included, because scan.logDiff is on in sluiceway.yaml:"
+    ];
+  }
+  return [
+    `The tool's own diff could not be shown: ${previewFailureText(toolDiff2.reason)}. The row and the diff hash come from the preview above and do not depend on it.`
+  ];
+}
 
 // src/render/preview-result.ts
-function previewRow(stackId2, result, links, failure2) {
+function previewRow(stackId2, result, links, failure2, options = {}) {
   if (!result.ok) {
     return {
       state: "preview-failed",
@@ -53385,6 +53452,7 @@ function previewRow(stackId2, result, links, failure2) {
     diff: result.diff,
     hash: diffHash(result.diff),
     runUrl: links.summary,
+    previewUrl: options.toolDiffInLog ? links.log : undefined,
     failure: failure2
   };
 }
@@ -53706,7 +53774,9 @@ ${ALREADY_ENDED}
           at: fact.at,
           runUrl: `${context3.repoUrl}/actions/runs/${fact.run}`
         } : undefined;
-        const row = previewRow(id_, made, runLinks(context3), failure2);
+        const row = previewRow(id_, made, runLinks(context3), failure2, {
+          toolDiffInLog: attempt.toolDiffInLog
+        });
         return row.state === "pending" ? { ...row, attribution } : row;
       });
     } catch (error63) {
@@ -53769,12 +53839,14 @@ async function deploy(context3, id, payload, runUrl, progress) {
     const reason = { kind: "tool-missing" };
     return { state: "failure", reason, failed: notDeployed(reason, ` ${error63.message}`), setup };
   }
-  const preview2 = () => adapter.preview(setup.stack.stack, {
+  const options = {
     ...tool,
     timeoutMinutes: setup.stack.previewTimeout ?? context3.previewTimeoutMinutes
-  });
+  };
+  const preview2 = () => adapter.preview(setup.stack.stack, options);
   const fresh = await preview2();
-  logPreview(context3, id, "The fresh preview", fresh);
+  const toolDiff2 = setup.config.scan.logDiff && fresh.ok && fresh.diff.changes.length > 0 ? await adapter.toolDiff(setup.stack.stack, options) : undefined;
+  logPreview(context3, id, "The fresh preview", fresh, toolDiff2);
   if (!fresh.ok) {
     const reason = { kind: "preview-failed", reason: fresh.reason };
     return {
@@ -53794,6 +53866,7 @@ async function deploy(context3, id, payload, runUrl, progress) {
       reason,
       failed: notDeployed(reason, ` The fresh preview gives diff hash ${hash2} and the tick approved ${payload.hash}. The row on the dashboard shows the fresh diff. Tick it again to deploy that.`),
       row: fresh,
+      toolDiffInLog: toolDiff2 !== undefined,
       summary: { kind: "not-deployed", reason: deployFailureText(reason), checked: applied(fresh) },
       setup
     };
@@ -53843,12 +53916,18 @@ async function deploy(context3, id, payload, runUrl, progress) {
     setup
   };
 }
-function logPreview(context3, id, what, result) {
-  const words = lines(result.toolLog);
-  context3.log.group(`${logGroupTitle(id)}: ${what.toLowerCase()}`, [
+function logPreview(context3, id, what, result, toolDiff2) {
+  const words = lines(result.toolLog + (toolDiff2?.toolLog ?? ""));
+  const title = `${logGroupTitle(id)}: ${what.toLowerCase()}`;
+  const own2 = [
     ...result.ok ? diffLogLines(result.diff) : [`preview failed: ${previewFailureText(result.reason)}`, ...result.detail],
+    ...toolDiffLogLines(toolDiff2),
     ...words.length > 0 ? ["The tool's own words:", ...words] : []
-  ]);
+  ];
+  if (toolDiff2?.ok)
+    context3.log.group(title, own2, lines(toolDiff2.text));
+  else
+    context3.log.group(title, own2);
 }
 async function writeSummary(context3, text3) {
   try {
@@ -53987,12 +54066,12 @@ function byCodeUnit5(a, b) {
 
 // src/core/repo-files.ts
 import { readdir as readdir3 } from "node:fs/promises";
-import { join as join6 } from "node:path";
+import { join as join7 } from "node:path";
 var SKIPPED2 = new Set([".git", "node_modules"]);
 async function repoFiles(root) {
   const files = [];
   const walk = async (relative2) => {
-    const entries = await readdir3(join6(root, ...relative2), { withFileTypes: true });
+    const entries = await readdir3(join7(root, ...relative2), { withFileTypes: true });
     for (const entry of entries) {
       if (entry.name === ".git")
         continue;
@@ -55006,6 +55085,10 @@ function fitToBudget(entries, frameCost, budget) {
     }
   }
 }
+function toolDiffLine(options) {
+  const log = options.jobLogUrl === undefined ? "job log" : `[job log](${options.jobLogUrl})`;
+  return `The tool's own diff of every pending stack, values included, is in the ${log}, in the stack's group.`;
+}
 function renderSummary(stacks, options = {}) {
   const sorted = [...stacks].sort((a, b) => byCodeUnit2(stackIdOf2(a), stackIdOf2(b)));
   const diffs = sorted.filter((stack) => stack.kind === "diff");
@@ -55034,6 +55117,7 @@ function renderSummary(stacks, options = {}) {
     "## Sluiceway scan",
     ...shortened2 > 0 ? [note(shortened2, pending.length, options)] : [],
     counted,
+    ...options.toolDiffInLog && pending.length > 0 ? [toolDiffLine(options)] : [],
     ...index.length > 0 ? [index.join(`
 `)] : [],
     ...pending.length > 0 ? ["### Pending"] : []
@@ -55144,6 +55228,9 @@ async function scanning(context3, report) {
   const stacks = applyConfig(config2, await context3.adapter.discover(context3.root)).sort((a, b) => byCodeUnit2(stackId(a.stack), stackId(b.stack)));
   const ids = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural2(stacks.length, "stack")}.`);
+  const { logDiff } = config2.scan;
+  if (logDiff && context3.publicRepo)
+    log.warning(PUBLIC_LOG_DIFF, "Values in the job log of a public repo");
   const plan = await makePlan(context3, config2, stacks);
   logPlan(context3, plan, stacks.length);
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
@@ -55166,13 +55253,13 @@ async function scanning(context3, report) {
       await checkVersion2(context3);
       versionChecked = true;
     }
-    const round = await previewAll(context3, next);
+    const round = await previewAll(context3, next, logDiff);
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
     const all = [...previewed.values()].sort((a, b) => byCodeUnit2(a.id, b.id));
     if (round.length > 0 || rounds === 0) {
-      await writeSummary2(context3, all);
+      await writeSummary2(context3, all, logDiff);
       report.previewed = all;
     }
     rounds++;
@@ -55215,7 +55302,9 @@ async function scanning(context3, report) {
         if (decided.row === "preview-first")
           first.push({ id, why: decided.why });
         else if (decided.row === "fresh" && mine) {
-          const fresh = previewRow(id, mine.result, links, failureLine2(context3, fact));
+          const fresh = previewRow(id, mine.result, links, failureLine2(context3, fact), {
+            toolDiffInLog: logDiff
+          });
           const row2 = fresh.state === "pending" ? { ...fresh, attribution: lines3.get(id)?.lines } : fresh;
           if (!ticked) {
             rows.push(row2);
@@ -55337,7 +55426,7 @@ async function scanning(context3, report) {
   };
   if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
     const all = [...previewed.values()].sort((a, b) => byCodeUnit2(a.id, b.id));
-    await writeSummary2(context3, all, attributed);
+    await writeSummary2(context3, all, logDiff, attributed);
   }
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
   if (everyPreviewFailed(previewed.size, failed.length)) {
@@ -55484,7 +55573,7 @@ async function checkVersion2(context3) {
     throw error63;
   }
 }
-async function previewAll(context3, stacks) {
+async function previewAll(context3, stacks, logDiff) {
   const { log, now, adapter } = context3;
   if (stacks.length === 0)
     return [];
@@ -55495,13 +55584,20 @@ async function previewAll(context3, stacks) {
     const id = stackId(configured.stack);
     const startedAt = now();
     const started = startedAt.getTime();
-    const result = await adapter.preview(configured.stack, {
+    const options = {
       ...tool,
       timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes
-    });
+    };
+    const result = await adapter.preview(configured.stack, options);
     const milliseconds = now().getTime() - started;
     log.info(`Previewed ${logGroupTitle(id)} in ${seconds2(milliseconds)}: ${previewOutcome(result)}`);
-    return { id, result, startedAt, milliseconds };
+    if (!logDiff || !result.ok || result.diff.changes.length === 0) {
+      return { id, result, startedAt, milliseconds };
+    }
+    const toolDiffStarted = now().getTime();
+    const toolDiff2 = await adapter.toolDiff(configured.stack, options);
+    log.info(`Ran the tool's own diff of ${logGroupTitle(id)} in ${seconds2(now().getTime() - toolDiffStarted)}${toolDiff2.ok ? "" : `: ${previewFailureText(toolDiff2.reason)}`}.`);
+    return { id, result, startedAt, milliseconds, toolDiff: toolDiff2 };
   });
   const total = now().getTime() - poolStarted;
   const addedUp = previewed.reduce((sum, { milliseconds }) => sum + milliseconds, 0);
@@ -55509,14 +55605,20 @@ async function previewAll(context3, stacks) {
   log.info(`Previewed ${plural2(previewed.length, "stack")} in ${seconds2(total)} with a pool of ${context3.concurrency}. Added up, the previews took ${seconds2(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds2(slowest.milliseconds)}.`);
   return previewed;
 }
+var PUBLIC_LOG_DIFF = "scan.logDiff is on and this repository is public, so anyone can read the values in the tool's own diff in this job log. Turn it off in sluiceway.yaml unless that is what you want.";
 function logResults(context3, previewed) {
   const { log } = context3;
-  for (const { id, result } of previewed) {
-    const words = lines2(result.toolLog);
-    log.group(logGroupTitle(id), [
+  for (const { id, result, toolDiff: toolDiff2 } of previewed) {
+    const words = lines2(result.toolLog + (toolDiff2?.toolLog ?? ""));
+    const own2 = [
       ...result.ok ? diffLogLines(result.diff) : [`preview failed: ${previewFailureText(result.reason)}`, ...result.detail],
+      ...toolDiffLogLines(toolDiff2),
       ...words.length > 0 ? ["The tool's own words:", ...words] : []
-    ]);
+    ];
+    if (toolDiff2?.ok)
+      log.group(logGroupTitle(id), own2, lines2(toolDiff2.text));
+    else
+      log.group(logGroupTitle(id), own2);
   }
   for (const { id, result } of previewed) {
     if (!result.ok) {
@@ -55524,11 +55626,12 @@ function logResults(context3, previewed) {
     }
   }
 }
-async function writeSummary2(context3, previewed, attributed = new Map) {
+async function writeSummary2(context3, previewed, logDiff, attributed = new Map) {
   const { log } = context3;
   const summary3 = renderSummary(previewed.map(({ id, result }) => previewSummary(id, result, attributed.get(id)?.merges)), {
     budget: context3.limits?.summaryBudget,
-    jobLogUrl: context3.jobId === undefined ? undefined : runLinks(context3).log
+    jobLogUrl: context3.jobId === undefined ? undefined : runLinks(context3).log,
+    toolDiffInLog: logDiff
   });
   if (!summary3.fits) {
     log.warning("The summary of this run is too large for GitHub even with every stack shortened as far as it goes, so it was not written. The dashboard is still brought up to date, and the job log of this run holds every diff in full.", "Summary not written");
@@ -55620,7 +55723,8 @@ async function runScan() {
     event: job.event,
     workflow: job.workflow,
     actionRef: readActionRef(env, (path) => readFileSync5(path, "utf8")),
-    outputs: actionsOutputs(env.RUNNER_TEMP)
+    outputs: actionsOutputs(env.RUNNER_TEMP),
+    publicRepo: publicRepo(readEventPayload(env, (path) => readFileSync5(path, "utf8")))
   });
 }
 
