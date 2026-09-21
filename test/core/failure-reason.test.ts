@@ -1,40 +1,41 @@
 import { describe, expect, test } from "bun:test";
 import { previewFailureText } from "../../src/core/failure-reason.ts";
 
-// The fixed list of record 0022. Only an exit code and a time limit are ever
-// filled in, and both are facts Sluiceway produced itself.
+// The fixed list of record 0022, in the one form every place shows it: lower
+// case and no full stop, as the row of record 0027 reads. Only an exit code and
+// a time limit are ever filled in, and both are facts Sluiceway produced itself.
 
 describe("why a preview failed, in Sluiceway's own words", () => {
   test("the tool exited with an error", () => {
     expect(previewFailureText({ kind: "tool-error", exitCode: 255 })).toBe(
-      "The tool exited with an error (exit code 255).",
+      "the tool exited with an error (exit code 255)",
     );
   });
 
   test("the tool could not be started, or a signal ended it", () => {
     expect(previewFailureText({ kind: "tool-error", exitCode: null })).toBe(
-      "The tool exited with an error.",
+      "the tool exited with an error",
     );
   });
 
   test("the preview timed out", () => {
     expect(previewFailureText({ kind: "timed-out", minutes: 10 })).toBe(
-      "The preview timed out after 10 minutes.",
+      "the preview timed out after 10 minutes",
     );
     expect(previewFailureText({ kind: "timed-out", minutes: 1 })).toBe(
-      "The preview timed out after 1 minute.",
+      "the preview timed out after 1 minute",
     );
   });
 
   test("the tool's output could not be read", () => {
     expect(previewFailureText({ kind: "unreadable-output" })).toBe(
-      "The tool's output could not be read.",
+      "the tool's output could not be read",
     );
   });
 
   test("the tool reported a step Sluiceway does not know", () => {
     expect(previewFailureText({ kind: "unknown-step" })).toBe(
-      "The tool reported a step that Sluiceway does not know.",
+      "the tool reported a step Sluiceway does not know",
     );
   });
 });

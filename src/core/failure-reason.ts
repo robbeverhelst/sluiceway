@@ -8,19 +8,22 @@ export type PreviewFailureReason =
   | { kind: "unreadable-output" }
   | { kind: "unknown-step" };
 
-// The reason as a row, an annotation or a deployment status shows it. Display
+// The reason as a row, the summary, an annotation or a deployment status shows
+// it. One form for all of them: lower case and no full stop, the wording of
+// the list in record 0022, so it reads on after "preview failed:" on a row
+// (record 0027). A place that wants a sentence builds one around it. Display
 // text only: nothing is ever decided from it.
 export function previewFailureText(reason: PreviewFailureReason): string {
   switch (reason.kind) {
     case "tool-error":
       return reason.exitCode === null
-        ? "The tool exited with an error."
-        : `The tool exited with an error (exit code ${reason.exitCode}).`;
+        ? "the tool exited with an error"
+        : `the tool exited with an error (exit code ${reason.exitCode})`;
     case "timed-out":
-      return `The preview timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}.`;
+      return `the preview timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}`;
     case "unreadable-output":
-      return "The tool's output could not be read.";
+      return "the tool's output could not be read";
     case "unknown-step":
-      return "The tool reported a step that Sluiceway does not know.";
+      return "the tool reported a step Sluiceway does not know";
   }
 }

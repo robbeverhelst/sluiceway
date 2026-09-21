@@ -97,12 +97,12 @@ describe("the summary of a scan", () => {
       {
         kind: "preview-failed",
         stackId: "z:prod",
-        reason: "The preview timed out after 10 minutes.",
+        reason: "the preview timed out after 10 minutes",
       },
       diff("b:dev", [change("create", "t", "n")]),
       diff("a:prod", []),
       diff("B:dev", [change("update", "t", "n", { changedKeys: ["k"] })]),
-      { kind: "preview-failed", stackId: "c:prod", reason: "The tool's output could not be read." },
+      { kind: "preview-failed", stackId: "c:prod", reason: "the tool's output could not be read" },
     ]);
 
     expect(text).toBe(
@@ -135,8 +135,8 @@ describe("the summary of a scan", () => {
         "",
         "### Preview failed",
         "",
-        "- **c:prod** · The tool's output could not be read.",
-        "- **z:prod** · The preview timed out after 10 minutes.",
+        "- **c:prod** · the tool's output could not be read",
+        "- **z:prod** · the preview timed out after 10 minutes",
         "",
         "### In sync",
         "",
