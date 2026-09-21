@@ -3,9 +3,8 @@
 // test/fake-github/. Each method is one request of the API budget of record
 // 0017, except listIssues, which is one request per page of 100.
 //
-// It holds the calls the dashboard, the narrowed scan, the tick rule and the
-// walk through the edit history need. Deployment records join it with the
-// slice that uses them.
+// It holds the calls the dashboard, the narrowed scan, the tick rule, the walk
+// through the edit history and the deployment records need.
 
 import type { HistoryEntry, HistoryPage } from "../core/edit-history.ts";
 import type { Comparison } from "../core/scan-plan.ts";
@@ -17,6 +16,17 @@ export type { Comparison, HistoryEntry, HistoryPage, Permission };
 export interface EditHistory extends HistoryPage {
   body: string;
 }
+
+import type {
+  Deployment,
+  DeploymentPage,
+  DeploymentStatus,
+  NewDeployment,
+  NewDeploymentStatus,
+  WorkflowRun,
+} from "./deployment-calls.ts";
+
+export type * from "./deployment-calls.ts";
 
 export interface IssueAuthor {
   login: string;
@@ -87,6 +97,29 @@ export interface GitHubPort {
   // boolean false. Fails when GitHub gives no answer to judge, and then the
   // caller fails closed.
   getPermission(login: string): Promise<Permission>;
+
+  // A deployment record (record 0003), always with `auto_merge: false` and
+  // `required_contexts: []`. It has no status yet.
+  createDeployment(deployment: NewDeployment): Promise<Deployment>;
+
+  // Always sent with `auto_inactive: false`. With GitHub's default, one
+  // stack's success marks every earlier success in the same environment
+  // inactive, whatever its task (issue 27).
+  createDeploymentStatus(id: number, status: NewDeploymentStatus): Promise<DeploymentStatus>;
+
+  // One GraphQL page: the newest 100 records of one environment name, each
+  // with its latest status. Records that are not Sluiceway's are on it too.
+  listNewestDeployments(environment: string): Promise<DeploymentPage>;
+
+  // The REST fall back for a stack that is not on that page: the newest
+  // record with this task, or nothing. REST gives a record without its status.
+  newestDeploymentOfTask(task: string): Promise<Deployment | undefined>;
+
+  // The second request of the fall back. Nothing for a record with no status.
+  latestDeploymentStatus(id: number): Promise<DeploymentStatus | undefined>;
+
+  // Needs `actions: read`. Nothing for a run GitHub does not have.
+  getWorkflowRun(runId: string): Promise<WorkflowRun | undefined>;
 
   // Works with the workflow token and issues: write (issue 17). Fails when
   // the repo already has three pinned issues.
