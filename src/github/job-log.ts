@@ -1,11 +1,14 @@
+import { randomUUID } from "node:crypto";
 import * as core from "@actions/core";
 
 // The job log, the annotations and the summary of the run. Modes write all
 // three through this, and a test hands them one that remembers.
 export interface JobLog {
   info(line: string): void;
-  // A foldable group of lines under a title.
-  group(title: string, lines: string[]): void;
+  // A foldable group of lines under a title. `verbatim` is the tool's own
+  // diff (record 0045): printed after the lines with the runner's workflow
+  // commands stopped, so no line of it can act as one.
+  group(title: string, lines: string[], verbatim?: string[]): void;
   // A warning annotation on the run (record 0012). Sluiceway's own words only,
   // because annotations show on the run's summary page (record 0022).
   warning(message: string, title: string): void;
@@ -18,9 +21,18 @@ export interface JobLog {
 export function actionsLog(): JobLog {
   return {
     info: (line) => core.info(line),
-    group(title, lines) {
+    group(title, lines, verbatim = []) {
       core.startGroup(title);
       for (const line of lines) core.info(line);
+      if (verbatim.length > 0) {
+        // The runner reads no workflow command until it sees the token again,
+        // and the token is new for every group, so no text before it can
+        // know it (record 0045). Masks still apply.
+        const token = randomUUID();
+        core.info(`::stop-commands::${token}`);
+        for (const line of verbatim) core.info(line);
+        core.info(`::${token}::`);
+      }
       core.endGroup();
     },
     warning: (message, title) => core.warning(message, { title }),

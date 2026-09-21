@@ -53,8 +53,9 @@ async function deployed(
   scenario: string,
   applyRun?: (root: string) => ProcessRunner,
   scanAdapter?: Adapter,
+  config?: string,
 ) {
-  const root = repoRoot();
+  const root = repoRoot(config);
   const adapter = adapterFor();
   // Both result files are searched with everything else that is shown.
   const outputs = rememberingOutputs();
@@ -119,6 +120,44 @@ for (const version of VERSIONS) {
         "in_progress",
         "success",
       ]);
+    });
+
+    // Record 0045: with scan.logDiff on, the scan and `apply` each run the
+    // tool's own diff once, and the value is in their log groups and in no
+    // summary, body, record or result file.
+    test("with scan.logDiff on the recorded tool diff is printed by the scan and by apply, and the deploy goes out", async () => {
+      const { outcome, github, log, deployment, runs, outputs } = await deployed(
+        version,
+        "log-diff-deploy",
+        undefined,
+        undefined,
+        "scan:\n  logDiff: true\n",
+      );
+      await outcome;
+
+      expect(runs.runs.map(({ argv }) => argv.slice(1, 3).join(" "))).toEqual([
+        "preview --json",
+        "preview --diff",
+        "up --yes",
+      ]);
+      expect(github.deploymentStatuses(deployment).map(({ state }) => state)).toEqual([
+        "queued",
+        "in_progress",
+        "success",
+      ]);
+      const verbatim = log.groups.filter((group) => group.verbatim !== undefined);
+      expect(verbatim.map(({ title }) => title)).toEqual([ID, `${ID}: the fresh preview`]);
+      for (const group of verbatim) expect(group.verbatim?.join("\n")).toContain(CANARY_VALUE);
+      const shown = [
+        ...log.summaries,
+        ...log.lines,
+        github.issue(1).body,
+        JSON.stringify(github.deploymentStatuses(deployment)),
+        JSON.stringify(outputs.resultFile("scan")),
+        JSON.stringify(outputs.resultFile("apply")),
+      ].join("\n");
+      expect(shown).not.toContain(CANARY_VALUE);
+      expect(shown).not.toContain(CANARY_SECRET);
     });
 
     // Record 0021: the summary of an apply never lists stack outputs, and no

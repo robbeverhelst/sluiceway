@@ -7,6 +7,7 @@ import { getOctokit } from "@actions/github";
 import { runProcess } from "../adapters/process.ts";
 import { pulumi } from "../adapters/pulumi/index.ts";
 import { readActionRef } from "../github/action-ref.ts";
+import { publicRepo, readEventPayload } from "../github/event.ts";
 import { readJobId, readScanInputs } from "../github/inputs.ts";
 import { readJob } from "../github/job.ts";
 import { actionsLog } from "../github/job-log.ts";
@@ -45,5 +46,6 @@ export async function runScan(): Promise<void> {
     // and a dashboard without its version line would hide that.
     actionRef: readActionRef(env, (path) => readFileSync(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),
+    publicRepo: publicRepo(readEventPayload(env, (path) => readFileSync(path, "utf8"))),
   });
 }

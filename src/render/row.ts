@@ -32,6 +32,9 @@ export interface PendingRow {
   // The attempt of the run whose summary shows this diff in full (record
   // 0044).
   runUrl: string;
+  // Where the `preview` link lands when it is not the summary: the job log
+  // that holds the tool's own diff of the stack (record 0045).
+  previewUrl?: string | undefined;
   // Absent when the lookup failed. Attribution never blocks.
   attribution?: AttributionLines | undefined;
   failure?: FailureLine | undefined;
@@ -208,7 +211,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
   const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
 
   const lines = [
-    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.runUrl}) ${rowMarker(
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker(
       {
         stackId: row.diff.stackId,
         state: "pending",

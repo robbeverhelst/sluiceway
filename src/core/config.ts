@@ -124,6 +124,13 @@ export const configSchema = z.strictObject({
       unrelated: globs
         .describe("Globs for files that claim nothing and force nothing, such as **/*.md.")
         .default([]),
+      // The one setting that lets a value reach the job log (record 0045).
+      logDiff: z
+        .boolean()
+        .describe(
+          "Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else. Anyone who can read the repo can read its job logs. Costs one more tool run per pending stack.",
+        )
+        .default(false),
     })
     .prefault({}),
   stacks: stackEntries

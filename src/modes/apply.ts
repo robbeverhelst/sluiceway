@@ -5,7 +5,7 @@
 // ever starts from an open deployment record whose fresh preview gives the
 // diff hash the record holds.
 
-import type { Adapter, PreviewResult } from "../adapters/adapter.ts";
+import type { Adapter, PreviewResult, ToolDiffResult } from "../adapters/adapter.ts";
 import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import { applyConfig, type Config, type ConfiguredStack } from "../core/config.ts";
@@ -41,7 +41,7 @@ import {
 } from "../render/apply-summary.ts";
 import { BODY_LIMIT, type BudgetOptions, fitBody } from "../render/budget.ts";
 import { runLinks } from "../render/links.ts";
-import { diffLogLines, logGroupTitle } from "../render/log-text.ts";
+import { diffLogLines, logGroupTitle, toolDiffLogLines } from "../render/log-text.ts";
 import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
 import { previewRow } from "../render/preview-result.ts";
 import { type ApplyResultOutcome, applyResultFile } from "../render/result-file.ts";
@@ -297,7 +297,9 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
                 runUrl: `${context.repoUrl}/actions/runs/${fact.run}`,
               }
             : undefined;
-        const row = previewRow(id_, made, runLinks(context), failure);
+        const row = previewRow(id_, made, runLinks(context), failure, {
+          toolDiffInLog: attempt.toolDiffInLog,
+        });
         return row.state === "pending" ? { ...row, attribution } : row;
       });
     } catch (error) {
@@ -325,6 +327,9 @@ interface Attempt {
   // The preview result the stack's row is made from. Without one the row is
   // left to the next scan, which previews a deploying row whose record ended.
   row?: PreviewResult | undefined;
+  // This job's log holds the tool's own diff of the preview the row is made
+  // from, so the row's `preview` link lands there (record 0045).
+  toolDiffInLog?: boolean | undefined;
   summary?: ApplyOutcome | undefined;
   setup?: Setup | undefined;
 }
@@ -406,13 +411,20 @@ async function deploy(
 
   // The fresh preview: the same call as the scan's, so the hash is taken the
   // same way (records 0008 and 0015).
-  const preview = () =>
-    adapter.preview(setup.stack.stack, {
-      ...tool,
-      timeoutMinutes: setup.stack.previewTimeout ?? context.previewTimeoutMinutes,
-    });
+  const options = {
+    ...tool,
+    timeoutMinutes: setup.stack.previewTimeout ?? context.previewTimeoutMinutes,
+  };
+  const preview = () => adapter.preview(setup.stack.stack, options);
   const fresh = await preview();
-  logPreview(context, id, "The fresh preview", fresh);
+  // With `scan.logDiff` on, the tool's own diff of the fresh preview goes to
+  // the job log before anything is decided, so a person reading this job sees
+  // what went out, or what moved (record 0045). It decides nothing.
+  const toolDiff =
+    setup.config.scan.logDiff && fresh.ok && fresh.diff.changes.length > 0
+      ? await adapter.toolDiff(setup.stack.stack, options)
+      : undefined;
+  logPreview(context, id, "The fresh preview", fresh, toolDiff);
   if (!fresh.ok) {
     const reason: DeployFailureReason = { kind: "preview-failed", reason: fresh.reason };
     return {
@@ -438,6 +450,7 @@ async function deploy(
         ` The fresh preview gives diff hash ${hash} and the tick approved ${payload.hash}. The row on the dashboard shows the fresh diff. Tick it again to deploy that.`,
       ),
       row: fresh,
+      toolDiffInLog: toolDiff !== undefined,
       summary: { kind: "not-deployed", reason: deployFailureText(reason), checked: applied(fresh) },
       setup,
     };
@@ -497,14 +510,24 @@ async function deploy(
 
 // Every diff in full and the tool's own words go to the job log (records 0022
 // and 0037).
-function logPreview(context: ApplyContext, id: string, what: string, result: PreviewResult) {
-  const words = lines(result.toolLog);
-  context.log.group(`${logGroupTitle(id)}: ${what.toLowerCase()}`, [
+function logPreview(
+  context: ApplyContext,
+  id: string,
+  what: string,
+  result: PreviewResult,
+  toolDiff?: ToolDiffResult,
+) {
+  const words = lines(result.toolLog + (toolDiff?.toolLog ?? ""));
+  const title = `${logGroupTitle(id)}: ${what.toLowerCase()}`;
+  const own = [
     ...(result.ok
       ? diffLogLines(result.diff)
       : [`preview failed: ${previewFailureText(result.reason)}`, ...result.detail]),
+    ...toolDiffLogLines(toolDiff),
     ...(words.length > 0 ? ["The tool's own words:", ...words] : []),
-  ]);
+  ];
+  if (toolDiff?.ok) context.log.group(title, own, lines(toolDiff.text));
+  else context.log.group(title, own);
 }
 
 // The summary is the run's annex: one that cannot be written never changes

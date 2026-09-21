@@ -4,7 +4,9 @@
 // nothing more (record 0021): ops, tracking changes, types, names and property
 // names, in Sluiceway's own words. Never a value, never the tool's text.
 
+import type { ToolDiffResult } from "../adapters/adapter.ts";
 import type { Change, Diff } from "../core/diff.ts";
+import { previewFailureText } from "../core/failure-reason.ts";
 import { orderChanges } from "./changes.ts";
 import { counts, isDestroy, sortedKeys } from "./row.ts";
 
@@ -46,4 +48,20 @@ export function diffLogLines(diff: Diff): string[] {
   // The row's counts are Sluiceway's own words, so the only stars in them are
   // the bold of a replace or a delete, which a log cannot show.
   return [counts(changes).replaceAll("*", ""), ...changes.map(changeLogLine)];
+}
+
+// Sluiceway's own words about the tool's own diff of a stack (record 0045).
+// The diff itself is printed after them, verbatim, with workflow commands
+// stopped, and never passes through here. A second run that failed says why,
+// and changes nothing else.
+export function toolDiffLogLines(toolDiff: ToolDiffResult | undefined): string[] {
+  if (toolDiff === undefined) return [];
+  if (toolDiff.ok) {
+    return [
+      "The tool's own diff follows, values included, because scan.logDiff is on in sluiceway.yaml:",
+    ];
+  }
+  return [
+    `The tool's own diff could not be shown: ${previewFailureText(toolDiff.reason)}. The row and the diff hash come from the preview above and do not depend on it.`,
+  ];
 }

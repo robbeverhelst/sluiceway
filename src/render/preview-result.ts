@@ -14,12 +14,16 @@ import type { SummaryMerge, SummaryStack } from "./summary.ts";
 // 0022). The links land where the rest is (record 0044): a pending row's on
 // the summary, which shows its diff, and a preview failure's on the job log,
 // which holds the tool's own words. The failure line is a deploy fact from the stack's newest deployment record
-// (record 0003), and rides on whatever row the preview gives.
+// (record 0003), and rides on whatever row the preview gives. When the job
+// log holds the tool's own diff of the stack, a pending row's `preview` link
+// lands there instead (record 0045). Whether the tool's diff could be shown
+// never changes the row.
 export function previewRow(
   stackId: string,
   result: PreviewResult,
   links: RunLinks,
   failure?: FailureLine | undefined,
+  options: { toolDiffInLog?: boolean | undefined } = {},
 ): Row {
   if (!result.ok) {
     return {
@@ -36,6 +40,7 @@ export function previewRow(
     diff: result.diff,
     hash: diffHash(result.diff),
     runUrl: links.summary,
+    previewUrl: options.toolDiffInLog ? links.log : undefined,
     failure,
   };
 }

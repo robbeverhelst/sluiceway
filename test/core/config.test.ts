@@ -13,7 +13,7 @@ const DEFAULTS: Config = {
   },
   tickers: "write",
   ignore: [],
-  scan: { unrelated: [] },
+  scan: { unrelated: [], logDiff: false },
   stacks: [],
 };
 
@@ -63,7 +63,7 @@ scan:
       },
       tickers: "admin",
       ignore: ["**/*:dev"],
-      scan: { unrelated: ["**/*.md"] },
+      scan: { unrelated: ["**/*.md"], logDiff: false },
       stacks: [],
     });
   });
@@ -328,6 +328,26 @@ describe("the error", () => {
   test("names the file and lists every problem", () => {
     expect(() => parseConfig("tickerz: admin\ndashboard:\n  pin: 1\n")).toThrow(
       'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, ignore, scan, stacks.\n- dashboard.pin: expected true or false, got 1.',
+    );
+  });
+});
+
+describe("scan.logDiff (record 0045)", () => {
+  test("is off unless the file turns it on", () => {
+    expect(parseConfig(undefined).scan.logDiff).toBe(false);
+    expect(parseConfig("scan:\n  unrelated: ['**/*.md']\n").scan.logDiff).toBe(false);
+    expect(parseConfig("scan:\n  logDiff: true\n").scan).toEqual({
+      unrelated: [],
+      logDiff: true,
+    });
+  });
+
+  test("takes true or false and nothing else, so a typo never turns it on", () => {
+    expect(() => parseConfig('scan:\n  logDiff: "yes"\n')).toThrow(
+      'scan.logDiff: expected true or false, got "yes".',
+    );
+    expect(() => parseConfig("scan:\n  logdiff: true\n")).toThrow(
+      'scan: unknown key "logdiff". Known keys here: unrelated, logDiff.',
     );
   });
 });

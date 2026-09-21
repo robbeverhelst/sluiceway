@@ -85,6 +85,11 @@
             "minLength": 1
           },
           "description": "Globs for files that claim nothing and force nothing, such as **/*.md."
+        },
+        "logDiff": {
+          "default": false,
+          "type": "boolean",
+          "description": "Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else. Anyone who can read the repo can read its job logs. Costs one more tool run per pending stack."
         }
       },
       "additionalProperties": false

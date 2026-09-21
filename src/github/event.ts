@@ -56,3 +56,11 @@ export function readEventPayload(
     return undefined;
   }
 }
+
+// Whether the repository is public, from the payload of the event (record
+// 0045). GitHub gives `private: false` for a public repository and `true` for
+// a private or internal one. Nothing when the payload does not say.
+export function publicRepo(payload: unknown): boolean | undefined {
+  const isPrivate = record(record(payload)?.repository)?.private;
+  return typeof isPrivate === "boolean" ? !isPrivate : undefined;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { editedIssue, readEventPayload } from "../../src/github/event.ts";
+import { editedIssue, publicRepo, readEventPayload } from "../../src/github/event.ts";
 
 // The payload of the event that woke `resolve`. It is only a wake-up (record
 // 0025): all that is read from it is what the cheap check of record 0017 needs.
@@ -68,5 +68,25 @@ describe("the payload file of the runner", () => {
     expect(readEventPayload({}, () => "{}")).toBeUndefined();
     expect(readEventPayload({ GITHUB_EVENT_PATH: "/gone" }, missing)).toBeUndefined();
     expect(readEventPayload({ GITHUB_EVENT_PATH: "/text" }, () => "not json")).toBeUndefined();
+  });
+});
+
+// Record 0045: a scan with scan.logDiff on warns in a public repo. The payload
+// of most events names the repository and whether it is private.
+describe("whether the repo is public", () => {
+  test("a repository that is not private is public", () => {
+    expect(publicRepo({ repository: { private: false, visibility: "public" } })).toBe(true);
+    expect(publicRepo({ repository: { private: false } })).toBe(true);
+  });
+
+  test("a private or internal repository is not", () => {
+    expect(publicRepo({ repository: { private: true, visibility: "private" } })).toBe(false);
+    expect(publicRepo({ repository: { private: true, visibility: "internal" } })).toBe(false);
+  });
+
+  test("a payload that does not say gives nothing, so nothing is guessed", () => {
+    expect(publicRepo(undefined)).toBeUndefined();
+    expect(publicRepo({ schedule: "0 * * * *" })).toBeUndefined();
+    expect(publicRepo({ repository: { private: "no" } })).toBeUndefined();
   });
 });

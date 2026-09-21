@@ -31,6 +31,54 @@ describe("the job log on a real runner", () => {
     expect(out.printed()).toBe("::group::network:dev\n1 update\nupdate x y\n::endgroup::\n");
   });
 
+  // Record 0045: the tool's own diff can quote any value, and a value on a
+  // line of its own must never act as a workflow command, such as an
+  // annotation that would show it on the run's page.
+  test("the verbatim part is printed with workflow commands stopped by a token nobody can guess", () => {
+    const out = capture();
+    try {
+      const log = actionsLog();
+      log.group(
+        "network:dev",
+        ["1 update"],
+        ["  ~ NOTE: a", "::error::VALUE", "  ::warning::VALUE"],
+      );
+      log.group("zone:dev", ["1 update"], ["  + x"]);
+    } finally {
+      out.restore();
+    }
+    const printed = out.printed();
+    const token = /::stop-commands::([0-9a-f-]{36})\n/.exec(printed)?.[1] ?? "";
+    expect(
+      printed.startsWith(
+        [
+          "::group::network:dev",
+          "1 update",
+          `::stop-commands::${token}`,
+          "  ~ NOTE: a",
+          "::error::VALUE",
+          "  ::warning::VALUE",
+          `::${token}::`,
+          "::endgroup::",
+          "",
+        ].join("\n"),
+      ),
+    ).toBe(true);
+    const tokens = [...printed.matchAll(/::stop-commands::(.+)\n/g)].map((match) => match[1]);
+    expect(tokens).toHaveLength(2);
+    expect(tokens[0]).not.toBe(tokens[1]);
+  });
+
+  test("a group without a verbatim part stops nothing", () => {
+    const out = capture();
+    try {
+      actionsLog().group("network:dev", ["1 update"], []);
+    } finally {
+      out.restore();
+    }
+    expect(out.printed()).toBe("::group::network:dev\n1 update\n::endgroup::\n");
+  });
+
   test("a warning is an annotation with a title, and a line break cannot start a command", () => {
     const out = capture();
     try {

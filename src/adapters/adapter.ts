@@ -45,6 +45,19 @@ export type ApplyResult = (
   toolLog: string;
 };
 
+// The tool's own diff (record 0045): what a deploy would change as the tool
+// displays it, values included, except the ones the tool holds as secret. It
+// exists only for the job log, in the group of its stack, and only when a repo
+// turned `scan.logDiff` on. Nothing else may take `text`: not a row, the
+// summary, the result file, an annotation or a deployment record.
+export type ToolDiffResult = (
+  | { ok: true; text: string }
+  | { ok: false; reason: PreviewFailureReason }
+) & {
+  // The tool's other words, with ANSI escapes stripped (record 0022).
+  toolLog: string;
+};
+
 // The tool is missing, too old, or did not say which version it is. The scan
 // cannot do its work, so this fails the job (records 0001 and 0012). The
 // message is Sluiceway's own. What the tool printed is in toolLog, for the
@@ -79,6 +92,12 @@ export interface Adapter {
   // broken stack never stops the others (record 0012). No property value is in
   // the diff, the reason or the detail (record 0021).
   preview(stack: Stack, options: PreviewOptions): Promise<PreviewResult>;
+
+  // Runs the tool a second time for a stack whose preview is pending, and
+  // gives the tool's own diff (record 0045). Same directory, environment and
+  // time limit as the preview. It always resolves, and nothing Sluiceway
+  // decides depends on it: the row and the diff hash come from the preview.
+  toolDiff(stack: Stack, options: PreviewOptions): Promise<ToolDiffResult>;
 
   // Deploys the stack as the code is now. `apply` calls it only right after a
   // fresh preview gave the diff hash the tick approved (record 0008), and the

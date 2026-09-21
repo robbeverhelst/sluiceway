@@ -19,7 +19,7 @@ function previewCommand(name: string): string[] {
 // mapping is fixed from v3.226.1 on, below the minimum version (record 0001).
 // A stack is always passed, so for a preview it means that the backend holds
 // no such stack. The recorded missing-stack scenario shows it on both versions.
-const STACK_NOT_FOUND_EXIT_CODE = 6;
+export const STACK_NOT_FOUND_EXIT_CODE = 6;
 
 export async function preview(stack: Stack, options: PreviewOptions): Promise<PreviewResult> {
   if (stack.name === undefined) throw new Error("A Pulumi stack always has a name.");

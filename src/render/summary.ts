@@ -60,6 +60,9 @@ export interface SummaryOptions {
   // The page of the job whose log holds every stack's group (record 0044).
   // Without it the summary names the job log and does not link it.
   jobLogUrl?: string | undefined;
+  // The job log holds the tool's own diff of every pending stack (record
+  // 0045), and the summary says so under its counts.
+  toolDiffInLog?: boolean | undefined;
 }
 
 // The anchor of a stack's entry (record 0044). GitHub keeps the id of an
@@ -231,6 +234,11 @@ function fitToBudget(entries: Entry[], frameCost: (shortened: number) => number,
   }
 }
 
+function toolDiffLine(options: SummaryOptions): string {
+  const log = options.jobLogUrl === undefined ? "job log" : `[job log](${options.jobLogUrl})`;
+  return `The tool's own diff of every pending stack, values included, is in the ${log}, in the stack's group.`;
+}
+
 export function renderSummary(stacks: SummaryStack[], options: SummaryOptions = {}): Summary {
   const sorted = [...stacks].sort((a, b) => byCodeUnit(stackIdOf(a), stackIdOf(b)));
   const diffs = sorted.filter((stack) => stack.kind === "diff");
@@ -273,6 +281,7 @@ export function renderSummary(stacks: SummaryStack[], options: SummaryOptions = 
     "## Sluiceway scan",
     ...(shortened > 0 ? [note(shortened, pending.length, options)] : []),
     counted,
+    ...(options.toolDiffInLog && pending.length > 0 ? [toolDiffLine(options)] : []),
     ...(index.length > 0 ? [index.join("\n")] : []),
     ...(pending.length > 0 ? ["### Pending"] : []),
   ];

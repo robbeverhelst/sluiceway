@@ -9,6 +9,7 @@ import type {
   ApplyResult,
   PreviewOptions,
   PreviewResult,
+  ToolDiffResult,
 } from "../../src/adapters/adapter.ts";
 import type { Change } from "../../src/core/diff.ts";
 import { type Stack, stackId } from "../../src/core/stack.ts";
@@ -65,6 +66,14 @@ export function failing(toolLog = "error: no credentials\n"): PreviewResult {
 
 type Answer = PreviewResult | ((options: PreviewOptions) => Promise<PreviewResult>);
 
+type ToolDiffAnswer = ToolDiffResult | ((options: PreviewOptions) => Promise<ToolDiffResult>);
+
+// What the tool's own diff of a stack says when a test does not care: a line
+// with a value in it, so a test can look for where it went.
+export function toolDiffText(id: string): string {
+  return `  ~ ${id}: VALUE-OF-${id}\n`;
+}
+
 export interface TableAdapter extends Adapter {
   // The stack id of every preview, in the order they were started.
   previewed: string[];
@@ -73,20 +82,35 @@ export interface TableAdapter extends Adapter {
   versionChecks: number;
   // The stack id of every deploy, in order.
   applied: string[];
+  // The stack id of every run of the tool's own diff, in the order they were
+  // started, and the time limit of each (record 0045).
+  toolDiffs: string[];
+  toolDiffTimeouts: Record<string, number>;
 }
 
 // An adapter that discovers the stacks named in the table, in the order of
 // the table, and previews each with the answer next to it. A deploy goes out
-// unless `deploys` holds another answer for the stack.
+// unless `deploys` holds another answer for the stack, and the tool's own diff
+// is `toolDiffText` unless `toolDiffs` holds another.
 export function tableAdapter(
   table: Record<string, Answer>,
   deploys: Record<string, ApplyResult> = {},
+  toolDiffs: Record<string, ToolDiffAnswer> = {},
 ): TableAdapter {
   const adapter: TableAdapter = {
     previewed: [],
     timeouts: {},
     versionChecks: 0,
     applied: [],
+    toolDiffs: [],
+    toolDiffTimeouts: {},
+    toolDiff: async (asked, options) => {
+      const id = stackId(asked);
+      adapter.toolDiffs.push(id);
+      adapter.toolDiffTimeouts[id] = options.timeoutMinutes;
+      const answer = toolDiffs[id] ?? { ok: true, text: toolDiffText(id), toolLog: "" };
+      return typeof answer === "function" ? answer(options) : answer;
+    },
     apply: async (applied) => {
       const id = stackId(applied);
       adapter.applied.push(id);
@@ -110,7 +134,7 @@ export function tableAdapter(
 
 export interface RememberingLog extends JobLog {
   lines: string[];
-  groups: { title: string; lines: string[] }[];
+  groups: { title: string; lines: string[]; verbatim?: string[] }[];
   warnings: { title: string; message: string }[];
   summaries: string[];
 }
@@ -122,7 +146,8 @@ export function rememberingLog(): RememberingLog {
     warnings: [],
     summaries: [],
     info: (line) => void log.lines.push(line),
-    group: (title, lines) => void log.groups.push({ title, lines }),
+    group: (title, lines, verbatim) =>
+      void log.groups.push(verbatim === undefined ? { title, lines } : { title, lines, verbatim }),
     warning: (message, title) => void log.warnings.push({ title, message }),
     writeSummary: async (text) => void log.summaries.push(text),
   };

@@ -5,7 +5,7 @@
 // Every other scan, and every narrowed scan that cannot trust its comparison,
 // is a full scan.
 
-import type { Adapter, PreviewResult } from "../adapters/adapter.ts";
+import type { Adapter, PreviewResult, ToolDiffResult } from "../adapters/adapter.ts";
 import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import type { Attribution } from "../core/attribution.ts";
@@ -49,7 +49,7 @@ import {
   fitBody,
 } from "../render/budget.ts";
 import { runLinks } from "../render/links.ts";
-import { diffLogLines, logGroupTitle } from "../render/log-text.ts";
+import { diffLogLines, logGroupTitle, toolDiffLogLines } from "../render/log-text.ts";
 import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, dashboardCounts, scanResultFile } from "../render/result-file.ts";
@@ -96,6 +96,9 @@ export interface ScanContext {
   // scan logs it last, so the API budget of record 0017 can be read from a
   // real run. A test that does not look at it leaves it out.
   requests?: (() => number) | undefined;
+  // Whether the repo is public, from the payload of the event. Absent when
+  // the payload does not say (record 0045).
+  publicRepo?: boolean | undefined;
   // Only a test has a reason to set these.
   limits?: { body?: BudgetOptions; summaryBudget?: number } | undefined;
 }
@@ -116,6 +119,10 @@ interface Previewed {
   // the preview (record 0004).
   startedAt: Date;
   milliseconds: number;
+  // The tool's own diff, for the stack's group of the job log and nothing
+  // else (record 0045). Only a pending stack of a scan with `scan.logDiff` on
+  // has one.
+  toolDiff?: ToolDiffResult | undefined;
 }
 
 // Thrown by the builder of the body, at the late read: these stacks have to be
@@ -234,6 +241,9 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   );
   const ids = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural(stacks.length, "stack")}.`);
+  const { logDiff } = config.scan;
+  if (logDiff && context.publicRepo)
+    log.warning(PUBLIC_LOG_DIFF, "Values in the job log of a public repo");
 
   const plan = await makePlan(context, config, stacks);
   logPlan(context, plan, stacks.length);
@@ -269,7 +279,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       await checkVersion(context);
       versionChecked = true;
     }
-    const round = await previewAll(context, next);
+    const round = await previewAll(context, next, logDiff);
     for (const one of round) previewed.set(one.id, one);
     logResults(context, round);
 
@@ -278,7 +288,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
     // every stack this scan previewed, so a later round writes it again.
     const all = [...previewed.values()].sort((a, b) => byCodeUnit(a.id, b.id));
     if (round.length > 0 || rounds === 0) {
-      await writeSummary(context, all);
+      await writeSummary(context, all, logDiff);
       report.previewed = all;
     }
     rounds++;
@@ -340,7 +350,9 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         const ticked = liveTicks.has(id);
         if (decided.row === "preview-first") first.push({ id, why: decided.why });
         else if (decided.row === "fresh" && mine) {
-          const fresh = previewRow(id, mine.result, links, failureLine(context, fact));
+          const fresh = previewRow(id, mine.result, links, failureLine(context, fact), {
+            toolDiffInLog: logDiff,
+          });
           const row =
             fresh.state === "pending" ? { ...fresh, attribution: lines.get(id)?.lines } : fresh;
           if (!ticked) {
@@ -496,7 +508,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   // written once more with the pull requests of every previewed stack.
   if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
     const all = [...previewed.values()].sort((a, b) => byCodeUnit(a.id, b.id));
-    await writeSummary(context, all, attributed);
+    await writeSummary(context, all, logDiff, attributed);
   }
 
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
@@ -775,7 +787,11 @@ async function checkVersion(context: ScanContext): Promise<void> {
 // Previews through the pool, in stack id order (record 0012). How long each
 // preview took and the total go to the job log, because the right pool size
 // and time limit for a runner are read from those numbers.
-async function previewAll(context: ScanContext, stacks: ConfiguredStack[]): Promise<Previewed[]> {
+async function previewAll(
+  context: ScanContext,
+  stacks: ConfiguredStack[],
+  logDiff: boolean,
+): Promise<Previewed[]> {
   const { log, now, adapter } = context;
   // Nothing to preview, so a repo without stacks needs no tool, and neither
   // does a narrowed scan that keeps every row.
@@ -790,15 +806,26 @@ async function previewAll(context: ScanContext, stacks: ConfiguredStack[]): Prom
     const id = stackId(configured.stack);
     const startedAt = now();
     const started = startedAt.getTime();
-    const result = await adapter.preview(configured.stack, {
+    const options = {
       ...tool,
       timeoutMinutes: configured.previewTimeout ?? context.previewTimeoutMinutes,
-    });
+    };
+    const result = await adapter.preview(configured.stack, options);
     const milliseconds = now().getTime() - started;
     log.info(
       `Previewed ${logGroupTitle(id)} in ${seconds(milliseconds)}: ${previewOutcome(result)}`,
     );
-    return { id, result, startedAt, milliseconds };
+    // The second run of the tool takes the same slot of the pool and the same
+    // time limit, and only a pending stack gets one (record 0045).
+    if (!logDiff || !result.ok || result.diff.changes.length === 0) {
+      return { id, result, startedAt, milliseconds };
+    }
+    const toolDiffStarted = now().getTime();
+    const toolDiff = await adapter.toolDiff(configured.stack, options);
+    log.info(
+      `Ran the tool's own diff of ${logGroupTitle(id)} in ${seconds(now().getTime() - toolDiffStarted)}${toolDiff.ok ? "" : `: ${previewFailureText(toolDiff.reason)}`}.`,
+    );
+    return { id, result, startedAt, milliseconds, toolDiff };
   });
   const total = now().getTime() - poolStarted;
 
@@ -810,19 +837,25 @@ async function previewAll(context: ScanContext, stacks: ConfiguredStack[]): Prom
   return previewed;
 }
 
+const PUBLIC_LOG_DIFF =
+  "scan.logDiff is on and this repository is public, so anyone can read the values in the tool's own diff in this job log. Turn it off in sluiceway.yaml unless that is what you want.";
+
 // The tool's own words and every diff in full go to the job log, grouped per
 // stack, on every scan (records 0022 and 0037). A preview failure is a warning
 // on the run as well (record 0012).
 function logResults(context: ScanContext, previewed: Previewed[]): void {
   const { log } = context;
-  for (const { id, result } of previewed) {
-    const words = lines(result.toolLog);
-    log.group(logGroupTitle(id), [
+  for (const { id, result, toolDiff } of previewed) {
+    const words = lines(result.toolLog + (toolDiff?.toolLog ?? ""));
+    const own = [
       ...(result.ok
         ? diffLogLines(result.diff)
         : [`preview failed: ${previewFailureText(result.reason)}`, ...result.detail]),
+      ...toolDiffLogLines(toolDiff),
       ...(words.length > 0 ? ["The tool's own words:", ...words] : []),
-    ]);
+    ];
+    if (toolDiff?.ok) log.group(logGroupTitle(id), own, lines(toolDiff.text));
+    else log.group(logGroupTitle(id), own);
   }
   for (const { id, result } of previewed) {
     if (!result.ok) {
@@ -837,6 +870,7 @@ function logResults(context: ScanContext, previewed: Previewed[]): void {
 async function writeSummary(
   context: ScanContext,
   previewed: Previewed[],
+  logDiff: boolean,
   attributed: Attributed = new Map(),
 ): Promise<void> {
   const { log } = context;
@@ -845,6 +879,7 @@ async function writeSummary(
     {
       budget: context.limits?.summaryBudget,
       jobLogUrl: context.jobId === undefined ? undefined : runLinks(context).log,
+      toolDiffInLog: logDiff,
     },
   );
   if (!summary.fits) {

@@ -41,6 +41,7 @@ export async function handedOn(
   if (!first) throw new Error("resolve handed nothing on.");
   h.github.requests.length = 0;
   h.adapter.previewed.length = 0;
+  h.adapter.toolDiffs.length = 0;
   h.log.lines.length = 0;
   h.log.groups.length = 0;
 
