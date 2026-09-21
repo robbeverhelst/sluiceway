@@ -1,15 +1,8 @@
+import { BODY_LIMIT } from "../render/budget.ts";
 import type { GitHubPort } from "./port.ts";
 
 // Record 0004: at most three tries.
 const MAX_TRIES = 3;
-
-// The hard limit of record 0028 and issue 17. A create refuses more than this
-// many characters. An update takes up to 262,144 bytes and drops anything
-// larger without an error. Counted in UTF-16 units, which is never fewer than
-// GitHub's characters, a body inside this limit is at most 196,608 bytes. So
-// this one number keeps a body inside both limits, and the byte limit needs no
-// check of its own.
-export const BODY_LIMIT_CHARACTERS = 65_536;
 
 // Builds the new body from the live one. It is called again on every try, so
 // it does its own late reads (the open deployments) inside, and none of the
@@ -24,12 +17,13 @@ export interface WriteResult {
   body: string;
 }
 
-// The builder gave a body over the hard limit. The size budget (record 0028)
-// exists so that this never happens. This is the last line behind it.
+// The builder gave a body over the hard limit, the one number that the size
+// budget owns (BODY_LIMIT, record 0028). The budget exists so that this never
+// happens. This is the last line behind it.
 export class BodyTooLargeError extends Error {
   constructor(body: string) {
     super(
-      `The dashboard body came out at ${count(body.length)} characters. The most Sluiceway ever writes is ${count(BODY_LIMIT_CHARACTERS)}, the size GitHub takes on every path. Nothing was written and the dashboard stays as it was.`,
+      `The dashboard body came out at ${count(body.length)} characters. The most Sluiceway ever writes is ${count(BODY_LIMIT)}, the size GitHub takes on every path. Nothing was written and the dashboard stays as it was.`,
     );
     this.name = "BodyTooLargeError";
   }
@@ -57,7 +51,7 @@ export async function writeBody(
   for (let tries = 1; ; tries++) {
     const body = await build(live.body);
     if (body === live.body) return { written: false, tries, body };
-    if (body.length > BODY_LIMIT_CHARACTERS) throw new BodyTooLargeError(body);
+    if (body.length > BODY_LIMIT) throw new BodyTooLargeError(body);
     await github.updateIssueBody(number, body);
     // The answer to the update proves nothing (issue 17). Only a read does.
     // When the write was lost, this read is the late read of the next try.

@@ -1,11 +1,6 @@
+import { BODY_LIMIT } from "../render/budget.ts";
 import type { GitHubPort, Issue } from "./port.ts";
-import {
-  BODY_LIMIT_CHARACTERS,
-  BodyTooLargeError,
-  type BuildBody,
-  type WriteResult,
-  writeBody,
-} from "./write-loop.ts";
+import { BodyTooLargeError, type BuildBody, type WriteResult, writeBody } from "./write-loop.ts";
 
 // The bot is a constant (record 0017), so nothing is configured or discovered.
 const BOT_LOGIN = "github-actions[bot]";
@@ -87,7 +82,7 @@ export async function writeDashboard(
 
   // A create is refused over the limit, so the check comes first here too.
   const body = await build("");
-  if (body.length > BODY_LIMIT_CHARACTERS) throw new BodyTooLargeError(body);
+  if (body.length > BODY_LIMIT) throw new BodyTooLargeError(body);
   const created = await github.createIssue({
     title: settings.title,
     body,
