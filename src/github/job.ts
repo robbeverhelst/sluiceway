@@ -1,5 +1,6 @@
 // The facts of the running job, read once from its environment and passed on
-// as data (build plan, section 5). No event payload is read here.
+// as data (build plan, section 5). The name of the event is one of them. No
+// event payload is read here.
 
 export interface Job {
   // The directory of the checked-out repo.
@@ -11,6 +12,8 @@ export interface Job {
   runId: string;
   // The commit the job checked out.
   sha: string;
+  // What started the run, as GitHub names it: "push", "schedule" and so on.
+  event: string;
 }
 
 export function readJob(env: Readonly<Record<string, string | undefined>>): Job {
@@ -37,5 +40,6 @@ export function readJob(env: Readonly<Record<string, string | undefined>>): Job 
     repoUrl: `${server}/${owner}/${repo}`,
     runId: need("GITHUB_RUN_ID"),
     sha: need("GITHUB_SHA"),
+    event: need("GITHUB_EVENT_NAME"),
   };
 }

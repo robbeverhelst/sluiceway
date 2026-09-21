@@ -9,8 +9,9 @@ export interface JobLog {
   // A warning annotation on the run (record 0012). Sluiceway's own words only,
   // because annotations show on the run's summary page (record 0022).
   warning(message: string, title: string): void;
-  // Fails when the runner gave the step no summary file, or it cannot be
-  // written. A scan goes on without it (record 0037).
+  // The whole summary of this step. A second call takes the place of the
+  // first. Fails when the runner gave the step no summary file, or it cannot
+  // be written. A scan goes on without it (record 0037).
   writeSummary(text: string): Promise<void>;
 }
 
@@ -24,7 +25,8 @@ export function actionsLog(): JobLog {
     },
     warning: (message, title) => core.warning(message, { title }),
     async writeSummary(text) {
-      await core.summary.addRaw(text).write();
+      // The file belongs to this step alone, so nothing of another step is lost.
+      await core.summary.emptyBuffer().addRaw(text).write({ overwrite: true });
     },
   };
 }

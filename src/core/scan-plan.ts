@@ -35,6 +35,12 @@ export interface FirstRead {
 // written by a scan.
 const COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
+// A scan that follows a push is a narrowed scan. A scan on schedule, on manual
+// dispatch or from the rescan box is always a full scan (record 0010).
+export function narrowsOn(event: string): boolean {
+  return event === "push";
+}
+
 // Decided from the event and the first read, before any request for a
 // comparison. `dashboard` is undefined when there is no dashboard yet.
 export function comparisonBase(
@@ -42,7 +48,7 @@ export function comparisonBase(
   dashboard: FirstRead | undefined,
   markerVersion: number,
 ): { kind: "compare"; from: string } | FullScanReason {
-  if (event !== "push") return { kind: "event", event };
+  if (!narrowsOn(event)) return { kind: "event", event };
   if (dashboard === undefined) return { kind: "no-dashboard" };
   const { root } = dashboard;
   if (root === undefined) return { kind: "no-root-marker" };

@@ -43,11 +43,23 @@ describe("the job log on a real runner", () => {
     );
   });
 
+  // One file for both tests, as one step has: @actions/core looks the file up
+  // once and keeps it.
+  const file = join(mkdtempSync(join(tmpdir(), "sluiceway-summary-")), "summary.md");
+
   test("the summary goes to the file the runner names", async () => {
-    const file = join(mkdtempSync(join(tmpdir(), "sluiceway-summary-")), "summary.md");
     writeFileSync(file, "");
     process.env.GITHUB_STEP_SUMMARY = file;
     await actionsLog().writeSummary("## Sluiceway scan\n");
     expect(readFileSync(file, "utf8")).toBe("## Sluiceway scan\n");
+  });
+
+  test("a second summary takes the place of the first, because it holds everything the first did", async () => {
+    writeFileSync(file, "");
+    process.env.GITHUB_STEP_SUMMARY = file;
+    const log = actionsLog();
+    await log.writeSummary("## Sluiceway scan\n\none stack\n");
+    await log.writeSummary("## Sluiceway scan\n\ntwo stacks\n");
+    expect(readFileSync(file, "utf8")).toBe("## Sluiceway scan\n\ntwo stacks\n");
   });
 });

@@ -317,9 +317,11 @@ describe("the job log", () => {
     });
     const { context, log } = harness(adapter, { concurrency: 1 });
     await scan(context);
-    expect(log.lines).toContain(
-      "Found 2 stacks. Previewing with a pool of 1 and a time limit of 10 minutes for each preview.",
-    );
+    expect(log.lines.slice(0, 3)).toEqual([
+      "Found 2 stacks.",
+      "This is a full scan: the event is workflow_dispatch, and only a push gives a narrowed scan.",
+      "Previewing 2 stacks with a pool of 1 and a time limit of 10 minutes for each preview.",
+    ]);
     expect(log.lines).toContain("Previewed a:prod in 0.5 s: pending");
     expect(log.lines).toContain(
       "Previewed b:prod in 0.5 s: preview failed, the tool exited with an error (exit code 255)",

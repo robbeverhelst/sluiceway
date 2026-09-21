@@ -141,6 +141,9 @@ export function harness(
     repoUrl: REPO_URL,
     runId: RUN_ID,
     sha: SHA,
+    // Anything but a push gives a full scan. A test of the narrowed scan says
+    // "push".
+    event: "workflow_dispatch",
     actionRef: ACTION_REF,
     ...rest,
   };

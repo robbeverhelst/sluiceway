@@ -7,6 +7,7 @@ const ENV = {
   GITHUB_SERVER_URL: "https://github.com",
   GITHUB_RUN_ID: "4242",
   GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
+  GITHUB_EVENT_NAME: "push",
 };
 
 describe("the facts of the job, read once from its environment", () => {
@@ -18,6 +19,7 @@ describe("the facts of the job, read once from its environment", () => {
       repoUrl: "https://github.com/acme/infra",
       runId: "4242",
       sha: "0123456789abcdef0123456789abcdef01234567",
+      event: "push",
     });
   });
 
@@ -27,14 +29,17 @@ describe("the facts of the job, read once from its environment", () => {
     );
   });
 
-  test.each(["GITHUB_WORKSPACE", "GITHUB_REPOSITORY", "GITHUB_RUN_ID", "GITHUB_SHA"] as const)(
-    "without %s there is no job to read",
-    (name) => {
-      expect(() => readJob({ ...ENV, [name]: "" })).toThrow(
-        `${name} is not set. Sluiceway runs as a step of a GitHub Actions job.`,
-      );
-    },
-  );
+  test.each([
+    "GITHUB_WORKSPACE",
+    "GITHUB_REPOSITORY",
+    "GITHUB_RUN_ID",
+    "GITHUB_SHA",
+    "GITHUB_EVENT_NAME",
+  ] as const)("without %s there is no job to read", (name) => {
+    expect(() => readJob({ ...ENV, [name]: "" })).toThrow(
+      `${name} is not set. Sluiceway runs as a step of a GitHub Actions job.`,
+    );
+  });
 
   test("a repository that is not owner/repo is refused", () => {
     expect(() => readJob({ ...ENV, GITHUB_REPOSITORY: "infra" })).toThrow(
