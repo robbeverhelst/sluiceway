@@ -51367,6 +51367,95 @@ function actionsLog() {
   };
 }
 
+// src/github/octokit-attribution.ts
+var WALK = `query ($owner: String!, $repo: String!, $head: GitObjectID!) {
+  repository(owner: $owner, name: $repo) {
+    defaultBranchRef {
+      name
+    }
+    object(oid: $head) {
+      ... on Commit {
+        history(first: 100) {
+          nodes {
+            oid
+            messageHeadline
+            author {
+              user {
+                login
+              }
+            }
+            parents(first: 10) {
+              nodes {
+                oid
+              }
+            }
+            associatedPullRequests(first: 5) {
+              nodes {
+                number
+                title
+                merged
+                baseRefName
+                author {
+                  __typename
+                  login
+                }
+                changedFiles
+                files(first: 100) {
+                  nodes {
+                    path
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
+function present(nodes) {
+  return (nodes ?? []).filter((node2) => node2 !== null);
+}
+function toPullRequest(node2) {
+  const { author } = node2;
+  return {
+    number: node2.number,
+    title: node2.title,
+    author: author === null ? undefined : author.__typename === "Bot" && !author.login.endsWith("[bot]") ? `${author.login}[bot]` : author.login,
+    base: node2.baseRefName,
+    merged: node2.merged,
+    changedFiles: node2.changedFiles,
+    files: present(node2.files?.nodes).map(({ path }) => path)
+  };
+}
+function toCommit(node2) {
+  return {
+    sha: node2.oid,
+    parents: present(node2.parents.nodes).map(({ oid }) => oid),
+    author: node2.author?.user?.login,
+    message: node2.messageHeadline,
+    pullRequests: present(node2.associatedPullRequests?.nodes).map(toPullRequest)
+  };
+}
+function attributionCalls(octokit, repo) {
+  return {
+    async walkCommits(head) {
+      const data = await octokit.graphql(WALK, { ...repo, head });
+      const history = data.repository?.object?.history;
+      if (!history)
+        throw new Error(`GitHub has no commit ${head.slice(0, 7)} to walk back from.`);
+      const defaultBranch = data.repository?.defaultBranchRef?.name;
+      if (defaultBranch === undefined)
+        throw new Error("GitHub named no default branch.");
+      return { defaultBranch, commits: present(history.nodes).map(toCommit) };
+    },
+    async listCommitFiles(sha) {
+      const { data } = await octokit.rest.repos.getCommit({ ...repo, ref: sha });
+      return (data.files ?? []).flatMap((file2) => file2.previous_filename === undefined ? [file2.filename] : [file2.filename, file2.previous_filename]);
+    }
+  };
+}
+
 // src/github/octokit-deployments.ts
 var NEWEST_DEPLOYMENTS = `query ($owner: String!, $repo: String!, $environment: String!) {
   repository(owner: $owner, name: $repo) {
@@ -51630,6 +51719,7 @@ function createOctokitPort(octokit, repo) {
     },
     ...deploymentCalls(octokit, repo),
     ...runCalls(octokit, repo),
+    ...attributionCalls(octokit, repo),
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     },
@@ -51996,10 +52086,19 @@ function deployFacts(records) {
     const fact = factOf(record3, payload);
     facts.byStack.set(stackId2, fact);
     if (fact.kind === "succeeded") {
-      facts.succeeded.push({ stackId: stackId2, ticker: fact.ticker, run: fact.run, at: fact.at });
+      facts.succeeded.push({
+        stackId: stackId2,
+        ticker: fact.ticker,
+        run: fact.run,
+        at: fact.at,
+        sha: record3.sha
+      });
     }
   }
   return facts;
+}
+function lastDeployedCommit(facts, stackId2) {
+  return facts.succeeded.findLast((deploy) => deploy.stackId === stackId2)?.sha;
 }
 function rowAtLateRead(stack) {
   const { previewedAt, liveState, fact } = stack;
@@ -52233,34 +52332,6 @@ function escapeText(text3) {
   return text3.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
-// src/render/header-state.ts
-function headerState(rows) {
-  if (rows.length === 0)
-    return "first-run";
-  const known = rows.filter((row) => row.known);
-  const is = (state) => known.some((row) => row.state === state);
-  const destroying = known.some((row) => (row.state === "pending" || row.state === "deploying") && row.destroys > 0);
-  if (destroying)
-    return "plain";
-  if (is("preview-failed") || known.some((row) => row.failed))
-    return "failing";
-  if (is("deploying"))
-    return "deploying";
-  if (is("pending"))
-    return "pending";
-  return "in-sync";
-}
-
-// src/render/pending-level.ts
-function pendingLevel(rows) {
-  const pending = rows.filter((row) => row.known && row.state === "pending").length;
-  if (pending === 0)
-    return;
-  if (pending <= 2)
-    return 1;
-  return pending <= 9 ? 2 : 3;
-}
-
 // src/render/time.ts
 function utcMinute(at) {
   const iso = at.toISOString();
@@ -52414,6 +52485,208 @@ function renderRow(row, options = {}) {
   const [first = "", ...rest] = rowLines(row, options);
   return [first, ...[...rest, ROW_CLOSE_MARKER].map((line) => INDENT + line)].join(`
 `);
+}
+
+// src/core/claim.ts
+function inside(directory, file2) {
+  return directory === "." || file2.startsWith(`${directory}/`);
+}
+function claim2(stacks, changed, unrelated) {
+  const isUnrelated = globMatcher(unrelated);
+  const matchers = stacks.map((stack) => ({ stack, matches: globMatcher(stack.inputs) }));
+  const claims = new Map;
+  const unclaimed = [];
+  for (const file2 of new Set(changed)) {
+    if (isUnrelated(file2))
+      continue;
+    const claimants = matchers.filter(({ stack, matches }) => inside(stack.path, file2) || matches(file2));
+    if (claimants.length === 0)
+      unclaimed.push(file2);
+    for (const { stack } of claimants)
+      claims.set(stack.id, [...claims.get(stack.id) ?? [], file2]);
+  }
+  return { claims, unclaimed };
+}
+
+// src/core/attribution.ts
+var NAMED_ON_A_ROW = 5;
+var COMMIT_FILE_CAP = 300;
+function isCommitId(text3) {
+  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(text3);
+}
+var NEVER_DEPLOYED = "not deployed from this dashboard yet";
+function pullRequestOf(commit, walk) {
+  return commit.pullRequests.find((pullRequest) => pullRequest.merged && pullRequest.base === walk.defaultBranch);
+}
+function inRange(walk, from) {
+  const bySha = new Map(walk.commits.map((commit) => [commit.sha, commit]));
+  if (!bySha.has(from))
+    return { commits: walk.commits, earlier: true };
+  const reached = new Set;
+  const queue = [from];
+  for (let sha = queue.pop();sha !== undefined; sha = queue.pop()) {
+    if (reached.has(sha))
+      continue;
+    reached.add(sha);
+    queue.push(...bySha.get(sha)?.parents.filter((parent) => bySha.has(parent)) ?? []);
+  }
+  return { commits: walk.commits.filter(({ sha }) => !reached.has(sha)), earlier: false };
+}
+function directPushesToRead(walk, from) {
+  const wanted = new Set;
+  for (const start of new Set(from)) {
+    for (const commit of inRange(walk, start).commits) {
+      if (!pullRequestOf(commit, walk))
+        wanted.add(commit.sha);
+    }
+  }
+  return walk.commits.filter(({ sha }) => wanted.has(sha)).map(({ sha }) => sha);
+}
+function by(author) {
+  return author === undefined ? "" : ` by ${escapeText(author)}`;
+}
+function nameOf(merge3) {
+  return merge3.kind === "pull-request" ? `#${merge3.number}${by(merge3.author)}` : `[${merge3.sha.slice(0, 7)}](${merge3.url})${by(merge3.author)}`;
+}
+function countOf(merges) {
+  const pushes = merges.filter((merge3) => merge3.kind === "push").length;
+  return [
+    merges.length - pushes && plural2(merges.length - pushes, "pull request"),
+    pushes && `${pushes} direct push${pushes === 1 ? "" : "es"}`
+  ].filter(Boolean).join(" and ");
+}
+function inLink(sha) {
+  return sha.slice(0, 12);
+}
+function attributor(input2) {
+  const { walk, repoUrl } = input2;
+  const mergedBy = new Map;
+  const mergeOf = new Map;
+  const judge = (merge3, files) => {
+    if (files === undefined)
+      return { merge: merge3, claimedBy: new Set, outside: true };
+    const { claims, unclaimed } = claim2(input2.stacks, [...files], input2.unrelated);
+    return { merge: merge3, claimedBy: new Set(claims.keys()), outside: unclaimed.length > 0 };
+  };
+  for (const commit of walk.commits) {
+    const pullRequest = pullRequestOf(commit, walk);
+    const key = pullRequest ? `#${pullRequest.number}` : commit.sha;
+    let merged = mergedBy.get(key);
+    if (!merged && pullRequest) {
+      const known = pullRequest.changedFiles <= pullRequest.files.length;
+      merged = judge({
+        kind: "pull-request",
+        number: pullRequest.number,
+        title: pullRequest.title,
+        url: `${repoUrl}/pull/${pullRequest.number}`,
+        ...pullRequest.author === undefined ? {} : { author: pullRequest.author }
+      }, known ? pullRequest.files : undefined);
+    } else if (!merged) {
+      const files = input2.pushFiles.get(commit.sha);
+      merged = judge({
+        kind: "push",
+        sha: commit.sha,
+        message: commit.message,
+        url: `${repoUrl}/commit/${commit.sha}`,
+        ...commit.author === undefined ? {} : { author: commit.author }
+      }, files !== undefined && files.length < COMMIT_FILE_CAP ? files : undefined);
+    }
+    mergedBy.set(key, merged);
+    mergeOf.set(commit.sha, merged);
+  }
+  const ranges = new Map;
+  return (stackId2, from) => {
+    if (from === undefined) {
+      return { lines: { full: NEVER_DEPLOYED, counted: NEVER_DEPLOYED }, merges: [] };
+    }
+    const range = ranges.get(from) ?? inRange(walk, from);
+    ranges.set(from, range);
+    const merged = [...new Set(range.commits.flatMap(({ sha }) => mergeOf.get(sha) ?? []))];
+    const claimed = merged.filter(({ claimedBy }) => claimedBy.has(stackId2)).map((m) => m.merge);
+    const outside = merged.filter((m) => !m.claimedBy.has(stackId2) && m.outside).length;
+    const line = (names) => {
+      const parts = [...names];
+      const and = () => parts.length > 0 ? "and " : "";
+      if (outside > 0)
+        parts.push(`${and()}${plural2(outside, "change")} outside this stack`);
+      if (range.earlier)
+        parts.push(`${and()}earlier changes`);
+      const text3 = parts.length > 0 ? `from ${parts.join(", ")}` : "nothing this stack claims has changed since its last deploy";
+      return `${text3} · [compare](${repoUrl}/compare/${inLink(from)}...${inLink(input2.scanSha)})`;
+    };
+    const named = claimed.slice(0, NAMED_ON_A_ROW).map(nameOf);
+    const more = claimed.length - named.length;
+    return {
+      lines: {
+        full: line([named.join(", "), more > 0 ? `and ${more} more` : ""].filter(Boolean)),
+        counted: line(claimed.length > 0 ? [countOf(claimed)] : [])
+      },
+      merges: claimed
+    };
+  };
+}
+
+// src/github/attribution.ts
+function attributionSource(github, input2, onFailure) {
+  let walk;
+  let failed = false;
+  const pushFiles = new Map;
+  return {
+    async attribute(from) {
+      const starts = [...from.values()].filter((sha) => sha !== undefined);
+      try {
+        if (failed)
+          return new Map;
+        if (!isCommitId(input2.scanSha))
+          throw new Error("the scanned commit is no commit id");
+        if (starts.length > 0) {
+          walk ??= await github.walkCommits(input2.scanSha);
+          for (const sha of directPushesToRead(walk, starts)) {
+            if (!pushFiles.has(sha))
+              pushFiles.set(sha, await github.listCommitFiles(sha));
+          }
+        }
+      } catch (error63) {
+        failed = true;
+        onFailure(error63 instanceof Error ? error63.message : String(error63));
+        return new Map;
+      }
+      const of = attributor({
+        ...input2,
+        walk: walk ?? { defaultBranch: "", commits: [] },
+        pushFiles
+      });
+      return new Map([...from].map(([stackId2, sha]) => [stackId2, of(stackId2, sha)]));
+    }
+  };
+}
+
+// src/render/header-state.ts
+function headerState(rows) {
+  if (rows.length === 0)
+    return "first-run";
+  const known = rows.filter((row) => row.known);
+  const is = (state) => known.some((row) => row.state === state);
+  const destroying = known.some((row) => (row.state === "pending" || row.state === "deploying") && row.destroys > 0);
+  if (destroying)
+    return "plain";
+  if (is("preview-failed") || known.some((row) => row.failed))
+    return "failing";
+  if (is("deploying"))
+    return "deploying";
+  if (is("pending"))
+    return "pending";
+  return "in-sync";
+}
+
+// src/render/pending-level.ts
+function pendingLevel(rows) {
+  const pending = rows.filter((row) => row.known && row.state === "pending").length;
+  if (pending === 0)
+    return;
+  if (pending <= 2)
+    return 1;
+  return pending <= 9 ? 2 : 3;
 }
 
 // src/render/voice.ts
@@ -53145,11 +53418,8 @@ async function resolveTicks(context3, handOn) {
   let written = true;
   if (started.length > 0 || dropped.length > 0 || clear.size > 0 || rescanHandled) {
     try {
-      const result = await writeBody(github, issue3.number, (liveBody) => swapRows(context3, config2, [...stacks?.values() ?? []], liveBody, {
-        started,
-        dropped,
-        clear
-      }));
+      const attribution = new Map;
+      const result = await writeBody(github, issue3.number, (liveBody) => swapRows(context3, config2, [...stacks?.values() ?? []], liveBody, { started, dropped, clear }, attribution));
       log.info(result.written ? `Wrote the dashboard (#${issue3.number}).` : `The dashboard (#${issue3.number}) already says all of this. Nothing was written.`);
     } catch (error63) {
       written = false;
@@ -53220,7 +53490,7 @@ async function openDeployments(context3, ticked) {
   }
   return open2;
 }
-async function swapRows(context3, config2, stacks, liveBody, swap) {
+async function swapRows(context3, config2, stacks, liveBody, swap, attribution) {
   const live = parseDashboard(liveBody);
   const root = live.root;
   if (root?.version !== MARKER_VERSION || root.scanSha === undefined || root.scanRun === undefined || root.scanAt === undefined) {
@@ -53229,6 +53499,22 @@ async function swapRows(context3, config2, stacks, liveBody, swap) {
   }
   const droppedStacks = stacks.filter(({ stack }) => swap.dropped.includes(stackId(stack)));
   const facts = deployFacts(await readRecords(context3, stacks.map(({ environment }) => environment), droppedStacks));
+  const source = attribution.get(root.scanSha) ?? attributionSource(context3.github, {
+    stacks: stacks.map(({ stack, inputs }) => ({
+      id: stackId(stack),
+      path: stack.path,
+      inputs
+    })),
+    unrelated: config2.scan.unrelated,
+    repoUrl: context3.repoUrl,
+    scanSha: root.scanSha
+  }, (why2) => context3.log.info(`Attribution was left off the rows: ${why2}. It only explains a row, so nothing else changes (record 0026).`));
+  attribution.set(root.scanSha, source);
+  const deployingIds = [
+    ...swap.started.map((one) => one.stackId),
+    ...swap.dropped.filter((id) => facts.byStack.get(id)?.kind === "open")
+  ];
+  const lines = await source.attribute(new Map(deployingIds.map((id) => [id, lastDeployedCommit(facts, id)])));
   const startedBy = new Map(swap.started.map((one) => [one.stackId, one]));
   const mine = (one, destroys) => ({
     state: "deploying",
@@ -53236,7 +53522,8 @@ async function swapRows(context3, config2, stacks, liveBody, swap) {
     ticker: one.ticker,
     runUrl: runUrl(context3),
     waiting: true,
-    destroys
+    destroys,
+    attribution: lines.get(one.stackId)?.lines
   });
   const rows = [];
   const carried = [];
@@ -53259,7 +53546,8 @@ async function swapRows(context3, config2, stacks, liveBody, swap) {
         ticker: fact.ticker,
         runUrl: `${context3.repoUrl}/actions/runs/${fact.run}`,
         waiting: fact.waiting,
-        destroys
+        destroys,
+        attribution: lines.get(row.stackId)?.lines
       });
     } else if (wanted && row.ticked && row.hash === wanted.hash) {
       carried.push(clearTick(row, { note: wanted.note }));
@@ -53415,27 +53703,6 @@ async function runPool(items, size, work) {
   return results;
 }
 
-// src/core/claim.ts
-function inside(directory, file2) {
-  return directory === "." || file2.startsWith(`${directory}/`);
-}
-function claim2(stacks, changed, unrelated) {
-  const isUnrelated = globMatcher(unrelated);
-  const matchers = stacks.map((stack) => ({ stack, matches: globMatcher(stack.inputs) }));
-  const claims = new Map;
-  const unclaimed = [];
-  for (const file2 of new Set(changed)) {
-    if (isUnrelated(file2))
-      continue;
-    const claimants = matchers.filter(({ stack, matches }) => inside(stack.path, file2) || matches(file2));
-    if (claimants.length === 0)
-      unclaimed.push(file2);
-    for (const { stack } of claimants)
-      claims.set(stack.id, [...claims.get(stack.id) ?? [], file2]);
-  }
-  return { claims, unclaimed };
-}
-
 // src/core/scan-plan.ts
 var COMPARE_FILE_CAP = 300;
 var COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -53580,8 +53847,8 @@ function previewRow(stackId2, result, runUrl2, failure2) {
     return { state: "in-sync", stackId: stackId2, failure: failure2 };
   return { state: "pending", diff: result.diff, hash: diffHash(result.diff), runUrl: runUrl2, failure: failure2 };
 }
-function previewSummary(stackId2, result) {
-  return result.ok ? { kind: "diff", diff: result.diff } : { kind: "preview-failed", stackId: stackId2, reason: previewFailureText(result.reason) };
+function previewSummary(stackId2, result, merges) {
+  return result.ok ? { kind: "diff", diff: result.diff, merges } : { kind: "preview-failed", stackId: stackId2, reason: previewFailureText(result.reason) };
 }
 function previewOutcome(result) {
   if (!result.ok)
@@ -53597,8 +53864,8 @@ function firstLine(message2) {
 }
 function mergeLine(merge3) {
   const label = merge3.kind === "pull-request" ? `#${merge3.number} ${escapeText(merge3.title)}` : `${merge3.sha.slice(0, 7)} ${escapeText(firstLine(merge3.message))}`;
-  const by = merge3.author === undefined ? "" : ` by ${escapeText(merge3.author)}`;
-  return `- [${label}](${merge3.url})${by}`;
+  const by2 = merge3.author === undefined ? "" : ` by ${escapeText(merge3.author)}`;
+  return `- [${label}](${merge3.url})${by2}`;
 }
 function mergeCounts(merges) {
   const of = (kind) => merges.filter((merge3) => merge3.kind === kind).length;
@@ -53768,6 +54035,13 @@ async function scan(context3) {
   logPlan(context3, plan, stacks.length);
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
   let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
+  const attribution = attributionSource(context3.github, {
+    stacks: stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
+    unrelated: config2.scan.unrelated,
+    repoUrl: context3.repoUrl,
+    scanSha: context3.sha
+  }, (message2) => log.info(`Attribution was left off the rows: ${message2}. It only explains a row, so the scan goes on without it (record 0026).`));
+  let attributed = new Map;
   const previewed = new Map;
   let rounds = 0;
   let versionChecked = false;
@@ -53787,7 +54061,7 @@ async function scan(context3) {
     if (round.length > 0 || rounds === 0)
       await writeSummary(context3, all);
     rounds++;
-    const compose = (liveBody, deploys, waits) => {
+    const compose = (liveBody, deploys, waits, lines2) => {
       const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
       const liveRows = new Map;
       if (live?.root?.version === MARKER_VERSION) {
@@ -53826,7 +54100,8 @@ async function scan(context3) {
         if (decided.row === "preview-first")
           first.push({ id, why: decided.why });
         else if (decided.row === "fresh" && mine) {
-          const row = previewRow(id, mine.result, runUrl2, failureLine2(context3, fact));
+          const fresh = previewRow(id, mine.result, runUrl2, failureLine2(context3, fact));
+          const row = fresh.state === "pending" ? { ...fresh, attribution: lines2.get(id)?.lines } : fresh;
           if (!ticked) {
             rows.push(row);
             continue;
@@ -53847,7 +54122,8 @@ async function scan(context3) {
             ticker: fact.ticker,
             runUrl: runUrlOf(context3, fact.run),
             waiting: fact.waiting,
-            destroys: destroysOf(mine, liveRow)
+            destroys: destroysOf(mine, liveRow),
+            attribution: lines2.get(id)?.lines
           });
         } else if (liveRow) {
           if (ticked && decided.row === "live") {
@@ -53913,10 +54189,11 @@ async function scan(context3) {
     };
     try {
       if (previewed.size === ids.length)
-        compose(undefined, NO_DEPLOYS, false);
+        compose(undefined, NO_DEPLOYS, false, new Map);
       written = await writeDashboard(context3.github, config2.dashboard, async (liveBody) => {
         const deploys = await lateDeploys(context3, stacks, previewed, liveBody);
-        composed = compose(liveBody, deploys, await resolveWaits(context3, liveBody, deploys));
+        attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
+        composed = compose(liveBody, deploys, await resolveWaits(context3, liveBody, deploys), attributed);
         return composed.body;
       });
       break;
@@ -53937,6 +54214,10 @@ async function scan(context3) {
     }
   }
   reportDashboard(context3, written, composed);
+  if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit2(a.id, b.id));
+    await writeSummary(context3, all, attributed);
+  }
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
   if (everyPreviewFailed(previewed.size, failed.length)) {
     throw new ScanFailedError(`Every preview failed (${failed.length} of ${previewed.size}). That nearly always means the environment is broken, such as missing credentials or a backend that cannot be reached. The dashboard was written first and shows a preview failure on every row of a previewed stack, which is true: nothing can be deployed either. The job log holds what the tool printed, in the group of each stack.`);
@@ -53952,6 +54233,17 @@ var NO_DEPLOYS = {
   facts: { byStack: new Map, succeeded: [], unread: 0 },
   settled: new Set
 };
+function startingCommits(facts, previewed) {
+  const from = new Map;
+  const add = (id) => from.set(id, lastDeployedCommit(facts, id));
+  for (const [id, { result }] of previewed)
+    if (result.ok && result.diff.changes.length > 0)
+      add(id);
+  for (const [id, fact] of facts.byStack)
+    if (fact.kind === "open")
+      add(id);
+  return from;
+}
 function runUrlOf(context3, run) {
   return `${context3.repoUrl}/actions/runs/${run}`;
 }
@@ -54110,9 +54402,9 @@ function logResults(context3, previewed) {
     }
   }
 }
-async function writeSummary(context3, previewed) {
+async function writeSummary(context3, previewed, attributed = new Map) {
   const { log } = context3;
-  const summary2 = renderSummary(previewed.map(({ id, result }) => previewSummary(id, result)), { budget: context3.limits?.summaryBudget });
+  const summary2 = renderSummary(previewed.map(({ id, result }) => previewSummary(id, result, attributed.get(id)?.merges)), { budget: context3.limits?.summaryBudget });
   if (!summary2.fits) {
     log.warning("The summary of this run is too large for GitHub even with every stack shortened as far as it goes, so it was not written. The dashboard is still brought up to date, and the job log of this run holds every diff in full.", "Summary not written");
     return;
