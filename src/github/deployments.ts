@@ -22,11 +22,13 @@ export interface FallBackStack {
 // the page of its environment. A page that is not full holds every record of
 // its environment, so a stack that is not on it has none and costs nothing.
 // REST gives a record without its status, so the fall back is two requests
-// for a stack with a record and one for a stack without.
+// for a stack with a record and one for a stack without. The stacks of the
+// fall back can be handed over as a function, which is called only when an
+// environment holds more than its page.
 export async function readDeploymentRecords(
   github: GitHubPort,
   environments: readonly string[],
-  fallBack: readonly FallBackStack[],
+  fallBack: readonly FallBackStack[] | (() => Promise<readonly FallBackStack[]>),
 ): Promise<DeploymentRecord[]> {
   const records: DeploymentRecord[] = [];
   const more = new Set<string>();
@@ -35,9 +37,11 @@ export async function readDeploymentRecords(
     records.push(...page.records);
     if (page.more) more.add(environment);
   }
+  if (more.size === 0) return records;
 
   const onAPage = new Set(records.map(({ task }) => task));
-  for (const { stackId, environment } of fallBack) {
+  const stacks = typeof fallBack === "function" ? await fallBack() : fallBack;
+  for (const { stackId, environment } of stacks) {
     const task = deploymentTask(stackId);
     if (!more.has(environment) || onAPage.has(task)) continue;
     const newest = await github.newestDeploymentOfTask(task);
