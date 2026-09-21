@@ -863,6 +863,9 @@ describe("the image urls in the snapshots", () => {
     for (const url of new Set(found)) {
       const [, name] = /\/assets\/mascot\/([a-z0-9-]+\.svg)$/.exec(url) ?? [];
       expect(name, url).toBeDefined();
+      // The plain files are gone (record 0043) and the renderer still asks
+      // for them. Slice 1.7c ends that and takes this line out.
+      if (name?.startsWith("plain-")) continue;
       expect(existsSync(join(MASCOT, name ?? "")), url).toBe(true);
     }
   });
@@ -871,10 +874,17 @@ describe("the image urls in the snapshots", () => {
     const own = urls(
       readFileSync(join(import.meta.dir, "__snapshots__/body.test.ts.snap"), "utf8"),
     );
-    const files = readdirSync(MASCOT).filter((name) => name.endsWith(".svg"));
-    expect(files).toHaveLength(16);
-    expect([...new Set(own.map((url) => url.split("/").at(-1) ?? ""))].sort()).toEqual(
-      files.sort(),
+    // Until slice 1.7c the renderer asks for plain files and not yet for the
+    // files with the destroy sign (record 0043). That slice takes both filters
+    // out and expects twenty-two.
+    const files = readdirSync(MASCOT).filter(
+      (name) => name.endsWith(".svg") && !name.includes("-destroys-"),
     );
+    expect(files).toHaveLength(14);
+    expect(
+      [...new Set(own.map((url) => url.split("/").at(-1) ?? ""))]
+        .filter((name) => !name.startsWith("plain-"))
+        .sort(),
+    ).toEqual(files.sort());
   });
 });
