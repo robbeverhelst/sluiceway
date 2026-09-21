@@ -36,7 +36,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>billing-udp-services-8</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="c602c5a2be643260" -->
+- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="c602c5a2be643260" destroys="3" -->
   from #427 by dave · [compare](https://github.com/example-org/infra/compare/e128352...8c41f0e)
   :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>legacy-jobs</b>
   :warning: <kbd>DELETE</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>legacy-worker</b>
@@ -53,7 +53,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>create</kbd> <code>kubernetes:batch/v1:CronJob</code> <b>digest</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **apps/search:prod** · 2 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/search:prod" state="pending" hash="c0196c2258a3de3d" -->
+- [ ] **apps/search:prod** · 2 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/search:prod" state="pending" hash="c0196c2258a3de3d" failed="true" -->
   from #432 by carol, #426 by carol · [compare](https://github.com/example-org/infra/compare/3f7648f...8c41f0e)
   :x: last deploy failed: the change moved since the tick · ticked by alice · 2026-09-21 08:52 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120077)
   <details><summary>2 changes</summary>
@@ -69,7 +69,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>web-feature-flags</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **data/postgres:prod** · 2 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/postgres:prod" state="pending" hash="70dcfb2395a3c9fb" -->
+- [ ] **data/postgres:prod** · 2 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/postgres:prod" state="pending" hash="70dcfb2395a3c9fb" destroys="1" -->
   from #431 by bob · [compare](https://github.com/example-org/infra/compare/a8603ed...8c41f0e)
   :warning: <kbd>REPLACE</kbd> <code>aws:rds/instance:Instance</code> <b>main</b> · forced by <code>engineVersion</code>, <code>storageType</code> · also changes <code>instanceClass</code>
   <details><summary>2 other changes</summary>
@@ -89,7 +89,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   from 1 pull request · [compare](https://github.com/example-org/infra/compare/24f5b22...8c41f0e)
   120 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **platform/ingress:prod** · 12 creates, 33 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="d1a9c35401b57ada" -->
+- [ ] **platform/ingress:prod** · 12 creates, 33 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="d1a9c35401b57ada" destroys="1" -->
   from 7 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/22d5477...8c41f0e)
   :warning: <kbd>REPLACE</kbd> <code>kubernetes:batch/v1:Job</code> <b>ingress-admission-patch</b> · forced by <code>spec</code>
   45 other changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
@@ -183,7 +183,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc5-public-17</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **services/svc-06:staging** · 15 creates, 28 updates, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-06:staging" state="pending" hash="520673a7d48757c1" -->
+- [ ] **services/svc-06:staging** · 15 creates, 28 updates, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-06:staging" state="pending" hash="520673a7d48757c1" destroys="1" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/b91e63b...8c41f0e)
   :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>svc6-dead-letter</b>
   43 other changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
@@ -196,7 +196,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1ef0df1...8c41f0e)
   45 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-09:prod** · 11 creates, 21 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-09:prod" state="pending" hash="ab66ed98957211c1" -->
+- [ ] **services/svc-09:prod** · 11 creates, 21 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-09:prod" state="pending" hash="ab66ed98957211c1" destroys="1" -->
   from #449 by carol, #409 by renovate[bot], #389 by dave, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/3bac70d...8c41f0e)
   :warning: <kbd>REPLACE</kbd> <code>aws:elasticache/cluster:Cluster</code> <b>svc9-cache</b> · forced by <code>nodeType</code> · also changes <code>engineVersion</code>
   <details><summary>32 other changes</summary>
@@ -242,7 +242,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/a81379e...8c41f0e)
   64 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-12:staging** · 34 creates, 42 updates, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-12:staging" state="pending" hash="922076b7814de267" -->
+- [ ] **services/svc-12:staging** · 34 creates, 42 updates, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-12:staging" state="pending" hash="922076b7814de267" destroys="451" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/b9b4b72...8c41f0e)
   :warning: **deletes 451, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -266,7 +266,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/8756524...8c41f0e)
   43 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-18:staging** · 16 creates, 32 updates, **1 replace**, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-18:staging" state="pending" hash="3011f768e24058e9" -->
+- [ ] **services/svc-18:staging** · 16 creates, 32 updates, **1 replace**, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-18:staging" state="pending" hash="3011f768e24058e9" destroys="2" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/95ea7c1...8c41f0e)
   :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>svc18-dead-letter</b>
   :warning: <kbd>REPLACE</kbd> <code>aws:elasticache/cluster:Cluster</code> <b>svc18-cache</b> · forced by <code>nodeType</code> · also changes <code>engineVersion</code>
@@ -292,7 +292,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/f02b1fd...8c41f0e)
   55 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-24:staging** · 19 creates, 43 updates, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-24:staging" state="pending" hash="1b120ffb1b2188e5" -->
+- [ ] **services/svc-24:staging** · 19 creates, 43 updates, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-24:staging" state="pending" hash="1b120ffb1b2188e5" destroys="451" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/92e060a...8c41f0e)
   :warning: **deletes 451, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -336,7 +336,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc26-internal-26</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **services/svc-27:prod** · 19 creates, 39 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-27:prod" state="pending" hash="a3964947b05ee6ee" -->
+- [ ] **services/svc-27:prod** · 19 creates, 39 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-27:prod" state="pending" hash="a3964947b05ee6ee" destroys="1" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/e9547e8...8c41f0e)
   :warning: <kbd>REPLACE</kbd> <code>aws:elasticache/cluster:Cluster</code> <b>svc27-cache</b> · forced by <code>nodeType</code> · also changes <code>engineVersion</code>
   58 other changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
@@ -349,7 +349,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/ff1071d...8c41f0e)
   34 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-30:staging** · 27 creates, 47 updates, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-30:staging" state="pending" hash="f323a19aeb5eeeb9" -->
+- [ ] **services/svc-30:staging** · 27 creates, 47 updates, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-30:staging" state="pending" hash="f323a19aeb5eeeb9" destroys="1" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/6609ba4...8c41f0e)
   :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>svc30-dead-letter</b>
   74 other changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
@@ -404,7 +404,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/faa3cc5...8c41f0e)
   39 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="e98569622514e127" -->
+- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="e98569622514e127" destroys="2" -->
   from #433 by alice, #429 by alice, [3fa9c1e](https://github.com/example-org/infra/commit/3fa9c1e) by bob, and 1 change outside this stack · [compare](https://github.com/example-org/infra/compare/c2d9b6e...8c41f0e)
   :warning: <kbd>DELETE</kbd> <code>aws:s3/bucketPolicy:BucketPolicy</code> <b>uploads-public-read</b>
   :warning: <kbd>REPLACE</kbd> <code>aws:s3/bucket:Bucket</code> <b>uploads</b> · forced by <code>bucket</code> · also changes <code>tags</code>
@@ -435,7 +435,7 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 
 ## In sync
 
-- data/warehouse:prod <!-- sluiceway:row stack="data/warehouse:prod" state="in-sync" -->
+- data/warehouse:prod <!-- sluiceway:row stack="data/warehouse:prod" state="in-sync" failed="true" -->
   :x: last deploy failed: the run ended without reporting a result · ticked by bob · 2026-09-19 16:03 UTC · [run](https://github.com/example-org/infra/actions/runs/17019884120)
   <!-- /sluiceway:row -->
 
@@ -538,6 +538,8 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 - apps/worker:staging · ticked by dave · 2026-09-19 11:20 UTC · [run](https://github.com/example-org/infra/actions/runs/17018650912)
 - monitoring/grafana:prod · ticked by erin · 2026-09-18 15:55 UTC · [run](https://github.com/example-org/infra/actions/runs/17009921140)
 - storage/cdn:prod · ticked by bob · 2026-09-18 10:08 UTC · [run](https://github.com/example-org/infra/actions/runs/17007112054)
+- infra/iam:prod · ticked by alice · 2026-09-17 13:31 UTC · [run](https://github.com/example-org/infra/actions/runs/16998120433)
+- platform/policy:prod · ticked by carol · 2026-09-17 09:05 UTC · [run](https://github.com/example-org/infra/actions/runs/16995530871)
 
 ---
 

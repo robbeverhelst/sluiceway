@@ -202,6 +202,8 @@ const RECENT = [
   ["apps/worker:staging", "dave", "2026-09-19 11:20 UTC", "17018650912"],
   ["monitoring/grafana:prod", "erin", "2026-09-18 15:55 UTC", "17009921140"],
   ["storage/cdn:prod", "bob", "2026-09-18 10:08 UTC", "17007112054"],
+  ["infra/iam:prod", "alice", "2026-09-17 13:31 UTC", "16998120433"],
+  ["platform/policy:prod", "carol", "2026-09-17 09:05 UTC", "16995530871"],
 ];
 
 // Stress fixture: the same dashboard plus enough big pending stacks to go over budget.
@@ -225,8 +227,10 @@ function stressPending() {
 // ---------------------------------------------------------------- shared pieces (fixed by the records)
 
 const enc = (v) => v.replace(/[%"<>\x00-\x20\x7f]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0"));
-const openMarker = (id, state, hash) =>
-  `<!-- sluiceway:row stack="${enc(id)}" state="${state}"${hash ? ` hash="${hash}"` : ""} -->`;
+// `destroys` and `failed` are display caches: writers that carry a row through cannot read its text,
+// and need them for the header counts, the mascot state and for keeping a failed in sync row above the fold.
+const openMarker = (id, state, hash, destroys, failed) =>
+  `<!-- sluiceway:row stack="${enc(id)}" state="${state}"${hash ? ` hash="${hash}"` : ""}${destroys ? ` destroys="${destroys}"` : ""}${failed ? ` failed="true"` : ""} -->`;
 const CLOSE = "  <!-- /sluiceway:row -->";
 
 const OP_ORDER = { delete: 0, replace: 1 };
@@ -380,7 +384,7 @@ function pendingRow(v, s, level) {
 
   const first =
     `- [ ] **${s.id}** · ${v.counts(n)}${hasDestroy ? v.destroyTag(n, hiddenDestroys) : ""} · [preview](${SUMMARY_URL}) ` +
-    openMarker(s.id, "pending", s.hash);
+    openMarker(s.id, "pending", s.hash, destroys.length, !!s.failure);
   const out = [first];
   const a = attribution(s.attr, s.from, level >= 1 && level !== 9);
   if (a) out.push(a);
@@ -415,7 +419,7 @@ const previewFailedRow = (s) =>
   [`- **${s.id}** · preview failed: ${s.reason} · [run](${SUMMARY_URL}) ${openMarker(s.id, "preview-failed")}`, CLOSE].join("\n");
 
 function inSyncRow(id) {
-  const out = [`- ${id} ${openMarker(id, "in-sync")}`];
+  const out = [`- ${id} ${openMarker(id, "in-sync", null, 0, !!IN_SYNC_FAILURE[id])}`];
   if (IN_SYNC_FAILURE[id]) out.push(failureLine(IN_SYNC_FAILURE[id]));
   out.push(CLOSE);
   return out.join("\n");
