@@ -16,7 +16,7 @@ import { createOctokitPort } from "../github/octokit-port.ts";
 import { readWorkflowRef } from "../github/workflow-ref.ts";
 import { resolve } from "./resolve.ts";
 
-export async function runResolve(): Promise<void> {
+export async function runResolve(directory: string): Promise<void> {
   // The one read of the environment (build plan, section 5).
   const env = process.env;
   const read = (path: string) => readFileSync(path, "utf8");
@@ -31,7 +31,7 @@ export async function runResolve(): Promise<void> {
     repoUrl: job.repoUrl,
     runId: job.runId,
     sha: job.sha,
-    actionRef: readActionRef(env, read),
+    actionRef: readActionRef(env, directory, read),
     event: readEventPayload(env, read),
     workflow: readWorkflowRef(env),
     setOutput: (name, value) => core.setOutput(name, value),

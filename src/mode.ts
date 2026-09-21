@@ -30,7 +30,9 @@ function isMode(value: string): value is Mode {
   return (MODES as readonly string[]).includes(value);
 }
 
-type Handler = () => Promise<void>;
+// A handler is handed the directory the action was downloaded to, where its
+// package.json is.
+type Handler = (directory: string) => Promise<void>;
 
 const handlers: Record<Mode, Handler> = {
   scan: runScan,
@@ -40,7 +42,11 @@ const handlers: Record<Mode, Handler> = {
   check: runCheck,
 };
 
-export async function run(mode: Mode, getInput: GetInput = core.getInput): Promise<void> {
+export async function run(
+  mode: Mode,
+  directory: string,
+  getInput: GetInput = core.getInput,
+): Promise<void> {
   refuseDeploymentId(mode, getInput);
-  return handlers[mode]();
+  return handlers[mode](directory);
 }

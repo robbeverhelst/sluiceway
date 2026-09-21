@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { MODES, NotImplementedError, parseMode, run } from "../src/mode.ts";
 
+// Where a runner puts the action, handed in by the entry point.
+const ACTION = "/home/runner/work/_actions/sluiceway/sluiceway/v0";
+
 describe("parseMode", () => {
   test.each([...MODES])("accepts %s", (mode) => {
     expect(parseMode(mode)).toBe(mode);
@@ -42,12 +45,12 @@ describe("run", () => {
   });
 
   test("settle is wired: outside a job it stops at the runner's environment", async () => {
-    const result = run("settle");
+    const result = run("settle", ACTION);
     await expect(result).rejects.not.toBeInstanceOf(NotImplementedError);
   });
 
   test("apply is wired: outside a job it stops at its deployment-id input", async () => {
-    await expect(run("apply", () => "")).rejects.toThrow(
+    await expect(run("apply", ACTION, () => "")).rejects.toThrow(
       'The "deployment-id" input is required in apply mode.',
     );
   });
@@ -55,7 +58,7 @@ describe("run", () => {
 
 describe("the deployment-id input (record 0035)", () => {
   test("fails any mode but apply before the mode does anything", async () => {
-    await expect(run("settle", () => "12")).rejects.toThrow(
+    await expect(run("settle", ACTION, () => "12")).rejects.toThrow(
       'The "deployment-id" input is only for apply mode, and this step runs settle mode.',
     );
   });

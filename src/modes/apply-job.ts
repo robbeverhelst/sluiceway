@@ -15,7 +15,7 @@ import { createOctokitPort } from "../github/octokit-port.ts";
 import { actionsOutputs } from "../github/outputs.ts";
 import { apply } from "./apply.ts";
 
-export async function runApply(): Promise<void> {
+export async function runApply(directory: string): Promise<void> {
   // The one read of the environment (build plan, section 5).
   const env = process.env;
   const inputs = readApplyInputs(core.getInput);
@@ -34,7 +34,7 @@ export async function runApply(): Promise<void> {
     runAttempt: job.runAttempt,
     jobId: readJobId(core.getInput),
     sha: job.sha,
-    actionRef: readActionRef(env, (path) => readFileSync(path, "utf8")),
+    actionRef: readActionRef(env, directory, (path) => readFileSync(path, "utf8")),
     deploymentId: inputs.deploymentId,
     event: readEventPayload(env, (path) => readFileSync(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),

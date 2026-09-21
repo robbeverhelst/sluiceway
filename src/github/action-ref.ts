@@ -3,6 +3,9 @@
 // never from a moving tag, because a file must never change behind a url
 // (record 0033). The footer's version line uses the same value.
 
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 export interface ActionRefFacts {
   // `GITHUB_ACTION_REF`. Empty or absent for `uses: ./`.
   actionRef: string | undefined;
@@ -43,21 +46,33 @@ function packageVersion(path: string, readFile: (path: string) => string): strin
   }
 }
 
+// The directory the action was downloaded to, from the address of the file
+// that runs. A runner sets GITHUB_ACTION_PATH for composite actions only, so a
+// JavaScript action has to find its own files (seen in the lab: the action at
+// `_actions/<owner>/<repo>/<ref>/`, the working directory the workspace). The
+// entry point hands in its own `import.meta.url`: `dist/index.js` in the
+// bundle and `src/main.ts` in the source, both one directory below the
+// action's own, next to package.json.
+export function actionDirectory(entryUrl: string): string {
+  return dirname(dirname(fileURLToPath(entryUrl)));
+}
+
 // Works the ref out once per job, from the environment as data. The file is
 // read only when the rule needs it.
 export function readActionRef(
   env: Readonly<Record<string, string | undefined>>,
+  directory: string,
   readFile: (path: string) => string,
 ): string {
   const sha = env.GITHUB_SHA;
   if (!sha) throw new Error("GITHUB_SHA is not set, so the action cannot tell its own version.");
   const ref = env.GITHUB_ACTION_REF;
   const needsVersion = Boolean(ref) && !isExactRef(ref ?? "");
-  const path = env.GITHUB_ACTION_PATH;
   return actionRef({
     actionRef: ref,
-    packageVersion:
-      needsVersion && path ? packageVersion(`${path}/package.json`, readFile) : undefined,
+    packageVersion: needsVersion
+      ? packageVersion(join(directory, "package.json"), readFile)
+      : undefined,
     sha,
   });
 }
