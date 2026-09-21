@@ -55,12 +55,16 @@ _Avoid_: Validate, lint, dry run, preflight
 ### Diffs
 
 **Diff**:
-What deploying one stack would change, told as addresses, ops, tracking changes and the names of changed properties. Never values.
+What deploying one stack would change, told as addresses, ops, tracking changes and the property paths that change. Never values.
 _Avoid_: Plan, preview output, changeset
 
 **Value**:
 What a property is set to, before or after a deploy. A value never leaves the tool's adapter: Sluiceway shows that a property changes and never what it changes to, whether or not the tool marks it secret.
 _Avoid_: Secret (a secret is only one kind of value, and all values are treated alike), content, setting
+
+**Property path**:
+Where inside a resource a change happens, as the tool writes it: property names, list indexes and map keys, such as `spec.containers[0].image` or `data["app.properties"]`. Never a value. A row shortens a long one, and the summary shows it whole.
+_Avoid_: Key path, nested key, JSON path
 
 **Pending**:
 Deploying the stack now would change something, because the code moved.

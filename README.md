@@ -140,7 +140,7 @@ A branch such as `@main` is not enough: the scan works, but the header picture s
 - **It never holds your credentials.** Previews and deploys run in your own runners, with the secrets your workflow loads. No input carries a cloud or backend credential, and no code reads one by name. [Security](#security) has the five promises.
 - **There is no backend.** It is a GitHub Action and nothing else: no server, no database, no hosted part. Sluiceway itself calls the GitHub API and nothing else.
 - **A fresh preview before every deploy.** A tick deploys only what the row showed. If the change moved since, nothing is deployed and the row comes back with the new diff.
-- **No values, ever.** Rows show resource types, resource names and the names of changed properties. Never a value, secret or not.
+- **No values, ever.** Rows show resource types, resource names and the paths of changed properties, such as `values.controller.image.tag`. Never a value, secret or not.
 
 ## What it does not do yet
 
@@ -460,7 +460,7 @@ To turn it into the whole workflow later, replace the file with the one of step 
 
 ## Using the dashboard
 
-- **A row with a box has changes waiting.** Its details show the resources that would change and the names of the properties that change. A delete or a replace is always shown open under the row, never folded away. When the dashboard grows past what an issue holds, the biggest rows are shortened first and link to the full diff in the run's summary.
+- **A row with a box has changes waiting.** Its details show the resources that would change and the paths of the properties that change, down to the key inside a map or a list. A delete or a replace is always shown open under the row, never folded away. When the dashboard grows past what an issue holds, the biggest rows are shortened first and link to the full diff in the run's summary.
 - **Tick the box to deploy that stack.** Sluiceway checks that you may tick it, previews the stack again, and deploys only if the fresh preview still matches what the row showed. The row says deploying, then goes back to in sync, or shows a failure line with a link to the run.
 - **A tick approves the change as shown.** The row shows which properties change, never their values, so a tick means "change these properties on these resources, at whatever value the code has when the deploy runs". A new resource, a delete or a different property stops the deploy and brings the row back with the fresh diff. [docs/security.md](docs/security.md#what-a-tick-promises) has the whole promise.
 - **A refused tick deploys nothing.** The box is cleared and one comment on the dashboard says why.
@@ -503,7 +503,7 @@ Sluiceway never holds credentials. That is five promises you can check against t
 4. **Only the modes that run the tool need credentials.** `scan` and `apply` run the tool. `resolve` and `settle` never do, so the job that reacts to an issue edit holds no infrastructure secrets.
 5. **A hosted version would keep all of this.** The tool always runs in your own runners.
 
-The dashboard shows resource types, resource names and the names of changed properties. It never shows a property value, whether or not the tool marks it secret.
+The dashboard shows resource types, resource names and the paths of changed properties. It never shows a property value, whether or not the tool marks it secret.
 
 A tick rule protects against the wrong person ticking. On its own it does not protect against a collaborator with write access who means harm, because anyone with write access can push a workflow that reads the repo's secrets. Where your plan has GitHub Environments, lock the credentials that change things into one and the tick rules can be relied on. [docs/security.md](docs/security.md) explains the three setups.
 

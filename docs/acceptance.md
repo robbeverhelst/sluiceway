@@ -53,7 +53,7 @@ When: first after M1, read only, at a pinned commit SHA with only the `scan` job
 
 - [ ] Trigger a full scan by hand. The job is green.
 - [ ] The dashboard has exactly one row for every stack: 58, or the number that `ignore` leaves. No stack is missing and none is listed twice. Both stacks of a project with two stack files are there.
-- [ ] Pick five pending rows. For each, run the wrapper's own preview without refresh. The resources, the ops and the changed property names agree with the row.
+- [ ] Pick five pending rows. For each, run the wrapper's own preview without refresh. The resources, the ops and the changed property paths agree with the row.
 - [ ] Pick five in sync rows and do the same. The preview is empty.
 - [ ] No row, no summary and none of Sluiceway's own log lines shows a property value. Search the issue body and the summary for a known secret and for a known plain value.
 - [ ] Every preview failure row links to a run whose log explains it, and the failure reason on the row is one of the fixed ones.

@@ -23,7 +23,7 @@ Two things work with nothing from Sluiceway at all, because every deploy is a Gi
 
 The three counts are the counts line of the dashboard as this scan left it, so they include the rows of stacks a narrowed scan did not preview. A scan that fails before it writes the dashboard, for example on a broken `sluiceway.yaml`, sets them to `0` and `dashboard-changed` to `false`, so check the outcome of the step too.
 
-The result file is written under `RUNNER_TEMP` as `sluiceway-scan-result.json` or `sluiceway-apply-result.json`. It holds what the summary of the run holds: stack ids, what each preview found, ops, resource types and names, property names, counts, failure reasons from Sluiceway's fixed list, and how long each preview took. It never holds a property value, a stack output or any of the tool's own words. Sluiceway does not upload it, and the runner removes it when the job ends. Add an `actions/upload-artifact` step if you want to keep it.
+The result file is written under `RUNNER_TEMP` as `sluiceway-scan-result.json` or `sluiceway-apply-result.json`. It holds what the summary of the run holds: stack ids, what each preview found, ops, resource types and names, property paths, counts, failure reasons from Sluiceway's fixed list, and how long each preview took. It never holds a property value, a stack output or any of the tool's own words. Sluiceway does not upload it, and the runner removes it when the job ends. Add an `actions/upload-artifact` step if you want to keep it.
 
 A scan's file, shortened:
 
@@ -59,7 +59,7 @@ A scan's file, shortened:
 
 `dashboard` is `null` when the scan did not get as far as writing it. `stacks` lists the stacks this run previewed. An `apply` file names the `deployment`, the `outcome`, the `stack`, the `ticker`, the failure `reason`, the fresh `preview` the tick was held against, and the preview `after` a deploy that failed half way. A reader should check `version` first: it goes up when the shape changes in a way that breaks a reader.
 
-Resource names, types and property names are in the file, as they are on the dashboard. They come from your code, so do not put a secret in a resource name. Send the file only to a place that people with read access to the repo may see.
+Resource names, types and property paths are in the file, as they are on the dashboard. They come from your code, so do not put a secret in a resource name or a map key. Send the file only to a place that people with read access to the repo may see.
 
 ## Recipes
 

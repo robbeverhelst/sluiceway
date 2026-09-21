@@ -68,9 +68,9 @@ Anyone who can edit the dashboard can start the `resolve` job. It is built to be
 
 ## What reaches the issue
 
-- **Never a value.** The dashboard shows resource types, resource names and the names of changed properties, never what a property is set to, whether or not the tool marks it secret. The job summary and the job log's diff follow the same rule.
+- **Never a value.** The dashboard shows resource types, resource names and the paths of changed properties (property names, list indexes and map keys), never what a property is set to, whether or not the tool marks it secret. The job summary and the job log's diff follow the same rule.
 - **Never the tool's own words.** Error messages, warnings and anything else the tool prints stay in the job log. A failure row says why in a fixed phrase and links to the run.
-- **Names, unless you redact.** Resource types, resource names and property names are in the issue, which is emailed, sent to integrations and indexed on a public repo. `dashboard.redact: true` keeps them out of the issue and leaves the job summary full. It is about reach, not access: anyone who can read the repo can open the run and read the code ([configuration](configuration.md#dashboardredact)).
+- **Names, unless you redact.** Resource types, resource names and property paths, map keys included, are in the issue, which is emailed, sent to integrations and indexed on a public repo. `dashboard.redact: true` keeps them out of the issue and leaves the job summary full. It is about reach, not access: anyone who can read the repo can open the run and read the code ([configuration](configuration.md#dashboardredact)).
 - **The job log is yours to protect.** The tool's own messages are printed there as they are, grouped per stack, and an error can quote a value. Sluiceway adds no mask of its own: GitHub masks what the step that loaded a secret registered, and nothing else. A secret the tool prints in another shape, base64 or with escaped newlines, is not caught by any mask. Logs are only readable by people who can read the repo, and they expire with the run.
 
 ## What Sluiceway sends
