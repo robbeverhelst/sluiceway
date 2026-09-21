@@ -12,6 +12,7 @@ import {
   deployFacts,
   deploymentPayload,
   deploymentTask,
+  lastDeployedCommit,
   taskStackId,
 } from "../core/deployment.ts";
 import {
@@ -24,6 +25,7 @@ import {
 } from "../core/edit-history.ts";
 import { capDeploys, type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import { stackId } from "../core/stack.ts";
+import { type AttributionSource, attributionSource } from "../github/attribution.ts";
 import { isBotIssueWithRootMarker } from "../github/dashboard.ts";
 import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts";
 import { editedIssue } from "../github/event.ts";
@@ -332,12 +334,16 @@ async function resolveTicks(
   let written = true;
   if (started.length > 0 || dropped.length > 0 || clear.size > 0 || rescanHandled) {
     try {
+      const attribution = new Map<string, AttributionSource>();
       const result = await writeBody(github, issue.number, (liveBody) =>
-        swapRows(context, config, [...(stacks?.values() ?? [])], liveBody, {
-          started,
-          dropped,
-          clear,
-        }),
+        swapRows(
+          context,
+          config,
+          [...(stacks?.values() ?? [])],
+          liveBody,
+          { started, dropped, clear },
+          attribution,
+        ),
       );
       log.info(
         result.written
@@ -467,6 +473,8 @@ async function swapRows(
   stacks: readonly ConfiguredStack[],
   liveBody: string,
   swap: Swap,
+  // By `scan-sha`, so the walk is made once however many tries the write takes.
+  attribution: Map<string, AttributionSource>,
 ): Promise<string> {
   const live = parseDashboard(liveBody);
   const root = live.root;
@@ -491,6 +499,37 @@ async function swapRows(
     ),
   );
 
+  // A row's text is never parsed, so the line of a deploying row is worked
+  // out again, up to the commit the live body was scanned at (record 0026).
+  // It needs the workflow token only, and it never blocks.
+  const source =
+    attribution.get(root.scanSha) ??
+    attributionSource(
+      context.github,
+      {
+        stacks: stacks.map(({ stack, inputs }) => ({
+          id: stackId(stack),
+          path: stack.path,
+          inputs,
+        })),
+        unrelated: config.scan.unrelated,
+        repoUrl: context.repoUrl,
+        scanSha: root.scanSha,
+      },
+      (why) =>
+        context.log.info(
+          `Attribution was left off the rows: ${why}. It only explains a row, so nothing else changes (record 0026).`,
+        ),
+    );
+  attribution.set(root.scanSha, source);
+  const deployingIds = [
+    ...swap.started.map((one) => one.stackId),
+    ...swap.dropped.filter((id) => facts.byStack.get(id)?.kind === "open"),
+  ];
+  const lines = await source.attribute(
+    new Map(deployingIds.map((id) => [id, lastDeployedCommit(facts, id)])),
+  );
+
   const startedBy = new Map(swap.started.map((one) => [one.stackId, one]));
   const mine = (one: Started, destroys: number): DeployingRow => ({
     state: "deploying",
@@ -500,6 +539,7 @@ async function swapRows(
     // The record is `queued` until `apply` takes it.
     waiting: true,
     destroys,
+    attribution: lines.get(one.stackId)?.lines,
   });
 
   const rows: Row[] = [];
@@ -533,6 +573,7 @@ async function swapRows(
         runUrl: `${context.repoUrl}/actions/runs/${fact.run}`,
         waiting: fact.waiting,
         destroys,
+        attribution: lines.get(row.stackId)?.lines,
       });
     } else if (wanted && row.ticked && row.hash === wanted.hash) {
       carried.push(clearTick(row, { note: wanted.note }));

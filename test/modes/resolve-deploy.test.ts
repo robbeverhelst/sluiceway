@@ -74,6 +74,8 @@ describe("a tick by a person who may tick", () => {
     expect(after["a:prod"]).toBe(
       [
         `- **a:prod** · waiting to start · ticked by alice · [run](${RESOLVE_RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="2" -->`,
+        // No success of this stack is on record (record 0026).
+        "  not deployed from this dashboard yet",
         "  <!-- /sluiceway:row -->",
       ].join("\n"),
     );

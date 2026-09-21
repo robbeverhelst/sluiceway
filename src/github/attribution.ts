@@ -9,6 +9,7 @@ import {
   attributor,
   type CommitWalk,
   directPushesToRead,
+  isCommitId,
 } from "../core/attribution.ts";
 import type { GitHubPort } from "./port.ts";
 
@@ -36,6 +37,7 @@ export function attributionSource(
       const starts = [...from.values()].filter((sha) => sha !== undefined);
       try {
         if (failed) return new Map();
+        if (!isCommitId(input.scanSha)) throw new Error("the scanned commit is no commit id");
         if (starts.length > 0) {
           walk ??= await github.walkCommits(input.scanSha);
           for (const sha of directPushesToRead(walk, starts)) {

@@ -20,6 +20,13 @@ export const NAMED_ON_A_ROW = 5;
 // with a list this long may be missing files, and is treated the same way.
 export const COMMIT_FILE_CAP = 300;
 
+// A commit id in full, SHA-1 or SHA-256. A writer that is not the scan takes
+// the `scan-sha` from the root marker, which a person can edit, and no request
+// and no link is built from text that came from outside.
+export function isCommitId(text: string): boolean {
+  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(text);
+}
+
 export const NEVER_DEPLOYED = "not deployed from this dashboard yet";
 
 // A pull request GitHub associates with a walked commit.

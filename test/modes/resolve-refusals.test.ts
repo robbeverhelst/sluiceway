@@ -51,6 +51,8 @@ describe("a second tick on a stack that is deploying", () => {
     expect(rowsOf(h)["a:prod"]).toBe(
       [
         `- **a:prod** · deploying · ticked by carol · [run](${REPO_URL}/actions/runs/77) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" -->`,
+        // No success of this stack is on record (record 0026).
+        "  not deployed from this dashboard yet",
         "  <!-- /sluiceway:row -->",
       ].join("\n"),
     );
