@@ -13,6 +13,7 @@ import { runPool } from "../core/pool.ts";
 import { everyPreviewFailed } from "../core/scan-result.ts";
 import { stackId } from "../core/stack.ts";
 import { type DashboardResult, writeDashboard } from "../github/dashboard.ts";
+import type { JobLog } from "../github/job-log.ts";
 import type { GitHubPort } from "../github/port.ts";
 import {
   BODY_LIMIT,
@@ -25,18 +26,6 @@ import { previewOutcome, previewRow, previewSummary } from "../render/preview-re
 import { byCodeUnit, plural } from "../render/row.ts";
 import { renderSummary } from "../render/summary.ts";
 
-// The job log, the annotations and the summary of the run. The glue writes
-// them through @actions/core, a test remembers them.
-export interface ScanLog {
-  info(line: string): void;
-  // A foldable group of lines under a title.
-  group(title: string, lines: string[]): void;
-  // A warning annotation on the run (record 0012). Sluiceway's own words only,
-  // because annotations show on the run's summary page (record 0022).
-  warning(message: string, title: string): void;
-  writeSummary(text: string): Promise<void>;
-}
-
 // Everything a scan needs, handed in as data and seams (build plan, section
 // 5): the port, the process runner, the clock and the environment.
 export interface ScanContext {
@@ -48,7 +37,7 @@ export interface ScanContext {
   adapter: Adapter;
   run: ProcessRunner;
   github: GitHubPort;
-  log: ScanLog;
+  log: JobLog;
   now: () => Date;
   // The `concurrency` input: the size of the pool.
   concurrency: number;

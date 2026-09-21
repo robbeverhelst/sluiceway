@@ -28,7 +28,10 @@ describe("parseMode", () => {
 });
 
 describe("run", () => {
-  test.each([...MODES])("%s fails as not implemented yet", async (mode) => {
+  // The scan is wired (slice 1.11) and has its own tests under test/modes/.
+  const stubs = MODES.filter((mode) => mode !== "scan");
+
+  test.each(stubs)("%s fails as not implemented yet", async (mode) => {
     const result = run(mode);
     await expect(result).rejects.toBeInstanceOf(NotImplementedError);
     await expect(result).rejects.toThrow(`Mode "${mode}" is not implemented yet.`);

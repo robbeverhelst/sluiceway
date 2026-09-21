@@ -107,17 +107,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - id: scan
+      # The scan is wired now, and running it here would preview the example
+      # project and write a dashboard issue into this repo. The e2e workflow of
+      # slice 1.13 runs it against the fake GitHub and changes this job. Until
+      # then the job proves what it always did: the bundle loads on node24 and
+      # dispatches on the mode input, with a mode that is still a stub.
+      - id: stub
         uses: ./
         continue-on-error: true
         with:
-          mode: scan
+          mode: resolve
 
       - name: Expect the stub to fail
         env:
-          OUTCOME: ${{ steps.scan.outcome }}
+          OUTCOME: ${{ steps.stub.outcome }}
         run: |
           if [ "$OUTCOME" != "failure" ]; then
-            echo "::error::Expected the scan stub to fail as not implemented yet, got: $OUTCOME"
+            echo "::error::Expected the resolve stub to fail as not implemented yet, got: $OUTCOME"
             exit 1
           fi

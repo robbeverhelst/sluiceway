@@ -7,7 +7,8 @@ import { join } from "node:path";
 import type { Adapter, PreviewOptions, PreviewResult } from "../../src/adapters/adapter.ts";
 import type { Change } from "../../src/core/diff.ts";
 import { type Stack, stackId } from "../../src/core/stack.ts";
-import type { ScanContext, ScanLog } from "../../src/modes/scan.ts";
+import type { JobLog } from "../../src/github/job-log.ts";
+import type { ScanContext } from "../../src/modes/scan.ts";
 import { FakeGitHub } from "../fake-github/fake-github.ts";
 
 export const REPO_URL = "https://github.com/acme/infra";
@@ -85,7 +86,7 @@ export function tableAdapter(table: Record<string, Answer>): TableAdapter {
   return adapter;
 }
 
-export interface RememberingLog extends ScanLog {
+export interface RememberingLog extends JobLog {
   lines: string[];
   groups: { title: string; lines: string[] }[];
   warnings: { title: string; message: string }[];
