@@ -119,6 +119,20 @@ describe("the fake GitHub server", () => {
     });
   });
 
+  test("a person's permission is looked up, and a failing lookup keeps its status", async () => {
+    const { fake, port } = await served();
+    fake.seedPermission("alice", { push: true, maintain: true, admin: false });
+    fake.failPermissionLookup("bob", 502);
+
+    expect(await port.getPermission("alice")).toEqual({ push: true, maintain: true, admin: false });
+    expect(await port.getPermission("stranger")).toEqual({
+      push: false,
+      maintain: false,
+      admin: false,
+    });
+    await expect(port.getPermission("bob")).rejects.toMatchObject({ status: 502 });
+  });
+
   test("an issue is pinned through GraphQL", async () => {
     const { fake, port } = await served();
     const issue = fake.seedIssue();

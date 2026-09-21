@@ -144,6 +144,22 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
       },
     ],
     [
+      "GET",
+      new RegExp(`^${REPO}/collaborators/([^/]+)/permission$`),
+      async (_call, login) => {
+        const permission = await fake.getPermission(login);
+        return {
+          status: 200,
+          json: {
+            user: {
+              login,
+              permissions: { ...permission, triage: permission.push, pull: true },
+            },
+          },
+        };
+      },
+    ],
+    [
       "POST",
       /^\/graphql$/,
       async ({ body }) => {

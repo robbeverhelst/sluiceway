@@ -220,3 +220,42 @@ describe("comparing two commits", () => {
     expect((await github.compareCommits("aaa", "bbb")).files).toHaveLength(300);
   });
 });
+
+describe("looking up a person's permission", () => {
+  test("a seeded person has what was seeded, and the lookup costs one request", async () => {
+    const github = new FakeGitHub();
+    github.seedPermission("alice", { push: true, maintain: true, admin: false });
+
+    expect(await github.getPermission("alice")).toEqual({
+      push: true,
+      maintain: true,
+      admin: false,
+    });
+    expect(github.requests).toEqual(["getPermission"]);
+  });
+
+  test("like GitHub, it finds a login in any case of the letters", async () => {
+    const github = new FakeGitHub();
+    github.seedPermission("Alice", { push: true, maintain: false, admin: false });
+    expect((await github.getPermission("aLICE")).push).toBe(true);
+  });
+
+  test("someone who is not a collaborator is a clean answer with no access", async () => {
+    // Real GitHub answers 200 for any account that exists (probed 2026-09-21).
+    expect(await new FakeGitHub().getPermission("stranger")).toEqual({
+      push: false,
+      maintain: false,
+      admin: false,
+    });
+  });
+
+  test("a lookup that was made to fail is an error with GitHub's status", async () => {
+    const github = new FakeGitHub();
+    github.seedPermission("alice", { push: true, maintain: true, admin: true });
+    github.failPermissionLookup("alice", 502);
+
+    await expect(github.getPermission("Alice")).rejects.toMatchObject({ status: 502 });
+    expect((await github.getPermission("bob")).push).toBe(false);
+    expect(github.requests).toEqual(["getPermission", "getPermission"]);
+  });
+});

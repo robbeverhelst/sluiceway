@@ -98,6 +98,20 @@ export function createOctokitPort(octokit: Octokit, repo: Repo): GitHubPort {
       };
     },
 
+    async getPermission(login) {
+      const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({
+        ...repo,
+        username: login,
+      });
+      const permissions = data.user?.permissions;
+      if (!permissions) throw new Error(`GitHub's answer holds no permissions for ${login}.`);
+      return {
+        push: permissions.push === true,
+        maintain: permissions.maintain === true,
+        admin: permissions.admin === true,
+      };
+    },
+
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     },

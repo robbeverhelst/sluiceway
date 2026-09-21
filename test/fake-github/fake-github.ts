@@ -4,6 +4,7 @@ import type {
   Issue,
   IssueAuthor,
   NewIssue,
+  Permission,
 } from "../../src/github/port.ts";
 
 // An in-memory GitHub behind the port. It copies the real behavior the lab
@@ -18,6 +19,7 @@ const UPDATE_LIMIT_BYTES = 262_144;
 const PAGE_SIZE = 100;
 const MAX_PINNED = 3;
 const COMPARE_FILE_CAP = 300;
+const NO_ACCESS: Permission = { push: false, maintain: false, admin: false };
 
 export class FakeGitHubError extends Error {
   constructor(
@@ -50,6 +52,9 @@ export class FakeGitHub implements GitHubPort {
   readonly #comments = new Map<number, string[]>();
   readonly #pinned: number[] = [];
   readonly #comparisons = new Map<string, Comparison>();
+  // By login in lower case, because GitHub finds a login in any case.
+  readonly #permissions = new Map<string, Permission>();
+  readonly #failingLookups = new Map<string, number>();
   readonly #updateLimitBytes: number;
   #nextNumber = 1;
   // The fake's clock. It moves one second each time it is read, so two things
@@ -76,6 +81,17 @@ export class FakeGitHub implements GitHubPort {
   // seeded holds a commit the repo does not have.
   seedComparison(base: string, head: string, comparison: Comparison): void {
     this.#comparisons.set(`${base}...${head}`, comparison);
+  }
+
+  // What a person may do in the repo. A login that was never seeded is an
+  // account that is not a collaborator.
+  seedPermission(login: string, permission: Permission): void {
+    this.#permissions.set(login.toLowerCase(), { ...permission });
+  }
+
+  // From now on the lookup of this person fails, as when GitHub is down.
+  failPermissionLookup(login: string, status = 500): void {
+    this.#failingLookups.set(login.toLowerCase(), status);
   }
 
   issue(number: number): Issue {
@@ -172,6 +188,15 @@ export class FakeGitHub implements GitHubPort {
       status: comparison.status,
       files: comparison.files.slice(0, COMPARE_FILE_CAP).map((file) => ({ ...file })),
     };
+  }
+
+  async getPermission(login: string): Promise<Permission> {
+    this.#count("getPermission");
+    const status = this.#failingLookups.get(login.toLowerCase());
+    if (status !== undefined) throw new FakeGitHubError(status, "Server Error");
+    // Real GitHub answers 200 for any account that exists, collaborator or
+    // not (probed on 2026-09-21).
+    return { ...(this.#permissions.get(login.toLowerCase()) ?? NO_ACCESS) };
   }
 
   async pinIssue(nodeId: string): Promise<void> {

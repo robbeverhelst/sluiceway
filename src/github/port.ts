@@ -8,8 +8,9 @@
 // them.
 
 import type { Comparison } from "../core/scan-plan.ts";
+import type { Permission } from "../core/tick-rule.ts";
 
-export type { Comparison };
+export type { Comparison, Permission };
 
 export interface IssueAuthor {
   login: string;
@@ -63,6 +64,13 @@ export interface GitHubPort {
   // files are the ones of the whole comparison, and GitHub never lists more
   // than 300. Fails when GitHub does not have a commit, as after a force push.
   compareCommits(base: string, head: string): Promise<Comparison>;
+
+  // What a person may do in the repo, live, as the three booleans the tick
+  // rule reads (record 0018). Works with contents: read and issues: read
+  // (issue 17). Someone who is not a collaborator is a clean answer with every
+  // boolean false. Fails when GitHub gives no answer to judge, and then the
+  // caller fails closed.
+  getPermission(login: string): Promise<Permission>;
 
   // Works with the workflow token and issues: write (issue 17). Fails when
   // the repo already has three pinned issues.

@@ -287,3 +287,98 @@ describe("comparing two commits", () => {
     await expect(port.compareCommits(BASE, HEAD)).rejects.toThrow("Not Found");
   });
 });
+
+describe("looking up a person's permission", () => {
+  // The answers are the ones the real endpoint gave on 2026-09-21, cut down to
+  // what is read and what could be mistaken for it.
+  function answer(permission: string, permissions: Record<string, boolean>) {
+    return {
+      permission,
+      role_name: permission,
+      user: { login: "alice", type: "User", permissions, role_name: permission },
+    };
+  }
+
+  test("one request, and the three booleans come back", async () => {
+    const { port, sent } = portThatAnswers([
+      {
+        json: answer("admin", {
+          admin: true,
+          maintain: true,
+          push: true,
+          triage: true,
+          pull: true,
+        }),
+      },
+    ]);
+
+    expect(await port.getPermission("alice")).toEqual({ push: true, maintain: true, admin: true });
+    expect(sent).toEqual([
+      {
+        method: "GET",
+        path: "/repos/acme/infra/collaborators/alice/permission",
+        query: {},
+        body: undefined,
+      },
+    ]);
+  });
+
+  test("someone who is not a collaborator is a clean answer with no access", async () => {
+    // A public repo says "read" and a private one "none". Both come with 200.
+    const { port } = portThatAnswers([
+      {
+        json: answer("read", {
+          admin: false,
+          maintain: false,
+          push: false,
+          triage: false,
+          pull: true,
+        }),
+      },
+    ]);
+    expect(await port.getPermission("alice")).toEqual({
+      push: false,
+      maintain: false,
+      admin: false,
+    });
+  });
+
+  test("the level is read from the booleans, never from the role name", async () => {
+    // A custom organization role has a name of its own.
+    const { port } = portThatAnswers([
+      {
+        json: answer("deployer", {
+          admin: false,
+          maintain: true,
+          push: true,
+          triage: true,
+          pull: true,
+        }),
+      },
+    ]);
+    expect(await port.getPermission("alice")).toEqual({ push: true, maintain: true, admin: false });
+  });
+
+  test("an answer without the booleans is an error, not a guess", async () => {
+    const { port } = portThatAnswers([{ json: { permission: "admin", user: null } }]);
+    await expect(port.getPermission("alice")).rejects.toThrow(
+      "GitHub's answer holds no permissions for alice",
+    );
+  });
+
+  test("a boolean that is missing counts as false", async () => {
+    const { port } = portThatAnswers([{ json: answer("write", { push: true, pull: true }) }]);
+    expect(await port.getPermission("alice")).toEqual({
+      push: true,
+      maintain: false,
+      admin: false,
+    });
+  });
+
+  test("a login GitHub does not know is an error", async () => {
+    const { port } = portThatAnswers([
+      { status: 404, json: { message: "nobody-here is not a user" } },
+    ]);
+    await expect(port.getPermission("nobody-here")).rejects.toThrow("is not a user");
+  });
+});
