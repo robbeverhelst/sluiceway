@@ -51320,7 +51320,8 @@ function readJob(env) {
     repo,
     repoUrl: `${server}/${owner}/${repo}`,
     runId: need("GITHUB_RUN_ID"),
-    sha: need("GITHUB_SHA")
+    sha: need("GITHUB_SHA"),
+    event: need("GITHUB_EVENT_NAME")
   };
 }
 
@@ -51336,7 +51337,7 @@ function actionsLog() {
     },
     warning: (message, title) => warning(message, { title }),
     async writeSummary(text) {
-      await summary.addRaw(text).write();
+      await summary.emptyBuffer().addRaw(text).write({ overwrite: true });
     }
   };
 }
@@ -51387,6 +51388,17 @@ function createOctokitPort(octokit, repo) {
     },
     async createComment(number4, body) {
       await octokit.rest.issues.createComment({ ...repo, issue_number: number4, body });
+    },
+    async compareCommits(base, head) {
+      const { data } = await octokit.rest.repos.compareCommitsWithBasehead({
+        ...repo,
+        basehead: `${base}...${head}`,
+        per_page: 1
+      });
+      return {
+        status: data.status,
+        files: (data.files ?? []).map((file2) => file2.previous_filename === undefined ? { path: file2.filename } : { path: file2.filename, previousPath: file2.previous_filename })
+      };
     },
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
@@ -51707,6 +51719,112 @@ async function runPool(items, size, work) {
   return results;
 }
 
+// src/core/claim.ts
+function inside(directory, file2) {
+  return directory === "." || file2.startsWith(`${directory}/`);
+}
+function claim2(stacks, changed, unrelated) {
+  const isUnrelated = globMatcher(unrelated);
+  const matchers = stacks.map((stack) => ({ stack, matches: globMatcher(stack.inputs) }));
+  const claims = new Map;
+  const unclaimed = [];
+  for (const file2 of new Set(changed)) {
+    if (isUnrelated(file2))
+      continue;
+    const claimants = matchers.filter(({ stack, matches }) => inside(stack.path, file2) || matches(file2));
+    if (claimants.length === 0)
+      unclaimed.push(file2);
+    for (const { stack } of claimants)
+      claims.set(stack.id, [...claims.get(stack.id) ?? [], file2]);
+  }
+  return { claims, unclaimed };
+}
+
+// src/core/scan-plan.ts
+var COMPARE_FILE_CAP = 300;
+var COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+function narrowsOn(event) {
+  return event === "push";
+}
+function comparisonBase(event, dashboard, markerVersion) {
+  if (!narrowsOn(event))
+    return { kind: "event", event };
+  if (dashboard === undefined)
+    return { kind: "no-dashboard" };
+  const { root } = dashboard;
+  if (root === undefined)
+    return { kind: "no-root-marker" };
+  if (root.version !== markerVersion)
+    return { kind: "other-version", version: root.version };
+  if (root.scanSha === undefined || !COMMIT.test(root.scanSha))
+    return { kind: "no-scan-sha" };
+  return { kind: "compare", from: root.scanSha };
+}
+function changedPaths(comparison) {
+  if (comparison.status !== "ahead" && comparison.status !== "identical") {
+    return { kind: "not-a-straight-line", status: comparison.status };
+  }
+  if (comparison.files.length >= COMPARE_FILE_CAP)
+    return { kind: "file-cap" };
+  return {
+    kind: "changed",
+    paths: comparison.files.flatMap(({ path, previousPath }) => previousPath === undefined ? [path] : [path, previousPath])
+  };
+}
+function planScan(stacks, changed, unrelated, rows) {
+  const { claims, unclaimed } = claim2(stacks, changed, unrelated);
+  if (unclaimed.length > 0)
+    return { kind: "full", why: { kind: "unclaimed", files: unclaimed } };
+  const states = new Map(rows.map((row) => [row.stackId, row.state]));
+  const previews = stacks.flatMap(({ id }) => {
+    const files = claims.get(id);
+    if (files)
+      return [{ id, why: { kind: "claims", files } }];
+    if (!states.has(id))
+      return [{ id, why: { kind: "no-row" } }];
+    if (states.get(id) === "preview-failed")
+      return [{ id, why: { kind: "preview-failed" } }];
+    return [];
+  });
+  return { kind: "narrowed", previews };
+}
+function oneRowPerStack(discovered, fresh, live) {
+  const onDashboard = new Set(live);
+  const known = new Set(discovered);
+  const stale = discovered.filter((id) => !fresh.has(id));
+  return {
+    carried: stale.filter((id) => onDashboard.has(id)),
+    missing: stale.filter((id) => !onDashboard.has(id)),
+    dropped: [...onDashboard].filter((id) => !known.has(id))
+  };
+}
+function fullScanReasonText(reason) {
+  switch (reason.kind) {
+    case "event":
+      return `the event is ${reason.event}, and only a push gives a narrowed scan`;
+    case "no-dashboard":
+      return "there is no dashboard yet";
+    case "no-root-marker":
+      return "the dashboard has no root marker that can be read";
+    case "other-version":
+      return `the root marker of the dashboard has version ${reason.version}, which this version of Sluiceway does not write`;
+    case "no-scan-sha":
+      return "the root marker of the dashboard names no commit to compare from";
+    case "compare-failed":
+      return "GitHub did not give the comparison from the commit of the last scan";
+    case "not-a-straight-line":
+      return `the checked-out commit does not follow the commit of the last scan in a straight line (GitHub calls it ${JSON.stringify(reason.status)}), as after a force push or a re-run of an older run`;
+    case "file-cap":
+      return `the comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, so files may be missing from it`;
+    case "unclaimed": {
+      const [first = "", ...rest] = reason.files;
+      return rest.length === 0 ? `no stack claims ${first}` : `no stack claims ${first} and ${rest.length} more changed ${rest.length === 1 ? "file" : "files"}`;
+    }
+    case "does-not-fit":
+      return `the body does not fit in one issue with ${reason.carried} ${reason.carried === 1 ? "row" : "rows"} carried through, and only a fresh row can be shortened`;
+  }
+}
+
 // src/core/scan-result.ts
 function everyPreviewFailed(attempted, failed) {
   return attempted > 1 && failed === attempted;
@@ -51971,11 +52089,11 @@ function pendingRow(row, options) {
   for (const change of [...deletes, ...replaces])
     lines.push(`:warning: ${changeLine(change)}`);
   if (folded.length > 0) {
-    const inside = plural2(folded.length, destroys > 0 ? "other change" : "change");
+    const inside2 = plural2(folded.length, destroys > 0 ? "other change" : "change");
     if (level >= 2) {
-      lines.push(`${inside} not listed here, see the ${summary2}`);
+      lines.push(`${inside2} not listed here, see the ${summary2}`);
     } else {
-      lines.push(`<details><summary>${inside}</summary>`);
+      lines.push(`<details><summary>${inside2}</summary>`);
       for (const change of folded)
         lines.push(`${changeLine(change)}<br>`);
       lines.push("</details>");
@@ -52299,6 +52417,9 @@ var ROOT_MARKER_LINE = /^<!-- sluiceway:dashboard(?: [^\r\n]*)? -->\r?(?:\n|$)/;
 function isDashboard(issue3, label) {
   return issue3.labels.includes(label) && issue3.author.login === BOT_LOGIN && issue3.author.type === BOT_TYPE && ROOT_MARKER_LINE.test(issue3.body);
 }
+async function findDashboard(github, label) {
+  return (await openMatches(github, label))[0];
+}
 async function writeDashboard(github, settings, build) {
   const [dashboard, ...duplicates] = await openMatches(github, settings.label);
   if (dashboard) {
@@ -52496,11 +52617,11 @@ function diffParts(stack, level) {
 `));
   }
   if (others.length > 0) {
-    const inside = plural2(others.length, destroys.length > 0 ? "other change" : "change");
+    const inside2 = plural2(others.length, destroys.length > 0 ? "other change" : "change");
     if (level >= 2)
-      parts.push(`${inside} not listed here, see the job log.`);
+      parts.push(`${inside2} not listed here, see the job log.`);
     else {
-      parts.push(`<details><summary>${inside}</summary>`, others.map((change) => `- ${changeLine(change)}`).join(`
+      parts.push(`<details><summary>${inside2}</summary>`, others.map((change) => `- ${changeLine(change)}`).join(`
 `), "</details>");
     }
   }
@@ -52609,6 +52730,17 @@ class ScanFailedError extends Error {
     this.name = "ScanFailedError";
   }
 }
+
+class PreviewFirst extends Error {
+  ids;
+  why;
+  constructor(ids, why) {
+    super("More stacks have to be previewed before the dashboard can be written.");
+    this.ids = ids;
+    this.why = why;
+    this.name = "PreviewFirst";
+  }
+}
 function seconds(milliseconds) {
   return `${(milliseconds / 1000).toFixed(1)} s`;
 }
@@ -52621,68 +52753,180 @@ function lines(text2) {
     all.pop();
   return all;
 }
+function short(sha) {
+  return sha.slice(0, 7);
+}
 async function scan(context3) {
   const { log, now } = context3;
   const startedAt = now();
+  const at = startedAt.toISOString();
   const runUrl = `${context3.repoUrl}/actions/runs/${context3.runId}`;
   const config2 = loadConfig(context3.root);
   const stacks = applyConfig(config2, await context3.adapter.discover(context3.root)).sort((a, b) => byCodeUnit2(stackId(a.stack), stackId(b.stack)));
-  const previewed = await previewAll(context3, stacks);
-  const failed = previewed.filter(({ result }) => !result.ok);
-  for (const { id, result } of previewed) {
-    const words = lines(result.toolLog);
-    log.group(logGroupTitle(id), [
-      ...result.ok ? diffLogLines(result.diff) : [`preview failed: ${previewFailureText(result.reason)}`, ...result.detail],
-      ...words.length > 0 ? ["The tool's own words:", ...words] : []
-    ]);
-  }
-  for (const { id, result } of failed) {
-    if (!result.ok) {
-      log.warning(`The preview of ${logGroupTitle(id)} failed: ${previewFailureText(result.reason)}.`, "Preview failed");
+  const ids = stacks.map(({ stack }) => stackId(stack));
+  log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural2(stacks.length, "stack")}.`);
+  const plan = await makePlan(context3, config2, stacks);
+  logPlan(context3, plan, stacks.length);
+  const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
+  let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
+  const previewed = new Map;
+  let rounds = 0;
+  let versionChecked = false;
+  let composed;
+  let written;
+  for (;; ) {
+    if (next.length > 0 && !versionChecked) {
+      await checkVersion2(context3);
+      versionChecked = true;
+    }
+    const round = await previewAll(context3, next);
+    for (const one of round)
+      previewed.set(one.id, one);
+    logResults(context3, round);
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit2(a.id, b.id));
+    if (round.length > 0 || rounds === 0)
+      await writeSummary(context3, all);
+    rounds++;
+    const compose = (liveBody) => {
+      const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
+      const liveRows = new Map;
+      if (live?.root?.version === MARKER_VERSION) {
+        for (const row of live.rows)
+          if (!liveRows.has(row.stackId))
+            liveRows.set(row.stackId, row);
+      }
+      const rule = oneRowPerStack(ids, new Set(previewed.keys()), [...liveRows.keys()]);
+      if (rule.missing.length > 0)
+        throw new PreviewFirst(rule.missing);
+      const carried = rule.carried.flatMap((id) => liveRows.get(id) ?? []);
+      const full = carried.length === 0;
+      const fitted = fitBody({
+        root: {
+          scanSha: context3.sha,
+          scanRun: context3.runId,
+          scanAt: at,
+          fullScanAt: full ? at : live?.root?.fullScanAt,
+          fullScanRun: full ? context3.runId : live?.root?.fullScanRun
+        },
+        rows: all.map(({ id, result }) => previewRow(id, result, runUrl)),
+        carried,
+        redact: config2.dashboard.redact,
+        recentlyDeployed: [],
+        repoUrl: context3.repoUrl,
+        actionRef: context3.actionRef,
+        personality: config2.dashboard.personality
+      }, full ? context3.limits?.body : { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
+      if (!fitted.fits) {
+        if (full)
+          throw new ScanFailedError(bodyDoesNotFitMessage(fitted.size));
+        throw new PreviewFirst(rule.carried, { kind: "does-not-fit", carried: carried.length });
+      }
+      return { body: fitted.body, shortened: fitted.shortened, full, ...rule };
+    };
+    try {
+      if (previewed.size === ids.length)
+        compose(undefined);
+      written = await writeDashboard(context3.github, config2.dashboard, (liveBody) => {
+        composed = compose(liveBody);
+        return composed.body;
+      });
+      break;
+    } catch (error63) {
+      if (!(error63 instanceof PreviewFirst))
+        throw error63;
+      const late = new Set(error63.ids);
+      next = stacks.filter(({ stack }) => late.has(stackId(stack)));
+      if (error63.why) {
+        log.info(`This scan falls back to a full scan: ${fullScanReasonText(error63.why)}. Previewing the other ${plural2(next.length, "stack")} now.`);
+      } else {
+        for (const id of error63.ids) {
+          log.info(`${logGroupTitle(id)} is previewed now: the dashboard has no row for it any more.`);
+        }
+      }
     }
   }
-  await writeSummary(context3, previewed);
-  const at = startedAt.toISOString();
-  const fitted = fitBody({
-    root: {
-      scanSha: context3.sha,
-      scanRun: context3.runId,
-      scanAt: at,
-      fullScanAt: at,
-      fullScanRun: context3.runId
-    },
-    rows: previewed.map(({ id, result }) => previewRow(id, result, runUrl)),
-    carried: [],
-    redact: config2.dashboard.redact,
-    recentlyDeployed: [],
-    repoUrl: context3.repoUrl,
-    actionRef: context3.actionRef,
-    personality: config2.dashboard.personality
-  }, context3.limits?.body);
-  if (!fitted.fits)
-    throw new ScanFailedError(bodyDoesNotFitMessage(fitted.size));
-  const written = await writeDashboard(context3.github, config2.dashboard, () => fitted.body);
-  reportDashboard(context3, written, fitted.shortened);
-  if (everyPreviewFailed(previewed.length, failed.length)) {
-    throw new ScanFailedError(`Every preview failed (${failed.length} of ${previewed.length}). That nearly always means the environment is broken, such as missing credentials or a backend that cannot be reached. The dashboard was written first and shows a preview failure on every row, which is true: nothing can be deployed either. The job log holds what the tool printed, in the group of each stack.`);
+  reportDashboard(context3, written, composed);
+  const failed = [...previewed.values()].filter(({ result }) => !result.ok);
+  if (everyPreviewFailed(previewed.size, failed.length)) {
+    throw new ScanFailedError(`Every preview failed (${failed.length} of ${previewed.size}). That nearly always means the environment is broken, such as missing credentials or a backend that cannot be reached. The dashboard was written first and shows a preview failure on every row of a previewed stack, which is true: nothing can be deployed either. The job log holds what the tool printed, in the group of each stack.`);
+  }
+}
+async function makePlan(context3, config2, stacks) {
+  const { log } = context3;
+  const full = (why) => ({ kind: "full", why });
+  const dashboard = narrowsOn(context3.event) ? await findDashboard(context3.github, config2.dashboard.label) : undefined;
+  const live = dashboard && parseDashboard(dashboard.body);
+  const base = comparisonBase(context3.event, live, MARKER_VERSION);
+  if (base.kind !== "compare")
+    return full(base);
+  let comparison;
+  try {
+    comparison = await context3.github.compareCommits(base.from, context3.sha);
+  } catch (error63) {
+    log.info(`Comparing ${short(base.from)} with ${short(context3.sha)} failed: ${error63 instanceof Error ? error63.message : error63}`);
+    return full({ kind: "compare-failed" });
+  }
+  const changed = changedPaths(comparison);
+  if (changed.kind !== "changed")
+    return full(changed);
+  log.info(`${plural2(comparison.files.length, "file")} changed between ${short(base.from)}, the commit of the last scan, and ${short(context3.sha)}.`);
+  return planScan(stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })), changed.paths, config2.scan.unrelated, live?.rows ?? []);
+}
+function fileName(path) {
+  return logGroupTitle(path);
+}
+function whyText(why) {
+  switch (why.kind) {
+    case "claims": {
+      const [first = "", ...rest] = why.files;
+      return rest.length === 0 ? `it claims ${fileName(first)}` : `it claims ${fileName(first)} and ${rest.length} more changed ${rest.length === 1 ? "file" : "files"}`;
+    }
+    case "no-row":
+      return "it has no row on the dashboard";
+    case "preview-failed":
+      return "its row is a preview failure";
+  }
+}
+function logPlan(context3, plan, stackCount) {
+  const { log } = context3;
+  if (plan.kind === "full") {
+    const { why } = plan;
+    if (why.kind === "event") {
+      log.info(`This is a full scan: ${fullScanReasonText(why)}.`);
+      return;
+    }
+    const safe = why.kind === "unclaimed" ? { kind: "unclaimed", files: why.files.map(fileName) } : why;
+    log.info(`This is a full scan. A push gives a narrowed scan, and this one fell back to a full scan: ${fullScanReasonText(safe)}.`);
+    if (why.kind === "unclaimed") {
+      log.group("Changed files that no stack claims", [
+        ...why.files.map((file2) => `unclaimed: ${fileName(file2)}`),
+        "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated."
+      ]);
+    }
+    return;
+  }
+  const kept = stackCount - plan.previews.length;
+  log.info(plan.previews.length === 0 ? "This is a narrowed scan. No stack has to be previewed, so every row is kept as it is." : `This is a narrowed scan: it previews ${plan.previews.length} of ${plural2(stackCount, "stack")}${kept > 0 ? ` and keeps the ${kept === 1 ? "row" : "rows"} of the other ${kept} as ${kept === 1 ? "it is" : "they are"}` : ""}.`);
+  for (const { id, why } of plan.previews) {
+    log.info(`${logGroupTitle(id)} is previewed: ${whyText(why)}.`);
+  }
+}
+async function checkVersion2(context3) {
+  try {
+    await context3.adapter.checkVersion({ root: context3.root, env: context3.env, run: context3.run });
+  } catch (error63) {
+    if (error63 instanceof ToolVersionError && error63.toolLog !== "") {
+      context3.log.group("The tool's own words", lines(error63.toolLog));
+    }
+    throw error63;
   }
 }
 async function previewAll(context3, stacks) {
   const { log, now, adapter } = context3;
-  if (stacks.length === 0) {
-    log.info("Found no stacks.");
+  if (stacks.length === 0)
     return [];
-  }
   const tool = { root: context3.root, env: context3.env, run: context3.run };
-  try {
-    await adapter.checkVersion(tool);
-  } catch (error63) {
-    if (error63 instanceof ToolVersionError && error63.toolLog !== "") {
-      log.group("The tool's own words", lines(error63.toolLog));
-    }
-    throw error63;
-  }
-  log.info(`Found ${plural2(stacks.length, "stack")}. Previewing with a pool of ${context3.concurrency} and a time limit of ${minutes(context3.previewTimeoutMinutes)} for each preview.`);
+  log.info(`Previewing ${plural2(stacks.length, "stack")} with a pool of ${context3.concurrency} and a time limit of ${minutes(context3.previewTimeoutMinutes)} for each preview.`);
   const poolStarted = now().getTime();
   const previewed = await runPool(stacks, context3.concurrency, async (configured) => {
     const id = stackId(configured.stack);
@@ -52700,6 +52944,21 @@ async function previewAll(context3, stacks) {
   const slowest = previewed.reduce((a, b) => b.milliseconds > a.milliseconds ? b : a);
   log.info(`Previewed ${plural2(previewed.length, "stack")} in ${seconds(total)} with a pool of ${context3.concurrency}. Added up, the previews took ${seconds(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds(slowest.milliseconds)}.`);
   return previewed;
+}
+function logResults(context3, previewed) {
+  const { log } = context3;
+  for (const { id, result } of previewed) {
+    const words = lines(result.toolLog);
+    log.group(logGroupTitle(id), [
+      ...result.ok ? diffLogLines(result.diff) : [`preview failed: ${previewFailureText(result.reason)}`, ...result.detail],
+      ...words.length > 0 ? ["The tool's own words:", ...words] : []
+    ]);
+  }
+  for (const { id, result } of previewed) {
+    if (!result.ok) {
+      log.warning(`The preview of ${logGroupTitle(id)} failed: ${previewFailureText(result.reason)}.`, "Preview failed");
+    }
+  }
 }
 async function writeSummary(context3, previewed) {
   const { log } = context3;
@@ -52720,14 +52979,21 @@ var FOUND = {
   reopened: "Reopened the dashboard and wrote it",
   created: "Created the dashboard"
 };
-function reportDashboard(context3, written, shortened) {
+function reportDashboard(context3, written, composed) {
   const { log } = context3;
+  const shortened = composed?.shortened ?? 0;
   const size = `${written.body.length.toLocaleString("en-US")} of ${BODY_LIMIT.toLocaleString("en-US")} characters`;
   log.info(`${FOUND[written.found]}: ${context3.repoUrl}/issues/${written.number} (${size}).`);
   if (written.tries > 1)
     log.info(`The write took ${written.tries} tries.`);
   if (shortened > 0)
     log.info(`${plural2(shortened, "row")} shortened to fit the size budget.`);
+  if (composed && composed.carried.length > 0) {
+    log.info(`Carried ${plural2(composed.carried.length, "row")} through as ${composed.carried.length === 1 ? "it was" : "they were"}, for the stacks this scan did not preview.`);
+  }
+  for (const id of composed?.dropped ?? []) {
+    log.info(`Dropped the row of ${logGroupTitle(id)}: discovery knows no such stack.`);
+  }
   for (const duplicate of written.closedDuplicates) {
     log.info(`Closed #${duplicate}, a second dashboard.`);
   }
@@ -52754,6 +53020,7 @@ async function runScan() {
     repoUrl: job.repoUrl,
     runId: job.runId,
     sha: job.sha,
+    event: job.event,
     actionRef: readActionRef(env, (path) => readFileSync3(path, "utf8"))
   });
 }
