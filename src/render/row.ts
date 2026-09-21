@@ -88,7 +88,7 @@ export interface RowOptions {
   level?: RowLevel | undefined;
 }
 
-const INDENT = "  ";
+export const INDENT = "  ";
 
 export function byCodeUnit(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -143,7 +143,7 @@ export function changeLine(change: Change): string {
   return parts.join(" · ");
 }
 
-const ORPHAN_TICK_NOTE =
+export const ORPHAN_TICK_NOTE =
   ":information_source: a tick on this row was not picked up. Tick again to deploy.";
 
 function failureLine(failure: FailureLine): string {

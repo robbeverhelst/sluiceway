@@ -18,6 +18,9 @@ export interface DashboardSettings {
   pin: boolean;
 }
 
+// What the check reads of an issue, from the API or from an event payload.
+export type DashboardCandidate = Pick<Issue, "labels" | "author" | "body">;
+
 export interface DashboardResult extends WriteResult {
   number: number;
   found: "open" | "reopened" | "created";
@@ -28,9 +31,15 @@ export interface DashboardResult extends WriteResult {
 // Label, root marker and author together (record 0009). A person can put the
 // label on any issue and can paste a marker, and cannot make the bot the
 // author.
-export function isDashboard(issue: Issue, label: string): boolean {
+export function isDashboard(issue: DashboardCandidate, label: string): boolean {
+  return issue.labels.includes(label) && isBotIssueWithRootMarker(issue);
+}
+
+// The half of that check that needs no config. `resolve` makes it first, on
+// the payload of its event, so an edit of an ordinary issue never reads
+// `sluiceway.yaml` (record 0017).
+export function isBotIssueWithRootMarker(issue: Omit<DashboardCandidate, "labels">): boolean {
   return (
-    issue.labels.includes(label) &&
     issue.author.login === BOT_LOGIN &&
     issue.author.type === BOT_TYPE &&
     ROOT_MARKER_LINE.test(issue.body)
