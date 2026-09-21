@@ -31,6 +31,7 @@ Left out of v1 on purpose, and v1 was shaped so these can be added without a bre
 | Failed deploys in the recently deployed list | A failure already has its failure line on the stack's own row. The list stays a log of what went out. | 0029 |
 | A configurable length for recently deployed | Fixed at 10 to launch. | 0029 |
 | A shortening level that also drops a row's links, for more than about 100 stacks pending at once | Past what one issue can usefully show. The scan fails with a clear message instead. | 0028 |
+| A link to the summary in the note about shortened rows | A row that a narrowed scan carried through links to the summary of an earlier run, so one link would be wrong for some rows. Every shortened row holds its own link. | 0028, slice 1.8 |
 | One alert block above the pending list that names the stacks with a delete or replace | The open delete and replace lines under each row won. The `destroys` marker key keeps this possible for every writer. | 0027, 0029 |
 | A finer personality switch (the header without the voice, or the reverse) | One boolean, `dashboard.personality`, is enough to launch. | 0034 |
 | A custom header image, or a palette setting | The header is Sluiceway's brand, and a user image brings back every file rule as something to validate. Turning it off is the v1 answer. | 0034, 0033 |

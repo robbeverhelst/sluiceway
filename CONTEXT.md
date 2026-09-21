@@ -150,6 +150,10 @@ _Avoid_: Tag, annotation, metadata comment
 A stack's complete entry on the dashboard, bounded so it can be moved or replaced as a unit without reading what is inside.
 _Avoid_: Entry, item, section
 
+**Carried row**:
+A row block that a writer takes from the live body and writes back as it is, because it has no diff for that stack. It is never read inside and never shortened.
+_Avoid_: Kept row, old row, stale row
+
 **Counts line**:
 The first line of text on the dashboard: how many stacks are pending, deploying, preview failed and in sync, always all four. It adds how many pending stacks destroy resources and how many rows carry a failure line, each only when it is not 0.
 _Avoid_: Header line, stats, totals

@@ -3,6 +3,8 @@
 Record 0004 made the body a cache of row blocks and said each block's marker carries stack id, hash and row state. This record fixes the format. It has to let drift rows and "queued behind X" arrive later without a breaking change.
 
 > Amended by 0027: the row marker gains two optional display cache keys after `hash`, `destroys` and `failed`.
+>
+> Amended by 0028 (settled while building slice 1.8): a third optional display cache key follows them, `shortened`, the level of a shortened row.
 
 Markers are HTML comments in one namespace, `sluiceway:<kind>`, with `key="value"` pairs. There are three kinds in v1:
 
@@ -26,7 +28,7 @@ JSON and base64 payloads were rejected. JSON needs the same escaping plus nested
 
 - A row block is every line from the one holding the open marker through the one holding `<!-- /sluiceway:row -->`, which is the row's last line, indented, with no payload. "Until the next marker" was rejected as the end of a block, because moving the last row of a collapsed section would take the closing `</details>` with it. The cost is about 25 characters per row.
 - Values are percent-encoded as UTF-8 bytes with upper case hex: `%`, `"`, `<`, `>`, and every byte up to `0x20` plus `0x7F`. Nothing else. A value can then never close the quote or the comment. A render test showed `--` inside a comment is harmless.
-- Row keys are written in the order `stack`, `state`, `hash`, and root keys in the order `v`, `scan-sha`, `scan-run`, `scan-at`, so output stays byte-identical. Parsers do not depend on order. Line endings are normalized to `\n` before parsing.
+- Row keys are written in the order `stack`, `state`, `hash` (then `destroys`, `failed` and `shortened`, see the notes at the top), and root keys in the order `v`, `scan-sha`, `scan-run`, `scan-at`, so output stays byte-identical. Parsers do not depend on order. Line endings are normalized to `\n` before parsing.
 - The row state is a cache for placing and counting rows. No mode decides anything from it. `resolve` acts on a row when its box is ticked, discovery knows the stack id, the stack has no open deployment and the ticker is authorized. `apply` deploys only if a fresh preview still gives the hash on the row. A wrong state can at worst misplace a row until the next scan.
 - The v1 states are `pending`, `deploying`, `in-sync` and `preview-failed`, in this precedence: an open deployment gives `deploying` whatever the preview says (0003), else a failed preview gives `preview-failed`, else a diff that is not empty gives `pending`, else `in-sync`.
 - One rule makes additions safe. Every writer ignores marker kinds and keys it does not know, carries a row whose state it does not know through byte for byte, never acts on a tick on such a row, and leaves it out of the counts it knows. Such a row is placed in a plain list at the end of the body. This can only happen after a downgrade.
