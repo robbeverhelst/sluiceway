@@ -36,6 +36,10 @@ _Avoid_: Complete scan, deep scan, rescan (that is the checkbox that asks for on
 A scan that previews only the stacks that claim a file changed since the last scan, and keeps every other stack's row as it is. It is a full scan whenever a changed file has no claimant.
 _Avoid_: Partial scan, incremental scan, affected scan, changed stacks
 
+**Pool**:
+The fixed number of previews a scan runs at the same time, in one job. It starts the next preview when one finishes, in stack id order, and never previews one stack twice at once. Its size is the `concurrency` input.
+_Avoid_: Workers, threads, matrix, batch
+
 **Claim**:
 A stack claims a changed file when the file lies inside the stack's directory or matches one of the inputs configured for that stack. Several stacks can claim one file.
 _Avoid_: Affects, owns, touches, depends on

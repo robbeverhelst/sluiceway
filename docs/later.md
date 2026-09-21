@@ -60,6 +60,9 @@ Left out of v1 on purpose, and v1 was shaped so these can be added without a bre
 | Pinning a dashboard that already exists, on every scan | Only a new dashboard is pinned. Pinning again would undo a person's unpin after every scan and cost a request each time. | Slice 1.10 |
 | Trying a dashboard write again after an API error | The write loop tries again when a write did not stick. A call that GitHub answers with an error ends the job, and the next scan repairs the body. | Slice 1.10, 0004 |
 | A bound on how many closed issues are read when looking for a closed dashboard | They are only read when no open dashboard exists, which is rare, and only issues with the dashboard label are listed. | Slice 1.10, 0017 |
+| The tool's output in the job log while a preview is still running | Previews run side by side, so live output would mix the stacks. Each stack's group is printed when the pool is done. One line per finished preview shows progress until then. | Slice 1.11, 0022 |
+| Links on a row to the attempt of a run that was run again | A row links to the run. GitHub shows the newest attempt there, which is the one that wrote the row. | Slice 1.11 |
+| A preview failure row for a fault inside Sluiceway itself | The adapter turns everything the tool can do wrong into a preview failure. An error thrown past that is a bug, and a red job is how it gets seen. | Slice 1.11, 0012 |
 
 ## Rejected on principle
 
