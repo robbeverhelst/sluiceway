@@ -270,6 +270,7 @@ describe("which row a stack gets at the late read of a scan (record 0004)", () =
     for (const liveState of [undefined, "deploying"]) {
       expect(rowAtLateRead({ previewedAt, liveState, fact: succeeded(after) })).toEqual({
         row: "preview-first",
+        why: "deploy-ended",
       });
     }
   });
@@ -303,6 +304,7 @@ describe("which row a stack gets at the late read of a scan (record 0004)", () =
     for (const fact of [undefined, succeeded(before), failed(after)]) {
       expect(rowAtLateRead({ previewedAt: undefined, liveState: "deploying", fact })).toEqual({
         row: "preview-first",
+        why: "no-open-deployment",
       });
     }
   });
@@ -310,6 +312,6 @@ describe("which row a stack gets at the late read of a scan (record 0004)", () =
   test("a stack with neither a preview nor a live row is previewed (record 0011)", () => {
     expect(
       rowAtLateRead({ previewedAt: undefined, liveState: undefined, fact: undefined }),
-    ).toEqual({ row: "preview-first" });
+    ).toEqual({ row: "preview-first", why: "no-row" });
   });
 });

@@ -195,7 +195,16 @@ export type RowAtLateRead =
   // The row of this scan's preview.
   | { row: "fresh" }
   // Preview the stack now and return to the late read (record 0011).
-  | { row: "preview-first" };
+  | { row: "preview-first"; why: PreviewFirstWhy };
+
+export type PreviewFirstWhy =
+  // The live body has no row for the stack (record 0011).
+  | "no-row"
+  // Its live row says deploying and no deployment is open.
+  | "no-open-deployment"
+  // A deploy of it ended after its preview started, and no live row tells
+  // how it ended.
+  | "deploy-ended";
 
 // At its late read the scan defers to fresher facts (record 0004). A stack
 // with an open deployment is deploying. A stack whose deploy ended after its
@@ -209,12 +218,15 @@ export function rowAtLateRead(stack: StackAtLateRead): RowAtLateRead {
     return { row: "deploying", from: liveState === "deploying" ? "live" : "record" };
   }
   const usableLive = liveState !== undefined && liveState !== "deploying";
-  if (previewedAt === undefined) return usableLive ? { row: "live" } : { row: "preview-first" };
+  if (previewedAt === undefined) {
+    if (usableLive) return { row: "live" };
+    return { row: "preview-first", why: liveState === undefined ? "no-row" : "no-open-deployment" };
+  }
 
   const predates = fact !== undefined && !stack.settledHere && fact.at > previewedAt;
   if (!predates) return { row: "fresh" };
   if (usableLive) return { row: "live" };
   // Once. A clock that runs behind GitHub's would otherwise ask again and
   // again, and the next scan repairs what is left.
-  return stack.again ? { row: "fresh" } : { row: "preview-first" };
+  return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
 }
