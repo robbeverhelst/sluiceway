@@ -84,7 +84,13 @@ for (const version of VERSIONS) {
 
     // Without this the canary test of 0021 could pass on fixtures that never
     // held the value in the first place.
-    for (const scenario of ["new-stack", "new-stack-yml-project", "same-preview-twice", "update"]) {
+    for (const scenario of [
+      "new-stack",
+      "new-stack-yml-project",
+      "same-preview-twice",
+      "update",
+      "nested-paths",
+    ]) {
       test(`${scenario}: the raw output holds the canary value`, () => {
         expect(savedOutput(version, scenario)).toContain(CANARY_VALUE);
       });
