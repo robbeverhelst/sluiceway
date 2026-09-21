@@ -1,5 +1,7 @@
 # Penny stands mid-channel on a wide quay, and failing is a jam
 
+> Amended by 0043: there is no plain picture any more. When a pending or deploying row has a delete or replace, the pending or deploying picture carries the destroy sign: an amber warning triangle painted on the wall downstream, between Penny and the wordmark.
+
 The first header (0030, 0033) was 440 by 120 and sat left-aligned in an issue column about twice as wide. Penny took the left third, the wordmark the middle, and the right third was empty apart from a thin waterline. The picture said which state the dashboard was in and nothing more. The owner asked for a header that is impressive, fun and useful, and in brand.
 
 Three wide headers were drawn as animated SVGs and judged on rendered issues in the private lab repo, in light and dark and at phone width, on the 58 stack dashboard: a flat cutaway where pending is a water level, the same cutaway where pending is a row of crates, and a quay scene with both. All three put Penny in the middle of a channel that crosses the whole picture. Upstream is on the left, where water piles up while changes are pending. Downstream is on the right, where it rushes while deploying and lies calm when in sync.

@@ -183,7 +183,7 @@ A row block that a writer takes from the live body and writes back as it is, bec
 _Avoid_: Kept row, old row, stale row
 
 **Counts line**:
-The first line of text on the dashboard: how many stacks are pending, deploying, preview failed and in sync, always all four. It adds how many pending stacks destroy resources and how many rows carry a failure line, each only when it is not 0. Under a header in colour it is centered and every count has a count dot.
+The first line of text on the dashboard: how many stacks are pending, deploying, preview failed and in sync, always all four. It adds how many pending stacks destroy resources and how many rows carry a failure line, each only when it is not 0. Under a header it is centered and every count has a count dot.
 _Avoid_: Header line, stats, totals
 
 **Scan line**:
@@ -257,12 +257,12 @@ The exact release tag of the running action, or its commit SHA. Never a moving t
 _Avoid_: Action version, image tag, release
 
 **Header state**:
-Which of six states the header shows: plain, failing, deploying, pending, first run or in sync. The first that applies wins, in that order. It is computed from the row markers and decides nothing. Pending has three pictures, one per pending level, so there are eight pictures for six states.
+Which of five states the header shows: failing, deploying, pending, first run or in sync. The first that applies wins, in that order. It is computed from the row markers and decides nothing. A destroy does not change it. Pending has three pictures, one per pending level, so there are seven pictures for five states, and four of them exist once more with the destroy sign.
 _Avoid_: Mood, dashboard status, health
 
-**Plain**:
-The header state with no face, no colour and no motion. It is shown whenever a pending or deploying row has a delete or replace. The counts line under it has no count dots.
-_Avoid_: Serious mode, warning header, danger state
+**Destroy sign**:
+The amber warning triangle painted on the quay wall in the header, between Penny and the wordmark. The pending and deploying pictures carry it whenever a pending or deploying row has a destroy. It does not move, and the rest of the picture is unchanged. It is computed from the row markers and decides nothing. It took the place of a grey header state called plain.
+_Avoid_: Plain, careful state, warning header, danger state, alarm
 
 **Pending level**:
 Which of the three pending pictures the header shows: 1 for 1 or 2 pending rows, 2 for 3 to 9, 3 for 10 or more. The water upstream is higher and carries more crates with each level. It is computed from the row markers and decides nothing.
@@ -281,7 +281,7 @@ How the failing header state is drawn: the gate stuck half open over a log, with
 _Avoid_: Broken gate, angry gate, crash
 
 **Count dot**:
-The coloured dot in front of a count on the counts line: yellow pending, blue deploying, red preview failed and failed deploys, green in sync, white for a count of 0. Shown only under a header in colour.
+The coloured dot in front of a count on the counts line: yellow pending, blue deploying, red preview failed and failed deploys, green in sync, white for a count of 0. Shown whenever there is a header.
 _Avoid_: Badge, status light, bullet
 
 **Voice**:

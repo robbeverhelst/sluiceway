@@ -1,6 +1,6 @@
 # The state images are twelve small files named by role, served from the exact release tag
 
-> Amended by 0039 and 0040: there are sixteen files of 880 by 160, pending has three of the eight pictures, no file has a text element, and the `<picture>` is centered. Naming by role, one file per theme, the exact release tag and the 10 KB cap stay as they are here.
+> Amended by 0039 and 0040: there are sixteen files of 880 by 160, pending has three of the eight pictures, no file has a text element, and the `<picture>` is centered. Naming by role, one file per theme, the exact release tag and the 10 KB cap stay as they are here. Amended again by 0043: the plain files and their rule are gone, and four pictures exist once more with the destroy sign, as `<picture>-destroys-<theme>.svg`, which makes twenty-two files.
 
 The rendering research fixed the mechanics: an animated SVG plays through `<img>`, a top level `<picture>` with a `prefers-color-scheme` source follows the reader's GitHub theme, images from `raw.githubusercontent.com` are not proxied, and a file must never change behind a URL because the raw host caches for five minutes. The owner confirmed by eye in the lab repo on 2026-09-21 that the images show, move and follow the GitHub theme, which closes the last open item of that research.
 

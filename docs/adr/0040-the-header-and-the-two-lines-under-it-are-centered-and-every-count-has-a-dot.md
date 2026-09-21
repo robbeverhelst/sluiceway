@@ -1,5 +1,7 @@
 # The header and the two lines under it are centered, and every count has a dot
 
+> Amended by 0043: there is no plain state any more. The dots are shown whenever there is a header, also when the picture carries the destroy sign.
+
 Record 0029 put the header, the counts line and the scan line at the top of the body, all left-aligned, the counts as plain text. With a header as wide as the issue (0038) the three belong together as one block, and the counts deserve to be found at a glance.
 
 GitHub's sanitizer was tested through its Markdown API. It keeps `align="center"` on `<p>`, `<div>`, tables and headings. It strips `style` and every colour attribute. So a coloured dot can only be an emoji or an image.

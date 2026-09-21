@@ -1,5 +1,7 @@
 # `dashboard.personality: false` removes the image and the voice
 
+> Amended by 0043: the plain header is gone, so it is no longer a reason the switch is nearly free. The dry lines are. The switch and everything it does stay as they are here.
+
 The map listed an off-switch for the personality as not yet specified. It is in v1, because it is nearly free: the plain header and the dry lines must exist anyway for dashboards with a delete or replace (0031, 0032).
 
 ```yaml
