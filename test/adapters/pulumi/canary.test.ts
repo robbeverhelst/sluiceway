@@ -9,6 +9,7 @@ import { canonicalDiff, diffHash } from "../../../src/core/diff-hash.ts";
 import { previewFailureText } from "../../../src/core/failure-reason.ts";
 import { type Stack, stackId } from "../../../src/core/stack.ts";
 import { renderBody, rowBlock } from "../../../src/render/body.ts";
+import { fitBody } from "../../../src/render/budget.ts";
 import { diffLogLines, logGroupTitle } from "../../../src/render/log-text.ts";
 import { renderRow } from "../../../src/render/row.ts";
 import { renderSummary } from "../../../src/render/summary.ts";
@@ -30,6 +31,7 @@ function rows(diff: Diff): string {
     ...([0, 1, 2, 3] as const).map((level) => renderRow(row, { level })),
     renderRow(row, { redact: true }),
     body(row),
+    budgeted(row),
   ].join("\n");
 }
 
@@ -43,6 +45,22 @@ function body(row: Parameters<typeof rowBlock>[0]): string {
     actionRef: "v0.1.0",
     personality: true,
   });
+}
+
+// The same body through the size budget, cut as far as it goes (record 0028).
+function budgeted(row: Parameters<typeof rowBlock>[0]): string {
+  return fitBody(
+    {
+      root: { scanSha: "sha", scanRun: "1", scanAt: "2026-09-21T10:02:41Z" },
+      rows: [row],
+      carried: [],
+      recentlyDeployed: [],
+      repoUrl: "repo-url",
+      actionRef: "v0.1.0",
+      personality: true,
+    },
+    { target: 0 },
+  ).body;
 }
 
 // The summary in full and cut as far as it goes, and the log text (record 0037).
