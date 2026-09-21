@@ -9,6 +9,9 @@ import type { FakeGitHub } from "../fake-github/fake-github.ts";
 import { ACTION_REF, type RememberingLog, SHA, type TableAdapter } from "./harness.ts";
 import { ALICE, matrix, RESOLVE_RUN, rowsOf, scanned, tick, wake } from "./resolve-harness.ts";
 
+// The id of the apply job (record 0044).
+export const APPLY_JOB_ID = "106502299999";
+
 export interface ApplyHarness {
   context: ApplyContext;
   github: FakeGitHub;
@@ -54,6 +57,8 @@ export async function handedOn(
     repoUrl: h.context.repoUrl,
     // `apply` runs in the run that `resolve` started.
     runId: RESOLVE_RUN,
+    runAttempt: "1",
+    jobId: APPLY_JOB_ID,
     sha: SHA,
     actionRef: ACTION_REF,
     deploymentId: first.deployment,

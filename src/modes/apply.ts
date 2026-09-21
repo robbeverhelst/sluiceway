@@ -40,6 +40,7 @@ import {
   renderApplySummary,
 } from "../render/apply-summary.ts";
 import { BODY_LIMIT, type BudgetOptions, fitBody } from "../render/budget.ts";
+import { runLinks } from "../render/links.ts";
 import { diffLogLines, logGroupTitle } from "../render/log-text.ts";
 import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
 import { previewRow } from "../render/preview-result.ts";
@@ -65,6 +66,10 @@ export interface ApplyContext {
   repoUrl: string;
   // The run of this job. `resolve` created the record in the same run.
   runId: string;
+  // A re-run of the run is a new attempt (record 0044).
+  runAttempt: string;
+  // The id of the running job. Absent where the runner does not know it.
+  jobId?: string | undefined;
   // The commit the job checked out: the head of the default branch that
   // `resolve` put on the record.
   sha: string;
@@ -292,7 +297,7 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
                 runUrl: `${context.repoUrl}/actions/runs/${fact.run}`,
               }
             : undefined;
-        const row = previewRow(id_, made, runUrl, failure);
+        const row = previewRow(id_, made, runLinks(context), failure);
         return row.state === "pending" ? { ...row, attribution } : row;
       });
     } catch (error) {

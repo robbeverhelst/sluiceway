@@ -114,7 +114,10 @@ describe("the change moved since the tick (record 0008)", () => {
       "the change moved since the tick",
     );
     const row = rows(h)["a:prod"] ?? "";
-    expect(row).toStartWith("- [ ] **a:prod** · 1 create, 1 update · [preview]");
+    // The preview link lands on the summary of this attempt (record 0044).
+    expect(row).toStartWith(
+      `- [ ] **a:prod** · 1 create, 1 update · [preview](${RESOLVE_RUN_URL}/attempts/1)`,
+    );
     expect(row).toContain(
       "  :x: last deploy failed: the change moved since the tick · ticked by alice · ",
     );

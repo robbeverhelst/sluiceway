@@ -5,18 +5,20 @@ import type { PreviewResult } from "../adapters/adapter.ts";
 import { diffHash } from "../core/diff-hash.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
 import { globOf } from "../core/glob.ts";
+import type { RunLinks } from "./links.ts";
 import type { FailureLine, Row } from "./row.ts";
 import type { SummaryMerge, SummaryStack } from "./summary.ts";
 
 // A diff with changes is a pending row, a diff without is a stack in sync, and
 // no diff is a preview failure with a reason from the fixed list (record
-// 0022). `runUrl` is the run whose summary and job log hold the rest. The
-// failure line is a deploy fact from the stack's newest deployment record
+// 0022). The links land where the rest is (record 0044): a pending row's on
+// the summary, which shows its diff, and a preview failure's on the job log,
+// which holds the tool's own words. The failure line is a deploy fact from the stack's newest deployment record
 // (record 0003), and rides on whatever row the preview gives.
 export function previewRow(
   stackId: string,
   result: PreviewResult,
-  runUrl: string,
+  links: RunLinks,
   failure?: FailureLine | undefined,
 ): Row {
   if (!result.ok) {
@@ -24,12 +26,18 @@ export function previewRow(
       state: "preview-failed",
       stackId,
       reason: previewFailureText(result.reason),
-      runUrl,
+      runUrl: links.log,
       failure,
     };
   }
   if (result.diff.changes.length === 0) return { state: "in-sync", stackId, failure };
-  return { state: "pending", diff: result.diff, hash: diffHash(result.diff), runUrl, failure };
+  return {
+    state: "pending",
+    diff: result.diff,
+    hash: diffHash(result.diff),
+    runUrl: links.summary,
+    failure,
+  };
 }
 
 // `merges` is what attribution found for the stack (record 0026), when it is

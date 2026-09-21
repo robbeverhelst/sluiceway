@@ -19,6 +19,11 @@ import { FakeGitHub } from "../fake-github/fake-github.ts";
 export const REPO_URL = "https://github.com/acme/infra";
 export const RUN_ID = "4242";
 export const RUN_URL = `${REPO_URL}/actions/runs/${RUN_ID}`;
+// Where the links of a fresh row land (record 0044): the summary of the
+// attempt, and the log of the job.
+export const SUMMARY_URL = `${RUN_URL}/attempts/1`;
+export const JOB_ID = "106502264185";
+export const JOB_URL = `${RUN_URL}/job/${JOB_ID}`;
 export const SHA = "0123456789abcdef0123456789abcdef01234567";
 export const ACTION_REF = "v0.1.0";
 
@@ -157,6 +162,8 @@ export function harness(
     previewTimeoutMinutes: 10,
     repoUrl: REPO_URL,
     runId: RUN_ID,
+    runAttempt: "1",
+    jobId: JOB_ID,
     sha: SHA,
     // Anything but a push gives a full scan. A test of the narrowed scan says
     // "push".

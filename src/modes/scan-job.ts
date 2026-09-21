@@ -7,7 +7,7 @@ import { getOctokit } from "@actions/github";
 import { runProcess } from "../adapters/process.ts";
 import { pulumi } from "../adapters/pulumi/index.ts";
 import { readActionRef } from "../github/action-ref.ts";
-import { readScanInputs } from "../github/inputs.ts";
+import { readJobId, readScanInputs } from "../github/inputs.ts";
 import { readJob } from "../github/job.ts";
 import { actionsLog } from "../github/job-log.ts";
 import { createOctokitPort } from "../github/octokit-port.ts";
@@ -32,6 +32,8 @@ export async function runScan(): Promise<void> {
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
     repoUrl: job.repoUrl,
     runId: job.runId,
+    runAttempt: job.runAttempt,
+    jobId: readJobId(core.getInput),
     sha: job.sha,
     event: job.event,
     workflow: job.workflow,

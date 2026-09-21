@@ -53,6 +53,9 @@ function previewed(rows: Row[]): SummaryStack[] {
     .filter((stack) => stack !== undefined);
 }
 
+// The anchor in front of a stack's heading or list line (record 0044).
+const ANCHOR = /<a id="sluiceway-[a-z0-9-]+"><\/a>/;
+
 describe("snapshots", () => {
   test("the summary of the 58 stack fixture, in full", () => {
     const summary = renderSummary(previewed(rows58()));
@@ -80,6 +83,30 @@ describe("the summary of the fixtures", () => {
     expect(summary.bytes).toBeLessThan(500_000);
   });
 
+  // Record 0044: the summary has an index at its top, in the order of the
+  // dashboard, and one anchor per stack for it to land on.
+  test("every link of the index lands on the one anchor of its stack, in the order of the dashboard", () => {
+    const stacks = previewed(rows100());
+    for (const budget of [Infinity, 60_000]) {
+      const { text } = renderSummary(stacks, { budget });
+      const [, pendingLine = "", failedLine = ""] =
+        text.match(/\n- Pending: (.*)\n- Preview failed: (.*)\n/) ?? [];
+      const targets = [
+        ...`${pendingLine} · ${failedLine}`.matchAll(/\(#user-content-([^)]+)\)/g),
+      ].map((match) => match[1]);
+      const anchors = [...text.matchAll(/<a id="([^"]+)"><\/a>/g)].map((match) => match[1]);
+      // Every pending stack and every preview failure is in the index, and
+      // the index follows the sections: pending first, then the failures.
+      const indexed = anchors.slice(0, targets.length);
+      expect(targets).toEqual(indexed);
+      expect(targets.length).toBe(
+        stacks.filter((stack) => stack.kind === "preview-failed" || stack.diff.changes.length > 0)
+          .length,
+      );
+      expect(new Set(anchors).size).toBe(stacks.length);
+    }
+  });
+
   test("the same input gives the same bytes", () => {
     const render = () => renderSummary(previewed(rows100()), { budget: 60_000 }).text;
     expect(render()).toBe(render());
@@ -91,11 +118,13 @@ describe("the summary of the fixtures", () => {
       const { text } = renderSummary(stacks, { budget });
       for (const stack of stacks) {
         const id = stack.kind === "diff" ? stack.diff.stackId : stack.stackId;
-        const lines = text
-          .split("\n")
-          .filter(
-            (line) => line.replace(/^(#### |- (\*\*)?)/, "").replace(/\*\* · .*$/, "") === id,
-          );
+        const lines = text.split("\n").filter(
+          (line) =>
+            line
+              .replace(ANCHOR, "")
+              .replace(/^(#### |- (\*\*)?)/, "")
+              .replace(/\*\* · .*$/, "") === id,
+        );
         expect(lines).toHaveLength(1);
       }
     }
@@ -115,7 +144,9 @@ describe("the summary of the fixtures", () => {
       ).length;
       if (destroys === 0) continue;
       const block =
-        blocks.find((candidate) => candidate.startsWith(`${stack.diff.stackId}\n`)) ?? "";
+        blocks.find((candidate) =>
+          candidate.replace(ANCHOR, "").startsWith(`${stack.diff.stackId}\n`),
+        ) ?? "";
       const lines = block.match(/^- :warning: /gm)?.length ?? 0;
       expect([0, destroys]).toContain(lines);
       expect(block.includes("too many to list here")).toBe(lines === 0);

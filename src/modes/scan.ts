@@ -48,6 +48,7 @@ import {
   bodyDoesNotFitMessage,
   fitBody,
 } from "../render/budget.ts";
+import { runLinks } from "../render/links.ts";
 import { diffLogLines, logGroupTitle } from "../render/log-text.ts";
 import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
@@ -75,6 +76,10 @@ export interface ScanContext {
   // `https://github.com/<owner>/<repo>`.
   repoUrl: string;
   runId: string;
+  // A re-run of the run is a new attempt (record 0044).
+  runAttempt: string;
+  // The id of the running job. Absent where the runner does not know it.
+  jobId?: string | undefined;
   // The commit the scan checked out.
   sha: string;
   // What started the run, as GitHub names it. Only "push" gives a narrowed
@@ -204,7 +209,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   const startedAt = now();
   report.startedAt = startedAt;
   const at = startedAt.toISOString();
-  const runUrl = `${context.repoUrl}/actions/runs/${context.runId}`;
+  const links = runLinks(context);
 
   // Config and discovery come first and cost no preview. An error in either
   // fails the job before the tool or GitHub is touched (record 0012). Every
@@ -318,7 +323,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         const ticked = liveTicks.has(id);
         if (decided.row === "preview-first") first.push({ id, why: decided.why });
         else if (decided.row === "fresh" && mine) {
-          const fresh = previewRow(id, mine.result, runUrl, failureLine(context, fact));
+          const fresh = previewRow(id, mine.result, links, failureLine(context, fact));
           const row =
             fresh.state === "pending" ? { ...fresh, attribution: lines.get(id)?.lines } : fresh;
           if (!ticked) {
@@ -819,7 +824,10 @@ async function writeSummary(
   const { log } = context;
   const summary = renderSummary(
     previewed.map(({ id, result }) => previewSummary(id, result, attributed.get(id)?.merges)),
-    { budget: context.limits?.summaryBudget },
+    {
+      budget: context.limits?.summaryBudget,
+      jobLogUrl: context.jobId === undefined ? undefined : runLinks(context).log,
+    },
   );
   if (!summary.fits) {
     // GitHub would drop it whole (record 0037).

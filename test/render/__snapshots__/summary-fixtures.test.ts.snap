@@ -5,9 +5,12 @@ exports[`snapshots the summary of the 58 stack fixture, in full 1`] = `
 
 56 stacks previewed: 11 pending, 2 preview failed, 43 in sync.
 
+- Pending: [apps/api:prod](#user-content-sluiceway-apps-2f-api-3a-prod) · [apps/billing:staging](#user-content-sluiceway-apps-2f-billing-3a-staging) · [apps/legacy-worker:prod](#user-content-sluiceway-apps-2f-legacy-2d-worker-3a-prod) · [apps/notifications:prod](#user-content-sluiceway-apps-2f-notifications-3a-prod) · [apps/search:prod](#user-content-sluiceway-apps-2f-search-3a-prod) · [apps/web:prod](#user-content-sluiceway-apps-2f-web-3a-prod) · [data/postgres:prod](#user-content-sluiceway-data-2f-postgres-3a-prod) · [infra/dns:prod](#user-content-sluiceway-infra-2f-dns-3a-prod) · [monitoring/dashboards:prod](#user-content-sluiceway-monitoring-2f-dashboards-3a-prod) · [platform/ingress:prod](#user-content-sluiceway-platform-2f-ingress-3a-prod) · [storage/buckets:prod](#user-content-sluiceway-storage-2f-buckets-3a-prod)
+- Preview failed: [data/redis:staging](#user-content-sluiceway-data-2f-redis-3a-staging) · [monitoring/loki:prod](#user-content-sluiceway-monitoring-2f-loki-3a-prod)
+
 ### Pending
 
-#### apps/api:prod
+#### <a id="sluiceway-apps-2f-api-3a-prod"></a>apps/api:prod
 
 1 update
 
@@ -23,7 +26,7 @@ From 2 pull requests and 1 direct push:
 - [#429 chore(deps): update the provider](https://github.com/example-org/infra/pull/429) by renovate&#91;bot&#93;
 - [3fa9c1e Fix the lifecycle rule](https://github.com/example-org/infra/commit/3fa9c1e2aabbccdd3fa9c1e2aabbccdd3fa9c1e2)
 
-#### apps/billing:staging
+#### <a id="sluiceway-apps-2f-billing-3a-staging"></a>apps/billing:staging
 
 9 creates
 
@@ -41,7 +44,7 @@ From 2 pull requests and 1 direct push:
 
 </details>
 
-#### apps/legacy-worker:prod
+#### <a id="sluiceway-apps-2f-legacy-2d-worker-3a-prod"></a>apps/legacy-worker:prod
 
 **3 deletes**, 1 tracking only
 
@@ -61,7 +64,7 @@ From 2 pull requests and 1 direct push:
 - [#429 chore(deps): update the provider](https://github.com/example-org/infra/pull/429) by renovate&#91;bot&#93;
 - [3fa9c1e Fix the lifecycle rule](https://github.com/example-org/infra/commit/3fa9c1e2aabbccdd3fa9c1e2aabbccdd3fa9c1e2)
 
-#### apps/notifications:prod
+#### <a id="sluiceway-apps-2f-notifications-3a-prod"></a>apps/notifications:prod
 
 1 create, 1 update
 
@@ -72,7 +75,7 @@ From 2 pull requests and 1 direct push:
 
 </details>
 
-#### apps/search:prod
+#### <a id="sluiceway-apps-2f-search-3a-prod"></a>apps/search:prod
 
 2 updates
 
@@ -89,7 +92,7 @@ From 2 pull requests and 1 direct push:
 - [#429 chore(deps): update the provider](https://github.com/example-org/infra/pull/429) by renovate&#91;bot&#93;
 - [3fa9c1e Fix the lifecycle rule](https://github.com/example-org/infra/commit/3fa9c1e2aabbccdd3fa9c1e2aabbccdd3fa9c1e2)
 
-#### apps/web:prod
+#### <a id="sluiceway-apps-2f-web-3a-prod"></a>apps/web:prod
 
 2 creates, 1 update
 
@@ -101,7 +104,7 @@ From 2 pull requests and 1 direct push:
 
 </details>
 
-#### data/postgres:prod
+#### <a id="sluiceway-data-2f-postgres-3a-prod"></a>data/postgres:prod
 
 2 updates, **1 replace**
 
@@ -114,7 +117,7 @@ From 2 pull requests and 1 direct push:
 
 </details>
 
-#### infra/dns:prod
+#### <a id="sluiceway-infra-2f-dns-3a-prod"></a>infra/dns:prod
 
 1 update, 2 tracking only
 
@@ -126,7 +129,7 @@ From 2 pull requests and 1 direct push:
 
 </details>
 
-#### monitoring/dashboards:prod
+#### <a id="sluiceway-monitoring-2f-dashboards-3a-prod"></a>monitoring/dashboards:prod
 
 46 creates, 74 updates
 
@@ -261,7 +264,7 @@ From 2 pull requests and 1 direct push:
 - [#429 chore(deps): update the provider](https://github.com/example-org/infra/pull/429) by renovate&#91;bot&#93;
 - [3fa9c1e Fix the lifecycle rule](https://github.com/example-org/infra/commit/3fa9c1e2aabbccdd3fa9c1e2aabbccdd3fa9c1e2)
 
-#### platform/ingress:prod
+#### <a id="sluiceway-platform-2f-ingress-3a-prod"></a>platform/ingress:prod
 
 13 creates, 32 updates, **1 replace**
 
@@ -317,7 +320,7 @@ From 2 pull requests and 1 direct push:
 
 </details>
 
-#### storage/buckets:prod
+#### <a id="sluiceway-storage-2f-buckets-3a-prod"></a>storage/buckets:prod
 
 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only
 
@@ -334,67 +337,70 @@ From 2 pull requests and 1 direct push:
 
 ### Preview failed
 
-- **data/redis:staging** · the tool exited with an error (exit code 255)
-- **monitoring/loki:prod** · the preview timed out after 10 minutes
+- <a id="sluiceway-data-2f-redis-3a-staging"></a>**data/redis:staging** · the tool exited with an error (exit code 255)
+- <a id="sluiceway-monitoring-2f-loki-3a-prod"></a>**monitoring/loki:prod** · the preview timed out after 10 minutes
 
 ### In sync
 
-- apps/admin:prod
-- apps/admin:staging
-- apps/api:staging
-- apps/auth:prod
-- apps/auth:staging
-- apps/billing:prod
-- apps/docs:prod
-- apps/notifications:staging
-- apps/search:staging
-- apps/worker:prod
-- apps/worker:staging
-- data/kafka:prod
-- data/kafka:staging
-- data/postgres:staging
-- data/redis:prod
-- data/warehouse:prod
-- infra/bastion:prod
-- infra/cluster:prod
-- infra/cluster:staging
-- infra/dns:staging
-- infra/iam:prod
-- infra/kms:prod
-- infra/network:prod
-- infra/network:staging
-- infra/registry:prod
-- infra/vpn:prod
-- monitoring/alertmanager:prod
-- monitoring/grafana:prod
-- monitoring/prometheus:prod
-- monitoring/prometheus:staging
-- monitoring/tempo:prod
-- monitoring/uptime:prod
-- platform/argo-workflows:prod
-- platform/cert-manager:staging
-- platform/external-dns:prod
-- platform/external-secrets:prod
-- platform/ingress:staging
-- platform/karpenter:prod
-- platform/policy:prod
-- platform/service-mesh:prod
-- storage/backups:prod
-- storage/buckets:staging
-- storage/cdn:prod
+- <a id="sluiceway-apps-2f-admin-3a-prod"></a>apps/admin:prod
+- <a id="sluiceway-apps-2f-admin-3a-staging"></a>apps/admin:staging
+- <a id="sluiceway-apps-2f-api-3a-staging"></a>apps/api:staging
+- <a id="sluiceway-apps-2f-auth-3a-prod"></a>apps/auth:prod
+- <a id="sluiceway-apps-2f-auth-3a-staging"></a>apps/auth:staging
+- <a id="sluiceway-apps-2f-billing-3a-prod"></a>apps/billing:prod
+- <a id="sluiceway-apps-2f-docs-3a-prod"></a>apps/docs:prod
+- <a id="sluiceway-apps-2f-notifications-3a-staging"></a>apps/notifications:staging
+- <a id="sluiceway-apps-2f-search-3a-staging"></a>apps/search:staging
+- <a id="sluiceway-apps-2f-worker-3a-prod"></a>apps/worker:prod
+- <a id="sluiceway-apps-2f-worker-3a-staging"></a>apps/worker:staging
+- <a id="sluiceway-data-2f-kafka-3a-prod"></a>data/kafka:prod
+- <a id="sluiceway-data-2f-kafka-3a-staging"></a>data/kafka:staging
+- <a id="sluiceway-data-2f-postgres-3a-staging"></a>data/postgres:staging
+- <a id="sluiceway-data-2f-redis-3a-prod"></a>data/redis:prod
+- <a id="sluiceway-data-2f-warehouse-3a-prod"></a>data/warehouse:prod
+- <a id="sluiceway-infra-2f-bastion-3a-prod"></a>infra/bastion:prod
+- <a id="sluiceway-infra-2f-cluster-3a-prod"></a>infra/cluster:prod
+- <a id="sluiceway-infra-2f-cluster-3a-staging"></a>infra/cluster:staging
+- <a id="sluiceway-infra-2f-dns-3a-staging"></a>infra/dns:staging
+- <a id="sluiceway-infra-2f-iam-3a-prod"></a>infra/iam:prod
+- <a id="sluiceway-infra-2f-kms-3a-prod"></a>infra/kms:prod
+- <a id="sluiceway-infra-2f-network-3a-prod"></a>infra/network:prod
+- <a id="sluiceway-infra-2f-network-3a-staging"></a>infra/network:staging
+- <a id="sluiceway-infra-2f-registry-3a-prod"></a>infra/registry:prod
+- <a id="sluiceway-infra-2f-vpn-3a-prod"></a>infra/vpn:prod
+- <a id="sluiceway-monitoring-2f-alertmanager-3a-prod"></a>monitoring/alertmanager:prod
+- <a id="sluiceway-monitoring-2f-grafana-3a-prod"></a>monitoring/grafana:prod
+- <a id="sluiceway-monitoring-2f-prometheus-3a-prod"></a>monitoring/prometheus:prod
+- <a id="sluiceway-monitoring-2f-prometheus-3a-staging"></a>monitoring/prometheus:staging
+- <a id="sluiceway-monitoring-2f-tempo-3a-prod"></a>monitoring/tempo:prod
+- <a id="sluiceway-monitoring-2f-uptime-3a-prod"></a>monitoring/uptime:prod
+- <a id="sluiceway-platform-2f-argo-2d-workflows-3a-prod"></a>platform/argo-workflows:prod
+- <a id="sluiceway-platform-2f-cert-2d-manager-3a-staging"></a>platform/cert-manager:staging
+- <a id="sluiceway-platform-2f-external-2d-dns-3a-prod"></a>platform/external-dns:prod
+- <a id="sluiceway-platform-2f-external-2d-secrets-3a-prod"></a>platform/external-secrets:prod
+- <a id="sluiceway-platform-2f-ingress-3a-staging"></a>platform/ingress:staging
+- <a id="sluiceway-platform-2f-karpenter-3a-prod"></a>platform/karpenter:prod
+- <a id="sluiceway-platform-2f-policy-3a-prod"></a>platform/policy:prod
+- <a id="sluiceway-platform-2f-service-2d-mesh-3a-prod"></a>platform/service-mesh:prod
+- <a id="sluiceway-storage-2f-backups-3a-prod"></a>storage/backups:prod
+- <a id="sluiceway-storage-2f-buckets-3a-staging"></a>storage/buckets:staging
+- <a id="sluiceway-storage-2f-cdn-3a-prod"></a>storage/cdn:prod
 "
 `;
 
 exports[`snapshots the summary of the 100 stack fixture over a budget of 60,000 bytes 1`] = `
 "## Sluiceway scan
 
-> **This summary is shortened: 42 of 53 pending stacks show less than their whole diff.** Every diff is in full in the job log of this run, in the group that has the stack id as its title. Deletes and replaces are cut last.
+> **This summary is shortened: 48 of 53 pending stacks show less than their whole diff.** Every diff is in full in the job log of this run, in the group that has the stack id as its title. Deletes and replaces are cut last.
 
 98 stacks previewed: 53 pending, 2 preview failed, 43 in sync.
 
+- Pending: [apps/api:prod](#user-content-sluiceway-apps-2f-api-3a-prod) · [apps/billing:staging](#user-content-sluiceway-apps-2f-billing-3a-staging) · [apps/legacy-worker:prod](#user-content-sluiceway-apps-2f-legacy-2d-worker-3a-prod) · [apps/notifications:prod](#user-content-sluiceway-apps-2f-notifications-3a-prod) · [apps/search:prod](#user-content-sluiceway-apps-2f-search-3a-prod) · [apps/web:prod](#user-content-sluiceway-apps-2f-web-3a-prod) · [data/postgres:prod](#user-content-sluiceway-data-2f-postgres-3a-prod) · [infra/dns:prod](#user-content-sluiceway-infra-2f-dns-3a-prod) · [monitoring/dashboards:prod](#user-content-sluiceway-monitoring-2f-dashboards-3a-prod) · [platform/ingress:prod](#user-content-sluiceway-platform-2f-ingress-3a-prod) · [services/svc-01:prod](#user-content-sluiceway-services-2f-svc-2d-01-3a-prod) · [services/svc-02:staging](#user-content-sluiceway-services-2f-svc-2d-02-3a-staging) · [services/svc-03:prod](#user-content-sluiceway-services-2f-svc-2d-03-3a-prod) · [services/svc-04:staging](#user-content-sluiceway-services-2f-svc-2d-04-3a-staging) · [services/svc-05:prod](#user-content-sluiceway-services-2f-svc-2d-05-3a-prod) · [services/svc-06:staging](#user-content-sluiceway-services-2f-svc-2d-06-3a-staging) · [services/svc-07:prod](#user-content-sluiceway-services-2f-svc-2d-07-3a-prod) · [services/svc-08:staging](#user-content-sluiceway-services-2f-svc-2d-08-3a-staging) · [services/svc-09:prod](#user-content-sluiceway-services-2f-svc-2d-09-3a-prod) · [services/svc-10:staging](#user-content-sluiceway-services-2f-svc-2d-10-3a-staging) · [services/svc-11:prod](#user-content-sluiceway-services-2f-svc-2d-11-3a-prod) · [services/svc-12:staging](#user-content-sluiceway-services-2f-svc-2d-12-3a-staging) · [services/svc-13:prod](#user-content-sluiceway-services-2f-svc-2d-13-3a-prod) · [services/svc-14:staging](#user-content-sluiceway-services-2f-svc-2d-14-3a-staging) · [services/svc-15:prod](#user-content-sluiceway-services-2f-svc-2d-15-3a-prod) · [services/svc-16:staging](#user-content-sluiceway-services-2f-svc-2d-16-3a-staging) · [services/svc-17:prod](#user-content-sluiceway-services-2f-svc-2d-17-3a-prod) · [services/svc-18:staging](#user-content-sluiceway-services-2f-svc-2d-18-3a-staging) · [services/svc-19:prod](#user-content-sluiceway-services-2f-svc-2d-19-3a-prod) · [services/svc-20:staging](#user-content-sluiceway-services-2f-svc-2d-20-3a-staging) · [services/svc-21:prod](#user-content-sluiceway-services-2f-svc-2d-21-3a-prod) · [services/svc-22:staging](#user-content-sluiceway-services-2f-svc-2d-22-3a-staging) · [services/svc-23:prod](#user-content-sluiceway-services-2f-svc-2d-23-3a-prod) · [services/svc-24:staging](#user-content-sluiceway-services-2f-svc-2d-24-3a-staging) · [services/svc-25:prod](#user-content-sluiceway-services-2f-svc-2d-25-3a-prod) · [services/svc-26:staging](#user-content-sluiceway-services-2f-svc-2d-26-3a-staging) · [services/svc-27:prod](#user-content-sluiceway-services-2f-svc-2d-27-3a-prod) · [services/svc-28:staging](#user-content-sluiceway-services-2f-svc-2d-28-3a-staging) · [services/svc-29:prod](#user-content-sluiceway-services-2f-svc-2d-29-3a-prod) · [services/svc-30:staging](#user-content-sluiceway-services-2f-svc-2d-30-3a-staging) · [services/svc-31:prod](#user-content-sluiceway-services-2f-svc-2d-31-3a-prod) · [services/svc-32:staging](#user-content-sluiceway-services-2f-svc-2d-32-3a-staging) · [services/svc-33:prod](#user-content-sluiceway-services-2f-svc-2d-33-3a-prod) · [services/svc-34:staging](#user-content-sluiceway-services-2f-svc-2d-34-3a-staging) · [services/svc-35:prod](#user-content-sluiceway-services-2f-svc-2d-35-3a-prod) · [services/svc-36:staging](#user-content-sluiceway-services-2f-svc-2d-36-3a-staging) · [services/svc-37:prod](#user-content-sluiceway-services-2f-svc-2d-37-3a-prod) · [services/svc-38:staging](#user-content-sluiceway-services-2f-svc-2d-38-3a-staging) · [services/svc-39:prod](#user-content-sluiceway-services-2f-svc-2d-39-3a-prod) · [services/svc-40:staging](#user-content-sluiceway-services-2f-svc-2d-40-3a-staging) · [services/svc-41:prod](#user-content-sluiceway-services-2f-svc-2d-41-3a-prod) · [services/svc-42:staging](#user-content-sluiceway-services-2f-svc-2d-42-3a-staging) · [storage/buckets:prod](#user-content-sluiceway-storage-2f-buckets-3a-prod)
+- Preview failed: [data/redis:staging](#user-content-sluiceway-data-2f-redis-3a-staging) · [monitoring/loki:prod](#user-content-sluiceway-monitoring-2f-loki-3a-prod)
+
 ### Pending
 
-#### apps/api:prod
+#### <a id="sluiceway-apps-2f-api-3a-prod"></a>apps/api:prod
 
 1 update
 
@@ -410,25 +416,13 @@ From 2 pull requests and 1 direct push:
 - [#429 chore(deps): update the provider](https://github.com/example-org/infra/pull/429) by renovate&#91;bot&#93;
 - [3fa9c1e Fix the lifecycle rule](https://github.com/example-org/infra/commit/3fa9c1e2aabbccdd3fa9c1e2aabbccdd3fa9c1e2)
 
-#### apps/billing:staging
+#### <a id="sluiceway-apps-2f-billing-3a-staging"></a>apps/billing:staging
 
 9 creates
 
-<details><summary>9 changes</summary>
+9 changes not listed here, see the job log.
 
-- <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>billing-external-4</b>
-- <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>billing-public-5</b>
-- <kbd>create</kbd> <code>kubernetes:core/v1:Service</code> <b>billing-webhook-2</b>
-- <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>billing-default-backend-8</b>
-- <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>billing-external-9</b>
-- <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>billing-admission-7</b>
-- <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>billing-leader-election-6</b>
-- <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>billing-public-3</b>
-- <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>billing-canary-1</b>
-
-</details>
-
-#### apps/legacy-worker:prod
+#### <a id="sluiceway-apps-2f-legacy-2d-worker-3a-prod"></a>apps/legacy-worker:prod
 
 **3 deletes**, 1 tracking only
 
@@ -436,19 +430,11 @@ From 2 pull requests and 1 direct push:
 - :warning: <kbd>DELETE</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>legacy-worker</b>
 - :warning: <kbd>DELETE</kbd> <code>kubernetes:core/v1:Service</code> <b>legacy-worker</b>
 
-<details><summary>1 other change</summary>
+1 other change not listed here, see the job log.
 
-- <kbd>forget</kbd> <code>aws:iam/role:Role</code> <b>legacy-worker</b>
+From 2 pull requests and 1 direct push, not listed here.
 
-</details>
-
-From 2 pull requests and 1 direct push:
-
-- [#433 Rename the uploads bucket to &#96;uploads&#95;v2&#96;](https://github.com/example-org/infra/pull/433) by alice
-- [#429 chore(deps): update the provider](https://github.com/example-org/infra/pull/429) by renovate&#91;bot&#93;
-- [3fa9c1e Fix the lifecycle rule](https://github.com/example-org/infra/commit/3fa9c1e2aabbccdd3fa9c1e2aabbccdd3fa9c1e2)
-
-#### apps/notifications:prod
+#### <a id="sluiceway-apps-2f-notifications-3a-prod"></a>apps/notifications:prod
 
 1 create, 1 update
 
@@ -459,24 +445,15 @@ From 2 pull requests and 1 direct push:
 
 </details>
 
-#### apps/search:prod
+#### <a id="sluiceway-apps-2f-search-3a-prod"></a>apps/search:prod
 
 2 updates
 
-<details><summary>2 changes</summary>
+2 changes not listed here, see the job log.
 
-- <kbd>update</kbd> <code>kubernetes:apps/v1:StatefulSet</code> <b>search</b> · <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>search-config</b> · <code>data</code>
+From 2 pull requests and 1 direct push, not listed here.
 
-</details>
-
-From 2 pull requests and 1 direct push:
-
-- [#433 Rename the uploads bucket to &#96;uploads&#95;v2&#96;](https://github.com/example-org/infra/pull/433) by alice
-- [#429 chore(deps): update the provider](https://github.com/example-org/infra/pull/429) by renovate&#91;bot&#93;
-- [3fa9c1e Fix the lifecycle rule](https://github.com/example-org/infra/commit/3fa9c1e2aabbccdd3fa9c1e2aabbccdd3fa9c1e2)
-
-#### apps/web:prod
+#### <a id="sluiceway-apps-2f-web-3a-prod"></a>apps/web:prod
 
 2 creates, 1 update
 
@@ -488,7 +465,7 @@ From 2 pull requests and 1 direct push:
 
 </details>
 
-#### data/postgres:prod
+#### <a id="sluiceway-data-2f-postgres-3a-prod"></a>data/postgres:prod
 
 2 updates, **1 replace**
 
@@ -501,7 +478,7 @@ From 2 pull requests and 1 direct push:
 
 </details>
 
-#### infra/dns:prod
+#### <a id="sluiceway-infra-2f-dns-3a-prod"></a>infra/dns:prod
 
 1 update, 2 tracking only
 
@@ -513,7 +490,7 @@ From 2 pull requests and 1 direct push:
 
 </details>
 
-#### monitoring/dashboards:prod
+#### <a id="sluiceway-monitoring-2f-dashboards-3a-prod"></a>monitoring/dashboards:prod
 
 46 creates, 74 updates
 
@@ -521,7 +498,7 @@ From 2 pull requests and 1 direct push:
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### platform/ingress:prod
+#### <a id="sluiceway-platform-2f-ingress-3a-prod"></a>platform/ingress:prod
 
 13 creates, 32 updates, **1 replace**
 
@@ -529,103 +506,33 @@ From 2 pull requests and 1 direct push, not listed here.
 
 45 other changes not listed here, see the job log.
 
-#### services/svc-01:prod
+#### <a id="sluiceway-services-2f-svc-2d-01-3a-prod"></a>services/svc-01:prod
 
 22 creates, 34 updates
 
 56 changes not listed here, see the job log.
 
-#### services/svc-02:staging
+#### <a id="sluiceway-services-2f-svc-2d-02-3a-staging"></a>services/svc-02:staging
 
 9 creates, 21 updates
 
-<details><summary>30 changes</summary>
+30 changes not listed here, see the job log.
 
-- <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc2-external-10</b> · <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc2-leader-election-23</b> · <code>spec</code>
-- <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc2-tcp-services-20</b>
-- <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc2-admission-26</b> · <code>spec</code>
-- <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc2-default-backend-2</b>
-- <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc2-public-14</b> · <code>spec</code>
-- <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc2-udp-services-8</b>
-- <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc2-canary-15</b>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc2-config-11</b> · <code>data</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc2-external-13</b> · <code>data</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc2-public-21</b> · <code>data</code>
-- <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc2-tcp-services-12</b>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc2-udp-services-1</b> · <code>data</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc2-default-backend-19</b> · <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc2-tcp-services-30</b> · <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc2-webhook-4</b> · <code>spec</code>
-- <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-admission-7</b>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-controller-25</b> · <code>metadata</code>
-- <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-controller-28</b>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-controller-9</b> · <code>metadata</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-private-5</b> · <code>metadata</code>
-- <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-tcp-services-16</b>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc2-webhook-3</b> · <code>metadata</code>
-- <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc2-canary-27</b> · <code>metadata</code>, <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc2-default-backend-24</b> · <code>metadata</code>, <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc2-leader-election-17</b> · <code>metadata</code>, <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc2-metrics-18</b> · <code>metadata</code>, <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc2-webhook-6</b> · <code>metadata</code>, <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc2-config-22</b> · <code>rules</code>
-- <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc2-config-29</b>
+From 2 pull requests and 1 direct push, not listed here.
 
-</details>
-
-From 2 pull requests and 1 direct push:
-
-- [#433 Rename the uploads bucket to &#96;uploads&#95;v2&#96;](https://github.com/example-org/infra/pull/433) by alice
-- [#429 chore(deps): update the provider](https://github.com/example-org/infra/pull/429) by renovate&#91;bot&#93;
-- [3fa9c1e Fix the lifecycle rule](https://github.com/example-org/infra/commit/3fa9c1e2aabbccdd3fa9c1e2aabbccdd3fa9c1e2)
-
-#### services/svc-03:prod
+#### <a id="sluiceway-services-2f-svc-2d-03-3a-prod"></a>services/svc-03:prod
 
 20 creates, 40 updates
 
 60 changes not listed here, see the job log.
 
-#### services/svc-04:staging
+#### <a id="sluiceway-services-2f-svc-2d-04-3a-staging"></a>services/svc-04:staging
 
 10 creates, 20 updates
 
-<details><summary>30 changes</summary>
+30 changes not listed here, see the job log.
 
-- <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc4-controller-24</b> · <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc4-webhook-7</b> · <code>spec</code>
-- <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc4-default-backend-22</b>
-- <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc4-webhook-15</b>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc4-canary-14</b> · <code>data</code>
-- <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc4-public-23</b>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc4-tcp-services-2</b> · <code>data</code>
-- <kbd>create</kbd> <code>kubernetes:core/v1:Service</code> <b>svc4-config-6</b>
-- <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc4-metrics-8</b> · <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc4-public-27</b> · <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc4-public-9</b> · <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc4-udp-services-10</b> · <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc4-webhook-26</b> · <code>spec</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc4-controller-28</b> · <code>metadata</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc4-default-backend-30</b> · <code>metadata</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc4-external-12</b> · <code>metadata</code>
-- <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc4-internal-5</b> · <code>metadata</code>
-- <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc4-udp-services-21</b>
-- <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-default-backend-25</b> · <code>metadata</code>, <code>spec</code>
-- <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-external-17</b>
-- <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-external-4</b>
-- <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-internal-3</b> · <code>metadata</code>, <code>spec</code>
-- <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-leader-election-19</b>
-- <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-private-11</b> · <code>metadata</code>, <code>spec</code>
-- <kbd>create</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc4-private-16</b>
-- <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc4-leader-election-13</b> · <code>rules</code>
-- <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc4-leader-election-18</b>
-- <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc4-private-20</b> · <code>rules</code>
-- <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc4-public-1</b> · <code>rules</code>
-- <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc4-tcp-services-29</b> · <code>rules</code>
-
-</details>
-
-#### services/svc-05:prod
+#### <a id="sluiceway-services-2f-svc-2d-05-3a-prod"></a>services/svc-05:prod
 
 25 creates, 54 updates
 
@@ -633,7 +540,7 @@ From 2 pull requests and 1 direct push:
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### services/svc-06:staging
+#### <a id="sluiceway-services-2f-svc-2d-06-3a-staging"></a>services/svc-06:staging
 
 17 creates, 37 updates, **1 delete**
 
@@ -641,13 +548,13 @@ From 2 pull requests and 1 direct push, not listed here.
 
 54 other changes not listed here, see the job log.
 
-#### services/svc-07:prod
+#### <a id="sluiceway-services-2f-svc-2d-07-3a-prod"></a>services/svc-07:prod
 
 15 creates, 23 updates
 
 38 changes not listed here, see the job log.
 
-#### services/svc-08:staging
+#### <a id="sluiceway-services-2f-svc-2d-08-3a-staging"></a>services/svc-08:staging
 
 14 creates, 27 updates
 
@@ -655,7 +562,7 @@ From 2 pull requests and 1 direct push, not listed here.
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### services/svc-09:prod
+#### <a id="sluiceway-services-2f-svc-2d-09-3a-prod"></a>services/svc-09:prod
 
 28 creates, 50 updates, **1 replace**
 
@@ -663,13 +570,13 @@ From 2 pull requests and 1 direct push, not listed here.
 
 78 other changes not listed here, see the job log.
 
-#### services/svc-10:staging
+#### <a id="sluiceway-services-2f-svc-2d-10-3a-staging"></a>services/svc-10:staging
 
 20 creates, 29 updates
 
 49 changes not listed here, see the job log.
 
-#### services/svc-11:prod
+#### <a id="sluiceway-services-2f-svc-2d-11-3a-prod"></a>services/svc-11:prod
 
 30 creates, 49 updates
 
@@ -677,7 +584,7 @@ From 2 pull requests and 1 direct push, not listed here.
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### services/svc-12:staging
+#### <a id="sluiceway-services-2f-svc-2d-12-3a-staging"></a>services/svc-12:staging
 
 14 creates, 25 updates, **451 deletes**
 
@@ -685,13 +592,13 @@ From 2 pull requests and 1 direct push, not listed here.
 
 39 other changes not listed here, see the job log.
 
-#### services/svc-13:prod
+#### <a id="sluiceway-services-2f-svc-2d-13-3a-prod"></a>services/svc-13:prod
 
 19 creates, 60 updates
 
 79 changes not listed here, see the job log.
 
-#### services/svc-14:staging
+#### <a id="sluiceway-services-2f-svc-2d-14-3a-staging"></a>services/svc-14:staging
 
 25 creates, 54 updates
 
@@ -699,19 +606,19 @@ From 2 pull requests and 1 direct push, not listed here.
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### services/svc-15:prod
+#### <a id="sluiceway-services-2f-svc-2d-15-3a-prod"></a>services/svc-15:prod
 
 22 creates, 34 updates
 
 56 changes not listed here, see the job log.
 
-#### services/svc-16:staging
+#### <a id="sluiceway-services-2f-svc-2d-16-3a-staging"></a>services/svc-16:staging
 
 26 creates, 51 updates
 
 77 changes not listed here, see the job log.
 
-#### services/svc-17:prod
+#### <a id="sluiceway-services-2f-svc-2d-17-3a-prod"></a>services/svc-17:prod
 
 19 creates, 36 updates
 
@@ -719,7 +626,7 @@ From 2 pull requests and 1 direct push, not listed here.
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### services/svc-18:staging
+#### <a id="sluiceway-services-2f-svc-2d-18-3a-staging"></a>services/svc-18:staging
 
 10 creates, 34 updates, **1 replace**, **1 delete**
 
@@ -728,13 +635,13 @@ From 2 pull requests and 1 direct push, not listed here.
 
 44 other changes not listed here, see the job log.
 
-#### services/svc-19:prod
+#### <a id="sluiceway-services-2f-svc-2d-19-3a-prod"></a>services/svc-19:prod
 
 15 creates, 25 updates
 
 40 changes not listed here, see the job log.
 
-#### services/svc-20:staging
+#### <a id="sluiceway-services-2f-svc-2d-20-3a-staging"></a>services/svc-20:staging
 
 27 creates, 38 updates
 
@@ -742,19 +649,19 @@ From 2 pull requests and 1 direct push, not listed here.
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### services/svc-21:prod
+#### <a id="sluiceway-services-2f-svc-2d-21-3a-prod"></a>services/svc-21:prod
 
 21 creates, 29 updates
 
 50 changes not listed here, see the job log.
 
-#### services/svc-22:staging
+#### <a id="sluiceway-services-2f-svc-2d-22-3a-staging"></a>services/svc-22:staging
 
 14 creates, 21 updates
 
 35 changes not listed here, see the job log.
 
-#### services/svc-23:prod
+#### <a id="sluiceway-services-2f-svc-2d-23-3a-prod"></a>services/svc-23:prod
 
 10 creates, 23 updates
 
@@ -762,7 +669,7 @@ From 2 pull requests and 1 direct push, not listed here.
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### services/svc-24:staging
+#### <a id="sluiceway-services-2f-svc-2d-24-3a-staging"></a>services/svc-24:staging
 
 13 creates, 19 updates, **451 deletes**
 
@@ -1220,13 +1127,13 @@ From 2 pull requests and 1 direct push, not listed here.
 
 32 other changes not listed here, see the job log.
 
-#### services/svc-25:prod
+#### <a id="sluiceway-services-2f-svc-2d-25-3a-prod"></a>services/svc-25:prod
 
 17 creates, 23 updates
 
 40 changes not listed here, see the job log.
 
-#### services/svc-26:staging
+#### <a id="sluiceway-services-2f-svc-2d-26-3a-staging"></a>services/svc-26:staging
 
 8 creates, 22 updates
 
@@ -1234,7 +1141,7 @@ From 2 pull requests and 1 direct push, not listed here.
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### services/svc-27:prod
+#### <a id="sluiceway-services-2f-svc-2d-27-3a-prod"></a>services/svc-27:prod
 
 23 creates, 47 updates, **1 replace**
 
@@ -1242,13 +1149,13 @@ From 2 pull requests and 1 direct push, not listed here.
 
 70 other changes not listed here, see the job log.
 
-#### services/svc-28:staging
+#### <a id="sluiceway-services-2f-svc-2d-28-3a-staging"></a>services/svc-28:staging
 
 23 creates, 21 updates
 
 44 changes not listed here, see the job log.
 
-#### services/svc-29:prod
+#### <a id="sluiceway-services-2f-svc-2d-29-3a-prod"></a>services/svc-29:prod
 
 19 creates, 39 updates
 
@@ -1256,7 +1163,7 @@ From 2 pull requests and 1 direct push, not listed here.
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### services/svc-30:staging
+#### <a id="sluiceway-services-2f-svc-2d-30-3a-staging"></a>services/svc-30:staging
 
 33 creates, 43 updates, **1 delete**
 
@@ -1264,13 +1171,13 @@ From 2 pull requests and 1 direct push, not listed here.
 
 76 other changes not listed here, see the job log.
 
-#### services/svc-31:prod
+#### <a id="sluiceway-services-2f-svc-2d-31-3a-prod"></a>services/svc-31:prod
 
 22 creates, 56 updates
 
 78 changes not listed here, see the job log.
 
-#### services/svc-32:staging
+#### <a id="sluiceway-services-2f-svc-2d-32-3a-staging"></a>services/svc-32:staging
 
 26 creates, 52 updates
 
@@ -1278,19 +1185,19 @@ From 2 pull requests and 1 direct push, not listed here.
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### services/svc-33:prod
+#### <a id="sluiceway-services-2f-svc-2d-33-3a-prod"></a>services/svc-33:prod
 
 13 creates, 31 updates
 
 44 changes not listed here, see the job log.
 
-#### services/svc-34:staging
+#### <a id="sluiceway-services-2f-svc-2d-34-3a-staging"></a>services/svc-34:staging
 
 12 creates, 26 updates
 
 38 changes not listed here, see the job log.
 
-#### services/svc-35:prod
+#### <a id="sluiceway-services-2f-svc-2d-35-3a-prod"></a>services/svc-35:prod
 
 11 creates, 23 updates
 
@@ -1298,7 +1205,7 @@ From 2 pull requests and 1 direct push, not listed here.
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### services/svc-36:staging
+#### <a id="sluiceway-services-2f-svc-2d-36-3a-staging"></a>services/svc-36:staging
 
 13 creates, 33 updates, **1 replace**, **451 deletes**
 
@@ -1306,13 +1213,13 @@ From 2 pull requests and 1 direct push, not listed here.
 
 46 other changes not listed here, see the job log.
 
-#### services/svc-37:prod
+#### <a id="sluiceway-services-2f-svc-2d-37-3a-prod"></a>services/svc-37:prod
 
 11 creates, 29 updates
 
 40 changes not listed here, see the job log.
 
-#### services/svc-38:staging
+#### <a id="sluiceway-services-2f-svc-2d-38-3a-staging"></a>services/svc-38:staging
 
 21 creates, 21 updates
 
@@ -1320,19 +1227,19 @@ From 2 pull requests and 1 direct push, not listed here.
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### services/svc-39:prod
+#### <a id="sluiceway-services-2f-svc-2d-39-3a-prod"></a>services/svc-39:prod
 
 24 creates, 38 updates
 
 62 changes not listed here, see the job log.
 
-#### services/svc-40:staging
+#### <a id="sluiceway-services-2f-svc-2d-40-3a-staging"></a>services/svc-40:staging
 
 25 creates, 42 updates
 
 67 changes not listed here, see the job log.
 
-#### services/svc-41:prod
+#### <a id="sluiceway-services-2f-svc-2d-41-3a-prod"></a>services/svc-41:prod
 
 19 creates, 55 updates
 
@@ -1340,7 +1247,7 @@ From 2 pull requests and 1 direct push, not listed here.
 
 From 2 pull requests and 1 direct push, not listed here.
 
-#### services/svc-42:staging
+#### <a id="sluiceway-services-2f-svc-2d-42-3a-staging"></a>services/svc-42:staging
 
 16 creates, 43 updates, **1 delete**
 
@@ -1348,70 +1255,64 @@ From 2 pull requests and 1 direct push, not listed here.
 
 59 other changes not listed here, see the job log.
 
-#### storage/buckets:prod
+#### <a id="sluiceway-storage-2f-buckets-3a-prod"></a>storage/buckets:prod
 
 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only
 
 - :warning: <kbd>DELETE</kbd> <code>aws:s3/bucketPolicy:BucketPolicy</code> <b>uploads-public-read</b>
 - :warning: <kbd>REPLACE</kbd> <code>aws:s3/bucket:Bucket</code> <b>uploads</b> · forced by <code>bucket</code> · also changes <code>tags</code>
 
-<details><summary>3 other changes</summary>
-
-- <kbd>move</kbd> <code>aws:s3/bucket:Bucket</code> <b>archive</b>
-- <kbd>update</kbd> <code>aws:s3/bucketLifecycleConfiguration:BucketLifecycleConfiguration</code> <b>logs</b> · <code>rules</code>
-- <kbd>create</kbd> <code>aws:s3/bucketVersioning:BucketVersioning</code> <b>uploads</b>
-
-</details>
+3 other changes not listed here, see the job log.
 
 ### Preview failed
 
-- **data/redis:staging** · the tool exited with an error (exit code 255)
-- **monitoring/loki:prod** · the preview timed out after 10 minutes
+- <a id="sluiceway-data-2f-redis-3a-staging"></a>**data/redis:staging** · the tool exited with an error (exit code 255)
+- <a id="sluiceway-monitoring-2f-loki-3a-prod"></a>**monitoring/loki:prod** · the preview timed out after 10 minutes
 
 ### In sync
 
-- apps/admin:prod
-- apps/admin:staging
-- apps/api:staging
-- apps/auth:prod
-- apps/auth:staging
-- apps/billing:prod
-- apps/docs:prod
-- apps/notifications:staging
-- apps/search:staging
-- apps/worker:prod
-- apps/worker:staging
-- data/kafka:prod
-- data/kafka:staging
-- data/postgres:staging
-- data/redis:prod
-- data/warehouse:prod
-- infra/bastion:prod
-- infra/cluster:prod
-- infra/cluster:staging
-- infra/dns:staging
-- infra/iam:prod
-- infra/kms:prod
-- infra/network:prod
-- infra/network:staging
-- infra/registry:prod
-- infra/vpn:prod
-- monitoring/alertmanager:prod
-- monitoring/grafana:prod
-- monitoring/prometheus:prod
-- monitoring/prometheus:staging
-- monitoring/tempo:prod
-- monitoring/uptime:prod
-- platform/argo-workflows:prod
-- platform/cert-manager:staging
-- platform/external-dns:prod
-- platform/external-secrets:prod
-- platform/ingress:staging
-- platform/karpenter:prod
-- platform/policy:prod
-- platform/service-mesh:prod
-- storage/backups:prod
-- storage/buckets:staging
-- storage/cdn:prod
+- <a id="sluiceway-apps-2f-admin-3a-prod"></a>apps/admin:prod
+- <a id="sluiceway-apps-2f-admin-3a-staging"></a>apps/admin:staging
+- <a id="sluiceway-apps-2f-api-3a-staging"></a>apps/api:staging
+- <a id="sluiceway-apps-2f-auth-3a-prod"></a>apps/auth:prod
+- <a id="sluiceway-apps-2f-auth-3a-staging"></a>apps/auth:staging
+- <a id="sluiceway-apps-2f-billing-3a-prod"></a>apps/billing:prod
+- <a id="sluiceway-apps-2f-docs-3a-prod"></a>apps/docs:prod
+- <a id="sluiceway-apps-2f-notifications-3a-staging"></a>apps/notifications:staging
+- <a id="sluiceway-apps-2f-search-3a-staging"></a>apps/search:staging
+- <a id="sluiceway-apps-2f-worker-3a-prod"></a>apps/worker:prod
+- <a id="sluiceway-apps-2f-worker-3a-staging"></a>apps/worker:staging
+- <a id="sluiceway-data-2f-kafka-3a-prod"></a>data/kafka:prod
+- <a id="sluiceway-data-2f-kafka-3a-staging"></a>data/kafka:staging
+- <a id="sluiceway-data-2f-postgres-3a-staging"></a>data/postgres:staging
+- <a id="sluiceway-data-2f-redis-3a-prod"></a>data/redis:prod
+- <a id="sluiceway-data-2f-warehouse-3a-prod"></a>data/warehouse:prod
+- <a id="sluiceway-infra-2f-bastion-3a-prod"></a>infra/bastion:prod
+- <a id="sluiceway-infra-2f-cluster-3a-prod"></a>infra/cluster:prod
+- <a id="sluiceway-infra-2f-cluster-3a-staging"></a>infra/cluster:staging
+- <a id="sluiceway-infra-2f-dns-3a-staging"></a>infra/dns:staging
+- <a id="sluiceway-infra-2f-iam-3a-prod"></a>infra/iam:prod
+- <a id="sluiceway-infra-2f-kms-3a-prod"></a>infra/kms:prod
+- <a id="sluiceway-infra-2f-network-3a-prod"></a>infra/network:prod
+- <a id="sluiceway-infra-2f-network-3a-staging"></a>infra/network:staging
+- <a id="sluiceway-infra-2f-registry-3a-prod"></a>infra/registry:prod
+- <a id="sluiceway-infra-2f-vpn-3a-prod"></a>infra/vpn:prod
+- <a id="sluiceway-monitoring-2f-alertmanager-3a-prod"></a>monitoring/alertmanager:prod
+- <a id="sluiceway-monitoring-2f-grafana-3a-prod"></a>monitoring/grafana:prod
+- <a id="sluiceway-monitoring-2f-prometheus-3a-prod"></a>monitoring/prometheus:prod
+- <a id="sluiceway-monitoring-2f-prometheus-3a-staging"></a>monitoring/prometheus:staging
+- <a id="sluiceway-monitoring-2f-tempo-3a-prod"></a>monitoring/tempo:prod
+- <a id="sluiceway-monitoring-2f-uptime-3a-prod"></a>monitoring/uptime:prod
+- <a id="sluiceway-platform-2f-argo-2d-workflows-3a-prod"></a>platform/argo-workflows:prod
+- <a id="sluiceway-platform-2f-cert-2d-manager-3a-staging"></a>platform/cert-manager:staging
+- <a id="sluiceway-platform-2f-external-2d-dns-3a-prod"></a>platform/external-dns:prod
+- <a id="sluiceway-platform-2f-external-2d-secrets-3a-prod"></a>platform/external-secrets:prod
+- <a id="sluiceway-platform-2f-ingress-3a-staging"></a>platform/ingress:staging
+- <a id="sluiceway-platform-2f-karpenter-3a-prod"></a>platform/karpenter:prod
+- <a id="sluiceway-platform-2f-policy-3a-prod"></a>platform/policy:prod
+- <a id="sluiceway-platform-2f-service-2d-mesh-3a-prod"></a>platform/service-mesh:prod
+- <a id="sluiceway-storage-2f-backups-3a-prod"></a>storage/backups:prod
+- <a id="sluiceway-storage-2f-buckets-3a-staging"></a>storage/buckets:staging
+- <a id="sluiceway-storage-2f-cdn-3a-prod"></a>storage/cdn:prod
 "
 `;

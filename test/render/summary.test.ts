@@ -5,6 +5,7 @@ import {
   SUMMARY_BUDGET,
   type SummaryMerge,
   type SummaryStack,
+  stackAnchor,
 } from "../../src/render/summary.ts";
 
 const REPO_URL = "https://github.com/example-org/infra";
@@ -61,9 +62,11 @@ describe("the summary of a scan", () => {
         "",
         "1 stack previewed: 1 pending.",
         "",
+        "- Pending: [storage/buckets:prod](#user-content-sluiceway-storage-2f-buckets-3a-prod)",
+        "",
         "### Pending",
         "",
-        "#### storage/buckets:prod",
+        '#### <a id="sluiceway-storage-2f-buckets-3a-prod"></a>storage/buckets:prod',
         "",
         "1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only",
         "",
@@ -111,9 +114,12 @@ describe("the summary of a scan", () => {
         "",
         "6 stacks previewed: 2 pending, 2 preview failed, 2 in sync.",
         "",
+        "- Pending: [B:dev](#user-content-sluiceway--42--3a-dev) · [b:dev](#user-content-sluiceway-b-3a-dev)",
+        "- Preview failed: [c:prod](#user-content-sluiceway-c-3a-prod) · [z:prod](#user-content-sluiceway-z-3a-prod)",
+        "",
         "### Pending",
         "",
-        "#### B:dev",
+        '#### <a id="sluiceway--42--3a-dev"></a>B:dev',
         "",
         "1 update",
         "",
@@ -123,7 +129,7 @@ describe("the summary of a scan", () => {
         "",
         "</details>",
         "",
-        "#### b:dev",
+        '#### <a id="sluiceway-b-3a-dev"></a>b:dev',
         "",
         "1 create",
         "",
@@ -135,13 +141,13 @@ describe("the summary of a scan", () => {
         "",
         "### Preview failed",
         "",
-        "- **c:prod** · the tool's output could not be read",
-        "- **z:prod** · the preview timed out after 10 minutes",
+        '- <a id="sluiceway-c-3a-prod"></a>**c:prod** · the tool\'s output could not be read',
+        '- <a id="sluiceway-z-3a-prod"></a>**z:prod** · the preview timed out after 10 minutes',
         "",
         "### In sync",
         "",
-        "- a:prod",
-        "- b:prod",
+        '- <a id="sluiceway-a-3a-prod"></a>a:prod',
+        '- <a id="sluiceway-b-3a-prod"></a>b:prod',
         "",
       ].join("\n"),
     );
@@ -150,6 +156,42 @@ describe("the summary of a scan", () => {
   // Onboarding log, hurdle 9: a stack file with no stack in the backend. The
   // summary names the `ignore` glob that takes the stack off the dashboard, as
   // a quoted string that can be pasted into sluiceway.yaml as it is.
+  // Record 0044: GitHub keeps an `id` on an `<a>` in a summary, with
+  // `user-content-` in front, and gives a heading none of its own. Every
+  // character but a lower case letter or a digit is written as its code
+  // point between two dashes, so two stack ids never share an anchor.
+  test("every stack's anchor is its own, whatever its stack id holds", () => {
+    const ids = ["a-b:c", "a/b:c", "a_b:c", "A:c", "a:c", "a--2d-:c", "a-:c", "ä:c"];
+    const anchors = ids.map(stackAnchor);
+    expect(anchors).toEqual([
+      "sluiceway-a-2d-b-3a-c",
+      "sluiceway-a-2f-b-3a-c",
+      "sluiceway-a-5f-b-3a-c",
+      "sluiceway--41--3a-c",
+      "sluiceway-a-3a-c",
+      "sluiceway-a-2d--2d-2d-2d--3a-c",
+      "sluiceway-a-2d--3a-c",
+      "sluiceway--e4--3a-c",
+    ]);
+    expect(new Set(anchors).size).toBe(ids.length);
+  });
+
+  test("a preview failure links to the job log that holds the tool's own words", () => {
+    const { text } = renderSummary(
+      [{ kind: "preview-failed", stackId: "b:prod", reason: "the tool exited with an error" }],
+      { jobLogUrl: "https://github.com/example-org/infra/actions/runs/4242/job/777" },
+    );
+    expect(text).toContain(
+      '- <a id="sluiceway-b-3a-prod"></a>**b:prod** · the tool exited with an error · the tool\'s own words are in the [job log](https://github.com/example-org/infra/actions/runs/4242/job/777), in the group <code>b:prod</code>',
+    );
+  });
+
+  test("a stack in sync is in no index, since no row links to it", () => {
+    const { text } = renderSummary([diff("a:prod", [])]);
+    expect(text).not.toContain("- In sync:");
+    expect(text).toContain('- <a id="sluiceway-a-3a-prod"></a>a:prod');
+  });
+
   test("a stack that does not exist in the backend names the ignore glob that takes it off", () => {
     const { text } = renderSummary([
       {
@@ -173,11 +215,13 @@ describe("the summary of a scan", () => {
         "",
         "3 stacks previewed: 3 preview failed.",
         "",
+        "- Preview failed: [apps/grafana:dev](#user-content-sluiceway-apps-2f-grafana-3a-dev) · [b:prod](#user-content-sluiceway-b-3a-prod) · [c/&#91;x&#93;:dev](#user-content-sluiceway-c-2f--5b-x-5d--3a-dev)",
+        "",
         "### Preview failed",
         "",
-        "- **apps/grafana:dev** · the stack does not exist in the backend · create it, or take it off the dashboard with <code>&quot;apps/grafana:dev&quot;</code> under <code>ignore</code> in <code>sluiceway.yaml</code>",
-        "- **b:prod** · the tool exited with an error",
-        "- **c/&#91;x&#93;:dev** · the stack does not exist in the backend · create it, or take it off the dashboard with <code>&quot;c/&#92;&#92;&#91;x&#92;&#92;&#93;:dev&quot;</code> under <code>ignore</code> in <code>sluiceway.yaml</code>",
+        '- <a id="sluiceway-apps-2f-grafana-3a-dev"></a>**apps/grafana:dev** · the stack does not exist in the backend · create it, or take it off the dashboard with <code>&quot;apps/grafana:dev&quot;</code> under <code>ignore</code> in <code>sluiceway.yaml</code>',
+        '- <a id="sluiceway-b-3a-prod"></a>**b:prod** · the tool exited with an error',
+        '- <a id="sluiceway-c-2f--5b-x-5d--3a-dev"></a>**c/&#91;x&#93;:dev** · the stack does not exist in the backend · create it, or take it off the dashboard with <code>&quot;c/&#92;&#92;&#91;x&#92;&#92;&#93;:dev&quot;</code> under <code>ignore</code> in <code>sluiceway.yaml</code>',
         "",
       ].join("\n"),
     );
@@ -209,13 +253,15 @@ describe("the summary of a scan", () => {
       { kind: "preview-failed", stackId: "<b>:prod", reason: "made *up*" },
     ]);
 
-    expect(text).toContain("#### a&#95;b:prod\n");
+    expect(text).toContain('#### <a id="sluiceway-a-5f-b-3a-prod"></a>a&#95;b:prod\n');
     expect(text).toContain(
       `- [#7 Add &#91;click&#93;(https://evil.example) &lt;img src=x&gt; &#42;now&#42;](${REPO_URL}/pull/7) by renovate&#91;bot&#93;\n`,
     );
     expect(text).toContain(`- [0123456 Fix the thing](${REPO_URL}/commit/0123456)\n`);
     expect(text).not.toContain("fake row");
-    expect(text).toContain("- **&lt;b&gt;:prod** · made &#42;up&#42;\n");
+    expect(text).toContain(
+      '- <a id="sluiceway--3c-b-3e--3a-prod"></a>**&lt;b&gt;:prod** · made &#42;up&#42;\n',
+    );
   });
 
   test("several direct pushes and no pull request", () => {
@@ -318,7 +364,7 @@ describe("the budget of the summary", () => {
     expect(summary.fits).toBe(true);
     expect(summary.text).toContain(
       [
-        "#### big:prod",
+        '#### <a id="sluiceway-big-3a-prod"></a>big:prod',
         "",
         "40 creates, **2 deletes**",
         "",
@@ -351,7 +397,7 @@ describe("the budget of the summary", () => {
     expect(summary.fits).toBe(true);
     expect(summary.text).toContain(
       [
-        "#### teardown:prod",
+        '#### <a id="sluiceway-teardown-3a-prod"></a>teardown:prod',
         "",
         "3 creates, **1 replace**, **60 deletes**",
         "",
@@ -383,9 +429,11 @@ describe("the budget of the summary", () => {
     const summary = renderSummary([b, a], { budget });
 
     expect(summary.shortened).toBe(1);
-    expect(summary.text).toContain("#### b:prod\n\n3 creates\n\n<details>");
+    expect(summary.text).toContain(
+      '#### <a id="sluiceway-b-3a-prod"></a>b:prod\n\n3 creates\n\n<details>',
+    );
     expect(summary.text.indexOf("not listed here")).toBeLessThan(
-      summary.text.indexOf("#### b:prod"),
+      summary.text.indexOf('#### <a id="sluiceway-b-3a-prod"></a>b:prod'),
     );
     expect(renderSummary([a, b], { budget }).text).toBe(summary.text);
   });

@@ -29,7 +29,8 @@ export interface PendingRow {
   diff: Diff;
   // The diff hash of `diff`. It covers the whole diff whatever the row shows.
   hash: string;
-  // The run whose summary shows this diff in full.
+  // The attempt of the run whose summary shows this diff in full (record
+  // 0044).
   runUrl: string;
   // Absent when the lookup failed. Attribution never blocks.
   attribution?: AttributionLines | undefined;
@@ -61,6 +62,8 @@ export interface PreviewFailedRow {
   stackId: string;
   // A failure reason from the fixed list (record 0022), as display text.
   reason: string;
+  // The job whose log holds the tool's own words, or the run where that job
+  // is not known (record 0044).
   runUrl: string;
   failure?: FailureLine | undefined;
 }

@@ -22,7 +22,7 @@ Scanned [\`0123456\`](https://github.com/acme/infra/commit/0123456789abcdef01234
 
 Tick a box to deploy that stack exactly as its row shows it.
 
-- [ ] **app:prod** · 3 creates · [preview](https://github.com/acme/infra/actions/runs/4242) <!-- sluiceway:row stack="app:prod" state="pending" hash="6f5afda2b3712163" -->
+- [ ] **app:prod** · 3 creates · [preview](https://github.com/acme/infra/actions/runs/4242/attempts/1) <!-- sluiceway:row stack="app:prod" state="pending" hash="6f5afda2b3712163" -->
   not deployed from this dashboard yet
   <details><summary>3 changes</summary>
   <kbd>create</kbd> <code>command:local:Command</code> <b>start</b><br>
@@ -30,7 +30,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>release</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **network:dev** · 1 create, 1 update, **2 replaces**, **1 delete** · [preview](https://github.com/acme/infra/actions/runs/4242) <!-- sluiceway:row stack="network:dev" state="pending" hash="05bf4ba5424cef76" destroys="3" -->
+- [ ] **network:dev** · 1 create, 1 update, **2 replaces**, **1 delete** · [preview](https://github.com/acme/infra/actions/runs/4242/attempts/1) <!-- sluiceway:row stack="network:dev" state="pending" hash="05bf4ba5424cef76" destroys="3" -->
   not deployed from this dashboard yet
   :warning: <kbd>DELETE</kbd> <code>random:index/randomString:RandomString</code> <b>subnet</b>
   :warning: <kbd>REPLACE</kbd> <code>local:index/file:File</code> <b>notes</b> · forced by <code>content</code> · also changes <code>contentBase64sha256</code>, <code>contentBase64sha512</code>, <code>contentMd5</code>, <code>contentSha1</code>, <code>contentSha256</code>, <code>contentSha512</code>, <code>id</code>
@@ -45,7 +45,7 @@ Tick a box to deploy that stack exactly as its row shows it.
 
 These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.
 
-- **site:prod** · preview failed: the tool exited with an error (exit code 1) · [run](https://github.com/acme/infra/actions/runs/4242) <!-- sluiceway:row stack="site:prod" state="preview-failed" -->
+- **site:prod** · preview failed: the tool exited with an error (exit code 1) · [run](https://github.com/acme/infra/actions/runs/4242/job/106502264185) <!-- sluiceway:row stack="site:prod" state="preview-failed" -->
   <!-- /sluiceway:row -->
 
 ## In sync
@@ -69,9 +69,12 @@ exports[`a full scan of the example project gives the same dashboard and summary
 
 4 stacks previewed: 2 pending, 1 preview failed, 1 in sync.
 
+- Pending: [app:prod](#user-content-sluiceway-app-3a-prod) · [network:dev](#user-content-sluiceway-network-3a-dev)
+- Preview failed: [site:prod](#user-content-sluiceway-site-3a-prod)
+
 ### Pending
 
-#### app:prod
+#### <a id="sluiceway-app-3a-prod"></a>app:prod
 
 3 creates
 
@@ -83,7 +86,7 @@ exports[`a full scan of the example project gives the same dashboard and summary
 
 </details>
 
-#### network:dev
+#### <a id="sluiceway-network-3a-dev"></a>network:dev
 
 1 create, 1 update, **2 replaces**, **1 delete**
 
@@ -100,16 +103,16 @@ exports[`a full scan of the example project gives the same dashboard and summary
 
 ### Preview failed
 
-- **site:prod** · the tool exited with an error (exit code 1)
+- <a id="sluiceway-site-3a-prod"></a>**site:prod** · the tool exited with an error (exit code 1) · the tool's own words are in the [job log](https://github.com/acme/infra/actions/runs/4242/job/106502264185), in the group <code>site:prod</code>
 
 ### In sync
 
-- network:prod
+- <a id="sluiceway-network-3a-prod"></a>network:prod
 "
 `;
 
 exports[`a stack of the example project that does not exist in the backend gives the same row and summary from both CLI versions: row 1`] = `
-"- **network:prod** · preview failed: the stack does not exist in the backend · [run](https://github.com/acme/infra/actions/runs/4242) <!-- sluiceway:row stack="network:prod" state="preview-failed" -->
+"- **network:prod** · preview failed: the stack does not exist in the backend · [run](https://github.com/acme/infra/actions/runs/4242/job/106502264185) <!-- sluiceway:row stack="network:prod" state="preview-failed" -->
   <!-- /sluiceway:row -->"
 `;
 
@@ -118,9 +121,12 @@ exports[`a stack of the example project that does not exist in the backend gives
 
 4 stacks previewed: 2 pending, 2 preview failed.
 
+- Pending: [app:prod](#user-content-sluiceway-app-3a-prod) · [network:dev](#user-content-sluiceway-network-3a-dev)
+- Preview failed: [network:prod](#user-content-sluiceway-network-3a-prod) · [site:prod](#user-content-sluiceway-site-3a-prod)
+
 ### Pending
 
-#### app:prod
+#### <a id="sluiceway-app-3a-prod"></a>app:prod
 
 3 creates
 
@@ -132,7 +138,7 @@ exports[`a stack of the example project that does not exist in the backend gives
 
 </details>
 
-#### network:dev
+#### <a id="sluiceway-network-3a-dev"></a>network:dev
 
 1 create, 1 update, **2 replaces**, **1 delete**
 
@@ -149,7 +155,7 @@ exports[`a stack of the example project that does not exist in the backend gives
 
 ### Preview failed
 
-- **network:prod** · the stack does not exist in the backend · create it, or take it off the dashboard with <code>&quot;network:prod&quot;</code> under <code>ignore</code> in <code>sluiceway.yaml</code>
-- **site:prod** · the tool exited with an error (exit code 1)
+- <a id="sluiceway-network-3a-prod"></a>**network:prod** · the stack does not exist in the backend · the tool's own words are in the [job log](https://github.com/acme/infra/actions/runs/4242/job/106502264185), in the group <code>network:prod</code> · create it, or take it off the dashboard with <code>&quot;network:prod&quot;</code> under <code>ignore</code> in <code>sluiceway.yaml</code>
+- <a id="sluiceway-site-3a-prod"></a>**site:prod** · the tool exited with an error (exit code 1) · the tool's own words are in the [job log](https://github.com/acme/infra/actions/runs/4242/job/106502264185), in the group <code>site:prod</code>
 "
 `;

@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ToolVersionError } from "../../src/adapters/adapter.ts";
-import { handedOn, rows, runApply, states } from "./apply-harness.ts";
+import { APPLY_JOB_ID, handedOn, rows, runApply, states } from "./apply-harness.ts";
 import { change, failing, pending } from "./harness.ts";
+import { RESOLVE_RUN_URL } from "./resolve-harness.ts";
 
 // The job is green only when the stack deployed (record 0035). Every other way
 // out gives the record a result with a reason from the fixed list (record
@@ -75,7 +76,7 @@ describe("before the tool deploys", () => {
     expect(h.adapter.applied).toEqual([]);
     expect(states(h)).toEqual(["queued", "in_progress", "failure"]);
     expect(rows(h)["a:prod"]).toStartWith(
-      "- **a:prod** · preview failed: the tool exited with an error (exit code 255) · [run]",
+      `- **a:prod** · preview failed: the tool exited with an error (exit code 255) · [run](${RESOLVE_RUN_URL}/job/${APPLY_JOB_ID})`,
     );
   });
 

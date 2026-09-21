@@ -93,6 +93,7 @@ async function deployed(
     previewTimeoutMinutes: 10,
     repoUrl: REPO_URL,
     runId: RESOLVE_RUN,
+    runAttempt: "1",
     sha: SHA,
     actionRef: ACTION_REF,
     deploymentId: deployment,

@@ -12,9 +12,10 @@ import {
   failing,
   harness,
   inSync,
+  JOB_URL,
   pending,
-  RUN_URL,
   SHA,
+  SUMMARY_URL,
   tableAdapter,
 } from "./harness.ts";
 
@@ -37,7 +38,7 @@ describe("a full scan", () => {
     expect(issue.labels).toEqual(["sluiceway"]);
     expect(rowStates(issue.body)).toEqual({ "network:dev": "pending", "network:prod": "in-sync" });
     expect(issue.body).toContain(
-      `- [ ] **network:dev** · 1 update, **1 delete** · [preview](${RUN_URL})`,
+      `- [ ] **network:dev** · 1 update, **1 delete** · [preview](${SUMMARY_URL})`,
     );
   });
 
@@ -156,7 +157,7 @@ describe("the job result (record 0012)", () => {
       "c:prod": "in-sync",
     });
     expect(dashboardBody(github)).toContain(
-      `- **b:prod** · preview failed: the tool exited with an error (exit code 255) · [run](${RUN_URL})`,
+      `- **b:prod** · preview failed: the tool exited with an error (exit code 255) · [run](${JOB_URL})`,
     );
     expect(log.warnings).toEqual([
       {
@@ -265,7 +266,7 @@ describe("the summary (record 0037)", () => {
     expect(log.summaries).toHaveLength(1);
     expect(log.summaries[0]).toContain("2 stacks previewed: 1 pending, 1 preview failed.");
     expect(log.summaries[0]).toContain(
-      "- **b:prod** · the tool exited with an error (exit code 255)",
+      '- <a id="sluiceway-b-3a-prod"></a>**b:prod** · the tool exited with an error (exit code 255)',
     );
   });
 

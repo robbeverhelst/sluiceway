@@ -97,7 +97,7 @@ describe("a stack of the example project that does not exist in the backend", ()
         "- **network:prod** · preview failed: the stack does not exist in the backend · [run](",
       );
       expect(summaries[0]).toContain(
-        "- **network:prod** · the stack does not exist in the backend · create it, or take it off the dashboard with <code>&quot;network:prod&quot;</code> under <code>ignore</code> in <code>sluiceway.yaml</code>\n",
+        '- <a id="sluiceway-network-3a-prod"></a>**network:prod** · the stack does not exist in the backend · the tool\'s own words are in the [job log](https://github.com/acme/infra/actions/runs/4242/job/106502264185), in the group <code>network:prod</code> · create it, or take it off the dashboard with <code>&quot;network:prod&quot;</code> under <code>ignore</code> in <code>sluiceway.yaml</code>\n',
       );
       expect(log.warnings).toContainEqual({
         title: "Preview failed",

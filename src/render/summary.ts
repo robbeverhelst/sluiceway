@@ -57,6 +57,34 @@ export interface Summary {
 
 export interface SummaryOptions {
   budget?: number | undefined;
+  // The page of the job whose log holds every stack's group (record 0044).
+  // Without it the summary names the job log and does not link it.
+  jobLogUrl?: string | undefined;
+}
+
+// The anchor of a stack's entry (record 0044). GitHub keeps the id of an
+// `<a>` in a summary, with `user-content-` in front, and gives a heading no id
+// of its own. A lower case letter or a digit stays as it is, and every other
+// character is written as its code point in hex between two dashes, so two
+// stack ids never share an anchor.
+export function stackAnchor(stackId: string): string {
+  let encoded = "";
+  for (const char of stackId) {
+    encoded += /^[a-z0-9]$/.test(char) ? char : `-${char.codePointAt(0)?.toString(16)}-`;
+  }
+  return `sluiceway-${encoded}`;
+}
+
+function anchorTag(stackId: string): string {
+  return `<a id="${stackAnchor(stackId)}"></a>`;
+}
+
+function indexLink(stackId: string): string {
+  return `[${escapeText(stackId)}](#user-content-${stackAnchor(stackId)})`;
+}
+
+function jobLog(options: SummaryOptions): string {
+  return options.jobLogUrl === undefined ? "job log" : `[job log](${options.jobLogUrl})`;
 }
 
 // How much of a pending stack the summary shows (record 0037). The pull request
@@ -93,20 +121,23 @@ function mergeCounts(merges: SummaryMerge[]): string {
 
 // The parts of one stack's entry. Parts are joined by a blank line, so a list
 // never runs into the list before it.
-function diffParts(stack: DiffStack, level: SummaryLevel): string[] {
+function diffParts(stack: DiffStack, level: SummaryLevel, options: SummaryOptions): string[] {
   const { deletes, replaces, others } = orderChanges(stack.diff);
   const destroys = [...deletes, ...replaces];
-  const parts = [`#### ${escapeText(stack.diff.stackId)}`, counts([...destroys, ...others])];
+  const parts = [
+    `#### ${anchorTag(stack.diff.stackId)}${escapeText(stack.diff.stackId)}`,
+    counts([...destroys, ...others]),
+  ];
   if (destroys.length > 0) {
     parts.push(
       level >= 3
-        ? `:warning: **${destroyWords(deletes.length, replaces.length)}, too many to list here.** Read the job log before you tick.`
+        ? `:warning: **${destroyWords(deletes.length, replaces.length)}, too many to list here.** Read the ${jobLog(options)} before you tick.`
         : destroys.map((change) => `- :warning: ${changeLine(change)}`).join("\n"),
     );
   }
   if (others.length > 0) {
     const inside = plural(others.length, destroys.length > 0 ? "other change" : "change");
-    if (level >= 2) parts.push(`${inside} not listed here, see the job log.`);
+    if (level >= 2) parts.push(`${inside} not listed here, see the ${jobLog(options)}.`);
     else {
       parts.push(
         `<details><summary>${inside}</summary>`,
@@ -125,8 +156,12 @@ function diffParts(stack: DiffStack, level: SummaryLevel): string[] {
 
 // The glob is written as a quoted string, which is valid YAML whatever the
 // stack id holds, so it can be pasted under `ignore` as it is.
-function failedLine(stack: FailedStack): string {
-  const line = `- **${escapeText(stack.stackId)}** · ${escapeText(stack.reason)}`;
+function failedLine(stack: FailedStack, options: SummaryOptions): string {
+  const id = escapeText(stack.stackId);
+  let line = `- ${anchorTag(stack.stackId)}**${id}** · ${escapeText(stack.reason)}`;
+  if (options.jobLogUrl !== undefined) {
+    line += ` · the tool's own words are in the ${jobLog(options)}, in the group <code>${id}</code>`;
+  }
   if (stack.ignore === undefined) return line;
   const glob = escapeText(JSON.stringify(stack.ignore));
   return `${line} · create it, or take it off the dashboard with <code>${glob}</code> under <code>ignore</code> in <code>sluiceway.yaml</code>`;
@@ -147,9 +182,9 @@ function cost(parts: string[]): number {
   return parts.reduce((sum, part) => sum + byteLength(part) + 2, 0);
 }
 
-function note(shortened: number, pending: number): string {
+function note(shortened: number, pending: number, options: SummaryOptions): string {
   const shows = shortened === 1 ? "shows less than its" : "show less than their";
-  return `> **This summary is shortened: ${shortened} of ${plural(pending, "pending stack")} ${shows} whole diff.** Every diff is in full in the job log of this run, in the group that has the stack id as its title. Deletes and replaces are cut last.`;
+  return `> **This summary is shortened: ${shortened} of ${plural(pending, "pending stack")} ${shows} whole diff.** Every diff is in full in the ${jobLog(options)} of this run, in the group that has the stack id as its title. Deletes and replaces are cut last.`;
 }
 
 interface Entry {
@@ -215,23 +250,35 @@ export function renderSummary(stacks: SummaryStack[], options: SummaryOptions = 
           .join(", ")}.`;
   const tail: string[] = [];
   if (failed.length > 0) {
-    tail.push("### Preview failed", failed.map(failedLine).join("\n"));
+    tail.push("### Preview failed", failed.map((stack) => failedLine(stack, options)).join("\n"));
   }
   if (inSync.length > 0) {
     tail.push(
       "### In sync",
-      inSync.map((stack) => `- ${escapeText(stack.diff.stackId)}`).join("\n"),
+      inSync
+        .map((stack) => `- ${anchorTag(stack.diff.stackId)}${escapeText(stack.diff.stackId)}`)
+        .join("\n"),
     );
   }
+  // The index lists, in the order of the dashboard, every stack a row links
+  // to: the pending ones and the preview failures (record 0044). A stack in
+  // sync has no link on its row.
+  const index = [
+    pending.length > 0 &&
+      `- Pending: ${pending.map((stack) => indexLink(stack.diff.stackId)).join(" · ")}`,
+    failed.length > 0 &&
+      `- Preview failed: ${failed.map((stack) => indexLink(stack.stackId)).join(" · ")}`,
+  ].filter((line) => line !== false);
   const frame = (shortened: number) => [
     "## Sluiceway scan",
-    ...(shortened > 0 ? [note(shortened, pending.length)] : []),
+    ...(shortened > 0 ? [note(shortened, pending.length, options)] : []),
     counted,
+    ...(index.length > 0 ? [index.join("\n")] : []),
     ...(pending.length > 0 ? ["### Pending"] : []),
   ];
 
   const entries = pending.map((stack): Entry => {
-    const parts = LEVELS.map((level) => diffParts(stack, level));
+    const parts = LEVELS.map((level) => diffParts(stack, level, options));
     return { stackId: stack.diff.stackId, parts, costs: parts.map(cost), level: 0 };
   });
   const tailCost = cost(tail);
