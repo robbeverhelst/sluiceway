@@ -1,5 +1,6 @@
 import { HISTORY_CAP } from "../../src/core/edit-history.ts";
 import type {
+  CommitWalk,
   Comparison,
   Deployment,
   DeploymentPage,
@@ -17,6 +18,7 @@ import type {
   Permission,
   WorkflowRun,
 } from "../../src/github/port.ts";
+import { FakeCommits, type SeedCommit, type SeedPullRequest } from "./commits.ts";
 import { FakeDeployments, type FakeStatus, type SeedDeployment } from "./deployments.ts";
 
 // An in-memory GitHub behind the port. It copies the real behavior the lab
@@ -78,6 +80,7 @@ export class FakeGitHub implements GitHubPort {
   readonly #events: { number: number; sender: IssueAuthor }[] = [];
   readonly #dispatches: { workflow: string; ref: string }[] = [];
   #actionsWrite = true;
+  readonly #commits = new FakeCommits();
   #nextNumber = 1;
   // The fake's clock. It moves one second each time it is read, so two things
   // never happen at the same time and every run gives the same times.
@@ -112,6 +115,16 @@ export class FakeGitHub implements GitHubPort {
   // seeded holds a commit the repo does not have.
   seedComparison(base: string, head: string, comparison: Comparison): void {
     this.#comparisons.set(`${base}...${head}`, comparison);
+  }
+
+  // A commit of the repo, newer than every commit seeded before it (record
+  // 0026). A repo without commits answers no walk.
+  seedCommit(commit: SeedCommit): void {
+    this.#commits.seedCommit(commit);
+  }
+
+  seedPullRequest(pullRequest: SeedPullRequest): void {
+    this.#commits.seedPullRequest(pullRequest);
   }
 
   // What a person may do in the repo. A login that was never seeded is an
@@ -366,6 +379,21 @@ export class FakeGitHub implements GitHubPort {
       .slice(-PAGE_SIZE)
       .reverse()
       .map((run) => ({ ...run }));
+  }
+
+  async walkCommits(head: string): Promise<CommitWalk> {
+    this.#count("walkCommits");
+    const walk = this.#commits.walk(head);
+    // Real GitHub answers with no object, which the port turns into this.
+    if (!walk) throw new FakeGitHubError(404, `GitHub has no commit ${head.slice(0, 7)}`);
+    return walk;
+  }
+
+  async listCommitFiles(sha: string): Promise<string[]> {
+    this.#count("listCommitFiles");
+    const files = this.#commits.files(sha);
+    if (!files) throw new FakeGitHubError(422, `No commit found for SHA: ${sha}`);
+    return files;
   }
 
   async pinIssue(nodeId: string): Promise<void> {

@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import type { Issue } from "../../src/github/port.ts";
 import { type FakeGitHub, FakeGitHubError } from "./fake-github.ts";
+import { commitRoutes, isWalkQuery, walkQuery } from "./server-commits.ts";
 import { deploymentRoutes, deploymentsQuery, isDeploymentsQuery } from "./server-deployments.ts";
 import { runRoutes } from "./server-runs.ts";
 
@@ -155,6 +156,7 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
     ],
     ...deploymentRoutes(fake, REPO),
     ...runRoutes(fake, REPO),
+    ...commitRoutes(fake, REPO),
     [
       "GET",
       new RegExp(`^${REPO}/collaborators/([^/]+)/permission$`),
@@ -176,6 +178,7 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
       /^\/graphql$/,
       async ({ body }) => {
         if (isDeploymentsQuery(text(body.query))) return deploymentsQuery(fake, body.variables);
+        if (isWalkQuery(text(body.query))) return walkQuery(fake, body.variables);
         // The GraphQL calls of the port. GraphQL answers 200 and puts what
         // went wrong in the answer.
         const variables = body.variables as { issueId?: unknown } | undefined;

@@ -1,0 +1,177 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { getOctokit } from "@actions/github";
+import { createOctokitPort } from "../../src/github/octokit-port.ts";
+import { FakeGitHub } from "./fake-github.ts";
+import { type FakeGitHubServer, startFakeGitHubServer } from "./server.ts";
+
+// The fake keeps commits and pull requests and answers the walk from them, the
+// way real GitHub answered on 2026-09-21 (the pull request of slice 2.8). Each
+// behavior is pinned on the fake and, at the end, over HTTP behind the real
+// Octokit port.
+
+function sha(name: string): string {
+  return name.padEnd(40, "0");
+}
+
+// main: c1, then pull request 7 as a merge commit over two branch commits,
+// then a direct push.
+function repo(): FakeGitHub {
+  const fake = new FakeGitHub();
+  fake.seedCommit({ sha: sha("c1"), author: "bob", message: "first", files: ["README.md"] });
+  fake.seedCommit({ sha: sha("b1"), parents: [sha("c1")], author: "alice", message: "branch 1" });
+  fake.seedCommit({ sha: sha("b2"), parents: [sha("b1")], author: "alice", message: "branch 2" });
+  fake.seedCommit({
+    sha: sha("m"),
+    parents: [sha("c1"), sha("b2")],
+    author: "merger",
+    message: "Merge pull request #7",
+  });
+  fake.seedPullRequest({
+    number: 7,
+    title: "Grafana alerts",
+    author: "alice",
+    files: ["apps/grafana/a.ts", "apps/grafana/b.ts"],
+    commits: [sha("b1"), sha("b2"), sha("m")],
+  });
+  fake.seedCommit({
+    sha: sha("d1"),
+    parents: [sha("m")],
+    author: undefined,
+    message: "hotfix",
+    files: [{ path: "apps/loki/new.ts", previousPath: "apps/grafana/old.ts" }],
+  });
+  return fake;
+}
+
+describe("the walk", () => {
+  test("lists the commits that can be reached from the head, children before parents, each with its pull requests", async () => {
+    const fake = repo();
+    const walk = await fake.walkCommits(sha("d1"));
+    expect(walk.defaultBranch).toBe("main");
+    expect(walk.commits.map((commit) => [commit.sha, commit.parents, commit.author])).toEqual([
+      [sha("d1"), [sha("m")], undefined],
+      [sha("m"), [sha("c1"), sha("b2")], "merger"],
+      [sha("b2"), [sha("b1")], "alice"],
+      [sha("b1"), [sha("c1")], "alice"],
+      [sha("c1"), [], "bob"],
+    ]);
+    const pullRequest = {
+      number: 7,
+      title: "Grafana alerts",
+      author: "alice",
+      base: "main",
+      merged: true,
+      changedFiles: 2,
+      files: ["apps/grafana/a.ts", "apps/grafana/b.ts"],
+    };
+    expect(walk.commits.map((commit) => commit.pullRequests)).toEqual([
+      [],
+      [pullRequest],
+      [pullRequest],
+      [pullRequest],
+      [],
+    ]);
+    expect(fake.requests).toEqual(["walkCommits"]);
+  });
+
+  test("starts at the head it is given: a newer commit is not on it", async () => {
+    const walk = await repo().walkCommits(sha("m"));
+    expect(walk.commits.map((commit) => commit.sha)).not.toContain(sha("d1"));
+  });
+
+  test("holds the newest 100 commits and no more", async () => {
+    const fake = new FakeGitHub();
+    for (let index = 0; index < 130; index++) {
+      fake.seedCommit({
+        sha: sha(`n${index}x`),
+        parents: index === 0 ? [] : [sha(`n${index - 1}x`)],
+      });
+    }
+    const walk = await fake.walkCommits(sha("n129x"));
+    expect(walk.commits).toHaveLength(100);
+    expect(walk.commits.at(-1)?.sha).toBe(sha("n30x"));
+  });
+
+  test("a commit the repo does not have fails", async () => {
+    await expect(repo().walkCommits(sha("gone"))).rejects.toThrow();
+  });
+
+  test("a pull request lists its first 100 files and says how many it changed", async () => {
+    const fake = new FakeGitHub();
+    fake.seedCommit({ sha: sha("c1") });
+    fake.seedPullRequest({
+      number: 9,
+      files: Array.from({ length: 140 }, (_, index) => `apps/${index}.ts`),
+      commits: [sha("c1")],
+    });
+    const [commit] = (await fake.walkCommits(sha("c1"))).commits;
+    expect(commit?.pullRequests[0]?.changedFiles).toBe(140);
+    expect(commit?.pullRequests[0]?.files).toHaveLength(100);
+  });
+});
+
+describe("the files of a commit", () => {
+  test("a renamed file comes under both paths, and the call is one request", async () => {
+    const fake = repo();
+    expect(await fake.listCommitFiles(sha("d1"))).toEqual([
+      "apps/loki/new.ts",
+      "apps/grafana/old.ts",
+    ]);
+    expect(fake.requests).toEqual(["listCommitFiles"]);
+  });
+
+  test("at most 300 files", async () => {
+    const fake = new FakeGitHub();
+    fake.seedCommit({
+      sha: sha("big"),
+      files: Array.from({ length: 320 }, (_, index) => `f/${index}`),
+    });
+    expect(await fake.listCommitFiles(sha("big"))).toHaveLength(300);
+  });
+
+  test("a commit the repo does not have fails", async () => {
+    await expect(repo().listCommitFiles(sha("gone"))).rejects.toThrow();
+  });
+});
+
+describe("over HTTP behind the real port", () => {
+  const servers: FakeGitHubServer[] = [];
+  afterEach(async () => {
+    for (const server of servers.splice(0)) await server.close();
+  });
+
+  async function served(fake: FakeGitHub) {
+    const server = await startFakeGitHubServer(fake);
+    servers.push(server);
+    const octokit = getOctokit("a-token", { baseUrl: server.url });
+    return createOctokitPort(octokit, { owner: "acme", repo: "infra" });
+  }
+
+  test("the walk and the files read as the fake gives them", async () => {
+    const fake = repo();
+    const port = await served(fake);
+    expect(await port.walkCommits(sha("d1"))).toEqual(await fake.walkCommits(sha("d1")));
+    expect(await port.listCommitFiles(sha("d1"))).toEqual(await fake.listCommitFiles(sha("d1")));
+  });
+
+  test("a bot's pull request goes over the wire the way GraphQL names a bot, without the suffix", async () => {
+    const fake = new FakeGitHub();
+    fake.seedCommit({ sha: sha("c1"), author: "renovate[bot]" });
+    fake.seedPullRequest({
+      number: 3,
+      author: "renovate[bot]",
+      files: ["bun.lock"],
+      commits: [sha("c1")],
+    });
+    const port = await served(fake);
+    const [commit] = (await port.walkCommits(sha("c1"))).commits;
+    expect(commit?.author).toBe("renovate[bot]");
+    expect(commit?.pullRequests[0]?.author).toBe("renovate[bot]");
+  });
+
+  test("a commit the repo does not have fails both calls", async () => {
+    const port = await served(repo());
+    await expect(port.walkCommits(sha("gone"))).rejects.toThrow(/no commit/);
+    await expect(port.listCommitFiles(sha("gone"))).rejects.toThrow();
+  });
+});
