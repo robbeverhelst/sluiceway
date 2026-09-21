@@ -52667,15 +52667,17 @@ function attributionSource(github, input2, onFailure) {
   };
 }
 
+// src/render/destroy-sign.ts
+function destroySign(rows) {
+  return rows.some((row) => row.known && (row.state === "pending" || row.state === "deploying") && row.destroys > 0);
+}
+
 // src/render/header-state.ts
 function headerState(rows) {
   if (rows.length === 0)
     return "first-run";
   const known = rows.filter((row) => row.known);
   const is = (state) => known.some((row) => row.state === state);
-  const destroying = known.some((row) => (row.state === "pending" || row.state === "deploying") && row.destroys > 0);
-  if (destroying)
-    return "plain";
   if (is("preview-failed") || known.some((row) => row.failed))
     return "failing";
   if (is("deploying"))
@@ -52718,12 +52720,15 @@ var RECENTLY_DEPLOYED = 10;
 var ACTION_REPO = "sluiceway/sluiceway";
 var ACTION_URL = `https://github.com/${ACTION_REPO}`;
 var ALT = {
-  plain: "Sluiceway",
   failing: "Sluiceway: something failed",
   deploying: "Sluiceway: deploying",
   pending: "Sluiceway: changes are pending",
   "first-run": "Sluiceway: no stacks yet",
   "in-sync": "Sluiceway: everything is in sync"
+};
+var SIGNED_ALT = {
+  pending: "Sluiceway: changes are pending, some delete or replace resources",
+  deploying: "Sluiceway: deploying, some changes delete or replace resources"
 };
 function byCodeUnit3(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -52740,14 +52745,17 @@ function rowBlock(row, options = {}) {
     throw new Error("A rendered row did not read back as a row block.");
   return block;
 }
-function picture(state, level, actionRef2) {
-  const name = state === "pending" ? `pending-${level ?? 1}` : state;
+function picture(state, level, sign, actionRef2) {
+  const base = state === "pending" ? `pending-${level ?? 1}` : state;
+  const signed = sign && (state === "pending" || state === "deploying");
+  const name = signed ? `${base}-destroys` : base;
+  const alt = signed ? SIGNED_ALT[state] : ALT[state];
   const file2 = (theme) => `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef2)}/assets/mascot/${name}-${theme}.svg`;
   return [
     '<p align="center">',
     "  <picture>",
     `    <source media="(prefers-color-scheme: dark)" srcset="${file2("dark")}">`,
-    `    <img alt="${ALT[state]}" width="880" src="${file2("light")}">`,
+    `    <img alt="${alt}" width="880" src="${file2("light")}">`,
     "  </picture>",
     "</p>"
   ];
@@ -52821,10 +52829,10 @@ function renderBody(input2) {
   const of = (state2) => known.filter((row) => row.state === state2);
   const state = headerState(rows);
   const out = [rootMarker(input2.root)];
-  const counts2 = countsLine(known, input2.personality && state !== "plain");
+  const counts2 = countsLine(known, input2.personality);
   const scan = scanLine(input2.root, input2.repoUrl);
   if (input2.personality)
-    out.push(picture(state, pendingLevel(rows), input2.actionRef).join(`
+    out.push(picture(state, pendingLevel(rows), destroySign(rows), input2.actionRef).join(`
 `), '<div align="center">', counts2, scan, "</div>");
   else
     out.push(counts2, scan);
