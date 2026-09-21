@@ -356,3 +356,43 @@ describe("the target and the limit together", () => {
     expect(fitted.fits).toBe(true);
   });
 });
+
+// Record 0045: one change can hold hundreds of paths, such as every key of a
+// Helm release's values. A row lists ten of them, each at most 80 characters,
+// so such a row stays small and the budget has no reason to cut it.
+describe("many paths on one change", () => {
+  const helm = (stackId: string, paths: number): PendingRow => ({
+    ...pending(stackId, { creates: 0, pullRequests: 1 }),
+    diff: {
+      stackId,
+      changes: [
+        {
+          address: `${stackId}::release`,
+          type: "kubernetes:helm.sh/v3:Release",
+          name: "release",
+          op: "update",
+          changedKeys: Array.from(
+            { length: paths },
+            (_, index) =>
+              `values.controller.runnerScaleSets[${index}].template.spec.containers[0].resources.limits.memory`,
+          ),
+          replaceKeys: [],
+        },
+      ],
+    },
+  });
+
+  test("a row with 400 paths costs no more than one with ten", () => {
+    const ten = rowBlock(helm("apps/a:prod", 10)).text.length;
+    expect(rowBlock(helm("apps/a:prod", 400)).text.length).toBeLessThanOrEqual(ten + 40);
+  });
+
+  test("30 such rows fit in full, where their paths in full would take 1.3 million characters", () => {
+    const rows = Array.from({ length: 30 }, (_, index) =>
+      helm(`apps/s${String(index).padStart(2, "0")}:prod`, 400),
+    );
+    const fitted = fitBody(input(rows));
+    expect(fitted).toMatchObject({ fits: true, shortened: 0 });
+    expect(fitted.body.length).toBeLessThanOrEqual(BODY_TARGET);
+  });
+});

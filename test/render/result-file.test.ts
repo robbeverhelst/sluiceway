@@ -158,6 +158,37 @@ describe("the result file of a scan", () => {
     }
   });
 
+  // Record 0045: a step that reads the file gets what the summary shows,
+  // every path whole, and not what a row shortens.
+  test("keys are property paths, every one of them and whole", () => {
+    const paths = Array.from(
+      { length: 12 },
+      (_, index) =>
+        `values.controller.runnerScaleSets[${index + 10}].template.spec.containers[0].resources.limits.memory`,
+    );
+    const text = scanResultFile({
+      run: RUN,
+      commit: SHA,
+      milliseconds: 0,
+      stacks: [
+        {
+          stack: {
+            kind: "diff",
+            diff: {
+              stackId: "apps/arc:prod",
+              changes: [
+                change("update", "kubernetes:helm.sh/v3:Release", "arc", { changedKeys: paths }),
+              ],
+            },
+          },
+          milliseconds: 0,
+        },
+      ],
+    });
+
+    expect(JSON.parse(text).stacks[0].changes[0].changedKeys).toEqual(paths);
+  });
+
   test("the same input gives the same bytes", () => {
     const input = {
       run: RUN,

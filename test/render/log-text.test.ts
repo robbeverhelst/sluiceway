@@ -85,3 +85,16 @@ describe("the title of a stack's group in the job log", () => {
     expect(logGroupTitle("apps\n::endgroup::/x:prod")).toBe("apps ::endgroup::/x:prod");
   });
 });
+
+// Record 0045: the job log holds every path in full, as the summary does.
+describe("property paths in the log text", () => {
+  test("every path of a change is listed, whole", () => {
+    const long = `spec.template.spec.containers[0].${"env[3].".repeat(12)}value`;
+    const paths = [long, ...Array.from({ length: 14 }, (_, index) => `values.k${index + 10}`)];
+    const [, line] = diffLogLines({
+      stackId: "apps/web:prod",
+      changes: [change("update", "t", "n", { changedKeys: paths })],
+    });
+    expect(line).toBe(`update t n · ${[...paths].sort().join(", ")}`);
+  });
+});

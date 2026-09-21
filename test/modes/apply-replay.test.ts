@@ -5,10 +5,12 @@ import { CANARY_SECRET, CANARY_VALUE } from "../../scripts/fixtures/example.ts";
 import type { Adapter } from "../../src/adapters/adapter.ts";
 import type { ProcessRunner } from "../../src/adapters/process.ts";
 import { pulumi } from "../../src/adapters/pulumi/index.ts";
+import { diffHash } from "../../src/core/diff-hash.ts";
 import type { MatrixEntry } from "../../src/core/resolve.ts";
 import { apply } from "../../src/modes/apply.ts";
 import { resolve } from "../../src/modes/resolve.ts";
 import { scan } from "../../src/modes/scan.ts";
+import { parseDashboard } from "../../src/render/marker.ts";
 import { FIXTURES, replay, VERSIONS } from "../adapters/pulumi/replay.ts";
 import { ACTION_REF, harness, REPO_URL, repoRoot, SHA, stack } from "./harness.ts";
 import { rememberingOutputs } from "./outputs-harness.ts";
@@ -50,12 +52,13 @@ async function deployed(
   version: string,
   scenario: string,
   applyRun?: (root: string) => ProcessRunner,
+  scanAdapter?: Adapter,
 ) {
   const root = repoRoot();
   const adapter = adapterFor();
   // Both result files are searched with everything else that is shown.
   const outputs = rememberingOutputs();
-  const { context, github, log } = harness(adapter, {
+  const { context, github, log } = harness(scanAdapter ?? adapter, {
     root,
     run: replay(version, scenario, root).run,
     outputs,
@@ -67,7 +70,7 @@ async function deployed(
   let matrix: MatrixEntry[] = [];
   await resolve({
     root,
-    adapter,
+    adapter: scanAdapter ?? adapter,
     github,
     log,
     repoUrl: REPO_URL,
@@ -170,6 +173,56 @@ for (const version of VERSIONS) {
       expect(words).toContain("    error: update failed");
       expect(log.summaries.join("\n")).not.toContain("update failed");
       expect(github.issue(1).body).not.toContain("update failed");
+    });
+
+    // Record 0045: keys became paths, so the same change has a new hash. A
+    // row written before that, by a scan that named top-level properties, is
+    // refused as moved when it is ticked, and the row comes back with the
+    // hash of the paths, ready for a fresh tick.
+    test("a tick on a row written before paths came in is refused as moved", async () => {
+      const topLevel: Adapter = {
+        ...adapterFor(),
+        preview: async (stack, options) => {
+          const result = await pulumi.preview(stack, options);
+          if (!result.ok) return result;
+          const changes = result.diff.changes.map((change) => ({
+            ...change,
+            changedKeys: change.changedKeys.map((key) => key.split(/[.[]/)[0] ?? key),
+          }));
+          return { ...result, diff: { ...result.diff, changes } };
+        },
+      };
+      const { outcome, github, deployment, runs, root } = await deployed(
+        version,
+        "update",
+        undefined,
+        topLevel,
+      );
+      const before = parseDashboard(github.issue(1).body).rows[0];
+
+      await expect(outcome).rejects.toThrow(
+        `${ID} was not deployed: the change moved since the tick.`,
+      );
+      expect(runs.runs.map(({ argv }) => argv[1])).toEqual(["preview"]);
+      expect(github.deploymentStatuses(deployment).map(({ state }) => state)).toEqual([
+        "queued",
+        "in_progress",
+        "error",
+      ]);
+      const after = parseDashboard(github.issue(1).body).rows[0];
+      expect(before?.known && before.hash).not.toBe(after?.known && after.hash);
+      const fresh = await pulumi.preview(stack(ID), {
+        root,
+        env: {},
+        run: replay(version, "update", root).run,
+        timeoutMinutes: 10,
+      });
+      expect(fresh.ok && fresh.diff.changes[0]?.changedKeys).toEqual(["environment.STAGE"]);
+      expect(after).toMatchObject({
+        state: "pending",
+        ticked: false,
+        hash: fresh.ok ? diffHash(fresh.diff) : "",
+      });
     });
   });
 }

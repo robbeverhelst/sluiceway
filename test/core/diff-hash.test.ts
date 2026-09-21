@@ -54,6 +54,39 @@ describe("fixed vectors", () => {
     );
     expect(diffHash(diff)).toBe("c68be72f84c62e58");
   });
+
+  // Record 0045: keys are property paths, written into the document as the
+  // tool wrote them, quotes escaped like any other text. The same change told
+  // by top-level names gives another hash, which is why every pending row got
+  // a new hash once when paths came in.
+  test("property paths with list indexes and quoted map keys", () => {
+    const paths = (web: string[], settings: string[]): Diff => ({
+      stackId: "apps/web:prod",
+      changes: [
+        change({
+          address: "a2",
+          type: "core:ConfigMap",
+          name: "settings",
+          op: "replace",
+          changedKeys: settings,
+          replaceKeys: settings,
+        }),
+        change({ address: "a1", type: "apps:Deployment", name: "web", changedKeys: web }),
+      ],
+    });
+    const nested = paths(
+      ["spec.template.spec.containers[0].image", 'metadata.annotations["example.com/revision"]'],
+      ['data["app.properties"]'],
+    );
+    expect(canonicalDiff(nested)).toBe(
+      '{"changes":[' +
+        '{"address":"a1","changedKeys":["metadata.annotations[\\"example.com/revision\\"]","spec.template.spec.containers[0].image"],"name":"web","op":"update","replaceKeys":[],"type":"apps:Deployment"},' +
+        '{"address":"a2","changedKeys":["data[\\"app.properties\\"]"],"name":"settings","op":"replace","replaceKeys":["data[\\"app.properties\\"]"],"type":"core:ConfigMap"}' +
+        '],"stackId":"apps/web:prod"}',
+    );
+    expect(diffHash(nested)).toBe("4a831612a802540d");
+    expect(diffHash(paths(["metadata", "spec"], ["data"]))).toBe("499ca3a5fae7b813");
+  });
 });
 
 function change(fields: Partial<Change> = {}): Change {

@@ -132,20 +132,52 @@ export function sortedKeys(keys: string[]): string[] {
   return [...new Set(keys)].sort(byCodeUnit);
 }
 
+// How a row shows property paths (record 0045). The summary and the job log
+// show every path in full, so a row can keep to what a person scans.
+export const ROW_PATH_LENGTH = 80;
+export const ROW_PATHS_PER_CHANGE = 10;
+const HEAD_LENGTH = 24;
+
+// A path longer than the limit keeps its first segment, the property the
+// provider defines, and as much of its end, where the leaf is, as fits. The
+// end starts at a segment when it holds one. Counted in code points, so a cut
+// never splits a character.
+export function shortPath(path: string): string {
+  const points = Array.from(path);
+  if (points.length <= ROW_PATH_LENGTH) return path;
+  const first = /^(?:\["(?:[^"\\]|\\.)*"\]|[^.[]+)/.exec(path)?.[0] ?? "";
+  const head = Array.from(first).slice(0, HEAD_LENGTH);
+  const tail = points.slice(points.length - (ROW_PATH_LENGTH - head.length - 1));
+  const segment = tail.findIndex((point) => point === "." || point === "[");
+  const start = segment < 0 ? 0 : tail[segment] === "." ? segment + 1 : segment;
+  const end = start < tail.length ? tail.slice(start) : tail;
+  return `${head.join("")}…${end.join("")}`;
+}
+
 // One change as one line of plain HTML: the op as a key cap, the type, the
-// name in bold, then the names of the changed properties. Never a value.
-export function changeLine(change: Change): string {
+// name in bold, then the paths of the changed properties. Never a value. On a
+// row a long path is shortened, and a line in the fold lists at most ten
+// paths. A delete or replace line lists every one, because it is shown whole
+// or cut whole (record 0024).
+export function changeLine(change: Change, options: { row?: boolean } = {}): string {
   const word = [change.op === "none" ? undefined : change.op, change.tracking]
     .filter((part) => part !== undefined)
     .join(" + ");
   const cap = isDestroy(change) ? word.toUpperCase() : word;
   const forcing = sortedKeys(change.replaceKeys);
   const others = sortedKeys(change.changedKeys).filter((key) => !forcing.includes(key));
+  const capped = options.row === true && !isDestroy(change);
+  const listed = capped ? others.slice(0, ROW_PATHS_PER_CHANGE) : others;
+  const hidden = others.length - listed.length;
+  const show = (keys: string[]) => codes(options.row ? keys.map(shortPath) : keys);
   const parts = [
     `<kbd>${cap}</kbd> <code>${escapeText(change.type)}</code> <b>${escapeText(change.name)}</b>`,
   ];
-  if (forcing.length > 0) parts.push(`forced by ${codes(forcing)}`);
-  if (others.length > 0) parts.push(`${forcing.length > 0 ? "also changes " : ""}${codes(others)}`);
+  if (forcing.length > 0) parts.push(`forced by ${show(forcing)}`);
+  if (others.length > 0) {
+    const more = hidden > 0 ? `, and ${hidden} more` : "";
+    parts.push(`${forcing.length > 0 ? "also changes " : ""}${show(listed)}${more}`);
+  }
   return parts.join(" · ");
 }
 
@@ -209,14 +241,15 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
     return lines;
   }
 
-  for (const change of [...deletes, ...replaces]) lines.push(`:warning: ${changeLine(change)}`);
+  for (const change of [...deletes, ...replaces])
+    lines.push(`:warning: ${changeLine(change, { row: true })}`);
   if (folded.length > 0) {
     const inside = plural(folded.length, destroys > 0 ? "other change" : "change");
     if (level >= 2) {
       lines.push(`${inside} not listed here, see the ${summary}`);
     } else {
       lines.push(`<details><summary>${inside}</summary>`);
-      for (const change of folded) lines.push(`${changeLine(change)}<br>`);
+      for (const change of folded) lines.push(`${changeLine(change, { row: true })}<br>`);
       lines.push("</details>");
     }
   }

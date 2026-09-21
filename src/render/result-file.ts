@@ -30,7 +30,8 @@ const countsSchema = z.strictObject({
 });
 
 // One change as a row shows it: the type, the name, the op, the tracking
-// change and the names of the changed properties. No address and no value.
+// change and the paths of the changed properties, whole (record 0045). No
+// address and no value.
 const changeSchema = z.strictObject({
   type: z.string(),
   name: z.string(),

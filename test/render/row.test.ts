@@ -513,6 +513,113 @@ describe("a shortened row", () => {
   });
 });
 
+// Record 0045: a key is a property path, shown as the tool wrote it. A row
+// shortens a long path in the middle and lists at most ten paths of one
+// change. The summary and the job log show every path in full.
+describe("property paths on a row", () => {
+  const LONG =
+    "spec.template.spec.containers[0].env[3].valueFrom.secretKeyRef.optional.nested.deeper.leaf";
+
+  function lineOf(update: Change): string {
+    const row: PendingRow = {
+      state: "pending",
+      diff: { stackId: "apps/web:prod", changes: [update] },
+      hash: "00000000000000aa",
+      runUrl: "run-url",
+    };
+    return renderRow(row).split("\n")[2] ?? "";
+  }
+
+  test("a path is shown whole, with its list indexes and quoted map keys", () => {
+    const line = lineOf(
+      change("update", "kubernetes:apps/v1:Deployment", "web", {
+        changedKeys: [
+          "spec.template.spec.containers[0].image",
+          'metadata.annotations["example.com/revision"]',
+        ],
+      }),
+    );
+    expect(line).toBe(
+      "  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>web</b> · <code>metadata.annotations&#91;&quot;example.com/revision&quot;&#93;</code>, <code>spec.template.spec.containers&#91;0&#93;.image</code><br>",
+    );
+  });
+
+  test("a path longer than 80 characters keeps its first segment and its end", () => {
+    expect(LONG.length).toBeGreaterThan(80);
+    const line = lineOf(change("update", "t", "n", { changedKeys: [LONG] }));
+    expect(line).toContain(
+      "<code>spec…containers&#91;0&#93;.env&#91;3&#93;.valueFrom.secretKeyRef.optional.nested.deeper.leaf</code>",
+    );
+  });
+
+  test("a path of exactly 80 characters is shown whole", () => {
+    const path = `a.${"b".repeat(78)}`;
+    expect(lineOf(change("update", "t", "n", { changedKeys: [path] }))).toContain(
+      `<code>${path}</code>`,
+    );
+  });
+
+  test("a long path with no segment to start its end at is cut by characters", () => {
+    const path = `values.${"x".repeat(100)}`;
+    expect(lineOf(change("update", "t", "n", { changedKeys: [path] }))).toContain(
+      `<code>values…${"x".repeat(73)}</code>`,
+    );
+  });
+
+  test("a long first segment is cut too", () => {
+    const path = `${"k".repeat(60)}.${"v".repeat(60)}`;
+    expect(lineOf(change("update", "t", "n", { changedKeys: [path] }))).toContain(
+      `<code>${"k".repeat(24)}…${"v".repeat(55)}</code>`,
+    );
+  });
+
+  test("a change lists at most ten paths, and says how many more there are", () => {
+    const paths = Array.from(
+      { length: 13 },
+      (_, index) => `values.key${String(index).padStart(2, "0")}`,
+    );
+    const line = lineOf(change("update", "t", "n", { changedKeys: paths }));
+    const shown = paths.slice(0, 10).map((path) => `<code>${path}</code>`);
+    expect(line).toEndWith(` · ${shown.join(", ")}, and 3 more<br>`);
+  });
+
+  test("ten paths are all listed", () => {
+    const paths = Array.from({ length: 10 }, (_, index) => `values.key${index}`);
+    expect(lineOf(change("update", "t", "n", { changedKeys: paths }))).not.toContain("more");
+  });
+
+  // Record 0024: a replace or delete line is shown whole or cut whole, and
+  // never loses a key to save space. Only the lines in the fold are capped.
+  test("a replace line lists every path, forcing or not, however many", () => {
+    const forcing = Array.from(
+      { length: 12 },
+      (_, index) => `data.f${String(index).padStart(2, "0")}`,
+    );
+    const others = Array.from(
+      { length: 11 },
+      (_, index) => `spec.o${String(index).padStart(2, "0")}`,
+    );
+    const block = renderRow({
+      state: "pending",
+      diff: {
+        stackId: "apps/web:prod",
+        changes: [
+          change("replace", "t", "n", {
+            changedKeys: [...forcing, ...others, `spec.${"x".repeat(100)}`],
+            replaceKeys: forcing,
+          }),
+        ],
+      },
+      hash: "00000000000000aa",
+      runUrl: "run-url",
+    });
+    const codes = (keys: string[]) => keys.map((key) => `<code>${key}</code>`).join(", ");
+    expect(block.split("\n")[1]).toEndWith(
+      ` · forced by ${codes(forcing)} · also changes ${codes([...others, `spec…${"x".repeat(75)}`])}`,
+    );
+  });
+});
+
 // Types, names and property names come from the user's code and the provider's
 // schema. Stack ids come from directory and file names.
 describe("text from outside is never markup", () => {

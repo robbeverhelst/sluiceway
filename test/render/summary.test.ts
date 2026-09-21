@@ -471,3 +471,29 @@ describe("the budget of the summary", () => {
     expect(summary.text).toContain("**deletes 3, too many to list here.**");
   });
 });
+
+// Record 0045: a row shortens long paths and lists ten per change. The summary
+// is what a shortened row points at, so it lists every path in full.
+describe("property paths in the summary", () => {
+  test("every path of a change is listed, whole", () => {
+    const long = `spec.template.spec.containers[0].${"env[3].".repeat(12)}value`;
+    const paths = [long, ...Array.from({ length: 14 }, (_, index) => `values.k${index + 10}`)];
+    const { text } = renderSummary([
+      {
+        kind: "diff",
+        diff: {
+          stackId: "apps/web:prod",
+          changes: [change("update", "t", "n", { changedKeys: paths })],
+        },
+        merges: [],
+      },
+    ]);
+    const line = text.split("\n").find((candidate) => candidate.includes("<b>n</b>")) ?? "";
+    for (const path of paths)
+      expect(line).toContain(
+        `<code>${path.replace(/[[\]]/g, (c) => `&#${c.charCodeAt(0)};`)}</code>`,
+      );
+    expect(line).not.toContain("more");
+    expect(line).not.toContain("…");
+  });
+});
