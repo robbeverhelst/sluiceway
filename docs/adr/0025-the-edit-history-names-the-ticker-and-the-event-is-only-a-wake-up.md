@@ -33,6 +33,20 @@ Keeping 0005's shape was considered: find the entry that belongs to this event (
 - The `permissions:` block does not change. `issues: write` already covers reading the history.
 - Not tested: what a deleted entry looks like through the API. GitHub's docs say the editor and the time stay and the content goes. The rule does not depend on it, because any entry without a body breaks the stretch.
 
+## Settled while building (slice 2.2)
+
+- The walk is `nameTickers` in `src/core/edit-history.ts`. It takes the ticks to name and a function that reads one page of the history, and gives one answer per tick: the editor and the time of the edit that made the tick, or that the history names nobody and why. Whether that editor may tick is 0018's question. The walk names a bot or an account GitHub no longer knows like anyone else, and the tick rule refuses them.
+- A tick is a row ticked at one hash, or the ticked rescan box. `ticksIn` reads the ticks of a body the same way the walk reads an entry, so the live body and the history can never be read by two rules. A row of a state this version does not know holds no tick, and neither does a row without a hash. Of two blocks for one stack the first counts, as it does for a scan that carries rows.
+- The same row ticked at another hash is another tick. So is a row whose hash a bot write changed under a tick: the stretch ends there and the bot is the editor, which 0018 refuses.
+- There are three ways the history names nobody. An entry inside the stretch has no body. The stretch reaches the end of the kept history. Or the newest entry does not hold the tick at all, which means the body moved between two reads, and the caller reads again.
+- An entry without a body ends the walk for every tick still inside its stretch, not only for the tick of the person who deleted it. What the entry held cannot be known. A person who loses a tick that way ticks again.
+- An entry has no body when GitHub gives no content for it, when it carries a deletion time whatever else it holds, or when its body is empty. A dashboard body is never empty, and what a deleted entry looks like through the API is still not observed (issue 27, item 7), so every form it could take is read as deleted.
+- The gap. A history of 100 entries or more is capped: its oldest entry is the original body, and nothing says how many edits were lost in front of it. The walk never uses that entry, so a stretch that reaches it names nobody, also when the original body shows the row unticked. A history of fewer than 100 entries lost nothing, and there the original body counts like any entry. A history of exactly 100 entries that lost nothing cannot be told from a capped one and is read as capped.
+- An issue that was never edited has no entries at all, not even its original body. Seen on real GitHub on 2026-09-21. The original body shows up as the oldest entry with the first edit.
+- The history names the bot as `github-actions` with the type `Bot`, without the `[bot]` that REST puts on the login (issue 28). The type is GraphQL's `__typename` of the editor.
+- The query reads `body` and `userContentEdits(first, after)` with `totalCount`, `pageInfo` and per entry `editedAt`, `deletedAt`, `editor` and `diff`, newest first. GitHub names an end cursor on the last page too, so only `hasNextPage` says that a page follows. Checked with the real port against this repo, read only. Every page carries the body, so a reader can see that it moved.
+- A page is 10 entries. The normal walk needs two, the tick and the write before it.
+
 Research:
 - Observed entries, the reproduced race and the history cap: https://github.com/sluiceway/sluiceway/issues/28
 - The payload finding: https://github.com/sluiceway/sluiceway/issues/27

@@ -84,7 +84,7 @@ export class FakeGitHub implements GitHubPort {
     this.#store(this.#find(number), body, editor);
   }
 
-  // A person deletes a revision in GitHub's interface: the editor and the
+  // A person deletes an entry's content in GitHub's interface: the editor and the
   // time stay and the content goes. `position` counts from the newest entry,
   // as the history lists them.
   deleteHistoryEntry(number: number, position: number): void {

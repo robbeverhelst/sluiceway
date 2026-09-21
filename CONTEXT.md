@@ -96,6 +96,14 @@ _Avoid_: Approval, selection, click
 The person whose edit made a tick, as the issue's edit history names them. The only identity a deploy is authorized against and attributed to. Always a person, never a bot. A tick whose ticker cannot be named deploys nothing.
 _Avoid_: Approver, actor, sender, deployer
 
+**Edit history**:
+GitHub's own list of every edit of the dashboard issue, newest first: who made the edit, when, and the whole body right after it. The only source for who ticked. GitHub keeps the original body and the newest 99 edits, and a person can delete the content of an entry.
+_Avoid_: Revisions, audit log, event log
+
+**Stretch**:
+The unbroken run of edit history entries, from the newest one back, in which a row is ticked with the same stack id and diff hash. The ticker is the editor of its oldest entry. A stretch that holds an entry without a body, or that reaches the end of the kept history, names nobody.
+_Avoid_: Streak, window, range
+
 **Tick rule**:
 What a person needs in order to tick a stack: a level of access to the repo, or a place on a list of named people who also have write access. It can narrow who may tick, never widen it.
 _Avoid_: Approvers, reviewers, allowlist, access list
