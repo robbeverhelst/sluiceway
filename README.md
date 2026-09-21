@@ -8,7 +8,7 @@
 Sluiceway keeps one GitHub issue that shows which infrastructure stacks have changes waiting, and deploys a stack when you tick its box.
 
 > [!IMPORTANT]
-> **Sluiceway is in beta.** It works end to end on a real repo: 51 Pulumi stacks on self-hosted runners, all previewed in about three minutes, and every ticked stack deployed by its own run and nothing else. There is no release yet, so you [pin a commit](#pin-a-commit). Expect rough edges, and please tell us about every one you hit as an [issue](https://github.com/sluiceway/sluiceway/issues/new). The [onboarding log](docs/onboarding-log.md) lists the ones found so far and what was done about them.
+> **Sluiceway is in beta.** It works end to end, but there is no release yet, so you [pin a commit](#pin-a-commit). Please report every rough edge as an [issue](https://github.com/sluiceway/sluiceway/issues/new). The [onboarding log](docs/onboarding-log.md) lists the ones found so far.
 
 ## What it looks like
 
