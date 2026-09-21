@@ -11,6 +11,7 @@ import { type Stack, stackId } from "../../../src/core/stack.ts";
 import { renderBody, rowBlock } from "../../../src/render/body.ts";
 import { fitBody } from "../../../src/render/budget.ts";
 import { diffLogLines, logGroupTitle } from "../../../src/render/log-text.ts";
+import { applyResultFile, scanResultFile } from "../../../src/render/result-file.ts";
 import { renderRow } from "../../../src/render/row.ts";
 import { renderSummary } from "../../../src/render/summary.ts";
 import { FIXTURES, ROOT, readRecording, replay, scenarioNames, VERSIONS } from "./replay.ts";
@@ -63,16 +64,34 @@ function budgeted(row: Parameters<typeof rowBlock>[0]): string {
   ).body;
 }
 
-// The summary in full and cut as far as it goes, and the log text (record 0037).
+// The summary in full and cut as far as it goes, the log text (record 0037),
+// and the result files of a scan and of an apply (record 0041).
 function annex(diff: Diff): string {
-  const stacks = [{ kind: "diff", diff } as const];
+  const stack = { kind: "diff", diff } as const;
+  const stacks = [stack];
   return [
     renderSummary(stacks).text,
     renderSummary(stacks, { budget: 0 }).text,
     logGroupTitle(diff.stackId),
     ...diffLogLines(diff),
+    scanResultFile({ ...RESULT, stacks: [{ stack, milliseconds: 1 }] }),
+    applyResultFile({ ...RESULT, ...APPLIED, applied: { kind: "deployed", diff } }),
+    applyResultFile({
+      ...RESULT,
+      ...APPLIED,
+      outcome: "failed",
+      applied: {
+        kind: "not-deployed",
+        reason: "the tool exited with an error (exit code 1)",
+        checked: { kind: "diff", diff },
+        after: { kind: "diff", diff },
+      },
+    }),
   ].join("\n");
 }
+
+const RESULT = { run: "run-url", commit: "sha", milliseconds: 1 };
+const APPLIED = { deployment: 1, outcome: "deployed", stack: "a", ticker: "alice" } as const;
 
 function leaks(text: string): string[] {
   return FORBIDDEN.filter((word) => text.includes(word));
@@ -117,15 +136,15 @@ for (const version of VERSIONS) {
 
           // Everything the adapter hands over, the tool's words included, and
           // what the core and the row renderer make of it.
+          const failed = {
+            kind: "preview-failed",
+            stackId: stackId(stack),
+            reason: result.ok ? "" : previewFailureText(result.reason),
+          } as const;
           const made = result.ok
             ? canonicalDiff(result.diff) + rows(result.diff) + annex(result.diff)
-            : renderSummary([
-                {
-                  kind: "preview-failed",
-                  stackId: stackId(stack),
-                  reason: previewFailureText(result.reason),
-                },
-              ]).text +
+            : renderSummary([failed]).text +
+              scanResultFile({ ...RESULT, stacks: [{ stack: failed, milliseconds: 1 }] }) +
               renderRow({
                 state: "preview-failed",
                 stackId: stackId(stack),

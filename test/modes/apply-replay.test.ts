@@ -11,6 +11,7 @@ import { resolve } from "../../src/modes/resolve.ts";
 import { scan } from "../../src/modes/scan.ts";
 import { FIXTURES, replay, VERSIONS } from "../adapters/pulumi/replay.ts";
 import { ACTION_REF, harness, REPO_URL, repoRoot, SHA, stack } from "./harness.ts";
+import { rememberingOutputs } from "./outputs-harness.ts";
 import {
   ALICE,
   RESOLVE_RUN,
@@ -52,9 +53,12 @@ async function deployed(
 ) {
   const root = repoRoot();
   const adapter = adapterFor();
+  // Both result files are searched with everything else that is shown.
+  const outputs = rememberingOutputs();
   const { context, github, log } = harness(adapter, {
     root,
     run: replay(version, scenario, root).run,
+    outputs,
   });
   await scan(context);
   github.seedPermission(ALICE.login, WRITE);
@@ -92,8 +96,9 @@ async function deployed(
     sha: SHA,
     actionRef: ACTION_REF,
     deploymentId: deployment,
+    outputs,
   });
-  return { outcome, github, log, deployment, runs, root };
+  return { outcome, github, log, deployment, runs, root, outputs };
 }
 
 for (const version of VERSIONS) {
@@ -115,17 +120,21 @@ for (const version of VERSIONS) {
     // Record 0021: the summary of an apply never lists stack outputs, and no
     // value is anywhere but in the tool's own words in the job log.
     test("outputs and values are never in the summary, the body or the record", async () => {
-      const { outcome, github, log, deployment } = await deployed(version, "deploy");
+      const { outcome, github, log, deployment, outputs } = await deployed(version, "deploy");
       await outcome;
 
       const shown = [
         ...log.summaries,
+        JSON.stringify(outputs.resultFile("scan")),
+        JSON.stringify(outputs.resultFile("apply")),
+        JSON.stringify(outputs.values),
         github.issue(1).body,
         JSON.stringify(github.deploymentStatuses(deployment)),
         JSON.stringify(github.deployment(deployment)),
         ...log.lines,
       ].join("\n");
       expect(log.summaries.at(-1)).toContain(`**${ID}** · deployed`);
+      expect(outputs.resultFile("apply")).toMatchObject({ outcome: "deployed", stack: ID });
       expect(shown).not.toContain("networkName");
       expect(shown).not.toContain(CANARY_VALUE);
       expect(shown).not.toContain(CANARY_SECRET);
