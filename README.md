@@ -1,23 +1,155 @@
-# Sluiceway
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/mascot/in-sync-dark.svg">
+    <img alt="Sluiceway: Penny, the sluice gate, resting on a calm quay because every stack is in sync" width="880" src="assets/mascot/in-sync-light.svg">
+  </picture>
+</p>
 
-Sluiceway keeps one GitHub issue, the dashboard, that shows which infrastructure stacks have changes waiting. You tick a stack's box and a GitHub Actions run deploys exactly that stack.
+Sluiceway keeps one GitHub issue that shows which infrastructure stacks have changes waiting, and deploys a stack when you tick its box.
 
-It is a GitHub Action and nothing else. There is no server, no database and no hosted part. Previews and deploys run in your own runners.
+> [!IMPORTANT]
+> **Sluiceway is in beta.** It works end to end on a real repo: 51 Pulumi stacks on self-hosted runners, all previewed in about three minutes, and every ticked stack deployed by its own run and nothing else. There is no release yet, so you [pin a commit](#pin-a-commit). Expect rough edges, and please tell us about every one you hit as an [issue](https://github.com/sluiceway/sluiceway/issues/new). The [onboarding log](docs/onboarding-log.md) lists the ones found so far and what was done about them.
 
+## What it looks like
+
+The dashboard is Markdown, so here is one. It is an example, rendered by Sluiceway's own code from the made-up data its tests use. In a real dashboard issue the boxes can be ticked. Here they cannot.
+
+<details>
+<summary><b>Open the example dashboard</b>: 13 stacks, 3 pending, one of them deleting resources</summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/6eb8d045673dbd32fe37d71ea941d59e1cb04675/assets/mascot/failing-dark.svg">
+    <img alt="Sluiceway: something failed" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/6eb8d045673dbd32fe37d71ea941d59e1cb04675/assets/mascot/failing-light.svg">
+  </picture>
+</p>
+
+<div align="center">
+
+🟡&nbsp;**3 pending** · 🔵&nbsp;1 deploying · 🔴&nbsp;1 preview failed · 🟢&nbsp;8 in sync · :warning: **1 pending stack destroys resources** · 🔴&nbsp;1 failed deploy
+
+Scanned [`8c41f0e`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
+
+</div>
+
+### Pending
+
+Tick a box to deploy that stack exactly as its row shows it.
+
+- [ ] **apps/api:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121)
+  from [#5](https://github.com/example-org/infra/pull/5) by alice, [#4](https://github.com/example-org/infra/pull/4) by renovate[bot] · [compare](https://github.com/example-org/infra/compare/4193607...8c41f0e)
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>api</b> · <code>spec</code><br>
+  </details>
+- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121)
+  from [#427](https://github.com/example-org/infra/pull/427) by dave · [compare](https://github.com/example-org/infra/compare/284fd2d...8c41f0e)
+  :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>legacy-jobs</b>
+  :warning: <kbd>DELETE</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>legacy-worker</b>
+  :warning: <kbd>DELETE</kbd> <code>kubernetes:core/v1:Service</code> <b>legacy-worker</b>
+  <details><summary>1 other change</summary>
+  <kbd>forget</kbd> <code>aws:iam/role:Role</code> <b>legacy-worker</b><br>
+  </details>
+- [ ] **apps/web:prod** · 2 creates, 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121)
+  from [#418](https://github.com/example-org/infra/pull/418) by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1dfd7ad...8c41f0e)
+  <details><summary>3 changes</summary>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>web</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>create</kbd> <code>kubernetes:autoscaling/v2:HorizontalPodAutoscaler</code> <b>web</b><br>
+  <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>web-feature-flags</b><br>
+  </details>
+
+### Deploying
+
+- **platform/cert-manager:prod** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034501999)
+  from [#437](https://github.com/example-org/infra/pull/437) by renovate[bot] · [compare](https://github.com/example-org/infra/compare/876b5b7...8c41f0e)
+
+### Preview failed
+
+These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.
+
+- **monitoring/loki:prod** · preview failed: the preview timed out after 10 minutes · [run](https://github.com/example-org/infra/actions/runs/17034455121)
+
+### In sync
+
+- data/warehouse:prod
+  :x: last deploy failed: the run ended without reporting a result · ticked by bob · 2026-09-19 16:03 UTC · [run](https://github.com/example-org/infra/actions/runs/17019884120)
+
+<details><summary>7 more in sync</summary>
+
+- apps/api:staging
+- apps/auth:prod
+- apps/auth:staging
+- data/postgres:staging
+- infra/network:prod
+- monitoring/grafana:prod
+- platform/external-dns:prod
+
+</details>
+
+### Recently deployed
+
+- apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+
+---
+
+- [ ] Rescan all stacks
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) `6eb8d04` · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
+
+</details>
 
 ## How it works
 
-1. After a merge to the default branch, and on a schedule, a **scan** previews the stacks in the repo.
-2. The scan writes the results to the dashboard issue: one row per stack, with a checkbox on every stack that has changes waiting.
-3. A person ticks a box. That is a request to deploy that stack exactly as the row shows it.
-4. Sluiceway checks that the person is allowed to tick that stack, then previews the stack again. It deploys only if the fresh preview still matches what the row showed.
-5. The row goes back to in sync, or shows why the deploy failed.
+A sluiceway is a channel with a gate. Changes queue up behind the gate, and you decide what passes.
 
-The issue is a rendered view and never the source of truth. What is pending is always worked out again from a fresh preview.
+1. After a merge to the default branch, and once a day, a **scan** previews the stacks in the repo.
+2. The scan writes the dashboard issue: one row per stack, and a box on every stack that has changes waiting.
+3. You tick a box. That asks for that stack to be deployed exactly as its row shows it.
+4. Sluiceway checks that you may tick that stack, and previews it again. It deploys only if the fresh preview still matches the row.
+5. The row goes back to in sync, or says why the deploy failed, with a link to the run.
 
-Pulumi is the first supported tool. The adapter interface is built so that OpenTofu and Terraform can follow.
+The issue is a view and never the source of truth. What is pending is always worked out again from a fresh preview. Pulumi is the first supported tool, and the adapter interface is built so that OpenTofu and Terraform can follow. [CONTEXT.md](CONTEXT.md) defines the words used here and in the code.
 
-[CONTEXT.md](CONTEXT.md) defines the words used here and in the code.
+## Get started
+
+Go one step at a time. Each step shows you something before the next one can change anything.
+
+1. **Check your setup.** A pull request check that reads your files and says which stacks Sluiceway found and whether `sluiceway.yaml` is valid. No credentials, no tool, no write. [Step 1](#1-check-your-setup).
+2. **Scan, read only.** One job that previews your stacks and writes the dashboard, with nothing that can deploy. Its boxes do nothing yet: a tick in this trial starts nothing, and the next scan clears it and leaves a note on the row. [Start read only](#start-read-only).
+3. **The whole loop.** The workflow with all four jobs, so a tick deploys. [Step 2](#2-add-the-workflow), then [your stacks](#3-tell-it-about-your-stacks) and [your credentials](#4-load-your-credentials).
+
+What new users ran into, so you do not have to:
+
+- A stack config file with no stack in the backend becomes a red row. Leave it out with `ignore`, and write its full id: `apps/web:dev`, never `apps/web`. The check warns about a glob that leaves out nothing.
+- A program that pulls from a private registry works on your laptop and fails on the runner. Log in to that registry in the workflow. [Credentials](docs/credentials.md) has recipes.
+- `resolve` and `settle` hold no secrets. Keep them on hosted runners even when `scan` and `apply` are self-hosted, so a tick shows on the dashboard in seconds instead of waiting for a busy runner.
+
+### Pin a commit
+
+There is no release yet. Every example here says `sluiceway/sluiceway@0000000000000000000000000000000000000000`. Put the newest commit of this repository's `main` branch in its place, all 40 characters. Find it on the [commits page](https://github.com/sluiceway/sluiceway/commits/main), or run:
+
+```sh
+git ls-remote https://github.com/sluiceway/sluiceway refs/heads/main
+```
+
+A branch such as `@main` is not enough: the scan works, but the header picture stays broken. The first release, 0.1.0, is milestone M3 of the [build plan](docs/build-plan.md). Watch the releases of this repository to hear when it is out.
+
+## What it promises
+
+- **It never holds your credentials.** Previews and deploys run in your own runners, with the secrets your workflow loads. No input carries a cloud or backend credential, and no code reads one by name. [Security](#security) has the five promises.
+- **There is no backend.** It is a GitHub Action and nothing else: no server, no database, no hosted part. Sluiceway itself calls the GitHub API and nothing else.
+- **A fresh preview before every deploy.** A tick deploys only what the row showed. If the change moved since, nothing is deployed and the row comes back with the new diff.
+- **No values, ever.** Rows show resource types, resource names and the names of changed properties. Never a value, secret or not.
+
+## What it does not do yet
+
+- **Pulumi only.** OpenTofu and Terraform can follow.
+- **No release.** Pin a commit until 0.1.0.
+- **Only preview and deploy.** Destroying a stack, a refresh and repairing state stay with your own tooling.
+- **A change to outputs alone is not shown**, and deploys from somewhere else are not detected. [Limits](#limits) says what that means for you.
+
+[docs/later.md](docs/later.md) lists everything left out of this version, and why.
 
 ## Modes
 
@@ -47,6 +179,7 @@ One action, five modes, chosen with the `mode` input.
 |---|---|---|
 | `matrix` | `resolve` | A JSON list with one `{ stack, environment, deployment }` entry per deploy that was started, or `[]`. |
 
+`scan` and `apply` also set outputs and write a result file, so a step after Sluiceway can tell people or chart numbers. Sluiceway itself sends nothing. [docs/notifications.md](docs/notifications.md) lists them, with recipes that stay quiet unless something is pending or failed.
 
 ## Requirements
 
@@ -59,7 +192,7 @@ One action, five modes, chosen with the `mode` input.
 
 Four steps. The first one needs no credentials and changes nothing, so you learn whether Sluiceway understands your repo before anything can deploy.
 
-The examples say `sluiceway/sluiceway@v0`. That tag starts to work with the first release, 0.1.0, which is not out yet. Until then, put a full commit SHA of this repository in its place, all 40 characters. Watch the releases to hear when 0.1.0 is out.
+The examples pin the action to a placeholder of 40 zeros. Put the newest commit of `main` in its place, as [Pin a commit](#pin-a-commit) says.
 
 ### What goes where
 
@@ -92,7 +225,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: sluiceway/sluiceway@v0
+      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
         with:
           mode: check
 ```
@@ -146,7 +279,7 @@ jobs:
       # Load your credentials and your state backend settings into the job
       # environment here. Sluiceway passes the environment to the tool and
       # never looks inside. Whatever loads a secret must also mask it.
-      - uses: sluiceway/sluiceway@v0
+      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
         with:
           mode: scan
 
@@ -160,7 +293,7 @@ jobs:
       - uses: actions/checkout@v7
       # No tool and no credentials in this job. It never runs the tool.
       - id: resolve
-        uses: sluiceway/sluiceway@v0
+        uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
         with:
           mode: resolve
 
@@ -182,7 +315,7 @@ jobs:
           pulumi-version: ^3.229.0
       # Same install and credential steps as in the scan job. These
       # credentials must be able to change things.
-      - uses: sluiceway/sluiceway@v0
+      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
         with:
           mode: apply
           deployment-id: ${{ matrix.deployment }}
@@ -193,7 +326,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: sluiceway/sluiceway@v0
+      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
         with:
           mode: settle
 ```
@@ -212,7 +345,7 @@ What the parts are for:
 - **`!cancelled()` on `apply`** lets the deploys that `resolve` started go ahead when `resolve` itself ended red, for example because one of several ticks could not be verified or the dashboard could not be written. Without a status check in its `if:`, GitHub skips a job whose `needs` failed. Every entry in `matrix` is a record that `resolve` created after it checked the ticker, so nothing else can get through here.
 - **`settle`** gives a deploy a result when its job was cancelled or rejected, so a row never stays "deploying" for ever. It touches only the deployment records of its own run. When it ended one it starts a full scan, which writes the row again with the failure line, so it needs `actions: write` as well.
 - **A deploy has no time limit of Sluiceway's.** Set `timeout-minutes` on the `apply` job.
-- **`v0`** is the moving tag until 1.0.0, from the first release on. Pin a commit SHA instead if you want to review every update.
+- **The pinned commit** stays until you change it. Until the first release that is the only way to run Sluiceway. From 0.1.0 on, `@v0` becomes a moving tag that follows every release until 1.0.0, and a commit SHA stays the choice if you want to review every update.
 
 Self-hosted runners work the same way: change `runs-on` for `scan` and `apply`. `resolve` and `settle` hold no infrastructure secrets, so they can stay on hosted runners.
 
@@ -304,7 +437,7 @@ jobs:
       # Load your credentials and your state backend settings into the job
       # environment here. Credentials that can only read are enough. Whatever
       # loads a secret must also mask it.
-      - uses: sluiceway/sluiceway@v0
+      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
         with:
           mode: scan
 ```
@@ -372,6 +505,8 @@ A tick rule protects against the wrong person ticking. On its own it does not pr
 - [docs/credentials.md](docs/credentials.md): how credentials reach the tool, recipes, private registries, and your own tooling.
 - [docs/example-workflows.md](docs/example-workflows.md): complete workflows for common setups.
 - [docs/security.md](docs/security.md): what a tick promises, and the three setups.
+- [docs/notifications.md](docs/notifications.md): the outputs and the result file, and recipes that tell people when something is pending or failed.
+- [docs/onboarding-log.md](docs/onboarding-log.md): every hurdle a new user met, and what was done about it.
 - [CONTEXT.md](CONTEXT.md): the glossary.
 - [docs/build-plan.md](docs/build-plan.md): what is being built, in which order, and how it is proven.
 - [docs/adr](docs/adr): the decision records. Where a record and the brief disagree, the record wins.

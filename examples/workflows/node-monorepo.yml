@@ -3,8 +3,9 @@
 # .github/workflows/deploy-dashboard.yml on the default branch, and read
 # docs/example-workflows.md for what to change.
 #
-# `sluiceway/sluiceway@v0` starts to work with the first release, 0.1.0. Until
-# then pin a full commit SHA of sluiceway/sluiceway in its place.
+# There is no release yet. Replace the 40 zeros after `sluiceway/sluiceway@`
+# with the newest commit of main, all 40 characters:
+#   git ls-remote https://github.com/sluiceway/sluiceway refs/heads/main
 name: deploy-dashboard
 
 on:
@@ -47,7 +48,7 @@ jobs:
       # The credentials sit on this step only, so the install scripts of npm ci
       # never see them. A preview needs no more than read access, where your
       # backend and cloud offer credentials that can only read.
-      - uses: sluiceway/sluiceway@v0
+      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_READ_TOKEN }}
         with:
@@ -62,7 +63,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: resolve
-        uses: sluiceway/sluiceway@v0
+        uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
         with:
           mode: resolve
 
@@ -97,7 +98,7 @@ jobs:
           key: pulumi-plugins-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
       # A secret of the environment above: only a job that names the
       # environment, on a branch the environment allows, can read it.
-      - uses: sluiceway/sluiceway@v0
+      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_DEPLOY_TOKEN }}
         with:
@@ -110,6 +111,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: sluiceway/sluiceway@v0
+      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
         with:
           mode: settle
