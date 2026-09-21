@@ -291,3 +291,46 @@ describe("a deploying row the scan makes from the record", () => {
     ]);
   });
 });
+
+// Where this slice meets the orphan tick sweep of slice 2.7: both add to the
+// fresh pending row, and neither may push the other off it.
+describe("a ticked row", () => {
+  function tick(github: FakeGitHub, id: string): void {
+    const body = dashboardBody(github);
+    github.editBody(1, body.replace(`- [ ] **${id}**`, `- [x] **${id}**`), {
+      login: "alice",
+      type: "User",
+    });
+  }
+
+  async function ticked() {
+    const scanned = harness(tableAdapter({ "a:prod": pending("a:prod", change("logs")) }));
+    merged(scanned.github, ["a/index.ts"]);
+    succeeded(scanned.github, "a:prod");
+    await scan(scanned.context);
+    tick(scanned.github, "a:prod");
+    return scanned;
+  }
+
+  test("that a scan carries through, because a run is on its way, keeps its attribution line", async () => {
+    const { context, github } = await ticked();
+    github.seedIssuesRun("sluiceway.yml", { id: "71", completed: false });
+
+    await scan(context);
+
+    expect(dashboardBody(github)).toContain("- [x] **a:prod**");
+    expect(under(github, "a:prod")[0]).toBe(`from #3 by alice · ${COMPARE}`);
+  });
+
+  test("that a scan sweeps has the attribution line first and the note under it", async () => {
+    const { context, github } = await ticked();
+
+    await scan(context);
+
+    expect(dashboardBody(github)).toContain("- [ ] **a:prod**");
+    expect(under(github, "a:prod").slice(0, 2)).toEqual([
+      `from #3 by alice · ${COMPARE}`,
+      ":information_source: a tick on this row was not picked up. Tick again to deploy.",
+    ]);
+  });
+});
