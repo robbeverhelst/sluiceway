@@ -5,6 +5,7 @@ import {
   deployFacts,
   deploymentPayload,
   deploymentTask,
+  isOpenStatus,
   lastDeployedCommit,
   readDeploymentPayload,
   rowAtLateRead,
@@ -344,5 +345,24 @@ describe("which row a stack gets at the late read of a scan (record 0004)", () =
     expect(
       rowAtLateRead({ previewedAt: undefined, liveState: undefined, fact: undefined }),
     ).toEqual({ row: "preview-first", why: "no-row" });
+  });
+});
+
+describe("whether a deployment record is still open (record 0019)", () => {
+  const at = "2026-09-21T08:52:10Z";
+  test("no status yet, queued and in progress are open", () => {
+    expect(isOpenStatus(undefined)).toBe(true);
+    expect(isOpenStatus({ state: "queued", description: "", createdAt: at })).toBe(true);
+    expect(isOpenStatus({ state: "in_progress", description: "", createdAt: at })).toBe(true);
+  });
+
+  test("a state GitHub adds later is open too, so it is never taken for a result", () => {
+    expect(isOpenStatus({ state: "waiting", description: "", createdAt: at })).toBe(true);
+  });
+
+  test("success, inactive, failure and error are results", () => {
+    for (const state of ["success", "inactive", "failure", "error"]) {
+      expect(isOpenStatus({ state, description: "", createdAt: at })).toBe(false);
+    }
   });
 });

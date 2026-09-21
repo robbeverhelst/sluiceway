@@ -128,6 +128,13 @@ const FAILED = new Set(["failure", "error"]);
 
 export const NO_REASON_RECORDED = "no reason was recorded";
 
+// A record with no status, or with a state that is no result, is an open
+// deployment (record 0003). `apply` deploys only on one (record 0019).
+export function isOpenStatus(status: DeploymentStatus | undefined): boolean {
+  const state = status?.state ?? "";
+  return !SUCCEEDED.has(state) && !FAILED.has(state);
+}
+
 function newestLast(a: DeploymentRecord, b: DeploymentRecord): number {
   return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id;
 }
