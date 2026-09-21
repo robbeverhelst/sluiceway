@@ -1,5 +1,5 @@
 import type { getOctokit } from "@actions/github";
-import type { GitHubPort, Issue } from "./port.ts";
+import type { GitHubPort, HistoryEntry, Issue } from "./port.ts";
 
 type Octokit = ReturnType<typeof getOctokit>;
 
@@ -29,6 +29,51 @@ const PIN_ISSUE = `mutation ($issueId: ID!) {
     }
   }
 }`;
+
+// `diff` is, despite its name, the whole body right after the edit (issue 28).
+const EDIT_HISTORY = `query ($owner: String!, $repo: String!, $number: Int!, $first: Int!, $after: String) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      body
+      userContentEdits(first: $first, after: $after) {
+        totalCount
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          editedAt
+          deletedAt
+          editor {
+            __typename
+            login
+          }
+          diff
+        }
+      }
+    }
+  }
+}`;
+
+interface ApiEdit {
+  editedAt: string;
+  deletedAt: string | null;
+  editor: { __typename: string; login: string } | null;
+  diff: string | null;
+}
+
+interface ApiEditHistory {
+  repository: {
+    issue: {
+      body: string | null;
+      userContentEdits: {
+        totalCount: number;
+        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        nodes: (ApiEdit | null)[] | null;
+      };
+    } | null;
+  } | null;
+}
 
 // The port on real GitHub. The octokit is the one the glue makes from the
 // workflow token (record 0017). Nothing here decides anything: each method is
@@ -80,6 +125,25 @@ export function createOctokitPort(octokit: Octokit, repo: Repo): GitHubPort {
       await octokit.rest.issues.createComment({ ...repo, issue_number: number, body });
     },
 
+    async readEditHistory(number, { size, after }) {
+      const data = await octokit.graphql<ApiEditHistory>(EDIT_HISTORY, {
+        ...repo,
+        number,
+        first: size,
+        after: after ?? null,
+      });
+      const issue = data.repository?.issue;
+      if (!issue) throw new Error(`GitHub gave no issue ${number} when the edit history was read.`);
+      const { totalCount, pageInfo, nodes } = issue.userContentEdits;
+      return {
+        body: issue.body ?? "",
+        entries: (nodes ?? []).map(toHistoryEntry),
+        total: totalCount,
+        // GitHub names an end cursor on the last page too.
+        next: pageInfo.hasNextPage && pageInfo.endCursor !== null ? pageInfo.endCursor : undefined,
+      };
+    },
+
     async compareCommits(base, head) {
       // Every file of the comparison comes on the first page whatever the page
       // size, which only counts commits. No commit is read here.
@@ -115,6 +179,20 @@ export function createOctokitPort(octokit: Octokit, repo: Repo): GitHubPort {
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     },
+  };
+}
+
+// What a deleted entry looks like through the API was never observed (issue
+// 27, item 7). GitHub's docs say the editor and the time stay and the content
+// goes, so an entry with a deletion time has no body whatever else it holds.
+// An entry GitHub gives as null has no body and nobody as its editor.
+function toHistoryEntry(edit: ApiEdit | null): HistoryEntry {
+  return {
+    editor: edit?.editor
+      ? { login: edit.editor.login, type: edit.editor.__typename }
+      : { login: "", type: "" },
+    editedAt: edit?.editedAt ?? "",
+    body: !edit || edit.deletedAt !== null ? null : edit.diff,
   };
 }
 

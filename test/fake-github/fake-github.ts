@@ -1,6 +1,9 @@
+import { HISTORY_CAP } from "../../src/core/edit-history.ts";
 import type {
   Comparison,
+  EditHistory,
   GitHubPort,
+  HistoryEntry,
   Issue,
   IssueAuthor,
   NewIssue,
@@ -9,10 +12,12 @@ import type {
 
 // An in-memory GitHub behind the port. It copies the real behavior the lab
 // found (issue 17), because those are the things a naive fake gets wrong. It
-// holds what the port holds. The edit history, events and deployment records
-// join it with the slices that add them to the port.
+// holds what the port holds. Events and deployment records join it with the
+// slices that add them to the port.
 
 export const BOT: IssueAuthor = { login: "github-actions[bot]", type: "Bot" };
+// Who edits a body when a test does not say.
+export const SOMEONE: IssueAuthor = { login: "someone", type: "User" };
 
 const CREATE_LIMIT_CHARACTERS = 65_536;
 const UPDATE_LIMIT_BYTES = 262_144;
@@ -49,6 +54,8 @@ export class FakeGitHub implements GitHubPort {
   onRequest: ((request: Request) => void) | undefined;
 
   readonly #issues = new Map<number, Issue>();
+  // Every stored body of an issue, oldest first, the original body included.
+  readonly #edits = new Map<number, HistoryEntry[]>();
   readonly #comments = new Map<number, string[]>();
   readonly #pinned: number[] = [];
   readonly #comparisons = new Map<string, Comparison>();
@@ -73,8 +80,17 @@ export class FakeGitHub implements GitHubPort {
   }
 
   // Another writer edits the body: a person, or another job.
-  editBody(number: number, body: string): void {
-    this.#find(number).body = body;
+  editBody(number: number, body: string, editor: IssueAuthor = SOMEONE): void {
+    this.#store(this.#find(number), body, editor);
+  }
+
+  // A person deletes a revision in GitHub's interface: the editor and the
+  // time stay and the content goes. `position` counts from the newest entry,
+  // as the history lists them.
+  deleteHistoryEntry(number: number, position: number): void {
+    const entry = this.#history(number)[position];
+    if (!entry) throw new Error(`Issue ${number} has no history entry ${position}`);
+    entry.body = null;
   }
 
   // What the repo's history says about two commits. A pair that was never
@@ -156,8 +172,28 @@ export class FakeGitHub implements GitHubPort {
     if (new TextEncoder().encode(body).length > this.#updateLimitBytes) {
       return { ...copy(issue), body };
     }
-    issue.body = body;
+    this.#store(issue, body, BOT);
     return copy(issue);
+  }
+
+  // One request, as the one GraphQL query it stands for.
+  async readEditHistory(
+    number: number,
+    page: { size: number; after: string | undefined },
+  ): Promise<EditHistory> {
+    this.#count("readEditHistory");
+    const issue = this.#find(number);
+    const history = this.#history(number);
+    const start = page.after === undefined ? 0 : Number(page.after);
+    const end = start + page.size;
+    return {
+      body: issue.body,
+      entries: history
+        .slice(start, end)
+        .map((entry) => ({ ...entry, editor: { ...entry.editor } })),
+      total: history.length,
+      next: end < history.length ? String(end) : undefined,
+    };
   }
 
   async closeIssue(number: number): Promise<void> {
@@ -212,9 +248,30 @@ export class FakeGitHub implements GitHubPort {
 
   #now(): string {
     this.#seconds += 1;
+    return this.#time();
+  }
+
+  #time(): string {
     return new Date(Date.UTC(2026, 0, 1) + this.#seconds * 1000)
       .toISOString()
       .replace(".000Z", "Z");
+  }
+
+  // A body that is the one already stored is no edit. Not observed on real
+  // GitHub: the write loop never sends one.
+  #store(issue: Issue, body: string, editor: IssueAuthor): void {
+    if (body === issue.body) return;
+    issue.body = body;
+    this.#edits.get(issue.number)?.push(entry(editor, this.#now(), body));
+  }
+
+  // The history as GitHub lists it, newest first: nothing for an issue that
+  // was never edited, and at most the original body and the newest 99 edits
+  // (issue 28). The entries are the stored ones, not copies.
+  #history(number: number): HistoryEntry[] {
+    const [original, ...edits] = this.#edits.get(number) ?? [];
+    if (!original || edits.length === 0) return [];
+    return [...edits.slice(-(HISTORY_CAP - 1)).reverse(), original];
   }
 
   #count(request: Request): void {
@@ -235,6 +292,9 @@ export class FakeGitHub implements GitHubPort {
       author: { ...(issue.author ?? BOT) },
     };
     this.#issues.set(number, added);
+    // The clock is not moved for it, so an issue is as old as the last thing
+    // that happened before it.
+    this.#edits.set(number, [entry(added.author, this.#time(), added.body)]);
     return added;
   }
 
@@ -243,6 +303,15 @@ export class FakeGitHub implements GitHubPort {
     if (!issue) throw new FakeGitHubError(404, "Not Found");
     return issue;
   }
+}
+
+// The history names the bot without "[bot]" (issue 28).
+function entry(editor: IssueAuthor, editedAt: string, body: string): HistoryEntry {
+  return {
+    editor: { login: editor.login.replace(/\[bot\]$/, ""), type: editor.type },
+    editedAt,
+    body,
+  };
 }
 
 function copy(issue: Issue): Issue {

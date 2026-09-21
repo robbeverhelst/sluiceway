@@ -3,14 +3,20 @@
 // test/fake-github/. Each method is one request of the API budget of record
 // 0017, except listIssues, which is one request per page of 100.
 //
-// It holds the calls the dashboard, the narrowed scan and the tick rule need.
-// Deployment records and the edit history join it with the slices that use
-// them.
+// It holds the calls the dashboard, the narrowed scan, the tick rule and the
+// walk through the edit history need. Deployment records join it with the
+// slice that uses them.
 
+import type { HistoryEntry, HistoryPage } from "../core/edit-history.ts";
 import type { Comparison } from "../core/scan-plan.ts";
 import type { Permission } from "../core/tick-rule.ts";
 
-export type { Comparison, Permission };
+export type { Comparison, HistoryEntry, HistoryPage, Permission };
+
+// An issue's body together with one page of its edit history.
+export interface EditHistory extends HistoryPage {
+  body: string;
+}
 
 export interface IssueAuthor {
   login: string;
@@ -59,6 +65,16 @@ export interface GitHubPort {
   reopenIssue(number: number): Promise<void>;
 
   createComment(number: number, body: string): Promise<void>;
+
+  // The body and one page of the edit history in one query, so that both
+  // describe one moment (record 0025). Entries come newest first, and `after`
+  // is the `next` of the page before. An issue that was never edited has no
+  // entries. One point of the GraphQL budget, and `issues: read` is enough
+  // (issue 28). Every entry holds a whole body, so pages are small.
+  readEditHistory(
+    number: number,
+    page: { size: number; after: string | undefined },
+  ): Promise<EditHistory>;
 
   // The comparison from `base` to `head`, two commit ids (record 0010). The
   // files are the ones of the whole comparison, and GitHub never lists more

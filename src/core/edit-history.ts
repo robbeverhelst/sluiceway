@@ -63,6 +63,12 @@ export type Ticker =
 // oldest entry, and nothing says how many edits fell into it.
 export const HISTORY_CAP = 100;
 
+// How many entries a reader asks for at once. Every entry holds a whole body,
+// so a page is small. The normal walk needs two entries, the tick and the
+// write before it, and a few more when scans or row swaps carried the tick
+// through, so one page is the normal case (record 0025).
+export const HISTORY_PAGE_SIZE = 10;
+
 // Whether a body holds a tick. Markers only (record 0009): whole bodies are
 // never compared, so line endings and edits elsewhere do not matter. Of two
 // blocks for one stack the first counts, as it does for every writer.

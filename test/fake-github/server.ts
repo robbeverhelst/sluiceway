@@ -163,9 +163,11 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
       "POST",
       /^\/graphql$/,
       async ({ body }) => {
-        // The one GraphQL call of the port. GraphQL answers 200 and puts what
+        // The GraphQL calls of the port. GraphQL answers 200 and puts what
         // went wrong in the answer.
         const variables = body.variables as { issueId?: unknown } | undefined;
+        if (text(body.query).includes("userContentEdits("))
+          return editHistory(fake, body.variables);
         if (!text(body.query).includes("pinIssue(")) {
           return {
             status: 200,
@@ -185,6 +187,37 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
       },
     ],
   ];
+}
+
+// The body and one page of the edit history, in GitHub's form. The cursor is
+// the fake's own `next`.
+async function editHistory(fake: FakeGitHub, variables: unknown): Promise<Answer> {
+  const { number, first, after } = (variables ?? {}) as Record<string, unknown>;
+  try {
+    const history = await fake.readEditHistory(Number(number), {
+      size: Number(first),
+      after: typeof after === "string" ? after : undefined,
+    });
+    const issue = {
+      body: history.body,
+      userContentEdits: {
+        totalCount: history.total,
+        pageInfo: { hasNextPage: history.next !== undefined, endCursor: history.next ?? null },
+        nodes: history.entries.map((entry) => ({
+          editedAt: entry.editedAt,
+          // GitHub's docs say the content of a deleted entry goes. The time of
+          // the deletion is not something the fake keeps.
+          deletedAt: entry.body === null ? entry.editedAt : null,
+          editor: { __typename: entry.editor.type, login: entry.editor.login },
+          diff: entry.body,
+        })),
+      },
+    };
+    return { status: 200, json: { data: { repository: { issue } } } };
+  } catch (error) {
+    if (!(error instanceof FakeGitHubError)) throw error;
+    return { status: 200, json: { errors: [{ message: error.message }] } };
+  }
 }
 
 async function readBody(request: IncomingMessage): Promise<Record<string, unknown>> {
