@@ -1,5 +1,7 @@
 # The header has six states, bad news wins, and any delete or replace turns it plain
 
+> Amended by 0038 and 0039: failing is drawn as a jam under a half-open gate, and pending has three pictures picked from the pending count. The six states and their order stay as they are here.
+
 Record 0029 put a `<picture>` at the top of the body and left its states to the brand work. There is one header and often several things are true at once: 3 pending, 1 deploying, 1 preview failed. This record fixes the states and which one wins.
 
 | Header state | When | Penny |
