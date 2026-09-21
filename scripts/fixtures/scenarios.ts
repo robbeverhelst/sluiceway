@@ -21,6 +21,30 @@ function up(cwd: string, stack: string): Step {
   };
 }
 
+// The deploy as the adapter runs it (Pulumi research, "Non-interactive up").
+// No --json: on `up` that streams engine events, which hold every property
+// value. The stack outputs are kept out of what the tool prints, because an
+// output can be a secret (record 0021).
+function deploy(cwd: string, stack: string, expect: Expectation): Step {
+  return {
+    kind: "record",
+    id: "up",
+    cwd,
+    argv: [
+      "pulumi",
+      "up",
+      "--yes",
+      "--skip-preview",
+      "--suppress-outputs",
+      ...QUIET,
+      "--stack",
+      stack,
+    ],
+    stdout: "text",
+    expect,
+  };
+}
+
 function preview(cwd: string, stack: string, expect: Expectation, id = "preview"): Step {
   return {
     kind: "record",
@@ -234,6 +258,27 @@ ${OUTPUTS}`,
     ],
     { exit: "zero", ops: ["update"] },
   ),
+  {
+    name: "deploy",
+    description:
+      "What apply runs for a stack that was never deployed: the fresh preview, then the deploy.",
+    steps: [
+      init("network", "dev"),
+      preview("network", "dev", { exit: "zero", ops: ["create"] }),
+      deploy("network", "dev", { exit: "zero" }),
+    ],
+  },
+  {
+    name: "deploy-failed",
+    description:
+      "The same with a command that fails when it is created. The preview is good, the deploy fails half way.",
+    steps: [
+      init("network", "dev"),
+      edit("      create: echo network ready\n", "      create: exit 1\n"),
+      preview("network", "dev", { exit: "zero", ops: ["create"] }),
+      deploy("network", "dev", { exit: "nonzero" }),
+    ],
+  },
   {
     name: "program-error",
     description:
