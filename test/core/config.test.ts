@@ -9,6 +9,7 @@ const DEFAULTS: Config = {
     pin: true,
     redact: false,
     personality: true,
+    readOnly: false,
   },
   tickers: "write",
   ignore: [],
@@ -43,6 +44,7 @@ dashboard:
   pin: false
   redact: true
   personality: false
+  readOnly: true
 tickers: admin
 ignore:
   - "**/*:dev"
@@ -57,6 +59,7 @@ scan:
         pin: false,
         redact: true,
         personality: false,
+        readOnly: true,
       },
       tickers: "admin",
       ignore: ["**/*:dev"],
@@ -274,6 +277,17 @@ describe("wrong types", () => {
       'ignore: expected a list, got "**/x".',
       "scan: expected a mapping, got a list.",
       'stacks[0]: expected a mapping, got "apps/a".',
+    ]);
+  });
+
+  // Slice 2.17: a misspelled switch fails loudly, so a dashboard is never
+  // read only, or not, by accident.
+  test("dashboard.readOnly is true or false, and a wrong spelling is an unknown key", () => {
+    expect(problems('dashboard:\n  readOnly: "yes"\n')).toEqual([
+      'dashboard.readOnly: expected true or false, got "yes".',
+    ]);
+    expect(problems("dashboard:\n  read-only: true\n")).toEqual([
+      'dashboard: unknown key "read-only". Known keys here: title, label, pin, redact, personality, readOnly.',
     ]);
   });
 

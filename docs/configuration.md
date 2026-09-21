@@ -102,6 +102,21 @@ Default: `true`
 
 Show the header image and the two lines in the voice of the dashboard. `false` removes both and leaves the counts, the rows and the plain wording. Use it when the header image cannot load, for example when the action runs from a fork or from a copy inside your repo.
 
+### `dashboard.readOnly`
+
+Default: `false`
+
+Draw a dashboard that nothing can be deployed from: pending rows have no box, there is no rescan box, and the line under the Pending heading says that the dashboard is read only. Everything else is the same: the rows, the diffs, the counts, the links and the summary.
+
+Turn it on for a workflow that only scans, such as the read-only trial in the README. Such a workflow has no `resolve` job, so a box would look live and do nothing. Sluiceway cannot see that from inside a scan, which is why it is a setting.
+
+```yaml
+dashboard:
+  readOnly: true
+```
+
+When you move to the whole workflow, take the key out. A change to `sluiceway.yaml` makes the next push a full scan, so every pending row gets its box back in that scan.
+
 ### `tickers`
 
 Default: `write`

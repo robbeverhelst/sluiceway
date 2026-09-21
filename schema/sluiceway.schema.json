@@ -34,6 +34,11 @@
           "default": true,
           "type": "boolean",
           "description": "Show the header image and use the voice. false removes both."
+        },
+        "readOnly": {
+          "default": false,
+          "type": "boolean",
+          "description": "Draw no boxes: pending rows have none, there is no rescan box, and a line under the Pending heading says so. For a workflow that only scans."
         }
       },
       "additionalProperties": false

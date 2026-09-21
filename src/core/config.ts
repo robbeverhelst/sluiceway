@@ -101,6 +101,14 @@ export const configSchema = z.strictObject({
         .boolean()
         .describe("Show the header image and use the voice. false removes both.")
         .default(true),
+      // Slice 2.17: for a workflow with no `resolve` job, where a box would
+      // do nothing (onboarding log, hurdle 16).
+      readOnly: z
+        .boolean()
+        .describe(
+          "Draw no boxes: pending rows have none, there is no rescan box, and a line under the Pending heading says so. For a workflow that only scans.",
+        )
+        .default(false),
     })
     .prefault({}),
   tickers: tickers
