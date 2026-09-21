@@ -15,18 +15,18 @@ Sluiceway keeps one GitHub issue that shows which infrastructure stacks have cha
 The dashboard is Markdown, so here is one. It is an example, rendered by Sluiceway's own code from the made-up data its tests use. In a real dashboard issue the boxes can be ticked. Here they cannot.
 
 <details>
-<summary><b>Open the example dashboard</b>: 13 stacks, 3 pending, one of them deleting resources</summary>
+<summary><b>Open the example dashboard</b>: 13 stacks, 4 pending, one of them deleting resources</summary>
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/6eb8d045673dbd32fe37d71ea941d59e1cb04675/assets/mascot/failing-dark.svg">
-    <img alt="Sluiceway: something failed" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/6eb8d045673dbd32fe37d71ea941d59e1cb04675/assets/mascot/failing-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/pending-4-destroys-dark.svg">
+    <img alt="Sluiceway: 4 stacks are pending, some delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/pending-4-destroys-light.svg">
   </picture>
 </p>
 
 <div align="center">
 
-🟡&nbsp;**3 pending** · 🔵&nbsp;1 deploying · 🔴&nbsp;1 preview failed · 🟢&nbsp;8 in sync · :warning: **1 pending stack destroys resources** · 🔴&nbsp;1 failed deploy
+🟡&nbsp;**4 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;9 in sync · :warning: **1 pending stack destroys resources**
 
 Scanned [`8c41f0e`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 
@@ -39,7 +39,7 @@ Tick a box to deploy that stack exactly as its row shows it.
 - [ ] **apps/api:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121)
   from [#5](https://github.com/example-org/infra/pull/5) by alice, [#4](https://github.com/example-org/infra/pull/4) by renovate[bot] · [compare](https://github.com/example-org/infra/compare/4193607...8c41f0e)
   <details><summary>1 change</summary>
-  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>api</b> · <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>api</b> · <code>spec.template.spec.containers&#91;0&#93;.image</code><br>
   </details>
 - [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121)
   from [#427](https://github.com/example-org/infra/pull/427) by dave · [compare](https://github.com/example-org/infra/compare/284fd2d...8c41f0e)
@@ -52,32 +52,25 @@ Tick a box to deploy that stack exactly as its row shows it.
 - [ ] **apps/web:prod** · 2 creates, 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121)
   from [#418](https://github.com/example-org/infra/pull/418) by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1dfd7ad...8c41f0e)
   <details><summary>3 changes</summary>
-  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>web</b> · <code>metadata</code>, <code>spec</code><br>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>web</b> · <code>metadata.labels&#91;&quot;app.kubernetes.io/version&quot;&#93;</code>, <code>spec.replicas</code><br>
   <kbd>create</kbd> <code>kubernetes:autoscaling/v2:HorizontalPodAutoscaler</code> <b>web</b><br>
   <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>web-feature-flags</b><br>
   </details>
-
-### Deploying
-
-- **platform/cert-manager:prod** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034501999)
+- [ ] **platform/ingress-nginx:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121)
   from [#437](https://github.com/example-org/infra/pull/437) by renovate[bot] · [compare](https://github.com/example-org/infra/compare/876b5b7...8c41f0e)
-
-### Preview failed
-
-These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.
-
-- **monitoring/loki:prod** · preview failed: the preview timed out after 10 minutes · [run](https://github.com/example-org/infra/actions/runs/17034455121)
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>kubernetes:helm.sh/v3:Release</code> <b>ingress-nginx</b> · <code>values.controller.image.tag</code>, <code>values.controller.replicaCount</code><br>
+  </details>
 
 ### In sync
 
-- data/warehouse:prod
-  :x: last deploy failed: the run ended without reporting a result · ticked by bob · 2026-09-19 16:03 UTC · [run](https://github.com/example-org/infra/actions/runs/17019884120)
-
-<details><summary>7 more in sync</summary>
+<details><summary>9 stacks in sync</summary>
 
 - apps/api:staging
 - apps/auth:prod
 - apps/auth:staging
+- apps/web:staging
+- data/postgres:prod
 - data/postgres:staging
 - infra/network:prod
 - monitoring/grafana:prod
@@ -95,7 +88,7 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 
 - [ ] Rescan all stacks
 
-<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) `6eb8d04` · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
 
 </details>
 
