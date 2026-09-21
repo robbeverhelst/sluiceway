@@ -15,8 +15,10 @@ concurrency:
 jobs:
   scan:
     # The committed bundle on a real runner, with the real CLI, the example
-    # project and the fake GitHub server (build plan, section 6). A full scan,
-    # then a narrowed one.
+    # project and the fake GitHub server (build plan, section 6). A full scan
+    # and a narrowed one, then the whole loop: ticks, resolve, apply with the
+    # real tool and settle, with a refused tick, a cancelled deploy, a moved
+    # change and a re-run.
     #
     # The bundle is started by scripts/e2e.ts and not by a `uses: ./` step. A
     # runner sets GITHUB_API_URL, GITHUB_WORKSPACE, GITHUB_SHA and
@@ -55,7 +57,7 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - name: Scan the example project with the committed bundle
+      - name: Scan, tick, resolve, apply and settle the example project with the committed bundle
         env:
           PULUMI_VERSION: ${{ matrix.pulumi }}
         run: bun run e2e --work-dir "$RUNNER_TEMP/e2e" --expect-version "$PULUMI_VERSION"
