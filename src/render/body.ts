@@ -13,7 +13,14 @@ import {
 } from "./marker.ts";
 import { type Row, type RowOptions, renderRow } from "./row.ts";
 import { utcMinute } from "./time.ts";
-import { DRY, INSTRUCTION_LINE, NOTHING_TO_DEPLOY, PREVIEW_FAILED_LINE, WARM } from "./voice.ts";
+import {
+  DRY,
+  INSTRUCTION_LINE,
+  NOTHING_TO_DEPLOY,
+  PREVIEW_FAILED_LINE,
+  shortenedNote,
+  WARM,
+} from "./voice.ts";
 
 // One successful deploy from the dashboard, from its deployment record
 // (record 0003).
@@ -39,9 +46,6 @@ export interface BodyInput {
   actionRef: string;
   // `dashboard.personality` (record 0034).
   personality: boolean;
-  // The note about shortened rows (record 0028), already rendered. It is the
-  // size budget's to write and this function's to place.
-  shortenedNote?: string | undefined;
 }
 
 export const RECENTLY_DEPLOYED = 10;
@@ -174,10 +178,15 @@ export function renderBody(input: BodyInput): string {
   const out: string[] = [rootMarker(input.root)];
   if (input.personality) out.push(picture(state, input.actionRef).join("\n"));
   out.push(countsLine(known), scanLine(input.root, input.repoUrl));
-  if (input.shortenedNote) out.push(input.shortenedNote);
+
+  // The note about shortened rows (record 0028) is counted from the markers
+  // like everything else up here, so it stays when a writer that is not the
+  // scan regenerates the body.
+  const pending = of("pending");
+  const shortened = pending.filter((row) => row.shortened > 0).length;
+  if (shortened > 0) out.push(shortenedNote(shortened, pending.length));
 
   // Pending is always shown. The other sections are left out when empty.
-  const pending = of("pending");
   out.push("## Pending", pendingLine(input, state, pending.length));
   if (pending.length > 0) out.push(blocks(pending));
 

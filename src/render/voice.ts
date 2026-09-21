@@ -33,3 +33,14 @@ export const INSTRUCTION_LINE = "Tick a box to deploy that stack exactly as its 
 
 export const PREVIEW_FAILED_LINE =
   "These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.";
+
+// The note under the scan line when the size budget shortened rows (record
+// 0028). An alert renders there, because it is outside any list. It links
+// nothing itself: a row that a narrowed scan carried through links to the
+// summary of an earlier run, so every shortened row holds its own link.
+export function shortenedNote(shortened: number, pending: number): string {
+  const rows = `${pending} pending row${pending === 1 ? "" : "s"}`;
+  return `> [!NOTE]\n> This dashboard is too large for one issue, so ${shortened} of ${rows} ${
+    shortened === 1 ? "is" : "are"
+  } shortened. The summary that a shortened row links to shows every change. Deletes and replaces are the last thing to be cut.`;
+}

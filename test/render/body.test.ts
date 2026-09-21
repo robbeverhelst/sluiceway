@@ -257,11 +257,56 @@ describe("the scan line", () => {
     );
   });
 
+  // Record 0028. The words are the ones the owner judged on the over budget
+  // prototype. The count comes from the row markers, because that is all a
+  // writer other than the scan can read (record 0009).
   test("the note about shortened rows sits directly under it", () => {
-    const note = "> [!NOTE]\n> 31 of 45 pending rows are shortened.";
-    const all = paragraphs(renderBody(input(DASHBOARDS.pending, { shortenedNote: note })));
-    expect(all[4]).toBe(note);
+    const blocks = [
+      rowBlock(pending("a"), { level: 3 }),
+      rowBlock(pending("b")),
+      rowBlock(pending("c"), { level: 1 }),
+      rowBlock(inSync("d")),
+    ];
+    const all = paragraphs(renderBody(input([], { rows: blocks })));
+    expect(all[4]).toBe(
+      "> [!NOTE]\n> This dashboard is too large for one issue, so 2 of 3 pending rows are shortened. The summary that a shortened row links to shows every change. Deletes and replaces are the last thing to be cut.",
+    );
     expect(all[5]).toBe("## Pending");
+  });
+
+  test("the note counts one row and one pending row in the singular", () => {
+    const one = renderBody(input([], { rows: [rowBlock(pending("a"), { level: 2 })] }));
+    expect(paragraphs(one)[4]).toStartWith(
+      "> [!NOTE]\n> This dashboard is too large for one issue, so 1 of 1 pending row is shortened. ",
+    );
+    const two = renderBody(
+      input([], { rows: [rowBlock(pending("a"), { level: 2 }), rowBlock(pending("b"))] }),
+    );
+    expect(paragraphs(two)[4]).toContain("so 1 of 2 pending rows is shortened.");
+  });
+
+  test("a body with every row in full has no note", () => {
+    expect(renderBody(input(DASHBOARDS.pending))).not.toContain("[!NOTE]");
+  });
+
+  // Slice 1.7 found that the note would vanish the first time `resolve`
+  // re-renders. A writer that holds nothing but the live body keeps it.
+  test("the note survives a writer that only has the row blocks", () => {
+    const body = renderBody(
+      input([], { rows: [rowBlock(pending("a"), { level: 3 }), rowBlock(pending("b"))] }),
+    );
+    expect(body).toContain("1 of 2 pending rows is shortened");
+    expect(renderBody(input([], { rows: parseDashboard(body).rows }))).toBe(body);
+  });
+
+  test("only a pending row counts as shortened", () => {
+    const carried = parseDashboard(
+      [
+        '- **a** · deploying <!-- sluiceway:row stack="a" state="deploying" shortened="3" -->',
+        "  <!-- /sluiceway:row -->",
+      ].join("\n"),
+    ).rows;
+    expect(renderBody(input([], { rows: carried }))).not.toContain("[!NOTE]");
   });
 });
 
