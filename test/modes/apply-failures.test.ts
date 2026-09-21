@@ -109,6 +109,19 @@ describe("before the tool deploys", () => {
     expect(states(h)).toEqual(["queued", "in_progress", "failure"]);
   });
 
+  test("a stack that is gone never makes another stack deploy in its place", async () => {
+    const h = await handedOn(
+      { "a:prod": pending("a:prod", change("bucket")), "b:prod": pending("b:prod", change("x")) },
+      ["a:prod"],
+    );
+    writeFileSync(join(h.context.root, "sluiceway.yaml"), 'ignore: ["a:*"]\n');
+
+    await expect(runApply(h)).rejects.toThrow("the stack is not in the repo any more");
+
+    expect(h.adapter.previewed).toEqual([]);
+    expect(h.adapter.applied).toEqual([]);
+  });
+
   test("a broken sluiceway.yaml deploys nothing and the record still gets its result", async () => {
     const h = await handedOn(table(), ["a:prod"]);
     writeFileSync(join(h.context.root, "sluiceway.yaml"), "tickerz: write\n");
@@ -162,6 +175,25 @@ describe("after the deploy", () => {
     expect(h.adapter.applied).toEqual(["a:prod"]);
     expect(states(h)).toEqual(["queued", "in_progress", "success"]);
     expect(h.log.summaries.at(-1)).toContain("**a:prod** · deployed");
+  });
+
+  // Without its result the record is still open, and a row that says in sync
+  // next to an open deployment would be a lie. `settle` ends it.
+  test("a result that cannot be written leaves the dashboard alone and turns the job red", async () => {
+    const h = await handedOn(table(), ["a:prod"]);
+    const write = h.github.createDeploymentStatus.bind(h.github);
+    h.github.createDeploymentStatus = async (id, status) => {
+      if (status.state === "success") throw new Error("Server Error");
+      return write(id, status);
+    };
+
+    await expect(runApply(h)).rejects.toThrow(
+      "could not be given its result (success): Server Error. The `settle` job of this run ends it.",
+    );
+
+    expect(h.adapter.applied).toEqual(["a:prod"]);
+    expect(states(h)).toEqual(["queued", "in_progress"]);
+    expect(rows(h)["a:prod"]).toContain('state="deploying"');
   });
 
   test("a summary that cannot be written changes nothing about the result", async () => {
