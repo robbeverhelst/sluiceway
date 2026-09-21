@@ -94,14 +94,15 @@ describe("the README", () => {
   });
 
   // The YAML blocks that are not a workflow or a part of one are sluiceway.yaml.
-  test("shows a sluiceway.yaml that loads", () => {
+  // The setup's file and, since slice 2.17, the read-only trial's.
+  test("shows sluiceway.yaml files that all load", () => {
     const configs = fences(read("README.md"))
       .filter((fence) => fence.language === "yaml")
       .filter((fence) => {
         const parsed = Bun.YAML.parse(fence.text) as Record<string, unknown>;
         return !["jobs", "on", "environment"].some((key) => key in parsed);
       });
-    expect(configs.length).toBe(1);
-    expect(() => parseConfig(configs[0]?.text)).not.toThrow();
+    expect(configs.length).toBe(2);
+    for (const config of configs) expect(() => parseConfig(config.text)).not.toThrow();
   });
 });

@@ -129,7 +129,7 @@ A tick on a stack that already has an open deployment. Nothing new starts for it
 _Avoid_: Duplicate tick, ignored tick, second deploy
 
 **Rescan box**:
-The one checkbox on the dashboard that belongs to no stack. Ticked by a person with write access, it starts a full scan and deploys nothing.
+The one checkbox on the dashboard that belongs to no stack. Ticked by a person with write access, it starts a full scan and deploys nothing. A read-only dashboard has none.
 _Avoid_: Refresh button, rescan tick, scan trigger
 
 **Reviewer**:
@@ -217,6 +217,10 @@ _Avoid_: Full diff, report, native output
 **Result file**:
 A JSON file that a scan or an `apply` leaves in the job's temporary directory for a later step of the workflow, with what its summary holds and nothing more. Sluiceway never sends it anywhere: a step the user adds does, with its own secret.
 _Avoid_: Report, artifact, export, metrics
+
+**Read-only dashboard**:
+A dashboard drawn with nothing to tick, for a workflow that only scans: pending rows have no box, there is no rescan box, and the line under the Pending heading says so. Set with `dashboard.readOnly`. It changes what is drawn, not who may deploy: what keeps a workflow from deploying is that it has no `resolve` job.
+_Avoid_: Dry run, view-only mode, preview mode, locked dashboard
 
 **Size budget**:
 How large the dashboard body may get before rows are shortened. It exists because an issue body that is too large is dropped without an error.

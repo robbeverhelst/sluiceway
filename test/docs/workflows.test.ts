@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { parseConfig } from "../../src/core/config.ts";
 import { MODES } from "../../src/mode.ts";
 import {
   EXAMPLE_WORKFLOWS,
@@ -218,6 +219,21 @@ describe("the README", () => {
 
   test("says not to add merge_group to the workflow", () => {
     expect(readme.includes("merge_group")).toBe(true);
+  });
+
+  // Slice 2.17 (onboarding log, hurdle 16): in the read-only trial a box
+  // would do nothing, so the trial turns the boxes off.
+  test("the read-only trial turns on dashboard.readOnly, and no longer promises a note", () => {
+    const section = readme.slice(
+      readme.indexOf("### Start read only"),
+      readme.indexOf("\n## ", readme.indexOf("### Start read only")),
+    );
+    const configs = fences(section)
+      .filter(({ language, text }) => language === "yaml" && !text.includes("jobs:"))
+      .map(({ text }) => parseConfig(text));
+    expect(configs.map((config) => config.dashboard.readOnly)).toEqual([true]);
+    expect(section).not.toContain("leaves a note");
+    expect(readme).not.toContain("the next scan clears it and leaves a note");
   });
 });
 

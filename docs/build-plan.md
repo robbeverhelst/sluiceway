@@ -76,6 +76,7 @@ The file is optional and sits at the repo root. Unknown keys are an error, becau
 | `dashboard.pin` | `true` | Pin the issue, best effort | Actions research |
 | `dashboard.redact` | `false` | Keep names out of the issue | 0023 |
 | `dashboard.personality` | `true` | Header image and the voice | 0034 |
+| `dashboard.readOnly` | `false` | No boxes: pending rows have none, there is no rescan box, and the line under the Pending heading says so. For a workflow that only scans (onboarding log, hurdle 16) | 0045 |
 | `tickers` | `write` | Default tick rule: `write`, `maintain`, `admin` or a list of usernames | 0018 |
 | `ignore` | `[]` | Globs matched against the stack id | 0010 |
 | `scan.unrelated` | `[]` | Globs for files that claim nothing and force nothing | 0010 |
