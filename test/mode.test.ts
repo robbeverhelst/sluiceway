@@ -6,19 +6,24 @@ describe("parseMode", () => {
     expect(parseMode(mode)).toBe(mode);
   });
 
+  // Record 0042.
+  test("check is the fifth mode", () => {
+    expect(parseMode("check")).toBe("check");
+  });
+
   test("ignores surrounding whitespace", () => {
     expect(parseMode(" scan\n")).toBe("scan");
   });
 
   test("names the valid modes when the input is empty", () => {
     expect(() => parseMode("")).toThrow(
-      'The "mode" input is required. Use one of: scan, resolve, apply, settle.',
+      'The "mode" input is required. Use one of: scan, resolve, apply, settle, check.',
     );
   });
 
   test("names the valid modes when the input is unknown", () => {
     expect(() => parseMode("deploy")).toThrow(
-      'Unknown mode "deploy". Use one of: scan, resolve, apply, settle.',
+      'Unknown mode "deploy". Use one of: scan, resolve, apply, settle, check.',
     );
   });
 
@@ -28,9 +33,9 @@ describe("parseMode", () => {
 });
 
 describe("run", () => {
-  // The scan (slice 1.11), resolve (slice 2.4) and settle (slice 2.6) are
-  // wired and have their own tests under test/modes/.
-  const wired = ["scan", "resolve", "settle"];
+  // The scan (slice 1.11), resolve (slice 2.4), settle (slice 2.6) and the
+  // check (slice 2.12) are wired and have their own tests under test/modes/.
+  const wired = ["scan", "resolve", "settle", "check"];
   const stubs = MODES.filter((mode) => !wired.includes(mode));
 
   test.each(stubs)("%s fails as not implemented yet", async (mode) => {

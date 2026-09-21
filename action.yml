@@ -5,7 +5,7 @@ author: Sluiceway
 inputs:
   mode:
     description: >-
-      What this step does. One of: scan, resolve, apply, settle.
+      What this step does. One of: scan, resolve, apply, settle, check.
     required: true
   concurrency:
     description: >-
@@ -23,6 +23,7 @@ inputs:
     description: >-
       The GITHUB_TOKEN of the workflow run. Leave it at the default. Sluiceway always acts as the
       workflow's own token, and a GitHub App token or a personal access token is not supported.
+      The check mode reads files only and never uses it.
     required: false
     default: ${{ github.token }}
 
