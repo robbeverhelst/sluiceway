@@ -3,14 +3,20 @@
 exports[`the 100 stack fixture the body 1`] = `
 "<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T10:02:41Z" full-scan-run="17034455121" -->
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-dark.svg">
-  <img alt="Sluiceway" width="440" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-light.svg">
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-dark.svg">
+    <img alt="Sluiceway" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/plain-light.svg">
+  </picture>
+</p>
+
+<div align="center">
 
 **53 pending** · 2 deploying · 2 preview failed · 43 in sync · :warning: **13 pending stacks destroy resources** · 2 failed deploys
 
 Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 10:02 UTC</sub>
+
+</div>
 
 > [!NOTE]
 > This dashboard is too large for one issue, so 39 of 53 pending rows are shortened. The summary that a shortened row links to shows every change. Deletes and replaces are the last thing to be cut.

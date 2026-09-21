@@ -163,11 +163,11 @@ A row block that a writer takes from the live body and writes back as it is, bec
 _Avoid_: Kept row, old row, stale row
 
 **Counts line**:
-The first line of text on the dashboard: how many stacks are pending, deploying, preview failed and in sync, always all four. It adds how many pending stacks destroy resources and how many rows carry a failure line, each only when it is not 0.
+The first line of text on the dashboard: how many stacks are pending, deploying, preview failed and in sync, always all four. It adds how many pending stacks destroy resources and how many rows carry a failure line, each only when it is not 0. Under a header in colour it is centered and every count has a count dot.
 _Avoid_: Header line, stats, totals
 
 **Scan line**:
-The line under the counts line that says which commit the last scan checked out, when, in which run, and when the last full scan was.
+The line under the counts line that says which commit the last scan checked out, when, in which run, and when the last full scan was. Under a header it is centered with the counts line.
 _Avoid_: Status line, timestamp, last updated
 
 **Row state**:
@@ -221,11 +221,11 @@ _Avoid_: Destructive change, dangerous change, removal
 ### Personality
 
 **Penny**:
-The mascot: a sluice gate with a face, drawn next to the wordmark. The name is short for penstock. It is used in docs and never on the dashboard.
+The mascot: a sluice gate with a face, standing mid-channel in the header. The name is short for penstock. It is used in docs and never on the dashboard.
 _Avoid_: The otter, the logo (the logo is Penny without a state), Sluicy
 
 **Header**:
-The image at the top of the dashboard that shows Penny in one header state, in a light and a dark variant.
+The image at the top of the dashboard, as wide as the issue and centered: Penny on a quay in one header state, in a light and a dark variant.
 _Avoid_: Banner, hero, badge
 
 **Action ref**:
@@ -233,12 +233,32 @@ The exact release tag of the running action, or its commit SHA. Never a moving t
 _Avoid_: Action version, image tag, release
 
 **Header state**:
-Which of six pictures the header shows: plain, failing, deploying, pending, first run or in sync. The first that applies wins, in that order. It is computed from the row markers and decides nothing.
+Which of six states the header shows: plain, failing, deploying, pending, first run or in sync. The first that applies wins, in that order. It is computed from the row markers and decides nothing. Pending has three pictures, one per pending level, so there are eight pictures for six states.
 _Avoid_: Mood, dashboard status, health
 
 **Plain**:
-The header state with no face, no colour and no motion. It is shown whenever a pending or deploying row has a delete or replace.
+The header state with no face, no colour and no motion. It is shown whenever a pending or deploying row has a delete or replace. The counts line under it has no count dots.
 _Avoid_: Serious mode, warning header, danger state
+
+**Pending level**:
+Which of the three pending pictures the header shows: 1 for 1 or 2 pending rows, 2 for 3 to 9, 3 for 10 or more. The water upstream is higher and carries more crates with each level. It is computed from the row markers and decides nothing.
+_Avoid_: Tier, severity, load
+
+**Upstream and downstream**:
+The two sides of Penny in the header. Upstream is on the left, where water and crates pile up while changes are pending. Downstream is on the right, where water rushes while deploying. Level water on both sides is the picture of in sync. Water always moves left to right.
+_Avoid_: Before and after, input and output, left and right side
+
+**Crate**:
+A box floating upstream in the header. Crates stand for waiting stacks. A picture never shows more crates than there are pending rows, and may show fewer.
+_Avoid_: Package, box per stack, queue item
+
+**Jam**:
+How the failing header state is drawn: the gate stuck half open over a log, with a blinking red lamp. It means something is stuck and needs a person.
+_Avoid_: Broken gate, angry gate, crash
+
+**Count dot**:
+The coloured dot in front of a count on the counts line: yellow pending, blue deploying, red preview failed and failed deploys, green in sync, white for a count of 0. Shown only under a header in colour.
+_Avoid_: Badge, status light, bullet
 
 **Voice**:
 Wording with a water image in it. It is allowed in exactly two lines, the good-news line and the first-run line. Everything else Sluiceway writes is plain.

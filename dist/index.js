@@ -51869,6 +51869,16 @@ function parseDashboard(body) {
   return { root: readRoot(lines[0] ?? ""), rows, rescanTicked };
 }
 
+// src/render/pending-level.ts
+function pendingLevel(rows) {
+  const pending = rows.filter((row) => row.known && row.state === "pending").length;
+  if (pending === 0)
+    return;
+  if (pending <= 2)
+    return 1;
+  return pending <= 9 ? 2 : 3;
+}
+
 // src/render/time.ts
 function utcMinute(at) {
   const iso = at.toISOString();
@@ -52069,31 +52079,43 @@ function rowBlock(row, options = {}) {
     throw new Error("A rendered row did not read back as a row block.");
   return block;
 }
-function picture(state, actionRef2) {
-  const file2 = (theme) => `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef2)}/assets/mascot/${state}-${theme}.svg`;
+function picture(state, level, actionRef2) {
+  const name = state === "pending" ? `pending-${level ?? 1}` : state;
+  const file2 = (theme) => `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef2)}/assets/mascot/${name}-${theme}.svg`;
   return [
-    "<picture>",
-    `  <source media="(prefers-color-scheme: dark)" srcset="${file2("dark")}">`,
-    `  <img alt="${ALT[state]}" width="440" src="${file2("light")}">`,
-    "</picture>"
+    '<p align="center">',
+    "  <picture>",
+    `    <source media="(prefers-color-scheme: dark)" srcset="${file2("dark")}">`,
+    `    <img alt="${ALT[state]}" width="880" src="${file2("light")}">`,
+    "  </picture>",
+    "</p>"
   ];
 }
-function countsLine(rows) {
+var DOT = {
+  pending: "\uD83D\uDFE1",
+  deploying: "\uD83D\uDD35",
+  "preview-failed": "\uD83D\uDD34",
+  "in-sync": "\uD83D\uDFE2",
+  failed: "\uD83D\uDD34"
+};
+var DOT_AT_ZERO = "⚪";
+function countsLine(rows, dots) {
   const of = (state) => rows.filter((row) => row.state === state).length;
+  const dot = (kind, count) => dots ? `${count === 0 ? DOT_AT_ZERO : DOT[kind]}&nbsp;` : "";
   const destroying = rows.filter((row) => row.state === "pending" && row.destroys > 0).length;
   const failed = rows.filter((row) => row.failed).length;
   const parts = [
-    `**${of("pending")} pending**`,
-    `${of("deploying")} deploying`,
-    `${of("preview-failed")} preview failed`,
-    `${of("in-sync")} in sync`
+    `${dot("pending", of("pending"))}**${of("pending")} pending**`,
+    `${dot("deploying", of("deploying"))}${of("deploying")} deploying`,
+    `${dot("preview-failed", of("preview-failed"))}${of("preview-failed")} preview failed`,
+    `${dot("in-sync", of("in-sync"))}${of("in-sync")} in sync`
   ];
   if (destroying > 0) {
     const words = destroying === 1 ? "stack destroys" : "stacks destroy";
     parts.push(`:warning: **${destroying} pending ${words} resources**`);
   }
   if (failed > 0)
-    parts.push(plural3(failed, "failed deploy"));
+    parts.push(`${dot("failed", failed)}${plural3(failed, "failed deploy")}`);
   return parts.join(" · ");
 }
 function time3(iso) {
@@ -52138,10 +52160,13 @@ function renderBody(input2) {
   const of = (state2) => known.filter((row) => row.state === state2);
   const state = headerState(rows);
   const out = [rootMarker(input2.root)];
+  const counts2 = countsLine(known, input2.personality && state !== "plain");
+  const scan = scanLine(input2.root, input2.repoUrl);
   if (input2.personality)
-    out.push(picture(state, input2.actionRef).join(`
-`));
-  out.push(countsLine(known), scanLine(input2.root, input2.repoUrl));
+    out.push(picture(state, pendingLevel(rows), input2.actionRef).join(`
+`), '<div align="center">', counts2, scan, "</div>");
+  else
+    out.push(counts2, scan);
   const pending = of("pending");
   const shortened = pending.filter((row) => row.shortened > 0).length;
   if (shortened > 0)

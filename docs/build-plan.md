@@ -55,6 +55,14 @@ Collected here so nobody has to search the records. The record in the last colum
 | `github-token` | input | all | the workflow token | Always the workflow's own `GITHUB_TOKEN` | 0017, 0035 |
 | `deployment-id` | input | `apply` | required there | The deployment record to deploy | 0035 |
 | `matrix` | output | `resolve` | `[]` | `[{ stack, environment, deployment }]` | 0035 |
+| `dashboard-url` | output | `scan`, `apply`, `settle` | none | Web address of the dashboard issue | 0041 |
+| `pending` | output | `scan` | `0` | Number of pending stacks after this scan | 0041 |
+| `preview-failed` | output | `scan` | `0` | Number of stacks whose preview failed | 0041 |
+| `in-sync` | output | `scan` | `0` | Number of stacks in sync | 0041 |
+| `dashboard-changed` | output | `scan` | `false` | `true` when this scan wrote a different body, so a notify step can stay quiet otherwise | 0041 |
+| `outcome` | output | `apply` | none | `deployed`, `refused` (the change moved or the record was not open) or `failed` | 0041 |
+| `stack` | output | `apply` | none | The stack id this job handled | 0041 |
+| `result-file` | output | `scan`, `apply` | none | Path under `RUNNER_TEMP` of a JSON file with what the summary holds: no values, none of the tool's words | 0041 |
 
 ### `sluiceway.yaml`
 
@@ -107,7 +115,7 @@ Rules for config loading:
 
 ### The action's own version and the image URLs
 
-The header images are served from the exact release tag of the running action, or its commit SHA, never from a moving tag (0033). The glue works the ref out once per job and hands it to the renderer as data:
+The header images are served from the exact release tag of the running action, or its commit SHA, never from a moving tag (0033). There are sixteen of them, 880 by 160 (0039). The glue works the ref out once per job and hands it to the renderer as data:
 
 1. If `GITHUB_ACTION_REF` is a full commit SHA or an exact version tag (`v1.2.3`), use it.
 2. Otherwise read `version` from the `package.json` next to the action (`GITHUB_ACTION_PATH`) and use `v<version>`.
@@ -248,6 +256,7 @@ Done when: a push to a repo with the example project gives a correct dashboard, 
 | 1.5 | Pulumi preview: version check, command line, process runner with the time limit, schema, folding, failure reasons | 0001, 0007, 0012, 0013, 0021, 0022, 0036 | Tool output becomes a `Diff` with no value in it | Every fixture, the canary test, `INPUT_*` removed from the child, a timeout kills the process group, nothing is written to disk so there is no temp directory to remove, parse errors name a path and never a value |
 | 1.6 | Markers and rows | 0009, 0023, 0024, 0027 | One row renderer for every writer, and a tick is one regex on one line | Snapshots of every row kind, HTML escaping, percent-encoding round trips, unknown kinds, keys and states carried through byte for byte |
 | 1.7 | The body: header state, picture, counts, scan line, sections, footer, voice, personality off. CI check that each image is at most 10 KB | 0029, 0030 to 0034 | The body is a pure function of the root facts, the row blocks and the deployment records | Snapshots per header state, precedence table, same input gives the same bytes, the action ref rule of section 3 |
+| 1.7b | The wide header in the body renderer. Only `src/render/body.ts`, a new `src/render/pending-level.ts` and their tests change. (1) `pendingLevel(rows)`: 1 for 1 or 2 known rows of state `pending`, 2 for 3 to 9, 3 for 10 or more. (2) `picture()`: the file is `pending-<level>-<theme>.svg` when the header state is `pending` and `<state>-<theme>.svg` otherwise, `width="880"`, and the four lines are wrapped in `<p align="center">` and `</p>`. The alt texts do not change. (3) When `personality` is true, the counts line and the scan line go inside one `<div align="center">`: the opening tag, a blank line, the counts line, a blank line, the scan line, a blank line, the closing tag. (4) In that block, and only when the header state is not `plain`, each of the four state counts and the failed deploys count gets a count dot and `&nbsp;` in front: 🟡 pending, 🔵 deploying, 🔴 preview failed, 🟢 in sync, 🔴 failed deploys, and ⚪ in place of the colour when the count is 0. The bold stays around `<n> pending` only, after the dot. The destroy warning gets no dot. (5) With `personality` false nothing changes: no picture, no centering, no dots. The shortened-rows note stays outside the centered block. This slice must land before the first release, because until it does the renderer still asks for `pending-<theme>.svg`, which no longer exists | 0038, 0039, 0040 | The header, the pending level and the dots are a pure function of the row markers and the personality switch | The level at 0, 1, 2, 3, 9, 10 and 58 pending rows, rows of an unknown state do not count, a snapshot per picture, the plain body has centering and no dots, the personality off body is byte for byte what it was, a count of 0 gets the white dot, every image URL in the snapshots names a file that exists in `assets/mascot/`, same input gives the same bytes |
 | 1.8 | The size budget | 0024, 0028 | A body is never over the limit and destroys are cut last | The 58 and 100 stack fixtures, ties broken by stack id, give-back, all-or-none destroys, the scan fails cleanly when nothing fits |
 | 1.9 | The summary and the log text | 0021, 0026, 0037 | A shortened row always has a full version to point at | Snapshot, the budget, the note at the top, the canary test again |
 | 1.10 | The GitHub port, the Octokit implementation, the fake, finding or creating the dashboard, the write loop | 0004, 0009, 0017 | A write is verified, a lost write is retried, a duplicate dashboard is closed | The fake's silent drop, three tries then a red job, skip when identical, reopen the newest closed match, pin is best effort |
@@ -273,6 +282,7 @@ Done when: ticking a box deploys exactly that stack and the dashboard returns to
 | 2.8 | Attribution | 0026 | A row says which merges made it pending, and never blocks | The walk with merge commits, squash and rebase merges, direct pushes, `and earlier changes`, a failed lookup leaves the line out, budget level 1 |
 | 2.9 | E2E of the whole loop on the fake: scan, tick, `resolve`, `apply` with the real tool, `settle`. Plus a refused tick, a moved change and a re-run | all of M2 | The loop closes with the committed bundle | The example stack really deploys to the file backend and the next scan shows it in sync |
 | 2.10 | Docs: the README without its warning, the config reference, `docs/security.md` (the three setups of 0020), `docs/credentials.md` (the pattern of 0013, then recipes, and running next to your own tooling), what a tick promises (0008), the outputs limit (0036), and a line that says not to add `merge_group` to this workflow | 0013, 0014, 0016, 0020 | A stranger can set it up from the README alone | The README's workflow is parsed in a test and checked against `action.yml`: every input it uses exists |
+| 2.11 | Outputs and the result file for `scan` and `apply`, and `docs/notifications.md`: GitHub's Slack and Teams apps on deployments, recipes for a Slack step, a Telegram step, a generic webhook and a Pushgateway push, each quiet unless something is pending or failed | 0041, 0021, 0022 | A workflow can tell people and chart numbers without Sluiceway sending anything | Each output per mode, the JSON schema of the result file as a snapshot, the canary test extended to the result file, outputs on a failed scan |
 
 ### M3: proof and the first release
 
