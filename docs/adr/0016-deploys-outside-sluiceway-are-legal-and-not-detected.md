@@ -12,3 +12,7 @@ Reading the tool's own history to find outside deploys (`pulumi stack history`) 
 - Attribution of pending changes counts from the last successful Sluiceway deployment record, so after an outside deploy a later pending row can list commits that are already live. The list is too long but never misses the commit that matters. It explains a pending row and never decides that a row is pending. The preview does that. How attribution works is decided separately and takes this as given.
 - A team that wants Sluiceway to be the only way in removes the credentials from every other place. That is access control in their secret manager and cloud, not a Sluiceway feature.
 - The docs page of 0013 has a short part on running Sluiceway next to your own tooling: after a deploy from somewhere else, tick rescan or wait for the scheduled scan.
+
+## Note, 2026-09-21
+
+The rejection of reading the tool's history weighed only one benefit, shorter commit lists on a row. The owner has since asked for a second one: an audit log that also lists deploys made outside the dashboard. That is wanted after v1 and is listed in `docs/later.md` as deferred, not rejected. Everything else in this record stands: outside deploys stay legal, Sluiceway writes no lock and no marker, and v1 does not look for them.
