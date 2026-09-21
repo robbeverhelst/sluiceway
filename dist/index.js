@@ -27362,6 +27362,47 @@ function endGroup() {
   issue("endgroup");
 }
 
+// src/github/action-ref.ts
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+var FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+var EXACT_TAG = /^v\d+\.\d+\.\d+$/;
+function isExactRef(ref) {
+  return FULL_SHA.test(ref) || EXACT_TAG.test(ref);
+}
+function actionRef(facts) {
+  if (!facts.actionRef)
+    return facts.sha;
+  if (isExactRef(facts.actionRef))
+    return facts.actionRef;
+  if (!facts.packageVersion)
+    throw new Error(`The action was started from the ref ${facts.actionRef}, which can move, and its package.json holds no version. The header images need an exact release tag or a commit SHA.`);
+  return `v${facts.packageVersion}`;
+}
+function packageVersion(path, readFile) {
+  try {
+    const version = JSON.parse(readFile(path)).version;
+    return typeof version === "string" && version !== "" ? version : undefined;
+  } catch {
+    return;
+  }
+}
+function actionDirectory(entryUrl) {
+  return dirname(dirname(fileURLToPath(entryUrl)));
+}
+function readActionRef(env, directory, readFile) {
+  const sha = env.GITHUB_SHA;
+  if (!sha)
+    throw new Error("GITHUB_SHA is not set, so the action cannot tell its own version.");
+  const ref = env.GITHUB_ACTION_REF;
+  const needsVersion = Boolean(ref) && !isExactRef(ref ?? "");
+  return actionRef({
+    actionRef: ref,
+    packageVersion: needsVersion ? packageVersion(join(directory, "package.json"), readFile) : undefined,
+    sha
+  });
+}
+
 // src/github/inputs.ts
 function wholeNumber(getInput2, name, hint = "") {
   const text = getInput2(name).trim();
@@ -31541,7 +31582,7 @@ function runProcess(run, graceMs = GRACE_MS) {
 }
 
 // src/adapters/pulumi/apply.ts
-import { join } from "node:path";
+import { join as join2 } from "node:path";
 
 // src/adapters/environment.ts
 function toolEnvironment(env) {
@@ -31588,7 +31629,7 @@ async function apply(stack, context3) {
     throw new Error("A Pulumi stack always has a name.");
   const result = await context3.run({
     argv: upCommand(stack.name),
-    cwd: join(context3.root, stack.path),
+    cwd: join2(context3.root, stack.path),
     env: pulumiEnvironment(context3.env)
   });
   if (result.status === "not-started") {
@@ -31603,7 +31644,7 @@ async function apply(stack, context3) {
 
 // src/adapters/pulumi/discover.ts
 import { readdir as readdir2, readFile } from "node:fs/promises";
-import { isAbsolute, join as join2, relative, sep as sep2 } from "node:path";
+import { isAbsolute, join as join3, relative, sep as sep2 } from "node:path";
 
 // node_modules/yaml/dist/index.js
 var composer = require_composer();
@@ -31707,7 +31748,7 @@ async function discover(root) {
     const entries = await readdir2(dir, { withFileTypes: true });
     const extension = EXTENSIONS.find((ext) => fileNames(entries).includes(PROJECT_FILE + ext));
     if (extension !== undefined) {
-      const projectFile = join2(dir, PROJECT_FILE + extension);
+      const projectFile = join3(dir, PROJECT_FILE + extension);
       try {
         const stackDir = await stackConfigDir(root, projectFile);
         const files = stackDir === dir ? fileNames(entries) : await fileNamesIn(stackDir);
@@ -31722,7 +31763,7 @@ async function discover(root) {
     }
     for (const entry of entries) {
       if (entry.isDirectory() && !SKIPPED.has(entry.name))
-        await walk(join2(dir, entry.name));
+        await walk(join3(dir, entry.name));
     }
   };
   await walk(root);
@@ -31734,7 +31775,7 @@ async function discover(root) {
 class ProjectFileProblem extends Error {
 }
 async function stackConfigDir(root, projectFile) {
-  const dir = join2(projectFile, "..");
+  const dir = join3(projectFile, "..");
   const lineCounter2 = new $LineCounter;
   const document = $parseDocument(await readFile(projectFile, "utf8"), {
     lineCounter: lineCounter2,
@@ -31753,7 +31794,7 @@ async function stackConfigDir(root, projectFile) {
   if (typeof named !== "string") {
     throw new ProjectFileProblem("stackConfigDir must be text, the directory that holds the stack files.");
   }
-  const stackDir = join2(dir, named);
+  const stackDir = join3(dir, named);
   const fromRoot = relative(root, stackDir);
   if (fromRoot === ".." || fromRoot.startsWith(`..${sep2}`) || isAbsolute(fromRoot)) {
     throw new ProjectFileProblem(`stackConfigDir points outside the repo (${JSON.stringify(named)}). Sluiceway only reads files inside the repo.`);
@@ -31785,7 +31826,7 @@ function compare(a, b) {
 }
 
 // src/adapters/pulumi/preview.ts
-import { join as join3 } from "node:path";
+import { join as join4 } from "node:path";
 
 // src/adapters/pulumi/fold.ts
 var STEP_OPS = {
@@ -51294,7 +51335,7 @@ async function preview(stack, options) {
     throw new Error("A Pulumi stack always has a name.");
   const result = await options.run({
     argv: previewCommand(stack.name),
-    cwd: join3(options.root, stack.path),
+    cwd: join4(options.root, stack.path),
     env: pulumiEnvironment(options.env),
     timeoutMs: options.timeoutMinutes * 60000
   });
@@ -51323,7 +51364,7 @@ function toolLog(stderr, diagnostics2 = []) {
 }
 
 // src/adapters/pulumi/tool-diff.ts
-import { join as join4 } from "node:path";
+import { join as join5 } from "node:path";
 function toolDiffCommand(name) {
   return [
     "pulumi",
@@ -51342,7 +51383,7 @@ async function toolDiff(stack, options) {
     throw new Error("A Pulumi stack always has a name.");
   const result = await options.run({
     argv: toolDiffCommand(stack.name),
-    cwd: join4(options.root, stack.path),
+    cwd: join5(options.root, stack.path),
     env: pulumiEnvironment(options.env),
     timeoutMs: options.timeoutMinutes * 60000
   });
@@ -51401,43 +51442,6 @@ async function checkVersion(context3) {
 
 // src/adapters/pulumi/index.ts
 var pulumi = { discover, checkVersion, preview, toolDiff, apply };
-
-// src/github/action-ref.ts
-var FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-var EXACT_TAG = /^v\d+\.\d+\.\d+$/;
-function isExactRef(ref) {
-  return FULL_SHA.test(ref) || EXACT_TAG.test(ref);
-}
-function actionRef(facts) {
-  if (!facts.actionRef)
-    return facts.sha;
-  if (isExactRef(facts.actionRef))
-    return facts.actionRef;
-  if (!facts.packageVersion)
-    throw new Error(`The action was started from the ref ${facts.actionRef}, which can move, and its package.json holds no version. The header images need an exact release tag or a commit SHA.`);
-  return `v${facts.packageVersion}`;
-}
-function packageVersion(path, readFile2) {
-  try {
-    const version2 = JSON.parse(readFile2(path)).version;
-    return typeof version2 === "string" && version2 !== "" ? version2 : undefined;
-  } catch {
-    return;
-  }
-}
-function readActionRef(env, readFile2) {
-  const sha = env.GITHUB_SHA;
-  if (!sha)
-    throw new Error("GITHUB_SHA is not set, so the action cannot tell its own version.");
-  const ref = env.GITHUB_ACTION_REF;
-  const needsVersion = Boolean(ref) && !isExactRef(ref ?? "");
-  const path = env.GITHUB_ACTION_PATH;
-  return actionRef({
-    actionRef: ref,
-    packageVersion: needsVersion && path ? packageVersion(`${path}/package.json`, readFile2) : undefined,
-    sha
-  });
-}
 
 // src/github/event.ts
 function record2(value) {
@@ -51925,7 +51929,7 @@ function toIssue(issue3) {
 
 // src/github/outputs.ts
 import { writeFileSync } from "node:fs";
-import { join as join5 } from "node:path";
+import { join as join6 } from "node:path";
 
 // src/render/destroy-sign.ts
 function destroySign(rows) {
@@ -52640,7 +52644,7 @@ function actionsOutputs(runnerTemp) {
       if (!runnerTemp) {
         throw new Error("RUNNER_TEMP is not set, so there is no directory for the result file");
       }
-      const path = join5(runnerTemp, resultFileName(mode));
+      const path = join6(runnerTemp, resultFileName(mode));
       writeFileSync(path, text2);
       return path;
     }
@@ -52912,18 +52916,18 @@ function describeMiss(entry, inPath, ignored) {
 
 // src/core/config-file.ts
 import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
-import { join as join6 } from "node:path";
+import { join as join7 } from "node:path";
 var CONFIG_FILE = "sluiceway.yaml";
 var FILE = CONFIG_FILE;
 var WRONG_FILE = "sluiceway.yml";
 function loadConfig(root) {
-  if (existsSync3(join6(root, WRONG_FILE))) {
+  if (existsSync3(join7(root, WRONG_FILE))) {
     throw new ConfigError([`found ${WRONG_FILE}. The file must be named ${FILE}. Rename it.`]);
   }
-  return parseConfig(read(join6(root, FILE)));
+  return parseConfig(read(join7(root, FILE)));
 }
 function hasConfigFile(root) {
-  return existsSync3(join6(root, FILE));
+  return existsSync3(join7(root, FILE));
 }
 function read(file2) {
   try {
@@ -54006,7 +54010,7 @@ async function swapRow(context3, setup, id, make) {
 }
 
 // src/modes/apply-job.ts
-async function runApply() {
+async function runApply(directory) {
   const env = process.env;
   const inputs = readApplyInputs(getInput);
   const job = readJob(env);
@@ -54023,7 +54027,7 @@ async function runApply() {
     runAttempt: job.runAttempt,
     jobId: readJobId(getInput),
     sha: job.sha,
-    actionRef: readActionRef(env, (path) => readFileSync3(path, "utf8")),
+    actionRef: readActionRef(env, directory, (path) => readFileSync3(path, "utf8")),
     deploymentId: inputs.deploymentId,
     event: readEventPayload(env, (path) => readFileSync3(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP)
@@ -54074,12 +54078,12 @@ function byCodeUnit5(a, b) {
 
 // src/core/repo-files.ts
 import { readdir as readdir3 } from "node:fs/promises";
-import { join as join7 } from "node:path";
+import { join as join8 } from "node:path";
 var SKIPPED2 = new Set([".git", "node_modules"]);
 async function repoFiles(root) {
   const files = [];
   const walk = async (relative2) => {
-    const entries = await readdir3(join7(root, ...relative2), { withFileTypes: true });
+    const entries = await readdir3(join8(root, ...relative2), { withFileTypes: true });
     for (const entry of entries) {
       if (entry.name === ".git")
         continue;
@@ -54805,7 +54809,7 @@ async function swapRows(context3, config2, stacks, liveBody, swap, attribution) 
 }
 
 // src/modes/resolve-job.ts
-async function runResolve() {
+async function runResolve(directory) {
   const env = process.env;
   const read2 = (path) => readFileSync4(path, "utf8");
   const token = readToken(getInput);
@@ -54818,7 +54822,7 @@ async function runResolve() {
     repoUrl: job.repoUrl,
     runId: job.runId,
     sha: job.sha,
-    actionRef: readActionRef(env, read2),
+    actionRef: readActionRef(env, directory, read2),
     event: readEventPayload(env, read2),
     workflow: readWorkflowRef(env),
     setOutput: (name, value) => setOutput(name, value)
@@ -55707,7 +55711,7 @@ function reportDashboard(context3, written, composed) {
 }
 
 // src/modes/scan-job.ts
-async function runScan() {
+async function runScan(directory) {
   const env = process.env;
   const inputs = readScanInputs(getInput);
   const job = readJob(env);
@@ -55730,7 +55734,7 @@ async function runScan() {
     sha: job.sha,
     event: job.event,
     workflow: job.workflow,
-    actionRef: readActionRef(env, (path) => readFileSync5(path, "utf8")),
+    actionRef: readActionRef(env, directory, (path) => readFileSync5(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),
     publicRepo: publicRepo(readEventPayload(env, (path) => readFileSync5(path, "utf8")))
   });
@@ -55851,14 +55855,14 @@ var handlers = {
   settle: runSettle,
   check: runCheck
 };
-async function run(mode, getInput2 = getInput) {
+async function run(mode, directory, getInput2 = getInput) {
   refuseDeploymentId(mode, getInput2);
-  return handlers[mode]();
+  return handlers[mode](directory);
 }
 
 // src/main.ts
 try {
-  await run(parseMode(getInput("mode")));
+  await run(parseMode(getInput("mode")), actionDirectory(import.meta.url));
 } catch (error63) {
   setFailed(error63 instanceof Error ? error63.message : String(error63));
 }
