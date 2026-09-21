@@ -36,15 +36,43 @@ export function previewFailureText(reason: PreviewFailureReason): string {
 
 // Why a deploy failed, from the same fixed list (record 0022). It goes on the
 // final status of the deployment record and from there on the failure line.
-// The reasons of `apply` join with the slice that builds it.
 export type DeployFailureReason =
   // The workflow run of the deploy is over and the record never got a result
   // (record 0003).
-  { kind: "run-ended" };
+  | { kind: "run-ended" }
+  // The fresh preview of `apply` gave another diff hash than the tick
+  // approved (record 0008). The record ends as `error`.
+  | { kind: "moved" }
+  // The deploy itself failed. exitCode is null when the tool could not be
+  // started or a signal ended it.
+  | { kind: "tool-error"; exitCode: number | null }
+  // The fresh preview gave no diff, so there was nothing to compare.
+  | { kind: "preview-failed"; reason: PreviewFailureReason }
+  // The version check failed (record 0001).
+  | { kind: "tool-missing" }
+  // Discovery does not know the stack of the record (record 0035).
+  | { kind: "unknown-stack" }
+  // Anything else that stopped `apply` before the tool ran, such as a
+  // broken `sluiceway.yaml`. The job log says what.
+  | { kind: "not-started" };
 
 export function deployFailureText(reason: DeployFailureReason): string {
   switch (reason.kind) {
     case "run-ended":
       return "the run ended without a result";
+    case "moved":
+      return "the change moved since the tick";
+    case "tool-error":
+      return reason.exitCode === null
+        ? "the tool exited with an error"
+        : `the tool exited with an error (exit code ${reason.exitCode})`;
+    case "preview-failed":
+      return `the preview before the deploy failed: ${previewFailureText(reason.reason)}`;
+    case "tool-missing":
+      return "the tool is missing or older than Sluiceway needs";
+    case "unknown-stack":
+      return "the stack is not in the repo any more";
+    case "not-started":
+      return "the deploy stopped before the tool ran";
   }
 }

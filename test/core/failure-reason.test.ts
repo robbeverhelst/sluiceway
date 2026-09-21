@@ -54,4 +54,49 @@ describe("why a deploy failed, in Sluiceway's own words", () => {
     // for the description of a deployment status.
     expect(deployFailureText({ kind: "run-ended" })).toBe("the run ended without a result");
   });
+
+  test("the change moved since the tick", () => {
+    expect(deployFailureText({ kind: "moved" })).toBe("the change moved since the tick");
+  });
+
+  test("the tool exited with an error while it deployed", () => {
+    expect(deployFailureText({ kind: "tool-error", exitCode: 255 })).toBe(
+      "the tool exited with an error (exit code 255)",
+    );
+    expect(deployFailureText({ kind: "tool-error", exitCode: null })).toBe(
+      "the tool exited with an error",
+    );
+  });
+
+  test("the fresh preview before the deploy failed, with the reason of the preview", () => {
+    expect(
+      deployFailureText({ kind: "preview-failed", reason: { kind: "timed-out", minutes: 10 } }),
+    ).toBe("the preview before the deploy failed: the preview timed out after 10 minutes");
+  });
+
+  test("the tool is missing or too old", () => {
+    expect(deployFailureText({ kind: "tool-missing" })).toBe(
+      "the tool is missing or older than Sluiceway needs",
+    );
+  });
+
+  test("the stack is not in the repo any more", () => {
+    expect(deployFailureText({ kind: "unknown-stack" })).toBe(
+      "the stack is not in the repo any more",
+    );
+  });
+
+  test("the deploy stopped before the tool ran", () => {
+    expect(deployFailureText({ kind: "not-started" })).toBe(
+      "the deploy stopped before the tool ran",
+    );
+  });
+
+  test("every reason fits GitHub's 140 characters for a status description", () => {
+    const longest = deployFailureText({
+      kind: "preview-failed",
+      reason: { kind: "unknown-step" },
+    });
+    expect(longest.length).toBeLessThanOrEqual(140);
+  });
 });
