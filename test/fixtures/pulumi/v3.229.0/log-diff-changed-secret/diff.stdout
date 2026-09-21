@@ -1,0 +1,13 @@
+Previewing update (dev):
+  pulumi:pulumi:Stack: (same)
+    [urn=urn:pulumi:dev::network::pulumi:pulumi:Stack::network-dev]
+    ~ command:local:Command: (update)
+        [id=banner30f60ee2]
+        [urn=urn:pulumi:dev::network::command:local:Command::banner]
+        [provider=urn:pulumi:dev::network::pulumi:providers:command::default_1_2_1::8a75939a-0680-4343-91b4-953e3361e00c]
+      ~ environment: {
+          ~ TOKEN: [secret] => [secret]
+        }
+Resources:
+    ~ 1 to update
+    4 unchanged

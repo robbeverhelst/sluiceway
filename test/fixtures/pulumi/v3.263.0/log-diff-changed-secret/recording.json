@@ -1,0 +1,44 @@
+{
+  "scenario": "log-diff-changed-secret",
+  "description": "What a scan with scan.logDiff on runs when the secret config value has a new value: the preview, then the tool's own diff, which shows the change and masks both values.",
+  "cliVersion": "v3.263.0",
+  "commands": [
+    {
+      "id": "preview",
+      "argv": [
+        "pulumi",
+        "preview",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "preview.stdout",
+      "stderr": "preview.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "diff",
+      "argv": [
+        "pulumi",
+        "preview",
+        "--diff",
+        "--suppress-outputs",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

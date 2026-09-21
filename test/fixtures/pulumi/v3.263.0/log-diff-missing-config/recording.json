@@ -1,0 +1,26 @@
+{
+  "scenario": "log-diff-missing-config",
+  "description": "The tool's own diff of a stack whose config lacks a value the program requires. It fails like the preview does.",
+  "cliVersion": "v3.263.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "pulumi",
+        "preview",
+        "--diff",
+        "--suppress-outputs",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "exitCode": 1,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

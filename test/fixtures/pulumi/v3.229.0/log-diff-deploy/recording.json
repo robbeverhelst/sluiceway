@@ -1,0 +1,64 @@
+{
+  "scenario": "log-diff-deploy",
+  "description": "What apply runs for a stack that was never deployed with scan.logDiff on: the fresh preview, the tool's own diff, then the deploy. Every value is in the diff, the secret as the tool marks it.",
+  "cliVersion": "v3.229.0",
+  "commands": [
+    {
+      "id": "preview",
+      "argv": [
+        "pulumi",
+        "preview",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "preview.stdout",
+      "stderr": "preview.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "diff",
+      "argv": [
+        "pulumi",
+        "preview",
+        "--diff",
+        "--suppress-outputs",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "up",
+      "argv": [
+        "pulumi",
+        "up",
+        "--yes",
+        "--skip-preview",
+        "--suppress-outputs",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "up.stdout",
+      "stderr": "up.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}
