@@ -51313,6 +51313,11 @@ function readJob(env) {
   if (!owner || !repo || rest.length > 0) {
     throw new Error(`GITHUB_REPOSITORY is ${JSON.stringify(repository)}, which is not an owner and a repo.`);
   }
+  const workflowRef = need("GITHUB_WORKFLOW_REF");
+  const workflow = /^[^/]+\/[^/]+\/\.github\/workflows\/([^/]+?\.ya?ml)@/.exec(workflowRef)?.[1];
+  if (!workflow) {
+    throw new Error(`GITHUB_WORKFLOW_REF is ${JSON.stringify(workflowRef)}, which names no workflow file.`);
+  }
   const server = (env.GITHUB_SERVER_URL || "https://github.com").replace(/\/+$/, "");
   return {
     root,
@@ -51321,7 +51326,8 @@ function readJob(env) {
     repoUrl: `${server}/${owner}/${repo}`,
     runId: need("GITHUB_RUN_ID"),
     sha: need("GITHUB_SHA"),
-    event: need("GITHUB_EVENT_NAME")
+    event: need("GITHUB_EVENT_NAME"),
+    workflow
   };
 }
 
@@ -51472,6 +51478,24 @@ function deploymentCalls(octokit, repo) {
   };
 }
 
+// src/github/octokit-runs.ts
+function runCalls(octokit, repo) {
+  return {
+    async listIssuesRuns(workflow) {
+      const { data } = await octokit.rest.actions.listWorkflowRuns({
+        ...repo,
+        workflow_id: workflow,
+        event: "issues",
+        per_page: 100
+      });
+      return data.workflow_runs.map((run) => ({
+        id: String(run.id),
+        completed: run.status === "completed"
+      }));
+    }
+  };
+}
+
 // src/github/octokit-port.ts
 var PIN_ISSUE = `mutation ($issueId: ID!) {
   pinIssue(input: {issueId: $issueId}) {
@@ -51586,6 +51610,7 @@ function createOctokitPort(octokit, repo) {
       };
     },
     ...deploymentCalls(octokit, repo),
+    ...runCalls(octokit, repo),
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     }
@@ -51979,6 +52004,21 @@ function deployFailureText(reason) {
   }
 }
 
+// src/core/orphan-tick.ts
+function resolveOnItsWay(runs, ownRunId) {
+  return runs.some((run) => !run.completed && run.id !== ownRunId);
+}
+function tickAtLateRead(row) {
+  const { writes } = row;
+  if (writes.row === "live") {
+    if (row.resolveOnItsWay)
+      return "carry";
+    return writes.previewed ? "next-scan" : "preview-first";
+  }
+  const sameTick = writes.hash !== undefined && writes.hash === row.liveHash;
+  return row.resolveOnItsWay && sameTick ? "carry" : "sweep";
+}
+
 // src/core/pool.ts
 async function runPool(items, size, work) {
   if (!Number.isInteger(size) || size < 1) {
@@ -52344,7 +52384,7 @@ function pendingRow(row, options) {
   const destroys = deletes.length + replaces.length;
   const summary2 = `[summary](${row.runUrl})`;
   const lines = [
-    `- [ ] **${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.runUrl}) ${rowMarker({
+    `- [${row.ticked ? "x" : " "}] **${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.runUrl}) ${rowMarker({
       stackId: row.diff.stackId,
       state: "pending",
       hash: row.hash,
@@ -53114,7 +53154,7 @@ async function scan(context3) {
     if (round.length > 0 || rounds === 0)
       await writeSummary(context3, all);
     rounds++;
-    const compose = (liveBody, deploys) => {
+    const compose = (liveBody, deploys, waits) => {
       const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
       const liveRows = new Map;
       if (live?.root?.version === MARKER_VERSION) {
@@ -53123,11 +53163,21 @@ async function scan(context3) {
             liveRows.set(row.stackId, row);
       }
       const { dropped } = oneRowPerStack(ids, new Set(previewed.keys()), [...liveRows.keys()]);
+      const liveTicks = new Map;
+      const seen = new Set;
+      for (const row of live?.rows ?? []) {
+        if (seen.has(row.stackId))
+          continue;
+        seen.add(row.stackId);
+        if (row.known && row.ticked)
+          liveTicks.set(row.stackId, row.hash);
+      }
       const rows = [];
       const carried = [];
       const first = [];
       const deploying = [];
       const deferred = [];
+      const ticks = [];
       for (const id of ids) {
         const mine = previewed.get(id);
         const liveRow = liveRows.get(id);
@@ -53139,10 +53189,23 @@ async function scan(context3) {
           settledHere: deploys.settled.has(id),
           again: again.has(id)
         });
+        const ticked = liveTicks.has(id);
         if (decided.row === "preview-first")
           first.push({ id, why: decided.why });
         else if (decided.row === "fresh" && mine) {
-          rows.push(previewRow(id, mine.result, runUrl, failureLine2(context3, fact)));
+          const row = previewRow(id, mine.result, runUrl, failureLine2(context3, fact));
+          if (!ticked) {
+            rows.push(row);
+            continue;
+          }
+          const box = row.state === "pending";
+          const carry = tickAtLateRead({
+            liveHash: liveTicks.get(id),
+            writes: { row: "fresh", hash: box ? row.hash : undefined },
+            resolveOnItsWay: waits
+          }) === "carry";
+          ticks.push({ id, tick: carry ? "carry" : "sweep", box });
+          rows.push(!box ? row : carry ? { ...row, ticked: true } : { ...row, orphanTick: true });
         } else if (decided.row === "deploying" && decided.from === "record" && fact?.kind === "open") {
           deploying.push(id);
           rows.push({
@@ -53154,6 +53217,18 @@ async function scan(context3) {
             destroys: destroysOf(mine, liveRow)
           });
         } else if (liveRow) {
+          if (ticked && decided.row === "live") {
+            const tick = tickAtLateRead({
+              liveHash: liveTicks.get(id),
+              writes: { row: "live", previewed: mine !== undefined },
+              resolveOnItsWay: waits
+            });
+            if (tick === "preview-first") {
+              first.push({ id, why: "orphan-tick" });
+              continue;
+            }
+            ticks.push({ id, tick, box: true });
+          }
           if (decided.row === "deploying")
             deploying.push(id);
           else if (mine)
@@ -53198,14 +53273,17 @@ async function scan(context3) {
         dropped,
         deploying,
         deferred,
+        ticks,
+        resolveWaits: waits,
         unread: deploys.facts.unread
       };
     };
     try {
       if (previewed.size === ids.length)
-        compose(undefined, NO_DEPLOYS);
+        compose(undefined, NO_DEPLOYS, false);
       written = await writeDashboard(context3.github, config2.dashboard, async (liveBody) => {
-        composed = compose(liveBody, await lateDeploys(context3, stacks, previewed, liveBody));
+        const deploys = await lateDeploys(context3, stacks, previewed, liveBody);
+        composed = compose(liveBody, deploys, await resolveWaits(context3, liveBody, deploys));
         return composed.body;
       });
       break;
@@ -53234,7 +53312,8 @@ async function scan(context3) {
 var PREVIEW_FIRST = {
   "no-row": "is previewed now: the dashboard has no row for it any more.",
   "no-open-deployment": "is previewed now: its row says deploying and no deployment is open.",
-  "deploy-ended": "is previewed again: a deploy of it ended after its preview started."
+  "deploy-ended": "is previewed again: a deploy of it ended after its preview started.",
+  "orphan-tick": "is previewed now: its row holds an orphan tick, and only a fresh row can ask for a fresh tick."
 };
 var NO_DEPLOYS = {
   facts: { byStack: new Map, succeeded: [], unread: 0 },
@@ -53276,6 +53355,16 @@ async function lateDeploys(context3, stacks, previewed, liveBody) {
     return { facts: deployFacts(settled.records), settled: new Set(settled.stackIds) };
   } catch (error63) {
     throw new Error(`The deployment records could not be read: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permissions \`deployments: write\` and \`actions: read\` next to \`contents: read\` and \`issues: write\` (record 0003).`);
+  }
+}
+async function resolveWaits(context3, liveBody, deploys) {
+  const met = parseDashboard(liveBody).rows.some((row) => row.known && row.ticked && deploys.facts.byStack.get(row.stackId)?.kind !== "open");
+  if (!met)
+    return false;
+  try {
+    return resolveOnItsWay(await context3.github.listIssuesRuns(context3.workflow), context3.runId);
+  } catch (error63) {
+    throw new Error(`The runs of ${logGroupTitle(context3.workflow)} that an issue edit started could not be read: ${error63 instanceof Error ? error63.message : error63}. The scan met a ticked box and has to know whether a \`resolve\` run is still on its way before it clears it. The scan job needs the permission \`actions: read\` (record 0025).`);
   }
 }
 async function makePlan(context3, config2, stacks) {
@@ -53402,6 +53491,19 @@ async function writeSummary(context3, previewed) {
     log.warning("The summary of this run could not be written. The dashboard is still brought up to date, and the job log of this run holds every diff in full.", "Summary not written");
   }
 }
+var NOTHING_ON_ITS_WAY = "no deployment of it is open, and no run that an issue edit started is queued or in progress";
+function tickText(id, tick, box, waits) {
+  switch (tick) {
+    case "carry":
+      return `Left the tick on ${id} alone: a run that an issue edit started is queued or in progress, and its \`resolve\` job handles every tick.`;
+    case "next-scan":
+      return `Left the orphan tick on ${id} for the next scan: the row is kept as it is, because a deploy of the stack ended after its preview started.`;
+    case "sweep": {
+      const asks = box ? "The row asks for a fresh tick." : "The row has no box any more.";
+      return waits ? `Cleared the tick on ${id}: the row no longer shows what was ticked, so \`resolve\` has nothing to act on. ${asks}` : `Cleared an orphan tick on ${id}: ${NOTHING_ON_ITS_WAY}. ${asks}`;
+    }
+  }
+}
 var FOUND = {
   open: "Wrote the dashboard",
   reopened: "Reopened the dashboard and wrote it",
@@ -53427,6 +53529,9 @@ function reportDashboard(context3, written, composed) {
   }
   for (const id of composed?.deferred ?? []) {
     log.info(`Kept the live row of ${logGroupTitle(id)}: a deploy of it ended after its preview started.`);
+  }
+  for (const { id, tick, box } of composed?.ticks ?? []) {
+    log.info(tickText(logGroupTitle(id), tick, box, composed?.resolveWaits ?? false));
   }
   const unread = composed?.unread ?? 0;
   if (unread > 0) {
@@ -53459,6 +53564,7 @@ async function runScan() {
     runId: job.runId,
     sha: job.sha,
     event: job.event,
+    workflow: job.workflow,
     actionRef: readActionRef(env, (path) => readFileSync3(path, "utf8"))
   });
 }
