@@ -9,14 +9,6 @@
 import type { HistoryEntry, HistoryPage } from "../core/edit-history.ts";
 import type { Comparison } from "../core/scan-plan.ts";
 import type { Permission } from "../core/tick-rule.ts";
-
-export type { Comparison, HistoryEntry, HistoryPage, Permission };
-
-// An issue's body together with one page of its edit history.
-export interface EditHistory extends HistoryPage {
-  body: string;
-}
-
 import type {
   Deployment,
   DeploymentPage,
@@ -27,6 +19,13 @@ import type {
 } from "./deployment-calls.ts";
 
 export type * from "./deployment-calls.ts";
+
+export type { Comparison, HistoryEntry, HistoryPage, Permission };
+
+// An issue's body together with one page of its edit history.
+export interface EditHistory extends HistoryPage {
+  body: string;
+}
 
 export interface IssueAuthor {
   login: string;
