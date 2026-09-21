@@ -31495,6 +31495,9 @@ function globMatcher(globs) {
     return () => false;
   return import_picomatch.default(globs, { dot: true });
 }
+function globOf(text) {
+  return text.replace(/[\\*?[\]{}()!+@|]/g, "\\$&");
+}
 
 // src/core/stack.ts
 function stackId(stack) {
@@ -51153,6 +51156,7 @@ function stripAnsi(text) {
 function previewCommand(name) {
   return ["pulumi", "preview", "--json", "--non-interactive", "--color", "never", "--stack", name];
 }
+var STACK_NOT_FOUND_EXIT_CODE = 6;
 async function preview(stack, options) {
   if (stack.name === undefined)
     throw new Error("A Pulumi stack always has a name.");
@@ -51169,7 +51173,8 @@ async function preview(stack, options) {
     return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, toolLog(result.stderr));
   }
   if (result.exitCode !== 0) {
-    return failed({ kind: "tool-error", exitCode: result.exitCode }, toolLog(result.stderr, parseDiagnostics(result.stdout)));
+    const reason = result.exitCode === STACK_NOT_FOUND_EXIT_CODE ? { kind: "stack-not-found" } : { kind: "tool-error", exitCode: result.exitCode };
+    return failed(reason, toolLog(result.stderr, parseDiagnostics(result.stdout)));
   }
   const parsed = parsePreview(result.stdout);
   if (!parsed.ok) {
@@ -52002,7 +52007,8 @@ function describeMiss(entry, inPath, ignored) {
 // src/core/config-file.ts
 import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
 import { join as join3 } from "node:path";
-var FILE = "sluiceway.yaml";
+var CONFIG_FILE = "sluiceway.yaml";
+var FILE = CONFIG_FILE;
 var WRONG_FILE = "sluiceway.yml";
 function loadConfig(root) {
   if (existsSync3(join3(root, WRONG_FILE))) {
@@ -53035,6 +53041,8 @@ function previewFailureText(reason) {
   switch (reason.kind) {
     case "tool-error":
       return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
+    case "stack-not-found":
+      return "the stack does not exist in the backend";
     case "timed-out":
       return `the preview timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}`;
     case "unreadable-output":
@@ -53761,6 +53769,13 @@ function oneRowPerStack(discovered, fresh, live) {
     dropped: [...onDashboard].filter((id) => !known.has(id))
   };
 }
+function unclaimedToPlace(files) {
+  return files.filter((file2) => file2 !== CONFIG_FILE);
+}
+function noClaimant(files) {
+  const [first = "", ...rest] = files;
+  return rest.length === 0 ? `no stack claims ${first}` : `no stack claims ${first} and ${rest.length} more changed ${rest.length === 1 ? "file" : "files"}`;
+}
 function fullScanReasonText(reason) {
   switch (reason.kind) {
     case "event":
@@ -53780,8 +53795,11 @@ function fullScanReasonText(reason) {
     case "file-cap":
       return `the comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, so files may be missing from it`;
     case "unclaimed": {
-      const [first = "", ...rest] = reason.files;
-      return rest.length === 0 ? `no stack claims ${first}` : `no stack claims ${first} and ${rest.length} more changed ${rest.length === 1 ? "file" : "files"}`;
+      const others = unclaimedToPlace(reason.files);
+      if (others.length === reason.files.length)
+        return noClaimant(others);
+      const changed = `${CONFIG_FILE} changed, so every stack is previewed`;
+      return others.length === 0 ? changed : `${changed}, and ${noClaimant(others)}`;
     }
     case "does-not-fit":
       return `the body does not fit in one issue with ${reason.carried} ${reason.carried === 1 ? "row" : "rows"} carried through, and only a fresh row can be shortened`;
@@ -53848,7 +53866,14 @@ function previewRow(stackId2, result, runUrl2, failure2) {
   return { state: "pending", diff: result.diff, hash: diffHash(result.diff), runUrl: runUrl2, failure: failure2 };
 }
 function previewSummary(stackId2, result, merges) {
-  return result.ok ? { kind: "diff", diff: result.diff, merges } : { kind: "preview-failed", stackId: stackId2, reason: previewFailureText(result.reason) };
+  if (result.ok)
+    return { kind: "diff", diff: result.diff, merges };
+  return {
+    kind: "preview-failed",
+    stackId: stackId2,
+    reason: previewFailureText(result.reason),
+    ignore: result.reason.kind === "stack-not-found" ? globOf(stackId2) : undefined
+  };
 }
 function previewOutcome(result) {
   if (!result.ok)
@@ -53900,6 +53925,13 @@ function diffParts(stack, level) {
 `));
   }
   return parts;
+}
+function failedLine(stack) {
+  const line2 = `- **${escapeText(stack.stackId)}** · ${escapeText(stack.reason)}`;
+  if (stack.ignore === undefined)
+    return line2;
+  const glob = escapeText(JSON.stringify(stack.ignore));
+  return `${line2} · create it, or take it off the dashboard with <code>${glob}</code> under <code>ignore</code> in <code>sluiceway.yaml</code>`;
 }
 function stackIdOf(stack) {
   return stack.kind === "diff" ? stack.diff.stackId : stack.stackId;
@@ -53957,7 +53989,7 @@ function renderSummary(stacks, options = {}) {
   ].filter(Boolean).join(", ")}.`;
   const tail = [];
   if (failed.length > 0) {
-    tail.push("### Preview failed", failed.map((stack) => `- **${escapeText(stack.stackId)}** · ${escapeText(stack.reason)}`).join(`
+    tail.push("### Preview failed", failed.map(failedLine).join(`
 `));
   }
   if (inSync.length > 0) {
@@ -54338,9 +54370,10 @@ function logPlan(context3, plan, stackCount) {
     }
     const safe = why2.kind === "unclaimed" ? { kind: "unclaimed", files: why2.files.map(fileName) } : why2;
     log.info(`This is a full scan. A push gives a narrowed scan, and this one fell back to a full scan: ${fullScanReasonText(safe)}.`);
-    if (why2.kind === "unclaimed") {
+    const toPlace = why2.kind === "unclaimed" ? unclaimedToPlace(why2.files) : [];
+    if (toPlace.length > 0) {
       log.group("Changed files that no stack claims", [
-        ...why2.files.map((file2) => `unclaimed: ${fileName(file2)}`),
+        ...toPlace.map((file2) => `unclaimed: ${fileName(file2)}`),
         "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated."
       ]);
     }
