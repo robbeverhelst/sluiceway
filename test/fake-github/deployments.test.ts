@@ -37,6 +37,23 @@ function newDeployment(stack: string, environment = "sluiceway") {
 }
 
 for (const [way, portOf] of ways) {
+  describe(`one deployment record by its id on ${way}`, () => {
+    test("reads back as it was created, payload and all, without its status", async () => {
+      const fake = new FakeGitHub();
+      const port = await portOf(fake);
+      const created = await port.createDeployment(newDeployment("apps/grafana:prod", "production"));
+      await port.createDeploymentStatus(created.id, { state: "queued" });
+
+      expect(await port.getDeployment(created.id)).toEqual(created);
+      expect(fake.requests.at(-1)).toBe("getDeployment");
+    });
+
+    test("a record GitHub does not have is an error", async () => {
+      const port = await portOf(new FakeGitHub());
+      await expect(port.getDeployment(99)).rejects.toThrow("Not Found");
+    });
+  });
+
   describe(`deployment records on ${way}`, () => {
     test("a created record has no status yet and reads back on the page of its environment", async () => {
       const fake = new FakeGitHub();

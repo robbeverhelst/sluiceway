@@ -55,6 +55,17 @@ export function deploymentRoutes(fake: FakeGitHub, repo: string): [string, RegEx
       },
     ],
     [
+      "GET",
+      new RegExp(`^${repo}/deployments/(\\d+)$`),
+      async (_call, id) => {
+        try {
+          return { status: 200, json: apiDeployment(await fake.getDeployment(Number(id))) };
+        } catch {
+          return { status: 404, json: { message: "Not Found" } };
+        }
+      },
+    ],
+    [
       "POST",
       new RegExp(`^${repo}/deployments/(\\d+)/statuses$`),
       async ({ body }, id) => {

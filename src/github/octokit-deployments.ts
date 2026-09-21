@@ -13,6 +13,7 @@ export type DeploymentCalls = Pick<
   | "listNewestDeployments"
   | "newestDeploymentOfTask"
   | "latestDeploymentStatus"
+  | "getDeployment"
   | "getWorkflowRun"
 >;
 
@@ -185,6 +186,11 @@ export function deploymentCalls(
         per_page: 1,
       });
       return data[0] ? toStatus(data[0]) : undefined;
+    },
+
+    async getDeployment(id) {
+      const { data } = await octokit.rest.repos.getDeployment({ ...repo, deployment_id: id });
+      return toDeployment(data);
     },
 
     async getWorkflowRun(runId) {

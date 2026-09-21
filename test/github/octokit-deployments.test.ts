@@ -309,6 +309,33 @@ describe("the REST fall back for a stack that is not on the page", () => {
   });
 });
 
+describe("one record by its id", () => {
+  test("one request, and the record in the port's words", async () => {
+    const { port, sent } = portThatAnswers([{ json: apiDeployment() }]);
+    expect(await port.getDeployment(6575759143)).toEqual({
+      id: 6575759143,
+      task: "sluiceway:apps/grafana:prod",
+      environment: "sluiceway",
+      sha: SHA,
+      payload: PAYLOAD,
+      createdAt: "2026-09-21T18:51:58Z",
+    });
+    expect(sent).toEqual([
+      {
+        method: "GET",
+        path: "/repos/acme/infra/deployments/6575759143",
+        query: {},
+        body: undefined,
+      },
+    ]);
+  });
+
+  test("a record GitHub does not have is an error", async () => {
+    const { port } = portThatAnswers([{ status: 404, json: { message: "Not Found" } }]);
+    await expect(port.getDeployment(1)).rejects.toThrow("Not Found");
+  });
+});
+
 describe("reading a workflow run", () => {
   test("one request, and only whether the run is over is kept", async () => {
     const { port, sent } = portThatAnswers([

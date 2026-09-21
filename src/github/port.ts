@@ -118,7 +118,14 @@ export interface GitHubPort {
   newestDeploymentOfTask(task: string): Promise<Deployment | undefined>;
 
   // The second request of the fall back. Nothing for a record with no status.
+  // `apply` asks this first, so a record that already ended costs one request
+  // (record 0019).
   latestDeploymentStatus(id: number): Promise<DeploymentStatus | undefined>;
+
+  // One record by its id, without its status, as REST gives it. Fails for a
+  // record GitHub does not have. `apply` reads the record it was handed here
+  // (record 0035).
+  getDeployment(id: number): Promise<Deployment>;
 
   // Needs `actions: read`. Nothing for a run GitHub does not have.
   getWorkflowRun(runId: string): Promise<WorkflowRun | undefined>;

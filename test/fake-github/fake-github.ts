@@ -367,6 +367,12 @@ export class FakeGitHub implements GitHubPort {
     return this.#deployments.record(id).status;
   }
 
+  async getDeployment(id: number): Promise<Deployment> {
+    this.#count("getDeployment");
+    const { status: _status, ...deployment } = this.#deployments.record(id);
+    return deployment;
+  }
+
   async getWorkflowRun(runId: string): Promise<WorkflowRun | undefined> {
     this.#count("getWorkflowRun");
     return this.#deployments.run(runId);
