@@ -1,6 +1,7 @@
 // The end to end run (build plan, section 6): the committed bundle, started the
 // way a runner starts a step, scans a copy of examples/pulumi-basic with the
-// pulumi CLI on PATH, and writes its dashboard to the fake GitHub server.
+// pulumi CLI on PATH, writes its dashboard to the fake GitHub server, and then
+// goes round the whole loop: a tick, resolve, apply and settle.
 //
 //   bun run e2e [--work-dir <dir>] [--expect-version v3.229.0]
 //
@@ -11,19 +12,45 @@
 //      app:prod claims, through `inputs` in sluiceway.yaml. It is a narrowed
 //      scan: one preview, one fresh row, every other row carried through.
 //
+// Then the loop, each tick a run of its own with the `issues` event:
+//   3. A person without write access ticks network:dev. The tick is refused.
+//   4. A person with write access ticks network:dev. resolve hands on a
+//      record, apply deploys the stack with the real tool, settle finds
+//      nothing open. Then the apply job is re-run, and deploys nothing.
+//   5. site:prod is ticked and its apply job never starts, as when it is
+//      cancelled. settle ends the record and starts a full scan, which shows
+//      network:dev in sync and site:prod with a failure line.
+//   6. site:prod is ticked again and deployed by hand before its apply job
+//      starts. The change moved: nothing goes out and the record ends as error.
+//   7. A last full scan: every stack in sync.
+//
 // The tool only runs in a copy inside the work directory, against a file
 // backend made there, with an environment built from nothing. `node` on PATH
 // has to be the version that action.yml names, because it stands in for the
 // runner's own.
 import { spawn } from "node:child_process";
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { FakeGitHub } from "../test/fake-github/fake-github.ts";
 import { startFakeGitHubServer } from "../test/fake-github/server.ts";
 import { checkFullScan, checkNarrowedScan, type Expected, type Observed } from "./e2e/checks.ts";
-import { type ActionMetadata, stepEnvironment } from "./e2e/step.ts";
+import {
+  checkApply,
+  checkNothingLeaks,
+  checkRefusedTick,
+  checkRerun,
+  checkResolve,
+  checkRowFacts,
+  checkSettle,
+  type LoopRecord,
+  type LoopStep,
+  type MatrixEntry,
+  matrixEntries,
+  tickRow,
+} from "./e2e/loop.ts";
+import { type ActionMetadata, readStepOutputs, stepEnvironment } from "./e2e/step.ts";
 import { CANARY_SECRET, CANARY_VALUE, EXAMPLE_PASSPHRASE } from "./fixtures/example.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -115,36 +142,62 @@ async function checkTool(): Promise<void> {
 }
 
 const fake = new FakeGitHub();
-let runNumber = 0;
 
-// One step of `uses: ./` with `mode: scan` and nothing else set, so every
-// other input is the default of action.yml.
-async function scanStep(sha: string): Promise<Observed & { requests: string[] }> {
-  runNumber++;
-  const summaryFile = join(temp, `summary-${runNumber}.md`);
+interface StepOptions {
+  inputs?: Record<string, string>;
+  runId: string;
+  runAttempt?: string;
+  sha: string;
+  event: string;
+  // The payload the runner writes for the event, when the mode reads one.
+  payload?: unknown;
+  title: string;
+}
+
+interface Stepped extends Observed {
+  requests: string[];
+  outputs: Record<string, string>;
+}
+
+// One step of `uses: ./`, with only the inputs given here set, so every other
+// input is the default of action.yml.
+let stepNumber = 0;
+async function step(mode: string, options: StepOptions): Promise<Stepped> {
+  stepNumber++;
+  const summaryFile = join(temp, `summary-${stepNumber}.md`);
+  const outputFile = join(temp, `output-${stepNumber}`);
   writeFileSync(summaryFile, "");
+  writeFileSync(outputFile, "");
+  let eventPath: string | undefined;
+  if (options.payload !== undefined) {
+    eventPath = join(temp, `event-${stepNumber}.json`);
+    writeFileSync(eventPath, JSON.stringify(options.payload));
+  }
   const server = await startFakeGitHubServer(fake);
   const requestsBefore = fake.requests.length;
   try {
     const env = stepEnvironment(
       action,
-      { mode: "scan" },
+      { mode, ...options.inputs },
       {
         workspace,
         actionPath: REPO,
         repository: "acme/infra",
         apiUrl: server.url,
-        runId: String(runNumber),
-        sha,
-        event: "push",
+        runId: options.runId,
+        sha: options.sha,
+        event: options.event,
         token: "not-a-token",
         summaryFile,
         temp,
+        outputFile,
+        ...(options.runAttempt === undefined ? {} : { runAttempt: options.runAttempt }),
+        ...(eventPath === undefined ? {} : { eventPath }),
       },
       jobEnvironment,
     );
     const ran = await run(["node", join(REPO, action.runs.main)], workspace, env);
-    console.log(`::group::Scan ${runNumber}: what the step printed`);
+    console.log(`::group::${options.title}: what the step printed`);
     // The step's own groups would end this one, and its annotations would
     // become annotations of this run.
     console.log(ran.output.replace(/^::/gm, ": :"));
@@ -163,10 +216,18 @@ async function scanStep(sha: string): Promise<Observed & { requests: string[] }>
       issues,
       pinned: fake.pinned,
       requests,
+      outputs: readStepOutputs(readFileSync(outputFile, "utf8")),
     };
   } finally {
     await server.close();
   }
+}
+
+// A scan of a push, a schedule or a dispatch. Each is a run of its own.
+let runNumber = 0;
+function scanStep(sha: string, event = "push"): Promise<Stepped> {
+  runNumber++;
+  return step("scan", { runId: String(runNumber), sha, event, title: `Scan ${runNumber}` });
 }
 
 function report(title: string, problems: string[]): boolean {
@@ -220,6 +281,29 @@ const expected: Expected = {
   secrets: [CANARY_VALUE, CANARY_SECRET],
 };
 
+// The history of the repo, for attribution (record 0026): the example came
+// in with one direct push, and a merged pull request changed
+// shared/motd.txt.
+const example = join(REPO, "examples/pulumi-basic");
+const exampleFiles = readdirSync(example, { recursive: true, withFileTypes: true })
+  .filter((entry) => entry.isFile() && !entry.parentPath.includes("node_modules"))
+  .map((entry) => relative(example, join(entry.parentPath, entry.name)))
+  .sort();
+fake.seedCommit({ sha: FIRST_SHA, author: "dana", files: exampleFiles });
+fake.seedCommit({
+  sha: SECOND_SHA,
+  parents: [FIRST_SHA],
+  author: "erin",
+  files: ["shared/motd.txt"],
+});
+fake.seedPullRequest({
+  number: 7,
+  title: "Change the message of the day",
+  author: "erin",
+  files: ["shared/motd.txt"],
+  commits: [SECOND_SHA],
+});
+
 const first = await scanStep(FIRST_SHA);
 let good = report("The full scan", checkFullScan(first, expected));
 
@@ -248,6 +332,295 @@ good =
       { previewed: ["app:prod"], before: dashboardBody(first) },
     ),
   ) && good;
+
+// The loop (build plan, slice 2.9). Every tick is an edit by a person, and
+// the edit starts a run of the workflow with the `issues` event: `resolve`,
+// then one `apply` per matrix entry, then `settle`, all with the run id of
+// that run, and each only when the `if:` of its job in the README's workflow
+// would let it start.
+const WORKFLOW = "sluiceway.yml";
+const ALICE = { login: "alice", type: "User" };
+const CAROL = { login: "carol", type: "User" };
+// alice has write access, so the default tick rule lets her tick. carol can
+// read the repo and nothing more.
+fake.seedPermission(ALICE.login, { push: true, maintain: false, admin: false });
+fake.seedPermission(CAROL.login, { push: false, maintain: false, admin: false });
+
+function records(): LoopRecord[] {
+  const found: LoopRecord[] = [];
+  // The fake numbers its records from 1, and a number it never gave is
+  // unknown to it.
+  for (let id = 1; ; id++) {
+    let record: ReturnType<FakeGitHub["deployment"]>;
+    try {
+      record = fake.deployment(id);
+    } catch {
+      return found;
+    }
+    const statuses = fake.deploymentStatuses(id);
+    found.push({
+      id,
+      task: record.task,
+      environment: record.environment,
+      payload: record.payload,
+      states: statuses.map(({ state }) => state),
+      description: statuses.at(-1)?.description ?? "",
+    });
+  }
+}
+
+// A step of the loop, with what it left behind in GitHub.
+async function loopStep(mode: string, options: StepOptions): Promise<LoopStep> {
+  const commentsBefore = fake.comments(1).length;
+  const dispatchesBefore = fake.dispatches.length;
+  const stepped = await step(mode, options);
+  return {
+    exitCode: stepped.exitCode,
+    log: stepped.log,
+    summary: stepped.summary,
+    outputs: stepped.outputs,
+    body: dashboardBody(stepped),
+    newComments: fake.comments(1).slice(commentsBefore),
+    records: records(),
+    requests: stepped.requests,
+    newDispatches: fake.dispatches.length - dispatchesBefore,
+  };
+}
+
+interface IssuesRun {
+  runId: string;
+  // The payload of the edit, which the runner hands every job of the run.
+  payload: unknown;
+  resolved: LoopStep;
+  matrix: MatrixEntry[];
+}
+
+// A person ticks the box of a stack, and the edit starts a run.
+async function tick(stack: string, person: { login: string; type: string }): Promise<IssuesRun> {
+  const [dashboard] = await fake.listIssues({ label: "sluiceway", state: "open" });
+  if (!dashboard) throw new Error("There is no dashboard to tick.");
+  fake.editBody(dashboard.number, tickRow(dashboard.body, stack), person);
+  runNumber++;
+  const runId = String(runNumber);
+  // GitHub knows the run from the moment the edit started it.
+  fake.seedIssuesRun(WORKFLOW, { id: runId, completed: false });
+  const payload = fake.deliverEvent();
+  const resolved = await loopStep("resolve", {
+    runId,
+    sha: SECOND_SHA,
+    event: "issues",
+    payload,
+    title: `Run ${runId}: resolve, after ${person.login} ticked ${stack}`,
+  });
+  return { runId, payload, resolved, matrix: matrixEntries(resolved.outputs.matrix ?? "") };
+}
+
+function applyStep(issuesRun: IssuesRun, deployment: number, runAttempt = "1"): Promise<LoopStep> {
+  const attempt = runAttempt === "1" ? "" : `, attempt ${runAttempt}`;
+  return loopStep("apply", {
+    inputs: { "deployment-id": String(deployment) },
+    runId: issuesRun.runId,
+    runAttempt,
+    sha: SECOND_SHA,
+    event: "issues",
+    payload: issuesRun.payload,
+    title: `Run ${issuesRun.runId}: apply of deployment record ${deployment}${attempt}`,
+  });
+}
+
+// `settle` runs whenever `resolve` handed on a matrix, whatever `apply` did.
+async function settleStep(issuesRun: IssuesRun): Promise<LoopStep> {
+  const settled = await loopStep("settle", {
+    runId: issuesRun.runId,
+    sha: SECOND_SHA,
+    event: "issues",
+    payload: issuesRun.payload,
+    title: `Run ${issuesRun.runId}: settle`,
+  });
+  endRun(issuesRun);
+  return settled;
+}
+
+function endRun(issuesRun: IssuesRun): void {
+  fake.seedIssuesRun(WORKFLOW, { id: issuesRun.runId, completed: true });
+}
+
+// How often the tool deployed a stack, as its own backend keeps it. The one
+// way to see that a deploy really went out, and that a re-run sent nothing.
+async function deploysOf(dir: string, stack: string): Promise<number> {
+  const history = await prepare(
+    ["pulumi", "stack", "history", "--json", "--stack", stack, ...QUIET],
+    dir,
+  );
+  const updates: unknown = JSON.parse(history);
+  return Array.isArray(updates)
+    ? updates.filter((update) => (update as { kind?: unknown }).kind === "update").length
+    : 0;
+}
+
+function checkDeploys(stack: string, found: number, expected: number): string[] {
+  return found === expected
+    ? []
+    : [`The backend holds ${found} deploys of ${stack}, expected ${expected}.`];
+}
+
+const secrets = [CANARY_VALUE, CANARY_SECRET];
+function reportStep(title: string, stepped: LoopStep, problems: string[]): boolean {
+  return report(title, [...problems, ...checkNothingLeaks(stepped, secrets)]);
+}
+
+// 1. carol ticks network:dev. The tick is refused, and nothing else of the
+// run starts, because the matrix is empty.
+const refused = await tick("network:dev", CAROL);
+endRun(refused);
+good =
+  reportStep(
+    "The refused tick",
+    refused.resolved,
+    checkRefusedTick(refused.resolved, { stack: "network:dev", ticker: CAROL.login }),
+  ) && good;
+
+// 2. alice ticks network:dev. It deploys with the real tool, and settle finds
+// nothing open.
+const deployed = await tick("network:dev", ALICE);
+good =
+  reportStep(
+    "The tick that deploys: resolve",
+    deployed.resolved,
+    checkResolve(deployed.resolved, {
+      stack: "network:dev",
+      environment: "network",
+      ticker: ALICE.login,
+      runId: deployed.runId,
+    }),
+  ) && good;
+const [deployedEntry] = deployed.matrix;
+if (!deployedEntry) throw new Error("resolve handed on no deploy of network:dev.");
+const applied = await applyStep(deployed, deployedEntry.deployment);
+good =
+  reportStep("The tick that deploys: apply", applied, [
+    ...checkApply(applied, {
+      stack: "network:dev",
+      deployment: deployedEntry.deployment,
+      outcome: "deployed",
+    }),
+    ...checkDeploys("network:dev", await deploysOf("network", "dev"), 1),
+  ]) && good;
+const settledNothing = await settleStep(deployed);
+good =
+  reportStep(
+    "The tick that deploys: settle",
+    settledNothing,
+    checkSettle(settledNothing, { ended: undefined, before: applied.records }),
+  ) && good;
+
+// 3. Someone presses "Re-run all jobs" on that run. The apply job starts again
+// with the same record, and deploys nothing.
+fake.seedIssuesRun(WORKFLOW, { id: deployed.runId, completed: false });
+const rerun = await applyStep(deployed, deployedEntry.deployment, "2");
+endRun(deployed);
+good =
+  reportStep("The re-run", rerun, [
+    ...checkRerun(rerun, { deployment: deployedEntry.deployment, before: settledNothing.records }),
+    ...checkDeploys("network:dev", await deploysOf("network", "dev"), 1),
+  ]) && good;
+
+// 4. alice ticks site:prod, and the apply job is cancelled before it starts,
+// as when a reviewer rejects it. settle ends the record and starts a scan.
+const cancelled = await tick("site:prod", ALICE);
+good =
+  reportStep(
+    "The cancelled deploy: resolve",
+    cancelled.resolved,
+    checkResolve(cancelled.resolved, {
+      stack: "site:prod",
+      environment: "sluiceway",
+      ticker: ALICE.login,
+      runId: cancelled.runId,
+    }),
+  ) && good;
+const [cancelledEntry] = cancelled.matrix;
+if (!cancelledEntry) throw new Error("resolve handed on no deploy of site:prod.");
+const settledCancelled = await settleStep(cancelled);
+good =
+  reportStep(
+    "The cancelled deploy: settle",
+    settledCancelled,
+    checkSettle(settledCancelled, {
+      ended: cancelledEntry.deployment,
+      before: cancelled.resolved.records,
+    }),
+  ) && good;
+
+// 5. The full scan that settle started. network:dev was deployed by the tick,
+// and site:prod carries the failure line of the cancelled deploy.
+const dispatched = await scanStep(SECOND_SHA, "workflow_dispatch");
+const afterLoop: Expected = {
+  ...expected,
+  sha: SECOND_SHA,
+  actionRef: SECOND_SHA,
+  rows: {
+    "app:prod": "in-sync",
+    "network:dev": "in-sync",
+    "network:prod": "in-sync",
+    "site:prod": "pending",
+  },
+};
+good =
+  report("The scan that settle started", [
+    ...checkFullScan(dispatched, afterLoop),
+    ...checkRowFacts(dashboardBody(dispatched), {
+      failed: ["site:prod"],
+      recentlyDeployed: ["network:dev"],
+    }),
+  ]) && good;
+
+// 6. alice ticks site:prod again, and before its apply job starts someone
+// deploys the stack by hand (record 0016). The change moved since the tick:
+// nothing goes out, and the row shows the fresh preview, which is in sync.
+const moved = await tick("site:prod", ALICE);
+const [movedEntry] = moved.matrix;
+if (!movedEntry) throw new Error("resolve handed on no deploy of site:prod.");
+console.log("::group::Deploying site:prod by hand before its apply job starts");
+await deploy("site", "prod");
+console.log("::endgroup::");
+const movedApply = await applyStep(moved, movedEntry.deployment);
+good =
+  reportStep("The moved change", movedApply, [
+    ...checkResolve(moved.resolved, {
+      stack: "site:prod",
+      environment: "sluiceway",
+      ticker: ALICE.login,
+      runId: moved.runId,
+    }),
+    ...checkApply(movedApply, {
+      stack: "site:prod",
+      deployment: movedEntry.deployment,
+      outcome: "moved",
+      rowState: "in-sync",
+    }),
+    // Only the deploy by hand.
+    ...checkDeploys("site:prod", await deploysOf("site", "prod"), 1),
+  ]) && good;
+const settledMoved = await settleStep(moved);
+good =
+  reportStep(
+    "The moved change: settle",
+    settledMoved,
+    checkSettle(settledMoved, { ended: undefined, before: movedApply.records }),
+  ) && good;
+
+// 7. The next full scan. Every stack is in sync, and site:prod keeps the
+// failure line of its last deploy from the dashboard (record 0029).
+const last = await scanStep(SECOND_SHA, "schedule");
+good =
+  report("The scan after the loop", [
+    ...checkFullScan(last, { ...afterLoop, rows: { ...afterLoop.rows, "site:prod": "in-sync" } }),
+    ...checkRowFacts(dashboardBody(last), {
+      failed: ["site:prod"],
+      recentlyDeployed: ["network:dev"],
+    }),
+  ]) && good;
 
 console.log("::group::The dashboard after the narrowed scan");
 console.log(dashboardBody(second));
