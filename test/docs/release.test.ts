@@ -1,0 +1,68 @@
+import { describe, expect, test } from "bun:test";
+import { EXAMPLE_WORKFLOWS, read, USER_DOCS } from "./docs.ts";
+
+// After release 0.1.0 (build plan, section 8): the docs stop saying there is
+// no release, and every example says @v0 until a deliberate 1.0.0.
+
+// Every page a user copies from or reads for the version: the user docs, the
+// notifications recipes, the security policy and the example files.
+const PAGES = [...USER_DOCS, "docs/notifications.md", "SECURITY.md", ...EXAMPLE_WORKFLOWS];
+
+const readme = read("README.md");
+
+// The README's own words on pinning a commit, the one place a full SHA is
+// shown on purpose.
+function section(markdown: string, heading: string): string {
+  const start = markdown.indexOf(heading);
+  if (start === -1) return "";
+  const end = markdown.indexOf("\n## ", start + heading.length);
+  const nextSub = markdown.indexOf("\n### ", start + heading.length);
+  const stops = [end, nextSub].filter((index) => index !== -1);
+  return markdown.slice(start, stops.length > 0 ? Math.min(...stops) : undefined);
+}
+const PIN = section(readme, "### Pin a commit");
+
+describe("the version the docs name", () => {
+  test.each(PAGES)("every use of the action is @v0: %s", (path) => {
+    const text = path === "README.md" ? read(path).replace(PIN, "") : read(path);
+    const refs = [...text.matchAll(/sluiceway\/sluiceway@([^\s`"')]+)/g)].map((match) => match[1]);
+    expect(refs.filter((ref) => ref !== "v0")).toEqual([]);
+  });
+
+  test("no page keeps the placeholder of 40 zeros", () => {
+    const wrong = PAGES.filter((path) => read(path).includes("0".repeat(40)));
+    expect(wrong).toEqual([]);
+  });
+
+  test.each(PAGES)("no page says there is no release yet: %s", (path) => {
+    const text = read(path);
+    const said = [
+      /no release/i,
+      /before the first release/i,
+      /until the first release/i,
+      /until 0\.1\.0/i,
+      /that tag does not exist/i,
+      /no tag exists/i,
+      /placeholder of 40 zeros/i,
+      /replace the 40 zeros/i,
+    ].filter((pattern) => pattern.test(text));
+    expect(said.map(String)).toEqual([]);
+  });
+});
+
+describe("the README", () => {
+  const notice = readme.slice(readme.indexOf("> [!IMPORTANT]"), readme.indexOf("\n\n## "));
+
+  test("the beta notice says beta, released as 0.1.0, and @v0", () => {
+    expect(notice).toContain("**Sluiceway is in beta.**");
+    expect(notice).toContain("(https://github.com/sluiceway/sluiceway/releases/tag/v0.1.0)");
+    expect(notice).toContain("`sluiceway/sluiceway@v0`");
+    expect(notice).toContain("(#pin-a-commit)");
+  });
+
+  test("Pin a commit still shows how to pin a release by its full commit SHA", () => {
+    expect(PIN).not.toBe("");
+    expect(PIN).toMatch(/uses: sluiceway\/sluiceway@[0-9a-f]{40} # v\d+\.\d+\.\d+\n/);
+    expect(PIN).toContain("(https://github.com/sluiceway/sluiceway/releases)");
+  });
+});

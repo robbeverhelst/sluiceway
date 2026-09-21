@@ -31,14 +31,14 @@ The credentials are in the same job as Sluiceway's own process, so the promise i
 
 ## Recipes
 
-Each recipe is the loading part of a job. [example-workflows.md](example-workflows.md) has them in complete workflows. The snippets pin the action to a placeholder of 40 zeros. There is no release yet, so put the newest commit of `main` in its place, as the README's [Pin a commit](../README.md#pin-a-commit) says.
+Each recipe is the loading part of a job. [example-workflows.md](example-workflows.md) has them in complete workflows. The snippets use the action at `@v0`, which follows every release until 1.0.0. To review every update yourself, pin a full commit SHA instead, as the README's [Pin a commit](../README.md#pin-a-commit) says.
 
 ### GitHub secrets
 
 The simplest source. Put the secrets on Sluiceway's step, not on the job, so that the other steps of the job, such as the install scripts of your package manager, never see them. GitHub masks the value of every secret it hands a step.
 
 ```yaml
-      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+      - uses: sluiceway/sluiceway@v0
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         with:

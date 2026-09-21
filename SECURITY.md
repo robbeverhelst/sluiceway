@@ -18,7 +18,7 @@ We aim to answer within 7 days. Once a fix is released, the advisory is publishe
 
 ## Supported versions
 
-There is no release yet. After the first release, fixes go into the latest release of the current major version.
+Fixes go into the latest release of the current major version, which is 0.x (`v0`) until 1.0.0. The [releases](https://github.com/sluiceway/sluiceway/releases) list every version.
 
 ## What counts
 

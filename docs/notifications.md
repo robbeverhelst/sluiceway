@@ -67,7 +67,7 @@ Every recipe is one more step in a job of the workflow in the [README](../README
 
 ```yaml
       - id: sluiceway
-        uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+        uses: sluiceway/sluiceway@v0
         with:
           mode: scan
 ```

@@ -12,7 +12,7 @@ Copy the file to `.github/workflows/deploy-dashboard.yml` on your default branch
 
 ## What to change
 
-- **The version of the action.** The examples pin the action to a placeholder of 40 zeros. There is no release yet, so put the newest commit of `main` in its place, all 40 characters. The README's [Pin a commit](../README.md#pin-a-commit) says where to find it.
+- **The version of the action.** The examples use `sluiceway/sluiceway@v0`, which follows every release from 0.1.0 until 1.0.0. To review every update yourself, pin a full commit SHA instead, as the README's [Pin a commit](../README.md#pin-a-commit) says.
 - **The branch.** The examples scan after a push to `main`. Use your default branch.
 - **The secret and variable names.** `PULUMI_READ_TOKEN`, `OP_PREVIEW_TOKEN`, `AWS_PREVIEW_ROLE` and the others are names the examples made up. Create them under the repo's settings, or rename them in the file.
 - **The environments.** The `apply` job of every example names the stack's environment, so that the credentials that change things can be secrets of a GitHub Environment ([security](security.md)). The environment of a stack is `sluiceway` unless [`sluiceway.yaml`](configuration.md#stacksenvironment) gives it another. Where your plan has no environments, remove the `environment:` block and keep those credentials as repository secrets.

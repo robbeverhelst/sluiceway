@@ -8,7 +8,7 @@
 Sluiceway keeps one GitHub issue that shows which infrastructure stacks have changes waiting, and deploys a stack when you tick its box.
 
 > [!IMPORTANT]
-> **Sluiceway is in beta.** It works end to end, but there is no release yet, so you [pin a commit](#pin-a-commit). Please report every rough edge as an [issue](https://github.com/sluiceway/sluiceway/issues/new). The [onboarding log](docs/onboarding-log.md) lists the ones found so far.
+> **Sluiceway is in beta.** It works end to end and is released as [0.1.0](https://github.com/sluiceway/sluiceway/releases/tag/v0.1.0). Use `sluiceway/sluiceway@v0`, or [pin a commit](#pin-a-commit) if you want to review every update. Please report every rough edge as an [issue](https://github.com/sluiceway/sluiceway/issues/new). The [onboarding log](docs/onboarding-log.md) lists the ones found so far.
 
 ## What it looks like
 
@@ -127,13 +127,13 @@ What new users ran into, so you do not have to:
 
 ### Pin a commit
 
-There is no release yet. Every example here says `sluiceway/sluiceway@0000000000000000000000000000000000000000`. Put the newest commit of this repository's `main` branch in its place, all 40 characters. Find it on the [commits page](https://github.com/sluiceway/sluiceway/commits/main), or run:
+Every example here says `sluiceway/sluiceway@v0`. `v0` moves with every release until 1.0.0, so your workflow always runs the newest 0.x release. To review every update before it runs, pin the full commit SHA of a release instead, with its version as a comment:
 
-```sh
-git ls-remote https://github.com/sluiceway/sluiceway refs/heads/main
+```yaml
+      - uses: sluiceway/sluiceway@11fca353b02b727c8d2a5bd6545cb8cb22c54b03 # v0.1.0
 ```
 
-A branch such as `@main` is not enough: the scan works, but the header picture stays broken. The first release, 0.1.0, is milestone M3 of the [build plan](docs/build-plan.md). Watch the releases of this repository to hear when it is out.
+The [releases](https://github.com/sluiceway/sluiceway/releases) page lists every version. Dependabot and Renovate can raise a pull request when a new one is out. A branch such as `@main` runs code that is not released yet.
 
 ## What it promises
 
@@ -145,7 +145,6 @@ A branch such as `@main` is not enough: the scan works, but the header picture s
 ## What it does not do yet
 
 - **Pulumi only.** OpenTofu and Terraform can follow.
-- **No release.** Pin a commit until 0.1.0.
 - **Only preview and deploy.** Destroying a stack, a refresh and repairing state stay with your own tooling.
 - **A change to outputs alone is not shown**, and deploys from somewhere else are not detected. [Limits](#limits) says what that means for you.
 
@@ -193,7 +192,7 @@ One action, five modes, chosen with the `mode` input.
 
 Four steps. The first one needs no credentials and changes nothing, so you learn whether Sluiceway understands your repo before anything can deploy.
 
-The examples pin the action to a placeholder of 40 zeros. Put the newest commit of `main` in its place, as [Pin a commit](#pin-a-commit) says.
+The examples use the action at `@v0`. [Pin a commit](#pin-a-commit) says how to pin a release by its commit SHA instead.
 
 ### What goes where
 
@@ -226,7 +225,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+      - uses: sluiceway/sluiceway@v0
         with:
           mode: check
 ```
@@ -280,7 +279,7 @@ jobs:
       # Load your credentials and your state backend settings into the job
       # environment here. Sluiceway passes the environment to the tool and
       # never looks inside. Whatever loads a secret must also mask it.
-      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+      - uses: sluiceway/sluiceway@v0
         with:
           mode: scan
 
@@ -294,7 +293,7 @@ jobs:
       - uses: actions/checkout@v7
       # No tool and no credentials in this job. It never runs the tool.
       - id: resolve
-        uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+        uses: sluiceway/sluiceway@v0
         with:
           mode: resolve
 
@@ -316,7 +315,7 @@ jobs:
           pulumi-version: ^3.229.0
       # Same install and credential steps as in the scan job. These
       # credentials must be able to change things.
-      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+      - uses: sluiceway/sluiceway@v0
         with:
           mode: apply
           deployment-id: ${{ matrix.deployment }}
@@ -327,7 +326,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+      - uses: sluiceway/sluiceway@v0
         with:
           mode: settle
 ```
@@ -346,7 +345,7 @@ What the parts are for:
 - **`!cancelled()` on `apply`** lets the deploys that `resolve` started go ahead when `resolve` itself ended red, for example because one of several ticks could not be verified or the dashboard could not be written. Without a status check in its `if:`, GitHub skips a job whose `needs` failed. Every entry in `matrix` is a record that `resolve` created after it checked the ticker, so nothing else can get through here.
 - **`settle`** gives a deploy a result when its job was cancelled or rejected, so a row never stays "deploying" for ever. It touches only the deployment records of its own run. When it ended one it starts a full scan, which writes the row again with the failure line, so it needs `actions: write` as well.
 - **A deploy has no time limit of Sluiceway's.** Set `timeout-minutes` on the `apply` job.
-- **The pinned commit** stays until you change it. Until the first release that is the only way to run Sluiceway. From 0.1.0 on, `@v0` becomes a moving tag that follows every release until 1.0.0, and a commit SHA stays the choice if you want to review every update.
+- **`@v0`** follows every release from 0.1.0 until 1.0.0. A commit SHA stays the choice if you want to review every update ([Pin a commit](#pin-a-commit)).
 
 Self-hosted runners work the same way: change `runs-on` for `scan` and `apply`. `resolve` and `settle` hold no infrastructure secrets, so they can stay on hosted runners.
 
@@ -438,7 +437,7 @@ jobs:
       # Load your credentials and your state backend settings into the job
       # environment here. Credentials that can only read are enough. Whatever
       # loads a secret must also mask it.
-      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+      - uses: sluiceway/sluiceway@v0
         with:
           mode: scan
 ```
@@ -453,7 +452,7 @@ dashboard:
 What this does and does not do:
 
 - **Nothing can be deployed.** The workflow has no `resolve` and no `apply` job, and it does not listen to issue edits. With `dashboard.readOnly: true` the dashboard shows that: pending rows have no box, there is no rescan box, and a line under the Pending heading says the dashboard is read only. Without it the rows get boxes that do nothing, and a tick sits there until the next scan clears it. A scan only ever asks the tool for a preview. The token can read the code, write issues, and read and write deployment records, and nothing else. A scan reads the deployment records, which is where Sluiceway keeps who deployed what and when, and with no `resolve` job there are none. `actions: read` lets it see whether a workflow run is over, and whether a run that an issue edit started is still on its way. `pull-requests: read` lets a row name the pull requests that made it pending.
-- **The header image only shows from a release tag or a commit SHA.** The images are served from the exact ref of the running action, never from one that can move, so that a picture never changes behind a dashboard that was already written. Started from a branch such as `@main`, Sluiceway falls back to the release tag of its own version, and before the first release that tag does not exist. Started from a copy inside your own repo (`uses: ./`), it names a commit that this repository does not have. In both cases the scan works and the picture is broken. `dashboard.personality: false` in `sluiceway.yaml` takes the picture out.
+- **The header image is served from an exact release tag or commit SHA.** Never from one that can move, so that a picture never changes behind a dashboard that was already written. Started from `@v0` or a branch, Sluiceway names the release tag of its own version, such as `v0.1.0`. Started from a copy inside your own repo (`uses: ./`), it names a commit that this repository does not have, and the picture is broken while the scan still works. `dashboard.personality: false` in `sluiceway.yaml` takes the picture out.
 - **A push gives a narrowed scan**: only the stacks that claim a changed file are previewed, and every other row stays as it is. The schedule and "Run workflow" give a full scan. The first scan is always full.
 
 To turn it into the whole workflow later, replace the file with the one of step 2, change `actions: read` to `actions: write`, and take `readOnly: true` out of `sluiceway.yaml`. The change to `sluiceway.yaml` makes the next push a full scan, and every pending row gets its box back.

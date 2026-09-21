@@ -94,12 +94,14 @@ describe("the README", () => {
   });
 
   // The YAML blocks that are not a workflow or a part of one are sluiceway.yaml.
-  // The setup's file and, since slice 2.17, the read-only trial's.
+  // The setup's file and, since slice 2.17, the read-only trial's. A list is a
+  // workflow step, such as the pinned step of "Pin a commit".
   test("shows sluiceway.yaml files that all load", () => {
     const configs = fences(read("README.md"))
       .filter((fence) => fence.language === "yaml")
       .filter((fence) => {
         const parsed = Bun.YAML.parse(fence.text) as Record<string, unknown>;
+        if (Array.isArray(parsed)) return false;
         return !["jobs", "on", "environment"].some((key) => key in parsed);
       });
     expect(configs.length).toBe(2);

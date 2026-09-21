@@ -84,9 +84,10 @@ describe("the workflows in the docs", () => {
     expect(wrong).toEqual([]);
   });
 
-  test("the action is pinned to v0 or to a full commit SHA", () => {
+  // Build plan, section 8: 0.1.0 is out, and examples say @v0 until 1.0.0.
+  test("the action is used at v0", () => {
     const wrong = steps
-      .filter(({ step }) => !/^sluiceway\/sluiceway@(v0|[0-9a-f]{40})$/.test(step.uses ?? ""))
+      .filter(({ step }) => step.uses !== "sluiceway/sluiceway@v0")
       .map(({ where, step }) => `${where}: ${step.uses}`);
     expect(wrong).toEqual([]);
   });
@@ -244,11 +245,11 @@ describe("every user doc", () => {
     expect(read(path).match(/\.github\/workflows\/sluiceway\.ya?ml/)?.[0]).toBeUndefined();
   });
 
-  // The first release is 0.1.0 (build plan, section 8). A page that shows @v0
-  // says when that tag starts to work.
-  test.each(USER_DOCS)("that shows @v0 says it arrives with 0.1.0: %s", (path) => {
+  // @v0 moves with every release (build plan, section 8). A page that shows it
+  // leads a reader who wants to review every update to the pinned commit.
+  test.each(USER_DOCS)("that shows @v0 links to Pin a commit: %s", (path) => {
     const text = read(path);
-    if (text.includes("sluiceway/sluiceway@v0")) expect(text.includes("0.1.0")).toBe(true);
+    if (text.includes("sluiceway/sluiceway@v0")) expect(text.includes("#pin-a-commit")).toBe(true);
   });
 
   test.each(USER_DOCS)("has no em-dash: %s", (path) => {

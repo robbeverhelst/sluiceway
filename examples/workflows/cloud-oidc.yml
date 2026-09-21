@@ -3,9 +3,8 @@
 # docs/credentials.md says what changes for other clouds. Copy it to
 # .github/workflows/deploy-dashboard.yml on the default branch.
 #
-# There is no release yet. Replace the 40 zeros after `sluiceway/sluiceway@`
-# with the newest commit of main, all 40 characters:
-#   git ls-remote https://github.com/sluiceway/sluiceway refs/heads/main
+# `@v0` follows every release until 1.0.0. To review every update yourself,
+# pin a full commit SHA instead, as the README's "Pin a commit" says.
 name: deploy-dashboard
 
 on:
@@ -48,7 +47,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_PREVIEW_ROLE }}
           aws-region: ${{ vars.AWS_REGION }}
-      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+      - uses: sluiceway/sluiceway@v0
         env:
           PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
@@ -64,7 +63,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: resolve
-        uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+        uses: sluiceway/sluiceway@v0
         with:
           mode: resolve
 
@@ -101,7 +100,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
           aws-region: ${{ vars.AWS_REGION }}
-      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+      - uses: sluiceway/sluiceway@v0
         env:
           PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
@@ -115,6 +114,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+      - uses: sluiceway/sluiceway@v0
         with:
           mode: settle
