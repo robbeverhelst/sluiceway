@@ -1,6 +1,8 @@
 # The issue body is a cache of row blocks, written without a lock
 
 > Amended by 0011: only a full scan regenerates every row. A narrowed scan swaps its own row blocks, as `resolve`, `apply` and `settle` do.
+>
+> Amended by 0035 (settled while building slice 2.6): `settle` swaps no row. It has no diff to render one from (0014), so it starts a full scan, which writes the row.
 
 Four modes write the dashboard body, but only `scan` has fresh previews for every stack, and GitHub has neither a partial update nor a compare-and-swap for issue bodies. So `scan` regenerates the whole body, while `resolve`, `apply` and `settle` fetch the live body, replace only the row blocks of their own stacks, and carry every other row through byte for byte. Re-previewing everything in every writer was rejected as far too slow for a tick. Persisting the last scan result as an artifact was rejected because it adds a second store with its own expiry that goes stale the moment an apply finishes.
 

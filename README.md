@@ -5,7 +5,7 @@ Sluiceway keeps one GitHub issue, the dashboard, that shows which infrastructure
 It is a GitHub Action and nothing else. There is no server, no database and no hosted part. Previews and deploys run in your own runners.
 
 > [!WARNING]
-> Sluiceway is not released yet, and only the first half works. `scan` works: it previews your stacks and writes the dashboard. `resolve` works too: it checks who ticked and records the deploy. `apply` and `settle` still fail with "not implemented yet", so a ticked box deploys nothing. You can already run the scan read only, pinned to a commit: see [Try the scan, read only](#try-the-scan-read-only). Watch the releases to hear when the rest lands.
+> Sluiceway is not released yet, and only the first half works. `scan` works: it previews your stacks and writes the dashboard. `resolve` works too: it checks who ticked and records the deploy, and `settle` gives a result to a deploy that never reported one. `apply` still fails with "not implemented yet", so a ticked box deploys nothing. You can already run the scan read only, pinned to a commit: see [Try the scan, read only](#try-the-scan-read-only). Watch the releases to hear when the rest lands.
 
 ## How it works
 
@@ -202,14 +202,14 @@ jobs:
 
 What the parts are for:
 
-- **`actions: write`** lets the rescan box start a scan, and lets a scan see whether a run is still on its way. `id-token: write` is not in the block. Add it only to the jobs that run the tool, and only if your credential step uses OIDC.
+- **`actions: write`** lets the rescan box and `settle` start a scan, and lets a scan see whether a run is still on its way. `id-token: write` is not in the block. Add it only to the jobs that run the tool, and only if your credential step uses OIDC.
 - **`sluiceway-scan`** makes scans run one at a time. A running scan finishes, and of the waiting ones only the newest runs.
 - **`sluiceway-resolve`** does the same for ticks. Any `resolve` run handles every ticked box it finds, so a replaced run loses nothing. Replaced runs show as cancelled in the Actions list. That is normal.
 - **`queue: max`** on `apply` keeps a waiting deploy from being cancelled by a newer one. Never add `cancel-in-progress` to this job.
 - **The `if:` on `resolve`** keeps an edit of an ordinary issue from starting a runner. If you change `dashboard.label`, change it here too.
 - **`resolve` hands `apply` a deployment record.** It creates one record per ticked stack in GitHub's Deployments list and puts `{ stack, environment, deployment }` in `matrix`. `apply` deploys only while that record is still open. "Re-run failed jobs" therefore deploys nothing. To try again, tick the box again.
 - **`!cancelled()` on `apply`** lets the deploys that `resolve` started go ahead when `resolve` itself ended red, for example because one of several ticks could not be verified or the dashboard could not be written. Without a status check in its `if:`, GitHub skips a job whose `needs` failed. Every entry in `matrix` is a record that `resolve` created after it checked the ticker, so nothing else can get through here.
-- **`settle`** gives a deploy a result when its job was cancelled or rejected, so a row never stays "deploying" for ever.
+- **`settle`** gives a deploy a result when its job was cancelled or rejected, so a row never stays "deploying" for ever. It touches only the deployment records of its own run. When it ended one it starts a full scan, which writes the row again with the failure line, so it needs `actions: write` as well.
 - **`v0`** is the moving tag until 1.0.0. Pin a commit SHA instead if you want to review every update.
 
 Self-hosted runners work the same way: change `runs-on` for `scan` and `apply`. They need runner version 2.328.0 or newer, and ARM32 is not supported. `resolve` and `settle` hold no infrastructure secrets, so they can stay on hosted runners.
