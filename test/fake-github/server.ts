@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import type { Issue } from "../../src/github/port.ts";
 import { type FakeGitHub, FakeGitHubError } from "./fake-github.ts";
 import { deploymentRoutes, deploymentsQuery, isDeploymentsQuery } from "./server-deployments.ts";
+import { runRoutes } from "./server-runs.ts";
 
 // A small HTTP server around the fake, for the e2e workflow (build plan,
 // section 5). It speaks the part of GitHub's REST API that the Octokit port
@@ -145,6 +146,7 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
       },
     ],
     ...deploymentRoutes(fake, REPO),
+    ...runRoutes(fake, REPO),
     [
       "GET",
       new RegExp(`^${REPO}/collaborators/([^/]+)/permission$`),

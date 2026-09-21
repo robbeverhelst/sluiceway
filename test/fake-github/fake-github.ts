@@ -10,6 +10,7 @@ import type {
   HistoryEntry,
   Issue,
   IssueAuthor,
+  IssuesRun,
   NewDeployment,
   NewDeploymentStatus,
   NewIssue,
@@ -72,6 +73,8 @@ export class FakeGitHub implements GitHubPort {
   readonly #failingLookups = new Map<string, number>();
   readonly #updateLimitBytes: number;
   readonly #deployments = new FakeDeployments(() => this.#now());
+  // The runs an issue edit started, by workflow file name, oldest first.
+  readonly #issuesRuns = new Map<string, IssuesRun[]>();
   #nextNumber = 1;
   // The fake's clock. It moves one second each time it is read, so two things
   // never happen at the same time and every run gives the same times.
@@ -140,6 +143,18 @@ export class FakeGitHub implements GitHubPort {
   // one GitHub does not have.
   seedRun(runId: string, run: WorkflowRun): void {
     this.#deployments.seedRun(runId, run);
+  }
+
+  // A run of a workflow that an issue edit started. A run seeded later is
+  // newer. Seeding a run again changes it in place, as when it ends. The fake
+  // has no events yet, so no edit starts a run by itself.
+  seedIssuesRun(workflow: string, run: IssuesRun): void {
+    const runs = this.#issuesRuns.get(workflow) ?? [];
+    const known = runs.find(({ id }) => id === run.id);
+    if (known) known.completed = run.completed;
+    else runs.push({ ...run });
+    this.#issuesRuns.set(workflow, runs);
+    this.seedRun(run.id, { completed: run.completed });
   }
 
   deployment(id: number): DeploymentRecord {
@@ -309,6 +324,15 @@ export class FakeGitHub implements GitHubPort {
   async getWorkflowRun(runId: string): Promise<WorkflowRun | undefined> {
     this.#count("getWorkflowRun");
     return this.#deployments.run(runId);
+  }
+
+  async listIssuesRuns(workflow: string): Promise<IssuesRun[]> {
+    this.#count("listIssuesRuns");
+    const runs = this.#issuesRuns.get(workflow) ?? [];
+    return runs
+      .slice(-PAGE_SIZE)
+      .reverse()
+      .map((run) => ({ ...run }));
   }
 
   async pinIssue(nodeId: string): Promise<void> {

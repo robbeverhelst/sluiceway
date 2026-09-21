@@ -1,5 +1,6 @@
 import type { getOctokit } from "@actions/github";
 import { deploymentCalls } from "./octokit-deployments.ts";
+import { runCalls } from "./octokit-runs.ts";
 import type { GitHubPort, HistoryEntry, Issue } from "./port.ts";
 
 type Octokit = ReturnType<typeof getOctokit>;
@@ -178,6 +179,7 @@ export function createOctokitPort(octokit: Octokit, repo: Repo): GitHubPort {
     },
 
     ...deploymentCalls(octokit, repo),
+    ...runCalls(octokit, repo),
 
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });

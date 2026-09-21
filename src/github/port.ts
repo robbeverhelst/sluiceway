@@ -4,9 +4,11 @@
 // 0017, except listIssues, which is one request per page of 100.
 //
 // It holds the calls the dashboard, the narrowed scan, the tick rule, the walk
-// through the edit history and the deployment records need.
+// through the edit history, the deployment records and the orphan tick sweep
+// need.
 
 import type { HistoryEntry, HistoryPage } from "../core/edit-history.ts";
+import type { IssuesRun } from "../core/orphan-tick.ts";
 import type { Comparison } from "../core/scan-plan.ts";
 import type { Permission } from "../core/tick-rule.ts";
 import type {
@@ -20,7 +22,7 @@ import type {
 
 export type * from "./deployment-calls.ts";
 
-export type { Comparison, HistoryEntry, HistoryPage, Permission };
+export type { Comparison, HistoryEntry, HistoryPage, IssuesRun, Permission };
 
 // An issue's body together with one page of its edit history.
 export interface EditHistory extends HistoryPage {
@@ -119,6 +121,12 @@ export interface GitHubPort {
 
   // Needs `actions: read`. Nothing for a run GitHub does not have.
   getWorkflowRun(runId: string): Promise<WorkflowRun | undefined>;
+
+  // The newest 100 runs of one workflow that an `issues` event started,
+  // newest first (record 0025). `workflow` is the file name of the workflow,
+  // such as `sluiceway.yml`. Needs `actions: read`. Only a scan that meets a
+  // tick makes this call.
+  listIssuesRuns(workflow: string): Promise<IssuesRun[]>;
 
   // Works with the workflow token and issues: write (issue 17). Fails when
   // the repo already has three pinned issues.
