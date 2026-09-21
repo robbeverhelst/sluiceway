@@ -10,6 +10,7 @@ type ActionMetadata = {
   inputs: Record<string, { description: string; required?: boolean; default?: string }>;
   outputs: Record<string, { description: string }>;
   runs: { using: string; main: string };
+  branding?: { icon?: string; color?: string };
 };
 
 const action = Bun.YAML.parse(await Bun.file(resolve(ROOT, "action.yml")).text()) as ActionMetadata;
@@ -93,5 +94,28 @@ describe("action.yml", () => {
     expect(action.inputs["deployment-id"]?.required).toBe(false);
     expect(action.inputs["deployment-id"]?.default).toBeUndefined();
     expect(action.inputs["deployment-id"]?.description).toContain("apply");
+  });
+
+  // The Marketplace shows an action with its icon on its colour, and GitHub
+  // refuses a name outside its own lists. The icon is a Feather icon from the
+  // list GitHub allows, the colour one of the nine it names.
+  test("has a branding block that GitHub allows: the droplet on blue", async () => {
+    const icons = (await Bun.file(resolve(ROOT, "test/fixtures/github/action-icons.txt")).text())
+      .split("\n")
+      .filter((line) => line !== "" && !line.startsWith("#"));
+    const colors = [
+      "white",
+      "black",
+      "yellow",
+      "blue",
+      "green",
+      "orange",
+      "red",
+      "purple",
+      "gray-dark",
+    ];
+    expect(icons).toContain(action.branding?.icon ?? "");
+    expect(colors).toContain(action.branding?.color ?? "");
+    expect(action.branding).toEqual({ icon: "droplet", color: "blue" });
   });
 });

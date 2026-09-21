@@ -2,6 +2,12 @@ name: Sluiceway
 description: One GitHub issue that shows which infrastructure stacks have changes waiting, and deploys a stack when someone ticks its box.
 author: Sluiceway
 
+# How the Marketplace shows the action: a Feather icon on one of GitHub's
+# colours. Water through an open gate.
+branding:
+  icon: droplet
+  color: blue
+
 inputs:
   mode:
     description: >-
