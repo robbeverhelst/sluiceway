@@ -23,7 +23,7 @@ Pulumi is the first supported tool. The adapter interface is built so that OpenT
 
 ## Modes
 
-One action, four modes, chosen with the `mode` input.
+One action, five modes, chosen with the `mode` input.
 
 | Mode | What it does | Runs the infrastructure tool |
 |---|---|---|
@@ -31,15 +31,16 @@ One action, four modes, chosen with the `mode` input.
 | `resolve` | Reacts to a tick: checks who ticked, records the deploy and hands the stack to `apply`. | No |
 | `apply` | Previews the stack again and deploys it if nothing moved since the tick. | Yes |
 | `settle` | Gives a deploy a result when its workflow run ended without reporting one. | No |
+| `check` | Reads the repo's files and says whether the setup is valid. It needs no credentials, no tool and no GitHub API, so it is safe on any pull request. | No |
 
 ## Inputs
 
 | Input | Default | What it is |
 |---|---|---|
-| `mode` | required | One of `scan`, `resolve`, `apply`, `settle`. |
+| `mode` | required | One of `scan`, `resolve`, `apply`, `settle`, `check`. |
 | `concurrency` | `4` | How many previews a scan runs at the same time. |
 | `preview-timeout` | `10` | Time limit for one preview, in minutes. |
-| `github-token` | the workflow token | Leave it at the default. Sluiceway always acts as the workflow's own `GITHUB_TOKEN`. A GitHub App token or a personal access token is not supported. |
+| `github-token` | the workflow token | Leave it at the default. Sluiceway always acts as the workflow's own `GITHUB_TOKEN`. A GitHub App token or a personal access token is not supported. `check` never uses it. |
 | `deployment-id` | required in `apply` | The deployment record to deploy. It comes from the `matrix` output of `resolve`. Not in `action.yml` yet. |
 
 ## Outputs
@@ -47,6 +48,41 @@ One action, four modes, chosen with the `mode` input.
 | Output | Set by | What it is |
 |---|---|---|
 | `matrix` | `resolve` | A JSON list with one `{ stack, environment, deployment }` entry per deploy that was started, or `[]`. |
+
+## Check your setup first
+
+Start here. The `check` mode tells you, in a pull request, whether Sluiceway will understand your repo, before any workflow that previews or deploys is merged. It reads files and nothing else: no credentials, no infrastructure tool, no GitHub API, no write. It needs `contents: read`, so it is safe on `pull_request`, also from forks. Put this in `.github/workflows/sluiceway-check.yml`:
+
+```yaml
+name: sluiceway-check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Replace the zeros with a full commit SHA of sluiceway/sluiceway.
+      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+        with:
+          mode: check
+```
+
+The job log and the summary of the run say:
+
+- whether `sluiceway.yaml` is valid, with the same messages a scan gives,
+- every stack that discovery found, with its environment, its tick rule and its inputs,
+- which stacks each `ignore` glob leaves out. A glob that leaves out nothing is a warning. `ignore` matches the stack id, so `apps/web` ignores nothing, and the warning names the glob that would work (`apps/web:*`),
+- the files that no stack claims, grouped by directory. A push that changes one of them previews every stack. A ready-to-paste `scan.unrelated` block covers the ones that look like docs and tooling. Sluiceway never decides this for you, so leave out any file one of your programs reads.
+
+The job is red only when the config is not valid or discovery fails. A check cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan. The check reads the files of the checkout, so run it right after `actions/checkout`, before anything writes files into the workspace.
 
 ## Try the scan, read only
 

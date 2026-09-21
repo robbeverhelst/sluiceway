@@ -18,3 +18,13 @@ It was weighed against "docs only" (a checklist a person follows by eye). Reject
 - It can never say that a preview will work. A stack that does not exist in the backend, a missing credential or a private registry only show in a scan. The summary says so in one sentence.
 - The mode list of 0003 grows to five. `check` takes no `github-token`.
 - Everything it prints is names Sluiceway derived from files in the repo. Nothing from the tool, no values (0021, 0022).
+
+## Settled while building (slice 2.12)
+
+- The check loads config, runs discovery and lays config over the stacks with the code a scan uses, in the same order, so its messages are a scan's messages and its first error is the one a scan would stop at.
+- The files of the repo are the files of the checkout, walked from the root without entering `.git` or `node_modules` and without following a link to a directory. Asking git would mean a process. The README says to run the check right after the checkout.
+- Unclaimed files are grouped by their directory at the top of the repo, the root first. The summary names up to 20 files per directory and the job log names all of them.
+- The globs offered for `scan.unrelated` come from a fixed list: `**/*.md`, `docs/**`, `.github/**`, `LICENSE*`, `**/.gitignore`, `**/.gitattributes` and `.editorconfig`. A glob is offered only when it covers an unclaimed file. The block keeps the globs the config already has, so pasting it loses nothing. Lockfiles, package manifests and `sluiceway.yaml` are never offered: they are the shared files a full scan exists for.
+- An `ignore` glob that leaves out nothing is a warning annotation. When the glob matches the directory of a stack, the warning offers the glob with `:*` added, and only when that glob does match the stack's id.
+- The job goes red on a config error or a discovery error only, and the summary lists the problems first. Everything else is a line in the log, a group, a warning or a line in the summary.
+- The check job is handed discovery and the job log, and nothing else. A test walks every import it can reach and fails when that includes the process runner, anything under `src/github/` but the job log, or a package besides `@actions/core`, `node:fs`, `node:path`, `picomatch`, `yaml` and `zod`. A second test runs the job with a `fetch` that fails on any call.

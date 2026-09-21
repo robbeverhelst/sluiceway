@@ -48,6 +48,10 @@ _Avoid_: Affects, owns, touches, depends on
 What a scan decides before it previews anything: a full scan with the reason for it, or a narrowed scan with the stacks to preview and why each one. A narrowed scan that cannot trust its comparison falls back to a full scan.
 _Avoid_: Strategy, scan mode, selection
 
+**Check**:
+A pass over the repo's files and nothing else that says whether Sluiceway understands the setup: the config, the stacks discovery finds, what `ignore` leaves out and which files no stack claims. It holds no credentials and never starts the tool, so it can never say that a preview will work.
+_Avoid_: Validate, lint, dry run, preflight
+
 ### Diffs
 
 **Diff**:
