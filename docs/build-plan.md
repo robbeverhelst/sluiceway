@@ -202,7 +202,7 @@ Four seams keep everything testable without a network or a tool:
 | Snapshot | Every kind of row, the body in every header state, redact on and off, personality on and off, a 58 stack body, a 100 stack body over budget, the summary | `test/render/` |
 | Adapter | The schema and the folding, against recorded tool output only | `test/adapters/pulumi/` |
 | Mode | Each mode against the fake GitHub and a replayed tool | `test/modes/` |
-| E2E | The committed bundle on a real runner, with the real CLI, the example project and the fake GitHub server | `.github/workflows/e2e.yml` |
+| E2E | The committed bundle on a real runner, with the real CLI, the example project and the fake GitHub server. `scripts/e2e.ts` starts the bundle itself, with the inputs and the `GITHUB_*` variables a runner would build from `action.yml`, because a runner lets no step replace `GITHUB_API_URL`. The smoke job of `ci.yml` keeps a real `uses:` step, which stops at a config error before it reaches GitHub | `.github/workflows/e2e.yml`, `bun run e2e` |
 | Live | A short manual pass in a scratch repo on real GitHub before a release | `docs/acceptance.md`, part 1 |
 
 ### The example project

@@ -5,7 +5,7 @@ Sluiceway keeps one GitHub issue, the dashboard, that shows which infrastructure
 It is a GitHub Action and nothing else. There is no server, no database and no hosted part. Previews and deploys run in your own runners.
 
 > [!WARNING]
-> Sluiceway is not usable yet. This repository holds the project scaffold. Every mode fails with "not implemented yet". Watch the releases to hear when that changes.
+> Sluiceway is not released yet, and only the first half works. `scan` works: it previews your stacks and writes the dashboard. `resolve`, `apply` and `settle` still fail with "not implemented yet", so a ticked box deploys nothing. You can already run the scan read only, pinned to a commit: see [Try the scan, read only](#try-the-scan-read-only). Watch the releases to hear when the rest lands.
 
 ## How it works
 
@@ -48,9 +48,67 @@ One action, four modes, chosen with the `mode` input.
 |---|---|---|
 | `matrix` | `resolve` | A JSON list with one `{ stack, environment, deployment }` entry per deploy that was started, or `[]`. Not in `action.yml` yet. |
 
+## Try the scan, read only
+
+Until the first release you can run the scan alone. Put this in `.github/workflows/sluiceway.yml` on the default branch. It is the workflow under [Usage](#usage) with everything that can deploy taken out.
+
+```yaml
+name: sluiceway
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+# This block is everything Sluiceway can do in your repo.
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    concurrency: sluiceway-scan
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pulumi/actions@v7 # without a command this only installs the CLI
+        with:
+          pulumi-version: ^3.229.0
+      # Install what your programs need, once, for example: npm ci
+      # Load your credentials and your state backend settings into the job
+      # environment here. Credentials that can only read are enough. Whatever
+      # loads a secret must also mask it.
+      # Replace the zeros with a full commit SHA of sluiceway/sluiceway.
+      - uses: sluiceway/sluiceway@0000000000000000000000000000000000000000
+        with:
+          mode: scan
+```
+
+What this does and does not do:
+
+- **Nothing can be deployed.** The workflow has no `resolve` and no `apply` job, and it does not listen to issue edits, so a ticked box starts nothing. A scan only ever asks the tool for a preview. The token can read the code and write issues, and nothing else.
+- **Pin the action to a full commit SHA**, all 40 characters, of a commit in this repository. No tag exists before the first release, so `@v0` does not resolve yet.
+- **The header image only shows from a release tag or a commit SHA.** The images are served from the exact ref of the running action, never from one that can move, so that a picture never changes behind a dashboard that was already written. Started from a branch such as `@main`, Sluiceway falls back to the release tag of its own version, and before the first release that tag does not exist. Started from a copy inside your own repo (`uses: ./`), it names a commit that this repository does not have. In both cases the scan works and the picture is broken. `dashboard.personality: false` in `sluiceway.yaml` takes the picture out.
+- **A push gives a narrowed scan**: only the stacks that claim a changed file are previewed, and every other row stays as it is. The schedule and "Run workflow" give a full scan. The first scan is always full.
+
+The job log of a scan says what it did, in fixed lines:
+
+| Line | What it tells you |
+|---|---|
+| `This is a full scan: ...` | Every stack is previewed, and why. After a push it reads `This is a full scan. A push gives a narrowed scan, and this one fell back to a full scan: ...` with the reason. When the reason is a changed file that no stack claims, the group `Changed files that no stack claims` lists them. |
+| `This is a narrowed scan: it previews 2 of 58 stacks and keeps the rows of the other 56 as they are.` | Only those stacks are previewed. One line per stack follows: `<stack id> is previewed: it claims <file>.` |
+| `Previewing 58 stacks with a pool of 4 and a time limit of 10 minutes for each preview.` | The `concurrency` and `preview-timeout` this scan ran with. |
+| `Previewed <stack id> in 8.3 s: pending` | How long one preview took, and how it ended. One line per preview, in the order they finish. |
+| `Previewed 58 stacks in 412.6 s with a pool of 4. Added up, the previews took 1530.2 s. The slowest was <stack id> with 45.1 s.` | The total. The total against the sum shows what the pool gains. The slowest preview is what `preview-timeout` has to clear. |
+| `Wrote the dashboard: <url> (41,210 of 65,536 characters).` | Where the dashboard is, and how full the issue body is. `Carried 56 rows through as they were` follows on a narrowed scan. |
+
+Under those lines there is one group per previewed stack, titled with the stack id. It holds the whole diff and everything the tool printed. The tool's own words never leave the job log.
+
 ## Usage
 
-The modes do not work yet (see the warning at the top). This is the workflow they are being built for. Put it in `.github/workflows/sluiceway.yml` on the default branch.
+Only `scan` works yet (see the warning at the top). This is the whole workflow, the one the other modes are being built for. It goes in `.github/workflows/sluiceway.yml` on the default branch. For what runs today, see [Try the scan, read only](#try-the-scan-read-only).
 
 ```yaml
 name: sluiceway

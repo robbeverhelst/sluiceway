@@ -31,6 +31,7 @@ bun install
 | `bun run build` | Bundles `src/main.ts` into `dist/index.js` for the Node runtime of GitHub Actions. |
 | `bun run check:dist` | Builds, then fails if `dist/` differs from what is committed. |
 | `bun run check` | All of the above, as CI runs them. |
+| `bun run e2e` | Scans a copy of `examples/pulumi-basic` with the committed bundle, the `pulumi` CLI on your PATH and the fake GitHub server: a full scan, then a narrowed one. `node` on your PATH has to be Node 24, because it stands in for the runner's own. The `e2e` workflow runs it on every pull request. |
 
 ## dist/ is committed
 
