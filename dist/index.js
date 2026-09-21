@@ -31846,15 +31846,9 @@ function keys(step, op) {
   if (op !== "update" && op !== "replace")
     return { changedKeys: [], replaceKeys: [] };
   const paths = step.detailedDiff ?? [];
-  const changed = paths.length > 0 ? paths.map(firstSegment) : step.diffReasons ?? [];
+  const changed = paths.length > 0 ? paths : step.diffReasons ?? [];
   const replaceKeys = op === "replace" ? sortedSet(step.replaceReasons ?? []) : [];
   return { changedKeys: sortedSet([...changed, ...replaceKeys]), replaceKeys };
-}
-function firstSegment(path) {
-  const quoted = /^\["((?:[^"\\]|\\.)*)"\]/.exec(path)?.[1];
-  if (quoted !== undefined)
-    return quoted.replace(/\\(.)/g, "$1");
-  return /^[^.[]+/.exec(path)?.[0] ?? path;
 }
 function sortedSet(names) {
   return [...new Set(names)].sort(byCodeUnit);
@@ -52082,18 +52076,39 @@ function codes(keys2) {
 function sortedKeys(keys2) {
   return [...new Set(keys2)].sort(byCodeUnit2);
 }
-function changeLine(change) {
+var ROW_PATH_LENGTH = 80;
+var ROW_PATHS_PER_CHANGE = 10;
+var HEAD_LENGTH = 24;
+function shortPath(path) {
+  const points = Array.from(path);
+  if (points.length <= ROW_PATH_LENGTH)
+    return path;
+  const first = /^(?:\["(?:[^"\\]|\\.)*"\]|[^.[]+)/.exec(path)?.[0] ?? "";
+  const head = Array.from(first).slice(0, HEAD_LENGTH);
+  const tail = points.slice(points.length - (ROW_PATH_LENGTH - head.length - 1));
+  const segment = tail.findIndex((point) => point === "." || point === "[");
+  const start = segment < 0 ? 0 : tail[segment] === "." ? segment + 1 : segment;
+  const end = start < tail.length ? tail.slice(start) : tail;
+  return `${head.join("")}…${end.join("")}`;
+}
+function changeLine(change, options = {}) {
   const word = [change.op === "none" ? undefined : change.op, change.tracking].filter((part) => part !== undefined).join(" + ");
   const cap = isDestroy(change) ? word.toUpperCase() : word;
   const forcing = sortedKeys(change.replaceKeys);
   const others = sortedKeys(change.changedKeys).filter((key) => !forcing.includes(key));
+  const capped = options.row === true && !isDestroy(change);
+  const listed = capped ? others.slice(0, ROW_PATHS_PER_CHANGE) : others;
+  const hidden = others.length - listed.length;
+  const show = (keys2) => codes(options.row ? keys2.map(shortPath) : keys2);
   const parts = [
     `<kbd>${cap}</kbd> <code>${escapeText(change.type)}</code> <b>${escapeText(change.name)}</b>`
   ];
   if (forcing.length > 0)
-    parts.push(`forced by ${codes(forcing)}`);
-  if (others.length > 0)
-    parts.push(`${forcing.length > 0 ? "also changes " : ""}${codes(others)}`);
+    parts.push(`forced by ${show(forcing)}`);
+  if (others.length > 0) {
+    const more = hidden > 0 ? `, and ${hidden} more` : "";
+    parts.push(`${forcing.length > 0 ? "also changes " : ""}${show(listed)}${more}`);
+  }
   return parts.join(" · ");
 }
 var ORPHAN_TICK_NOTE = ":information_source: a tick on this row was not picked up. Tick again to deploy.";
@@ -52140,7 +52155,7 @@ function pendingRow(row, options) {
     return lines;
   }
   for (const change of [...deletes, ...replaces])
-    lines.push(`:warning: ${changeLine(change)}`);
+    lines.push(`:warning: ${changeLine(change, { row: true })}`);
   if (folded.length > 0) {
     const inside = plural2(folded.length, destroys > 0 ? "other change" : "change");
     if (level >= 2) {
@@ -52148,7 +52163,7 @@ function pendingRow(row, options) {
     } else {
       lines.push(`<details><summary>${inside}</summary>`);
       for (const change of folded)
-        lines.push(`${changeLine(change)}<br>`);
+        lines.push(`${changeLine(change, { row: true })}<br>`);
       lines.push("</details>");
     }
   }
