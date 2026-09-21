@@ -52032,14 +52032,13 @@ function parseDashboard(body) {
   return { root: readRoot(lines[0] ?? ""), rows, rescanTicked };
 }
 
-// src/render/pending-level.ts
-function pendingLevel(rows) {
+// src/render/pending-crates.ts
+var MAX_CRATES = 12;
+function pendingCrates(rows) {
   const pending = rows.filter((row) => row.known && row.state === "pending").length;
   if (pending === 0)
     return;
-  if (pending <= 2)
-    return 1;
-  return pending <= 9 ? 2 : 3;
+  return pending > MAX_CRATES ? "more" : pending;
 }
 
 // src/render/time.ts
@@ -52246,13 +52245,17 @@ var ACTION_URL = `https://github.com/${ACTION_REPO}`;
 var ALT = {
   failing: "Sluiceway: something failed",
   deploying: "Sluiceway: deploying",
-  pending: "Sluiceway: changes are pending",
   "first-run": "Sluiceway: no stacks yet",
   "in-sync": "Sluiceway: everything is in sync"
 };
-var SIGNED_ALT = {
-  pending: "Sluiceway: changes are pending, some delete or replace resources",
-  deploying: "Sluiceway: deploying, some changes delete or replace resources"
+function pendingAlt(crates) {
+  if (crates === "more")
+    return `Sluiceway: more than ${MAX_CRATES} stacks are pending`;
+  return crates === 1 ? "Sluiceway: 1 stack is pending" : `Sluiceway: ${crates} stacks are pending`;
+}
+var SIGNED_FACT = {
+  pending: ", some delete or replace resources",
+  deploying: ", some changes delete or replace resources"
 };
 function byCodeUnit3(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -52269,11 +52272,12 @@ function rowBlock(row, options = {}) {
     throw new Error("A rendered row did not read back as a row block.");
   return block;
 }
-function picture(state, level, sign, actionRef2) {
-  const base = state === "pending" ? `pending-${level ?? 1}` : state;
+function picture(state, crates, sign, actionRef2) {
+  const base = state === "pending" ? `pending-${crates ?? 1}` : state;
   const signed = sign && (state === "pending" || state === "deploying");
   const name = signed ? `${base}-destroys` : base;
-  const alt = signed ? SIGNED_ALT[state] : ALT[state];
+  const plainAlt = state === "pending" ? pendingAlt(crates ?? 1) : ALT[state];
+  const alt = signed ? `${plainAlt}${SIGNED_FACT[state]}` : plainAlt;
   const file2 = (theme) => `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef2)}/assets/mascot/${name}-${theme}.svg`;
   return [
     '<p align="center">',
@@ -52356,7 +52360,7 @@ function renderBody(input2) {
   const counts2 = countsLine(known, input2.personality);
   const scan = scanLine(input2.root, input2.repoUrl);
   if (input2.personality)
-    out.push(picture(state, pendingLevel(rows), destroySign(rows), input2.actionRef).join(`
+    out.push(picture(state, pendingCrates(rows), destroySign(rows), input2.actionRef).join(`
 `), '<div align="center">', counts2, scan, "</div>");
   else
     out.push(counts2, scan);
