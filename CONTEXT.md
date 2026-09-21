@@ -214,6 +214,10 @@ _Avoid_: Error message, error text, tool error
 The page of a scan's workflow run where every stack's diff is shown, with far more room than the dashboard has. It shows the same kind of facts as a row and nothing more. Shortened and redacted rows link to it. On the rare scan that does not fit even there, it says so and points at the job log, which holds every diff in full. An `apply` writes one too, about its one stack: what went out, or why nothing did.
 _Avoid_: Full diff, report, native output
 
+**Result file**:
+A JSON file that a scan or an `apply` leaves in the job's temporary directory for a later step of the workflow, with what its summary holds and nothing more. Sluiceway never sends it anywhere: a step the user adds does, with its own secret.
+_Avoid_: Report, artifact, export, metrics
+
 **Size budget**:
 How large the dashboard body may get before rows are shortened. It exists because an issue body that is too large is dropped without an error.
 _Avoid_: Limit, cap, quota
