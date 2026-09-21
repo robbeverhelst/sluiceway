@@ -49,7 +49,7 @@ Collected here so nobody has to search the records. The record in the last colum
 
 | Name | Kind | Modes | Default | Meaning | Record |
 |---|---|---|---|---|---|
-| `mode` | input | all | required | `scan`, `resolve`, `apply` or `settle` | 0003 |
+| `mode` | input | all | required | `scan`, `resolve`, `apply`, `settle` or `check` | 0003, 0042 |
 | `concurrency` | input | `scan` | `4` | Size of the preview pool | 0012 |
 | `preview-timeout` | input | `scan`, `apply` | `10` | Time limit for one preview, whole minutes | 0012, 0035 |
 | `github-token` | input | all | the workflow token | Always the workflow's own `GITHUB_TOKEN` | 0017, 0035 |
@@ -283,6 +283,8 @@ Done when: ticking a box deploys exactly that stack and the dashboard returns to
 | 2.9 | E2E of the whole loop on the fake: scan, tick, `resolve`, `apply` with the real tool, `settle`. Plus a refused tick, a moved change and a re-run | all of M2 | The loop closes with the committed bundle | The example stack really deploys to the file backend and the next scan shows it in sync |
 | 2.10 | Docs: the README without its warning, the config reference, `docs/security.md` (the three setups of 0020), `docs/credentials.md` (the pattern of 0013, then recipes, and running next to your own tooling), what a tick promises (0008), the outputs limit (0036), and a line that says not to add `merge_group` to this workflow | 0013, 0014, 0016, 0020 | A stranger can set it up from the README alone | The README's workflow is parsed in a test and checked against `action.yml`: every input it uses exists |
 | 2.11 | Outputs and the result file for `scan` and `apply`, and `docs/notifications.md`: GitHub's Slack and Teams apps on deployments, recipes for a Slack step, a Telegram step, a generic webhook and a Pushgateway push, each quiet unless something is pending or failed | 0041, 0021, 0022 | A workflow can tell people and chart numbers without Sluiceway sending anything | Each output per mode, the JSON schema of the result file as a snapshot, the canary test extended to the result file, outputs on a failed scan |
+| 2.12 | `check` mode | 0042, 0006, 0010 | A setup can be validated in a pull request with no credentials and no tool | Every message of the config loader through the mode, discovery errors, a glob that matches nothing, the path-but-not-id hint, the unclaimed files list against a fixture repo, the ready-to-paste block, no network call and no child process (the process runner and the port are never constructed), the summary snapshot |
+| 2.13 | First-scan polish from the onboarding log: a failure reason of its own for a stack that does not exist in the backend, with the `ignore` glob that takes it off in the summary; the full scan line for a changed config file says that `sluiceway.yaml` changed instead of "no stack claims sluiceway.yaml" | 0022 (amended), 0010, onboarding log hurdles 9 and 14 | The first dashboard of a new user explains itself | The recorded `missing-stack` fixture on both tool versions maps to the new reason, any other non-zero exit stays "the tool exited with an error", the reason is a constant string, the log line for a config change, snapshots |
 
 ### M3: proof and the first release
 

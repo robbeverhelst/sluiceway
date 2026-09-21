@@ -15,3 +15,7 @@ The brief also asks to "mask anything that looks like a token in captured tool o
 - Sluiceway adds no masking of its own to the log and does not register masks. Secrets that the workflow loads are masked by the loading step, which is the user's (0013 and the secret manager findings). The docs repeat that rule: whatever loads secrets into the job must register them with `::add-mask::`.
 - Sluiceway's own log lines follow 0021: no raw tool JSON, no values, no environment (0014).
 - The list of reasons can grow without breaking anything. A reason is display text and nothing is decided from it.
+
+## Amended, 2026-09-21
+
+The fixed list for a preview gains one reason: the stack does not exist in the backend. The first real scan showed seven such rows as "the tool exited with an error (exit code 6)", which sent the user to the job log to learn that they had a stack config file for a stack they never created (onboarding log, hurdle 9). The reason is still a constant string chosen by Sluiceway. It is picked from facts the adapter can establish without quoting the tool, and slice 2.13 settles which: the exit code the tool documents for a missing stack, checked against the recorded `missing-stack` fixtures on both supported versions.
