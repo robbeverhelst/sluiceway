@@ -43,3 +43,40 @@ export function readScanInputs(getInput: GetInput): ScanInputs {
   );
   return { concurrency, previewTimeoutMinutes, token: readToken(getInput) };
 }
+
+export interface ApplyInputs {
+  // The deployment record to deploy (record 0035).
+  deploymentId: number;
+  // The time limit of the fresh preview, in whole minutes.
+  previewTimeoutMinutes: number;
+  token: string;
+}
+
+export function readApplyInputs(getInput: GetInput): ApplyInputs {
+  const text = getInput("deployment-id").trim();
+  if (text === "") {
+    throw new Error(
+      'The "deployment-id" input is required in apply mode. Set it to the deployment of the matrix entry: deployment-id: ${{ matrix.deployment }}.',
+    );
+  }
+  if (!/^[1-9]\d*$/.test(text)) {
+    throw new Error(
+      `The "deployment-id" input must be the id of a deployment record, a whole number, and it is ${JSON.stringify(text)}.`,
+    );
+  }
+  const previewTimeoutMinutes = wholeNumber(
+    getInput,
+    "preview-timeout",
+    " It is a number of whole minutes.",
+  );
+  return { deploymentId: Number(text), previewTimeoutMinutes, token: readToken(getInput) };
+}
+
+// `deployment-id` is an error in every mode but apply (record 0035), so a
+// workflow that hands it to the wrong step hears about it.
+export function refuseDeploymentId(mode: string, getInput: GetInput): void {
+  if (mode === "apply" || getInput("deployment-id").trim() === "") return;
+  throw new Error(
+    `The "deployment-id" input is only for apply mode, and this step runs ${mode} mode. Take it out of this step.`,
+  );
+}

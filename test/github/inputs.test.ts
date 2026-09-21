@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { readScanInputs, readToken } from "../../src/github/inputs.ts";
+import {
+  readApplyInputs,
+  readScanInputs,
+  readToken,
+  refuseDeploymentId,
+} from "../../src/github/inputs.ts";
 
 // The inputs of scan mode (build plan, section 3). GitHub hands every input
 // over as text, and an input that action.yml gives a default is never empty
@@ -51,5 +56,40 @@ describe("the token, for a mode that reads nothing else", () => {
     expect(() => readToken(() => "")).toThrow(
       'The "github-token" input is empty. Leave it out of the workflow, so it takes the GITHUB_TOKEN of the run.',
     );
+  });
+});
+
+// Record 0035: `deployment-id` is required in apply mode and an error in every
+// other mode.
+describe("the inputs of apply", () => {
+  const APPLY = { "deployment-id": "6575759143", "preview-timeout": "10", "github-token": "t" };
+  const read = (values: Record<string, string>) => readApplyInputs((name) => values[name] ?? "");
+
+  test("reads the record, the time limit of the fresh preview and the token", () => {
+    expect(read(APPLY)).toEqual({
+      deploymentId: 6575759143,
+      previewTimeoutMinutes: 10,
+      token: "t",
+    });
+  });
+
+  test("a missing deployment-id says where it comes from", () => {
+    expect(() => read({ ...APPLY, "deployment-id": "" })).toThrow(
+      'The "deployment-id" input is required in apply mode. Set it to the deployment of the matrix entry: deployment-id: ${{ matrix.deployment }}.',
+    );
+  });
+
+  test.each(["abc", "0", "12.5", "-3"])("refuses a deployment-id of %p", (value) => {
+    expect(() => read({ ...APPLY, "deployment-id": value })).toThrow(
+      `The "deployment-id" input must be the id of a deployment record, a whole number, and it is ${JSON.stringify(value)}.`,
+    );
+  });
+
+  test("any other mode refuses a deployment-id", () => {
+    expect(() => refuseDeploymentId("scan", () => "12")).toThrow(
+      'The "deployment-id" input is only for apply mode, and this step runs scan mode. Take it out of this step.',
+    );
+    expect(() => refuseDeploymentId("apply", () => "12")).not.toThrow();
+    expect(() => refuseDeploymentId("resolve", () => " ")).not.toThrow();
   });
 });

@@ -49,12 +49,22 @@ describe("action.yml", () => {
     expect(action.outputs.matrix?.description).toContain("resolve");
   });
 
+  // Record 0035: the five inputs of v1.
   test("declares only the inputs the decision records fix", () => {
     expect(Object.keys(action.inputs).sort()).toEqual([
       "concurrency",
+      "deployment-id",
       "github-token",
       "mode",
       "preview-timeout",
     ]);
+  });
+
+  // Required in apply mode only, which the action checks itself: GitHub reads
+  // `required` for no mode in particular.
+  test("deployment-id has no default and is not required by GitHub", () => {
+    expect(action.inputs["deployment-id"]?.required).toBe(false);
+    expect(action.inputs["deployment-id"]?.default).toBeUndefined();
+    expect(action.inputs["deployment-id"]?.description).toContain("apply");
   });
 });

@@ -26,6 +26,11 @@ inputs:
       The check mode reads files only and never uses it.
     required: false
     default: ${{ github.token }}
+  deployment-id:
+    description: >-
+      Required in apply mode and an error in every other mode. The deployment record to deploy:
+      the deployment field of a matrix entry of resolve.
+    required: false
 
 outputs:
   matrix:

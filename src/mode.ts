@@ -1,3 +1,6 @@
+import * as core from "@actions/core";
+import { type GetInput, refuseDeploymentId } from "./github/inputs.ts";
+import { runApply } from "./modes/apply-job.ts";
 import { runCheck } from "./modes/check-job.ts";
 import { runResolve } from "./modes/resolve-job.ts";
 import { runScan } from "./modes/scan-job.ts";
@@ -29,20 +32,15 @@ function isMode(value: string): value is Mode {
 
 type Handler = () => Promise<void>;
 
-function notImplemented(mode: Mode): Handler {
-  return async () => {
-    throw new NotImplementedError(mode);
-  };
-}
-
 const handlers: Record<Mode, Handler> = {
   scan: runScan,
   resolve: runResolve,
-  apply: notImplemented("apply"),
+  apply: runApply,
   settle: runSettle,
   check: runCheck,
 };
 
-export function run(mode: Mode): Promise<void> {
+export async function run(mode: Mode, getInput: GetInput = core.getInput): Promise<void> {
+  refuseDeploymentId(mode, getInput);
   return handlers[mode]();
 }

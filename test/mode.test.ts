@@ -33,19 +33,30 @@ describe("parseMode", () => {
 });
 
 describe("run", () => {
-  // The scan (slice 1.11), resolve (slice 2.4), settle (slice 2.6) and the
-  // check (slice 2.12) are wired and have their own tests under test/modes/.
-  const wired = ["scan", "resolve", "settle", "check"];
-  const stubs = MODES.filter((mode) => !wired.includes(mode));
-
-  test.each(stubs)("%s fails as not implemented yet", async (mode) => {
-    const result = run(mode);
-    await expect(result).rejects.toBeInstanceOf(NotImplementedError);
-    await expect(result).rejects.toThrow(`Mode "${mode}" is not implemented yet.`);
+  // Every mode is wired: the scan (slice 1.11), resolve (slice 2.4), apply
+  // (slice 2.5), settle (slice 2.6) and the check (slice 2.12) have their own
+  // tests under test/modes/.
+  const wired: string[] = ["scan", "resolve", "apply", "settle", "check"];
+  test("no mode is a stub any more", () => {
+    expect([...MODES].filter((mode) => !wired.includes(mode))).toEqual([]);
   });
 
   test("settle is wired: outside a job it stops at the runner's environment", async () => {
     const result = run("settle");
     await expect(result).rejects.not.toBeInstanceOf(NotImplementedError);
+  });
+
+  test("apply is wired: outside a job it stops at its deployment-id input", async () => {
+    await expect(run("apply", () => "")).rejects.toThrow(
+      'The "deployment-id" input is required in apply mode.',
+    );
+  });
+});
+
+describe("the deployment-id input (record 0035)", () => {
+  test("fails any mode but apply before the mode does anything", async () => {
+    await expect(run("settle", () => "12")).rejects.toThrow(
+      'The "deployment-id" input is only for apply mode, and this step runs settle mode.',
+    );
   });
 });
