@@ -104,6 +104,10 @@ _Avoid_: Approvers, reviewers, allowlist, access list
 A tick by a person the stack's tick rule does not allow. Nothing deploys, the box is cleared and the person is told why.
 _Avoid_: Unauthorized tick, rejected tick, denied tick
 
+**Unverified tick**:
+A tick whose ticker could not be checked because GitHub gave no answer about their access. Sluiceway fails closed: nothing deploys, the box is cleared, the person is asked for a fresh tick and the job goes red.
+_Avoid_: Failed tick, errored tick, unknown tick
+
 **Orphan tick**:
 A tick that nothing picked up, so the box is checked but no deploy exists for it and none is on its way. A scan clears it and never deploys it.
 _Avoid_: Stale tick, missed tick, lost tick

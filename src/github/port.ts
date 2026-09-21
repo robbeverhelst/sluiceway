@@ -3,8 +3,8 @@
 // test/fake-github/. Each method is one request of the API budget of record
 // 0017, except listIssues, which is one request per page of 100.
 //
-// It holds the calls the dashboard and the narrowed scan need. Deployment
-// records, the edit history and permissions join it with the slices that use
+// It holds the calls the dashboard, the narrowed scan and the tick rule need.
+// Deployment records and the edit history join it with the slices that use
 // them.
 
 import type { Comparison } from "../core/scan-plan.ts";

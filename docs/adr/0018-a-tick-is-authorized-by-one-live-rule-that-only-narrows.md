@@ -30,6 +30,17 @@ Teams are not supported in v1. The workflow token cannot read team membership (0
 - The rescan box needs only the first half of the test: a person with write access. A scan previews and changes nothing, so there is no rule to configure.
 - Teams can be added later without a breaking change: the slash syntax is already reserved, and the token they need would be a new optional input.
 
+## Settled while building (slice 2.3)
+
+- The lookup was probed on real GitHub on 2026-09-21. An account that exists always gets a 200, collaborator or not: `permission` is `read` on a public repo and `none` on a private one, and `push`, `maintain` and `admin` are all false. That is the clean answer that is a refusal. An admin has all three booleans true, on an organization repo and on a personal one, so the level `maintain` is the `maintain` boolean alone. A login GitHub does not know gets a 404 with `<login> is not a user`.
+- Every lookup that does not give the three booleans is a failed lookup and fails closed: an error status, the 404 for an unknown login, and an answer without `user.permissions`. The 404 can only mean an account that was renamed or deleted between the tick and the run. It gives a red job and a comment that asks for a fresh tick, which is the safe side.
+- Write access is the `push` boolean, and it is checked first, whatever the rule. So a person on a list without write access is told that ticking needs write access, not that the list is wrong.
+- A person is `type` `User` with a login that is not empty and is not `ghost` in any case of the letters. Every other type (`Bot`, `Organization`, `Mannequin`, `EnterpriseUserAccount`) is not a person. A tick by one of them costs no lookup.
+- A person is looked up once per `resolve` run, however many boxes they ticked, and a failed lookup is not tried again in that run. "Nothing is cached" is about what lasts between runs, and nothing does.
+- A run writes one comment for all of its ticks that started nothing, refused and unverified together, in the order of the rows. For one tick it is a sentence. For several it is a line that says nothing was started and one list item per tick. Each item mentions the ticker, names the stack in bold the way a row does, and states the rule: the level, or the people a list names, as plain logins that notify no one.
+- A refused tick of the rescan box is a refused tick like any other: the box is cleared and the comment names the rescan box.
+- The rule and the words are pure (`src/core/tick-rule.ts`, `src/render/refused-ticks.ts`). `src/github/ticks.ts` makes the lookups and writes the comment, and hands `resolve` one outcome per tick: `allowed`, `refused`, `unverified` or `not-a-person`. Clearing the boxes, creating records and the red job belong to `resolve` (slice 2.4).
+
 Research:
 - https://github.com/sluiceway/sluiceway/blob/research/github-actions-behaviors/docs/research/github-actions-behaviors.md
 - Observed payloads: https://github.com/sluiceway/sluiceway/issues/17
