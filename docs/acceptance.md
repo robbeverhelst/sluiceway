@@ -47,6 +47,8 @@ This pass exists because CI runs against a fake GitHub. Each line checks somethi
 
 ## Part 3: a correct dashboard for every stack
 
+Every hurdle met in parts 2 to 4 gets a line in [the onboarding log](onboarding-log.md) when it happens, workarounds included.
+
 When: first after M1, read only, at a pinned commit SHA with only the `scan` job in the workflow. Again after the first release, with the whole workflow at `v0`.
 
 - [ ] Trigger a full scan by hand. The job is green.
