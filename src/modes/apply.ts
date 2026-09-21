@@ -19,7 +19,6 @@ import {
   readDeploymentPayload,
   taskStackId,
 } from "../core/deployment.ts";
-import type { Diff } from "../core/diff.ts";
 import { diffHash } from "../core/diff-hash.ts";
 import {
   type DeployFailureReason,
@@ -164,8 +163,22 @@ export async function apply(context: ApplyContext): Promise<void> {
     `Deployment record ${id}: ${name}, ticked by ${payload.ticker}, approved diff hash ${payload.hash}. It is in progress.`,
   );
 
-  // From here the record is this job's, and every way out gives it a result.
-  const attempt = await deploy(context, id_, payload, runUrl);
+  // From here the record is this job's, and every way out gives it a result,
+  // also an error nobody planned for.
+  const progress = { deploying: false };
+  let attempt: Attempt;
+  try {
+    attempt = await deploy(context, id_, payload, runUrl, progress);
+  } catch (error) {
+    const reason: DeployFailureReason = progress.deploying
+      ? { kind: "tool-error", exitCode: null }
+      : { kind: "not-started" };
+    attempt = {
+      state: "failure",
+      reason,
+      failed: `${name} was not deployed: ${deployFailureText(reason)}. ${message(error)}`,
+    };
+  }
   const failures: string[] = [];
   let ended = false;
   try {
@@ -253,6 +266,8 @@ async function deploy(
   id: string,
   payload: DeploymentPayload,
   runUrl: string,
+  // Set once the tool was asked to deploy.
+  progress: { deploying: boolean },
 ): Promise<Attempt> {
   const { log, adapter } = context;
   const name = logGroupTitle(id);
@@ -371,6 +386,7 @@ async function deploy(
     log.info(`The dashboard could not be written before the deploy: ${message(error)}`);
   }
 
+  progress.deploying = true;
   const result = await adapter.apply(setup.stack.stack, tool);
   const words = lines(result.toolLog);
   context.log.group(`${name}: the deploy`, [
@@ -525,5 +541,3 @@ async function swapRow(
       : `The dashboard (#${dashboard.number}) already says this. Nothing was written.`,
   );
 }
-
-export type { Diff };

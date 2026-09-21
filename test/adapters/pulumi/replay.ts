@@ -30,8 +30,9 @@ export interface Replay {
 }
 
 // Commands are handed out in the order they were recorded, so a scenario that
-// holds the same command twice gives its first output first.
-export function replay(version: string, scenario: string): Replay {
+// holds the same command twice gives its first output first. `root` is where
+// the replayed repo pretends to be, for a test that needs a real one there.
+export function replay(version: string, scenario: string, root = ROOT): Replay {
   const dir = join(FIXTURES, version, scenario);
   const waiting = [...readRecording(version, scenario).commands];
   const runs: Run[] = [];
@@ -40,7 +41,7 @@ export function replay(version: string, scenario: string): Replay {
     const index = waiting.findIndex(
       (command) =>
         JSON.stringify(command.argv) === JSON.stringify(asked.argv) &&
-        join(ROOT, command.cwd) === asked.cwd,
+        join(root, command.cwd) === asked.cwd,
     );
     const [command] = index < 0 ? [] : waiting.splice(index, 1);
     if (command === undefined) {
