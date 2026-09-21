@@ -107,6 +107,8 @@ export interface SucceededDeploy {
   ticker: string;
   run: string;
   at: Date;
+  // The commit that went out. Attribution starts there (record 0026).
+  sha: string;
 }
 
 export interface DeployFacts {
@@ -163,10 +165,23 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
     // Newest last, so the newest record of a stack is the one that stays.
     facts.byStack.set(stackId, fact);
     if (fact.kind === "succeeded") {
-      facts.succeeded.push({ stackId, ticker: fact.ticker, run: fact.run, at: fact.at });
+      facts.succeeded.push({
+        stackId,
+        ticker: fact.ticker,
+        run: fact.run,
+        at: fact.at,
+        sha: record.sha,
+      });
     }
   }
   return facts;
+}
+
+// The commit on a stack's last successful deployment record, where its
+// attribution starts (record 0026). Nothing when the bounded reads of record
+// 0003 hold no success of the stack: no extra page is read to look for one.
+export function lastDeployedCommit(facts: DeployFacts, stackId: string): string | undefined {
+  return facts.succeeded.findLast((deploy) => deploy.stackId === stackId)?.sha;
 }
 
 // One stack as a scan sees it at its late read (record 0004).

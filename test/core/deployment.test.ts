@@ -5,6 +5,7 @@ import {
   deployFacts,
   deploymentPayload,
   deploymentTask,
+  lastDeployedCommit,
   readDeploymentPayload,
   rowAtLateRead,
   taskStackId,
@@ -200,14 +201,44 @@ describe("the deploy facts of a stack", () => {
         ticker: "alice",
         run: "4242",
         at: new Date("2026-09-21T08:05:00Z"),
+        sha: "0123456789abcdef0123456789abcdef01234567",
       },
       {
         stackId: "apps/grafana:prod",
         ticker: "alice",
         run: "4242",
         at: new Date("2026-09-21T09:05:00Z"),
+        sha: "0123456789abcdef0123456789abcdef01234567",
       },
     ]);
+  });
+});
+
+describe("the commit attribution starts from (record 0026)", () => {
+  const first = "1".repeat(40);
+  const second = "2".repeat(40);
+  const third = "3".repeat(40);
+
+  test("is the commit of the stack's newest success, whatever came after it and whatever other stacks did", () => {
+    const facts = deployFacts([
+      record({ id: 1, sha: first, createdAt: "2026-09-21T08:00:00Z", state: "inactive" }),
+      record({ id: 2, sha: second, createdAt: "2026-09-21T09:00:00Z", state: "success" }),
+      record({ id: 3, sha: third, createdAt: "2026-09-21T10:00:00Z", state: "failure" }),
+      record({
+        id: 4,
+        task: "sluiceway:b",
+        sha: third,
+        createdAt: "2026-09-21T11:00:00Z",
+        state: "success",
+      }),
+    ]);
+    expect(lastDeployedCommit(facts, "apps/grafana:prod")).toBe(second);
+  });
+
+  test("is nothing for a stack with no success among the records", () => {
+    const facts = deployFacts([record({ id: 3, state: "failure" })]);
+    expect(lastDeployedCommit(facts, "apps/grafana:prod")).toBeUndefined();
+    expect(lastDeployedCommit(facts, "apps/loki:prod")).toBeUndefined();
   });
 });
 
