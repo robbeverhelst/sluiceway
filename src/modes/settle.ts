@@ -15,6 +15,7 @@ import { stackId } from "../core/stack.ts";
 import { type FallBackStack, readDeploymentRecords } from "../github/deployments.ts";
 import { editedIssue } from "../github/event.ts";
 import type { JobLog } from "../github/job-log.ts";
+import { eventDashboardUrl, type StepOutputs } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
 import type { WorkflowRef } from "../github/workflow-ref.ts";
 import { logGroupTitle } from "../render/log-text.ts";
@@ -37,6 +38,9 @@ export interface SettleContext {
   // The workflow a full scan is started from, or nothing when the runner did
   // not say which one this is.
   workflow: WorkflowRef | undefined;
+  // The one output of `settle`, `dashboard-url` (record 0041). A test that
+  // does not look at it leaves it out.
+  outputs?: StepOutputs | undefined;
 }
 
 function message(error: unknown): string {
@@ -45,6 +49,9 @@ function message(error: unknown): string {
 
 export async function settle(context: SettleContext): Promise<void> {
   const { github, log } = context;
+  // From the event, so it costs no request and is there on every way out.
+  const url = eventDashboardUrl(context.repoUrl, context.event);
+  if (url !== undefined) context.outputs?.set("dashboard-url", url);
   const config = loadConfig(context.root);
   const stacks = applyConfig(config, await context.adapter.discover(context.root));
 

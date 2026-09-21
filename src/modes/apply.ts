@@ -30,6 +30,7 @@ import { type AttributionSource, attributionSource } from "../github/attribution
 import { findDashboard } from "../github/dashboard.ts";
 import { readDeploymentRecords } from "../github/deployments.ts";
 import type { JobLog } from "../github/job-log.ts";
+import { eventDashboardUrl, type StepOutputs, writeResultFile } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
 import { writeBody } from "../github/write-loop.ts";
 import {
@@ -42,6 +43,7 @@ import { BODY_LIMIT, type BudgetOptions, fitBody } from "../render/budget.ts";
 import { diffLogLines, logGroupTitle } from "../render/log-text.ts";
 import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
 import { previewRow } from "../render/preview-result.ts";
+import { type ApplyResultOutcome, applyResultFile } from "../render/result-file.ts";
 import { type AttributionLines, type FailureLine, isDestroy, type Row } from "../render/row.ts";
 
 // Everything `apply` needs, handed in as data and seams (build plan, section
@@ -69,6 +71,12 @@ export interface ApplyContext {
   actionRef: string;
   // The `deployment-id` input: the record to deploy (record 0035).
   deploymentId: number;
+  // The payload of the event that started the run: the edit of the dashboard
+  // that `resolve` acted on. Only the `dashboard-url` output reads it.
+  event?: unknown;
+  // The step outputs and the result file (record 0041). A test that does not
+  // look at them leaves them out.
+  outputs?: StepOutputs | undefined;
   // Only a test has a reason to set this.
   limits?: { body?: BudgetOptions } | undefined;
 }
@@ -95,7 +103,51 @@ function lines(text: string): string[] {
 const RECORD_PERMISSIONS =
   "The apply job needs the permission `deployments: write`, and `deployment-id` has to be the `deployment` of a matrix entry that `resolve` set (record 0035).";
 
+// What the outputs and the result file are made from, filled in as the job
+// gets that far.
+interface ApplyReport {
+  outcome?: ApplyResultOutcome;
+  stack?: string;
+  ticker?: string;
+  reason?: string | undefined;
+  applied?: ApplyOutcome | undefined;
+}
+
 export async function apply(context: ApplyContext): Promise<void> {
+  const report: ApplyReport = {};
+  try {
+    await applying(context, report);
+  } finally {
+    reportOutputs(context, report);
+  }
+}
+
+// The outputs are set on every way out (record 0041). `refused` is a record
+// this job may not deploy, or a change that moved since the tick. Anything
+// else that did not go out, an error nobody planned for too, is `failed`.
+function reportOutputs(context: ApplyContext, report: ApplyReport): void {
+  const { outputs } = context;
+  if (!outputs) return;
+  const url = eventDashboardUrl(context.repoUrl, context.event);
+  const outcome = report.outcome ?? "failed";
+  if (url !== undefined) outputs.set("dashboard-url", url);
+  outputs.set("outcome", outcome);
+  if (report.stack !== undefined) outputs.set("stack", report.stack);
+  const text = applyResultFile({
+    run: `${context.repoUrl}/actions/runs/${context.runId}`,
+    commit: context.sha,
+    deployment: context.deploymentId,
+    dashboardUrl: url,
+    outcome,
+    stack: report.stack,
+    ticker: report.ticker,
+    reason: report.reason,
+    applied: report.applied,
+  });
+  writeResultFile(outputs, context.log, "apply", text);
+}
+
+async function applying(context: ApplyContext, report: ApplyReport): Promise<void> {
   const { github, log } = context;
   const id = context.deploymentId;
 
@@ -106,10 +158,13 @@ export async function apply(context: ApplyContext): Promise<void> {
   try {
     status = await github.latestDeploymentStatus(id);
   } catch (error) {
+    report.outcome = "failed";
     throw new ApplyFailedError(
       `Deployment record ${id} could not be read: ${message(error)}. ${RECORD_PERMISSIONS}`,
     );
   }
+  // Every way out from here to the deploy is a record this job may not deploy.
+  report.outcome = "refused";
   if (!isOpenStatus(status)) {
     log.info(
       `Deployment record ${id} already ended as ${status?.state}. Nothing is deployed. A re-run never deploys (record 0019).`,
@@ -125,6 +180,7 @@ export async function apply(context: ApplyContext): Promise<void> {
     task = deployment.task;
     payload = readDeploymentPayload(deployment.payload);
   } catch (error) {
+    report.outcome = "failed";
     throw new ApplyFailedError(
       `Deployment record ${id} could not be read: ${message(error)}. ${RECORD_PERMISSIONS}`,
     );
@@ -137,6 +193,7 @@ export async function apply(context: ApplyContext): Promise<void> {
       `Deployment record ${id} is not one of Sluiceway's: its task does not start with "sluiceway:". Nothing was deployed and the record was left alone.`,
     );
   }
+  report.stack = id_;
   const name = logGroupTitle(id_);
   if (!payload) {
     throw new ApplyFailedError(
@@ -151,6 +208,8 @@ export async function apply(context: ApplyContext): Promise<void> {
     );
   }
 
+  report.ticker = payload.ticker;
+  report.outcome = "failed";
   const runUrl = `${context.repoUrl}/actions/runs/${context.runId}`;
   try {
     await github.createDeploymentStatus(id, { state: "in_progress", logUrl: runUrl });
@@ -179,6 +238,16 @@ export async function apply(context: ApplyContext): Promise<void> {
       failed: `${name} was not deployed: ${deployFailureText(reason)}. ${message(error)}`,
     };
   }
+  // A deploy that went out is deployed, also when its record could not be
+  // given the result. The job is red then, and says why.
+  report.outcome =
+    attempt.state === "success"
+      ? "deployed"
+      : attempt.reason?.kind === "moved"
+        ? "refused"
+        : "failed";
+  report.reason = attempt.reason && deployFailureText(attempt.reason);
+  report.applied = attempt.summary;
   const failures: string[] = [];
   let ended = false;
   try {

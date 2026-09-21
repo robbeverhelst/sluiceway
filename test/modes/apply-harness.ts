@@ -57,6 +57,8 @@ export async function handedOn(
     sha: SHA,
     actionRef: ACTION_REF,
     deploymentId: first.deployment,
+    // The same run, so the same event: the edit that `resolve` acted on.
+    event: h.context.event,
   };
   return {
     context,
