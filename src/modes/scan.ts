@@ -40,6 +40,7 @@ import { attributionSource } from "../github/attribution.ts";
 import { type DashboardResult, findDashboard, writeDashboard } from "../github/dashboard.ts";
 import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts";
 import type { JobLog } from "../github/job-log.ts";
+import { dashboardUrl, type StepOutputs, writeResultFile } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
 import {
   BODY_LIMIT,
@@ -50,6 +51,7 @@ import {
 import { diffLogLines, logGroupTitle } from "../render/log-text.ts";
 import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
+import { type DashboardCounts, dashboardCounts, scanResultFile } from "../render/result-file.ts";
 import { byCodeUnit, type FailureLine, isDestroy, plural, type Row } from "../render/row.ts";
 import { renderSummary } from "../render/summary.ts";
 
@@ -82,6 +84,9 @@ export interface ScanContext {
   // runs of it that an issue edit started (record 0025).
   workflow: string;
   actionRef: string;
+  // The step outputs and the result file (record 0041). A test that does not
+  // look at them leaves them out.
+  outputs?: StepOutputs | undefined;
   // Only a test has a reason to set these.
   limits?: { body?: BudgetOptions; summaryBudget?: number } | undefined;
 }
@@ -141,9 +146,63 @@ function short(sha: string): string {
   return sha.slice(0, 7);
 }
 
+// What the outputs and the result file are made from, filled in as the scan
+// gets that far.
+interface ScanReport {
+  startedAt?: Date;
+  // Every stack previewed so far, as the summary shows them.
+  previewed?: Previewed[];
+  // The dashboard this scan wrote, or found already saying the same.
+  dashboard?: { url: string; changed: boolean; counts: DashboardCounts };
+}
+
 export async function scan(context: ScanContext): Promise<void> {
+  // The defaults of the build plan, section 3: a scan that fails before it
+  // writes the dashboard still hands a notify step numbers it can read.
+  context.outputs?.set("pending", "0");
+  context.outputs?.set("preview-failed", "0");
+  context.outputs?.set("in-sync", "0");
+  context.outputs?.set("dashboard-changed", "false");
+  const report: ScanReport = {};
+  try {
+    await scanning(context, report);
+  } finally {
+    reportOutputs(context, report);
+  }
+}
+
+// The outputs are set on every way out, a red one too, from what the scan got
+// as far as. The result file exists once a summary did.
+function reportOutputs(context: ScanContext, report: ScanReport): void {
+  const { outputs } = context;
+  if (!outputs) return;
+  const { dashboard, previewed, startedAt } = report;
+  if (dashboard) {
+    outputs.set("dashboard-url", dashboard.url);
+    outputs.set("pending", String(dashboard.counts.pending));
+    outputs.set("preview-failed", String(dashboard.counts.previewFailed));
+    outputs.set("in-sync", String(dashboard.counts.inSync));
+    outputs.set("dashboard-changed", String(dashboard.changed));
+  }
+  if (!previewed || !startedAt) return;
+  const text = scanResultFile({
+    run: runUrlOf(context, context.runId),
+    commit: context.sha,
+    milliseconds: context.now().getTime() - startedAt.getTime(),
+    dashboard,
+    stacks: previewed.map(({ id, result, milliseconds }) => ({
+      // The same stacks as the summary, made the same way (record 0041).
+      stack: previewSummary(id, result),
+      milliseconds,
+    })),
+  });
+  writeResultFile(outputs, context.log, "scan", text);
+}
+
+async function scanning(context: ScanContext, report: ScanReport): Promise<void> {
   const { log, now } = context;
   const startedAt = now();
+  report.startedAt = startedAt;
   const at = startedAt.toISOString();
   const runUrl = `${context.repoUrl}/actions/runs/${context.runId}`;
 
@@ -199,7 +258,10 @@ export async function scan(context: ScanContext): Promise<void> {
     // that cannot be written never stops the scan (record 0037). It holds
     // every stack this scan previewed, so a later round writes it again.
     const all = [...previewed.values()].sort((a, b) => byCodeUnit(a.id, b.id));
-    if (round.length > 0 || rounds === 0) await writeSummary(context, all);
+    if (round.length > 0 || rounds === 0) {
+      await writeSummary(context, all);
+      report.previewed = all;
+    }
     rounds++;
 
     // All slow work is done. The body is built from the late read: the live
@@ -399,6 +461,12 @@ export async function scan(context: ScanContext): Promise<void> {
   }
 
   reportDashboard(context, written, composed);
+  report.dashboard = {
+    url: dashboardUrl(context.repoUrl, written.number),
+    changed: written.written,
+    // The counts line of the body as written, from its row markers.
+    counts: dashboardCounts(parseDashboard(written.body).rows),
+  };
 
   // The summary was written before the late read, which is where the commit
   // of a stack's last deploy comes from. Now that it is known, the summary is
