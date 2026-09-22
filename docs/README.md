@@ -7,6 +7,7 @@ The manual for Sluiceway. The [README](../README.md) is the short version.
 - [The workflow](workflow.md): the check, the whole workflow part by part, merge and deploy, stack dependencies, self-hosted runners, GitHub Environments, and pinning a commit.
 - [Start read only](read-only-trial.md): a scan alone, with nothing that can deploy.
 - [Example workflows](example-workflows.md): complete workflows for common setups.
+- [Start with init](init.md): a first workflow and `sluiceway.yaml`, written from what it finds in your repo.
 - [Configuration](configuration.md): every key of `sluiceway.yaml`.
 - [Credentials](credentials.md): how credentials reach the tool, recipes, private registries, and your own tooling.
 

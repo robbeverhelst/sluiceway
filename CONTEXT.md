@@ -60,6 +60,10 @@ _Avoid_: Setup, init step, pre-hook
 A pass over the repo's files and nothing else that says whether Sluiceway understands the setup: the config, the stacks discovery finds, what `ignore` leaves out, which files no stack claims, and what the workflow files lack to run it. It holds no credentials and never starts the tool, so it can never say that a preview will work.
 _Avoid_: Validate, lint, dry run, preflight
 
+**Init**:
+A pass over the repo's files that writes a first workflow and, when there is none, a `sluiceway.yaml` into the checkout, and lists what it could not know. It declares the stacks files alone cannot name as its best reading, for a person to correct. It never commits, never overwrites a file and holds the promise of the check: no credential, no tool, no GitHub call.
+_Avoid_: Scaffold, generator, bootstrap, wizard, setup
+
 ### Diffs
 
 **Diff**:

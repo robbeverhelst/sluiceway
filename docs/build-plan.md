@@ -60,7 +60,7 @@ Collected here so nobody has to search the records. The record in the last colum
 
 | Name | Kind | Modes | Default | Meaning | Record |
 |---|---|---|---|---|---|
-| `mode` | input | all | required | `scan`, `resolve`, `apply`, `settle` or `check` | 0003, 0042 |
+| `mode` | input | all | required | `scan`, `resolve`, `apply`, `settle`, `check` or `init` | 0003, 0042, 0065 |
 | `concurrency` | input | `scan` | `4` | Size of the preview pool | 0012 |
 | `preview-timeout` | input | `scan`, `apply` | `10` | Time limit for one preview, whole minutes | 0012, 0035 |
 | `github-token` | input | all | the workflow token | Always the workflow's own `GITHUB_TOKEN` | 0017, 0035 |

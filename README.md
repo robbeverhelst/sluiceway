@@ -116,7 +116,7 @@ The issue is a view and never the source of truth. What is pending is always wor
 
 **Check your setup.** A check on every pull request reads your files and says which stacks Sluiceway found and whether its settings are valid. It needs no credentials, no tool and no write access, so start with it before anything can deploy. [The check](docs/workflow.md#check-your-setup) has the workflow file. To see your dashboard first with nothing that can deploy, [start read only](docs/read-only-trial.md).
 
-**Add the workflow.** This is the whole loop. It goes in `.github/workflows/deploy-dashboard.yml` on the default branch, and the comments mark where your own steps go. [The workflow](docs/workflow.md) explains every part, and what merge and deploy, stack dependencies, self-hosted runners and GitHub Environments add. [Example workflows](docs/example-workflows.md) has it complete for common setups.
+**Add the workflow.** This is the whole loop. It goes in `.github/workflows/deploy-dashboard.yml` on the default branch, and the comments mark where your own steps go. [The workflow](docs/workflow.md) explains every part, and what merge and deploy, stack dependencies, self-hosted runners and GitHub Environments add. [Example workflows](docs/example-workflows.md) has it complete for common setups, and [init](docs/init.md) writes a first version from what it finds in your repo.
 
 ```yaml
 name: deploy-dashboard

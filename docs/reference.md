@@ -4,7 +4,7 @@ The modes of the action, its inputs and outputs, and what it needs to run. Every
 
 ## Modes
 
-One action, five modes, chosen with the `mode` input.
+One action, six modes, chosen with the `mode` input.
 
 | Mode | What it does | Runs the infrastructure tool |
 |---|---|---|
@@ -13,12 +13,13 @@ One action, five modes, chosen with the `mode` input.
 | `apply` | Previews the stack again and deploys it if nothing moved since the tick. | Yes |
 | `settle` | Gives a deploy a result when its workflow run ended without reporting one. | No |
 | `check` | Reads the repo's files and says whether the setup is valid. It needs no credentials, no tool and no GitHub API, so it is safe on any pull request. | No |
+| `init` | Writes a starter workflow and `sluiceway.yaml` into your clone from what it finds there, and says what is left for you. You run it once on your own machine, and it commits nothing ([init](init.md)). | No |
 
 ## Inputs
 
 | Input | Default | What it is |
 |---|---|---|
-| `mode` | required | One of `scan`, `resolve`, `apply`, `settle`, `check`. |
+| `mode` | required | One of `scan`, `resolve`, `apply`, `settle`, `check`, `init`. |
 | `concurrency` | `4` | How many previews a scan runs at the same time. |
 | `preview-timeout` | `10` | Time limit for one preview, in minutes. `apply` uses it for the preview it runs before the deploy. The deploy itself has no time limit of Sluiceway's: set `timeout-minutes` on the job. |
 | `github-token` | the workflow token | Leave it at the default. Sluiceway always acts as the workflow's own `GITHUB_TOKEN`. A GitHub App token or a personal access token is not supported. `check` never uses it. |
