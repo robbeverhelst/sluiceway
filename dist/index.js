@@ -51099,6 +51099,7 @@ function shortValue(value) {
 }
 
 // src/core/config.ts
+var DEPENDS_ON_AUTO = "auto";
 var username = exports_external.string().regex(/^[A-Za-z0-9_-]+$/);
 var tickers = exports_external.union([
   exports_external.enum(["write", "maintain", "admin"]),
@@ -51134,7 +51135,10 @@ var stackEntry = exports_external.strictObject({
   tickers: tickers.describe("Tick rule for this stack. Default: the top level tickers.").exactOptional(),
   inputs: globs.describe("Extra globs this stack claims, relative to the repo root.").exactOptional(),
   previewTimeout: exports_external.int().min(1).describe("Time limit for one preview of this stack, in whole minutes. Default: the preview-timeout input.").exactOptional(),
-  dependsOn: exports_external.array(text).describe("Stack ids of the stacks this stack depends on. A tick on this stack is refused while one of them has a change waiting, and when both are ticked they deploy in order.").exactOptional(),
+  dependsOn: exports_external.union([exports_external.literal(DEPENDS_ON_AUTO), exports_external.array(text)]).describe("Stack ids of the stacks this stack depends on, or auto to read them from the program's stack references at each preview. A tick on this stack is refused while one of them has a change waiting, and when both are ticked they deploy in order.").exactOptional(),
+  drift: exports_external.strictObject({
+    enabled: exports_external.boolean().describe("Check these stacks for drift, or not, whatever drift.enabled at the top level says. The scans that check are the same.")
+  }).describe("The drift check of these stacks. Default: the top level drift.").exactOptional(),
   options: exports_external.record(exports_external.string(), exports_external.unknown()).describe("Named adapter options of the tool. Only an entry with tool takes them.").exactOptional()
 }).superRefine((entry, context3) => {
   if (entry.tool !== undefined)
@@ -51262,6 +51266,15 @@ function describe4(issue3, raw) {
     }
     return (issue3.errors[branch] ?? []).flatMap((inner) => describe4({ ...inner, path: [...issue3.path, ...inner.path] }, raw));
   }
+  if (issue3.code === "invalid_union" && key === "dependsOn") {
+    if (!Array.isArray(value)) {
+      return problem(`expected a list of stack ids, or ${DEPENDS_ON_AUTO}, got ${show(value)}.`);
+    }
+    return (issue3.errors[1] ?? []).flatMap((inner) => describe4({ ...inner, path: [...issue3.path, ...inner.path] }, raw));
+  }
+  if (issue3.code === "invalid_type" && key === "drift" && issue3.path[0] === "stacks") {
+    return problem(`expected a mapping, got ${show(value)}. Write it as the top level has it: drift: { enabled: ${typeof value === "boolean" ? value : true} }.`);
+  }
   if (issue3.code === "invalid_union") {
     if (!Array.isArray(value)) {
       return problem(`expected "write", "maintain", "admin" or a list of usernames, got ${show(value)}.`);
@@ -51329,7 +51342,7 @@ function inFileOrder(problems, raw) {
   };
   return problems.map((problem) => ({ problem, at: position(problem.path) })).sort((a, b) => compare(a.at, b.at)).map(({ problem }) => problem);
 }
-var RESERVED_KEYS = ["drift"];
+var RESERVED_KEYS = [];
 function where(path) {
   const text2 = path.map((segment) => typeof segment === "number" ? `[${segment}]` : `.${String(segment)}`).join("").replace(/^\./, "");
   return text2 === "" ? "" : `${text2}: `;
@@ -51348,7 +51361,7 @@ function knownKeys(path) {
 }
 function unwrap(schema) {
   let inner = schema;
-  while (inner instanceof exports_external.ZodDefault || inner instanceof exports_external.ZodPrefault) {
+  while (inner instanceof exports_external.ZodDefault || inner instanceof exports_external.ZodPrefault || inner instanceof exports_external.ZodExactOptional) {
     inner = inner.def.innerType;
   }
   if (inner instanceof exports_external.ZodUnion) {
@@ -51383,19 +51396,25 @@ function applyConfig(config2, found) {
   return stacks.map((stack) => {
     const entries = config2.stacks.filter((entry) => covers(entry, stack)).sort((a, b) => Number(a.name !== undefined) - Number(b.name !== undefined));
     const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
+    const drift = entries.findLast((entry) => entry.drift)?.drift?.enabled;
     return {
       stack,
       environment: entries.findLast((entry) => entry.environment)?.environment ?? DEFAULT_ENVIRONMENT,
       tickers: entries.findLast((entry) => entry.tickers)?.tickers ?? config2.tickers,
       inputs: [...new Set(entries.flatMap((entry) => entry.inputs ?? []))],
       ...previewTimeout === undefined ? {} : { previewTimeout },
-      ...dependsOnOf(entries)
+      ...dependsOnOf(entries),
+      ...entries.some((entry) => entry.dependsOn === DEPENDS_ON_AUTO) ? { dependsOnAuto: true } : {},
+      ...drift === undefined ? {} : { drift }
     };
   });
 }
 function dependsOnOf(entries) {
-  const ids = [...new Set(entries.flatMap((entry) => entry.dependsOn ?? []))].sort(byCodeUnit);
+  const ids = [...new Set(entries.flatMap((entry) => listed(entry.dependsOn)))].sort(byCodeUnit);
   return ids.length === 0 ? {} : { dependsOn: ids };
+}
+function listed(dependsOn) {
+  return Array.isArray(dependsOn) ? dependsOn : [];
 }
 function byCodeUnit(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -51403,12 +51422,15 @@ function byCodeUnit(a, b) {
 function checkDependsOn(config2, found, stacks) {
   const known = new Set(stacks.map(stackId));
   const all = new Set(found.map(stackId));
-  const problems = config2.stacks.flatMap((entry, index) => (entry.dependsOn ?? []).flatMap((id, at) => {
+  const problems = config2.stacks.flatMap((entry, index) => listed(entry.dependsOn).flatMap((id, at) => {
     const where2 = `stacks[${index}].dependsOn[${at}]: ${show(id)}`;
-    if (all.has(id) && !known.has(id))
+    if (all.has(id) && !known.has(id)) {
+      const reason = ignoredStacks(config2, found).find((one) => one.stackId === id)?.reason;
+      const why = reason === undefined ? "" : ` (${show(reason)})`;
       return [
-        `${where2} is left out by ignore, so it never has a change to wait for. Remove it here, or change ignore.`
+        `${where2} is left out by ignore${why}, so it never has a change to wait for. Remove it here, or change ignore.`
       ];
+    }
     if (!known.has(id))
       return [
         `${where2} is not a stack that discovery found. Write the stack id as a row shows it, such as ${show(stacks[0] ? stackId(stacks[0]) : "network:dev")}.`
@@ -51615,6 +51637,27 @@ async function discover(root) {
 
 class ProjectFileProblem extends Error {
 }
+async function projectName(root, path) {
+  const dir = join3(root, path);
+  let entries;
+  try {
+    entries = await readdir2(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  const extension = EXTENSIONS.find((ext) => fileNames(entries).includes(PROJECT_FILE + ext));
+  if (extension === undefined)
+    return;
+  const document = $parseDocument(await readFile(join3(dir, PROJECT_FILE + extension), "utf8"), {
+    uniqueKeys: false
+  });
+  if (document.errors.length > 0)
+    return;
+  const project = document.toJS();
+  if (typeof project !== "object" || project === null || !("name" in project))
+    return;
+  return typeof project.name === "string" ? project.name : undefined;
+}
 async function stackConfigDir(root, projectFile) {
   const dir = join3(projectFile, "..");
   const lineCounter2 = new $LineCounter;
@@ -51669,9 +51712,18 @@ function compare(a, b) {
 // src/adapters/discover-all.ts
 var TOOLS = [OPENTOFU];
 async function discoverAll(root, config2) {
-  const toolProblems = config2.stacks.flatMap((entry, index) => entry.tool === undefined || TOOLS.includes(entry.tool) ? [] : [
-    `stacks[${index}].tool: unknown tool ${JSON.stringify(entry.tool)}. Known tools: ${TOOLS.join(", ")}.`
-  ]);
+  const toolProblems = config2.stacks.flatMap((entry, index) => {
+    if (entry.tool === undefined)
+      return [];
+    if (!TOOLS.includes(entry.tool)) {
+      return [
+        `stacks[${index}].tool: unknown tool ${JSON.stringify(entry.tool)}. Known tools: ${TOOLS.join(", ")}.`
+      ];
+    }
+    return entry.dependsOn === DEPENDS_ON_AUTO ? [
+      `stacks[${index}].dependsOn: ${DEPENDS_ON_AUTO} reads the stack references of a Pulumi program, and an ${entry.tool} stack has none. Name the stack ids instead.`
+    ] : [];
+  });
   const { stacks: declared, optionProblems } = discoverOpenTofu(root, config2);
   const problems = [...toolProblems, ...optionProblems];
   if (problems.length > 0)
@@ -52512,10 +52564,21 @@ var stepFields = {
   diffReasons: exports_external.array(exports_external.string()).nullish(),
   replaceReasons: exports_external.array(exports_external.string()).nullish()
 };
+var STACK_REFERENCE_TYPE = "pulumi:pulumi:StackReference";
+var referenceState = exports_external.object({ inputs: exports_external.object({ name: exports_external.unknown() }).partial().nullish() }).nullish();
+function stackReferenceOf(urn, state) {
+  const name = state?.inputs?.name;
+  const type = urn.split("::")[2]?.split("$").at(-1);
+  return type === STACK_REFERENCE_TYPE && typeof name === "string" && name !== "" ? name : undefined;
+}
 var step = exports_external.object({
   ...stepFields,
   oldState: oldState.nullish(),
+  newState: referenceState,
   detailedDiff: exports_external.record(exports_external.string(), exports_external.unknown()).nullish().transform((paths) => paths == null ? undefined : Object.keys(paths))
+}).transform(({ newState, ...rest }) => {
+  const stackReference = stackReferenceOf(rest.urn, newState);
+  return stackReference === undefined ? rest : { ...rest, stackReference };
 });
 function stepWithValues(list) {
   const state = exports_external.object({ inputs: exports_external.unknown().optional(), outputs: exports_external.unknown().optional() }).nullish();
@@ -52529,6 +52592,7 @@ function stepWithValues(list) {
     newState: state,
     detailedDiff: exports_external.record(exports_external.string(), exports_external.unknown()).nullish()
   }).transform(({ oldState: old, newState, detailedDiff, ...rest }) => {
+    const stackReference = stackReferenceOf(rest.urn, referenceState.safeParse(newState).data ?? undefined);
     const paths = Object.entries(detailedDiff ?? {}).map(([path, entry]) => ({
       path,
       inputDiff: typeof entry === "object" && entry !== null && "inputDiff" in entry ? entry.inputDiff === true : false
@@ -52543,7 +52607,8 @@ function stepWithValues(list) {
       ...rest,
       oldState: old == null ? old : { retainOnDelete: old.retainOnDelete },
       detailedDiff: detailedDiff == null ? undefined : Object.keys(detailedDiff),
-      ...values.length === 0 ? {} : { values }
+      ...values.length === 0 ? {} : { values },
+      ...stackReference === undefined ? {} : { stackReference }
     };
   });
 }
@@ -52602,7 +52667,7 @@ function previewCommand(name) {
   return ["pulumi", "preview", "--json", "--non-interactive", "--color", "never", "--stack", name];
 }
 var STACK_NOT_FOUND_EXIT_CODE = 6;
-async function preview2(stack, options) {
+async function previewWithReferences(stack, options) {
   if (stack.name === undefined)
     throw new Error("A Pulumi stack always has a name.");
   const result = await options.run({
@@ -52611,7 +52676,10 @@ async function preview2(stack, options) {
     env: pulumiEnvironment(options.env),
     timeoutMs: options.timeoutMinutes * 60000
   });
-  const failed = (reason, toolLog, detail = []) => ({ ok: false, reason, detail, toolLog });
+  const failed = (reason, toolLog, detail = []) => ({
+    result: { ok: false, reason, detail, toolLog },
+    references: []
+  });
   if (result.status === "not-started")
     return failed({ kind: "tool-error", exitCode: null }, "");
   if (result.status === "timed-out") {
@@ -52629,7 +52697,10 @@ async function preview2(stack, options) {
   const folded = foldSteps(parsed.steps);
   if (!folded.ok)
     return failed({ kind: folded.reason }, log, folded.detail);
-  return { ok: true, diff: { stackId: stackId(stack), changes: folded.changes }, toolLog: log };
+  return {
+    result: { ok: true, diff: { stackId: stackId(stack), changes: folded.changes }, toolLog: log },
+    references: parsed.steps.flatMap((step2) => step2.stackReference ?? [])
+  };
 }
 function toolLog(stderr, diagnostics2 = []) {
   return stripAnsi([stderr, ...diagnostics2].join(""));
@@ -52760,6 +52831,42 @@ function readEvents(stdout) {
   return events;
 }
 
+// src/adapters/pulumi/references.ts
+async function readDependencies(stack, names, root, candidates) {
+  const self = stackId(stack);
+  const projects = new Map;
+  const projectOf = async (path) => {
+    if (!projects.has(path))
+      projects.set(path, await projectName(root, path));
+    return projects.get(path);
+  };
+  const own2 = await projectOf(stack.path);
+  const known = await Promise.all(candidates.map(async (one) => ({
+    id: stackId(one),
+    name: one.name,
+    project: await projectOf(one.path)
+  })));
+  const matching = (project, name) => project === undefined || name === undefined ? [] : known.filter((one) => one.project === project && one.name === name);
+  const found = new Set;
+  let elsewhere = 0;
+  for (const reference of names) {
+    const parts = reference.split("/");
+    const fits = parts.length === 3 ? matching(parts[1], parts[2]) : parts.length === 1 ? matching(own2, parts[0]) : parts.length === 2 ? orElse(matching(parts[0], parts[1]), () => matching(own2, parts[1])) : [];
+    const [one] = fits;
+    if (fits.length !== 1 || one === undefined)
+      elsewhere++;
+    else if (one.id !== self)
+      found.add(one.id);
+  }
+  return { stackIds: [...found].sort(byCodeUnit4), elsewhere };
+}
+function orElse(first, second) {
+  return first.length > 0 ? first : second();
+}
+function byCodeUnit4(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 // src/adapters/pulumi/tool-diff.ts
 import { join as join12 } from "node:path";
 function toolDiffCommand2(name) {
@@ -52828,6 +52935,13 @@ async function checkVersion2(context3) {
 }
 
 // src/adapters/pulumi/index.ts
+var preview2 = async (stack, options) => {
+  const { result, references } = await previewWithReferences(stack, options);
+  if (!result.ok || options.dependencies === undefined)
+    return result;
+  const dependencies = await readDependencies(stack, references, options.root, options.dependencies);
+  return { ...result, dependencies };
+};
 var pulumi = { discover, checkVersion: checkVersion2, preview: preview2, toolDiff: toolDiff2, detectDrift, apply: apply2 };
 
 // src/adapters/tools.ts
@@ -53633,7 +53747,7 @@ function deployFacts(records) {
         run: fact.run,
         at: fact.at,
         sha: record3.sha,
-        ...fact.inSync ? { result: "in-sync" } : {}
+        ...fact.inSync ? { result: "in-sync" } : payload.drift ? { result: "drift-repaired" } : {}
       });
     }
   }
@@ -53688,6 +53802,12 @@ var ROW_STATES = [
 function isDeployingState(state) {
   return state === "deploying" || state === "queued";
 }
+function encodeIds(ids) {
+  return ids.map((id) => id.replace(/[%,]/g, (char) => char === "%" ? "%25" : "%2C")).join(",");
+}
+function decodeIds(value) {
+  return value.split(",").map(decodeMarkerValue);
+}
 var ROW_CLOSE_MARKER = "<!-- /sluiceway:row -->";
 var RESCAN_MARKER = "<!-- sluiceway:rescan -->";
 function marker(kind, pairs) {
@@ -53722,6 +53842,9 @@ function rowMarker(facts) {
     pairs.push(["shortened", String(facts.shortened)]);
   if (facts.drift)
     pairs.push(["drift", "true"]);
+  if (facts.dependsOn && facts.dependsOn.length > 0) {
+    pairs.push(["depends-on", encodeIds(facts.dependsOn)]);
+  }
   return marker("row", pairs);
 }
 function mergeMarker(facts) {
@@ -53802,6 +53925,7 @@ function parseDashboard(body) {
       const value = pairs.get(key) ?? "";
       return /^\d+$/.test(value) ? Number(value) : 0;
     };
+    const dependsOn = pairs.get("depends-on") ?? "";
     rows.push({
       known: true,
       stackId: stackId2,
@@ -53811,6 +53935,7 @@ function parseDashboard(body) {
       failed: pairs.get("failed") === "true",
       shortened: count("shortened"),
       drift: pairs.get("drift") === "true",
+      ...dependsOn === "" ? {} : { dependsOn: decodeIds(dependsOn) },
       ticked: match[1] === "x" || match[1] === "X",
       text: text4
     });
@@ -53887,7 +54012,7 @@ function utcMinute(at) {
 
 // src/render/row.ts
 var INDENT = "  ";
-function byCodeUnit4(a, b) {
+function byCodeUnit5(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function isDestroy(change2) {
@@ -53918,7 +54043,7 @@ function code(text4) {
   return `<code>${escapeText(text4)}</code>`;
 }
 function sortedKeys(keys3) {
-  return [...new Set(keys3)].sort(byCodeUnit4);
+  return [...new Set(keys3)].sort(byCodeUnit5);
 }
 var ROW_PATH_LENGTH = 80;
 var ROW_PATHS_PER_CHANGE = 10;
@@ -53941,8 +54066,8 @@ function changeLine(change2, options = {}) {
   const forcing = sortedKeys(change2.replaceKeys);
   const others = sortedKeys(change2.changedKeys).filter((key) => !forcing.includes(key));
   const capped = options.row === true && !isDestroy(change2);
-  const listed = capped ? others.slice(0, ROW_PATHS_PER_CHANGE) : others;
-  const hidden = others.length - listed.length;
+  const listed2 = capped ? others.slice(0, ROW_PATHS_PER_CHANGE) : others;
+  const hidden = others.length - listed2.length;
   const show2 = (keys3) => keys3.map((key) => code(options.row ? shortPath(key) : key) + valueSuffix(change2, key, code)).join(", ");
   const parts = [
     `<kbd>${cap}</kbd> <code>${escapeText(change2.type)}</code> <b>${escapeText(change2.name)}</b>`
@@ -53951,7 +54076,7 @@ function changeLine(change2, options = {}) {
     parts.push(`forced by ${show2(forcing)}`);
   if (others.length > 0) {
     const more = hidden > 0 ? `, and ${hidden} more` : "";
-    parts.push(`${forcing.length > 0 ? "also changes " : ""}${show2(listed)}${more}`);
+    parts.push(`${forcing.length > 0 ? "also changes " : ""}${show2(listed2)}${more}`);
   }
   return parts.join(" · ");
 }
@@ -53983,19 +54108,19 @@ function driftCounts(drift) {
 }
 function driftLine(change2, options = {}) {
   const keys3 = sortedKeys(change2.changedKeys);
-  const listed = options.row === true ? keys3.slice(0, ROW_PATHS_PER_CHANGE) : keys3;
-  const hidden = keys3.length - listed.length;
+  const listed2 = options.row === true ? keys3.slice(0, ROW_PATHS_PER_CHANGE) : keys3;
+  const hidden = keys3.length - listed2.length;
   const parts = [
     `<kbd>${driftWord(change2)}</kbd> <code>${escapeText(change2.type)}</code> <b>${escapeText(change2.name)}</b>`
   ];
-  if (listed.length > 0) {
+  if (listed2.length > 0) {
     const more = hidden > 0 ? `, and ${hidden} more` : "";
-    parts.push(`${listed.map((key) => code(options.row ? shortPath(key) : key)).join(", ")}${more}`);
+    parts.push(`${listed2.map((key) => code(options.row ? shortPath(key) : key)).join(", ")}${more}`);
   }
   return parts.join(" · ");
 }
 function sortedDrift(diff) {
-  return [...diff.drift ?? []].sort((a, b) => byCodeUnit4(a.address, b.address));
+  return [...diff.drift ?? []].sort((a, b) => byCodeUnit5(a.address, b.address));
 }
 function driftLines(drift, summary2, options) {
   if (drift.length === 0)
@@ -54018,13 +54143,14 @@ function driftRow(row, options) {
   const summary2 = `[summary](${row.runUrl})`;
   const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
   const lines = [
-    `- ${box}**${escapeText(row.diff.stackId)}** · ${driftCounts(drift)} · ${summary2} ${rowMarker({
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${driftCounts(drift)} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker({
       stackId: row.diff.stackId,
       state: "drift",
       hash: row.hash,
       failed: row.failure !== undefined,
       shortened: level >= 2 ? level : 0,
-      drift: true
+      drift: true,
+      dependsOn: row.dependsOn
     })}`
   ];
   if (row.failure)
@@ -54036,7 +54162,7 @@ function driftRow(row, options) {
 }
 function pendingRow(row, options) {
   const level = options.level ?? 0;
-  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit4(a.address, b.address));
+  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit5(a.address, b.address));
   const deletes = changes.filter((change2) => change2.op === "delete");
   const replaces = changes.filter((change2) => change2.op === "replace");
   const folded = changes.filter((change2) => !isDestroy(change2));
@@ -54053,7 +54179,8 @@ function pendingRow(row, options) {
       destroys,
       failed: row.failure !== undefined,
       shortened: level,
-      drift: drift.length > 0
+      drift: drift.length > 0,
+      dependsOn: row.dependsOn
     })}`
   ];
   if (row.attribution)
@@ -54120,7 +54247,8 @@ function inSyncRow(row) {
     `- ${escapeText(row.stackId)} ${rowMarker({
       stackId: row.stackId,
       state: "in-sync",
-      failed: row.failure !== undefined
+      failed: row.failure !== undefined,
+      dependsOn: row.dependsOn
     })}`
   ];
   if (row.failure)
@@ -54192,7 +54320,7 @@ var SIGNED_FACT = {
 function placed(row) {
   return row.state === "queued" ? "deploying" : row.state;
 }
-function byCodeUnit5(a, b) {
+function byCodeUnit6(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function plural3(count, word) {
@@ -54284,9 +54412,11 @@ function blocks(rows) {
   return rows.map((row) => row.text).join(`
 `);
 }
+var DRIFT_REPAIRED_WORDS = "put back what changed outside the code";
 var RESULT_WORDS = {
   "in-sync": IN_SYNC_DESCRIPTION,
-  rehearsed: REHEARSED_DESCRIPTION
+  rehearsed: REHEARSED_DESCRIPTION,
+  "drift-repaired": DRIFT_REPAIRED_WORDS
 };
 function recentLine(deploy) {
   const result = deploy.result === undefined ? "" : ` · ${RESULT_WORDS[deploy.result]}`;
@@ -54296,7 +54426,7 @@ function version2(actionRef2) {
   return /^[0-9a-f]{40,}$/.test(actionRef2) ? `\`${actionRef2.slice(0, 7)}\`` : escapeText(actionRef2);
 }
 function renderBody(input2) {
-  const rows = [...input2.rows].sort((a, b) => byCodeUnit5(a.stackId, b.stackId));
+  const rows = [...input2.rows].sort((a, b) => byCodeUnit6(a.stackId, b.stackId));
   const known = rows.filter((row) => row.known);
   const of = (state2) => known.filter((row) => row.state === state2);
   const state = headerState(rows);
@@ -54323,14 +54453,14 @@ function renderBody(input2) {
   const drifted = of("drift");
   if (drifted.length > 0)
     out.push("## Drifted", DRIFTED_LINE, blocks(drifted));
-  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) => byCodeUnit5(a.stackId, b.stackId));
+  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) => byCodeUnit6(a.stackId, b.stackId));
   if (deploying.length > 0)
     out.push("## Deploying", blocks(deploying));
   const previewFailed = of("preview-failed");
   if (previewFailed.length > 0)
     out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
   const inSync = of("in-sync");
-  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit5(a.stackId, b.stackId));
+  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit6(a.stackId, b.stackId));
   if (inSync.length > 0 || ignored.length > 0) {
     const loud = inSync.filter((row) => row.failed);
     const quiet = inSync.filter((row) => !row.failed);
@@ -54346,7 +54476,7 @@ function renderBody(input2) {
 `), "</details>");
     }
   }
-  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit5(a.stackId, b.stackId)).slice(0, RECENTLY_DEPLOYED);
+  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit6(a.stackId, b.stackId)).slice(0, RECENTLY_DEPLOYED);
   if (recent.length > 0)
     out.push("## Recently deployed", recent.map(recentLine).join(`
 `));
@@ -54387,7 +54517,7 @@ function fitBody(input2, options = {}) {
   });
   const fits = () => render().length <= target;
   for (const level of LEVELS.slice(1)) {
-    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit4(a.stackId, b.stackId));
+    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit5(a.stackId, b.stackId));
     for (const entry of biggestFirst) {
       if (fits())
         break;
@@ -54395,7 +54525,7 @@ function fitBody(input2, options = {}) {
         entry.level = level;
     }
   }
-  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit4(a.stackId, b.stackId));
+  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit5(a.stackId, b.stackId));
   for (const entry of smallestFirst) {
     const reached = entry.level;
     for (const level of LEVELS.slice(0, reached)) {
@@ -54601,18 +54731,18 @@ function read(file2) {
 
 // src/core/diff-hash.ts
 import { createHash } from "node:crypto";
-function byCodeUnit6(a, b) {
+function byCodeUnit7(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function sortedSet3(keys3) {
-  return [...new Set(keys3)].sort(byCodeUnit6);
+  return [...new Set(keys3)].sort(byCodeUnit7);
 }
 function canonicalJson(value) {
   if (typeof value === "string")
     return JSON.stringify(value);
   if (Array.isArray(value))
     return `[${value.map(canonicalJson).join(",")}]`;
-  const members2 = Object.keys(value).sort(byCodeUnit6).flatMap((key) => {
+  const members2 = Object.keys(value).sort(byCodeUnit7).flatMap((key) => {
     const member = value[key];
     return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
   });
@@ -54634,14 +54764,14 @@ function canonicalChange(change2) {
 function canonicalValues(values) {
   if (values === undefined || values.length === 0)
     return;
-  return [...values].sort((a, b) => byCodeUnit6(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
+  return [...values].sort((a, b) => byCodeUnit7(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
 }
 function canonicalDiff(diff) {
   const drift = diff.drift === undefined || diff.drift.length === 0 ? "" : `"drift":[${canonicalChanges(diff.drift).join(",")}],`;
   return `{"changes":[${canonicalChanges(diff.changes).join(",")}],${drift}"stackId":${JSON.stringify(diff.stackId)}}`;
 }
 function canonicalChanges(changes) {
-  return changes.map((change2) => ({ address: change2.address, text: canonicalJson(canonicalChange(change2)) })).sort((a, b) => byCodeUnit6(a.address, b.address) || byCodeUnit6(a.text, b.text)).map((change2) => change2.text);
+  return changes.map((change2) => ({ address: change2.address, text: canonicalJson(canonicalChange(change2)) })).sort((a, b) => byCodeUnit7(a.address, b.address) || byCodeUnit7(a.text, b.text)).map((change2) => change2.text);
 }
 function diffHash(diff) {
   return createHash("sha256").update(canonicalDiff(diff), "utf8").digest("hex").slice(0, 16);
@@ -54861,11 +54991,11 @@ function attributionSource(github, input2, onFailure) {
 }
 
 // src/core/dependencies.ts
-function byCodeUnit7(a, b) {
+function byCodeUnit8(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function planDeploys(input2) {
-  const ids = [...new Set(input2.allowed)].sort(byCodeUnit7);
+  const ids = [...new Set(input2.allowed)].sort(byCodeUnit8);
   const going = new Set(ids);
   const refused = new Map;
   for (let changed = true;changed; ) {
@@ -54876,7 +55006,7 @@ function planDeploys(input2) {
       const waitingOn = (input2.dependsOn.get(id) ?? []).filter((dependency) => !input2.open.has(dependency) && !going.has(dependency) && (input2.pending.has(dependency) || refused.has(dependency)));
       if (waitingOn.length === 0)
         continue;
-      refused.set(id, [...waitingOn].sort(byCodeUnit7));
+      refused.set(id, [...waitingOn].sort(byCodeUnit8));
       going.delete(id);
       changed = true;
     }
@@ -54886,7 +55016,7 @@ function planDeploys(input2) {
   for (const id of ids) {
     if (refused.has(id))
       continue;
-    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit7);
+    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit8);
     if (behind.length === 0)
       start.push(id);
     else
@@ -54916,6 +55046,37 @@ function queueState(behind, records) {
       return "dead";
   }
   return waiting ? "waiting" : "ready";
+}
+function withReadDependencies(input2) {
+  const dependsOn = new Map([...input2.configured].map(([id, ids]) => [id, [...ids]]));
+  const reaches = (from, to) => {
+    const seen = new Set;
+    const walk = (at) => {
+      if (at === to)
+        return true;
+      if (seen.has(at))
+        return false;
+      seen.add(at);
+      return (dependsOn.get(at) ?? []).some(walk);
+    };
+    return walk(from);
+  };
+  const dropped = [];
+  for (const id of [...input2.auto].sort(byCodeUnit8)) {
+    const list = dependsOn.get(id);
+    if (list === undefined)
+      continue;
+    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit8)) {
+      if (dependency === id || !dependsOn.has(dependency) || list.includes(dependency))
+        continue;
+      if (reaches(dependency, id))
+        dropped.push({ stackId: id, dependency });
+      else
+        list.push(dependency);
+    }
+    list.sort(byCodeUnit8);
+  }
+  return { dependsOn, dropped };
 }
 
 // src/github/deployments.ts
@@ -54980,7 +55141,7 @@ async function settleEndedRuns(github, records, repoUrl) {
 
 // src/render/changes.ts
 function orderChanges(diff) {
-  const changes = [...diff.changes].sort((a, b) => byCodeUnit4(a.address, b.address));
+  const changes = [...diff.changes].sort((a, b) => byCodeUnit5(a.address, b.address));
   return {
     deletes: changes.filter((change2) => change2.op === "delete"),
     replaces: changes.filter((change2) => change2.op === "replace"),
@@ -55127,6 +55288,8 @@ function previewRow(stackId2, result, links, failure2, options = {}) {
     };
   }
   const drifted = (result.diff.drift ?? []).length > 0;
+  const read2 = result.dependencies?.stackIds ?? [];
+  const dependsOn = read2.length === 0 ? {} : { dependsOn: read2 };
   if (result.diff.changes.length === 0) {
     if (drifted) {
       return {
@@ -55134,10 +55297,12 @@ function previewRow(stackId2, result, links, failure2, options = {}) {
         diff: result.diff,
         hash: diffHash(result.diff),
         runUrl: links.summary,
-        failure: failure2
+        previewUrl: options.pageUrl,
+        failure: failure2,
+        ...dependsOn
       };
     }
-    return { state: "in-sync", stackId: stackId2, failure: failure2 };
+    return { state: "in-sync", stackId: stackId2, failure: failure2, ...dependsOn };
   }
   return {
     state: "pending",
@@ -55145,7 +55310,8 @@ function previewRow(stackId2, result, links, failure2, options = {}) {
     hash: diffHash(result.diff),
     runUrl: links.summary,
     previewUrl: options.pageUrl ?? (options.toolDiffInLog ? links.log : undefined),
-    failure: failure2
+    failure: failure2,
+    ...dependsOn
   };
 }
 function previewSummary(stackId2, result, merges) {
@@ -55291,7 +55457,7 @@ function json2(value) {
 `;
 }
 function scanResultFile(input2) {
-  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit4(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? { stack: stack.diff.stackId, seconds: seconds(milliseconds), ...diffOf(stack.diff) } : {
+  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit5(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? { stack: stack.diff.stackId, seconds: seconds(milliseconds), ...diffOf(stack.diff) } : {
     stack: stack.stackId,
     seconds: seconds(milliseconds),
     state: "preview-failed",
@@ -55908,10 +56074,10 @@ function groups(files) {
     const slash = file2.indexOf("/");
     return slash === -1 ? "." : file2.slice(0, slash);
   };
-  const byDirectory = Map.groupBy([...files].sort(byCodeUnit8), top);
-  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit8(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
+  const byDirectory = Map.groupBy([...files].sort(byCodeUnit9), top);
+  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit9(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
 }
-function byCodeUnit8(a, b) {
+function byCodeUnit9(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -55948,10 +56114,26 @@ var FILES_PER_DIRECTORY = 20;
 function foundText(count3) {
   return count3 === 0 ? "Found no stacks." : `Found ${plural2(count3, "stack")}.`;
 }
-function settingsText({ environment, tickers: tickers2, inputs }) {
+function settingsText(configured) {
+  const { environment, tickers: tickers2, inputs } = configured;
   const rule = typeof tickers2 === "string" ? tickers2 : tickers2.join(", ");
   const claims = inputs.length === 0 ? "no inputs" : `inputs ${inputs.join(", ")}`;
-  return `environment ${environment}, tickers ${rule}, ${claims}`;
+  const waits = dependsOnWords(configured);
+  return `environment ${environment}, tickers ${rule}, ${claims}${waits === undefined ? "" : `, depends on ${waits}`}`;
+}
+function dependsOnWords({ dependsOn, dependsOnAuto }) {
+  const parts = [
+    ...dependsOn ?? [],
+    ...dependsOnAuto ? ["the stacks its stack references name, read at each preview (auto)"] : []
+  ];
+  return parts.length === 0 ? undefined : parts.join(", ");
+}
+function dependsOnCell({ dependsOn, dependsOnAuto }) {
+  const parts = [
+    ...dependsOn ?? [],
+    ...dependsOnAuto ? ["auto: its stack references, read at each preview"] : []
+  ];
+  return parts.length === 0 ? "none" : parts.join(", ");
 }
 function ignoreText({ glob, stacks }) {
   return `ignore ${JSON.stringify(glob)} leaves out ${plural2(stacks.length, "stack")}: ${stacks.join(", ")}.`;
@@ -55976,16 +56158,18 @@ function renderCheckSummary({ report, unrelated, hasConfigFile: hasConfigFile2 }
     parts.push(NO_CONFIG_FILE);
   parts.push("### Stacks", foundText(report.stacks.length));
   if (report.stacks.length > 0) {
+    const waits = report.stacks.some((configured) => configured.dependsOn !== undefined || configured.dependsOnAuto);
     parts.push([
-      "| Stack | Environment | Tickers | Inputs |",
-      "|---|---|---|---|",
+      `| Stack | Environment | Tickers | Inputs |${waits ? " Depends on |" : ""}`,
+      `|---|---|---|---|${waits ? "---|" : ""}`,
       ...report.stacks.map((configured) => {
         const { environment, tickers: tickers2, inputs } = configured;
         return row([
           stackId(configured.stack),
           environment,
           typeof tickers2 === "string" ? tickers2 : tickers2.join(", "),
-          inputs.length === 0 ? "none" : inputs.join(", ")
+          inputs.length === 0 ? "none" : inputs.join(", "),
+          ...waits ? [dependsOnCell(configured)] : []
         ]);
       })
     ].join(`
@@ -56536,6 +56720,8 @@ async function resolveTicks(context3, handOn) {
       break;
     log.info("The body moved between the read and the walk. Reading again.");
   }
+  if (stacks)
+    stacks = withRowDependencies(context3, stacks, liveRows);
   const hashes = new Map;
   const drifted = new Set;
   for (const { tick } of named) {
@@ -57032,6 +57218,29 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
   }
   return fitted.body;
 }
+function withRowDependencies(context3, stacks, rows) {
+  const auto = new Set([...stacks.values()].flatMap((one) => one.dependsOnAuto ? [stackId(one.stack)] : []));
+  if (auto.size === 0)
+    return stacks;
+  const read2 = new Map;
+  for (const row2 of rows) {
+    if (row2.known && row2.dependsOn && !read2.has(row2.stackId))
+      read2.set(row2.stackId, row2.dependsOn);
+  }
+  const { dependsOn, dropped } = withReadDependencies({
+    configured: new Map([...stacks].map(([id, one]) => [id, one.dependsOn ?? []])),
+    auto,
+    read: read2
+  });
+  for (const { stackId: id, dependency } of dropped) {
+    context3.log.info(`${logGroupTitle(id)} reads ${logGroupTitle(dependency)} through its stack references, and ${logGroupTitle(dependency)} already depends on ${logGroupTitle(id)}. That would be a circle, so ${logGroupTitle(id)} does not wait on ${logGroupTitle(dependency)}.`);
+  }
+  return new Map([...stacks].map(([id, one]) => {
+    const ids = dependsOn.get(id) ?? [];
+    const { dependsOn: _, ...rest } = one;
+    return [id, ids.length === 0 ? rest : { ...rest, dependsOn: ids }];
+  }));
+}
 async function startQueued(context3, handOn) {
   const { log, github } = context3;
   const config2 = loadConfig(context3.root);
@@ -57041,7 +57250,8 @@ async function startQueued(context3, handOn) {
   }
   const { stacks, ignored } = await discover2(context3, config2);
   const all = [...stacks.values()];
-  const involved = all.filter(({ stack, dependsOn }) => dependsOn !== undefined || all.some((other) => other.dependsOn?.includes(stackId(stack)) === true));
+  const anyAuto = all.some(({ dependsOnAuto }) => dependsOnAuto);
+  const involved = all.filter(({ stack, dependsOn }) => anyAuto || dependsOn !== undefined || all.some((other) => other.dependsOn?.includes(stackId(stack)) === true));
   const settled = await settleEndedRuns(github, await readRecords(context3, all.map(({ environment }) => environment), involved), context3.repoUrl);
   for (const id of settled.stackIds) {
     log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
@@ -57298,11 +57508,16 @@ function renderPreviewPage(diff, links, options = {}) {
   const id = escapeText(diff.stackId);
   const { deletes, replaces, others } = orderChanges(diff);
   const destroys = [...deletes, ...replaces];
-  const counted = counts([...destroys, ...others]);
+  const drift = sortedDrift(diff);
+  const counted = [
+    ...diff.changes.length > 0 ? [counts([...destroys, ...others])] : [],
+    ...drift.length > 0 ? [driftCounts(drift)] : []
+  ];
+  const also = drift.length > 0 ? " The deploy also puts back what changed outside the code, listed last." : "";
   const summary3 = [
-    `**${id}** · ${counted}`,
+    `**${id}** · ${counted.join(" · ")}`,
     ...destroys.length > 0 ? [`:warning: **This deploy ${destroyWords(deletes.length, replaces.length)}.**`] : [],
-    diff.changes.some((change2) => (change2.values ?? []).length > 0) ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.` : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.`,
+    diff.changes.length === 0 ? `Sluiceway's own list of what changed in real infrastructure outside the code, never what it changed to. The code has nothing to deploy, and a deploy puts these back as the code says. It is the drift the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.` : diff.changes.some((change2) => (change2.values ?? []).length > 0) ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}` : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}`,
     `Every stack this scan previewed is in the [summary](${links.summary}) of the scan, and the tool's own words are in the ${jobLog(links)}, in the group <code>${id}</code>.`,
     ...options.toolDiffInLog ? [
       `The tool's own diff of this stack, values included, is in the ${jobLog(links)}, in the group <code>${id}</code>. It is not on this page.`
@@ -57314,6 +57529,8 @@ function renderPreviewPage(diff, links, options = {}) {
     ...destroys.map((change2) => `- :warning: ${changeLine(change2)}
 `),
     ...others.map((change2) => `- ${changeLine(change2)}
+`),
+    ...drift.map((change2) => `- ${driftLine(change2)}
 `)
   ];
   const limit = options.limit ?? PREVIEW_PAGE_FIELD_LIMIT;
@@ -57334,7 +57551,7 @@ ${pointer(lines3.length, id, links)}
 ${pointer(unlisted, id, links)}
 ` : "");
   return {
-    title: `${diff.stackId.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")}: ${counted.replaceAll("**", "")}`,
+    title: `${diff.stackId.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")}: ${counted.join(", ").replaceAll("**", "")}`,
     summary: summary3,
     text: text4,
     unlisted
@@ -57524,7 +57741,7 @@ function fitToBudget(entries, frameCost, budget) {
     entry.level = level;
   };
   const fits = () => frameCost(shortened) + blocks2 - 1 <= budget;
-  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit4(a.stackId, b.stackId);
+  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit5(a.stackId, b.stackId);
   for (const level of LEVELS2.slice(1)) {
     for (const entry of [...entries].sort(bySize((entry2) => entry2.level, -1))) {
       if (fits())
@@ -57565,7 +57782,7 @@ function toolDiffLine(options) {
   return `The tool's own diff of every pending stack, values included, is in the ${log}, in the stack's group.`;
 }
 function renderSummary(stacks, options = {}) {
-  const sorted = [...stacks].sort((a, b) => byCodeUnit4(stackIdOf2(a), stackIdOf2(b)));
+  const sorted = [...stacks].sort((a, b) => byCodeUnit5(stackIdOf2(a), stackIdOf2(b)));
   const diffs = sorted.filter((stack) => stack.kind === "diff");
   const pending = diffs.filter((stack) => stack.diff.changes.length > 0);
   const hasDrift = (stack) => (stack.diff.drift ?? []).length > 0;
@@ -57718,7 +57935,7 @@ async function scanning(context3, report) {
   const config2 = loadConfig(context3.root);
   const found = await context3.adapter.discover(context3.root, config2);
   const ignored = ignoredStacks(config2, found);
-  const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit4(stackId(a.stack), stackId(b.stack)));
+  const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit5(stackId(a.stack), stackId(b.stack)));
   const ids = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural2(stacks.length, "stack")}.`);
   const { logDiff } = config2.scan;
@@ -57728,7 +57945,7 @@ async function scanning(context3, report) {
   const knownDrift = new Set;
   const plan = await makePlan(context3, config2, stacks, knownDrift);
   logPlan(context3, plan, stacks.length);
-  const checkDrift = driftCheckRule(config2, context3, knownDrift);
+  const checkDrift = driftCheckRule(config2, context3, knownDrift, stacks);
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
   const unclaimed = unclaimedFiles(plan, config2);
   let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
@@ -57755,11 +57972,11 @@ async function scanning(context3, report) {
       await checkVersion3(context3, stacks.map(({ stack }) => stack));
       versionChecked = true;
     }
-    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), prepared, checkDrift);
+    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), prepared, checkDrift, stacks.map(({ stack }) => stack));
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit4(a.id, b.id));
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit5(a.id, b.id));
     if (round.length > 0 || rounds === 0) {
       await writeSummary2(context3, all, { logDiff, unclaimed });
       report.previewed = all;
@@ -57954,7 +58171,7 @@ async function scanning(context3, report) {
     counts: dashboardCounts(parseDashboard(written.body).rows)
   };
   if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit4(a.id, b.id));
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit5(a.id, b.id));
     await writeSummary2(context3, all, { logDiff, unclaimed }, attributed);
   }
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
@@ -58119,16 +58336,14 @@ async function checkVersion3(context3, stacks) {
     throw error63;
   }
 }
-function driftCheckRule(config2, context3, knownDrift) {
-  if (!config2.drift.enabled)
+function driftCheckRule(config2, context3, knownDrift, stacks) {
+  const enabled = new Set(stacks.flatMap((one) => one.drift ?? config2.drift.enabled ? [stackId(one.stack)] : []));
+  if (enabled.size === 0)
     return () => false;
-  if (context3.event === "schedule")
-    return () => true;
-  if (context3.event === "workflow_dispatch" && context3.startedByPerson)
-    return () => true;
-  return (id) => knownDrift.has(id);
+  const every = context3.event === "schedule" || context3.event === "workflow_dispatch" && context3.startedByPerson === true;
+  return (id) => enabled.has(id) && (every || knownDrift.has(id));
 }
-async function previewAll(context3, stacks, logDiff, showValues, prepared, checkDrift) {
+async function previewAll(context3, stacks, logDiff, showValues, prepared, checkDrift, repoStacks) {
   const { log, now, adapter } = context3;
   if (stacks.length === 0)
     return [];
@@ -58157,9 +58372,15 @@ async function previewAll(context3, stacks, logDiff, showValues, prepared, check
       timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
       showValues
     };
-    const previewedOnly = await adapter.preview(configured.stack, options);
+    const previewedOnly = await adapter.preview(configured.stack, {
+      ...options,
+      ...configured.dependsOnAuto ? { dependencies: repoStacks } : {}
+    });
     let milliseconds = now().getTime() - started;
     log.info(`Previewed ${logGroupTitle(id)} in ${seconds2(milliseconds)}: ${previewOutcome(previewedOnly)}`);
+    if (previewedOnly.ok && previewedOnly.dependencies) {
+      log.info(readDependenciesText(id, previewedOnly.dependencies));
+    }
     let result = previewedOnly;
     let drift;
     if (previewedOnly.ok && checkDrift(id) && adapter.detectDrift) {
@@ -58192,6 +58413,13 @@ async function previewAll(context3, stacks, logDiff, showValues, prepared, check
   log.info(`Previewed ${plural2(previewed.length, "stack")} in ${seconds2(total)} with a pool of ${context3.concurrency}. Added up, the previews took ${seconds2(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds2(slowest.milliseconds)}.`);
   return [...previewed, ...unpreparedFailures];
 }
+function readDependenciesText(id, read2) {
+  const named = read2.stackIds.length === 0 ? `${logGroupTitle(id)} reads no stack of this repo through its stack references.` : `${logGroupTitle(id)} reads ${read2.stackIds.map(logGroupTitle).join(", ")} through its stack references.`;
+  if (read2.elsewhere === 0)
+    return named;
+  const one = read2.elsewhere === 1;
+  return `${named} ${plural2(read2.elsewhere, "stack reference")} ${one ? "names" : "name"} no stack of this repo that Sluiceway knows, so nothing waits on ${one ? "it" : "them"}.`;
+}
 function logResults(context3, previewed) {
   const { log } = context3;
   for (const { id, result, toolDiff: toolDiff3, drift } of previewed) {
@@ -58222,7 +58450,9 @@ async function writePages(context3, pages, round, urls, options) {
   const toWrite = [];
   for (const { id, result } of round) {
     urls.delete(id);
-    if (!result.ok || result.diff.changes.length === 0)
+    if (!result.ok)
+      continue;
+    if (result.diff.changes.length === 0 && (result.diff.drift ?? []).length === 0)
       continue;
     const page = renderPreviewPage(result.diff, {
       dashboard: dashboardSearchUrl(context3.repoUrl, options.label),
@@ -58239,7 +58469,7 @@ async function writePages(context3, pages, round, urls, options) {
     urls.set(id, url2);
   const fallBack = logDiff && context3.jobId !== undefined ? "the job log" : "the summary of the scan";
   if (written.urls.size > 0) {
-    log.info(`Wrote the preview pages of ${plural2(written.urls.size, "pending stack")} on ${short(context3.sha)}: ${written.created} created, ${written.updated} updated.`);
+    log.info(`Wrote the preview pages of ${plural2(written.urls.size, "stack")} on ${short(context3.sha)}: ${written.created} created, ${written.updated} updated.`);
   }
   for (const { stackId: id, message: message3 } of written.failed) {
     log.info(`The preview page of ${logGroupTitle(id)} could not be written: ${message3}. Its preview link lands on ${fallBack}.`);
@@ -58250,7 +58480,7 @@ async function writePages(context3, pages, round, urls, options) {
   if (refused.permission) {
     log.info(`No preview page was written: GitHub answered "${refused.message}". With \`checks: write\` in the permissions of the scan job, a pending row's preview link lands on a page of its own that shows the stack's diff (record 0050). Until then it lands on ${fallBack}.`);
   } else {
-    log.info(`GitHub answered "${refused.message}" while the preview pages were written. No more pages are written in this scan, and the preview links of ${plural2(written.skipped.length, "pending stack")} land on ${fallBack}.`);
+    log.info(`GitHub answered "${refused.message}" while the preview pages were written. No more pages are written in this scan, and the preview links of ${plural2(written.skipped.length, "stack")} land on ${fallBack}.`);
   }
 }
 async function writeSummary2(context3, previewed, { logDiff, unclaimed }, attributed = new Map) {
@@ -58387,7 +58617,7 @@ function mergesWaiting(facts) {
       waiting.push({ id, fact: { ...fact, merge: fact.merge } });
     }
   }
-  return waiting.sort((a, b) => byCodeUnit4(a.id, b.id));
+  return waiting.sort((a, b) => byCodeUnit5(a.id, b.id));
 }
 async function handOffMerges(context3, config2, stacks, previewed, waiting, handedOn) {
   const { github, log } = context3;
