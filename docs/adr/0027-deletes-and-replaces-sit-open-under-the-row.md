@@ -3,6 +3,8 @@
 > Amended by 0044: a link that shows a stack's diff names the attempt of the run, and a preview failure's `run` links to the log of the job.
 >
 > Amended by 0062: one caution block above the pending list, the destroy alert, names the pending stacks with a delete or replace. The delete and replace lines stay open under the row.
+>
+> Amended by 0063: under a header, the first line of a deploying or queued row starts with a small animated spinner. Its words and marker do not change.
 
 Records 0009, 0024 and 0026 fix the frame of a row: the marker at the end of the first line, attribution on its own line, destroys first and always warned about. They left the look to a prototype. Three row formats were rendered as real issues with 58 made-up stacks and judged in light theme, dark theme and on a phone. This record fixes the one that won.
 

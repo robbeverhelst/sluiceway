@@ -384,6 +384,10 @@ _Avoid_: Badge, status light, bullet
 A count dot's colour in front of a result, so a person sees it at a glance: on a line of the recently deployed list (only under a header), on a headline of the job log, and in a notification recipe's message. Green went out, red failed, yellow refused, white nothing went out, purple rehearsed. The scan's headline takes the dot of the header state it wrote. Never on a row and never in a voiced line: it is a signal, not the voice.
 _Avoid_: Status emoji, icon, badge
 
+**Spinner**:
+The small animated crate, bobbing in the water, at the start of a deploying or queued row, so the stack a person ticked is visibly moving. A light and a dark file, served from the action ref like the header, and only shown when there is a header. It is the first thing the size budget drops.
+_Avoid_: Loader, loading icon, progress indicator, throbber
+
 **Voice**:
 Wording with a water image in it. It is allowed in exactly two lines, the good-news line and the first-run line. Everything else Sluiceway writes is plain.
 _Avoid_: Tone, copy, humour

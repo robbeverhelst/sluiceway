@@ -182,7 +182,7 @@ Each line is something in `docs/brief.md` that must not be built as written.
 | The example consumer workflow | Replaced. The one in the README is the only valid example | README, 0035 |
 | "Environments are the real approval gate. The checkbox is the trigger" | The tick is always a gate, and Environments make it a stronger one | 0020 |
 | Section 5, config keys `stack`, `approvers`, `dependsOn`, `drift` | `name`, `tickers`. `dependsOn` came in slice 4.4 and a top level `drift` in slice 4.3, both in the shape section 3 gives. New keys: `inputs`, `scan.unrelated`, `previewTimeout`, `dashboard.redact`, `dashboard.personality` | section 3 |
-| Section 6, the sections and the header line | Pending, Deploying, Preview failed, In sync, Recently deployed, and Drifted since slice 4.3. Failed is a line on a row, not a section | 0029, 0055 |
+| Section 6, the sections and the header line | Pending, Deploying, Preview failed, In sync, Recently deployed, and Drifted since slice 4.3. Since slice 4.12 Deploying comes first while it has rows. Failed is a line on a row, not a section | 0029, 0055, 0063 |
 | Section 6, the row format with `+2 ~1 -0`, `from #123 by @robbe` and a marker on the second line | Word counts, the marker at the end of the first line, a closing marker, attribution on its own line with plain logins | 0009, 0026, 0027 |
 | Section 6, alert blocks on rows with a replace or delete | They do not render inside a list. Delete and replace lines sit open under the row | 0027 |
 | Section 6, "never render values the tool marks as secret" | No value is ever shown, marked or not | 0021 |
