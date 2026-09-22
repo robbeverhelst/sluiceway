@@ -19,12 +19,7 @@ import { planDeploys, queueState, withReadDependencies } from "../core/dependenc
 import {
   type DeployFact,
   deployFacts,
-  deploymentPayload,
-  deploymentTask,
-  HANDED_ON_DESCRIPTION,
   lastDeployedCommit,
-  mergePayload,
-  readDeploymentPayload,
   taskStackId,
 } from "../core/deployment.ts";
 import {
@@ -46,7 +41,12 @@ import { WORKFLOW_DIRECTORY } from "../core/workflow-check.ts";
 import { type AttributionSource, attributionSource } from "../github/attribution.ts";
 import { findDashboard, isBotIssueWithRootMarker } from "../github/dashboard.ts";
 import { swapRows as swapInto, type Written } from "../github/dashboard-write.ts";
-import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts";
+import {
+  openRecord,
+  readDeploymentRecords,
+  settleEndedRuns,
+  startQueuedRecord,
+} from "../github/deployments.ts";
 import { type EventIssue, editedIssue } from "../github/event.ts";
 import type { JobLog } from "../github/job-log.ts";
 import { dashboardUrl } from "../github/outputs.ts";
@@ -515,31 +515,27 @@ async function resolveTicks(
     const ticker = tickers.get(id);
     if (!stack || hash === undefined || ticker === undefined) continue;
     try {
-      const record = await github.createDeployment({
-        sha: context.sha,
-        task: deploymentTask(id),
+      const record = await openRecord(context, {
+        stackId: id,
         environment: stack.environment,
-        payload: deploymentPayload({
-          hash,
-          ticker,
-          run: context.runId,
-          attempt: context.runAttempt,
-          behind,
-          ...(drifted.has(id) ? { drift: true } : {}),
-        }),
+        sha: context.sha,
+        ticker,
+        hash,
+        behind,
+        drift: drifted.has(id),
       });
       started.push({
         stackId: id,
         environment: stack.environment,
-        deployment: record.id,
+        deployment: record.deployment,
         ticker,
         behind,
       });
-      await github.createDeploymentStatus(record.id, { state: "queued", logUrl: runUrl(context) });
+      if (record.unfinished !== undefined) throw record.unfinished;
       log.info(
         behind
-          ? `${logGroupTitle(id)}: deployment record ${record.id} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.`
-          : `${logGroupTitle(id)}: deployment record ${record.id} is queued.`,
+          ? `${logGroupTitle(id)}: deployment record ${record.deployment} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.`
+          : `${logGroupTitle(id)}: deployment record ${record.deployment} is queued.`,
       );
     } catch (error) {
       failures.push(
@@ -870,29 +866,22 @@ async function mergeAll(
       const stack = stacks.get(id);
       if (!stack) continue;
       try {
-        const record = await github.createDeployment({
-          sha: answer.sha,
-          task: deploymentTask(id),
+        const record = await openRecord(context, {
+          stackId: id,
           environment: stack.environment,
-          payload: mergePayload({
-            ticker,
-            run: context.runId,
-            attempt: context.runAttempt,
-            merge: tick.pr,
-          }),
+          sha: answer.sha,
+          ticker,
+          merge: tick.pr,
         });
         result.merged.push({
           stackId: id,
           environment: stack.environment,
-          deployment: record.id,
+          deployment: record.deployment,
           ticker,
         });
-        await github.createDeploymentStatus(record.id, {
-          state: "queued",
-          logUrl: runUrl(context),
-        });
+        if (record.unfinished !== undefined) throw record.unfinished;
         log.info(
-          `${logGroupTitle(id)}: deployment record ${record.id} is queued and deploys after the scan of the merge.`,
+          `${logGroupTitle(id)}: deployment record ${record.deployment} is queued and deploys after the scan of the merge.`,
         );
       } catch (error) {
         result.failure = `#${tick.pr} is merged, and the deployment record of ${logGroupTitle(id)} could not be written: ${message(error)}. The resolve job needs the permission \`deployments: write\` (record 0003). Nothing deploys for it: the scan shows the stack as pending, and a tick on its row deploys it. Nothing more was merged.`;
@@ -1003,7 +992,7 @@ async function openDeployments(
   );
   const theirs = records.filter((record) => ids.has(taskStackId(record.task) ?? ""));
   const settled = await settleEndedRuns(context.github, theirs, context.repoUrl);
-  for (const id of settled.stackIds) {
+  for (const { stackId: id } of settled.ended) {
     context.log.info(
       `Ended the open deployment of ${logGroupTitle(id)}: its run is over and never reported a result.`,
     );
@@ -1239,7 +1228,7 @@ async function startQueued(
     ),
     context.repoUrl,
   );
-  for (const id of settled.stackIds) {
+  for (const { stackId: id } of settled.ended) {
     log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
   }
   const ready = [...deployFacts(settled.records).byStack]
@@ -1261,36 +1250,23 @@ async function startQueued(
   const started: Started[] = [];
   for (const { stackId: id, fact } of capDeploys(ready).start) {
     const stack = stacks.get(id);
-    const old = settled.records.find((record) => record.id === fact.deployment);
-    const payload = old && readDeploymentPayload(old.payload);
-    if (!stack || !payload) continue;
+    const queued = settled.records.find((record) => record.id === fact.deployment);
+    if (!stack || !queued) continue;
     try {
-      // The new record first: a stack is never without an open one.
-      const record = await github.createDeployment({
+      const record = await startQueuedRecord(context, queued, {
         sha: context.sha,
-        task: deploymentTask(id),
         environment: stack.environment,
-        payload: deploymentPayload({
-          hash: payload.hash,
-          ticker: payload.ticker,
-          run: context.runId,
-          attempt: context.runAttempt,
-        }),
       });
+      if (!record) continue;
       started.push({
         stackId: id,
         environment: stack.environment,
-        deployment: record.id,
-        ticker: payload.ticker,
+        deployment: record.deployment,
+        ticker: record.ticker,
       });
-      await github.createDeploymentStatus(record.id, { state: "queued", logUrl: runUrl(context) });
-      await github.createDeploymentStatus(fact.deployment, {
-        state: "inactive",
-        description: HANDED_ON_DESCRIPTION,
-        logUrl: runUrl(context),
-      });
+      if (record.unfinished !== undefined) throw record.unfinished;
       log.info(
-        `${logGroupTitle(id)}: what it waited behind went out, so it starts now. Deployment record ${record.id} is queued and takes over from record ${fact.deployment}.`,
+        `${logGroupTitle(id)}: what it waited behind went out, so it starts now. Deployment record ${record.deployment} is queued and takes over from record ${fact.deployment}.`,
       );
     } catch (error) {
       failures.push(

@@ -24,19 +24,16 @@ import {
   type DeployFact,
   type DeployFacts,
   deployFacts,
-  deploymentPayload,
-  deploymentTask,
-  IN_SYNC_DESCRIPTION,
   lastDeployedCommit,
-  MERGED_DESCRIPTION,
   type PreviewFirstWhy,
   pendingAgain,
+  type RecordEnd,
   rowAtLateRead,
   standingFailure,
   type TrailEntry,
 } from "../core/deployment.ts";
 import { diffHash } from "../core/diff-hash.ts";
-import { deployFailureText, previewFailureText } from "../core/failure-reason.ts";
+import { previewFailureText } from "../core/failure-reason.ts";
 import {
   NOT_QUALIFIED,
   qualify,
@@ -82,7 +79,12 @@ import {
   type Written,
   writeScan,
 } from "../github/dashboard-write.ts";
-import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts";
+import {
+  endRecord,
+  openRecord,
+  readDeploymentRecords,
+  settleEndedRuns,
+} from "../github/deployments.ts";
 import type { JobLog } from "../github/job-log.ts";
 import { dashboardUrl, type StepOutputs, writeResultFile } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
@@ -893,17 +895,15 @@ async function lateDeploys(
       stacks.map(({ environment }) => environment),
       fallBack,
     );
-    const before = deployFacts(records).byStack;
     const settled = await settleEndedRuns(github, records, context.repoUrl);
-    for (const id of settled.stackIds) {
-      const fact = before.get(id);
+    for (const { stackId: id, run } of settled.ended) {
       log.info(
-        `Ended the open deployment of ${logGroupTitle(id)}: run ${fact?.kind === "open" ? fact.run : ""} is over and never reported a result.`,
+        `Ended the open deployment of ${logGroupTitle(id)}: run ${run} is over and never reported a result.`,
       );
     }
     return {
       facts: deployFacts(settled.records),
-      settled: new Set(settled.stackIds),
+      settled: new Set(settled.ended.map(({ stackId: id }) => id)),
       runs: ownRuns(settled.records),
     };
   } catch (error) {
@@ -1663,8 +1663,7 @@ async function handOffMerges(
   waiting: WaitingMerge[],
   handedOn: MatrixEntry[],
 ): Promise<boolean> {
-  const { github, log } = context;
-  const logUrl = runUrl(context.repoUrl, context.runId, context.runAttempt);
+  const { log } = context;
   let ended = false;
   for (const { id, fact } of waiting) {
     const name = logGroupTitle(id);
@@ -1679,12 +1678,9 @@ async function handOffMerges(
     }
     const stack = stacks.find(({ stack: one }) => stackId(one) === id);
     const result = previewed.get(id)?.result;
-    const end = async (
-      state: "success" | "failure" | "inactive",
-      description: string,
-    ): Promise<void> => {
+    const end = async (how: RecordEnd): Promise<void> => {
       try {
-        await github.createDeploymentStatus(fact.deployment, { state, description, logUrl });
+        await endRecord(context, fact.deployment, how);
       } catch (error) {
         throw new Error(
           `The deployment record ${fact.deployment} of ${name} could not be ended: ${error instanceof Error ? error.message : error}. The scan job needs the permission \`deployments: write\` (record 0054).`,
@@ -1693,44 +1689,40 @@ async function handOffMerges(
       ended = true;
     };
     if (!stack || !result) {
-      await end("failure", deployFailureText({ kind: "unknown-stack" }));
+      await end({ kind: "failed", reason: { kind: "unknown-stack" } });
       log.info(
         `${name} is not in the repo any more, so the merge of #${fact.merge} deploys nothing.`,
       );
     } else if (!config.deploys) {
-      await end("failure", deployFailureText({ kind: "deploys-off" }));
+      await end({ kind: "failed", reason: { kind: "deploys-off" } });
       log.info(
         `#${fact.merge} is merged, and deploys are turned off in sluiceway.yaml (deploys: false). ${name} is not deployed.`,
       );
     } else if (!result.ok) {
-      await end("failure", deployFailureText({ kind: "preview-failed", reason: result.reason }));
+      await end({ kind: "failed", reason: { kind: "preview-failed", reason: result.reason } });
       log.info(
         `#${fact.merge} is merged, and the preview of ${name} failed, so nothing is deployed.`,
       );
     } else if (result.diff.changes.length === 0) {
-      await end("success", IN_SYNC_DESCRIPTION);
+      await end({ kind: "in-sync" });
       log.info(`#${fact.merge} is merged, and ${name} has nothing to deploy.`);
     } else {
-      await end("inactive", MERGED_DESCRIPTION);
+      await end({ kind: "merged" });
       const hash = diffHash(result.diff);
       try {
-        const record = await github.createDeployment({
-          sha: context.sha,
-          task: deploymentTask(id),
+        const record = await openRecord(context, {
+          stackId: id,
           environment: stack.environment,
+          sha: context.sha,
+          ticker: fact.ticker,
+          hash,
           // The hash covers drift when this scan found some (record 0055).
-          payload: deploymentPayload({
-            hash,
-            ticker: fact.ticker,
-            run: context.runId,
-            attempt: context.runAttempt,
-            ...((result.diff.drift ?? []).length > 0 ? { drift: true } : {}),
-          }),
+          drift: (result.diff.drift ?? []).length > 0,
         });
-        handedOn.push({ stack: id, environment: stack.environment, deployment: record.id });
-        await github.createDeploymentStatus(record.id, { state: "queued", logUrl });
+        handedOn.push({ stack: id, environment: stack.environment, deployment: record.deployment });
+        if (record.unfinished !== undefined) throw record.unfinished;
         log.info(
-          `#${fact.merge} is merged: deployment record ${record.id} of ${name} is queued with diff hash ${hash}, ticked by ${fact.ticker}, and handed to apply.`,
+          `#${fact.merge} is merged: deployment record ${record.deployment} of ${name} is queued with diff hash ${hash}, ticked by ${fact.ticker}, and handed to apply.`,
         );
       } catch (error) {
         throw new Error(

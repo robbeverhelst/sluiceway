@@ -11,10 +11,15 @@ import { applyConfig, type ConfiguredStack } from "../core/config.ts";
 import { loadConfig } from "../core/config-file.ts";
 import { queueState } from "../core/dependencies.ts";
 import { type DeploymentRecord, deployFacts } from "../core/deployment.ts";
-import { deployFailureText } from "../core/failure-reason.ts";
-import { openRecordsOfRun } from "../core/settle.ts";
 import { stackId } from "../core/stack.ts";
-import { type FallBackStack, readDeploymentRecords } from "../github/deployments.ts";
+import {
+  type EndedRecord,
+  type FallBackStack,
+  RecordNotEnded,
+  readDeploymentRecords,
+  type Settled,
+  settleRun,
+} from "../github/deployments.ts";
 import { editedIssue } from "../github/event.ts";
 import type { JobLog } from "../github/job-log.ts";
 import { eventDashboardUrl, type StepOutputs } from "../github/outputs.ts";
@@ -51,58 +56,17 @@ function message(error: unknown): string {
 }
 
 export async function settle(context: SettleContext): Promise<void> {
-  const { github, log } = context;
+  const { log } = context;
   // From the event, so it costs no request and is there on every way out.
   const url = eventDashboardUrl(context.repoUrl, context.event);
   if (url !== undefined) context.outputs?.set("dashboard-url", url);
   const config = loadConfig(context.root);
   const stacks = applyConfig(config, await context.adapter.discover(context.root, config));
 
-  let records = await readRecords(context, stacks);
-  const open = openRecordsOfRun(records, context.runId);
-
-  // Stops at the first record that cannot be written, as `resolve` does, so a
-  // missing `deployments: write` costs one request and not one per record.
-  const end = async (id: number, stack: string, dead: boolean) => {
-    try {
-      const status = await github.createDeploymentStatus(id, {
-        state: dead ? "failure" : "error",
-        description: deployFailureText({ kind: dead ? "dependency-failed" : "run-ended" }),
-        logUrl: `${context.repoUrl}/actions/runs/${context.runId}`,
-      });
-      records = records.map((record) => (record.id === id ? { ...record, status } : record));
-    } catch (error) {
-      throw new Error(
-        `The deployment record of ${logGroupTitle(stack)} could not be given its result: ${message(error)}. The settle job needs the permission \`deployments: write\` (record 0003).`,
-      );
-    }
-  };
-  let ended = 0;
-  for (const { id, stackId: stack, behind } of open) {
-    // A queued record of this run waits for the stacks before it (record
-    // 0056). It is not ended because the run is over.
-    if (behind) continue;
-    await end(id, stack, false);
-    ended++;
-    log.info(
-      `${RESULT_DOT.failed} Ended the open deployment of ${logGroupTitle(stack)} (record ${id}): this run ended without a result for it.`,
-    );
-  }
-  // A queued record of this run whose dependency did not go out can never
-  // start. From the first stack of a chain on, so the whole chain ends.
-  for (let more = true; more; ) {
-    more = false;
-    for (const { id, stackId: stack, behind } of open) {
-      if (!behind || deployFacts(records).byStack.get(stack)?.kind !== "open") continue;
-      if (queueState(behind, records) !== "dead") continue;
-      await end(id, stack, true);
-      ended++;
-      more = true;
-      log.info(
-        `${RESULT_DOT.failed} Ended the queued deployment of ${logGroupTitle(stack)} (record ${id}): a stack it depends on did not deploy.`,
-      );
-    }
-  }
+  const read = await readRecords(context, stacks);
+  const settled = await settleOwnRun(context, read);
+  const { records } = settled;
+  const ended = settled.ended.length;
 
   // The next layer (record 0056): every queued stack whose dependencies went
   // out, of this run or of another. `settle` cannot hand `apply` a matrix any
@@ -120,7 +84,7 @@ export async function settle(context: SettleContext): Promise<void> {
   }
   if (ended === 0 && ready.length === 0) {
     log.info(
-      open.length === 0
+      settled.open === 0
         ? `${DOT_AT_ZERO} No deployment record of this run is open. Every deploy it started reported a result.`
         : `${DOT_AT_ZERO} Every deploy this run started reported a result, and what is queued still waits.`,
     );
@@ -135,6 +99,36 @@ export async function settle(context: SettleContext): Promise<void> {
   if (ended > 0) {
     log.info(
       "Started a full scan, which writes the rows of these stacks again with the failure line.",
+    );
+  }
+}
+
+// Stops at the first record that cannot be written, as `resolve` does, so a
+// missing `deployments: write` costs one request and not one per record. What
+// was ended before it is in the log first.
+async function settleOwnRun(
+  context: SettleContext,
+  records: DeploymentRecord[],
+): Promise<Settled & { open: number }> {
+  try {
+    const settled = await settleRun(context.github, records, context.repoUrl, context.runId);
+    logEnded(context.log, settled.ended);
+    return settled;
+  } catch (error) {
+    if (!(error instanceof RecordNotEnded)) throw error;
+    logEnded(context.log, error.settled.ended);
+    throw new Error(
+      `The deployment record of ${logGroupTitle(error.stackId)} could not be given its result: ${message(error.cause)}. The settle job needs the permission \`deployments: write\` (record 0003).`,
+    );
+  }
+}
+
+function logEnded(log: JobLog, ended: readonly EndedRecord[]): void {
+  for (const { deployment, stackId: stack, dead } of ended) {
+    log.info(
+      dead
+        ? `${RESULT_DOT.failed} Ended the queued deployment of ${logGroupTitle(stack)} (record ${deployment}): a stack it depends on did not deploy.`
+        : `${RESULT_DOT.failed} Ended the open deployment of ${logGroupTitle(stack)} (record ${deployment}): this run ended without a result for it.`,
     );
   }
 }
