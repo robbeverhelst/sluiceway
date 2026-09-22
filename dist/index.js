@@ -58262,6 +58262,12 @@ function lastDeployedCommit(facts, stackId2) {
 function pendingAgain(fact, hash2) {
   return fact?.kind === "succeeded" && !fact.inSync && fact.hash === hash2;
 }
+function standingFailure(stackId2, fact, outside) {
+  if (fact?.kind !== "failed")
+    return;
+  const after = outside.some((deploy) => deploy.stackId === stackId2 && deploy.at.getTime() > fact.at.getTime());
+  return after ? undefined : fact;
+}
 function rowAtLateRead(stack) {
   const { previewedAt, liveState, fact } = stack;
   if (fact?.kind === "open") {
@@ -59203,9 +59209,9 @@ ${ALREADY_ENDED}
     const made = attempt.row;
     let written;
     try {
-      written = await swapRow(context3, attempt.setup, id_, (facts, attribution) => {
-        const fact = facts.byStack.get(id_);
-        const failure3 = fact?.kind === "failed" ? {
+      written = await swapRow(context3, attempt.setup, id_, (facts, attribution, outside) => {
+        const fact = standingFailure(id_, facts.byStack.get(id_), outside);
+        const failure3 = fact !== undefined ? {
           reason: fact.reason,
           ticker: fact.ticker,
           at: fact.at,
@@ -59510,7 +59516,7 @@ async function swapRow(context3, setup, id, make) {
     }
     const facts = deployFacts(await readDeploymentRecords(github, setup.stacks.map(({ environment }) => environment), [{ stackId: id, environment: setup.stack.environment }]));
     const attributed = await setup.attribution.attribute(new Map([[id, lastDeployedCommit(facts, id)]]));
-    const mine = make(facts, attributed.get(id)?.lines);
+    const mine = make(facts, attributed.get(id)?.lines, live.outside);
     const shipped = await setup.attribution.ship(facts.trail);
     const rows = [];
     const carried = [];
@@ -63529,6 +63535,10 @@ async function scanning(context3, report) {
           liveTicks.set(row2.stackId, row2.hash);
       }
       const { merges, mergeTicks } = mergeRows(listing, branchPreviews, live?.root?.version === MARKER_VERSION ? live.merges : [], waits, config2.dashboard.redact);
+      const outside = trailOutside(ids2, new Map([...histories ?? []].map(([id, history]) => [
+        id,
+        outsideDeploys(id, history, deploys.runs.get(id))
+      ])), live?.root?.version === MARKER_VERSION ? live.outside : []);
       const rows = [];
       const carried = [];
       const first = [];
@@ -63550,7 +63560,7 @@ async function scanning(context3, report) {
         if (decided.row === "preview-first")
           first.push({ id, why: decided.why });
         else if (decided.row === "fresh" && mine) {
-          const fresh = previewRow(id, mine.result, links, failureLine2(context3, fact), {
+          const fresh = previewRow(id, mine.result, links, failureLine2(context3, id, fact, outside), {
             toolDiffInLog: logDiff,
             pageUrl: pageUrls.get(id)
           });
@@ -63634,10 +63644,7 @@ async function scanning(context3, report) {
         readOnly: config2.dashboard.readOnly,
         ignored,
         merges,
-        outsideDeploys: trailOutside(ids2, new Map([...histories ?? []].map(([id, history]) => [
-          id,
-          outsideDeploys(id, history, deploys.runs.get(id))
-        ])), live?.root?.version === MARKER_VERSION ? live.outside : [])
+        outsideDeploys: outside
       }, full ? context3.limits?.body : { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
       if (!fitted.fits) {
         if (full)
@@ -63750,8 +63757,9 @@ function startingCommits(facts, previewed) {
 function runUrlOf(context3, run, attempt) {
   return runUrl(context3.repoUrl, run, attempt);
 }
-function failureLine2(context3, fact) {
-  if (fact?.kind !== "failed")
+function failureLine2(context3, id, deployFact, outside) {
+  const fact = standingFailure(id, deployFact, outside);
+  if (fact === undefined)
     return;
   return {
     reason: fact.reason,
