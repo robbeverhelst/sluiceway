@@ -21,9 +21,9 @@ The job environment is the whole interface. There is no allowlist and no environ
 
 Sluiceway never holds credentials. That is five promises you can check against the code:
 
-1. **No credential inputs.** The action takes one secret, the GitHub token. No input and no config key ever carries a cloud, backend or secret manager credential.
+1. **No credential inputs.** No input and no config key ever carries a cloud, backend or secret manager credential. The action takes the GitHub token, and, only when you want notifications, the addresses and the bot token of your notification channels, from your secrets ([notifications](notifications.md)).
 2. **Never read by name.** No Sluiceway code reads a credential variable. The environment goes to the tool as one opaque block.
-3. **Never stored, never sent.** Nothing from the environment reaches the issue, deployment records, job summaries, artifacts or caches. The only network calls are to the GitHub API and whatever the tool itself makes.
+3. **Never stored, never sent.** Nothing from the environment reaches the issue, deployment records, job summaries, artifacts or caches. The only network calls are to the GitHub API, whatever the tool itself makes, and the notification channels a step names.
 4. **Only the modes that run the tool need credentials.** `scan` and `apply` run the tool. `resolve` and `settle` never do. `check` does only when its step sets `backend: true`, to ask the backend which stacks it holds, and then only with the credentials you loaded before that step.
 5. **A hosted version would keep all of this.** The tool always runs in your own runners.
 

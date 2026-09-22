@@ -109,4 +109,4 @@ It cannot change the result of a job that Actions runs. Sluiceway only ever writ
 
 ## What Sluiceway sends
 
-Nothing but calls to the GitHub API, and whatever your tool makes on its own. No telemetry, no notifications, no server. The header image is loaded by the reader's browser from this repository, at the exact tag or commit of the action that wrote it. `dashboard.personality: false` removes it.
+Calls to the GitHub API, and whatever your tool makes on its own. No telemetry and no server. When a step names a notification channel, Sluiceway also posts a short message there: to the Slack webhook, the Telegram bot API or the webhook address the step gives, from your own secrets, and nowhere else. The message holds stack ids and links, never a value ([notifications](notifications.md)). The header image is loaded by the reader's browser from this repository, at the exact tag or commit of the action that wrote it. `dashboard.personality: false` removes it.

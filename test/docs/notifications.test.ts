@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { NOTIFY_EVENTS } from "../../src/core/notify.ts";
+import { notificationText, webhookMessage } from "../../src/render/notification.ts";
 import { scanResultSchema } from "../../src/render/result-file.ts";
 import { fences, read } from "./docs.ts";
 
@@ -51,29 +53,29 @@ function sends(
   return new Function("o", "step", `return (${js});`)(o, run.step) as boolean;
 }
 
-describe("the recipes for the apply job", () => {
+describe("the recipe for the apply job", () => {
   const conditions = outcomeConditions();
 
-  test("there is one for Slack, Telegram and the generic webhook", () => {
-    expect(conditions.length).toBeGreaterThanOrEqual(3);
+  test("the result file has one", () => {
+    expect(conditions.length).toBeGreaterThanOrEqual(1);
   });
 
   for (const outcome of ["failed", "refused"]) {
-    test(`send when the outcome is ${outcome}`, () => {
+    test(`sends when the outcome is ${outcome}`, () => {
       for (const condition of conditions) {
         expect(sends(condition, { step: "failure", outputs: { outcome } })).toBe(true);
       }
     });
   }
 
-  test("send when the step failed before it set an outcome", () => {
+  test("sends when the step failed before it set an outcome", () => {
     for (const condition of conditions) {
       expect(sends(condition, { step: "failure", outputs: {} })).toBe(true);
     }
   });
 
   for (const outcome of ["deployed", "in-sync", "rehearsed"]) {
-    test(`stay quiet when the outcome is ${outcome}`, () => {
+    test(`stays quiet when the outcome is ${outcome}`, () => {
       for (const condition of conditions) {
         expect(sends(condition, { step: "success", outputs: { outcome } })).toBe(false);
       }
@@ -81,77 +83,84 @@ describe("the recipes for the apply job", () => {
   }
 });
 
-// Slice 4.5: a message starts with the dot of its result, the same dots as
-// the job log and the recently deployed list. The step's script runs in bash
+// The step for a scan that failed before it wrote the dashboard, which the
+// built-in notifications cannot tell (record 0078). Its script runs in bash
 // with `curl` printing what it would send.
-describe("the message of a recipe", () => {
+describe("the step for a scan that failed", () => {
   const steps = fences(page)
     .filter(({ language }) => language === "yaml")
     .flatMap(({ text }) => {
       const parsed = Bun.YAML.parse(text) as Record<string, unknown>[] | undefined;
       return Array.isArray(parsed) ? parsed : [];
     });
+  const step = steps.find((one) => one.name === "Tell Slack the scan failed");
 
-  function sent(name: string, env: Record<string, string>): string {
-    const step = steps.find((one) => one.name === name);
+  test("sends a red message with the run", () => {
     expect(typeof step?.run).toBe("string");
     const run = Bun.spawnSync(["bash", "-euc", `curl() { cat; }\n${step?.run}`], {
-      env: { PATH: process.env.PATH ?? "", ...env },
+      env: { PATH: process.env.PATH ?? "", SLACK_WEBHOOK_URL: "w", RUN: "run-url" },
     });
     expect(run.stderr.toString()).toBe("");
-    const message = JSON.parse(run.stdout.toString()) as { text: string };
-    return message.text;
-  }
-
-  const scan = {
-    SLACK_WEBHOOK_URL: "w",
-    DASHBOARD: "https://github.com/acme/infra/issues/1",
-    RUN: "run-url",
-  };
-
-  test("Slack: yellow when stacks are pending", () => {
-    expect(
-      sent("Tell Slack", { ...scan, STEP: "success", PENDING: "2", PREVIEW_FAILED: "0" }),
-    ).toBe("🟡 Sluiceway: 2 pending, 0 preview failed. https://github.com/acme/infra/issues/1");
-  });
-
-  test("Slack: red when a preview failed", () => {
-    expect(
-      sent("Tell Slack", { ...scan, STEP: "success", PENDING: "2", PREVIEW_FAILED: "1" }),
-    ).toStartWith("🔴 ");
-  });
-
-  test("Slack: red when the step failed", () => {
-    expect(sent("Tell Slack", { ...scan, STEP: "failure", PENDING: "", PREVIEW_FAILED: "" })).toBe(
-      "🔴 Sluiceway: 0 pending, 0 preview failed. https://github.com/acme/infra/issues/1",
+    expect((JSON.parse(run.stdout.toString()) as { text: string }).text).toBe(
+      "🔴 Sluiceway: the scan failed before it wrote the dashboard. run-url",
     );
   });
 
-  const telegram = { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHAT_ID: "c", DASHBOARD: "d" };
+  test("sends only for a failed step that has no dashboard", () => {
+    const condition = String(step?.if);
+    expect(sends(condition, { step: "failure", outputs: {} })).toBe(true);
+    expect(sends(condition, { step: "failure", outputs: { "dashboard-url": "d" } })).toBe(false);
+    expect(sends(condition, { step: "success", outputs: {} })).toBe(false);
+  });
+});
 
-  test("Telegram: red for a failed deploy", () => {
-    expect(sent("Tell Telegram", { ...telegram, STACK: "a:prod", OUTCOME: "failed" })).toBe(
-      "🔴 Sluiceway: a:prod was not deployed (failed). d",
+// Slice 5.13 (record 0078): the messages and the webhook body the page shows
+// are what the renderer writes.
+describe("the built-in messages the page shows", () => {
+  const DASHBOARD = "https://github.com/acme/infra/issues/1";
+  const APPLY_RUN = "https://github.com/acme/infra/actions/runs/7/attempts/1";
+  const RESOLVE_RUN = "https://github.com/acme/infra/actions/runs/7";
+  const base = { repository: "acme/infra", dashboardUrl: DASHBOARD };
+
+  test("each example line is the renderer's text", () => {
+    const lines = (fences(page).find(({ language }) => language === "text")?.text ?? "")
+      .trim()
+      .split("\n");
+    expect(lines).toEqual([
+      notificationText({ ...base, event: "pending", stacks: ["network:prod", "app:prod"] }),
+      notificationText({ ...base, event: "drift", stacks: ["network:prod"] }),
+      notificationText({ ...base, event: "deployed", stacks: ["network:prod"], runUrl: APPLY_RUN }),
+      notificationText({ ...base, event: "failed", stacks: ["network:prod"], runUrl: APPLY_RUN }),
+      notificationText({
+        ...base,
+        event: "refused",
+        stacks: ["network:prod"],
+        runUrl: RESOLVE_RUN,
+      }),
+    ]);
+  });
+
+  test("the webhook body is the renderer's", () => {
+    const example = fences(page).find(
+      ({ language, text }) => language === "json" && text.includes('"event"'),
+    );
+    expect(JSON.parse(example?.text ?? "")).toEqual(
+      webhookMessage({ ...base, event: "pending", stacks: ["app:prod", "network:prod"] }),
     );
   });
 
-  test("Telegram: yellow for a refused one", () => {
-    expect(sent("Tell Telegram", { ...telegram, STACK: "a:prod", OUTCOME: "refused" })).toBe(
-      "🟡 Sluiceway: a:prod was not deployed (refused). d",
-    );
-  });
-
-  test("Telegram: red for a step that failed before it set an outcome", () => {
-    expect(sent("Tell Telegram", { ...telegram, STACK: "", OUTCOME: "" })).toBe(
-      "🔴 Sluiceway: a stack was not deployed (failed). d",
-    );
+  test("the page names every event and the default of notify.events", () => {
+    for (const event of NOTIFY_EVENTS) expect(page).toContain(`| \`${event}\` |`);
+    expect(page).toContain("The default is every event but `deployed`");
   });
 });
 
 // Record 0061: the result file has a published schema, and the example the
 // page shows is a file a reader could get.
 test("the example scan file fits the schema of the result file", () => {
-  const example = fences(page).find(({ language }) => language === "json");
+  const example = fences(page).find(
+    ({ language, text }) => language === "json" && text.includes('"mode": "scan"'),
+  );
   expect(scanResultSchema.safeParse(JSON.parse(example?.text ?? "")).success).toBe(true);
   expect(page).toContain("../schema/result-file.schema.json");
 });

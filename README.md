@@ -231,7 +231,7 @@ jobs:
 - **The check mode**, which reads your files in a pull request and says what Sluiceway will find and what your workflow lacks ([check your setup](docs/workflow.md#check-your-setup)).
 - **Values at the paths you list** with `showValues`, such as a chart's version, and the tool's own diff in the job log if you ask ([`dashboard.showValues`](docs/configuration.md#dashboardshowvalues)).
 - **A kill switch and a rehearsal**: `deploys: false` stops every deploy, and `dry-run` rehearses a tick without deploying ([`deploys`](docs/configuration.md#deploys), [`dry-run`](docs/reference.md#inputs)).
-- **Outputs and a result file**, so a step after Sluiceway can tell people. Sluiceway sends nothing itself ([notifications](docs/notifications.md)).
+- **Notifications**, opt-in: a short message to Slack, Telegram or your own webhook when stacks are pending, drift is found, a deploy fails or a tick is refused, plus outputs and a result file for anything else ([notifications](docs/notifications.md)).
 
 ## More
 

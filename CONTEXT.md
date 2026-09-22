@@ -318,6 +318,14 @@ _Avoid_: Check (that is the pass over the repo's files), check page, status chec
 A JSON file that a scan or an `apply` leaves in the job's temporary directory for a later step of the workflow, with what its summary holds and how long the job took, and nothing more. A published JSON schema describes it. Sluiceway never sends it anywhere: a step the user adds does, with its own secret.
 _Avoid_: Report, artifact, export, metrics
 
+**Notification**:
+One short message Sluiceway posts to a channel the step names (Slack, Telegram or a webhook) when an event happens: stacks newly pending, drift newly found, a deploy that went out or failed, a tick that was refused. It holds stack ids and links and nothing else. Opt-in: each channel is an input of the step, from the repo's own secret, and `notify.events` picks the events. A send that fails is a warning and never changes a job.
+_Avoid_: Alert, ping, webhook event, message hook
+
+**Channel**:
+Where a notification goes: a Slack incoming webhook, a Telegram chat through a bot, or a webhook address of the user's own. Always an input of the step, never a key of `sluiceway.yaml`, because its address or token is a secret.
+_Avoid_: Target, sink, destination, integration
+
 **Read-only dashboard**:
 A dashboard drawn with nothing to tick, for a workflow that only scans: pending rows have no box, there is no rescan box, and the line under the Pending heading says so. Set with `dashboard.readOnly`. It changes what is drawn, not who may deploy: what keeps a workflow from deploying is that it has no `resolve` job.
 _Avoid_: Dry run, view-only mode, preview mode, locked dashboard
@@ -417,7 +425,7 @@ The coloured dot in front of a count on the counts line: yellow pending, orange 
 _Avoid_: Badge, status light, bullet
 
 **Result dot**:
-A count dot's colour in front of a result, so a person sees it at a glance: on a line of the recently deployed list (only under a header), on a headline of the job log, and in a notification recipe's message. Green went out, red failed, yellow refused, white nothing went out, purple rehearsed. The scan's headline takes the dot of the header state it wrote. Never on a row and never in a voiced line: it is a signal, not the voice.
+A count dot's colour in front of a result, so a person sees it at a glance: on a line of the recently deployed list (only under a header), on a headline of the job log, and in a notification. Green went out, red failed, yellow refused, white nothing went out, purple rehearsed. The scan's headline takes the dot of the header state it wrote. Never on a row and never in a voiced line: it is a signal, not the voice.
 _Avoid_: Status emoji, icon, badge
 
 **Spinner**:

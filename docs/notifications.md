@@ -1,6 +1,94 @@
 # Notifications and metrics
 
-Sluiceway sends nothing. It never holds a webhook secret and never calls anything but the GitHub API and your infrastructure tool (record 0041). Instead it hands your workflow what a next step needs: step outputs with the counts, the dashboard address and the result of a deploy, and a JSON result file for anything richer. You add the step that sends, and its secret stays in that step.
+Sluiceway can tell a Slack channel, a Telegram chat or a webhook of your own when something needs a person: stacks are waiting for a tick, a scan found drift, a deploy failed, or a tick was refused. It is off until you name a channel, and each channel comes from a secret of your repo (record 0078).
+
+It also hands your workflow step outputs and a JSON result file, so a step of your own can chart numbers or send anything the built-in messages do not.
+
+## Built-in notifications
+
+Give the `scan`, `resolve` and `apply` steps the channels you want, each from a secret. A step with no channel sends nothing.
+
+```yaml
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: scan
+          slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          telegram-bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          telegram-chat-id: ${{ secrets.TELEGRAM_CHAT_ID }}
+          webhook-url: ${{ secrets.SLUICEWAY_WEBHOOK_URL }}
+```
+
+Name the same inputs on the `resolve` step and on the `apply` step of [the workflow](workflow.md#the-workflow). Which step sends which event:
+
+| Event | Sent by | When |
+|---|---|---|
+| `pending` | `scan` | The scan left stacks pending that were not pending before it. A stack that stays pending is not news again, so a push that changes nothing new sends nothing |
+| `drift` | `scan` | The scan found drift on stacks that showed none before it |
+| `deployed` | `apply` | A tick deployed its stack. Off by default |
+| `failed` | `apply` | A deploy failed, or the job stopped before it could deploy |
+| `refused` | `resolve`, `apply` | A tick deployed nothing: the tick rule refused it, the pull request of a merge tick could not be merged, or the change moved since the tick. `resolve` sends one message for every tick its comment on the dashboard is about |
+
+[`notify.events`](configuration.md#notifyevents) in `sluiceway.yaml` picks the events. The default is every event but `deployed`, because the person who ticked is watching that one. An `apply` that ends `in-sync` or `rehearsed` sent nothing out and needs nobody, so it never sends.
+
+### What a message says
+
+One short line with the stack ids and the links, and a dot of the same colour the job log and the dashboard use for that result:
+
+```text
+🟡 Sluiceway in acme/infra: 2 stacks are pending: network:prod, app:prod. Dashboard: https://github.com/acme/infra/issues/1
+🟠 Sluiceway in acme/infra: drift found on network:prod. Dashboard: https://github.com/acme/infra/issues/1
+🟢 Sluiceway in acme/infra: network:prod deployed. Run: https://github.com/acme/infra/actions/runs/7/attempts/1 Dashboard: https://github.com/acme/infra/issues/1
+🔴 Sluiceway in acme/infra: network:prod failed to deploy. Run: https://github.com/acme/infra/actions/runs/7/attempts/1 Dashboard: https://github.com/acme/infra/issues/1
+🟡 Sluiceway in acme/infra: the tick on network:prod was refused, nothing was deployed. Run: https://github.com/acme/infra/actions/runs/7 Dashboard: https://github.com/acme/infra/issues/1
+```
+
+A message never holds a property value, not even one `dashboard.showValues` lets the dashboard show, and never a resource, a failure reason or any of your tool's own words. The dashboard and the run are one click away and say the rest. It names at most ten stacks and counts the rest. Stack ids are named with `dashboard.redact` on too, as they are on the dashboard (record 0023).
+
+### Slack
+
+Create an [incoming webhook](https://api.slack.com/messaging/webhooks) for the channel and store its address as a secret, such as `SLACK_WEBHOOK_URL`. The address has to start with `https://`.
+
+### Telegram
+
+Create a bot with BotFather and store its token as a secret, such as `TELEGRAM_BOT_TOKEN`. Add the bot to the chat, and store the chat's id, or the `@` name of a public channel, as `TELEGRAM_CHAT_ID`. Both inputs are needed. The message is plain text with no link preview.
+
+### A webhook
+
+`webhook-url` gets a `POST` with a small JSON body, for Discord through a bridge, a chat bot, or anything of your own. The address is `http://` or `https://`.
+
+```json
+{
+  "version": 1,
+  "event": "pending",
+  "repository": "acme/infra",
+  "stacks": ["app:prod", "network:prod"],
+  "dashboard": "https://github.com/acme/infra/issues/1",
+  "run": null,
+  "text": "🟡 Sluiceway in acme/infra: 2 stacks are pending: app:prod, network:prod. Dashboard: https://github.com/acme/infra/issues/1"
+}
+```
+
+`stacks` lists every stack, in the order of their ids, and is empty when a job failed before it learned its stack. `dashboard` and `run` are `null` when the job does not know them. A reader should check `version` first: it goes up when the shape changes in a way that breaks a reader.
+
+### When a send fails
+
+A notification never changes a job. A channel that answers with an error, or does not answer within 10 seconds, gets a warning in the job log, "Notification not sent", with the status or the kind of error, and the job, the dashboard and any deploy are what they would be without it. A channel that is set up wrong, such as a Slack address that is not `https://` or a Telegram token without a chat id, gets a warning "Notification channel not used" and sends nothing. Neither warning ever shows the address or the token.
+
+### How the secrets are kept
+
+- Each value comes from a secret of your repo, which GitHub masks in the job log. Sluiceway registers every value as a mask as well, a wrong one too, before it does anything else.
+- Your infrastructure tool never sees them: Sluiceway passes the tool the job environment without the step's inputs (record 0013).
+- The only calls Sluiceway makes besides the GitHub API and your tool are these posts, and only to the addresses you set.
+- `settle`, `check` and `init` send nothing. A channel on one of their steps is a warning that says so.
+- A pull request from a fork gets no secrets, so a scan there sends nothing.
+
+### What it does not do
+
+- **No ticking from Slack.** A button in a message would need an app that Slack can call back, and a GitHub Action is not running when someone clicks. That belongs to a hosted version.
+- **Nothing for a scan that fails before it writes the dashboard**, such as on a broken `sluiceway.yaml`. The step goes red, and [a step of your own](#a-scan-that-failed) can say so.
+- **Nothing for a failed preview.** The dashboard shows it, and `strict: true` turns the scan red for it.
+
+## Without Sluiceway
 
 Two things work with nothing from Sluiceway at all, because every deploy is a GitHub deployment record:
 
@@ -64,9 +152,9 @@ A scan's file, shortened:
 
 Resource names, types and property paths are in the file, as they are on the dashboard. They come from your code, so do not put a secret in a resource name or a map key. Send the file only to a place that people with read access to the repo may see.
 
-## Recipes
+## Steps of your own
 
-Every recipe is one more step in a job of [the workflow](workflow.md#the-workflow). Give the Sluiceway step an `id` so the next step can read its outputs:
+Every step below is one more step in a job of [the workflow](workflow.md#the-workflow). Give the Sluiceway step an `id` so the next step can read its outputs:
 
 ```yaml
       - id: sluiceway
@@ -75,64 +163,26 @@ Every recipe is one more step in a job of [the workflow](workflow.md#the-workflo
           mode: scan
 ```
 
-Each step below runs only when there is something to say: a scan that changed the dashboard and left something pending or failed, a scan step that failed, or a deploy that needs a person, because its `outcome` is `failed` or `refused` (a change that moved since the tick is `refused`) or the step failed before it set one. An `apply` that ended as `in-sync` or `rehearsed` sent nothing out and is a green job, so the recipes stay quiet about it, as they do about `deployed`. A message starts with the dot of its result, the same dot the job log and the dashboard's recently deployed list use: 🔴 for a preview or a deploy that failed, and for a step that failed, 🟡 for stacks that are pending and for a deploy that was refused, because a refused stack is pending again. The secret is in the `env` of that one step and nowhere else. The outputs reach the script through `env` as well, never pasted into the script with `${{ }}`, so nothing in them can be read as a command. `jq` and `curl` are on GitHub's hosted runners.
+The secret of a step is in the `env` of that one step and nowhere else. The outputs reach the script through `env` as well, never pasted into the script with `${{ }}`, so nothing in them can be read as a command. `jq` and `curl` are on GitHub's hosted runners.
 
-### Slack
+### A scan that failed
 
-Create an incoming webhook for the channel and store its address as the secret `SLACK_WEBHOOK_URL`.
+The built-in messages come from a scan that wrote the dashboard. This step tells Slack about a scan step that failed before that:
 
 ```yaml
-      - name: Tell Slack
-        if: >-
-          always() && (steps.sluiceway.outcome == 'failure' ||
-          (steps.sluiceway.outputs['dashboard-changed'] == 'true' &&
-          (steps.sluiceway.outputs.pending != '0' || steps.sluiceway.outputs['preview-failed'] != '0')))
+      - name: Tell Slack the scan failed
+        if: always() && steps.sluiceway.outcome == 'failure' && steps.sluiceway.outputs['dashboard-url'] == ''
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          STEP: ${{ steps.sluiceway.outcome }}
-          PENDING: ${{ steps.sluiceway.outputs.pending }}
-          PREVIEW_FAILED: ${{ steps.sluiceway.outputs['preview-failed'] }}
-          DASHBOARD: ${{ steps.sluiceway.outputs['dashboard-url'] }}
           RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          dot="🟡"
-          if [ "$STEP" = failure ] || [ "${PREVIEW_FAILED:-0}" != 0 ]; then dot="🔴"; fi
-          text="$dot Sluiceway: ${PENDING:-0} pending, ${PREVIEW_FAILED:-0} preview failed. ${DASHBOARD:-$RUN}"
-          jq -n --arg text "$text" '{text: $text}' |
+          jq -n --arg text "🔴 Sluiceway: the scan failed before it wrote the dashboard. $RUN" '{text: $text}' |
             curl -fsS -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"
 ```
 
-In the `apply` job, the same step with `if: always() && (steps.sluiceway.outcome == 'failure' || steps.sluiceway.outputs.outcome == 'failed' || steps.sluiceway.outputs.outcome == 'refused')` and the text and its dot built as in the Telegram recipe below tells the channel about a deploy that failed or was refused. A failed step with an empty `outcome` stopped before it read the deployment record, which is a failure too. Slack's own `slackapi/slack-github-action` works as well, if you prefer an action over `curl`.
+### Sending the whole result file
 
-### Telegram
-
-Create a bot with BotFather, store its token as `TELEGRAM_BOT_TOKEN` and the chat as `TELEGRAM_CHAT_ID`.
-
-```yaml
-      - name: Tell Telegram
-        if: >-
-          always() && (steps.sluiceway.outcome == 'failure' ||
-          steps.sluiceway.outputs.outcome == 'failed' || steps.sluiceway.outputs.outcome == 'refused')
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          STACK: ${{ steps.sluiceway.outputs.stack }}
-          OUTCOME: ${{ steps.sluiceway.outputs.outcome }}
-          DASHBOARD: ${{ steps.sluiceway.outputs['dashboard-url'] }}
-        run: |
-          dot="🔴"
-          if [ "$OUTCOME" = refused ]; then dot="🟡"; fi
-          text="$dot Sluiceway: ${STACK:-a stack} was not deployed (${OUTCOME:-failed}). ${DASHBOARD}"
-          jq -n --arg chat "$TELEGRAM_CHAT_ID" --arg text "$text" '{chat_id: $chat, text: $text}' |
-            curl -fsS -X POST -H 'Content-Type: application/json' --data @- \
-              "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
-```
-
-This one sits in the `apply` job. For the scan job, use the condition of the Slack recipe.
-
-### A generic webhook
-
-Send the whole result file to your own endpoint, which can do anything with it: Discord, a chat bot, a database.
+The built-in webhook sends a short message. For everything a run found, send the result file to your own endpoint instead, which can do anything with it: Discord, a chat bot, a database.
 
 ```yaml
       - name: Send the result
