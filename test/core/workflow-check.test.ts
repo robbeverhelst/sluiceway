@@ -13,17 +13,22 @@ function file(text: string, path = ".github/workflows/deploy-dashboard.yml"): Wo
   return { path, text };
 }
 
-// The README's complete workflows, in order: the check, the whole workflow,
-// the read-only trial.
-const README = fences(read("README.md"))
-  .filter(({ language, text }) => language === "yaml" && /^jobs:/m.test(text) && /^on:/m.test(text))
-  .map(({ text }) => text);
+// The complete workflows of the setup, in order: the check and the whole
+// workflow of docs/workflow.md, then the read-only trial. They were the
+// README's until the README rewrite.
+const complete = (path: string) =>
+  fences(read(path))
+    .filter(
+      ({ language, text }) => language === "yaml" && /^jobs:/m.test(text) && /^on:/m.test(text),
+    )
+    .map(({ text }) => text);
+const README = [...complete("docs/workflow.md"), ...complete("docs/read-only-trial.md")];
 
-// The whole workflow of the README's step 2, to break one piece at a time.
+// The whole workflow, to break one piece at a time.
 const WHOLE = README.find((text) => text.includes("mode: resolve")) ?? "";
 
 describe("the workflows the docs ship", () => {
-  test("the README has a check, the whole workflow and the read-only trial", () => {
+  test("the docs have a check, the whole workflow and the read-only trial", () => {
     expect(README.length).toBe(3);
   });
 
@@ -33,7 +38,7 @@ describe("the workflows the docs ship", () => {
     expect(report.notes).toEqual([]);
   });
 
-  test("the README's check and whole workflow have nothing missing", () => {
+  test("the docs' check and whole workflow have nothing missing", () => {
     const report = checkWorkflows(
       [file(README[0] ?? "", ".github/workflows/check.yml"), file(WHOLE)],
       DEFAULTS,

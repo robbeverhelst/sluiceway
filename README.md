@@ -226,7 +226,7 @@ jobs:
 - **Drift**, opt-in: a scheduled scan finds changes made outside the code, and a tick puts them back ([`drift.enabled`](docs/configuration.md#driftenabled)).
 - **Stack dependencies** with `dependsOn`: a stack waits for the stacks it depends on, and a chain deploys one layer per run ([`dependsOn`](docs/configuration.md#stacksdependson)).
 - **A preview page per pending stack**, a check run with the stack's whole diff ([using the dashboard](docs/using-the-dashboard.md#rows-and-ticks)).
-- **The check mode**, which reads your files in a pull request and says what Sluiceway will find ([check your setup](docs/workflow.md#check-your-setup)).
+- **The check mode**, which reads your files in a pull request and says what Sluiceway will find and what your workflow lacks ([check your setup](docs/workflow.md#check-your-setup)).
 - **Values at the paths you list** with `showValues`, such as a chart's version, and the tool's own diff in the job log if you ask ([`dashboard.showValues`](docs/configuration.md#dashboardshowvalues)).
 - **A kill switch and a rehearsal**: `deploys: false` stops every deploy, and `dry-run` rehearses a tick without deploying ([`deploys`](docs/configuration.md#deploys), [`dry-run`](docs/reference.md#inputs)).
 - **Outputs and a result file**, so a step after Sluiceway can tell people. Sluiceway sends nothing itself ([notifications](docs/notifications.md)).

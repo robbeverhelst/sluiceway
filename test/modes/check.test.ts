@@ -444,8 +444,9 @@ describe("the workflow files", () => {
   });
 
   test("the read-only trial without dashboard.readOnly", async () => {
+    // The README rewrite moved the trial to its own page.
     const trial =
-      fences(readme).find(
+      fences(read("docs/read-only-trial.md")).find(
         ({ text }) => text.includes("mode: scan") && !text.includes("mode: resolve"),
       )?.text ?? "";
     const { log } = await run({ "README.md": "", [at]: trial });
