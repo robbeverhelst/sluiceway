@@ -240,6 +240,14 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
     );
   }
 
+  // A queued record is started by a later `resolve`, under a record of its
+  // own run (record 0056). `resolve` never hands one on.
+  if (payload.behind) {
+    throw new ApplyFailedError(
+      `Deployment record ${id} of ${name} is queued behind ${payload.behind.map(logGroupTitle).join(" and ")}. \`apply\` never deploys a queued record: a later \`resolve\` starts it once ${payload.behind.length === 1 ? "that stack" : "those stacks"} went out. Nothing was deployed and the record was left alone.`,
+    );
+  }
+
   report.ticker = payload.ticker;
   report.outcome = "failed";
   const runUrl = `${context.repoUrl}/actions/runs/${context.runId}`;

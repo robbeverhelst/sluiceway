@@ -78,6 +78,27 @@ describe("a record that is not for this job", () => {
     expect(h.adapter.previewed).toEqual([]);
   });
 
+  // A queued record waits behind the stacks it depends on (record 0056). A
+  // later `resolve` starts it under a record of its own run.
+  test("a queued record is left alone", async () => {
+    const { h, id } = await withRecord({
+      task: "sluiceway:a:prod",
+      payload: {
+        v: 1,
+        hash: "0000000000000000",
+        ticker: "alice",
+        run: RESOLVE_RUN,
+        behind: ["b:prod"],
+      },
+      status: { state: "queued" },
+    });
+    await expect(runApply(h)).rejects.toThrow(
+      "is queued behind b:prod. `apply` never deploys a queued record: a later `resolve` starts it once that stack went out. Nothing was deployed and the record was left alone.",
+    );
+    expect(h.github.deploymentStatuses(id)).toHaveLength(1);
+    expect(h.adapter.previewed).toEqual([]);
+  });
+
   test("a record GitHub does not have fails with the permission the job needs", async () => {
     const h = await handedOn(TABLE, ["a:prod"]);
     h.context.deploymentId = 999_999;

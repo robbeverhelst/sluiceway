@@ -337,9 +337,11 @@ export type PreviewFirstWhy =
 export function rowAtLateRead(stack: StackAtLateRead): RowAtLateRead {
   const { previewedAt, liveState, fact } = stack;
   if (fact?.kind === "open") {
-    return { row: "deploying", from: liveState === "deploying" ? "live" : "record" };
+    // A queued record gives a queued row (record 0056).
+    const taken = fact.behind ? "queued" : "deploying";
+    return { row: "deploying", from: liveState === taken ? "live" : "record" };
   }
-  const usableLive = liveState !== undefined && liveState !== "deploying";
+  const usableLive = liveState !== undefined && liveState !== "deploying" && liveState !== "queued";
   if (previewedAt === undefined) {
     if (usableLive) return { row: "live" };
     return { row: "preview-first", why: liveState === undefined ? "no-row" : "no-open-deployment" };

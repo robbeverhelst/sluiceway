@@ -63,7 +63,12 @@ import {
   PUBLIC_LOG_DIFF,
   toolDiffLogLines,
 } from "../render/log-text.ts";
-import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
+import {
+  isDeployingState,
+  MARKER_VERSION,
+  type ParsedRow,
+  parseDashboard,
+} from "../render/marker.ts";
 import { renderPreviewPage } from "../render/preview-page.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, dashboardCounts, scanResultFile } from "../render/result-file.ts";
@@ -427,6 +432,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
             waiting: fact.waiting,
             destroys: destroysOf(mine, liveRow),
             attribution: lines.get(id)?.lines,
+            behind: fact.behind,
           });
         } else if (liveRow) {
           if (ticked && decided.row === "live") {
@@ -670,7 +676,7 @@ async function lateDeploys(
       const result = previewed.get(id)?.result;
       return (
         (result?.ok === true && result.diff.changes.length > 0) ||
-        liveStates.get(id) === "deploying"
+        isDeployingState(liveStates.get(id) ?? "")
       );
     });
   try {
