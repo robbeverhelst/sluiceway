@@ -86,12 +86,24 @@ describe("a notification input on a step that sends nothing", () => {
   });
 
   // Record 0077: auto mode runs scan, resolve and apply, which do send.
+  // The event is pinned, because on a runner the job's own event decides what
+  // auto does, and a test may not read the environment it happens to run in.
   test("is no warning in auto mode", async () => {
     const warnings: string[] = [];
     const inputs = (name: string) =>
       name === "slack-webhook-url" ? "https://hooks.slack.com/services/SECRET" : "";
-    const result = run("auto", ACTION, inputs, (message) => void warnings.push(message));
-    await expect(result).rejects.toBeDefined();
+    const event = process.env.GITHUB_EVENT_NAME;
+    process.env.GITHUB_EVENT_NAME = "deployment";
+    try {
+      // Whether the step then gets as far as the job's own environment is
+      // not what this test is about: the warning is decided before that.
+      await run("auto", ACTION, inputs, (message) => void warnings.push(message)).catch(
+        () => undefined,
+      );
+    } finally {
+      if (event === undefined) delete process.env.GITHUB_EVENT_NAME;
+      else process.env.GITHUB_EVENT_NAME = event;
+    }
     expect(warnings).toEqual([]);
   });
 });

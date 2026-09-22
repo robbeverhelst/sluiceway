@@ -27303,7 +27303,6 @@ class Summary {
   }
 }
 var _summary = new Summary;
-var summary = _summary;
 // node_modules/@actions/core/lib/platform.js
 import os3 from "os";
 
@@ -56680,6 +56679,7 @@ function readJob(env) {
 
 // src/github/job-log.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
+import { writeFile as writeFile3 } from "node:fs/promises";
 function actionsLog() {
   return {
     info: (line) => info(line),
@@ -56698,7 +56698,11 @@ function actionsLog() {
     },
     warning: (message, title) => warning(message, { title }),
     async writeSummary(text6) {
-      await summary.emptyBuffer().addRaw(text6).write({ overwrite: true });
+      const file2 = process.env.GITHUB_STEP_SUMMARY;
+      if (!file2) {
+        throw new Error("The runner gave this step no summary file (GITHUB_STEP_SUMMARY is not set).");
+      }
+      await writeFile3(file2, text6, "utf8");
     }
   };
 }
@@ -63031,7 +63035,7 @@ function renderSummary(stacks, options = {}) {
 }
 
 // src/modes/branch-preview.ts
-import { cp, mkdir as mkdir2, mkdtemp as mkdtemp3, realpath, rm as rm4, writeFile as writeFile3 } from "node:fs/promises";
+import { cp, mkdir as mkdir2, mkdtemp as mkdtemp3, realpath, rm as rm4, writeFile as writeFile4 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
 import { basename as basename2, dirname as dirname2, join as join33, resolve as resolve2, sep as sep6 } from "node:path";
 async function previewBranches(context3, stacks, updates) {
@@ -63078,7 +63082,7 @@ async function previewOne(context3, number4, head, files, stacks) {
       if (text7 === undefined)
         await rm4(target2, { force: true, recursive: true });
       else
-        await writeFile3(target2, text7);
+        await writeFile4(target2, text7);
     }
     const tool = { root: copy, env: context3.env, run: context3.run };
     const failed = await prepareStacks({ ...tool, log, adapter: context3.adapter }, stacks, context3.previewTimeoutMinutes);

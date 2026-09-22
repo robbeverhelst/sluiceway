@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { writeFile } from "node:fs/promises";
 import * as core from "@actions/core";
 
 // The job log, the annotations and the summary of the run. Modes write all
@@ -37,8 +38,17 @@ export function actionsLog(): JobLog {
     },
     warning: (message, title) => core.warning(message, { title }),
     async writeSummary(text) {
-      // The file belongs to this step alone, so nothing of another step is lost.
-      await core.summary.emptyBuffer().addRaw(text).write({ overwrite: true });
+      // The file belongs to this step alone, so nothing of another step is
+      // lost. The path is read at every write, not once: an auto step writes
+      // the summary of each mode it runs, and @actions/core would keep the
+      // path it first saw (record 0077).
+      const file = process.env.GITHUB_STEP_SUMMARY;
+      if (!file) {
+        throw new Error(
+          "The runner gave this step no summary file (GITHUB_STEP_SUMMARY is not set).",
+        );
+      }
+      await writeFile(file, text, "utf8");
     },
   };
 }
