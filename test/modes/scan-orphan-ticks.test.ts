@@ -125,6 +125,9 @@ describe("a tick that nothing picked up", () => {
 describe("a waiting `resolve` run means hands off", () => {
   test("a full scan carries the tick through on its fresh row, at the same diff hash", async () => {
     const { context, github, log } = harness(tableAdapter(TABLE));
+    // Without preview pages a fresh row links to its scan's summary, which is
+    // how this test tells a fresh row from the old one (record 0050).
+    github.withoutChecksWrite();
     await scan(context);
     tick(github, "a:prod");
     const ticked = row(github, "a:prod");

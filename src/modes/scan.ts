@@ -42,13 +42,14 @@ import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts
 import type { JobLog } from "../github/job-log.ts";
 import { dashboardUrl, type StepOutputs, writeResultFile } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
+import { type PreviewPages, previewPages } from "../github/preview-pages.ts";
 import {
   BODY_LIMIT,
   type BudgetOptions,
   bodyDoesNotFitMessage,
   fitBody,
 } from "../render/budget.ts";
-import { runLinks } from "../render/links.ts";
+import { dashboardSearchUrl, type RunLinks, runLinks } from "../render/links.ts";
 import {
   diffLogLines,
   logGroupTitle,
@@ -56,6 +57,7 @@ import {
   toolDiffLogLines,
 } from "../render/log-text.ts";
 import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
+import { renderPreviewPage } from "../render/preview-page.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, dashboardCounts, scanResultFile } from "../render/result-file.ts";
 import { byCodeUnit, type FailureLine, isDestroy, plural, type Row } from "../render/row.ts";
@@ -274,6 +276,10 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   let attributed: Attributed = new Map();
 
   const previewed = new Map<string, Previewed>();
+  // The preview page of every pending stack that has one, by stack id
+  // (record 0050).
+  const pageUrls = new Map<string, string>();
+  const pages = previewPages(context.github, context.sha);
   let rounds = 0;
   let versionChecked = false;
   let composed: Composed | undefined;
@@ -298,6 +304,11 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       report.previewed = all;
     }
     rounds++;
+    await writePages(context, pages, round, pageUrls, {
+      links,
+      label: config.dashboard.label,
+      logDiff,
+    });
 
     // All slow work is done. The body is built from the late read: the live
     // body and the deployment records (record 0004). A fresh row for every
@@ -358,6 +369,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         else if (decided.row === "fresh" && mine) {
           const fresh = previewRow(id, mine.result, links, failureLine(context, fact), {
             toolDiffInLog: logDiff,
+            pageUrl: pageUrls.get(id),
           });
           const row =
             fresh.state === "pending" ? { ...fresh, attribution: lines.get(id)?.lines } : fresh;
@@ -867,6 +879,65 @@ function logResults(context: ScanContext, previewed: Previewed[]): void {
         "Preview failed",
       );
     }
+  }
+}
+
+// The preview page of every pending stack of a round: a check run on the
+// scanned commit with the stack's diff (record 0050). A page that cannot be
+// written never stops the scan. Its row's `preview` link lands where record
+// 0044 or 0048 sends it, and the job log says why.
+async function writePages(
+  context: ScanContext,
+  pages: PreviewPages,
+  round: Previewed[],
+  urls: Map<string, string>,
+  options: { links: RunLinks; label: string; logDiff: boolean },
+): Promise<void> {
+  const { log } = context;
+  const { links, logDiff } = options;
+  const toWrite = [];
+  for (const { id, result } of round) {
+    // A stack previewed again takes the page of its newest preview or none.
+    urls.delete(id);
+    if (!result.ok || result.diff.changes.length === 0) continue;
+    const page = renderPreviewPage(
+      result.diff,
+      {
+        dashboard: dashboardSearchUrl(context.repoUrl, options.label),
+        summary: links.summary,
+        log: context.jobId === undefined ? undefined : links.log,
+      },
+      { toolDiffInLog: logDiff },
+    );
+    const { title, summary, text } = page;
+    toWrite.push({ stackId: id, output: { title, summary, text } });
+  }
+  if (toWrite.length === 0) return;
+
+  const written = await pages.write(toWrite);
+  for (const [id, url] of written.urls) urls.set(id, url);
+  const fallBack =
+    logDiff && context.jobId !== undefined ? "the job log" : "the summary of the scan";
+  if (written.urls.size > 0) {
+    log.info(
+      `Wrote the preview pages of ${plural(written.urls.size, "pending stack")} on ${short(context.sha)}: ${written.created} created, ${written.updated} updated.`,
+    );
+  }
+  for (const { stackId: id, message } of written.failed) {
+    log.info(
+      `The preview page of ${logGroupTitle(id)} could not be written: ${message}. Its preview link lands on ${fallBack}.`,
+    );
+  }
+  const { refused } = written;
+  if (!refused) return;
+  if (refused.permission) {
+    log.info(
+      `No preview page was written: GitHub answered "${refused.message}". With \`checks: write\` in the permissions of the scan job, a pending row's preview link lands on a page of its own that shows the stack's diff (record 0050). Until then it lands on ${fallBack}.`,
+    );
+  } else {
+    log.info(
+      `GitHub refused a preview page: "${refused.message}". No more pages are written in this scan, and the preview links of ${plural(written.skipped.length, "pending stack")} land on ${fallBack}.`,
+    );
   }
 }
 

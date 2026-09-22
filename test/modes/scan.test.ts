@@ -15,7 +15,6 @@ import {
   JOB_URL,
   pending,
   SHA,
-  SUMMARY_URL,
   tableAdapter,
 } from "./harness.ts";
 
@@ -37,8 +36,9 @@ describe("a full scan", () => {
     expect(issue.title).toBe("Sluiceway dashboard");
     expect(issue.labels).toEqual(["sluiceway"]);
     expect(rowStates(issue.body)).toEqual({ "network:dev": "pending", "network:prod": "in-sync" });
+    // The preview link lands on the stack's preview page (record 0050).
     expect(issue.body).toContain(
-      `- [ ] **network:dev** · 1 update, **1 delete** · [preview](${SUMMARY_URL})`,
+      `- [ ] **network:dev** · 1 update, **1 delete** · [preview](${github.checkRuns(SHA)[0]?.htmlUrl})`,
     );
   });
 

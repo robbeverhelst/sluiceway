@@ -57,8 +57,9 @@ describe("scan.logDiff off, the default", () => {
     expect(log.groups.filter((group) => group.verbatim !== undefined)).toEqual([]);
   });
 
-  test("a pending row's preview link lands on the summary, as record 0044 has it", async () => {
+  test("without a preview page, a pending row's preview link lands on the summary, as record 0044 has it", async () => {
     const { context, github } = harness(tableAdapter(TABLE()));
+    github.withoutChecksWrite();
     await scan(context);
     expect(dashboardBody(github)).toContain(`· 1 update · [preview](${SUMMARY_URL})`);
   });
@@ -142,8 +143,10 @@ describe("scan.logDiff on", () => {
     expect(everythingElse).not.toContain("VALUE-OF");
   });
 
-  test("a pending row's preview link lands on the job log, where the diff is", async () => {
+  test("without a preview page, a pending row's preview link lands on the job log, where the diff is", async () => {
     const { context, github } = harness(tableAdapter(TABLE()), { config: ON });
+    // With a preview page the link lands there instead (record 0050).
+    github.withoutChecksWrite();
     await scan(context);
 
     const body = dashboardBody(github);
@@ -152,8 +155,9 @@ describe("scan.logDiff on", () => {
     expect(body).toContain(`· [run](${JOB_URL})`);
   });
 
-  test("without the job's id the link falls back to the summary", async () => {
+  test("without a preview page and the job's id the link falls back to the summary", async () => {
     const { context, github } = harness(tableAdapter(TABLE()), { config: ON, jobId: undefined });
+    github.withoutChecksWrite();
     await scan(context);
     expect(dashboardBody(github)).toContain(`· 1 update · [preview](${SUMMARY_URL})`);
   });

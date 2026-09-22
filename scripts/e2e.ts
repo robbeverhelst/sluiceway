@@ -37,7 +37,7 @@ import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { FakeGitHub } from "../test/fake-github/fake-github.ts";
+import { type FakeCheckRun, FakeGitHub } from "../test/fake-github/fake-github.ts";
 import { startFakeGitHubServer } from "../test/fake-github/server.ts";
 import { checkFullScan, checkNarrowedScan, type Expected, type Observed } from "./e2e/checks.ts";
 import {
@@ -181,6 +181,10 @@ async function step(mode: string, options: StepOptions): Promise<Stepped> {
   }
   const server = await startFakeGitHubServer(fake);
   const requestsBefore = fake.requests.length;
+  // A page the step writes has links of its own run, so a page it updated
+  // differs from what was there before (record 0050).
+  const pageText = (page: FakeCheckRun) => JSON.stringify(page);
+  const pagesBefore = new Set(fake.checkRuns(options.sha).map(pageText));
   try {
     const env = stepEnvironment(
       action,
@@ -226,6 +230,12 @@ async function step(mode: string, options: StepOptions): Promise<Stepped> {
       issues,
       pinned: fake.pinned,
       requests,
+      pages: fake.checkRuns(options.sha).map((page) => ({
+        name: page.name,
+        htmlUrl: page.htmlUrl,
+        output: `${page.output.title}\n${page.output.summary}\n${page.output.text}`,
+        written: !pagesBefore.has(pageText(page)),
+      })),
       outputs: readStepOutputs(readFileSync(outputFile, "utf8")),
     };
   } finally {

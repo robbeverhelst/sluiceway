@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import type { Issue } from "../../src/github/port.ts";
 import { type FakeGitHub, FakeGitHubError } from "./fake-github.ts";
+import { checkRoutes } from "./server-checks.ts";
 import { commitRoutes, isWalkQuery, walkQuery } from "./server-commits.ts";
 import { deploymentRoutes, deploymentsQuery, isDeploymentsQuery } from "./server-deployments.ts";
 import { runRoutes } from "./server-runs.ts";
@@ -157,6 +158,7 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
     ...deploymentRoutes(fake, REPO),
     ...runRoutes(fake, REPO),
     ...commitRoutes(fake, REPO),
+    ...checkRoutes(fake, REPO, baseUrl),
     [
       "GET",
       new RegExp(`^${REPO}/collaborators/([^/]+)/permission$`),

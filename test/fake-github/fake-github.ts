@@ -1,5 +1,7 @@
 import { HISTORY_CAP } from "../../src/core/edit-history.ts";
 import type {
+  CheckRun,
+  CheckRunOutput,
   CommitWalk,
   Comparison,
   Deployment,
@@ -12,6 +14,7 @@ import type {
   Issue,
   IssueAuthor,
   IssuesRun,
+  NewCheckRun,
   NewDeployment,
   NewDeploymentStatus,
   NewIssue,
@@ -34,6 +37,9 @@ const UPDATE_LIMIT_BYTES = 262_144;
 const PAGE_SIZE = 100;
 const MAX_PINNED = 3;
 const COMPARE_FILE_CAP = 300;
+// What GitHub takes in one field of a check run's output (research,
+// preview-page.md).
+const CHECK_RUN_FIELD_LIMIT = 65_535;
 const NO_ACCESS: Permission = { push: false, maintain: false, admin: false };
 
 export class FakeGitHubError extends Error {
@@ -50,6 +56,16 @@ export interface FakeGitHubOptions {
   // Where an update is dropped. The default is GitHub's. A test lowers it to
   // stand for a GitHub that counts differently than Sluiceway does.
   updateLimitBytes?: number;
+  // `https://github.com/<owner>/<repo>`, which the address of a check run is
+  // made from.
+  repoUrl?: string;
+}
+
+// A check run as the fake stores it.
+export interface FakeCheckRun extends CheckRun {
+  status: "completed";
+  conclusion: "neutral" | "success";
+  output: CheckRunOutput;
 }
 
 type Request = keyof GitHubPort;
@@ -80,6 +96,11 @@ export class FakeGitHub implements GitHubPort {
   readonly #events: { number: number; sender: IssueAuthor }[] = [];
   readonly #dispatches: { workflow: string; ref: string }[] = [];
   #actionsWrite = true;
+  #checksWrite = true;
+  // Every check run of every commit, oldest first.
+  readonly #checkRuns: (FakeCheckRun & { sha: string })[] = [];
+  #nextCheckRunId = 106_538_952_701;
+  readonly #repoUrl: string;
   readonly #commits = new FakeCommits();
   #nextNumber = 1;
   // The fake's clock. It moves one second each time it is read, so two things
@@ -88,6 +109,7 @@ export class FakeGitHub implements GitHubPort {
 
   constructor(options: FakeGitHubOptions = {}) {
     this.#updateLimitBytes = options.updateLimitBytes ?? UPDATE_LIMIT_BYTES;
+    this.#repoUrl = options.repoUrl ?? "https://github.com/acme/infra";
   }
 
   // The test's own hands. None of these count as a request.
@@ -205,6 +227,25 @@ export class FakeGitHub implements GitHubPort {
   // The token of the job has no `actions: write` from now on.
   withoutActionsWrite(): void {
     this.#actionsWrite = false;
+  }
+
+  // The token of the job has no `checks: write` from now on.
+  withoutChecksWrite(): void {
+    this.#checksWrite = false;
+  }
+
+  // A check run another writer made on a commit, such as a job of the
+  // repo's CI.
+  seedCheckRun(sha: string, name: string): CheckRun {
+    return this.#addCheckRun(sha, name, { title: name, summary: "", text: "" }, "success");
+  }
+
+  // Every check run of a commit, older runs of one name included, oldest
+  // first.
+  checkRuns(sha: string): FakeCheckRun[] {
+    return this.#checkRuns
+      .filter((run) => run.sha === sha)
+      .map(({ sha: _sha, ...run }) => ({ ...run, output: { ...run.output } }));
   }
 
   get dispatches(): { workflow: string; ref: string }[] {
@@ -415,12 +456,74 @@ export class FakeGitHub implements GitHubPort {
     this.#pinned.push(issue.number);
   }
 
+  async listCheckRuns(sha: string): Promise<CheckRun[]> {
+    const runs: CheckRun[] = [];
+    for (let page = 1; ; page++) {
+      const found = await this.listCheckRunsPage(sha, page, PAGE_SIZE);
+      runs.push(...found.runs);
+      if (!found.more) return runs;
+    }
+  }
+
+  // One page of the list, which is one request. With `filter=latest` only
+  // the newest check run of each name is on it (research, preview-page.md).
+  async listCheckRunsPage(
+    sha: string,
+    page: number,
+    perPage: number,
+  ): Promise<{ runs: CheckRun[]; more: boolean }> {
+    this.#count("listCheckRuns");
+    const latest = new Map<string, CheckRun>();
+    for (const run of this.#checkRuns) {
+      if (run.sha === sha)
+        latest.set(run.name, { id: run.id, name: run.name, htmlUrl: run.htmlUrl });
+    }
+    const found = [...latest.values()].sort((a, b) => b.id - a.id);
+    return {
+      runs: found.slice((page - 1) * perPage, page * perPage),
+      more: page * perPage < found.length,
+    };
+  }
+
+  async createCheckRun(run: NewCheckRun): Promise<CheckRun> {
+    this.#count("createCheckRun");
+    this.#mayWriteChecks();
+    return this.#addCheckRun(run.sha, run.name, checkedOutput(run.output), "neutral");
+  }
+
+  async updateCheckRun(id: number, output: CheckRunOutput): Promise<CheckRun> {
+    this.#count("updateCheckRun");
+    this.#mayWriteChecks();
+    const run = this.#checkRuns.find((one) => one.id === id);
+    if (!run) throw new FakeGitHubError(404, "Not Found");
+    run.output = checkedOutput(output);
+    return { id: run.id, name: run.name, htmlUrl: run.htmlUrl };
+  }
+
   async dispatchWorkflow(workflow: string, ref: string): Promise<void> {
     this.#count("dispatchWorkflow");
     if (!this.#actionsWrite) {
       throw new FakeGitHubError(403, "Resource not accessible by integration");
     }
     this.#dispatches.push({ workflow, ref });
+  }
+
+  #mayWriteChecks(): void {
+    if (!this.#checksWrite) {
+      throw new FakeGitHubError(403, "Resource not accessible by integration");
+    }
+  }
+
+  #addCheckRun(
+    sha: string,
+    name: string,
+    output: CheckRunOutput,
+    conclusion: FakeCheckRun["conclusion"],
+  ): CheckRun {
+    const id = this.#nextCheckRunId++;
+    const htmlUrl = `${this.#repoUrl}/runs/${id}`;
+    this.#checkRuns.push({ sha, id, name, htmlUrl, status: "completed", conclusion, output });
+    return { id, name, htmlUrl };
   }
 
   #now(): string {
@@ -492,6 +595,36 @@ function entry(editor: IssueAuthor, editedAt: string, body: string): HistoryEntr
     editedAt,
     body,
   };
+}
+
+// What GitHub stores of an output, or its refusal (research, preview-page.md):
+// more than 65,535 characters in either field is refused, a summary over
+// 65,535 bytes too, and a text over 65,535 bytes is cut at a character without
+// a word.
+function checkedOutput(output: CheckRunOutput): CheckRunOutput {
+  for (const field of [output.summary, output.text]) {
+    if (field.length > CHECK_RUN_FIELD_LIMIT) {
+      throw new FakeGitHubError(
+        422,
+        `Only ${CHECK_RUN_FIELD_LIMIT} characters are allowed; ${field.length} were supplied.`,
+      );
+    }
+  }
+  if (new TextEncoder().encode(output.summary).length > CHECK_RUN_FIELD_LIMIT) {
+    throw new FakeGitHubError(
+      422,
+      `summary exceeds a maximum bytesize of ${CHECK_RUN_FIELD_LIMIT}`,
+    );
+  }
+  if (new TextEncoder().encode(output.text).length <= CHECK_RUN_FIELD_LIMIT) return { ...output };
+  let text = "";
+  let bytes = 0;
+  for (const char of output.text) {
+    bytes += new TextEncoder().encode(char).length;
+    if (bytes > CHECK_RUN_FIELD_LIMIT) break;
+    text += char;
+  }
+  return { ...output, text };
 }
 
 function copy(issue: Issue): Issue {

@@ -57,6 +57,29 @@ export interface NewIssue {
   labels: string[];
 }
 
+// A check run on a commit, as the port keeps it (record 0050). `htmlUrl` is
+// `https://github.com/<owner>/<repo>/runs/<id>`, the page that shows its
+// output. It belongs to the id, so a re-run of the workflow does not move it.
+export interface CheckRun {
+  id: number;
+  name: string;
+  htmlUrl: string;
+}
+
+// What a check run's page shows. GitHub renders `summary` and `text` as
+// Markdown and takes at most 65,535 characters in each.
+export interface CheckRunOutput {
+  title: string;
+  summary: string;
+  text: string;
+}
+
+export interface NewCheckRun {
+  sha: string;
+  name: string;
+  output: CheckRunOutput;
+}
+
 export interface GitHubPort {
   // Every issue with the label in that state, lowest number first. Pull
   // requests are left out.
@@ -150,6 +173,23 @@ export interface GitHubPort {
   // Works with the workflow token and issues: write (issue 17). Fails when
   // the repo already has three pinned issues.
   pinIssue(nodeId: string): Promise<void>;
+
+  // The newest check run of each name on one commit (`filter=latest`), of
+  // every app, the jobs of every workflow included. One request per page of
+  // 100 (record 0050).
+  listCheckRuns(sha: string): Promise<CheckRun[]>;
+
+  // A finished check run on a commit, always `completed` and `neutral`, so it
+  // adds no failure to the commit's checks (record 0050). Needs
+  // `checks: write`: without it GitHub answers 403 "Resource not accessible by
+  // integration". GitHub puts it in the oldest check suite of GitHub Actions
+  // on the commit, whichever workflow that is, and sets its `details_url` to
+  // its own page whatever is sent, so none is sent.
+  createCheckRun(run: NewCheckRun): Promise<CheckRun>;
+
+  // Replaces the whole output of a check run and nothing else: a field left
+  // out would be emptied. Needs `checks: write`.
+  updateCheckRun(id: number, output: CheckRunOutput): Promise<CheckRun>;
 
   // Starts a `workflow_dispatch` run of one workflow file on a branch or tag.
   // It is the one thing the workflow token may start (record 0017), and it

@@ -17,13 +17,15 @@ import type { SummaryMerge, SummaryStack } from "./summary.ts";
 // (record 0003), and rides on whatever row the preview gives. When the job
 // log holds the tool's own diff of the stack, a pending row's `preview` link
 // lands there instead (record 0048). Whether the tool's diff could be shown
-// never changes the row.
+// never changes the row. When the stack has a preview page, a check run with
+// its diff, the `preview` link lands there, whatever else holds the diff
+// (record 0050).
 export function previewRow(
   stackId: string,
   result: PreviewResult,
   links: RunLinks,
   failure?: FailureLine | undefined,
-  options: { toolDiffInLog?: boolean | undefined } = {},
+  options: { toolDiffInLog?: boolean | undefined; pageUrl?: string | undefined } = {},
 ): Row {
   if (!result.ok) {
     return {
@@ -40,7 +42,7 @@ export function previewRow(
     diff: result.diff,
     hash: diffHash(result.diff),
     runUrl: links.summary,
-    previewUrl: options.toolDiffInLog ? links.log : undefined,
+    previewUrl: options.pageUrl ?? (options.toolDiffInLog ? links.log : undefined),
     failure,
   };
 }

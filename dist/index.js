@@ -51631,6 +51631,39 @@ function attributionCalls(octokit, repo) {
   };
 }
 
+// src/github/octokit-checks.ts
+function toCheckRun(run) {
+  return { id: run.id, name: run.name, htmlUrl: run.html_url ?? "" };
+}
+function checkCalls(octokit, repo) {
+  return {
+    async listCheckRuns(sha) {
+      const runs = await octokit.paginate(octokit.rest.checks.listForRef, {
+        ...repo,
+        ref: sha,
+        filter: "latest",
+        per_page: 100
+      });
+      return runs.map(toCheckRun);
+    },
+    async createCheckRun({ sha, name, output: output2 }) {
+      const { data } = await octokit.rest.checks.create({
+        ...repo,
+        name,
+        head_sha: sha,
+        status: "completed",
+        conclusion: "neutral",
+        output: output2
+      });
+      return toCheckRun(data);
+    },
+    async updateCheckRun(id, output2) {
+      const { data } = await octokit.rest.checks.update({ ...repo, check_run_id: id, output: output2 });
+      return toCheckRun(data);
+    }
+  };
+}
+
 // src/github/octokit-deployments.ts
 var NEWEST_DEPLOYMENTS = `query ($owner: String!, $repo: String!, $environment: String!) {
   repository(owner: $owner, name: $repo) {
@@ -51899,6 +51932,7 @@ function createOctokitPort(octokit, repo) {
     ...deploymentCalls(octokit, repo),
     ...runCalls(octokit, repo),
     ...attributionCalls(octokit, repo),
+    ...checkCalls(octokit, repo),
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     },
@@ -53397,6 +53431,9 @@ function runLinks(run) {
   const summary2 = `${base}/attempts/${run.runAttempt}`;
   return { summary: summary2, log: run.jobId === undefined ? summary2 : `${base}/job/${run.jobId}` };
 }
+function dashboardSearchUrl(repoUrl, label) {
+  return `${repoUrl}/issues?q=${encodeURIComponent(`is:issue is:open label:"${label}"`)}`;
+}
 
 // src/render/log-text.ts
 function oneLine(text3) {
@@ -53460,7 +53497,7 @@ function previewRow(stackId2, result, links, failure2, options = {}) {
     diff: result.diff,
     hash: diffHash(result.diff),
     runUrl: links.summary,
-    previewUrl: options.toolDiffInLog ? links.log : undefined,
+    previewUrl: options.pageUrl ?? (options.toolDiffInLog ? links.log : undefined),
     failure: failure2
   };
 }
@@ -54979,6 +55016,152 @@ function everyPreviewFailed(attempted, failed) {
   return attempted > 1 && failed === attempted;
 }
 
+// src/render/preview-page.ts
+var PREVIEW_PAGE_FIELD_LIMIT = 65535;
+function previewPageName(stackId2) {
+  return `sluiceway / ${stackId2}`;
+}
+var ENCODER = new TextEncoder;
+function byteLength2(text3) {
+  return ENCODER.encode(text3).length;
+}
+function jobLog(links) {
+  return links.log === undefined ? "job log of the scan" : `[job log](${links.log})`;
+}
+function pointer(unlisted, id, links) {
+  const are = unlisted === 1 ? "change is" : "changes are";
+  return `**${unlisted} more ${are} not listed here**: a preview page holds at most 65,535 bytes. Every change is in the ${jobLog(links)}, in the group <code>${id}</code>, and in the [summary](${links.summary}) of the scan when it fits there.`;
+}
+function renderPreviewPage(diff, links, options = {}) {
+  const id = escapeText(diff.stackId);
+  const { deletes, replaces, others } = orderChanges(diff);
+  const destroys = [...deletes, ...replaces];
+  const counted = counts([...destroys, ...others]);
+  const summary3 = [
+    `**${id}** · ${counted}`,
+    ...destroys.length > 0 ? [`:warning: **This deploy ${destroyWords(deletes.length, replaces.length)}.**`] : [],
+    `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.`,
+    `Every stack this scan previewed is in the [summary](${links.summary}) of the scan, and the tool's own words are in the ${jobLog(links)}, in the group <code>${id}</code>.`,
+    ...options.toolDiffInLog ? [
+      `The tool's own diff of this stack, values included, is in the ${jobLog(links)}, in the group <code>${id}</code>. It is not on this page.`
+    ] : []
+  ].join(`
+
+`);
+  const lines2 = [
+    ...destroys.map((change) => `- :warning: ${changeLine(change)}
+`),
+    ...others.map((change) => `- ${changeLine(change)}
+`)
+  ];
+  const limit = options.limit ?? PREVIEW_PAGE_FIELD_LIMIT;
+  const sizes = lines2.map(byteLength2);
+  const whole = sizes.reduce((sum, size) => sum + size, 0);
+  let kept = lines2.length;
+  if (whole > limit) {
+    const room = limit - byteLength2(`
+${pointer(lines2.length, id, links)}
+`);
+    let used = 0;
+    kept = 0;
+    while (kept < lines2.length && used + (sizes[kept] ?? 0) <= room)
+      used += sizes[kept++] ?? 0;
+  }
+  const unlisted = lines2.length - kept;
+  const text3 = lines2.slice(0, kept).join("") + (unlisted > 0 ? `
+${pointer(unlisted, id, links)}
+` : "");
+  return {
+    title: `${diff.stackId.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")}: ${counted.replaceAll("**", "")}`,
+    summary: summary3,
+    text: text3,
+    unlisted
+  };
+}
+
+// src/github/preview-pages.ts
+function statusOf(error63) {
+  return error63?.status;
+}
+function messageOf(error63) {
+  return error63 instanceof Error ? error63.message : String(error63);
+}
+function refusal(error63) {
+  const status = statusOf(error63);
+  if (status !== 403 && status !== 429)
+    return;
+  const message3 = messageOf(error63);
+  return { message: message3, permission: /not accessible by integration/i.test(message3) };
+}
+function previewPages(github, sha) {
+  let known;
+  let refused;
+  return {
+    async write(pages) {
+      const written = {
+        urls: new Map,
+        created: 0,
+        updated: 0,
+        failed: [],
+        skipped: []
+      };
+      const skipRest = (from) => {
+        written.skipped.push(...pages.slice(from).map(({ stackId: stackId2 }) => stackId2));
+        return written;
+      };
+      if (pages.length === 0)
+        return written;
+      if (refused)
+        return skipRest(0);
+      const refuse = (error63, from) => {
+        refused = refusal(error63);
+        written.refused = refused;
+        return refused ? skipRest(from) : undefined;
+      };
+      if (!known) {
+        try {
+          known = new Map((await github.listCheckRuns(sha)).map((run) => [run.name, run]));
+        } catch (error63) {
+          const stopped = refuse(error63, 0);
+          if (stopped)
+            return stopped;
+          for (const { stackId: stackId2 } of pages)
+            written.failed.push({ stackId: stackId2, message: messageOf(error63) });
+          return written;
+        }
+      }
+      for (const [index, { stackId: stackId2, output: output2 }] of pages.entries()) {
+        const name = previewPageName(stackId2);
+        try {
+          const found = known.get(name);
+          let run;
+          if (found) {
+            try {
+              run = await github.updateCheckRun(found.id, output2);
+              written.updated++;
+            } catch (error63) {
+              if (statusOf(error63) !== 404)
+                throw error63;
+            }
+          }
+          if (!run) {
+            run = await github.createCheckRun({ sha, name, output: output2 });
+            written.created++;
+          }
+          known.set(name, run);
+          written.urls.set(stackId2, run.htmlUrl);
+        } catch (error63) {
+          const stopped = refuse(error63, index);
+          if (stopped)
+            return stopped;
+          written.failed.push({ stackId: stackId2, message: messageOf(error63) });
+        }
+      }
+      return written;
+    }
+  };
+}
+
 // src/render/summary.ts
 var SUMMARY_BUDGET = 1e6;
 function stackAnchor(stackId2) {
@@ -54994,7 +55177,7 @@ function anchorTag(stackId2) {
 function indexLink(stackId2) {
   return `[${escapeText(stackId2)}](#user-content-${stackAnchor(stackId2)})`;
 }
-function jobLog(options) {
+function jobLog2(options) {
   return options.jobLogUrl === undefined ? "job log" : `[job log](${options.jobLogUrl})`;
 }
 var LEVELS2 = [0, 1, 2, 3];
@@ -55021,13 +55204,13 @@ function diffParts2(stack, level, options) {
     counts([...destroys, ...others])
   ];
   if (destroys.length > 0) {
-    parts.push(level >= 3 ? `:warning: **${destroyWords(deletes.length, replaces.length)}, too many to list here.** Read the ${jobLog(options)} before you tick.` : destroys.map((change) => `- :warning: ${changeLine(change)}`).join(`
+    parts.push(level >= 3 ? `:warning: **${destroyWords(deletes.length, replaces.length)}, too many to list here.** Read the ${jobLog2(options)} before you tick.` : destroys.map((change) => `- :warning: ${changeLine(change)}`).join(`
 `));
   }
   if (others.length > 0) {
     const inside2 = plural2(others.length, destroys.length > 0 ? "other change" : "change");
     if (level >= 2)
-      parts.push(`${inside2} not listed here, see the ${jobLog(options)}.`);
+      parts.push(`${inside2} not listed here, see the ${jobLog2(options)}.`);
     else {
       parts.push(`<details><summary>${inside2}</summary>`, others.map((change) => `- ${changeLine(change)}`).join(`
 `), "</details>");
@@ -55047,7 +55230,7 @@ function failedLine(stack, options) {
   const id = escapeText(stack.stackId);
   let line3 = `- ${anchorTag(stack.stackId)}**${id}** · ${escapeText(stack.reason)}`;
   if (options.jobLogUrl !== undefined) {
-    line3 += ` · the tool's own words are in the ${jobLog(options)}, in the group <code>${id}</code>`;
+    line3 += ` · the tool's own words are in the ${jobLog2(options)}, in the group <code>${id}</code>`;
   }
   if (stack.ignore === undefined)
     return line3;
@@ -55057,16 +55240,16 @@ function failedLine(stack, options) {
 function stackIdOf2(stack) {
   return stack.kind === "diff" ? stack.diff.stackId : stack.stackId;
 }
-var ENCODER = new TextEncoder;
-function byteLength2(text3) {
-  return ENCODER.encode(text3).length;
+var ENCODER2 = new TextEncoder;
+function byteLength3(text3) {
+  return ENCODER2.encode(text3).length;
 }
 function cost(parts) {
-  return parts.reduce((sum, part) => sum + byteLength2(part) + 2, 0);
+  return parts.reduce((sum, part) => sum + byteLength3(part) + 2, 0);
 }
 function note(shortened, pending, options) {
   const shows = shortened === 1 ? "shows less than its" : "show less than their";
-  return `> **This summary is shortened: ${shortened} of ${plural2(pending, "pending stack")} ${shows} whole diff.** Every diff is in full in the ${jobLog(options)} of this run, in the group that has the stack id as its title. Deletes and replaces are cut last.`;
+  return `> **This summary is shortened: ${shortened} of ${plural2(pending, "pending stack")} ${shows} whole diff.** Every diff is in full in the ${jobLog2(options)} of this run, in the group that has the stack id as its title. Deletes and replaces are cut last.`;
 }
 function fitToBudget(entries, frameCost, budget) {
   let blocks2 = entries.reduce((sum, entry) => sum + (entry.costs[0] ?? 0), 0);
@@ -55149,7 +55332,7 @@ function renderSummary(stacks, options = {}) {
 
 `)}
 `;
-  const bytes = byteLength2(text3);
+  const bytes = byteLength3(text3);
   return { text: text3, bytes, shortened, fits: bytes <= (options.budget ?? SUMMARY_BUDGET) };
 }
 
@@ -55256,6 +55439,8 @@ async function scanning(context3, report) {
   }, (message3) => log.info(`Attribution was left off the rows: ${message3}. It only explains a row, so the scan goes on without it (record 0026).`));
   let attributed = new Map;
   const previewed = new Map;
+  const pageUrls = new Map;
+  const pages = previewPages(context3.github, context3.sha);
   let rounds = 0;
   let versionChecked = false;
   let composed;
@@ -55276,6 +55461,11 @@ async function scanning(context3, report) {
       report.previewed = all;
     }
     rounds++;
+    await writePages(context3, pages, round, pageUrls, {
+      links,
+      label: config2.dashboard.label,
+      logDiff
+    });
     const compose = (liveBody, deploys, waits, lines3) => {
       const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
       const liveRows = new Map;
@@ -55316,7 +55506,8 @@ async function scanning(context3, report) {
           first.push({ id, why: decided.why });
         else if (decided.row === "fresh" && mine) {
           const fresh = previewRow(id, mine.result, links, failureLine2(context3, fact), {
-            toolDiffInLog: logDiff
+            toolDiffInLog: logDiff,
+            pageUrl: pageUrls.get(id)
           });
           const row2 = fresh.state === "pending" ? { ...fresh, attribution: lines3.get(id)?.lines } : fresh;
           if (!ticked) {
@@ -55636,6 +55827,43 @@ function logResults(context3, previewed) {
     if (!result.ok) {
       log.warning(`The preview of ${logGroupTitle(id)} failed: ${previewFailureText(result.reason)}.`, "Preview failed");
     }
+  }
+}
+async function writePages(context3, pages, round, urls, options) {
+  const { log } = context3;
+  const { links, logDiff } = options;
+  const toWrite = [];
+  for (const { id, result } of round) {
+    urls.delete(id);
+    if (!result.ok || result.diff.changes.length === 0)
+      continue;
+    const page = renderPreviewPage(result.diff, {
+      dashboard: dashboardSearchUrl(context3.repoUrl, options.label),
+      summary: links.summary,
+      log: context3.jobId === undefined ? undefined : links.log
+    }, { toolDiffInLog: logDiff });
+    const { title, summary: summary3, text: text3 } = page;
+    toWrite.push({ stackId: id, output: { title, summary: summary3, text: text3 } });
+  }
+  if (toWrite.length === 0)
+    return;
+  const written = await pages.write(toWrite);
+  for (const [id, url2] of written.urls)
+    urls.set(id, url2);
+  const fallBack = logDiff && context3.jobId !== undefined ? "the job log" : "the summary of the scan";
+  if (written.urls.size > 0) {
+    log.info(`Wrote the preview pages of ${plural2(written.urls.size, "pending stack")} on ${short(context3.sha)}: ${written.created} created, ${written.updated} updated.`);
+  }
+  for (const { stackId: id, message: message3 } of written.failed) {
+    log.info(`The preview page of ${logGroupTitle(id)} could not be written: ${message3}. Its preview link lands on ${fallBack}.`);
+  }
+  const { refused } = written;
+  if (!refused)
+    return;
+  if (refused.permission) {
+    log.info(`No preview page was written: GitHub answered "${refused.message}". With \`checks: write\` in the permissions of the scan job, a pending row's preview link lands on a page of its own that shows the stack's diff (record 0050). Until then it lands on ${fallBack}.`);
+  } else {
+    log.info(`GitHub refused a preview page: "${refused.message}". No more pages are written in this scan, and the preview links of ${plural2(written.skipped.length, "pending stack")} land on ${fallBack}.`);
   }
 }
 async function writeSummary2(context3, previewed, logDiff, attributed = new Map) {

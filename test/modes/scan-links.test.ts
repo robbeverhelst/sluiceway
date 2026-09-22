@@ -1,7 +1,9 @@
 // Record 0044: the links a scan writes land as close to one stack's detail as
 // GitHub allows. A pending row links to the summary of the attempt that
 // previewed it, and a preview failure to the log of the job that holds the
-// tool's own words.
+// tool's own words. Record 0050 sends a pending row's preview link to its
+// preview page when there is one, so the tests of that link here run without
+// `checks: write`, where record 0044's rule still holds.
 
 import { describe, expect, test } from "bun:test";
 import { scan } from "../../src/modes/scan.ts";
@@ -27,8 +29,9 @@ const ADAPTER = () =>
   });
 
 describe("the links of a scan (record 0044)", () => {
-  test("a pending row's preview link names the attempt, so a re-run of the run does not move it", async () => {
+  test("without a preview page, a pending row's preview link names the attempt, so a re-run of the run does not move it", async () => {
     const { context, github } = harness(ADAPTER());
+    github.withoutChecksWrite();
     await scan(context);
     expect(SUMMARY_URL).toBe(`${REPO_URL}/actions/runs/${RUN_ID}/attempts/1`);
     expect(dashboardBody(github)).toContain(
@@ -45,8 +48,9 @@ describe("the links of a scan (record 0044)", () => {
     );
   });
 
-  test("a second attempt of the same run links to its own summary", async () => {
+  test("without a preview page, a second attempt of the same run links to its own summary", async () => {
     const { context, github } = harness(ADAPTER(), { runAttempt: "2" });
+    github.withoutChecksWrite();
     await scan(context);
     expect(dashboardBody(github)).toContain(
       `[preview](${REPO_URL}/actions/runs/${RUN_ID}/attempts/2)`,

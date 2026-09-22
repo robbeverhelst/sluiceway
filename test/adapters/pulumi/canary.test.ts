@@ -13,6 +13,7 @@ import { scan } from "../../../src/modes/scan.ts";
 import { renderBody, rowBlock } from "../../../src/render/body.ts";
 import { fitBody } from "../../../src/render/budget.ts";
 import { diffLogLines, logGroupTitle } from "../../../src/render/log-text.ts";
+import { renderPreviewPage } from "../../../src/render/preview-page.ts";
 import { applyResultFile, scanResultFile } from "../../../src/render/result-file.ts";
 import { renderRow } from "../../../src/render/row.ts";
 import { renderSummary } from "../../../src/render/summary.ts";
@@ -69,13 +70,16 @@ function budgeted(row: Parameters<typeof rowBlock>[0]): string {
 }
 
 // The summary in full and cut as far as it goes, the log text (record 0037),
-// and the result files of a scan and of an apply (record 0041).
+// the result files of a scan and of an apply (record 0041), and the preview
+// page in full and cut as far as it goes (record 0050).
 function annex(diff: Diff): string {
   const stack = { kind: "diff", diff } as const;
   const stacks = [stack];
   return [
     renderSummary(stacks).text,
     renderSummary(stacks, { budget: 0 }).text,
+    JSON.stringify(renderPreviewPage(diff, PAGE_LINKS, { toolDiffInLog: true })),
+    JSON.stringify(renderPreviewPage(diff, PAGE_LINKS, { limit: 0 })),
     logGroupTitle(diff.stackId),
     ...diffLogLines(diff),
     scanResultFile({ ...RESULT, stacks: [{ stack, milliseconds: 1 }] }),
@@ -95,6 +99,7 @@ function annex(diff: Diff): string {
 }
 
 const RESULT = { run: "run-url", commit: "sha", milliseconds: 1 };
+const PAGE_LINKS = { dashboard: "dashboard-url", summary: "summary-url", log: "log-url" };
 const APPLIED = { deployment: 1, outcome: "deployed", stack: "a", ticker: "alice" } as const;
 
 type Command = ReturnType<typeof readRecording>["commands"][number];
@@ -210,7 +215,7 @@ test("every scenario but the version check is covered", () => {
 // diff on purpose. It reaches the stack's group of the job log, after the
 // point where workflow commands stop, and nothing else: not the issue, the
 // summary, the result file, an annotation, an output, another log line or any
-// call to GitHub.
+// call to GitHub, the preview page of record 0050 included.
 for (const version of VERSIONS) {
   test(`with scan.logDiff on the value reaches the stack's log group and nothing else, replaying pulumi ${version}`, async () => {
     const root = repoRoot("scan:\n  logDiff: true\n");
@@ -251,6 +256,8 @@ for (const version of VERSIONS) {
       JSON.stringify(outputs.resultFile("scan")),
     ].join("\n");
     expect(elsewhere).toContain("network:dev");
+    // The stack is pending, so the scan wrote its preview page.
+    expect(sent.filter((call) => call.startsWith("createCheckRun "))).toHaveLength(1);
     expect(leaks(elsewhere)).toEqual([]);
   });
 }

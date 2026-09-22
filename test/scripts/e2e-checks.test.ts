@@ -4,6 +4,7 @@ import {
   checkNarrowedScan,
   type Expected,
   type Observed,
+  type ObservedPage,
 } from "../../scripts/e2e/checks.ts";
 
 // The checks of the e2e run are code too, and a check that cannot fail proves
@@ -12,9 +13,21 @@ import {
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 const NEXT_SHA = "89abcdef0123456789abcdef0123456789abcdef";
 
-function row(stack: string, state: string, more = ""): string {
-  return `- [ ] **${stack}** <!-- sluiceway:row stack="${stack}" state="${state}"${more} -->\n  <!-- /sluiceway:row -->`;
+// The address of a stack's preview page on the fake (record 0050).
+function pageUrl(stack: string): string {
+  return `https://github.com/acme/infra/runs/${stack.length}`;
 }
+
+function row(stack: string, state: string, more = ""): string {
+  const link = state === "pending" ? ` · [preview](${pageUrl(stack)})` : "";
+  return `- [ ] **${stack}**${link} <!-- sluiceway:row stack="${stack}" state="${state}"${more} -->\n  <!-- /sluiceway:row -->`;
+}
+
+function page(stack: string, written = true): ObservedPage {
+  return { name: `sluiceway / ${stack}`, htmlUrl: pageUrl(stack), output: "the diff", written };
+}
+
+const PAGES = [page("app:prod"), page("network:dev"), page("site:prod")];
 
 function body(rows: string[], root: Record<string, string> = {}): string {
   const facts = {
@@ -87,6 +100,7 @@ function observed(over: Partial<Observed> = {}): Observed {
     ],
     pinned: [1],
     requests: ["listIssues", "listIssues", "createIssue", "pinIssue", "getIssue", "walkCommits"],
+    pages: PAGES,
     ...over,
   };
 }
@@ -187,6 +201,32 @@ describe("the checks of a full scan", () => {
     ]);
   });
 
+  test("a pending stack without its page, a second page and a page for a stack in sync are problems", () => {
+    const pages = [page("network:dev"), page("network:dev", false), page("network:prod")];
+    expect(checkFullScan(observed({ pages }), EXPECTED)).toEqual([
+      "The scan wrote no preview page for app:prod.",
+      "The commit has 2 preview pages for network:dev, expected 1.",
+      "The scan wrote a preview page for network:prod.",
+      "The scan wrote no preview page for site:prod.",
+    ]);
+  });
+
+  test("a preview link that does not land on the stack's page is a problem", () => {
+    const pages = PAGES.map((one) =>
+      one.name === "sluiceway / site:prod" ? { ...one, htmlUrl: pageUrl("x") } : one,
+    );
+    expect(checkFullScan(observed({ pages }), EXPECTED)).toEqual([
+      `The preview link of site:prod does not land on its page ${pageUrl("x")}.`,
+    ]);
+  });
+
+  test("a value on a page is a problem", () => {
+    const pages = [...PAGES.slice(1), { ...page("app:prod"), output: "CANARY-SECRET" }];
+    expect(checkFullScan(observed({ pages }), EXPECTED)).toEqual([
+      "The page sluiceway / app:prod holds CANARY-SECRET.",
+    ]);
+  });
+
   test("a request count in the log that is not what GitHub saw is a problem", () => {
     expect(checkFullScan(observed({ requests: ["listIssues"] }), EXPECTED)).toEqual([
       'The job log has no line that starts with "The scan made 1 request to the GitHub API.".',
@@ -217,14 +257,23 @@ describe("the checks of a narrowed scan", () => {
   const narrowed = { previewed: ["app:prod"], before };
 
   test("a scan that swapped one row and kept the rest has no problems", () => {
-    expect(checkNarrowedScan({ ...withBody(after), log }, expected, narrowed)).toEqual([]);
+    expect(checkNarrowedScan({ ...withBody(after), log, pages: [] }, expected, narrowed)).toEqual(
+      [],
+    );
+  });
+
+  test("a page for a stack the scan did not preview is a problem, and a carried page is not", () => {
+    const pages = [page("app:prod"), page("network:dev", false)];
+    expect(checkNarrowedScan({ ...withBody(after), log, pages }, expected, narrowed)).toEqual([
+      "The scan wrote a preview page for app:prod.",
+    ]);
   });
 
   test("a carried row that changed by one character is a problem", () => {
     const changed = after.replace('hash="05bf4ba5424cef76"', 'hash="05bf4ba5424cef77"');
-    expect(checkNarrowedScan({ ...withBody(changed), log }, expected, narrowed)).toEqual([
-      "The row of network:dev was not carried through byte for byte.",
-    ]);
+    expect(checkNarrowedScan({ ...withBody(changed), log, pages: [] }, expected, narrowed)).toEqual(
+      ["The row of network:dev was not carried through byte for byte."],
+    );
   });
 
   test("a full scan time that moved is a problem", () => {
@@ -232,21 +281,23 @@ describe("the checks of a narrowed scan", () => {
       'full-scan-at="2026-09-21T06:00:00.000Z"',
       'full-scan-at="2026-09-21T06:05:00.000Z"',
     );
-    expect(checkNarrowedScan({ ...withBody(moved), log }, expected, narrowed)).toEqual([
+    expect(checkNarrowedScan({ ...withBody(moved), log, pages: [] }, expected, narrowed)).toEqual([
       'The root marker has full-scan-at="2026-09-21T06:05:00.000Z", expected "2026-09-21T06:00:00.000Z" carried through.',
     ]);
   });
 
   test("a preview of a stack the scan should have left alone is a problem", () => {
     const loud = `${log}\nPreviewed site:prod in 1.0 s: pending`;
-    expect(checkNarrowedScan({ ...withBody(after), log: loud }, expected, narrowed)).toEqual([
-      "The scan previewed site:prod, and it should have previewed only app:prod.",
-    ]);
+    expect(
+      checkNarrowedScan({ ...withBody(after), log: loud, pages: [] }, expected, narrowed),
+    ).toEqual(["The scan previewed site:prod, and it should have previewed only app:prod."]);
   });
 
   test("a scan that does not say it is narrowed is a problem", () => {
     const quiet = log.replace("This is a narrowed scan", "This is a full scan");
-    expect(checkNarrowedScan({ ...withBody(after), log: quiet }, expected, narrowed)).toEqual([
+    expect(
+      checkNarrowedScan({ ...withBody(after), log: quiet, pages: [] }, expected, narrowed),
+    ).toEqual([
       'The job log has no line that starts with "This is a narrowed scan: it previews 1 of 4 stacks".',
     ]);
   });

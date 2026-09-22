@@ -79,12 +79,16 @@ describe("a scan that follows a push", () => {
     expect(adapter.previewed).toEqual(["site:prod"]);
     const rows = rowTexts(dashboardBody(github));
     expect(rows["site:prod"]).toContain("- [ ] **site:prod** · 1 update");
-    expect(rows["site:prod"]).toContain("/actions/runs/4242");
+    // A fresh pending row links to the preview page this scan wrote (record
+    // 0050).
+    expect(rows["site:prod"]).toContain(`[preview](${github.checkRuns(SHA)[0]?.htmlUrl})`);
     for (const carried of ["app:prod", "network:dev", "network:prod"]) {
       expect(rows[carried]).toBe(rowTexts(before)[carried] as string);
     }
-    // A carried row keeps the link to the run that previewed it (record 0011).
-    expect(rows["network:dev"]).toContain(`/actions/runs/${OLD_RUN}`);
+    // A carried row keeps the link to the page of the scan that previewed it
+    // (records 0011 and 0050).
+    const page = github.checkRuns(OLD).find(({ name }) => name === "sluiceway / network:dev");
+    expect(rows["network:dev"]).toContain(`[preview](${page?.htmlUrl})`);
   });
 });
 
@@ -612,6 +616,7 @@ describe("the job of a narrowed scan", () => {
       "Previewed network:dev in 0.5 s: pending",
       "Previewed network:prod in 0.5 s: in sync",
       "Previewed 2 stacks in 2.5 s with a pool of 1. Added up, the previews took 1.0 s. The slowest was network:dev with 0.5 s.",
+      "Wrote the preview pages of 1 pending stack on 0123456: 1 created, 0 updated.",
       `Wrote the dashboard: https://github.com/acme/infra/issues/1 (${size} of 65,536 characters).`,
       "Carried 2 rows through as they were, for the stacks this scan did not preview.",
     ]);
@@ -647,7 +652,7 @@ describe("the job of a narrowed scan", () => {
     expect(scanned.log.warnings).toHaveLength(1);
   });
 
-  test("costs seven requests: the first read, the comparison, and the write loop with its list and its late read of the deployment records", async () => {
+  test("costs nine requests: the first read, the comparison, the preview page of its pending stack, and the write loop with its list and its late read of the deployment records", async () => {
     const scanned = await pushed(TABLE, ahead("site/index.ts"), {
       next: { "site:prod": pending("site:prod", change("page")) },
     });
@@ -656,6 +661,9 @@ describe("the job of a narrowed scan", () => {
     expect(scanned.github.requests.slice(before)).toEqual([
       "listIssues",
       "compareCommits",
+      // Record 0050: the commit's check runs, and the one page.
+      "listCheckRuns",
+      "createCheckRun",
       "listIssues",
       "getIssue",
       "listNewestDeployments",

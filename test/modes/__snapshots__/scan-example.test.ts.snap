@@ -1,6 +1,6 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`a full scan of the example project gives the same dashboard and summary from both CLI versions: dashboard 1`] = `
+exports[`a full scan of the example project gives the same dashboard, summary and preview pages from both CLI versions: dashboard 1`] = `
 "<!-- sluiceway:dashboard v="1" scan-sha="0123456789abcdef0123456789abcdef01234567" scan-run="4242" scan-at="2026-09-21T06:00:00.000Z" full-scan-at="2026-09-21T06:00:00.000Z" full-scan-run="4242" -->
 
 <p align="center">
@@ -22,7 +22,7 @@ Scanned [\`0123456\`](https://github.com/acme/infra/commit/0123456789abcdef01234
 
 Tick a box to deploy that stack exactly as its row shows it.
 
-- [ ] **app:prod** · 3 creates · [preview](https://github.com/acme/infra/actions/runs/4242/attempts/1) <!-- sluiceway:row stack="app:prod" state="pending" hash="6f5afda2b3712163" -->
+- [ ] **app:prod** · 3 creates · [preview](https://github.com/acme/infra/runs/106538952701) <!-- sluiceway:row stack="app:prod" state="pending" hash="6f5afda2b3712163" -->
   not deployed from this dashboard yet
   <details><summary>3 changes</summary>
   <kbd>create</kbd> <code>command:local:Command</code> <b>start</b><br>
@@ -30,7 +30,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>release</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **network:dev** · 1 create, 1 update, **2 replaces**, **1 delete** · [preview](https://github.com/acme/infra/actions/runs/4242/attempts/1) <!-- sluiceway:row stack="network:dev" state="pending" hash="f64ca542f4ede7ae" destroys="3" -->
+- [ ] **network:dev** · 1 create, 1 update, **2 replaces**, **1 delete** · [preview](https://github.com/acme/infra/runs/106538952702) <!-- sluiceway:row stack="network:dev" state="pending" hash="f64ca542f4ede7ae" destroys="3" -->
   not deployed from this dashboard yet
   :warning: <kbd>DELETE</kbd> <code>random:index/randomString:RandomString</code> <b>subnet</b>
   :warning: <kbd>REPLACE</kbd> <code>local:index/file:File</code> <b>notes</b> · forced by <code>content</code> · also changes <code>contentBase64sha256</code>, <code>contentBase64sha512</code>, <code>contentMd5</code>, <code>contentSha1</code>, <code>contentSha256</code>, <code>contentSha512</code>, <code>id</code>
@@ -64,7 +64,7 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 <sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>"
 `;
 
-exports[`a full scan of the example project gives the same dashboard and summary from both CLI versions: summary 1`] = `
+exports[`a full scan of the example project gives the same dashboard, summary and preview pages from both CLI versions: summary 1`] = `
 "## Sluiceway scan
 
 4 stacks previewed: 2 pending, 1 preview failed, 1 in sync.
@@ -108,6 +108,36 @@ exports[`a full scan of the example project gives the same dashboard and summary
 ### In sync
 
 - <a id="sluiceway-network-3a-prod"></a>network:prod
+"
+`;
+
+exports[`a full scan of the example project gives the same dashboard, summary and preview pages from both CLI versions: sluiceway / app:prod 1`] = `
+"**app:prod** · 3 creates
+
+Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](https://github.com/acme/infra/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22sluiceway%22) shows, with every property path whole.
+
+Every stack this scan previewed is in the [summary](https://github.com/acme/infra/actions/runs/4242/attempts/1) of the scan, and the tool's own words are in the [job log](https://github.com/acme/infra/actions/runs/4242/job/106502264185), in the group <code>app:prod</code>.
+
+- <kbd>create</kbd> <code>command:local:Command</code> <b>start</b>
+- <kbd>create</kbd> <code>pulumi:pulumi:Stack</code> <b>app-prod</b>
+- <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>release</b>
+"
+`;
+
+exports[`a full scan of the example project gives the same dashboard, summary and preview pages from both CLI versions: sluiceway / network:dev 1`] = `
+"**network:dev** · 1 create, 1 update, **2 replaces**, **1 delete**
+
+:warning: **This deploy deletes 1, replaces 2.**
+
+Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](https://github.com/acme/infra/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22sluiceway%22) shows, with every property path whole.
+
+Every stack this scan previewed is in the [summary](https://github.com/acme/infra/actions/runs/4242/attempts/1) of the scan, and the tool's own words are in the [job log](https://github.com/acme/infra/actions/runs/4242/job/106502264185), in the group <code>network:dev</code>.
+
+- :warning: <kbd>DELETE</kbd> <code>random:index/randomString:RandomString</code> <b>subnet</b>
+- :warning: <kbd>REPLACE</kbd> <code>local:index/file:File</code> <b>notes</b> · forced by <code>content</code> · also changes <code>contentBase64sha256</code>, <code>contentBase64sha512</code>, <code>contentMd5</code>, <code>contentSha1</code>, <code>contentSha256</code>, <code>contentSha512</code>, <code>id</code>
+- :warning: <kbd>REPLACE</kbd> <code>random:index/randomPet:RandomPet</code> <b>name</b> · forced by <code>prefix</code>
+- <kbd>update</kbd> <code>command:local:Command</code> <b>banner</b> · <code>environment.STAGE</code>
+- <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>extra</b>
 "
 `;
 

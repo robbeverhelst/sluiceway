@@ -11,6 +11,16 @@ export interface ObservedIssue {
   body: string;
 }
 
+// A check run on the scanned commit after the step (record 0050).
+export interface ObservedPage {
+  name: string;
+  htmlUrl: string;
+  // Its title, summary and text.
+  output: string;
+  // Created or changed by this step.
+  written: boolean;
+}
+
 export interface Observed {
   exitCode: number;
   // Everything the step printed.
@@ -22,6 +32,8 @@ export interface Observed {
   pinned: number[];
   // Every request the fake GitHub answered during the step, by port method.
   requests: string[];
+  // Every check run on the scanned commit, older runs of one name included.
+  pages: ObservedPage[];
 }
 
 export interface Expected {
@@ -80,7 +92,42 @@ function previewedTotal(count: number): string {
   return `Previewed ${count} ${count === 1 ? "stack" : "stacks"} in `;
 }
 
-function checkScan(observed: Observed, expected: Expected): string[] {
+// One preview page per pending stack this scan previewed, written by this
+// scan, never a second one of the same name, none for any other stack, and
+// the row's preview link lands on it (record 0050).
+function checkPages(
+  observed: Observed,
+  expected: Expected,
+  rows: Map<string, { state: string; block: string }[]>,
+  previewed: string[],
+): string[] {
+  const problems: string[] = [];
+  for (const [stack, state] of Object.entries(expected.rows)) {
+    const name = `sluiceway / ${stack}`;
+    const all = observed.pages.filter((page) => page.name === name);
+    const written = all.filter((page) => page.written);
+    if (state !== "pending" || !previewed.includes(stack)) {
+      if (written.length > 0) problems.push(`The scan wrote a preview page for ${stack}.`);
+      continue;
+    }
+    if (all.length > 1) {
+      problems.push(`The commit has ${all.length} preview pages for ${stack}, expected 1.`);
+    }
+    const [page] = written;
+    if (!page) {
+      problems.push(`The scan wrote no preview page for ${stack}.`);
+      continue;
+    }
+    // A missing row is named above.
+    const block = rows.get(stack)?.[0]?.block;
+    if (block !== undefined && !block.includes(`[preview](${page.htmlUrl})`)) {
+      problems.push(`The preview link of ${stack} does not land on its page ${page.htmlUrl}.`);
+    }
+  }
+  return problems;
+}
+
+function checkScan(observed: Observed, expected: Expected, previewed: string[]): string[] {
   const problems: string[] = [];
   if (observed.exitCode !== 0) {
     problems.push(`The scan ended with exit code ${observed.exitCode}, expected 0.`);
@@ -141,6 +188,7 @@ function checkScan(observed: Observed, expected: Expected): string[] {
   }
 
   if (observed.summary.trim() === "") problems.push("The summary is empty.");
+  problems.push(...checkPages(observed, expected, rows, previewed));
 
   // The count the scan logs is taken on the wire, so it has to be the count
   // the fake GitHub saw (record 0017, build plan slice 3.1).
@@ -161,6 +209,9 @@ function checkScan(observed: Observed, expected: Expected): string[] {
     if (dashboard.body.includes(secret)) problems.push(`The dashboard holds ${secret}.`);
     if (observed.summary.includes(secret)) problems.push(`The summary holds ${secret}.`);
     if (annotations.includes(secret)) problems.push(`An annotation holds ${secret}.`);
+    for (const page of observed.pages) {
+      if (page.output.includes(secret)) problems.push(`The page ${page.name} holds ${secret}.`);
+    }
   }
   return problems;
 }
@@ -168,7 +219,7 @@ function checkScan(observed: Observed, expected: Expected): string[] {
 export function checkFullScan(observed: Observed, expected: Expected): string[] {
   const stacks = Object.keys(expected.rows);
   return [
-    ...checkScan(observed, expected),
+    ...checkScan(observed, expected, stacks),
     ...needLine(observed.log, "This is a full scan"),
     // The timings the owner reads the pool size and the time limit from.
     ...needLine(observed.log, previewedTotal(stacks.length)),
@@ -181,7 +232,7 @@ export function checkNarrowedScan(
   expected: Expected,
   narrowed: Narrowed,
 ): string[] {
-  const problems = checkScan(observed, expected);
+  const problems = checkScan(observed, expected, narrowed.previewed);
   const stacks = Object.keys(expected.rows);
   const count = narrowed.previewed.length;
   problems.push(

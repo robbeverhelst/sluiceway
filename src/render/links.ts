@@ -29,3 +29,11 @@ export function runLinks(run: RunFacts): RunLinks {
   const summary = `${base}/attempts/${run.runAttempt}`;
   return { summary, log: run.jobId === undefined ? summary : `${base}/job/${run.jobId}` };
 }
+
+// The issues of the repo with the dashboard's label. A preview page is written
+// before the dashboard, whose number a first scan does not know yet, so the
+// page links here: the one open issue with that label is the dashboard
+// (record 0050).
+export function dashboardSearchUrl(repoUrl: string, label: string): string {
+  return `${repoUrl}/issues?q=${encodeURIComponent(`is:issue is:open label:"${label}"`)}`;
+}

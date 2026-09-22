@@ -171,9 +171,17 @@ function worstCase(count: number) {
 // the write and the read back.
 const FIRST_TRY = 2 + 1 + 2 * 99 + 1 + LOOKBACK + 2;
 const EVERY_OTHER_TRY = 1 + 2 * 99 + 2;
+// The preview pages, once per scan and before the write loop (record 0050):
+// one list of the commit's check runs, which holds 100 here, and one update
+// per pending stack.
+const PAGES = 1 + 100;
+
+function isPageRequest(request: string): boolean {
+  return request.includes("CheckRun");
+}
 
 describe("the requests of a scan, counted against the API budget (record 0017)", () => {
-  test("a full scan costs the same few requests for 3 stacks as for 100: previews cost none", async () => {
+  test("a full scan costs the same few requests for 3 stacks as for 100, and one more per pending stack for its preview page: previews cost none", async () => {
     const counts: string[][] = [];
     for (const count of [3, 100]) {
       const table = Object.fromEntries(
@@ -184,7 +192,22 @@ describe("the requests of a scan, counted against the API budget (record 0017)",
       const first = [...github.requests];
       github.requests.length = 0;
       await scan(context);
-      counts.push(first, [...github.requests]);
+      const later = [...github.requests];
+      // Record 0050: one list and one write per pending stack, first a create
+      // and on the same commit after that an update.
+      const pendingCount = Math.floor(count / 2);
+      expect(first.filter(isPageRequest)).toEqual([
+        "listCheckRuns",
+        ...Array(pendingCount).fill("createCheckRun"),
+      ]);
+      expect(later.filter(isPageRequest)).toEqual([
+        "listCheckRuns",
+        ...Array(pendingCount).fill("updateCheckRun"),
+      ]);
+      counts.push(
+        first.filter((request) => !isPageRequest(request)),
+        later.filter((request) => !isPageRequest(request)),
+      );
     }
     const [firstOf3, laterOf3, firstOf100, laterOf100] = counts;
     expect(firstOf100).toEqual(firstOf3 ?? []);
@@ -211,7 +234,7 @@ describe("the requests of a scan, counted against the API budget (record 0017)",
     ]);
   });
 
-  test("the most a scan of 100 stacks can cost: two requests per pending stack off the page and one per direct push, far below the budget", async () => {
+  test("the most a scan of 100 stacks can cost: two requests per pending stack off the page, one per direct push and one per preview page, below the budget", async () => {
     const { context, github } = worstCase(100);
     await scan(context);
     github.requests.length = 0;
@@ -228,8 +251,10 @@ describe("the requests of a scan, counted against the API budget (record 0017)",
     // push in range, at most the lookback.
     expect(made("walkCommits")).toBe(1);
     expect(made("listCommitFiles")).toBe(LOOKBACK);
-    expect(github.requests).toHaveLength(FIRST_TRY);
-    expect(github.requests.length).toBeLessThan(1_000 / 3);
+    expect(github.requests.filter(isPageRequest)).toHaveLength(PAGES);
+    expect(github.requests).toHaveLength(FIRST_TRY + PAGES);
+    // Room for the two tries more that the write loop may take.
+    expect(github.requests.length).toBeLessThan(1_000 - 2 * EVERY_OTHER_TRY);
   });
 
   for (const edits of [1, 2]) {
@@ -257,8 +282,10 @@ describe("the requests of a scan, counted against the API budget (record 0017)",
       expect(made("listNewestDeployments")).toBe(1 + edits);
       expect(made("walkCommits")).toBe(1);
       expect(made("listCommitFiles")).toBe(LOOKBACK);
-      expect(github.requests).toHaveLength(FIRST_TRY + edits * EVERY_OTHER_TRY);
-      // 706 at three tries, the most one scan of these stacks can cost.
+      // The preview pages are written once, before the write loop.
+      expect(github.requests.filter(isPageRequest)).toHaveLength(PAGES);
+      expect(github.requests).toHaveLength(FIRST_TRY + PAGES + edits * EVERY_OTHER_TRY);
+      // 807 at three tries, the most one scan of these stacks can cost.
       expect(github.requests.length).toBeLessThan(1_000);
     });
   }

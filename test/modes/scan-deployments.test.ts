@@ -397,6 +397,9 @@ describe("the reads are bounded", () => {
 
     await scan(context);
     expect(github.requests).toEqual([
+      // The preview page of the pending stack, updated in place (record 0050).
+      "listCheckRuns",
+      "updateCheckRun",
       "listIssues",
       "getIssue",
       "listNewestDeployments",

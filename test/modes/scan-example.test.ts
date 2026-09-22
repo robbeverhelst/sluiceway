@@ -46,18 +46,30 @@ function replayedTool(version: string, scenarios = SCENARIO_OF): ProcessRunner {
   };
 }
 
-test("a full scan of the example project gives the same dashboard and summary from both CLI versions", async () => {
+test("a full scan of the example project gives the same dashboard, summary and preview pages from both CLI versions", async () => {
   const results = [];
   for (const version of VERSIONS) {
     const { context, github, log } = harness(pulumi, { root: ROOT, run: replayedTool(version) });
     await scan(context);
-    results.push({ dashboard: dashboardBody(github), summaries: log.summaries });
+    results.push({
+      dashboard: dashboardBody(github),
+      summaries: log.summaries,
+      pages: github.checkRuns(SHA),
+    });
   }
   expect(results).toHaveLength(2);
   expect(results[1]).toEqual(results[0]);
   expect(results[0]?.summaries).toHaveLength(1);
   expect(results[0]?.dashboard).toMatchSnapshot("dashboard");
   expect(results[0]?.summaries[0]).toMatchSnapshot("summary");
+  // One preview page per pending stack (record 0050).
+  expect(results[0]?.pages.map(({ name }) => name)).toEqual([
+    "sluiceway / app:prod",
+    "sluiceway / network:dev",
+  ]);
+  for (const page of results[0]?.pages ?? []) {
+    expect(`${page.output.summary}\n\n${page.output.text}`).toMatchSnapshot(page.name);
+  }
 });
 
 // Onboarding log, hurdle 9, and record 0022 as amended: network:prod has a
