@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.25.0](https://github.com/sluiceway/sluiceway/compare/v0.24.1...v0.25.0) (2026-09-22)
+
+
+### Features
+
+* a failed check under a pending combined state reads as failed ([0a4194e](https://github.com/sluiceway/sluiceway/commit/0a4194ef25f9374b437a3723b1e3a17920e8872f))
+* a pull request that qualifies but for checks still running waits on them ([4b88089](https://github.com/sluiceway/sluiceway/commit/4b880895aea811f9caa0a4934ec8d2174a3cc787))
+* the line of an update waiting on its checks, with no box and a marker of its own ([aa13736](https://github.com/sluiceway/sluiceway/commit/aa13736603ab87199b215808490dd10715ae3c58))
+* the scan draws the waiting lines, and resolve and apply carry them ([ce99def](https://github.com/sluiceway/sluiceway/commit/ce99def6814f0a60941aa6cf34477c97684d8513))
+
 ## [0.24.1](https://github.com/sluiceway/sluiceway/compare/v0.24.0...v0.24.1) (2026-09-22)
 
 
