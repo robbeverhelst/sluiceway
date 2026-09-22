@@ -28,6 +28,9 @@ export interface OpenPullRequest {
   // False when the list may miss a path: more files than one page holds, or
   // a renamed file whose old path GitHub does not give.
   filesComplete: boolean;
+  // Its branch lives in a fork. Such a branch is never previewed: its code
+  // would run with the scan's credentials (record 0071).
+  fromFork: boolean;
 }
 
 export interface QualifyOptions {

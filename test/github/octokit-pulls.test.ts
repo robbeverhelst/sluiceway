@@ -40,6 +40,7 @@ function node(overrides: Record<string, unknown> = {}) {
     baseRefName: "main",
     headRefOid: HEAD,
     mergeable: "MERGEABLE",
+    isCrossRepository: false,
     author: { __typename: "Bot", login: "renovate" },
     changedFiles: 1,
     files: { nodes: [{ path: "apps/odoo/Pulumi.prod.yaml", changeType: "MODIFIED" }] },
@@ -78,6 +79,7 @@ describe("listing the open pull requests", () => {
           checks: "success",
           files: ["apps/odoo/Pulumi.prod.yaml"],
           filesComplete: true,
+          fromFork: false,
         },
       ],
     });
@@ -135,6 +137,12 @@ describe("listing the open pull requests", () => {
       ["renovate[bot]", "mergeable", "pending"],
       [undefined, "mergeable", "success"],
     ]);
+  });
+
+  test("says when the branch lives in a fork (slice 5.4)", async () => {
+    const { port } = portThatAnswers([listed([node({ isCrossRepository: true })])]);
+    const { pullRequests } = await port.listOpenPullRequests();
+    expect(pullRequests[0]?.fromFork).toBe(true);
   });
 
   test("a list of files that may miss a path is not complete", async () => {

@@ -90,7 +90,12 @@ import {
   type ParsedRow,
   parseDashboard,
 } from "../render/marker.ts";
-import { clearMergeTick, mergeBlock, tickedMergeBlock } from "../render/merge-row.ts";
+import {
+  type BranchPreview,
+  clearMergeTick,
+  mergeBlock,
+  tickedMergeBlock,
+} from "../render/merge-row.ts";
 import { renderPreviewPage } from "../render/preview-page.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, dashboardCounts, scanResultFile } from "../render/result-file.ts";
@@ -103,6 +108,7 @@ import {
   type Row,
 } from "../render/row.ts";
 import { renderSummary, type UnclaimedFiles } from "../render/summary.ts";
+import { previewBranches } from "./branch-preview.ts";
 import { prepareStacks } from "./prepare.ts";
 
 // Everything a scan needs, handed in as data and seams (build plan, section
@@ -325,6 +331,18 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   // The updates waiting to merge (record 0054): read once, before the slow
   // work, and drawn at the late read, where the ticks are.
   const listing = await listUpdates(context, config, stacks);
+  // With mergeAndDeploy.preview, each listed update as it would be after the
+  // merge (record 0071). The tools are checked first, as for any preview.
+  let versionChecked = false;
+  let branchPreviews = new Map<number, BranchPreview[]>();
+  if (listing.kind === "listed" && config.mergeAndDeploy.preview && listing.updates.length > 0) {
+    await checkVersion(
+      context,
+      stacks.map(({ stack }) => stack),
+    );
+    versionChecked = true;
+    branchPreviews = await previewBranches(context, stacks, listing.updates);
+  }
   // The records this scan opened for merged changes, handed to `apply`.
   const handedOn: MatrixEntry[] = [];
 
@@ -351,7 +369,6 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   const pageUrls = new Map<string, string>();
   const pages = previewPages(context.github, context.sha);
   let rounds = 0;
-  let versionChecked = false;
   // The stacks whose preparation worked in an earlier round (record 0053).
   const prepared = new Set<string>();
   let composed: Composed | undefined;
@@ -432,6 +449,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
 
       const { merges, mergeTicks } = mergeRows(
         listing,
+        branchPreviews,
         live?.root?.version === MARKER_VERSION ? live.merges : [],
         waits,
         config.dashboard.redact,
@@ -1404,6 +1422,7 @@ async function listUpdates(
 // tick does (record 0025).
 function mergeRows(
   listing: Listing,
+  previews: ReadonlyMap<number, BranchPreview[]>,
   live: readonly ParsedMerge[],
   waits: boolean,
   redact: boolean,
@@ -1419,6 +1438,7 @@ function mergeRows(
         head: pullRequest.head,
         title: pullRequest.title,
         author: pullRequest.author,
+        preview: previews.get(pullRequest.number),
       },
       { redact },
     );

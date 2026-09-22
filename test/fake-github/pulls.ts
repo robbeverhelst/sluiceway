@@ -36,6 +36,7 @@ export class FakePulls {
       checks: "success",
       files: [],
       filesComplete: true,
+      fromFork: false,
       ...seed,
     };
     this.#open.set(seed.number, pullRequest);

@@ -290,6 +290,13 @@ export const configSchema = z
             "Logins whose open pull requests may be merged and deployed with one tick, such as renovate[bot]. Empty turns it off.",
           )
           .default([]),
+        // Slice 5.4 (record 0071): one extra preview per listed update.
+        preview: z
+          .boolean()
+          .describe(
+            "Preview the branch of each update waiting to merge, and show what it would change on its row. One extra preview per update on every scan that lists it.",
+          )
+          .default(false),
       })
       .prefault({}),
   })

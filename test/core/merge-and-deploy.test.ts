@@ -32,6 +32,7 @@ function pr(overrides: Partial<OpenPullRequest> = {}): OpenPullRequest {
     checks: "success",
     files: ["apps/odoo/Pulumi.prod.yaml"],
     filesComplete: true,
+    fromFork: false,
     ...overrides,
   };
 }

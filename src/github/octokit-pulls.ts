@@ -31,6 +31,7 @@ const OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!, $after: Stri
         baseRefName
         headRefOid
         mergeable
+        isCrossRepository
         author {
           __typename
           login
@@ -63,6 +64,7 @@ interface PullRequestNode {
   baseRefName: string;
   headRefOid: string;
   mergeable: string;
+  isCrossRepository: boolean;
   author: { __typename: string; login: string } | null;
   changedFiles: number;
   files: { nodes: ({ path: string; changeType: string } | null)[] | null } | null;
@@ -126,6 +128,7 @@ function toPullRequest(node: PullRequestNode): OpenPullRequest {
     filesComplete:
       files.length === node.changedFiles &&
       files.every(({ changeType }) => changeType !== "RENAMED"),
+    fromFork: node.isCrossRepository,
   };
 }
 

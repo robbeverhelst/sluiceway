@@ -1,4 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { diffHash } from "../../src/core/diff-hash.ts";
 import { scan } from "../../src/modes/scan.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
@@ -515,4 +525,137 @@ test("a merge row the bot ticked is carried like any other while a run is on its
   await scan(context);
 
   expect(parseDashboard(dashboardBody(github)).merges[0]?.ticked).toBe(true);
+});
+
+// Slice 5.4 (record 0071): with mergeAndDeploy.preview the scan previews each
+// listed update as it would be after the merge: the checkout with the files of
+// the pull request's head commit in place, in a copy the scan throws away.
+describe("the preview of an update's branch", () => {
+  const PREVIEW = `${CONFIG}  preview: true\n`;
+  const FILE = { owner: "acme", repo: "infra", path: "a/values.yaml", ref: HEAD };
+
+  // The stack is pending when its values file holds v2, as on the branch.
+  function readsValues(root: string): Record<string, unknown> {
+    mkdirSync(join(root, "a"), { recursive: true });
+    writeFileSync(join(root, "a/values.yaml"), "version: v1\n");
+    return {
+      ...TABLE,
+      "a:prod": async ({ root: at }: { root: string }) =>
+        existsSync(join(at, "a/values.yaml")) &&
+        readFileSync(join(at, "a/values.yaml"), "utf8").includes("v2")
+          ? pending("a:prod", change("chart"))
+          : inSync("a:prod"),
+    };
+  }
+
+  function withPreview(config = PREVIEW) {
+    const runnerTemp = mkdtempSync(join(tmpdir(), "sluiceway-runner-temp-"));
+    const { context, github, log } = harness(tableAdapter({}), { config });
+    context.env = { ...context.env, RUNNER_TEMP: runnerTemp };
+    context.adapter = tableAdapter(readsValues(context.root) as typeof TABLE);
+    return { context, github, log, runnerTemp };
+  }
+
+  test("shows what the merge would change on the row, and leaves the stack's own row alone", async () => {
+    const { context, github, runnerTemp } = withPreview();
+    github.seedOpenPullRequest({ number: 418, head: HEAD, files: ["a/values.yaml"] });
+    github.seedRepositoryFile(FILE, "version: v2\n");
+
+    await scan(context);
+
+    const [merge] = parseDashboard(dashboardBody(github)).merges;
+    expect(merge?.text).toContain(" · preview after the merge: 1 update <!--");
+    expect(rows(dashboardBody(github))["a:prod"]?.state).toBe("in-sync");
+    expect(readFileSync(join(context.root, "a/values.yaml"), "utf8")).toBe("version: v1\n");
+    // The copy is gone once the preview is over.
+    expect(readdirSync(runnerTemp)).toEqual([]);
+  });
+
+  test("a file the pull request deletes is gone in the copy", async () => {
+    const { context, github } = withPreview();
+    writeFileSync(join(context.root, "a/values.yaml"), "version: v2\n");
+    github.seedOpenPullRequest({ number: 418, head: HEAD, files: ["a/values.yaml"] });
+
+    await scan(context);
+
+    const [merge] = parseDashboard(dashboardBody(github)).merges;
+    expect(merge?.text).toContain(" · preview after the merge: no changes <!--");
+    expect(rows(dashboardBody(github))["a:prod"]?.state).toBe("pending");
+  });
+
+  test("a failed preview says so on the row and never fails the scan", async () => {
+    const { context, github } = withPreview();
+    github.seedOpenPullRequest({ number: 418, head: HEAD, files: ["a/values.yaml"] });
+    github.seedRepositoryFile(FILE, "version: v2\n");
+    const table = readsValues(context.root);
+    context.adapter = tableAdapter({
+      ...(table as typeof TABLE),
+      "a:prod": async ({ root }) => (root === context.root ? inSync("a:prod") : failing()),
+    });
+
+    await scan(context);
+
+    const [merge] = parseDashboard(dashboardBody(github)).merges;
+    expect(merge?.text).toContain(" · preview after the merge: failed, the job log says why <!--");
+  });
+
+  test("is off by default: no extra preview and no file read", async () => {
+    const { context, github } = withPreview(CONFIG);
+    github.seedOpenPullRequest({ number: 418, head: HEAD, files: ["a/values.yaml"] });
+
+    await scan(context);
+
+    expect(github.requests).not.toContain("readRepositoryFile");
+    expect((context.adapter as ReturnType<typeof tableAdapter>).previewed).toEqual([
+      "a:prod",
+      "b:prod",
+      "c:prod",
+    ]);
+    expect(parseDashboard(dashboardBody(github)).merges[0]?.text).not.toContain("preview after");
+  });
+
+  test("never previews the branch of a fork, whose code would run with the scan's credentials", async () => {
+    const { context, github, log } = withPreview();
+    github.seedOpenPullRequest({
+      number: 418,
+      head: HEAD,
+      files: ["a/values.yaml"],
+      fromFork: true,
+    });
+
+    await scan(context);
+
+    expect(github.requests).not.toContain("readRepositoryFile");
+    expect(parseDashboard(dashboardBody(github)).merges[0]?.text).not.toContain("preview after");
+    expect(log.lines).toContain(
+      "#418 is not previewed: its branch lives in a fork, and its code would run with the credentials of this job.",
+    );
+  });
+
+  test("previews each stack of an update that two stacks claim", async () => {
+    const { context, github } = withPreview();
+    github.seedOpenPullRequest({ number: 418, head: HEAD, files: ["a/values.yaml", "b/x.yaml"] });
+    github.seedRepositoryFile(FILE, "version: v2\n");
+    github.seedRepositoryFile({ ...FILE, path: "b/x.yaml" }, "x\n");
+
+    await scan(context);
+
+    expect(parseDashboard(dashboardBody(github)).merges[0]?.text).toContain(
+      " · preview after the merge: a:prod 1 update; b:prod no changes <!--",
+    );
+  });
+
+  test("previews the oldest thirty updates and no more", async () => {
+    const { context, github } = withPreview();
+    for (let number = 401; number <= 432; number++) {
+      github.seedOpenPullRequest({ number, head: HEAD, files: ["a/values.yaml"] });
+    }
+    github.seedRepositoryFile(FILE, "version: v2\n");
+
+    await scan(context);
+
+    const merges = parseDashboard(dashboardBody(github)).merges;
+    expect(merges.filter(({ text }) => text.includes("preview after"))).toHaveLength(30);
+    expect(merges.at(-1)?.text).not.toContain("preview after");
+  });
 });

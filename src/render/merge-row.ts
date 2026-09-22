@@ -2,8 +2,17 @@
 // request, with a box, the stack its files belong to, the bump as the title
 // says it, and the pull request with its author. The one renderer of it.
 
+import type { Change } from "../core/diff.ts";
 import { escapeText } from "./escape.ts";
 import { type MergeFacts, mergeMarker, type ParsedMerge, parseDashboard } from "./marker.ts";
+import { counts } from "./row.ts";
+
+// The preview of one stack on the branch of the pull request, as it would be
+// after the merge (record 0071). No changes when the preview failed.
+export interface BranchPreview {
+  stackId: string;
+  changes?: Change[] | undefined;
+}
 
 export interface MergeRow extends MergeFacts {
   // The title of the pull request, as its author wrote it.
@@ -11,6 +20,10 @@ export interface MergeRow extends MergeFacts {
   // As the site writes it, "renovate[bot]". Plain text, so nobody is
   // notified (record 0026).
   author: string | undefined;
+  // With `mergeAndDeploy.preview`, one per stack (record 0071). Counts only:
+  // the row stays one line, and the diff that deploys is previewed again
+  // after the merge.
+  preview?: readonly BranchPreview[] | undefined;
 }
 
 export interface MergeRowOptions {
@@ -34,8 +47,24 @@ export function renderMergeRow(row: MergeRow, options: MergeRowOptions = {}): st
     row.stackIds.map((id) => `**${escapeText(id)}**`).join(", "),
     ...(options.redact ? [] : [escapeText(shorten(row.title))]),
     `#${row.pr}${by}`,
+    ...(row.preview && row.preview.length > 0 ? [previewText(row.preview)] : []),
   ];
   return `- [ ] ${parts.join(" · ")} ${mergeMarker(row)}`;
+}
+
+function previewText(preview: readonly BranchPreview[]): string {
+  const one = ({ changes }: BranchPreview) =>
+    changes === undefined
+      ? "failed, the job log says why"
+      : changes.length === 0
+        ? "no changes"
+        : counts(changes);
+  const [only] = preview;
+  const text =
+    preview.length === 1 && only
+      ? one(only)
+      : preview.map((stack) => `${escapeText(stack.stackId)} ${one(stack)}`).join("; ");
+  return `preview after the merge: ${text}`;
 }
 
 // A freshly rendered merge row, read back from its own marker.

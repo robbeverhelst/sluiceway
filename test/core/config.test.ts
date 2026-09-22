@@ -20,7 +20,7 @@ const DEFAULTS: Config = {
   drift: { enabled: false },
   phases: [],
   stacks: [],
-  mergeAndDeploy: { authors: [] },
+  mergeAndDeploy: { authors: [], preview: false },
 };
 
 describe("zero config", () => {
@@ -79,7 +79,7 @@ phases: [infrastructure, applications]
       drift: { enabled: true },
       phases: ["infrastructure", "applications"],
       stacks: [],
-      mergeAndDeploy: { authors: [] },
+      mergeAndDeploy: { authors: [], preview: false },
     });
   });
 });
@@ -496,8 +496,11 @@ describe("deploys", () => {
 // deployed with one tick. Off by default.
 describe("mergeAndDeploy", () => {
   test("is off unless the file names authors", () => {
-    expect(parseConfig(undefined).mergeAndDeploy).toEqual({ authors: [] });
-    expect(parseConfig("mergeAndDeploy: {}\n").mergeAndDeploy).toEqual({ authors: [] });
+    expect(parseConfig(undefined).mergeAndDeploy).toEqual({ authors: [], preview: false });
+    expect(parseConfig("mergeAndDeploy: {}\n").mergeAndDeploy).toEqual({
+      authors: [],
+      preview: false,
+    });
   });
 
   test("takes logins of people and of apps, kept once each in lower case", () => {
@@ -517,7 +520,16 @@ describe("mergeAndDeploy", () => {
 
   test("an unknown key is refused", () => {
     expect(problems("mergeAndDeploy:\n  author: [alice]\n")).toEqual([
-      'mergeAndDeploy: unknown key "author". Known keys here: authors.',
+      'mergeAndDeploy: unknown key "author". Known keys here: authors, preview.',
+    ]);
+  });
+
+  // Slice 5.4 (record 0071): an extra preview of the branch of each listed
+  // update, shown on its row. Off by default.
+  test("previews the branches of the updates only when preview is true", () => {
+    expect(parseConfig("mergeAndDeploy:\n  preview: true\n").mergeAndDeploy.preview).toBe(true);
+    expect(problems("mergeAndDeploy:\n  preview: yes please\n")).toEqual([
+      'mergeAndDeploy.preview: expected true or false, got "yes please".',
     ]);
   });
 });

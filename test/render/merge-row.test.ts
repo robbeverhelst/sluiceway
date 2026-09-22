@@ -68,6 +68,60 @@ describe("a merge row", () => {
     ]);
   });
 
+  // Slice 5.4 (record 0071): with mergeAndDeploy.preview, what the merge
+  // would change, in the counts of a stack's row.
+  describe("with a preview of its branch", () => {
+    const change = (op: "update" | "replace" | "delete", name: string) => ({
+      address: `urn:${name}`,
+      type: "random:index/randomPet:RandomPet",
+      name,
+      op,
+      changedKeys: ["length"],
+      replaceKeys: [],
+    });
+
+    test("says what the merge would change, destroys in bold", () => {
+      const row = renderMergeRow({
+        ...UPDATE,
+        preview: [
+          { stackId: "apps/odoo:prod", changes: [change("update", "a"), change("replace", "b")] },
+        ],
+      });
+      expect(row).toBe(
+        `- [ ] **apps/odoo:prod** · Update Helm release odoo to v17.0.4 · #418 by renovate&#91;bot&#93; · preview after the merge: 1 update, **1 replace** <!-- sluiceway:merge pr="418" stack="apps/odoo:prod" head="${HEAD}" -->`,
+      );
+    });
+
+    test("says so when the merge changes nothing, and when the preview failed", () => {
+      expect(
+        renderMergeRow({ ...UPDATE, preview: [{ stackId: "apps/odoo:prod", changes: [] }] }),
+      ).toContain(" · preview after the merge: no changes <!--");
+      expect(renderMergeRow({ ...UPDATE, preview: [{ stackId: "apps/odoo:prod" }] })).toContain(
+        " · preview after the merge: failed, the job log says why <!--",
+      );
+    });
+
+    test("names each stack when there are several", () => {
+      const row = renderMergeRow({
+        ...UPDATE,
+        stackIds: ["a:prod", "b:prod"],
+        preview: [
+          { stackId: "a:prod", changes: [change("delete", "c")] },
+          { stackId: "b:prod", changes: [] },
+        ],
+      });
+      expect(row).toContain(
+        " · preview after the merge: a:prod **1 delete**; b:prod no changes <!--",
+      );
+    });
+
+    test("reads back with the same facts, and a cleared tick keeps the preview", () => {
+      const row = { ...UPDATE, preview: [{ stackId: "apps/odoo:prod", changes: [] }] };
+      const ticked = tickedMergeBlock(mergeBlock(row));
+      expect(clearMergeTick(ticked)).toEqual(mergeBlock(row));
+    });
+  });
+
   test("a ticked one is read as ticked, and is not a row of a stack", () => {
     const parsed = parseDashboard(renderMergeRow(UPDATE).replace("- [ ] ", "- [x] "));
     expect(parsed.merges.map(({ pr, ticked }) => [pr, ticked])).toEqual([[418, true]]);

@@ -27,6 +27,7 @@ function node(pullRequest: OpenPullRequest): unknown {
     baseRefName: pullRequest.base,
     headRefOid: pullRequest.head,
     mergeable: pullRequest.mergeable.toUpperCase(),
+    isCrossRepository: pullRequest.fromFork,
     // GraphQL names an app without "[bot]".
     author:
       author === undefined

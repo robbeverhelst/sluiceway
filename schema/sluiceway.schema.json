@@ -359,6 +359,11 @@
             "type": "string",
             "pattern": "^[A-Za-z0-9_-]+(\\[bot\\])?$"
           }
+        },
+        "preview": {
+          "default": false,
+          "type": "boolean",
+          "description": "Preview the branch of each update waiting to merge, and show what it would change on its row. One extra preview per update on every scan that lists it."
         }
       },
       "additionalProperties": false
