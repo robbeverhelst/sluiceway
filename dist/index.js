@@ -51183,6 +51183,9 @@ var configSchema = exports_external.strictObject({
     unrelated: globs.describe("Globs for files that claim nothing and force nothing, such as **/*.md.").default([]),
     logDiff: exports_external.boolean().describe("Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else. Anyone who can read the repo can read its job logs. Costs one more tool run per pending stack.").default(false)
   }).prefault({}),
+  drift: exports_external.strictObject({
+    enabled: exports_external.boolean().describe("Check every stack for drift in each scan that a schedule starts, or that a person starts with Run workflow: changes made to real infrastructure outside the code. A stack with drift gets a row with a box, and a tick deploys the code as it is, which puts it back. Costs one more tool run per stack in those scans.").default(false)
+  }).prefault({}),
   stacks: stackEntries.describe("Settings for stacks that discovery found. An entry never creates a stack.").default([]),
   mergeAndDeploy: exports_external.strictObject({
     authors: exports_external.array(author).transform((logins) => [...new Set(logins)]).describe("Logins whose open pull requests may be merged and deployed with one tick, such as renovate[bot]. Empty turns it off.").default([])
@@ -51226,7 +51229,9 @@ function describe4(issue3, raw) {
   if (issue3.code === "unrecognized_keys") {
     const known = knownKeys(issue3.path);
     const unknown2 = (name) => {
-      if (RESERVED_KEYS.includes(name))
+      if (issue3.path.length === 1 && issue3.path[0] === "drift" && name === "schedule")
+        return `"schedule" is not a key of sluiceway.yaml. A drift check runs in every scan that a schedule starts, so the cron goes in the workflow, under \`on: schedule\`.`;
+      if (issue3.path.length > 0 && RESERVED_KEYS.includes(name))
         return `"${name}" is not in this version of Sluiceway yet. Remove it.`;
       return `unknown key "${name}". Known keys here: ${known.join(", ")}.`;
     };
@@ -52316,12 +52321,13 @@ function pulumiEnvironment(env) {
 }
 
 // src/adapters/pulumi/apply.ts
-function upCommand(name) {
+function upCommand(name, repairDrift) {
   return [
     "pulumi",
     "up",
     "--yes",
     "--skip-preview",
+    ...repairDrift ? ["--refresh"] : [],
     "--suppress-outputs",
     "--non-interactive",
     "--color",
@@ -52330,11 +52336,11 @@ function upCommand(name) {
     name
   ];
 }
-async function apply2(stack, context3) {
+async function apply2(stack, context3, _plan, options = {}) {
   if (stack.name === undefined)
     throw new Error("A Pulumi stack always has a name.");
   const result = await context3.run({
-    argv: upCommand(stack.name),
+    argv: upCommand(stack.name, options.repairDrift === true),
     cwd: join9(context3.root, stack.path),
     env: pulumiEnvironment(context3.env)
   });
@@ -52348,8 +52354,8 @@ async function apply2(stack, context3) {
   return { ok: false, reason: { kind: "tool-error", exitCode }, toolLog };
 }
 
-// src/adapters/pulumi/preview.ts
-import { join as join10 } from "node:path";
+// src/adapters/pulumi/drift.ts
+import { join as join11 } from "node:path";
 
 // src/adapters/pulumi/fold.ts
 var STEP_OPS = {
@@ -52422,6 +52428,9 @@ function sortedSet2(names) {
 function byCodeUnit3(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
+// src/adapters/pulumi/preview.ts
+import { join as join10 } from "node:path";
 
 // src/adapters/pulumi/values.ts
 var SECRET = "[secret]";
@@ -52626,8 +52635,133 @@ function toolLog(stderr, diagnostics2 = []) {
   return stripAnsi([stderr, ...diagnostics2].join(""));
 }
 
+// src/adapters/pulumi/drift.ts
+function driftCommand(name) {
+  return [
+    "pulumi",
+    "refresh",
+    "--preview-only",
+    "--json",
+    "--non-interactive",
+    "--color",
+    "never",
+    "--stack",
+    name
+  ];
+}
+var STREAM_EVENTS = { PULUMI_ENABLE_STREAMING_JSON_PREVIEW: "true" };
+var outputsEvent = exports_external.object({
+  resOutputsEvent: exports_external.object({
+    metadata: exports_external.object({
+      op: exports_external.string(),
+      urn: exports_external.string(),
+      diffs: exports_external.array(exports_external.string()).nullish(),
+      detailedDiff: exports_external.record(exports_external.string(), exports_external.unknown()).nullish().transform((paths) => paths == null ? undefined : Object.keys(paths))
+    })
+  })
+});
+var summaryEvent = exports_external.object({
+  summaryEvent: exports_external.object({ resourceChanges: exports_external.record(exports_external.string(), exports_external.number()).nullish() })
+});
+var diagnosticEvent = exports_external.object({ diagnosticEvent: exports_external.object({ message: exports_external.string() }) });
+var DRIFT_OPS = {
+  same: "drop",
+  refresh: "drop",
+  update: "update",
+  delete: "delete"
+};
+async function detectDrift(stack, options) {
+  if (stack.name === undefined)
+    throw new Error("A Pulumi stack always has a name.");
+  const result = await options.run({
+    argv: driftCommand(stack.name),
+    cwd: join11(options.root, stack.path),
+    env: { ...pulumiEnvironment(options.env), ...STREAM_EVENTS },
+    timeoutMs: options.timeoutMinutes * 60000
+  });
+  const failed = (reason, toolLog2, detail = []) => ({ ok: false, reason, detail, toolLog: toolLog2 });
+  if (result.status === "not-started")
+    return failed({ kind: "tool-error", exitCode: null }, "");
+  if (result.status === "timed-out") {
+    return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, stripAnsi(result.stderr));
+  }
+  const read = readEvents(result.stdout);
+  const words = stripAnsi([result.stderr, ...typeof read === "string" ? [] : read.diagnostics].join(""));
+  if (result.exitCode !== 0) {
+    const reason = result.exitCode === STACK_NOT_FOUND_EXIT_CODE ? { kind: "stack-not-found" } : { kind: "tool-error", exitCode: result.exitCode };
+    return failed(reason, words);
+  }
+  if (typeof read === "string")
+    return failed({ kind: "unreadable-output" }, words, [read]);
+  if (read.unknown.length > 0)
+    return failed({ kind: "unknown-step" }, words, read.unknown);
+  if (read.summary === undefined) {
+    return failed({ kind: "unreadable-output" }, words, [
+      "The tool's output: expected a summary event at the end."
+    ]);
+  }
+  const counted = Object.entries(read.summary).filter(([op]) => op !== "same").reduce((sum, [, count]) => sum + count, 0);
+  if (counted > read.drift.length) {
+    return failed({ kind: "unreadable-output" }, words, [
+      `The tool's output: expected an event for every change the summary counts, and ${counted - read.drift.length} is missing.`
+    ]);
+  }
+  read.drift.sort((a, b) => a.address < b.address ? -1 : a.address > b.address ? 1 : 0);
+  return { ok: true, drift: read.drift, toolLog: words };
+}
+function readEvents(stdout) {
+  const events = { drift: [], unknown: [], diagnostics: [], summary: undefined };
+  const seen = new Set;
+  let count = 0;
+  const lines = stdout.split(`
+`);
+  for (const [index, line] of lines.entries()) {
+    if (line.trim() === "")
+      continue;
+    let json2;
+    try {
+      json2 = JSON.parse(line);
+    } catch {
+      return `The tool's output, at line ${index + 1}: expected one JSON document per line.`;
+    }
+    const diagnostic = diagnosticEvent.safeParse(json2);
+    if (diagnostic.success)
+      events.diagnostics.push(diagnostic.data.diagnosticEvent.message);
+    const summary2 = summaryEvent.safeParse(json2);
+    if (summary2.success)
+      events.summary = summary2.data.summaryEvent.resourceChanges ?? {};
+    const outputs = outputsEvent.safeParse(json2);
+    if (!outputs.success)
+      continue;
+    count++;
+    const { op, urn, diffs, detailedDiff } = outputs.data.resOutputsEvent.metadata;
+    const at = `The tool's output, at event ${count}`;
+    const known = Object.hasOwn(DRIFT_OPS, op) ? DRIFT_OPS[op] : undefined;
+    if (known === undefined) {
+      events.unknown.push(`${at}: expected a drift op that Sluiceway knows.`);
+      continue;
+    }
+    if (known === "drop")
+      continue;
+    const resource = typeAndName(urn);
+    if (resource === undefined || seen.has(urn)) {
+      return `${at}: expected the URN of a resource that no earlier event has.`;
+    }
+    seen.add(urn);
+    const paths = detailedDiff !== undefined && detailedDiff.length > 0 ? detailedDiff : diffs;
+    events.drift.push({
+      address: urn,
+      ...resource,
+      op: known,
+      changedKeys: known === "update" ? [...new Set(paths ?? [])].sort() : [],
+      replaceKeys: []
+    });
+  }
+  return events;
+}
+
 // src/adapters/pulumi/tool-diff.ts
-import { join as join11 } from "node:path";
+import { join as join12 } from "node:path";
 function toolDiffCommand2(name) {
   return [
     "pulumi",
@@ -52646,7 +52780,7 @@ async function toolDiff2(stack, options) {
     throw new Error("A Pulumi stack always has a name.");
   const result = await options.run({
     argv: toolDiffCommand2(stack.name),
-    cwd: join11(options.root, stack.path),
+    cwd: join12(options.root, stack.path),
     env: pulumiEnvironment(options.env),
     timeoutMs: options.timeoutMinutes * 60000
   });
@@ -52694,7 +52828,7 @@ async function checkVersion2(context3) {
 }
 
 // src/adapters/pulumi/index.ts
-var pulumi = { discover, checkVersion: checkVersion2, preview: preview2, toolDiff: toolDiff2, apply: apply2 };
+var pulumi = { discover, checkVersion: checkVersion2, preview: preview2, toolDiff: toolDiff2, detectDrift, apply: apply2 };
 
 // src/adapters/tools.ts
 function adapterOf(stack) {
@@ -52714,7 +52848,8 @@ var tools = {
   },
   preview: (stack, options) => adapterOf(stack).preview(stack, options),
   toolDiff: (stack, options) => adapterOf(stack).toolDiff(stack, options),
-  apply: (stack, context3, plan) => adapterOf(stack).apply(stack, context3, plan)
+  detectDrift: async (stack, options) => adapterOf(stack).detectDrift?.(stack, options),
+  apply: (stack, context3, plan, options) => adapterOf(stack).apply(stack, context3, plan, options)
 };
 
 // src/github/event.ts
@@ -52755,6 +52890,9 @@ function readEventPayload(env, readFile2) {
 function publicRepo(payload) {
   const isPrivate = record2(record2(payload)?.repository)?.private;
   return typeof isPrivate === "boolean" ? !isPrivate : undefined;
+}
+function startedByPerson(payload) {
+  return record2(record2(payload)?.sender)?.type === "User";
 }
 
 // src/github/job.ts
@@ -53354,7 +53492,7 @@ function toIssue(issue3) {
 
 // src/github/outputs.ts
 import { writeFileSync } from "node:fs";
-import { join as join12 } from "node:path";
+import { join as join13 } from "node:path";
 
 // src/core/deployment.ts
 var TASK_PREFIX = "sluiceway:";
@@ -53373,7 +53511,8 @@ function deploymentPayload(payload) {
     hash: payload.hash,
     ticker: payload.ticker,
     run: payload.run,
-    ...payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {}
+    ...payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {},
+    ...payload.drift ? { drift: true } : {}
   };
 }
 function mergePayload(payload) {
@@ -53383,7 +53522,7 @@ var RUN_ID = /^[1-9]\d*$/;
 function readDeploymentPayload(payload) {
   if (typeof payload !== "object" || payload === null)
     return;
-  const { v, hash: hash2, ticker, run, behind, merge: merge3 } = payload;
+  const { v, hash: hash2, ticker, run, behind, merge: merge3, drift } = payload;
   if (v !== PAYLOAD_VERSION)
     return;
   if (merge3 !== undefined) {
@@ -53396,13 +53535,16 @@ function readDeploymentPayload(payload) {
   }
   if (!RUN_ID.test(run))
     return;
+  const read = { hash: hash2, ticker, run };
+  if (drift === true)
+    read.drift = true;
   if (behind === undefined)
-    return { hash: hash2, ticker, run };
+    return read;
   const ids = Array.isArray(behind) ? behind : [];
   if (ids.length === 0 || !ids.every((id) => typeof id === "string" && id !== "")) {
     return;
   }
-  return { hash: hash2, ticker, run, behind: ids };
+  return { ...read, behind: ids };
 }
 var SUCCEEDED = new Set(["success", "inactive"]);
 var FAILED = new Set(["failure", "error"]);
@@ -53535,7 +53677,14 @@ function decodeMarkerValue(value) {
   });
 }
 var MARKER_VERSION = 1;
-var ROW_STATES = ["pending", "deploying", "in-sync", "preview-failed", "queued"];
+var ROW_STATES = [
+  "pending",
+  "deploying",
+  "in-sync",
+  "preview-failed",
+  "queued",
+  "drift"
+];
 function isDeployingState(state) {
   return state === "deploying" || state === "queued";
 }
@@ -53571,6 +53720,8 @@ function rowMarker(facts) {
     pairs.push(["failed", "true"]);
   if (facts.shortened)
     pairs.push(["shortened", String(facts.shortened)]);
+  if (facts.drift)
+    pairs.push(["drift", "true"]);
   return marker("row", pairs);
 }
 function mergeMarker(facts) {
@@ -53659,6 +53810,7 @@ function parseDashboard(body) {
       destroys: count("destroys"),
       failed: pairs.get("failed") === "true",
       shortened: count("shortened"),
+      drift: pairs.get("drift") === "true",
       ticked: match[1] === "x" || match[1] === "X",
       text: text4
     });
@@ -53713,6 +53865,8 @@ function headerState(rows) {
     return "deploying";
   if (is("pending"))
     return "pending";
+  if (is("drift"))
+    return "drift";
   return "in-sync";
 }
 
@@ -53818,6 +53972,68 @@ function failureLine(failure2) {
 function destroyWords(deletes, replaces) {
   return [deletes && `deletes ${deletes}`, replaces && `replaces ${replaces}`].filter(Boolean).join(", ");
 }
+var DRIFT_WORDS = { update: "changed", delete: "gone" };
+function driftWord(change2) {
+  return DRIFT_WORDS[change2.op] ?? change2.op;
+}
+function driftCounts(drift) {
+  const of = (op) => drift.filter((change2) => change2.op === op).length;
+  const parts = [of("update") && `${of("update")} changed`, of("delete") && `${of("delete")} gone`];
+  return `${parts.filter(Boolean).join(", ")} outside the code`;
+}
+function driftLine(change2, options = {}) {
+  const keys3 = sortedKeys(change2.changedKeys);
+  const listed = options.row === true ? keys3.slice(0, ROW_PATHS_PER_CHANGE) : keys3;
+  const hidden = keys3.length - listed.length;
+  const parts = [
+    `<kbd>${driftWord(change2)}</kbd> <code>${escapeText(change2.type)}</code> <b>${escapeText(change2.name)}</b>`
+  ];
+  if (listed.length > 0) {
+    const more = hidden > 0 ? `, and ${hidden} more` : "";
+    parts.push(`${listed.map((key) => code(options.row ? shortPath(key) : key)).join(", ")}${more}`);
+  }
+  return parts.join(" · ");
+}
+function sortedDrift(diff) {
+  return [...diff.drift ?? []].sort((a, b) => byCodeUnit4(a.address, b.address));
+}
+function driftLines(drift, summary2, options) {
+  if (drift.length === 0)
+    return [];
+  const inside = plural2(drift.length, "change");
+  if (options.redact)
+    return [`Changes outside the code are listed in the ${summary2}`];
+  if ((options.level ?? 0) >= 2) {
+    return [`${inside} outside the code not listed here, see the ${summary2}`];
+  }
+  return [
+    `<details><summary>${inside} outside the code</summary>`,
+    ...drift.map((change2) => `${driftLine(change2, { row: true })}<br>`),
+    "</details>"
+  ];
+}
+function driftRow(row, options) {
+  const level = options.level ?? 0;
+  const drift = sortedDrift(row.diff);
+  const summary2 = `[summary](${row.runUrl})`;
+  const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
+  const lines = [
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${driftCounts(drift)} · ${summary2} ${rowMarker({
+      stackId: row.diff.stackId,
+      state: "drift",
+      hash: row.hash,
+      failed: row.failure !== undefined,
+      shortened: level >= 2 ? level : 0,
+      drift: true
+    })}`
+  ];
+  if (row.failure)
+    lines.push(failureLine(row.failure));
+  if (row.orphanTick && !options.readOnly)
+    lines.push(ORPHAN_TICK_NOTE);
+  lines.push(...driftLines(drift, summary2, options));
+  return lines;
+}
 function pendingRow(row, options) {
   const level = options.level ?? 0;
   const changes = [...row.diff.changes].sort((a, b) => byCodeUnit4(a.address, b.address));
@@ -53827,14 +54043,17 @@ function pendingRow(row, options) {
   const destroys = deletes.length + replaces.length;
   const summary2 = `[summary](${row.runUrl})`;
   const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
+  const drift = sortedDrift(row.diff);
+  const driftCount = drift.length > 0 ? ` · ${driftCounts(drift)}` : "";
   const lines = [
-    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker({
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)}${driftCount} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker({
       stackId: row.diff.stackId,
       state: "pending",
       hash: row.hash,
       destroys,
       failed: row.failure !== undefined,
-      shortened: level
+      shortened: level,
+      drift: drift.length > 0
     })}`
   ];
   if (row.attribution)
@@ -53854,6 +54073,7 @@ function pendingRow(row, options) {
     } else {
       lines.push(`Changes ${options.redact ? "are listed in the" : "not listed here, see the"} ${summary2}`);
     }
+    lines.push(...driftLines(drift, summary2, options));
     return lines;
   }
   for (const change2 of [...deletes, ...replaces])
@@ -53869,6 +54089,7 @@ function pendingRow(row, options) {
       lines.push("</details>");
     }
   }
+  lines.push(...driftLines(drift, summary2, options));
   return lines;
 }
 function deployingRow(row) {
@@ -53910,6 +54131,8 @@ function rowLines(row, options) {
   switch (row.state) {
     case "pending":
       return pendingRow(row, options);
+    case "drift":
+      return driftRow(row, options);
     case "deploying":
       return deployingRow(row);
     case "preview-failed":
@@ -53934,6 +54157,8 @@ var DRY = {
   firstRun: "No stacks found yet. Add one to `sluiceway.yaml` and the next scan lists it here."
 };
 var NOTHING_TO_DEPLOY = "Nothing to deploy.";
+var NOTHING_FROM_THE_CODE = "Nothing to deploy from the code.";
+var DRIFTED_LINE = "Real infrastructure changed outside the code. Deploying a stack puts it back as its code says.";
 var INSTRUCTION_LINE = "Tick a box to deploy that stack exactly as its row shows it.";
 var MERGE_LINE2 = "Tick a box to merge that pull request. Its stack is then previewed again and deployed as that preview shows it.";
 var READ_ONLY_LINE = "This dashboard is read only, so rows have no boxes and nothing deploys from here. Rows get their boxes when `dashboard.readOnly` comes out of `sluiceway.yaml`.";
@@ -53951,6 +54176,7 @@ var ACTION_URL = `https://github.com/${ACTION_REPO}`;
 var ALT = {
   failing: "Sluiceway: something failed",
   deploying: "Sluiceway: deploying",
+  drift: "Sluiceway: something changed outside the code",
   "first-run": "Sluiceway: no stacks yet",
   "in-sync": "Sluiceway: everything is in sync"
 };
@@ -53999,6 +54225,7 @@ function picture(state, crates, sign, actionRef2) {
 }
 var DOT = {
   pending: "\uD83D\uDFE1",
+  drift: "\uD83D\uDFE0",
   deploying: "\uD83D\uDD35",
   "preview-failed": "\uD83D\uDD34",
   "in-sync": "\uD83D\uDFE2",
@@ -54012,6 +54239,7 @@ function countsLine(rows, dots) {
   const failed = rows.filter((row) => row.failed).length;
   const parts = [
     `${dot("pending", of("pending"))}**${of("pending")} pending**`,
+    ...of("drift") > 0 ? [`${dot("drift", of("drift"))}${of("drift")} drifted`] : [],
     `${dot("deploying", of("deploying"))}${of("deploying")} deploying`,
     `${dot("preview-failed", of("preview-failed"))}${of("preview-failed")} preview failed`,
     `${dot("in-sync", of("in-sync"))}${of("in-sync")} in sync`
@@ -54043,6 +54271,8 @@ function scanLine(root, repoUrl) {
 function pendingLine(input2, state, pending) {
   if (pending > 0)
     return input2.readOnly ? READ_ONLY_LINE : INSTRUCTION_LINE;
+  if (input2.rows.some((row) => row.known && row.state === "drift"))
+    return NOTHING_FROM_THE_CODE;
   const lines = input2.personality ? WARM : DRY;
   if (state === "first-run")
     return lines.firstRun;
@@ -54090,6 +54320,9 @@ function renderBody(input2) {
   out.push("## Pending", pendingLine(input2, state, pending.length));
   if (pending.length > 0)
     out.push(blocks(pending));
+  const drifted = of("drift");
+  if (drifted.length > 0)
+    out.push("## Drifted", DRIFTED_LINE, blocks(drifted));
   const deploying = [...of("deploying"), ...of("queued")].sort((a, b) => byCodeUnit5(a.stackId, b.stackId));
   if (deploying.length > 0)
     out.push("## Deploying", blocks(deploying));
@@ -54144,7 +54377,7 @@ function fitBody(input2, options = {}) {
   const limit = options.limit ?? BODY_LIMIT;
   const target = Math.min(options.target ?? BODY_TARGET, limit);
   const entries = input2.rows.map((row) => {
-    const levels = row.state === "pending" ? LEVELS : LEVELS.slice(0, 1);
+    const levels = row.state === "pending" || row.state === "drift" ? LEVELS : LEVELS.slice(0, 1);
     const blocks2 = levels.map((level) => rowBlock(row, { level, redact: input2.redact, readOnly: input2.readOnly }));
     return { stackId: blocks2[0]?.stackId ?? "", blocks: blocks2, level: 0 };
   });
@@ -54310,7 +54543,7 @@ function actionsOutputs(runnerTemp) {
       if (!runnerTemp) {
         throw new Error("RUNNER_TEMP is not set, so there is no directory for the result file");
       }
-      const path = join12(runnerTemp, resultFileName(mode));
+      const path = join13(runnerTemp, resultFileName(mode));
       writeFileSync(path, text4);
       return path;
     }
@@ -54340,18 +54573,18 @@ function writeResultFile(outputs, log, mode, text4) {
 
 // src/core/config-file.ts
 import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
-import { join as join13 } from "node:path";
+import { join as join14 } from "node:path";
 var CONFIG_FILE = "sluiceway.yaml";
 var FILE = CONFIG_FILE;
 var WRONG_FILE = "sluiceway.yml";
 function loadConfig(root) {
-  if (existsSync3(join13(root, WRONG_FILE))) {
+  if (existsSync3(join14(root, WRONG_FILE))) {
     throw new ConfigError([`found ${WRONG_FILE}. The file must be named ${FILE}. Rename it.`]);
   }
-  return parseConfig(read(join13(root, FILE)));
+  return parseConfig(read(join14(root, FILE)));
 }
 function hasConfigFile(root) {
-  return existsSync3(join13(root, FILE));
+  return existsSync3(join14(root, FILE));
 }
 function read(file2) {
   try {
@@ -54404,8 +54637,11 @@ function canonicalValues(values) {
   return [...values].sort((a, b) => byCodeUnit6(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
 }
 function canonicalDiff(diff) {
-  const changes = diff.changes.map((change2) => ({ address: change2.address, text: canonicalJson(canonicalChange(change2)) })).sort((a, b) => byCodeUnit6(a.address, b.address) || byCodeUnit6(a.text, b.text)).map((change2) => change2.text);
-  return `{"changes":[${changes.join(",")}],"stackId":${JSON.stringify(diff.stackId)}}`;
+  const drift = diff.drift === undefined || diff.drift.length === 0 ? "" : `"drift":[${canonicalChanges(diff.drift).join(",")}],`;
+  return `{"changes":[${canonicalChanges(diff.changes).join(",")}],${drift}"stackId":${JSON.stringify(diff.stackId)}}`;
+}
+function canonicalChanges(changes) {
+  return changes.map((change2) => ({ address: change2.address, text: canonicalJson(canonicalChange(change2)) })).sort((a, b) => byCodeUnit6(a.address, b.address) || byCodeUnit6(a.text, b.text)).map((change2) => change2.text);
 }
 function diffHash(diff) {
   return createHash("sha256").update(canonicalDiff(diff), "utf8").digest("hex").slice(0, 16);
@@ -54758,8 +54994,14 @@ var IN_SYNC_LINE = "The fresh preview shows no change, so nothing was deployed. 
 var REHEARSED_LINE = "This was a rehearsal (`dry-run: true`). The fresh preview matched the tick, and nothing was deployed. The row is pending again, and a tick in a workflow without `dry-run` deploys it.";
 var NOT_DEPLOYED = "Nothing was deployed from this deployment record, and nothing will be. The job log of this run holds the tool's own words. A fresh tick on the dashboard tries again.";
 function diffParts(diff, empty) {
+  const drift = sortedDrift(diff);
+  const driftParts = drift.length === 0 ? [] : [`${driftCounts(drift)}:`, drift.map((change2) => `- ${driftLine(change2)}`).join(`
+`)];
   if (diff.changes.length === 0)
-    return [empty];
+    return driftParts.length > 0 ? driftParts : [empty];
+  return [...changeParts(diff), ...driftParts];
+}
+function changeParts(diff) {
   const { deletes, replaces, others } = orderChanges(diff);
   const destroys = [...deletes, ...replaces];
   const parts = [counts([...destroys, ...others])];
@@ -54839,9 +55081,16 @@ function changeLogLine(change2) {
 function diffLogLines(diff) {
   const { deletes, replaces, others } = orderChanges(diff);
   const changes = [...deletes, ...replaces, ...others];
-  if (changes.length === 0)
-    return ["no changes"];
-  return [counts(changes).replaceAll("*", ""), ...changes.map(changeLogLine)];
+  const lines = changes.length === 0 ? ["no changes"] : [counts(changes).replaceAll("*", ""), ...changes.map(changeLogLine)];
+  const drift = sortedDrift(diff);
+  if (drift.length === 0)
+    return lines;
+  return [...lines, driftCounts(drift), ...drift.map(driftLogLine)];
+}
+function driftLogLine(change2) {
+  const keys3 = sortedKeys(change2.changedKeys).map(oneLine);
+  const head = `${driftWord(change2)} ${oneLine(change2.type)} ${oneLine(change2.name)}`;
+  return keys3.length > 0 ? `${head} · ${keys3.join(", ")}` : head;
 }
 function toolDiffLogLines(toolDiff3) {
   if (toolDiff3 === undefined)
@@ -54877,8 +55126,19 @@ function previewRow(stackId2, result, links, failure2, options = {}) {
       failure: failure2
     };
   }
-  if (result.diff.changes.length === 0)
+  const drifted = (result.diff.drift ?? []).length > 0;
+  if (result.diff.changes.length === 0) {
+    if (drifted) {
+      return {
+        state: "drift",
+        diff: result.diff,
+        hash: diffHash(result.diff),
+        runUrl: links.summary,
+        failure: failure2
+      };
+    }
     return { state: "in-sync", stackId: stackId2, failure: failure2 };
+  }
   return {
     state: "pending",
     diff: result.diff,
@@ -54901,7 +55161,10 @@ function previewSummary(stackId2, result, merges) {
 function previewOutcome(result) {
   if (!result.ok)
     return `preview failed, ${previewFailureText(result.reason)}`;
-  return result.diff.changes.length === 0 ? "in sync" : "pending";
+  const drifted = (result.diff.drift ?? []).length > 0;
+  if (result.diff.changes.length === 0)
+    return drifted ? "drift" : "in sync";
+  return drifted ? "pending, with drift" : "pending";
 }
 
 // src/render/result-file.ts
@@ -54928,9 +55191,10 @@ var changeSchema = exports_external.strictObject({
   })).optional()
 });
 var diffSchema = {
-  state: exports_external.enum(["pending", "in-sync"]),
+  state: exports_external.enum(["pending", "in-sync", "drift"]),
   counts: countsSchema,
-  changes: exports_external.array(changeSchema)
+  changes: exports_external.array(changeSchema),
+  drift: exports_external.array(changeSchema).optional()
 };
 var failedSchema = {
   state: exports_external.literal("preview-failed"),
@@ -55004,9 +55268,10 @@ function changeOf(change2) {
 }
 function diffOf(diff) {
   const { deletes, replaces, others } = orderChanges(diff);
+  const drift = sortedDrift(diff);
   const of = (op) => diff.changes.filter((change2) => change2.op === op).length;
   return {
-    state: diff.changes.length === 0 ? "in-sync" : "pending",
+    state: diff.changes.length > 0 ? "pending" : drift.length > 0 ? "drift" : "in-sync",
     counts: {
       create: of("create"),
       update: of("update"),
@@ -55014,7 +55279,8 @@ function diffOf(diff) {
       delete: of("delete"),
       trackingOnly: diff.changes.filter((change2) => change2.op === "none" && change2.tracking).length
     },
-    changes: [...deletes, ...replaces, ...others].map(changeOf)
+    changes: [...deletes, ...replaces, ...others].map(changeOf),
+    ...drift.length === 0 ? {} : { drift: drift.map(changeOf) }
   };
 }
 function stackIdOf(stack) {
@@ -55353,7 +55619,7 @@ async function deploy(context3, id, payload, runUrl, progress) {
       await fresh.plan?.dispose();
   }
 }
-async function afterFreshPreview(context3, id, payload, runUrl, progress, setup, fresh, options) {
+async function afterFreshPreview(context3, id, payload, runUrl, progress, setup, previewed, options) {
   const { log, adapter } = context3;
   const name = logGroupTitle(id);
   const notDeployed = (reason, why = "") => `${name} was not deployed: ${deployFailureText(reason)}.${why}`;
@@ -55363,7 +55629,24 @@ async function afterFreshPreview(context3, id, payload, runUrl, progress, setup,
   if (logDiff && publicRepo(context3.event)) {
     log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
   }
-  const toolDiff3 = logDiff && fresh.ok && fresh.diff.changes.length > 0 ? await adapter.toolDiff(setup.stack.stack, options) : undefined;
+  const toolDiff3 = logDiff && previewed.ok && previewed.diff.changes.length > 0 ? await adapter.toolDiff(setup.stack.stack, options) : undefined;
+  const drift = payload.drift && previewed.ok ? await checkDriftAgain(context3, setup, options, id) : undefined;
+  if (drift !== undefined && !drift.ok) {
+    logPreview(context3, id, "The fresh preview", previewed, toolDiff3);
+    const reason = { kind: "preview-failed", reason: drift.reason };
+    return {
+      state: "failure",
+      reason,
+      failed: notDeployed(reason, " The drift check failed, and the diff hash the tick approved covers drift."),
+      summary: {
+        kind: "not-deployed",
+        reason: deployFailureText(reason),
+        checked: applied(previewed)
+      },
+      setup
+    };
+  }
+  const fresh = previewed.ok && drift?.ok && drift.drift.length > 0 ? { ...previewed, diff: { ...previewed.diff, drift: drift.drift } } : previewed;
   logPreview(context3, id, "The fresh preview", fresh, toolDiff3);
   if (!fresh.ok) {
     const reason = { kind: "preview-failed", reason: fresh.reason };
@@ -55376,7 +55659,7 @@ async function afterFreshPreview(context3, id, payload, runUrl, progress, setup,
       setup
     };
   }
-  if (fresh.diff.changes.length === 0) {
+  if (fresh.diff.changes.length === 0 && (fresh.diff.drift ?? []).length === 0) {
     log.info(`The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`);
     return {
       state: "success",
@@ -55426,7 +55709,8 @@ async function afterFreshPreview(context3, id, payload, runUrl, progress, setup,
     log.info(`The dashboard could not be written before the deploy: ${message(error63)}`);
   }
   progress.deploying = true;
-  const result = await adapter.apply(setup.stack.stack, tool, fresh.plan);
+  const repairDrift = (fresh.diff.drift ?? []).length > 0;
+  const result = await adapter.apply(setup.stack.stack, tool, previewed.ok ? previewed.plan : undefined, repairDrift ? { repairDrift } : undefined);
   const words = lines2(result.toolLog);
   context3.log.group(`${name}: the deploy`, [
     result.ok ? "deployed" : `deploy failed: ${deployFailureText(result.reason)}`,
@@ -55455,6 +55739,25 @@ async function afterFreshPreview(context3, id, payload, runUrl, progress, setup,
     },
     setup
   };
+}
+async function checkDriftAgain(context3, setup, options, id) {
+  const name = logGroupTitle(id);
+  context3.log.info(`Checked ${name} for drift again, because the diff hash the tick approved covers drift.`);
+  const found = await context3.adapter.detectDrift?.(setup.stack.stack, options) ?? {
+    ok: false,
+    reason: { kind: "tool-error", exitCode: null },
+    detail: ["The tool of this stack has no drift check."],
+    toolLog: ""
+  };
+  const words = lines2(found.toolLog);
+  const own2 = found.ok ? [] : [`drift check failed: ${previewFailureText(found.reason)}`, ...found.detail];
+  if (own2.length + words.length > 0) {
+    context3.log.group(`${name}: the drift check`, [
+      ...own2,
+      ...words.length > 0 ? ["The tool's own words:", ...words] : []
+    ]);
+  }
+  return found;
 }
 function logPreview(context3, id, what, result, toolDiff3) {
   const words = lines2(result.toolLog + (toolDiff3?.toolLog ?? ""));
@@ -55614,12 +55917,12 @@ function byCodeUnit8(a, b) {
 
 // src/core/repo-files.ts
 import { readdir as readdir3 } from "node:fs/promises";
-import { join as join14 } from "node:path";
+import { join as join15 } from "node:path";
 var SKIPPED2 = new Set([".git", "node_modules"]);
 async function repoFiles(root) {
   const files = [];
   const walk = async (relative3) => {
-    const entries = await readdir3(join14(root, ...relative3), { withFileTypes: true });
+    const entries = await readdir3(join15(root, ...relative3), { withFileTypes: true });
     for (const entry of entries) {
       if (entry.name === ".git")
         continue;
@@ -55820,7 +56123,7 @@ function readWorkflowRef(env) {
 
 // src/modes/resolve.ts
 import { readFileSync as readFileSync4 } from "node:fs";
-import { join as join15 } from "node:path";
+import { join as join16 } from "node:path";
 
 // src/core/edit-history.ts
 var HISTORY_CAP = 100;
@@ -55844,7 +56147,12 @@ function ticksIn(body) {
       continue;
     seen.add(row2.stackId);
     if (row2.known && row2.ticked && row2.hash !== undefined && row2.state !== "queued") {
-      ticks.push({ kind: "row", stackId: row2.stackId, hash: row2.hash });
+      ticks.push({
+        kind: "row",
+        stackId: row2.stackId,
+        hash: row2.hash,
+        ...row2.drift ? { drift: true } : {}
+      });
     }
   }
   const merged = new Set;
@@ -56229,9 +56537,14 @@ async function resolveTicks(context3, handOn) {
     log.info("The body moved between the read and the walk. Reading again.");
   }
   const hashes = new Map;
-  for (const { tick } of named)
-    if (tick.kind === "row")
-      hashes.set(tick.stackId, tick.hash);
+  const drifted = new Set;
+  for (const { tick } of named) {
+    if (tick.kind !== "row")
+      continue;
+    hashes.set(tick.stackId, tick.hash);
+    if (tick.drift)
+      drifted.add(tick.stackId);
+  }
   const mergeTicks = new Map;
   for (const { tick } of named)
     if (tick.kind === "merge")
@@ -56351,7 +56664,13 @@ async function resolveTicks(context3, handOn) {
         sha: context3.sha,
         task: deploymentTask(id),
         environment: stack.environment,
-        payload: deploymentPayload({ hash: hash2, ticker, run: context3.runId, behind })
+        payload: deploymentPayload({
+          hash: hash2,
+          ticker,
+          run: context3.runId,
+          behind,
+          ...drifted.has(id) ? { drift: true } : {}
+        })
       });
       started.push({
         stackId: id,
@@ -56433,7 +56752,7 @@ function renovateStrategyOf(root) {
   for (const file2 of RENOVATE_CONFIG_FILES) {
     let text4;
     try {
-      text4 = readFileSync4(join15(root, file2), "utf8");
+      text4 = readFileSync4(join16(root, file2), "utf8");
     } catch {
       continue;
     }
@@ -57156,6 +57475,11 @@ function diffParts2(stack, level, options) {
 `), "</details>");
     }
   }
+  const drift = sortedDrift(stack.diff);
+  if (drift.length > 0) {
+    parts.push(`${driftCounts(drift)}:`, drift.map((change2) => `- ${driftLine(change2)}`).join(`
+`));
+  }
   const merges = stack.merges ?? [];
   if (merges.length > 0) {
     if (level >= 1)
@@ -57244,14 +57568,25 @@ function renderSummary(stacks, options = {}) {
   const sorted = [...stacks].sort((a, b) => byCodeUnit4(stackIdOf2(a), stackIdOf2(b)));
   const diffs = sorted.filter((stack) => stack.kind === "diff");
   const pending = diffs.filter((stack) => stack.diff.changes.length > 0);
-  const inSync = diffs.filter((stack) => stack.diff.changes.length === 0);
+  const hasDrift = (stack) => (stack.diff.drift ?? []).length > 0;
+  const drifted = diffs.filter((stack) => stack.diff.changes.length === 0 && hasDrift(stack));
+  const inSync = diffs.filter((stack) => stack.diff.changes.length === 0 && !hasDrift(stack));
   const failed = sorted.filter((stack) => stack.kind === "preview-failed");
   const counted = stacks.length === 0 ? "No stacks previewed." : `${plural2(stacks.length, "stack")} previewed: ${[
     pending.length && `${pending.length} pending`,
+    drifted.length && `${drifted.length} drifted`,
     failed.length && `${failed.length} preview failed`,
     inSync.length && `${inSync.length} in sync`
   ].filter(Boolean).join(", ")}.`;
   const tail = [];
+  if (drifted.length > 0) {
+    tail.push("### Drifted");
+    for (const stack of drifted) {
+      const drift = sortedDrift(stack.diff);
+      tail.push(`#### ${anchorTag(stack.diff.stackId)}${escapeText(stack.diff.stackId)}`, driftCounts(drift), drift.map((change2) => `- ${driftLine(change2)}`).join(`
+`));
+    }
+  }
   if (failed.length > 0) {
     tail.push("### Preview failed", failed.map((stack) => failedLine(stack, options)).join(`
 `));
@@ -57265,6 +57600,7 @@ function renderSummary(stacks, options = {}) {
   }
   const index = [
     pending.length > 0 && `- Pending: ${pending.map((stack) => indexLink(stack.diff.stackId)).join(" · ")}`,
+    drifted.length > 0 && `- Drifted: ${drifted.map((stack) => indexLink(stack.diff.stackId)).join(" · ")}`,
     failed.length > 0 && `- Preview failed: ${failed.map((stack) => indexLink(stack.stackId)).join(" · ")}`
   ].filter((line3) => line3 !== false);
   const frame = (shortened2) => [
@@ -57389,8 +57725,10 @@ async function scanning(context3, report) {
   if (logDiff && context3.publicRepo) {
     log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
   }
-  const plan = await makePlan(context3, config2, stacks);
+  const knownDrift = new Set;
+  const plan = await makePlan(context3, config2, stacks, knownDrift);
   logPlan(context3, plan, stacks.length);
+  const checkDrift = driftCheckRule(config2, context3, knownDrift);
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
   const unclaimed = unclaimedFiles(plan, config2);
   let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
@@ -57417,7 +57755,7 @@ async function scanning(context3, report) {
       await checkVersion3(context3, stacks.map(({ stack }) => stack));
       versionChecked = true;
     }
-    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), prepared);
+    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), prepared, checkDrift);
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
@@ -57695,11 +58033,14 @@ async function resolveWaits(context3, liveBody, deploys) {
     throw new Error(`The runs of ${logGroupTitle(context3.workflow)} that an issue edit started could not be read: ${error63 instanceof Error ? error63.message : error63}. The scan met a ticked box and has to know whether a \`resolve\` run is still on its way before it clears it. The scan job needs the permission \`actions: read\` (record 0025).`);
   }
 }
-async function makePlan(context3, config2, stacks) {
+async function makePlan(context3, config2, stacks, knownDrift) {
   const { log } = context3;
   const full = (why2) => ({ kind: "full", why: why2 });
   const dashboard = narrowsOn(context3.event) ? await findDashboard(context3.github, config2.dashboard.label) : undefined;
   const live = dashboard && parseDashboard(dashboard.body);
+  for (const row2 of live?.rows ?? [])
+    if (row2.known && row2.drift)
+      knownDrift.add(row2.stackId);
   const base = comparisonBase(context3.event, live, MARKER_VERSION);
   if (base.kind !== "compare")
     return full(base);
@@ -57778,7 +58119,16 @@ async function checkVersion3(context3, stacks) {
     throw error63;
   }
 }
-async function previewAll(context3, stacks, logDiff, showValues, prepared) {
+function driftCheckRule(config2, context3, knownDrift) {
+  if (!config2.drift.enabled)
+    return () => false;
+  if (context3.event === "schedule")
+    return () => true;
+  if (context3.event === "workflow_dispatch" && context3.startedByPerson)
+    return () => true;
+  return (id) => knownDrift.has(id);
+}
+async function previewAll(context3, stacks, logDiff, showValues, prepared, checkDrift) {
   const { log, now, adapter } = context3;
   if (stacks.length === 0)
     return [];
@@ -57807,16 +58157,34 @@ async function previewAll(context3, stacks, logDiff, showValues, prepared) {
       timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
       showValues
     };
-    const result = await adapter.preview(configured.stack, options);
-    const milliseconds = now().getTime() - started;
-    log.info(`Previewed ${logGroupTitle(id)} in ${seconds2(milliseconds)}: ${previewOutcome(result)}`);
+    const previewedOnly = await adapter.preview(configured.stack, options);
+    let milliseconds = now().getTime() - started;
+    log.info(`Previewed ${logGroupTitle(id)} in ${seconds2(milliseconds)}: ${previewOutcome(previewedOnly)}`);
+    let result = previewedOnly;
+    let drift;
+    if (previewedOnly.ok && checkDrift(id) && adapter.detectDrift) {
+      const driftStarted = now().getTime();
+      drift = await adapter.detectDrift(configured.stack, options);
+      const took = seconds2(now().getTime() - driftStarted);
+      if (drift === undefined) {
+        log.info(`${logGroupTitle(id)} was not checked for drift: its tool has no drift check.`);
+      } else if (!drift.ok) {
+        log.info(`Checked ${logGroupTitle(id)} for drift in ${took}: the check failed, ${previewFailureText(drift.reason)}.`);
+      } else {
+        log.info(`Checked ${logGroupTitle(id)} for drift in ${took}: ${drift.drift.length === 0 ? "no drift" : driftCounts(drift.drift)}.`);
+        if (drift.drift.length > 0) {
+          result = { ...previewedOnly, diff: { ...previewedOnly.diff, drift: drift.drift } };
+        }
+      }
+      milliseconds = now().getTime() - started;
+    }
     if (!logDiff || !result.ok || result.diff.changes.length === 0) {
-      return { id, result, startedAt, milliseconds };
+      return { id, result, startedAt, milliseconds, drift };
     }
     const toolDiffStarted = now().getTime();
     const toolDiff3 = await adapter.toolDiff(configured.stack, options);
     log.info(`Ran the tool's own diff of ${logGroupTitle(id)} in ${seconds2(now().getTime() - toolDiffStarted)}${toolDiff3.ok ? "" : `: ${previewFailureText(toolDiff3.reason)}`}.`);
-    return { id, result, startedAt, milliseconds, toolDiff: toolDiff3 };
+    return { id, result, startedAt, milliseconds, toolDiff: toolDiff3, drift };
   });
   const total = now().getTime() - poolStarted;
   const addedUp = previewed.reduce((sum, { milliseconds }) => sum + milliseconds, 0);
@@ -57826,10 +58194,11 @@ async function previewAll(context3, stacks, logDiff, showValues, prepared) {
 }
 function logResults(context3, previewed) {
   const { log } = context3;
-  for (const { id, result, toolDiff: toolDiff3 } of previewed) {
-    const words = lines3(result.toolLog + (toolDiff3?.toolLog ?? ""));
+  for (const { id, result, toolDiff: toolDiff3, drift } of previewed) {
+    const words = lines3(result.toolLog + (toolDiff3?.toolLog ?? "") + (drift?.toolLog ?? ""));
     const own2 = [
       ...result.ok ? diffLogLines(result.diff) : [`preview failed: ${previewFailureText(result.reason)}`, ...result.detail],
+      ...drift !== undefined && !drift.ok ? [`drift check failed: ${previewFailureText(drift.reason)}`, ...drift.detail] : [],
       ...toolDiffLogLines(toolDiff3),
       ...words.length > 0 ? ["The tool's own words:", ...words] : []
     ];
@@ -57838,9 +58207,12 @@ function logResults(context3, previewed) {
     else
       log.group(logGroupTitle(id), own2);
   }
-  for (const { id, result } of previewed) {
+  for (const { id, result, drift } of previewed) {
     if (!result.ok) {
       log.warning(`The preview of ${logGroupTitle(id)} failed: ${previewFailureText(result.reason)}.`, "Preview failed");
+    }
+    if (drift !== undefined && !drift.ok) {
+      log.warning(`The drift check of ${logGroupTitle(id)} failed: ${previewFailureText(drift.reason)}. Its row shows the preview alone.`, "Drift check failed");
     }
   }
 }
@@ -58098,6 +58470,7 @@ async function runScan(directory) {
   const inputs = readScanInputs(getInput);
   const job = readJob(env);
   const octokit = getOctokit(inputs.token);
+  const payload = readEventPayload(env, (path) => readFileSync6(path, "utf8"));
   await scan({
     root: job.root,
     env,
@@ -58118,7 +58491,8 @@ async function runScan(directory) {
     workflow: job.workflow,
     actionRef: readActionRef(env, directory, (path) => readFileSync6(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),
-    publicRepo: publicRepo(readEventPayload(env, (path) => readFileSync6(path, "utf8")))
+    publicRepo: publicRepo(payload),
+    startedByPerson: startedByPerson(payload)
   });
 }
 
