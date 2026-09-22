@@ -45,6 +45,7 @@ import { stackId } from "../core/stack.ts";
 import { WORKFLOW_DIRECTORY } from "../core/workflow-check.ts";
 import { type AttributionSource, attributionSource } from "../github/attribution.ts";
 import { findDashboard, isBotIssueWithRootMarker } from "../github/dashboard.ts";
+import { swapRows as swapInto, type Written } from "../github/dashboard-write.ts";
 import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts";
 import { type EventIssue, editedIssue } from "../github/event.ts";
 import type { JobLog } from "../github/job-log.ts";
@@ -58,9 +59,8 @@ import {
   type TickOutcome,
 } from "../github/ticks.ts";
 import type { WorkflowRef } from "../github/workflow-ref.ts";
-import { writeBody } from "../github/write-loop.ts";
 import type { Notifier } from "../notify/send.ts";
-import { BODY_LIMIT, type BudgetOptions, fitBody } from "../render/budget.ts";
+import { BODY_LIMIT, type BudgetOptions } from "../render/budget.ts";
 import { type ClearTickOptions, clearTick } from "../render/clear-tick.ts";
 import { runUrl as runUrlOf } from "../render/links.ts";
 import { logGroupTitle } from "../render/log-text.ts";
@@ -73,7 +73,7 @@ import {
 import { clearMergeTick, type MergeNote } from "../render/merge-row.ts";
 import type { RefusedTick } from "../render/refused-ticks.ts";
 import { resolveSummary } from "../render/resolve-summary.ts";
-import { byCodeUnit, type DeployingRow, plural, type Row } from "../render/row.ts";
+import { byCodeUnit, plural, type Row } from "../render/row.ts";
 
 export interface ResolveContext {
   // The directory of the checked-out repo.
@@ -613,22 +613,18 @@ async function resolveTicks(
     merging.mergedPrs.size > 0
   ) {
     try {
-      const attribution = new Map<string, AttributionSource>();
-      const result = await writeBody(github, issue.number, (liveBody) =>
-        swapRows(
-          context,
-          config,
-          [...(stacks?.values() ?? [])],
-          ignored,
-          liveBody,
-          {
-            started: [...started, ...merged],
-            dropped,
-            clear,
-            merges: { merged: merging.mergedPrs, clear: clearMerges },
-          },
-          attribution,
-        ),
+      const result = await swapRows(
+        context,
+        config,
+        [...(stacks?.values() ?? [])],
+        ignored,
+        issue.number,
+        {
+          started: [...started, ...merged],
+          dropped,
+          clear,
+          merges: { merged: merging.mergedPrs, clear: clearMerges },
+        },
       );
       log.info(
         result.written
@@ -1030,189 +1026,140 @@ interface Swap {
     | undefined;
 }
 
-// The builder of the write loop (record 0004): swap this run's own row blocks,
-// carry every other block through byte for byte, and regenerate everything
-// around the blocks with the renderer the scan uses (record 0009). It runs
-// again on every try, so it does its own late read of the deployment records.
+// Swaps this run's own row blocks into the dashboard (records 0004 and 0009).
+// The rows are made at the late read of every try, from the deployment
+// records as they are then.
 async function swapRows(
   context: ResolveContext,
   config: Config,
   stacks: readonly ConfiguredStack[],
   ignored: readonly IgnoredStack[],
-  liveBody: string,
+  issue: number,
   swap: Swap,
+): Promise<Written> {
   // By `scan-sha`, so the walk is made once however many tries the write takes.
-  attribution: Map<string, AttributionSource>,
-): Promise<string> {
-  const live = parseDashboard(liveBody);
-  const root = live.root;
-  if (
-    root?.version !== MARKER_VERSION ||
-    root.scanSha === undefined ||
-    root.scanRun === undefined ||
-    root.scanAt === undefined
-  ) {
-    // Not a body this version wrote, so it is not touched (record 0009). The
-    // next scan writes it again, and the deployment records hold the truth.
-    context.log.info("The live body is not one this version can write again. It is left alone.");
-    return liveBody;
-  }
-
-  const droppedStacks = stacks.filter(({ stack }) => swap.dropped.includes(stackId(stack)));
-  const facts = deployFacts(
-    await readRecords(
-      context,
-      stacks.map(({ environment }) => environment),
-      droppedStacks,
-    ),
-  );
-
-  // A row's text is never parsed, so the line of a deploying row is worked
-  // out again, up to the commit the live body was scanned at (record 0026).
-  // It needs the workflow token only, and it never blocks.
-  const source =
-    attribution.get(root.scanSha) ??
-    attributionSource(
-      context.github,
-      {
-        stacks: stacks.map(({ stack, inputs }) => ({
-          id: stackId(stack),
-          path: stack.path,
-          inputs,
-        })),
-        unrelated: config.scan.unrelated,
-        repoUrl: context.repoUrl,
-        scanSha: root.scanSha,
-        ...config.attribution,
-        trailLength: config.dashboard.recentlyDeployed,
-      },
-      (why) =>
-        context.log.info(
-          `Attribution was left off the rows: ${why}. It only explains a row, so nothing else changes (record 0026).`,
-        ),
-    );
-  attribution.set(root.scanSha, source);
-  const deployingIds = [
-    ...swap.started.map((one) => one.stackId),
-    ...swap.dropped.filter((id) => facts.byStack.get(id)?.kind === "open"),
-  ];
-  const lines = await source.attribute(
-    new Map(deployingIds.map((id) => [id, lastDeployedCommit(facts, id)])),
-  );
-  const shipped = await source.ship(facts.trail);
-
-  const startedBy = new Map(swap.started.map((one) => [one.stackId, one]));
-  const mine = (one: Started, destroys: number, deletes: number | undefined): DeployingRow => ({
-    state: "deploying",
-    stackId: one.stackId,
-    ticker: one.ticker,
-    runUrl: runUrl(context),
-    // The record is `queued` until `apply` takes it.
-    waiting: true,
-    destroys,
-    deletes,
-    attribution: lines.get(one.stackId)?.lines,
-    behind: one.behind,
-  });
-
-  const rows: Row[] = [];
-  const carried: ParsedRow[] = [];
-  const seen = new Set<string>();
-  for (const row of live.rows) {
-    // Of two blocks for one stack the first counts, as it does for the walk.
-    const first = !seen.has(row.stackId);
-    seen.add(row.stackId);
-    const one = startedBy.get(row.stackId);
-    const fact = facts.byStack.get(row.stackId);
-    const wanted = swap.clear.get(row.stackId);
-    // `destroys` is copied from the old marker, because the header needs it
-    // and the row's text is never read (record 0031).
-    const destroys = row.known ? row.destroys : 0;
-    const deletes = row.known ? row.deletes : undefined;
-    if (!first || !row.known) {
-      carried.push(row);
-    } else if (one) {
-      rows.push(mine(one, destroys, deletes));
-    } else if (
-      swap.dropped.includes(row.stackId) &&
-      fact?.kind === "open" &&
-      row.state !== "deploying"
-    ) {
-      // A deploying row that a lost write turned back is repaired by the tick
-      // that is dropped for it (record 0004).
-      rows.push({
-        state: "deploying",
-        stackId: row.stackId,
-        ticker: fact.ticker,
-        runUrl: runUrlOf(context.repoUrl, fact.run, fact.attempt),
-        waiting: fact.waiting,
-        destroys,
-        deletes,
-        attribution: lines.get(row.stackId)?.lines,
-        behind: fact.behind,
-      });
-    } else if (wanted && row.ticked && row.hash === wanted.hash) {
-      carried.push(clearTick(row, { note: wanted.note }));
-    } else {
-      carried.push(row);
-    }
-  }
-  // A row that was deleted by hand since the tick: the stack is deploying all
-  // the same, and every deploying stack has a row.
-  for (const one of swap.started) if (!seen.has(one.stackId)) rows.push(mine(one, 0, undefined));
-
-  // Every other merge row is carried as it is. Of two lines for one pull
-  // request the first counts.
-  const merges: ParsedMerge[] = [];
-  for (const merge of live.merges) {
-    if (swap.merges?.merged.has(merge.pr) || merges.some((one) => one.pr === merge.pr)) continue;
-    merges.push(
-      swap.merges?.clear.has(merge.pr)
-        ? clearMergeTick(merge, { note: swap.merges.clear.get(merge.pr) })
-        : merge,
-    );
-  }
-
-  const fitted = fitBody(
+  const attribution = new Map<string, AttributionSource>();
+  const result = await swapInto(
     {
-      root: {
-        scanSha: root.scanSha,
-        scanRun: root.scanRun,
-        scanAt: root.scanAt,
-        fullScanAt: root.fullScanAt,
-        fullScanRun: root.fullScanRun,
-      },
-      rows,
-      carried,
-      redact: config.dashboard.redact,
-      recentlyDeployed: facts.trail.map((entry) => ({
-        stackId: entry.stackId,
-        result: entry.result,
-        reason: entry.reason,
-        ticker: entry.ticker,
-        at: entry.at,
-        runUrl: runUrlOf(context.repoUrl, entry.run, entry.attempt),
-        shipped: shipped.get(entry),
-      })),
+      github: context.github,
+      log: context.log,
       repoUrl: context.repoUrl,
       actionRef: context.actionRef,
-      recentLength: config.dashboard.recentlyDeployed,
-      personality: config.dashboard.personality,
-      readOnly: config.dashboard.readOnly,
+      dashboard: config.dashboard,
       ignored,
-      merges,
-      // Only a full scan reads the tool's history (record 0073).
-      outsideDeploys: live.outside,
+      budget: context.limits?.body,
     },
-    // A writer that swaps rows aims at the hard limit (record 0028).
-    { ...context.limits?.body, target: Number.POSITIVE_INFINITY },
+    issue,
+    async (live, root) => {
+      const droppedStacks = stacks.filter(({ stack }) => swap.dropped.includes(stackId(stack)));
+      const facts = deployFacts(
+        await readRecords(
+          context,
+          stacks.map(({ environment }) => environment),
+          droppedStacks,
+        ),
+      );
+
+      // A row's text is never parsed, so the line of a deploying row is worked
+      // out again, up to the commit the live body was scanned at (record 0026).
+      // It needs the workflow token only, and it never blocks.
+      const source =
+        attribution.get(root.scanSha) ??
+        attributionSource(
+          context.github,
+          {
+            stacks: stacks.map(({ stack, inputs }) => ({
+              id: stackId(stack),
+              path: stack.path,
+              inputs,
+            })),
+            unrelated: config.scan.unrelated,
+            repoUrl: context.repoUrl,
+            scanSha: root.scanSha,
+            ...config.attribution,
+            trailLength: config.dashboard.recentlyDeployed,
+          },
+          (why) =>
+            context.log.info(
+              `Attribution was left off the rows: ${why}. It only explains a row, so nothing else changes (record 0026).`,
+            ),
+        );
+      attribution.set(root.scanSha, source);
+      const deployingIds = [
+        ...swap.started.map((one) => one.stackId),
+        ...swap.dropped.filter((id) => facts.byStack.get(id)?.kind === "open"),
+      ];
+      const lines = await source.attribute(
+        new Map(deployingIds.map((id) => [id, lastDeployedCommit(facts, id)])),
+      );
+      const shipped = await source.ship(facts.trail);
+
+      const rows = new Map<string, Row>();
+      const carried = new Map<string, ParsedRow>();
+      // `destroys` is copied from the old marker, because the header needs it
+      // and the row's text is never read (record 0031). A stack whose row was
+      // deleted by hand since the tick is deploying all the same, and every
+      // deploying stack has a row.
+      for (const one of swap.started) {
+        const old = live.first.get(one.stackId);
+        rows.set(one.stackId, {
+          state: "deploying",
+          stackId: one.stackId,
+          ticker: one.ticker,
+          runUrl: runUrl(context),
+          // The record is `queued` until `apply` takes it.
+          waiting: true,
+          destroys: old?.known ? old.destroys : 0,
+          deletes: old?.known ? old.deletes : undefined,
+          attribution: lines.get(one.stackId)?.lines,
+          behind: one.behind,
+        });
+      }
+      for (const [id, row] of live.first) {
+        if (!row.known || rows.has(id)) continue;
+        const fact = facts.byStack.get(id);
+        const wanted = swap.clear.get(id);
+        if (swap.dropped.includes(id) && fact?.kind === "open" && row.state !== "deploying") {
+          // A deploying row that a lost write turned back is repaired by the
+          // tick that is dropped for it (record 0004).
+          rows.set(id, {
+            state: "deploying",
+            stackId: id,
+            ticker: fact.ticker,
+            runUrl: runUrlOf(context.repoUrl, fact.run, fact.attempt),
+            waiting: fact.waiting,
+            destroys: row.destroys,
+            deletes: row.deletes,
+            attribution: lines.get(id)?.lines,
+            behind: fact.behind,
+          });
+        } else if (wanted && row.ticked && row.hash === wanted.hash) {
+          carried.set(id, clearTick(row, { note: wanted.note }));
+        }
+      }
+
+      // Every other merge row is carried as it is. Of two lines for one pull
+      // request the first counts.
+      const merges: ParsedMerge[] = [];
+      for (const merge of live.merges) {
+        if (swap.merges?.merged.has(merge.pr) || merges.some((one) => one.pr === merge.pr)) {
+          continue;
+        }
+        merges.push(
+          swap.merges?.clear.has(merge.pr)
+            ? clearMergeTick(merge, { note: swap.merges.clear.get(merge.pr) })
+            : merge,
+        );
+      }
+      return { facts, shipped, rows, carried, merges };
+    },
   );
-  if (!fitted.fits) {
+  if (!result.fits) {
     throw new Error(
-      `With these rows swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment records hold what was started, and the next scan brings the rows in line.`,
+      `With these rows swapped the dashboard body is ${result.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment records hold what was started, and the next scan brings the rows in line.`,
     );
   }
-  return fitted.body;
+  return result;
 }
 
 // `dependsOn: auto` (record 0059): a stack with auto depends on what the file
@@ -1364,17 +1311,11 @@ async function startQueued(
     started.length > 0 ? await findDashboard(github, config.dashboard.label) : undefined;
   if (dashboard) {
     try {
-      const result = await writeBody(github, dashboard.number, (liveBody) =>
-        swapRows(
-          context,
-          config,
-          all,
-          ignored,
-          liveBody,
-          { started, dropped: [], clear: new Map() },
-          new Map(),
-        ),
-      );
+      const result = await swapRows(context, config, all, ignored, dashboard.number, {
+        started,
+        dropped: [],
+        clear: new Map(),
+      });
       log.info(
         result.written
           ? `Wrote the dashboard (#${dashboard.number}).`
