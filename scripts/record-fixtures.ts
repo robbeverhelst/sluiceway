@@ -103,7 +103,7 @@ interface Tool {
   ops?: (document: unknown) => string[];
   // What the recorder needs for a tool whose plan file it writes itself.
   planFileName?: string;
-  bundle?: (dir: string) => string;
+  bundle?: (dir: string, recursive?: boolean) => string;
 }
 
 const TOOLS: Record<string, Tool> = {

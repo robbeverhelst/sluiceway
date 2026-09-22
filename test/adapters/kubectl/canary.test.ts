@@ -10,6 +10,7 @@ import { scanResultFile } from "../../../src/render/result-file.ts";
 import { renderRow } from "../../../src/render/row.ts";
 import { renderSummary } from "../../../src/render/summary.ts";
 import { annex, RESULT, rows } from "../canary-surfaces.ts";
+import { PART_2, runFlow } from "./part2.ts";
 import { FIXTURES, ROOT, readRecording, replay, scenarioNames, VERSIONS } from "./replay.ts";
 import { CACHE, WEB } from "./stacks.ts";
 
@@ -60,6 +61,27 @@ for (const version of VERSIONS) {
       const previews = commands.filter(isPreviewDiff);
       const toolDiffs = commands.filter(isToolDiff);
       if (previews.length + toolDiffs.length === 0) continue;
+      // Part 2 (record 0070): pruning, drift and deploys, in the order the
+      // scenario ran them. What they hand over, and every renderer's text of
+      // it, drift included, holds no value.
+      if (PART_2[scenario] !== undefined) {
+        test(scenario, async () => {
+          const { steps, replay: runner } = await runFlow(version, scenario);
+          for (const step of steps) {
+            const made =
+              step.kind === "preview" && step.result.ok
+                ? canonicalDiff(step.result.diff) + rows(step.result.diff) + annex(step.result.diff)
+                : step.kind === "drift" && step.result?.ok
+                  ? canonicalDiff({ stackId: "web", changes: [], drift: step.result.drift }) +
+                    rows({ stackId: "web", changes: [], drift: step.result.drift })
+                  : "";
+            const { plan: _plan, ...handed } = { plan: undefined, ...step.result };
+            expect(leaks(JSON.stringify(handed) + made)).toEqual([]);
+          }
+          for (const set of runner.sets) expect(existsSync(dirname(set.path))).toBe(false);
+        });
+        continue;
+      }
 
       test(scenario, async () => {
         const runner = replay(version, scenario);
@@ -113,6 +135,23 @@ for (const version of VERSIONS) {
     for (const scenario of scenarioNames(version)) {
       const previews = readRecording(version, scenario).commands.filter(isPreviewDiff);
       if (previews.length === 0) continue;
+      if (PART_2[scenario] !== undefined) {
+        test(scenario, async () => {
+          const every = (await runFlow(version, scenario)).steps.flatMap((step) =>
+            step.kind === "preview" && step.result.ok
+              ? step.result.diff.changes.flatMap((change) => change.changedKeys)
+              : [],
+          );
+          const { steps } = await runFlow(version, scenario, {
+            showValues: [...every, "data.*", "data", "stringData.*"],
+          });
+          const text = JSON.stringify(steps);
+          expect(text).not.toContain(CANARY_SECRET);
+          expect(text).not.toContain(SECRET_BASE64);
+          expect(text).not.toContain("***");
+        });
+        continue;
+      }
       test(scenario, async () => {
         for (const command of previews) {
           const options = { root: ROOT, env: {}, timeoutMinutes: 10 };

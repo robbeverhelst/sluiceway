@@ -371,6 +371,25 @@
                 "type": "string",
                 "minLength": 1,
                 "description": "kubectl: The kubeconfig context of the stack, passed with --context to every command. Without it, the current context of the kubeconfig."
+              },
+              "recursive": {
+                "type": "boolean",
+                "description": "kubectl: Read the manifests of every subdirectory too, as kubectl apply -R does. Only for a directory of manifests. Default false: one level."
+              },
+              "prune": {
+                "type": "boolean",
+                "description": "kubectl: Delete an object taken out of the manifests when the stack deploys, and show it as a delete on the row. Sluiceway keeps the list of the stack's objects in a ConfigMap next to them. Default false."
+              },
+              "forceConflicts": {
+                "type": "boolean",
+                "description": "kubectl: Take a field that another field manager holds, with --force-conflicts on the preview and the deploy. Without it such a field fails the preview. Default false."
+              },
+              "fieldManager": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+                "description": "kubectl: The field manager of the preview and the deploy, passed with --field-manager. Without it, kubectl's own, kubectl."
               }
             },
             "additionalProperties": false

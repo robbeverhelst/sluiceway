@@ -59,3 +59,27 @@ describe("the bundle of a directory of manifests", () => {
     expect(bundleManifests(dir(files))).toBe(bundleManifests(dir(files)));
   });
 });
+
+describe("the bundle of a directory with recursive (record 0070)", () => {
+  test("every manifest file below the directory, in the order kubectl -R walks it", () => {
+    // kubectl walks a directory with Go's filepath.Walk: the names of one
+    // directory in byte order, a subdirectory where its name falls.
+    const bundle = bundleManifests(
+      dir({
+        "a.yaml": "kind: A\n",
+        "a/x.yaml": "kind: AX\n",
+        "b/c/d.json": '{"kind": "D"}\n',
+        "b/README.md": "not a manifest\n",
+        "c.yml": "kind: C\n",
+      }),
+      true,
+    );
+    expect(bundle).toBe('kind: AX\n---\nkind: A\n---\n{"kind": "D"}\n---\nkind: C\n');
+  });
+
+  test("without recursive, one level, as before", () => {
+    expect(bundleManifests(dir({ "a.yaml": "kind: A\n", "b/c.yaml": "kind: C\n" }))).toBe(
+      "kind: A\n",
+    );
+  });
+});

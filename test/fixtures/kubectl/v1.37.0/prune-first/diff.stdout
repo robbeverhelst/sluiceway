@@ -1,0 +1,135 @@
+diff -N - /tmp/LIVE-3711540992/apps.v1.Deployment.sluiceway-example.web /tmp/MERGED-1838111582/apps.v1.Deployment.sluiceway-example.web
+--- /tmp/LIVE-3711540992/apps.v1.Deployment.sluiceway-example.web	2026-09-22 15:40:48
++++ /tmp/MERGED-1838111582/apps.v1.Deployment.sluiceway-example.web	2026-09-22 15:40:48
+@@ -0,0 +1,45 @@
++apiVersion: apps/v1
++kind: Deployment
++metadata:
++  creationTimestamp: "2026-09-22T13:40:48Z"
++  generation: 1
++  labels:
++    app.kubernetes.io/name: web
++  name: web
++  namespace: sluiceway-example
++  uid: 9dc000ed-ce1a-401f-9fc7-7b16e356a387
++spec:
++  progressDeadlineSeconds: 600
++  replicas: 1
++  revisionHistoryLimit: 10
++  selector:
++    matchLabels:
++      app.kubernetes.io/name: web
++  strategy:
++    rollingUpdate:
++      maxSurge: 25%
++      maxUnavailable: 25%
++    type: RollingUpdate
++  template:
++    metadata:
++      labels:
++        app.kubernetes.io/name: web
++    spec:
++      containers:
++      - envFrom:
++        - configMapRef:
++            name: web-settings
++        - secretRef:
++            name: web-credentials
++        image: registry.k8s.io/pause:3.10
++        imagePullPolicy: IfNotPresent
++        name: web
++        resources: {}
++        terminationMessagePath: /dev/termination-log
++        terminationMessagePolicy: File
++      dnsPolicy: ClusterFirst
++      restartPolicy: Always
++      schedulerName: default-scheduler
++      securityContext: {}
++      terminationGracePeriodSeconds: 30
++status: {}
+diff -N - /tmp/LIVE-3711540992/v1.ConfigMap.sluiceway-example.sluiceway-fe2582ff40821a0e /tmp/MERGED-1838111582/v1.ConfigMap.sluiceway-example.sluiceway-fe2582ff40821a0e
+--- /tmp/LIVE-3711540992/v1.ConfigMap.sluiceway-example.sluiceway-fe2582ff40821a0e	2026-09-22 15:40:48
++++ /tmp/MERGED-1838111582/v1.ConfigMap.sluiceway-example.sluiceway-fe2582ff40821a0e	2026-09-22 15:40:48
+@@ -0,0 +1,17 @@
++apiVersion: v1
++data:
++  objects: |
++    {"apiVersion":"apps/v1","kind":"Deployment","name":"web"}
++    {"apiVersion":"v1","kind":"ConfigMap","name":"web-settings"}
++    {"apiVersion":"v1","kind":"Secret","name":"web-credentials"}
++    {"apiVersion":"v1","kind":"Service","name":"web"}
++kind: ConfigMap
++metadata:
++  annotations:
++    sluiceway.dev/stack: web
++  creationTimestamp: "2026-09-22T13:40:48Z"
++  labels:
++    app.kubernetes.io/managed-by: sluiceway
++  name: sluiceway-fe2582ff40821a0e
++  namespace: sluiceway-example
++  uid: c0fb002a-6ef9-433f-9b0f-ad7cea80dc66
+diff -N - /tmp/LIVE-3711540992/v1.ConfigMap.sluiceway-example.web-settings /tmp/MERGED-1838111582/v1.ConfigMap.sluiceway-example.web-settings
+--- /tmp/LIVE-3711540992/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 15:40:48
++++ /tmp/MERGED-1838111582/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 15:40:48
+@@ -0,0 +1,12 @@
++apiVersion: v1
++data:
++  greeting: CANARY-VALUE, hello
++  log-level: info
++kind: ConfigMap
++metadata:
++  creationTimestamp: "2026-09-22T13:40:48Z"
++  labels:
++    app.kubernetes.io/name: web
++  name: web-settings
++  namespace: sluiceway-example
++  uid: caac4710-9d9a-46a2-810e-b414422ec636
+diff -N - /tmp/LIVE-3711540992/v1.Secret.sluiceway-example.web-credentials /tmp/MERGED-1838111582/v1.Secret.sluiceway-example.web-credentials
+--- /tmp/LIVE-3711540992/v1.Secret.sluiceway-example.web-credentials	2026-09-22 15:40:48
++++ /tmp/MERGED-1838111582/v1.Secret.sluiceway-example.web-credentials	2026-09-22 15:40:48
+@@ -1 +1,12 @@
+-null
++apiVersion: v1
++data:
++  password: '***'
++kind: Secret
++metadata:
++  creationTimestamp: "2026-09-22T13:40:48Z"
++  labels:
++    app.kubernetes.io/name: web
++  name: web-credentials
++  namespace: sluiceway-example
++  uid: f4bae8c0-aaf1-4e39-a93b-a94979cbad41
++type: Opaque
+diff -N - /tmp/LIVE-3711540992/v1.Service.sluiceway-example.web /tmp/MERGED-1838111582/v1.Service.sluiceway-example.web
+--- /tmp/LIVE-3711540992/v1.Service.sluiceway-example.web	2026-09-22 15:40:48
++++ /tmp/MERGED-1838111582/v1.Service.sluiceway-example.web	2026-09-22 15:40:48
+@@ -0,0 +1,28 @@
++apiVersion: v1
++kind: Service
++metadata:
++  creationTimestamp: "2026-09-22T13:40:48Z"
++  labels:
++    app.kubernetes.io/name: web
++  name: web
++  namespace: sluiceway-example
++  uid: dfbc757c-1da2-47f2-afff-ddd31f6195d6
++spec:
++  clusterIP: 10.96.0.0
++  clusterIPs:
++  - 10.96.0.0
++  internalTrafficPolicy: Cluster
++  ipFamilies:
++  - IPv4
++  ipFamilyPolicy: SingleStack
++  ports:
++  - name: http
++    port: 80
++    protocol: TCP
++    targetPort: 8080
++  selector:
++    app.kubernetes.io/name: web
++  sessionAffinity: None
++  type: ClusterIP
++status:
++  loadBalancer: {}

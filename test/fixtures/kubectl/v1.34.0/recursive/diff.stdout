@@ -1,0 +1,127 @@
+diff -N - /tmp/LIVE-1392284450/apps.v1.Deployment.sluiceway-example.web /tmp/MERGED-147506648/apps.v1.Deployment.sluiceway-example.web
+--- /tmp/LIVE-1392284450/apps.v1.Deployment.sluiceway-example.web	2026-09-22 15:49:05
++++ /tmp/MERGED-147506648/apps.v1.Deployment.sluiceway-example.web	2026-09-22 15:49:05
+@@ -0,0 +1,45 @@
++apiVersion: apps/v1
++kind: Deployment
++metadata:
++  creationTimestamp: "2026-09-22T13:49:05Z"
++  generation: 1
++  labels:
++    app.kubernetes.io/name: web
++  name: web
++  namespace: sluiceway-example
++  uid: 18d38078-f5e7-4672-8dc5-fba2aa4c7f19
++spec:
++  progressDeadlineSeconds: 600
++  replicas: 1
++  revisionHistoryLimit: 10
++  selector:
++    matchLabels:
++      app.kubernetes.io/name: web
++  strategy:
++    rollingUpdate:
++      maxSurge: 25%
++      maxUnavailable: 25%
++    type: RollingUpdate
++  template:
++    metadata:
++      labels:
++        app.kubernetes.io/name: web
++    spec:
++      containers:
++      - envFrom:
++        - configMapRef:
++            name: web-settings
++        - secretRef:
++            name: web-credentials
++        image: registry.k8s.io/pause:3.10
++        imagePullPolicy: IfNotPresent
++        name: web
++        resources: {}
++        terminationMessagePath: /dev/termination-log
++        terminationMessagePolicy: File
++      dnsPolicy: ClusterFirst
++      restartPolicy: Always
++      schedulerName: default-scheduler
++      securityContext: {}
++      terminationGracePeriodSeconds: 30
++status: {}
+diff -N - /tmp/LIVE-1392284450/v1.ConfigMap.sluiceway-example.web-more /tmp/MERGED-147506648/v1.ConfigMap.sluiceway-example.web-more
+--- /tmp/LIVE-1392284450/v1.ConfigMap.sluiceway-example.web-more	2026-09-22 15:49:05
++++ /tmp/MERGED-147506648/v1.ConfigMap.sluiceway-example.web-more	2026-09-22 15:49:05
+@@ -0,0 +1,9 @@
++apiVersion: v1
++data:
++  motd: CANARY-VALUE
++kind: ConfigMap
++metadata:
++  creationTimestamp: "2026-09-22T13:49:05Z"
++  name: web-more
++  namespace: sluiceway-example
++  uid: 9a38b6ab-802a-46fe-8ee3-28f3617aa8ef
+diff -N - /tmp/LIVE-1392284450/v1.ConfigMap.sluiceway-example.web-settings /tmp/MERGED-147506648/v1.ConfigMap.sluiceway-example.web-settings
+--- /tmp/LIVE-1392284450/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 15:49:05
++++ /tmp/MERGED-147506648/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 15:49:05
+@@ -0,0 +1,12 @@
++apiVersion: v1
++data:
++  greeting: CANARY-VALUE, hello
++  log-level: info
++kind: ConfigMap
++metadata:
++  creationTimestamp: "2026-09-22T13:49:05Z"
++  labels:
++    app.kubernetes.io/name: web
++  name: web-settings
++  namespace: sluiceway-example
++  uid: f7485458-1a77-476b-b2e9-6d406194ebbb
+diff -N - /tmp/LIVE-1392284450/v1.Secret.sluiceway-example.web-credentials /tmp/MERGED-147506648/v1.Secret.sluiceway-example.web-credentials
+--- /tmp/LIVE-1392284450/v1.Secret.sluiceway-example.web-credentials	2026-09-22 15:49:05
++++ /tmp/MERGED-147506648/v1.Secret.sluiceway-example.web-credentials	2026-09-22 15:49:05
+@@ -1 +1,12 @@
+-null
++apiVersion: v1
++data:
++  password: '***'
++kind: Secret
++metadata:
++  creationTimestamp: "2026-09-22T13:49:05Z"
++  labels:
++    app.kubernetes.io/name: web
++  name: web-credentials
++  namespace: sluiceway-example
++  uid: 94e1b503-5a9c-48fd-a06c-f9dd575e98f0
++type: Opaque
+diff -N - /tmp/LIVE-1392284450/v1.Service.sluiceway-example.web /tmp/MERGED-147506648/v1.Service.sluiceway-example.web
+--- /tmp/LIVE-1392284450/v1.Service.sluiceway-example.web	2026-09-22 15:49:06
++++ /tmp/MERGED-147506648/v1.Service.sluiceway-example.web	2026-09-22 15:49:06
+@@ -0,0 +1,28 @@
++apiVersion: v1
++kind: Service
++metadata:
++  creationTimestamp: "2026-09-22T13:49:05Z"
++  labels:
++    app.kubernetes.io/name: web
++  name: web
++  namespace: sluiceway-example
++  uid: d12a7535-1f0d-4435-90d7-cd7f168735e9
++spec:
++  clusterIP: 10.96.0.0
++  clusterIPs:
++  - 10.96.0.0
++  internalTrafficPolicy: Cluster
++  ipFamilies:
++  - IPv4
++  ipFamilyPolicy: SingleStack
++  ports:
++  - name: http
++    port: 80
++    protocol: TCP
++    targetPort: 8080
++  selector:
++    app.kubernetes.io/name: web
++  sessionAffinity: None
++  type: ClusterIP
++status:
++  loadBalancer: {}

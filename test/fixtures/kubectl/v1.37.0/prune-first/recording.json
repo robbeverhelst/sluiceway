@@ -1,0 +1,43 @@
+{
+  "scenario": "prune-first",
+  "description": "web with pruning before its first deploy: no inventory yet, and every object and the inventory are creates.",
+  "cliVersion": "v1.37.0",
+  "commands": [
+    {
+      "id": "inventory",
+      "argv": [
+        "kubectl",
+        "get",
+        "configmap",
+        "sluiceway-fe2582ff40821a0e",
+        "--namespace=sluiceway-example",
+        "--ignore-not-found",
+        "--output=json"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "inventory.stdout",
+      "stderr": "inventory.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "diff",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 1,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "diff",
+      "env": {
+        "KUBECTL_EXTERNAL_DIFF": "diff -N -U1000000"
+      }
+    }
+  ]
+}

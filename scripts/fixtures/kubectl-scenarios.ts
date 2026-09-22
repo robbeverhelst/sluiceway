@@ -5,8 +5,14 @@
 // longer fits, the recorder stops instead of recording something else.
 import { join } from "node:path";
 import { PREVIEW_DIFF } from "../../src/adapters/kubectl/commands.ts";
+import {
+  inventoryName,
+  type ListedObject,
+  stubs,
+  withInventory,
+} from "../../src/adapters/kubectl/inventory.ts";
 import type { Expectation, RecordOptions, Scenario, Step } from "./recorder.ts";
-import { PLAN_FILE } from "./recorder.ts";
+import { PLAN_FILE, PRUNE_FILE } from "./recorder.ts";
 
 // The namespace of the example. Every scenario makes it anew.
 export const EXAMPLE_NAMESPACE = "sluiceway-example";
@@ -21,6 +27,43 @@ export const KUBECTL = {
   kustomize: ["kubectl", "kustomize", "."],
   diff: (target: string[]) => ["kubectl", "diff", "--server-side", ...target, "-f", PLAN_FILE],
   apply: (target: string[]) => ["kubectl", "apply", "--server-side", ...target, "-f", PLAN_FILE],
+  // Part 2 (record 0070).
+  drift: (target: string[]) => [
+    "kubectl",
+    "diff",
+    "--server-side",
+    ...target,
+    "--show-managed-fields",
+    "-f",
+    PLAN_FILE,
+  ],
+  inventory: (name: string, target: string[]) => [
+    "kubectl",
+    "get",
+    "configmap",
+    name,
+    ...target,
+    "--ignore-not-found",
+    "--output=json",
+  ],
+  live: (target: string[]) => [
+    "kubectl",
+    "get",
+    ...target,
+    "--ignore-not-found",
+    "--show-managed-fields",
+    "--output=json",
+    "-f",
+    PRUNE_FILE,
+  ],
+  delete: (target: string[]) => [
+    "kubectl",
+    "delete",
+    ...target,
+    "--ignore-not-found",
+    "-f",
+    PRUNE_FILE,
+  ],
 };
 
 // The stacks of examples/kubernetes-basic/sluiceway.yaml.
@@ -150,6 +193,211 @@ function afterDeploy(
     steps: [...freshNamespace, ...deployed(stack), ...edits, ...preview(stack, expect)],
   };
 }
+
+// Part 2 (record 0070). web with pruning: the stack id is web, and the
+// recorder has no repository, so the inventory's name is the one the adapter
+// gives a stack web outside a repository.
+const INVENTORY = inventoryName("web");
+const PRUNED_WEB: KubectlStack = { cwd: "web", target: WEB_TARGET, kustomization: false };
+// web with its own field manager, taking fields that others hold.
+const FORCED_WEB: KubectlStack = {
+  cwd: "web",
+  target: [...WEB_TARGET, "--force-conflicts", "--field-manager=sluiceway-web"],
+  kustomization: false,
+};
+
+// The rendered set of web with its inventory, as the adapter writes it, with
+// the objects still to be pruned listed too.
+function prunedSet(pruned: ListedObject[] = []): Step {
+  return {
+    kind: "bundle",
+    cwd: "web",
+    append: (bundled) => withInventory(bundled, INVENTORY, "web", pruned),
+  };
+}
+
+function recorded(
+  id: string,
+  stack: KubectlStack,
+  argv: string[],
+  expect: Expectation,
+  format: "text" | "diff" = "text",
+): Step {
+  return {
+    kind: "record",
+    id,
+    cwd: stack.cwd,
+    argv,
+    stdout: format,
+    expect,
+    ...(format === "diff" ? { env: PREVIEW_ENV } : {}),
+  };
+}
+
+// The ConfigMap of web, as the inventory lists it (the manifest names no
+// namespace), and as the live object names it.
+const SETTINGS: ListedObject = { apiVersion: "v1", kind: "ConfigMap", name: "web-settings" };
+const LIVE_SETTINGS: ListedObject = { ...SETTINGS, namespace: EXAMPLE_NAMESPACE };
+
+const PART_2: Scenario[] = [
+  {
+    name: "prune-first",
+    description:
+      "web with pruning before its first deploy: no inventory yet, and every object and the inventory are creates.",
+    steps: [
+      ...freshNamespace,
+      recorded("inventory", PRUNED_WEB, KUBECTL.inventory(INVENTORY, WEB_TARGET), NONE),
+      prunedSet(),
+      recorded("diff", PRUNED_WEB, KUBECTL.diff(WEB_TARGET), DIFFERENCES(["create"]), "diff"),
+    ],
+  },
+  {
+    name: "prune",
+    description:
+      "web deployed with pruning, then its ConfigMap taken out of the manifests: the preview finds it through the inventory, the deploy deletes it, and the preview after lists it no more.",
+    steps: [
+      ...freshNamespace,
+      prunedSet(),
+      { kind: "setup", cwd: "web", argv: KUBECTL.apply(WEB_TARGET) },
+      { kind: "remove", file: "web/configmap.yaml" },
+      recorded("inventory", PRUNED_WEB, KUBECTL.inventory(INVENTORY, WEB_TARGET), NONE),
+      { kind: "prune-file", content: stubs([SETTINGS]) },
+      recorded("live", PRUNED_WEB, KUBECTL.live(WEB_TARGET), NONE),
+      prunedSet([SETTINGS]),
+      recorded("diff", PRUNED_WEB, KUBECTL.diff(WEB_TARGET), NONE, "diff"),
+      recorded("apply", PRUNED_WEB, KUBECTL.apply(WEB_TARGET), NONE),
+      { kind: "prune-file", content: stubs([LIVE_SETTINGS]) },
+      recorded("delete", PRUNED_WEB, KUBECTL.delete(WEB_TARGET), NONE),
+      recorded("inventory-after", PRUNED_WEB, KUBECTL.inventory(INVENTORY, WEB_TARGET), NONE),
+      { kind: "prune-file", content: stubs([SETTINGS]) },
+      recorded("live-after", PRUNED_WEB, KUBECTL.live(WEB_TARGET), NONE),
+      prunedSet(),
+      recorded("diff-after", PRUNED_WEB, KUBECTL.diff(WEB_TARGET), DIFFERENCES(["update"]), "diff"),
+    ],
+  },
+  {
+    name: "drift-deleted",
+    description:
+      "web deployed with pruning, then its ConfigMap deleted by hand: the preview shows a create, and the drift check knows the stack deployed it.",
+    steps: [
+      ...freshNamespace,
+      prunedSet(),
+      { kind: "setup", cwd: "web", argv: KUBECTL.apply(WEB_TARGET) },
+      {
+        kind: "setup",
+        cwd: ".",
+        argv: [
+          "kubectl",
+          "delete",
+          "configmap",
+          "web-settings",
+          `--namespace=${EXAMPLE_NAMESPACE}`,
+          "--wait",
+        ],
+      },
+      recorded("inventory", PRUNED_WEB, KUBECTL.inventory(INVENTORY, WEB_TARGET), NONE),
+      prunedSet(),
+      recorded("diff", PRUNED_WEB, KUBECTL.diff(WEB_TARGET), DIFFERENCES(["create"]), "diff"),
+      recorded("inventory-drift", PRUNED_WEB, KUBECTL.inventory(INVENTORY, WEB_TARGET), NONE),
+      recorded("drift", PRUNED_WEB, KUBECTL.drift(WEB_TARGET), DIFFERENCES(["create"]), "diff"),
+    ],
+  },
+  {
+    name: "drift-changed",
+    description:
+      "web deployed with its own field manager, then scaled and patched by hand: with forceConflicts the preview takes both back, and the drift check names them.",
+    steps: [
+      ...freshNamespace,
+      rendered(FORCED_WEB),
+      { kind: "setup", cwd: "web", argv: KUBECTL.apply(FORCED_WEB.target) },
+      {
+        kind: "setup",
+        cwd: ".",
+        argv: [
+          "kubectl",
+          "scale",
+          "deployment",
+          "web",
+          "--replicas=3",
+          `--namespace=${EXAMPLE_NAMESPACE}`,
+        ],
+      },
+      {
+        kind: "setup",
+        cwd: ".",
+        argv: [
+          "kubectl",
+          "patch",
+          "configmap",
+          "web-settings",
+          `--namespace=${EXAMPLE_NAMESPACE}`,
+          "--patch",
+          '{"data":{"log-level":"debug"}}',
+        ],
+      },
+      rendered(FORCED_WEB),
+      recorded(
+        "diff",
+        FORCED_WEB,
+        KUBECTL.diff(FORCED_WEB.target),
+        DIFFERENCES(["update"]),
+        "diff",
+      ),
+      recorded(
+        "drift",
+        FORCED_WEB,
+        KUBECTL.drift(FORCED_WEB.target),
+        DIFFERENCES(["update"]),
+        "diff",
+      ),
+      recorded("apply", FORCED_WEB, KUBECTL.apply(FORCED_WEB.target), NONE),
+      recorded("diff-after", FORCED_WEB, KUBECTL.diff(FORCED_WEB.target), NONE, "diff"),
+    ],
+  },
+  {
+    name: "drift-conflict",
+    description:
+      "web deployed, then scaled by hand: without forceConflicts the preview meets the conflict, as a deploy would.",
+    steps: [
+      ...freshNamespace,
+      ...deployed(WEB),
+      {
+        kind: "setup",
+        cwd: ".",
+        argv: [
+          "kubectl",
+          "scale",
+          "deployment",
+          "web",
+          "--replicas=3",
+          `--namespace=${EXAMPLE_NAMESPACE}`,
+        ],
+      },
+      ...preview(WEB, ERROR),
+    ],
+  },
+  {
+    name: "recursive",
+    description:
+      "web with recursive and a manifest in a subdirectory: the set holds it, as kubectl -R reads it.",
+    steps: [
+      ...freshNamespace,
+      {
+        kind: "write",
+        file: "web/more/extra.yaml",
+        content: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-more
+data:
+  motd: CANARY-VALUE
+`,
+      },
+      { kind: "bundle", cwd: "web", recursive: true },
+      recorded("diff", WEB, KUBECTL.diff(WEB_TARGET), DIFFERENCES(["create"]), "diff"),
+    ],
+  },
+];
 
 export const KUBECTL_SCENARIOS: Scenario[] = [
   {
@@ -343,6 +591,7 @@ spec:
       },
     ],
   },
+  ...PART_2,
 ];
 
 // Built from nothing, not from the environment of whoever runs the recorder.

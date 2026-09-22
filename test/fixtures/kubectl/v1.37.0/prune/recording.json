@@ -1,0 +1,147 @@
+{
+  "scenario": "prune",
+  "description": "web deployed with pruning, then its ConfigMap taken out of the manifests: the preview finds it through the inventory, the deploy deletes it, and the preview after lists it no more.",
+  "cliVersion": "v1.37.0",
+  "commands": [
+    {
+      "id": "inventory",
+      "argv": [
+        "kubectl",
+        "get",
+        "configmap",
+        "sluiceway-fe2582ff40821a0e",
+        "--namespace=sluiceway-example",
+        "--ignore-not-found",
+        "--output=json"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "inventory.stdout",
+      "stderr": "inventory.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "live",
+      "argv": [
+        "kubectl",
+        "get",
+        "--namespace=sluiceway-example",
+        "--ignore-not-found",
+        "--show-managed-fields",
+        "--output=json",
+        "-f",
+        "{prune}"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "live.stdout",
+      "stderr": "live.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "diff",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "diff",
+      "env": {
+        "KUBECTL_EXTERNAL_DIFF": "diff -N -U1000000"
+      }
+    },
+    {
+      "id": "apply",
+      "argv": [
+        "kubectl",
+        "apply",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "apply.stdout",
+      "stderr": "apply.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "delete",
+      "argv": [
+        "kubectl",
+        "delete",
+        "--namespace=sluiceway-example",
+        "--ignore-not-found",
+        "-f",
+        "{prune}"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "delete.stdout",
+      "stderr": "delete.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "inventory-after",
+      "argv": [
+        "kubectl",
+        "get",
+        "configmap",
+        "sluiceway-fe2582ff40821a0e",
+        "--namespace=sluiceway-example",
+        "--ignore-not-found",
+        "--output=json"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "inventory-after.stdout",
+      "stderr": "inventory-after.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "live-after",
+      "argv": [
+        "kubectl",
+        "get",
+        "--namespace=sluiceway-example",
+        "--ignore-not-found",
+        "--show-managed-fields",
+        "--output=json",
+        "-f",
+        "{prune}"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "live-after.stdout",
+      "stderr": "live-after.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "diff-after",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 1,
+      "stdout": "diff-after.stdout",
+      "stderr": "diff-after.stderr",
+      "stdoutFormat": "diff",
+      "env": {
+        "KUBECTL_EXTERNAL_DIFF": "diff -N -U1000000"
+      }
+    }
+  ]
+}

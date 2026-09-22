@@ -1,0 +1,26 @@
+{
+  "scenario": "recursive",
+  "description": "web with recursive and a manifest in a subdirectory: the set holds it, as kubectl -R reads it.",
+  "cliVersion": "v1.34.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 1,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "diff",
+      "env": {
+        "KUBECTL_EXTERNAL_DIFF": "diff -N -U1000000"
+      }
+    }
+  ]
+}

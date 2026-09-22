@@ -13,8 +13,12 @@ import type { KubectlOptions } from "./options.ts";
 //   server-side apply, "kubectl", so the preview meets the same conflicts as
 //   the deploy. There is no --force-conflicts: a field another manager owns
 //   fails the preview, before anyone ticks.
-// - No --prune: kubectl's pruning is still alpha. An object taken out of the
-//   manifests stays in the cluster, and the diff never shows a delete.
+// - No --prune: kubectl's pruning is still alpha and does not see an object
+//   a server-side apply made. With the prune option Sluiceway prunes itself,
+//   from the inventory it keeps next to the objects (record 0070).
+// - --force-conflicts and --field-manager only when the stack's options say
+//   so, and then on the preview, the drift check and the deploy alike
+//   (record 0070).
 // - Secrets stay masked: never --show-secrets.
 
 export const KUBECTL_COMMAND = "kubectl";
@@ -32,14 +36,80 @@ export function kustomizeCommand(): string[] {
   return [KUBECTL_COMMAND, "kustomize", "."];
 }
 
+// What makes a server-side apply of this stack: who applies, and whether it
+// takes a field that another field manager holds.
+function applier(options: KubectlOptions): string[] {
+  return [
+    ...(options.forceConflicts === true ? ["--force-conflicts"] : []),
+    ...(options.fieldManager === undefined ? [] : [`--field-manager=${options.fieldManager}`]),
+  ];
+}
+
 // Exit code 0: no differences. 1: differences. Above 1: kubectl or diff
-// failed (kubectl reference, "kubectl diff").
-export function diffCommand(file: string, options: KubectlOptions): string[] {
-  return [KUBECTL_COMMAND, "diff", "--server-side", ...target(options), "-f", file];
+// failed (kubectl reference, "kubectl diff"). The drift check asks for the
+// field managers of both sides as well (record 0070).
+export function diffCommand(
+  file: string,
+  options: KubectlOptions,
+  extra: { managedFields?: boolean } = {},
+): string[] {
+  return [
+    KUBECTL_COMMAND,
+    "diff",
+    "--server-side",
+    ...target(options),
+    ...applier(options),
+    ...(extra.managedFields === true ? ["--show-managed-fields"] : []),
+    "-f",
+    file,
+  ];
 }
 
 export function applyCommand(file: string, options: KubectlOptions): string[] {
-  return [KUBECTL_COMMAND, "apply", "--server-side", ...target(options), "-f", file];
+  return [
+    KUBECTL_COMMAND,
+    "apply",
+    "--server-side",
+    ...target(options),
+    ...applier(options),
+    "-f",
+    file,
+  ];
+}
+
+// The stack's inventory, the ConfigMap that lists what the stack deployed
+// (record 0070). Nothing at all when there is none yet.
+export function inventoryCommand(name: string, options: KubectlOptions): string[] {
+  return [
+    KUBECTL_COMMAND,
+    "get",
+    "configmap",
+    name,
+    ...target(options),
+    "--ignore-not-found",
+    "--output=json",
+  ];
+}
+
+// The live objects a file names, with who holds each field. One object, a
+// List of several, or nothing when none is there.
+export function liveCommand(file: string, options: KubectlOptions): string[] {
+  return [
+    KUBECTL_COMMAND,
+    "get",
+    ...target(options),
+    "--ignore-not-found",
+    "--show-managed-fields",
+    "--output=json",
+    "-f",
+    file,
+  ];
+}
+
+// The deploy's pruning: the objects of the prune file, and one that went in
+// the meantime is no error.
+export function deleteCommand(file: string, options: KubectlOptions): string[] {
+  return [KUBECTL_COMMAND, "delete", ...target(options), "--ignore-not-found", "-f", file];
 }
 
 // The client only: the version check reaches no cluster.

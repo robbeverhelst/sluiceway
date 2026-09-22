@@ -1,0 +1,4 @@
+deployment.apps/web serverside-applied
+secret/web-credentials serverside-applied
+service/web serverside-applied
+configmap/sluiceway-fe2582ff40821a0e serverside-applied

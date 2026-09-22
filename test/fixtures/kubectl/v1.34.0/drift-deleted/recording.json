@@ -1,0 +1,80 @@
+{
+  "scenario": "drift-deleted",
+  "description": "web deployed with pruning, then its ConfigMap deleted by hand: the preview shows a create, and the drift check knows the stack deployed it.",
+  "cliVersion": "v1.34.0",
+  "commands": [
+    {
+      "id": "inventory",
+      "argv": [
+        "kubectl",
+        "get",
+        "configmap",
+        "sluiceway-fe2582ff40821a0e",
+        "--namespace=sluiceway-example",
+        "--ignore-not-found",
+        "--output=json"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "inventory.stdout",
+      "stderr": "inventory.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "diff",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 1,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "diff",
+      "env": {
+        "KUBECTL_EXTERNAL_DIFF": "diff -N -U1000000"
+      }
+    },
+    {
+      "id": "inventory-drift",
+      "argv": [
+        "kubectl",
+        "get",
+        "configmap",
+        "sluiceway-fe2582ff40821a0e",
+        "--namespace=sluiceway-example",
+        "--ignore-not-found",
+        "--output=json"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "inventory-drift.stdout",
+      "stderr": "inventory-drift.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "drift",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "--show-managed-fields",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 1,
+      "stdout": "drift.stdout",
+      "stderr": "drift.stderr",
+      "stdoutFormat": "diff",
+      "env": {
+        "KUBECTL_EXTERNAL_DIFF": "diff -N -U1000000"
+      }
+    }
+  ]
+}

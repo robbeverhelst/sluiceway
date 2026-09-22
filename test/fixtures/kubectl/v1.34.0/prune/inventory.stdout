@@ -1,0 +1,20 @@
+{
+    "apiVersion": "v1",
+    "data": {
+        "objects": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"name\":\"web\"}\n{\"apiVersion\":\"v1\",\"kind\":\"ConfigMap\",\"name\":\"web-settings\"}\n{\"apiVersion\":\"v1\",\"kind\":\"Secret\",\"name\":\"web-credentials\"}\n{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"name\":\"web\"}\n"
+    },
+    "kind": "ConfigMap",
+    "metadata": {
+        "annotations": {
+            "sluiceway.dev/stack": "web"
+        },
+        "creationTimestamp": "2026-09-22T13:45:40Z",
+        "labels": {
+            "app.kubernetes.io/managed-by": "sluiceway"
+        },
+        "name": "sluiceway-fe2582ff40821a0e",
+        "namespace": "sluiceway-example",
+        "resourceVersion": "612",
+        "uid": "add2065b-be57-49a4-a5c8-9e831e49c9a7"
+    }
+}

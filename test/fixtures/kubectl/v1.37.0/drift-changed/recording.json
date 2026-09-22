@@ -1,0 +1,89 @@
+{
+  "scenario": "drift-changed",
+  "description": "web deployed with its own field manager, then scaled and patched by hand: with forceConflicts the preview takes both back, and the drift check names them.",
+  "cliVersion": "v1.37.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "--force-conflicts",
+        "--field-manager=sluiceway-web",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 1,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "diff",
+      "env": {
+        "KUBECTL_EXTERNAL_DIFF": "diff -N -U1000000"
+      }
+    },
+    {
+      "id": "drift",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "--force-conflicts",
+        "--field-manager=sluiceway-web",
+        "--show-managed-fields",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 1,
+      "stdout": "drift.stdout",
+      "stderr": "drift.stderr",
+      "stdoutFormat": "diff",
+      "env": {
+        "KUBECTL_EXTERNAL_DIFF": "diff -N -U1000000"
+      }
+    },
+    {
+      "id": "apply",
+      "argv": [
+        "kubectl",
+        "apply",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "--force-conflicts",
+        "--field-manager=sluiceway-web",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "apply.stdout",
+      "stderr": "apply.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "diff-after",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "--force-conflicts",
+        "--field-manager=sluiceway-web",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "diff-after.stdout",
+      "stderr": "diff-after.stderr",
+      "stdoutFormat": "diff",
+      "env": {
+        "KUBECTL_EXTERNAL_DIFF": "diff -N -U1000000"
+      }
+    }
+  ]
+}

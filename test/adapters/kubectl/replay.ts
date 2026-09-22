@@ -6,7 +6,12 @@
 // path the adapter chose, and keeps what the adapter wrote there.
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { PLAN_FILE, RECORDING_FILE, type Recording } from "../../../scripts/fixtures/recorder.ts";
+import {
+  PLAN_FILE,
+  PRUNE_FILE,
+  RECORDING_FILE,
+  type Recording,
+} from "../../../scripts/fixtures/recorder.ts";
 import { FIXTURE_KUBECTL_VERSIONS } from "../../../scripts/fixtures/versions.ts";
 import type { ProcessRunner, Run, RunResult } from "../../../src/adapters/process.ts";
 
@@ -30,12 +35,15 @@ export interface Replay {
   run: ProcessRunner;
   // Every run the adapter asked for, in order.
   runs: Run[];
-  // The rendered set each run that named one was handed: its path, and what
-  // the file held when the run was asked for.
+  // The rendered set, or the prune file, each run that named one was handed:
+  // its path, and what the file held when the run was asked for.
   sets: { path: string; text: string }[];
 }
 
+// The prune file of record 0070 sits next to the rendered set, and is kept
+// the same way.
 function setPath(recorded: string, asked: string): string | undefined | false {
+  if (recorded === PRUNE_FILE) return asked.endsWith("/prune.yaml") ? asked : false;
   if (recorded !== PLAN_FILE) return recorded === asked ? undefined : false;
   return asked.endsWith("/manifests.yaml") ? asked : false;
 }

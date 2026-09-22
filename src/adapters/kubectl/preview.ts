@@ -6,7 +6,7 @@ import { stripAnsi } from "../pulumi/tool-log.ts";
 import { diffCommand, PREVIEW_DIFF } from "./commands.ts";
 import { kubectlEnvironment, optionsOf } from "./environment.ts";
 import { foldObjects } from "./fold.ts";
-import { type RenderedSet, renderSet } from "./rendered-set.ts";
+import { type Rendered, renderSet } from "./rendered-set.ts";
 import { readDiff } from "./unified.ts";
 
 // A preview renders the stack's manifests into a set of its own and runs
@@ -14,15 +14,21 @@ import { readDiff } from "./unified.ts";
 // dry run, and kubectl hands the object as it is and as it would be to the
 // diff program, which prints both whole. Each gets the stack's time limit.
 // The set goes when the preview ends, unless `apply` asked to keep it
-// (record 0060).
+// (record 0060). With pruning, the objects the deploy deletes join the diff
+// as deletes (record 0070).
 export async function preview(stack: Stack, options: PreviewOptions): Promise<PreviewResult> {
   const rendered = await renderSet(stack, options);
   if (!rendered.ok) {
-    return { ok: false, reason: rendered.reason, detail: [], toolLog: rendered.toolLog };
+    return {
+      ok: false,
+      reason: rendered.reason,
+      detail: rendered.detail,
+      toolLog: rendered.toolLog,
+    };
   }
   let kept = false;
   try {
-    const result = await diff(stack, options, rendered.set, rendered.toolLog);
+    const result = await diff(stack, options, rendered);
     if (result.ok && options.savePlan) {
       kept = true;
       return { ...result, plan: rendered.set };
@@ -36,8 +42,7 @@ export async function preview(stack: Stack, options: PreviewOptions): Promise<Pr
 async function diff(
   stack: Stack,
   options: PreviewOptions,
-  set: RenderedSet,
-  renderLog: string,
+  { set, toolLog: renderLog, pruning }: Extract<Rendered, { ok: true }>,
 ): Promise<PreviewResult> {
   const failed = (
     reason: PreviewFailureReason,
@@ -72,7 +77,10 @@ async function diff(
       "The tool's output: expected the objects that differ, as the exit code says there are.",
     ]);
   }
-  const folded = foldObjects(read.pairs, options.showValues ?? []);
+  const folded = foldObjects(read.pairs, options.showValues ?? [], pruning?.inventory);
   if (!folded.ok) return failed({ kind: folded.reason }, log, folded.detail);
-  return { ok: true, diff: { stackId: stackId(stack), changes: folded.changes }, toolLog: log };
+  const changes = [...folded.changes, ...(pruning?.deletes ?? [])].sort((a, b) =>
+    a.address < b.address ? -1 : a.address > b.address ? 1 : 0,
+  );
+  return { ok: true, diff: { stackId: stackId(stack), changes }, toolLog: log };
 }

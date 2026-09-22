@@ -1,6 +1,8 @@
 import { parse } from "yaml";
 import type { Change, Op } from "../../core/diff.ts";
 import { changedPaths } from "../opentofu/paths.ts";
+import { groupOf, type ListedObject, lists } from "./inventory.ts";
+import { heldByOthers } from "./ownership.ts";
 import type { ObjectPair } from "./unified.ts";
 
 // From the two sides of each object to what a change says (records 0007 and
@@ -14,6 +16,10 @@ import type { ObjectPair } from "./unified.ts";
 //
 // There is no replace: a change the API server cannot make in place, such as
 // a Deployment's selector, fails the server-side dry run, and so the preview.
+//
+// A stack with pruning has its inventory in the set (record 0070). It is
+// Sluiceway's own object and never a change: a stack whose only difference is
+// its inventory is in sync.
 
 // Fields the server writes and a deploy never sets. The dry run moves some of
 // them (a Deployment's generation goes up with every change of its spec), so
@@ -33,14 +39,20 @@ export type Folded =
   // there, never what was found (record 0021).
   | { ok: false; reason: "unreadable-output"; detail: string[] };
 
-interface Identity {
+export interface Identity {
   address: string;
   type: string;
   name: string;
   secret: boolean;
+  // The object as an inventory lists it, with the namespace it has.
+  listed: ListedObject;
 }
 
-export function foldObjects(pairs: ObjectPair[], showValues: readonly string[]): Folded {
+export function foldObjects(
+  pairs: ObjectPair[],
+  showValues: readonly string[],
+  inventory?: string,
+): Folded {
   const changes: Change[] = [];
   const problems: string[] = [];
   const firstAt = new Map<string, number>();
@@ -58,6 +70,7 @@ export function foldObjects(pairs: ObjectPair[], showValues: readonly string[]):
       problems.push(`${at}: expected an object with apiVersion, kind and metadata.name.`);
       return;
     }
+    if (isInventory(identity, inventory)) return;
     const earlier = firstAt.get(identity.address);
     if (earlier !== undefined) {
       problems.push(
@@ -121,7 +134,7 @@ function yamlObject(text: string): Record<string, unknown> | undefined | "unread
 // namespace and the name, as in `Deployment.apps/shop/web`. Kubernetes names
 // hold no "/", so it is unique. What a person sees is the kind and
 // `namespace/name`.
-function identityOf(object: Record<string, unknown> | undefined): Identity | undefined {
+export function identityOf(object: Record<string, unknown> | undefined): Identity | undefined {
   if (object === undefined) return undefined;
   const { apiVersion, kind, metadata } = object;
   if (typeof apiVersion !== "string" || typeof kind !== "string" || kind === "") return undefined;
@@ -138,7 +151,72 @@ function identityOf(object: Record<string, unknown> | undefined): Identity | und
     type: kind,
     name,
     secret: group === "" && kind === "Secret",
+    listed: {
+      apiVersion,
+      kind,
+      ...(namespace === "" ? {} : { namespace }),
+      name: metadata.name,
+    },
   };
+}
+
+function isInventory(identity: Identity, inventory: string | undefined): boolean {
+  return (
+    inventory !== undefined &&
+    identity.type === "ConfigMap" &&
+    groupOf(identity.listed.apiVersion) === "" &&
+    identity.listed.name === inventory
+  );
+}
+
+// What the drift check makes of a diff that shows who holds each field
+// (record 0070), as changes of the two ops drift has (record 0055):
+//
+// - delete: an object the stack's inventory lists, which the manifests still
+//   hold and the cluster does not. Someone deleted it, and the preview shows
+//   the create that puts it back.
+// - update: the paths the preview would change on an object that another
+//   field manager holds and the stack's own apply does not. Someone changed
+//   them since the stack deployed, with `kubectl edit`, `scale`, `patch` or
+//   another tool, and the deploy takes them back. Without forceConflicts such
+//   a change fails the preview with the conflict instead, so it never gets
+//   here.
+//
+// A change the code makes is not drift, and neither is one made with the
+// stack's own field manager: nothing in the cluster tells it from the code.
+export function foldDrift(
+  pairs: ObjectPair[],
+  context: { inventory?: string; listed: readonly ListedObject[]; manager: string },
+): Folded {
+  const drift: Change[] = [];
+  const problems: string[] = [];
+  pairs.forEach((pair, index) => {
+    const live = yamlObject(pair.live);
+    const merged = yamlObject(pair.merged);
+    if (live === "unreadable" || merged === "unreadable") return;
+    const identity = identityOf(merged ?? live);
+    if (identity === undefined || isInventory(identity, context.inventory)) return;
+    const base = { address: identity.address, type: identity.type, name: identity.name };
+    if (live === undefined && merged !== undefined) {
+      if (context.listed.some((listing) => lists(listing, identity.listed))) {
+        drift.push({ ...base, op: "delete", changedKeys: [], replaceKeys: [] });
+      }
+      return;
+    }
+    if (live === undefined || merged === undefined) return;
+    const folded = foldObjects([pair], []);
+    if (!folded.ok) {
+      problems.push(
+        ...folded.detail.map((line) => line.replace("object 1", `object ${index + 1}`)),
+      );
+      return;
+    }
+    const changedKeys = heldByOthers(live, folded.changes[0]?.changedKeys ?? [], context.manager);
+    if (changedKeys.length > 0) drift.push({ ...base, op: "update", changedKeys, replaceKeys: [] });
+  });
+  if (problems.length > 0) return { ok: false, reason: "unreadable-output", detail: problems };
+  drift.sort((a, b) => byCodeUnit(a.address, b.address));
+  return { ok: true, changes: drift };
 }
 
 function withoutServerFields(object: Record<string, unknown>): Record<string, unknown> {

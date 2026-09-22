@@ -1,0 +1,2 @@
+W0922 15:41:56.102399   58836 diff.go:723] Object (apps/v1, Kind=Deployment: web) keeps changing, diffing without lock
+Error from server (Conflict): Apply failed with 1 conflict: conflict with "kubectl" with subresource "scale" using apps/v1: .spec.replicas

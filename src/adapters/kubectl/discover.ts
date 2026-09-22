@@ -3,7 +3,7 @@ import type { Config } from "../../core/config.ts";
 import { DiscoveryError } from "../../core/discovery.ts";
 import type { Stack } from "../../core/stack.ts";
 import { KUBECTL, type KubectlStackOptions, parseKubectlOptions } from "./options.ts";
-import { filesIn, isKustomization, isManifestFile } from "./render.ts";
+import { filesIn, isKustomization, manifestFiles, nestedKustomizations } from "./render.ts";
 
 // A directory of YAML says nothing about which cluster it belongs to, and a
 // manifest looks the same whether a person applies it or a controller reads
@@ -33,12 +33,30 @@ export function discoverKubectl(
       return;
     }
     const shown = JSON.stringify(entry.path);
-    const files = filesIn(join(root, entry.path));
+    const dir = join(root, entry.path);
+    const files = filesIn(dir);
     if (files === undefined) {
       problems.push(`stacks[${index}]: ${shown} is not a directory of the repo. ${NAMES}`);
       return;
     }
-    if (!files.some((file) => isKustomization(file) || isManifestFile(file))) {
+    const recursive = parsed.options.recursive === true;
+    if (recursive && files.some(isKustomization)) {
+      problems.push(
+        `stacks[${index}]: ${shown} is a kustomization, which lists its own files. recursive is for a directory of manifests: take it out of the options.`,
+      );
+      return;
+    }
+    // Record 0070: kubectl -R would read a kustomization file as a manifest.
+    const nested = recursive ? nestedKustomizations(dir) : [];
+    if (nested.length > 0) {
+      for (const sub of nested) {
+        problems.push(
+          `stacks[${index}]: ${JSON.stringify(`${entry.path}/${sub}`)} holds a kustomization, which kubectl -R would read as a manifest. Declare it as a stack of its own, or keep it out of ${shown}.`,
+        );
+      }
+      return;
+    }
+    if (!files.some(isKustomization) && manifestFiles(dir, recursive).length === 0) {
       problems.push(
         `stacks[${index}]: ${shown} holds no manifests (*.yaml, *.yml, *.json) and no kustomization. ${NAMES}`,
       );

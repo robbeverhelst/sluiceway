@@ -142,7 +142,7 @@ describe("what discovery refuses", () => {
       "",
     ].join("\n");
     expect(await problems(MANIFESTS, config)).toEqual([
-      'stacks[0].options: unknown option "workspace". Known options for kubectl: context, namespace.',
+      'stacks[0].options: unknown option "workspace". Known options for kubectl: context, namespace, recursive, prune, forceConflicts, fieldManager.',
       "stacks[0].options.context: must not be empty.",
       "stacks[0].options.namespace: expected text.",
     ]);
@@ -174,6 +174,92 @@ describe("a namespace", () => {
       "stacks:\n  - path: deploy/web\n    tool: kubectl\n    options:\n      namespace: --all\n";
     expect(await problems(MANIFESTS, config)).toEqual([
       'stacks[0].options.namespace: expected a namespace of lower case letters, digits and "-", that starts and ends with a letter or a digit, at most 63 characters.',
+    ]);
+  });
+});
+
+// Part 2 (record 0070): manifests in subdirectories, pruning, and the two
+// options of a server-side apply.
+describe("the options of part 2", () => {
+  test("recursive, prune, forceConflicts and fieldManager ride in the options bag", async () => {
+    const config = [
+      "stacks:",
+      "  - path: deploy/web",
+      "    tool: kubectl",
+      "    options:",
+      "      recursive: true",
+      "      prune: true",
+      "      forceConflicts: true",
+      "      fieldManager: sluiceway-web",
+      "",
+    ].join("\n");
+    expect(await discover(MANIFESTS, config)).toEqual([
+      {
+        path: "deploy/web",
+        options: {
+          tool: "kubectl",
+          recursive: true,
+          prune: true,
+          forceConflicts: true,
+          fieldManager: "sluiceway-web",
+        },
+      },
+    ]);
+  });
+
+  test("a switch is true or false, and a field manager is a name that never reads as a flag", async () => {
+    const config = [
+      "stacks:",
+      "  - path: deploy/web",
+      "    tool: kubectl",
+      "    options:",
+      "      recursive: yes please",
+      "      prune: 1",
+      "      fieldManager: --force",
+      "",
+    ].join("\n");
+    expect(await problems(MANIFESTS, config)).toEqual([
+      "stacks[0].options.recursive: expected true or false.",
+      "stacks[0].options.prune: expected true or false.",
+      'stacks[0].options.fieldManager: expected a field manager of letters, digits, ".", "_" and "-", that starts with a letter or a digit, at most 128 characters.',
+    ]);
+  });
+
+  test("the known options are listed for an unknown one", async () => {
+    const config =
+      "stacks:\n  - path: deploy/web\n    tool: kubectl\n    options:\n      force: true\n";
+    expect(await problems(MANIFESTS, config)).toEqual([
+      'stacks[0].options: unknown option "force". Known options for kubectl: context, namespace, recursive, prune, forceConflicts, fieldManager.',
+    ]);
+  });
+});
+
+describe("recursive", () => {
+  const RECURSIVE =
+    "stacks:\n  - path: deploy/web\n    tool: kubectl\n    options:\n      recursive: true\n";
+
+  test("manifests only in a subdirectory are a stack, as kubectl -R reads them", async () => {
+    expect(await discover({ "deploy/web/nested/deployment.yaml": "" }, RECURSIVE)).toEqual([
+      { path: "deploy/web", options: { tool: "kubectl", recursive: true } },
+    ]);
+  });
+
+  test("a kustomization lists its own files, so recursive does not go with one", async () => {
+    expect(
+      await problems({ "deploy/web/kustomization.yaml": "resources: []\n" }, RECURSIVE),
+    ).toEqual([
+      'stacks[0]: "deploy/web" is a kustomization, which lists its own files. recursive is for a directory of manifests: take it out of the options.',
+    ]);
+  });
+
+  test("a kustomization in a subdirectory is not a manifest, so the stack says which one", async () => {
+    expect(
+      await problems(
+        { ...MANIFESTS, "deploy/web/base/kustomization.yaml": "resources: []\n" },
+        RECURSIVE,
+      ),
+    ).toEqual([
+      'stacks[0]: "deploy/web/base" holds a kustomization, which kubectl -R would read as a manifest. Declare it as a stack of its own, or keep it out of "deploy/web".',
     ]);
   });
 });

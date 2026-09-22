@@ -44,8 +44,18 @@ export type Step =
       stdoutToPlan?: boolean;
     }
   // Writes the plan file the way the adapter does for a directory of
-  // manifests, with RecordOptions.bundle (record 0060).
-  | { kind: "bundle"; cwd: string }
+  // manifests, with RecordOptions.bundle (record 0060): one level, or every
+  // subdirectory with recursive, and with what `append` adds to the bundle,
+  // such as a stack's inventory (record 0070).
+  | {
+      kind: "bundle";
+      cwd: string;
+      recursive?: boolean;
+      append?: (bundled: string) => string;
+    }
+  // Writes the prune file, the second file a kubectl stack with pruning hands
+  // the tool (record 0070).
+  | { kind: "prune-file"; content: string }
   // Runs a command and saves what it printed.
   | {
       kind: "record";
@@ -65,6 +75,9 @@ export type Step =
 // holds no path of the machine that made it. The recorder puts a real path in
 // its place when it runs the command, and a replay puts the adapter's.
 export const PLAN_FILE = "{plan}";
+
+// The same for the prune file of a kubectl stack (record 0070).
+export const PRUNE_FILE = "{prune}";
 
 // What a recorded command has to show for the scenario to be worth keeping. A
 // scenario named "replace" whose preview holds no replace is a lie in waiting.
@@ -113,7 +126,7 @@ export interface RecordOptions {
   // The name of the plan file, "tfplan" when absent.
   planFileName?: string;
   // The plan file of a directory, for the bundle step.
-  bundle?: (dir: string) => string;
+  bundle?: (dir: string, recursive?: boolean) => string;
 }
 
 export const RECORDING_FILE = "recording.json";
@@ -137,7 +150,9 @@ export async function recordScenario(
   const commands: RecordedCommand[] = [];
   const planFile = join(scenarioWork, "plan", options.planFileName ?? "tfplan");
   mkdirSync(join(planFile, ".."), { recursive: true });
-  const argvOf = (argv: string[]) => argv.map((arg) => arg.replace(PLAN_FILE, planFile));
+  const pruneFile = join(scenarioWork, "plan", "prune.yaml");
+  const argvOf = (argv: string[]) =>
+    argv.map((arg) => arg.replace(PLAN_FILE, planFile).replace(PRUNE_FILE, pruneFile));
 
   for (const step of scenario.steps) {
     if (step.kind === "edit") {
@@ -163,7 +178,10 @@ export async function recordScenario(
       if (options.bundle === undefined) {
         throw new Error(`Scenario "${scenario.name}": this tool has no bundle step.`);
       }
-      writeFileSync(planFile, options.bundle(join(project, step.cwd)));
+      const bundled = options.bundle(join(project, step.cwd), step.recursive === true);
+      writeFileSync(planFile, step.append === undefined ? bundled : step.append(bundled));
+    } else if (step.kind === "prune-file") {
+      writeFileSync(pruneFile, step.content);
     } else if (step.kind === "setup") {
       const result = await options.runner({
         argv: argvOf(step.argv),

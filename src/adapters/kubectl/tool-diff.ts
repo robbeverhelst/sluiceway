@@ -14,6 +14,8 @@ import { renderSet } from "./rendered-set.ts";
 export async function toolDiff(stack: Stack, options: PreviewOptions): Promise<ToolDiffResult> {
   const rendered = await renderSet(stack, options);
   if (!rendered.ok) return { ok: false, reason: rendered.reason, toolLog: rendered.toolLog };
+  // With pruning the set holds the inventory, and the log shows it as kubectl
+  // does, with the names it lists and no value (record 0070).
   try {
     const result = await options.run({
       argv: diffCommand(rendered.set.path, optionsOf(stack)),
