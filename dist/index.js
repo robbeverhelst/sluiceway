@@ -51133,6 +51133,7 @@ var stackEntry = exports_external.strictObject({
   tickers: tickers.describe("Tick rule for this stack. Default: the top level tickers.").exactOptional(),
   inputs: globs.describe("Extra globs this stack claims, relative to the repo root.").exactOptional(),
   previewTimeout: exports_external.int().min(1).describe("Time limit for one preview of this stack, in whole minutes. Default: the preview-timeout input.").exactOptional(),
+  dependsOn: exports_external.array(text).describe("Stack ids of the stacks this stack depends on. A tick on this stack is refused while one of them has a change waiting, and when both are ticked they deploy in order.").exactOptional(),
   options: exports_external.record(exports_external.string(), exports_external.unknown()).describe("Named adapter options of the tool. Only an entry with tool takes them.").exactOptional()
 }).superRefine((entry, context3) => {
   if (entry.tool !== undefined)
@@ -51316,7 +51317,7 @@ function inFileOrder(problems, raw) {
   };
   return problems.map((problem) => ({ problem, at: position(problem.path) })).sort((a, b) => compare(a.at, b.at)).map(({ problem }) => problem);
 }
-var RESERVED_KEYS = ["dependsOn", "drift"];
+var RESERVED_KEYS = ["drift"];
 function where(path) {
   const text2 = path.map((segment) => typeof segment === "number" ? `[${segment}]` : `.${String(segment)}`).join("").replace(/^\./, "");
   return text2 === "" ? "" : `${text2}: `;
@@ -51364,6 +51365,9 @@ function applyConfig(config2, found) {
   });
   if (problems.length > 0)
     throw new ConfigError(problems);
+  const dependencyProblems = checkDependsOn(config2, found, stacks);
+  if (dependencyProblems.length > 0)
+    throw new ConfigError(dependencyProblems);
   return stacks.map((stack) => {
     const entries = config2.stacks.filter((entry) => covers(entry, stack)).sort((a, b) => Number(a.name !== undefined) - Number(b.name !== undefined));
     const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
@@ -51372,9 +51376,71 @@ function applyConfig(config2, found) {
       environment: entries.findLast((entry) => entry.environment)?.environment ?? DEFAULT_ENVIRONMENT,
       tickers: entries.findLast((entry) => entry.tickers)?.tickers ?? config2.tickers,
       inputs: [...new Set(entries.flatMap((entry) => entry.inputs ?? []))],
-      ...previewTimeout === undefined ? {} : { previewTimeout }
+      ...previewTimeout === undefined ? {} : { previewTimeout },
+      ...dependsOnOf(entries)
     };
   });
+}
+function dependsOnOf(entries) {
+  const ids = [...new Set(entries.flatMap((entry) => entry.dependsOn ?? []))].sort(byCodeUnit);
+  return ids.length === 0 ? {} : { dependsOn: ids };
+}
+function byCodeUnit(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function checkDependsOn(config2, found, stacks) {
+  const known = new Set(stacks.map(stackId));
+  const all = new Set(found.map(stackId));
+  const problems = config2.stacks.flatMap((entry, index) => (entry.dependsOn ?? []).flatMap((id, at) => {
+    const where2 = `stacks[${index}].dependsOn[${at}]: ${show(id)}`;
+    if (all.has(id) && !known.has(id))
+      return [
+        `${where2} is left out by ignore, so it never has a change to wait for. Remove it here, or change ignore.`
+      ];
+    if (!known.has(id))
+      return [
+        `${where2} is not a stack that discovery found. Write the stack id as a row shows it, such as ${show(stacks[0] ? stackId(stacks[0]) : "network:dev")}.`
+      ];
+    const self = stacks.find((stack) => stackId(stack) === id);
+    if (self && covers(entry, self))
+      return [`${where2} is the stack itself. A stack cannot depend on itself.`];
+    return [];
+  }));
+  if (problems.length > 0)
+    return problems;
+  const edges = new Map;
+  for (const stack of stacks) {
+    const entries = config2.stacks.filter((entry) => covers(entry, stack));
+    edges.set(stackId(stack), dependsOnOf(entries).dependsOn ?? []);
+  }
+  return dependencyCircles(edges).map((circle) => {
+    const [first = "", ...rest] = circle;
+    const links = rest.map((id, index) => `${index === 0 ? "depends on" : "which depends on"} ${id}`);
+    return `dependsOn goes round in a circle: ${first} ${links.join(", ")}. Nothing in a circle could ever deploy first, so take one of these out.`;
+  });
+}
+function dependencyCircles(edges) {
+  const circles = new Map;
+  const walk = (path) => {
+    const last = path[path.length - 1] ?? "";
+    for (const next of edges.get(last) ?? []) {
+      const at = path.indexOf(next);
+      if (at === -1) {
+        walk([...path, next]);
+        continue;
+      }
+      const circle = path.slice(at);
+      const start = circle.indexOf([...circle].sort(byCodeUnit)[0] ?? "");
+      const turned = [...circle.slice(start), ...circle.slice(0, start)];
+      const key = [...turned].sort(byCodeUnit).join(`
+`);
+      if (!circles.has(key))
+        circles.set(key, [...turned, turned[0] ?? ""]);
+    }
+  };
+  for (const id of [...edges.keys()].sort(byCodeUnit))
+    walk([id]);
+  return [...circles.values()].sort((a, b) => byCodeUnit(a[0] ?? "", b[0] ?? ""));
 }
 function covers(entry, stack) {
   return entry.path === stack.path && (entry.name === undefined || entry.name === stack.name);
@@ -51992,7 +52058,7 @@ function foldChanges(found, showValues) {
     return { ok: false, reason: "unreadable-output", detail: unreadable };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
-  changes.sort((a, b) => byCodeUnit(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit2(a.address, b.address));
   return { ok: true, changes };
 }
 function withTracking(known, tracking) {
@@ -52022,13 +52088,13 @@ function keys(resource, op, showValues) {
   }, showValues);
   const replaceKeys = op === "replace" ? sortedSet((change.replace_paths ?? []).map((steps) => replacePath(steps, change.before_sensitive, change.after_sensitive))) : [];
   const changedKeys = sortedSet([...paths, ...replaceKeys]);
-  const shown2 = values.filter((value) => changedKeys.includes(value.path)).sort((a, b) => byCodeUnit(a.path, b.path));
+  const shown2 = values.filter((value) => changedKeys.includes(value.path)).sort((a, b) => byCodeUnit2(a.path, b.path));
   return { changedKeys, replaceKeys, ...shown2.length === 0 ? {} : { values: shown2 } };
 }
 function sortedSet(names) {
-  return [...new Set(names.filter((name) => name !== ""))].sort(byCodeUnit);
+  return [...new Set(names.filter((name) => name !== ""))].sort(byCodeUnit2);
 }
-function byCodeUnit(a, b) {
+function byCodeUnit2(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -52322,7 +52388,7 @@ function foldSteps(steps) {
     return { ok: false, reason: "unreadable-output", detail: unreadable };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
-  changes.sort((a, b) => byCodeUnit2(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit3(a.address, b.address));
   return { ok: true, changes };
 }
 function typeAndName(urn) {
@@ -52344,9 +52410,9 @@ function keys2(step, op) {
   return { changedKeys, replaceKeys, ...values.length === 0 ? {} : { values } };
 }
 function sortedSet2(names) {
-  return [...new Set(names)].sort(byCodeUnit2);
+  return [...new Set(names)].sort(byCodeUnit3);
 }
-function byCodeUnit2(a, b) {
+function byCodeUnit3(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -53178,19 +53244,33 @@ function taskStackId(task) {
 }
 var PAYLOAD_VERSION = 1;
 function deploymentPayload(payload) {
-  return { v: PAYLOAD_VERSION, hash: payload.hash, ticker: payload.ticker, run: payload.run };
+  return {
+    v: PAYLOAD_VERSION,
+    hash: payload.hash,
+    ticker: payload.ticker,
+    run: payload.run,
+    ...payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {}
+  };
 }
 var RUN_ID = /^[1-9]\d*$/;
 function readDeploymentPayload(payload) {
   if (typeof payload !== "object" || payload === null)
     return;
-  const { v, hash: hash2, ticker, run } = payload;
+  const { v, hash: hash2, ticker, run, behind } = payload;
   if (v !== PAYLOAD_VERSION)
     return;
   if (typeof hash2 !== "string" || typeof ticker !== "string" || typeof run !== "string") {
     return;
   }
-  return RUN_ID.test(run) ? { hash: hash2, ticker, run } : undefined;
+  if (!RUN_ID.test(run))
+    return;
+  if (behind === undefined)
+    return { hash: hash2, ticker, run };
+  const ids = Array.isArray(behind) ? behind : [];
+  if (ids.length === 0 || !ids.every((id) => typeof id === "string" && id !== "")) {
+    return;
+  }
+  return { hash: hash2, ticker, run, behind: ids };
 }
 var SUCCEEDED = new Set(["success", "inactive"]);
 var FAILED = new Set(["failure", "error"]);
@@ -53199,6 +53279,10 @@ var IN_SYNC_DESCRIPTION = "nothing to deploy, already in sync";
 var REHEARSED_DESCRIPTION = "rehearsed, nothing was deployed";
 function isRehearsal(status) {
   return status?.state === "inactive" && status.description === REHEARSED_DESCRIPTION;
+}
+var HANDED_ON_DESCRIPTION = "started in a later run";
+function isHandedOn(status) {
+  return status?.state === "inactive" && status.description === HANDED_ON_DESCRIPTION;
 }
 function isOpenStatus(status) {
   const state = status?.state ?? "";
@@ -53231,7 +53315,14 @@ function factOf(record3, payload) {
       at
     };
   }
-  return { kind: "open", deployment: record3.id, waiting: state !== "in_progress", ticker, run };
+  return {
+    kind: "open",
+    deployment: record3.id,
+    waiting: state !== "in_progress",
+    ticker,
+    run,
+    ...payload.behind ? { behind: payload.behind } : {}
+  };
 }
 function deployFacts(records) {
   const facts = { byStack: new Map, succeeded: [], unread: 0 };
@@ -53244,6 +53335,8 @@ function deployFacts(records) {
       facts.unread++;
       continue;
     }
+    if (isHandedOn(record3.status))
+      continue;
     const fact = factOf(record3, payload);
     if (isRehearsal(record3.status)) {
       facts.succeeded.push({
@@ -53279,9 +53372,10 @@ function pendingAgain(fact, hash2) {
 function rowAtLateRead(stack) {
   const { previewedAt, liveState, fact } = stack;
   if (fact?.kind === "open") {
-    return { row: "deploying", from: liveState === "deploying" ? "live" : "record" };
+    const taken = fact.behind ? "queued" : "deploying";
+    return { row: "deploying", from: liveState === taken ? "live" : "record" };
   }
-  const usableLive = liveState !== undefined && liveState !== "deploying";
+  const usableLive = liveState !== undefined && liveState !== "deploying" && liveState !== "queued";
   if (previewedAt === undefined) {
     if (usableLive)
       return { row: "live" };
@@ -53293,37 +53387,6 @@ function rowAtLateRead(stack) {
   if (usableLive)
     return { row: "live" };
   return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
-}
-
-// src/render/destroy-sign.ts
-function destroySign(rows) {
-  return rows.some((row) => row.known && (row.state === "pending" || row.state === "deploying") && row.destroys > 0);
-}
-
-// src/render/escape.ts
-var NAMED = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;"
-};
-function escapeText(text4) {
-  return text4.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
-}
-
-// src/render/header-state.ts
-function headerState(rows) {
-  if (rows.length === 0)
-    return "first-run";
-  const known = rows.filter((row) => row.known);
-  const is = (state) => known.some((row) => row.state === state);
-  if (is("preview-failed") || known.some((row) => row.failed))
-    return "failing";
-  if (is("deploying"))
-    return "deploying";
-  if (is("pending"))
-    return "pending";
-  return "in-sync";
 }
 
 // src/render/marker.ts
@@ -53338,7 +53401,10 @@ function decodeMarkerValue(value) {
   });
 }
 var MARKER_VERSION = 1;
-var ROW_STATES = ["pending", "deploying", "in-sync", "preview-failed"];
+var ROW_STATES = ["pending", "deploying", "in-sync", "preview-failed", "queued"];
+function isDeployingState(state) {
+  return state === "deploying" || state === "queued";
+}
 var ROW_CLOSE_MARKER = "<!-- /sluiceway:row -->";
 var RESCAN_MARKER = "<!-- sluiceway:rescan -->";
 function marker(kind, pairs) {
@@ -53454,6 +53520,37 @@ function parseDashboard(body) {
   return { root: readRoot(lines[0] ?? ""), rows, rescanTicked };
 }
 
+// src/render/destroy-sign.ts
+function destroySign(rows) {
+  return rows.some((row) => row.known && (row.state === "pending" || isDeployingState(row.state)) && row.destroys > 0);
+}
+
+// src/render/escape.ts
+var NAMED = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;"
+};
+function escapeText(text4) {
+  return text4.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
+}
+
+// src/render/header-state.ts
+function headerState(rows) {
+  if (rows.length === 0)
+    return "first-run";
+  const known = rows.filter((row) => row.known);
+  const is = (state) => known.some((row) => row.state === state);
+  if (is("preview-failed") || known.some((row) => row.failed))
+    return "failing";
+  if (known.some((row) => isDeployingState(row.state)))
+    return "deploying";
+  if (is("pending"))
+    return "pending";
+  return "in-sync";
+}
+
 // src/render/pending-crates.ts
 var MAX_CRATES = 12;
 function pendingCrates(rows) {
@@ -53471,7 +53568,7 @@ function utcMinute(at) {
 
 // src/render/row.ts
 var INDENT = "  ";
-function byCodeUnit3(a, b) {
+function byCodeUnit4(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function isDestroy(change2) {
@@ -53502,7 +53599,7 @@ function code(text4) {
   return `<code>${escapeText(text4)}</code>`;
 }
 function sortedKeys(keys3) {
-  return [...new Set(keys3)].sort(byCodeUnit3);
+  return [...new Set(keys3)].sort(byCodeUnit4);
 }
 var ROW_PATH_LENGTH = 80;
 var ROW_PATHS_PER_CHANGE = 10;
@@ -53541,6 +53638,11 @@ function changeLine(change2, options = {}) {
 }
 var ORPHAN_TICK_NOTE = ":information_source: a tick on this row was not picked up. Tick again to deploy.";
 var DEPLOYS_OFF_NOTE = ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick started nothing.";
+function dependencyNote(ids) {
+  const names = ids.map((id) => `**${escapeText(id)}**`).join(" and ");
+  const one = ids.length === 1;
+  return `:information_source: this tick started nothing: it depends on ${names}, which ${one ? "has a change" : "have changes"} waiting. Tick ${one ? "both" : "them all"} to deploy them in order, or deploy ${names} first.`;
+}
 var PENDING_AGAIN_NOTE = ":information_source: pending again right after a deploy of this same change, a value in the program may differ on every run.";
 function pendingAgainLine({ logUrl }) {
   return logUrl === undefined ? PENDING_AGAIN_NOTE : `${PENDING_AGAIN_NOTE} Compare the tool's own diff in the [job log](${logUrl}).`;
@@ -53553,7 +53655,7 @@ function destroyWords(deletes, replaces) {
 }
 function pendingRow(row, options) {
   const level = options.level ?? 0;
-  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit3(a.address, b.address));
+  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit4(a.address, b.address));
   const deletes = changes.filter((change2) => change2.op === "delete");
   const replaces = changes.filter((change2) => change2.op === "replace");
   const folded = changes.filter((change2) => !isDestroy(change2));
@@ -53605,9 +53707,11 @@ function pendingRow(row, options) {
   return lines;
 }
 function deployingRow(row) {
-  const word = row.waiting ? "waiting to start" : "deploying";
+  const behind = row.behind ?? [];
+  const word = behind.length > 0 ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}` : row.waiting ? "waiting to start" : "deploying";
+  const state = behind.length > 0 ? "queued" : "deploying";
   const lines = [
-    `- **${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state: "deploying", destroys: row.destroys })}`
+    `- **${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys })}`
   ];
   if (row.attribution)
     lines.push(row.attribution.full);
@@ -53693,7 +53797,10 @@ var SIGNED_FACT = {
   pending: ", some delete or replace resources",
   deploying: ", some changes delete or replace resources"
 };
-function byCodeUnit4(a, b) {
+function placed(row) {
+  return row.state === "queued" ? "deploying" : row.state;
+}
+function byCodeUnit5(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function plural3(count, word) {
@@ -53733,7 +53840,7 @@ var DOT = {
 };
 var DOT_AT_ZERO = "⚪";
 function countsLine(rows, dots) {
-  const of = (state) => rows.filter((row) => row.state === state).length;
+  const of = (state) => rows.filter((row) => placed(row) === state).length;
   const dot = (kind, count) => dots ? `${count === 0 ? DOT_AT_ZERO : DOT[kind]}&nbsp;` : "";
   const destroying = rows.filter((row) => row.state === "pending" && row.destroys > 0).length;
   const failed = rows.filter((row) => row.failed).length;
@@ -53793,7 +53900,7 @@ function version2(actionRef2) {
   return /^[0-9a-f]{40,}$/.test(actionRef2) ? `\`${actionRef2.slice(0, 7)}\`` : escapeText(actionRef2);
 }
 function renderBody(input2) {
-  const rows = [...input2.rows].sort((a, b) => byCodeUnit4(a.stackId, b.stackId));
+  const rows = [...input2.rows].sort((a, b) => byCodeUnit5(a.stackId, b.stackId));
   const known = rows.filter((row) => row.known);
   const of = (state2) => known.filter((row) => row.state === state2);
   const state = headerState(rows);
@@ -53812,14 +53919,14 @@ function renderBody(input2) {
   out.push("## Pending", pendingLine(input2, state, pending.length));
   if (pending.length > 0)
     out.push(blocks(pending));
-  const deploying = of("deploying");
+  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) => byCodeUnit5(a.stackId, b.stackId));
   if (deploying.length > 0)
     out.push("## Deploying", blocks(deploying));
   const previewFailed = of("preview-failed");
   if (previewFailed.length > 0)
     out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
   const inSync = of("in-sync");
-  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit4(a.stackId, b.stackId));
+  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit5(a.stackId, b.stackId));
   if (inSync.length > 0 || ignored.length > 0) {
     const loud = inSync.filter((row) => row.failed);
     const quiet = inSync.filter((row) => !row.failed);
@@ -53835,7 +53942,7 @@ function renderBody(input2) {
 `), "</details>");
     }
   }
-  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit4(a.stackId, b.stackId)).slice(0, RECENTLY_DEPLOYED);
+  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit5(a.stackId, b.stackId)).slice(0, RECENTLY_DEPLOYED);
   if (recent.length > 0)
     out.push("## Recently deployed", recent.map(recentLine).join(`
 `));
@@ -53876,7 +53983,7 @@ function fitBody(input2, options = {}) {
   });
   const fits = () => render().length <= target;
   for (const level of LEVELS.slice(1)) {
-    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit3(a.stackId, b.stackId));
+    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit4(a.stackId, b.stackId));
     for (const entry of biggestFirst) {
       if (fits())
         break;
@@ -53884,7 +53991,7 @@ function fitBody(input2, options = {}) {
         entry.level = level;
     }
   }
-  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit3(a.stackId, b.stackId));
+  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit4(a.stackId, b.stackId));
   for (const entry of smallestFirst) {
     const reached = entry.level;
     for (const level of LEVELS.slice(0, reached)) {
@@ -54090,18 +54197,18 @@ function read(file2) {
 
 // src/core/diff-hash.ts
 import { createHash } from "node:crypto";
-function byCodeUnit5(a, b) {
+function byCodeUnit6(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function sortedSet3(keys3) {
-  return [...new Set(keys3)].sort(byCodeUnit5);
+  return [...new Set(keys3)].sort(byCodeUnit6);
 }
 function canonicalJson(value) {
   if (typeof value === "string")
     return JSON.stringify(value);
   if (Array.isArray(value))
     return `[${value.map(canonicalJson).join(",")}]`;
-  const members2 = Object.keys(value).sort(byCodeUnit5).flatMap((key) => {
+  const members2 = Object.keys(value).sort(byCodeUnit6).flatMap((key) => {
     const member = value[key];
     return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
   });
@@ -54123,10 +54230,10 @@ function canonicalChange(change2) {
 function canonicalValues(values) {
   if (values === undefined || values.length === 0)
     return;
-  return [...values].sort((a, b) => byCodeUnit5(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
+  return [...values].sort((a, b) => byCodeUnit6(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
 }
 function canonicalDiff(diff) {
-  const changes = diff.changes.map((change2) => ({ address: change2.address, text: canonicalJson(canonicalChange(change2)) })).sort((a, b) => byCodeUnit5(a.address, b.address) || byCodeUnit5(a.text, b.text)).map((change2) => change2.text);
+  const changes = diff.changes.map((change2) => ({ address: change2.address, text: canonicalJson(canonicalChange(change2)) })).sort((a, b) => byCodeUnit6(a.address, b.address) || byCodeUnit6(a.text, b.text)).map((change2) => change2.text);
   return `{"changes":[${changes.join(",")}],"stackId":${JSON.stringify(diff.stackId)}}`;
 }
 function diffHash(diff) {
@@ -54166,6 +54273,8 @@ function deployFailureText(reason) {
       return "deploys are turned off in sluiceway.yaml";
     case "not-started":
       return "the deploy stopped before the tool ran";
+    case "dependency-failed":
+      return "a stack it depends on did not deploy";
   }
 }
 
@@ -54344,6 +54453,64 @@ function attributionSource(github, input2, onFailure) {
   };
 }
 
+// src/core/dependencies.ts
+function byCodeUnit7(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function planDeploys(input2) {
+  const ids = [...new Set(input2.allowed)].sort(byCodeUnit7);
+  const going = new Set(ids);
+  const refused = new Map;
+  for (let changed = true;changed; ) {
+    changed = false;
+    for (const id of ids) {
+      if (refused.has(id))
+        continue;
+      const waitingOn = (input2.dependsOn.get(id) ?? []).filter((dependency) => !input2.open.has(dependency) && !going.has(dependency) && (input2.pending.has(dependency) || refused.has(dependency)));
+      if (waitingOn.length === 0)
+        continue;
+      refused.set(id, [...waitingOn].sort(byCodeUnit7));
+      going.delete(id);
+      changed = true;
+    }
+  }
+  const start = [];
+  const queued = [];
+  for (const id of ids) {
+    if (refused.has(id))
+      continue;
+    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit7);
+    if (behind.length === 0)
+      start.push(id);
+    else
+      queued.push({ stackId: id, behind });
+  }
+  return {
+    start,
+    queued,
+    refused: [...refused].map(([stackId2, waitingOn]) => ({ stackId: stackId2, waitingOn }))
+  };
+}
+function queueState(behind, records) {
+  const newest = new Map;
+  for (const record3 of [...records].sort(newestLast)) {
+    const id = taskStackId(record3.task);
+    if (id !== undefined && !isHandedOn(record3.status))
+      newest.set(id, record3);
+  }
+  let waiting = false;
+  for (const id of behind) {
+    const record3 = newest.get(id);
+    if (!record3)
+      return "dead";
+    if (isOpenStatus(record3.status))
+      waiting = true;
+    else if (record3.status?.state === "failure" || record3.status?.state === "error")
+      return "dead";
+  }
+  return waiting ? "waiting" : "ready";
+}
+
 // src/github/deployments.ts
 async function readDeploymentRecords(github, environments, fallBack) {
   const records = [];
@@ -54372,26 +54539,41 @@ async function readDeploymentRecords(github, environments, fallBack) {
 }
 async function settleEndedRuns(github, records, repoUrl) {
   const settled = { records: [...records], stackIds: [] };
+  const end = async (stackId2, deployment, run, dead) => {
+    const status = await github.createDeploymentStatus(deployment, {
+      state: dead ? "failure" : "error",
+      description: deployFailureText({ kind: dead ? "dependency-failed" : "run-ended" }),
+      logUrl: `${repoUrl}/actions/runs/${run}`
+    });
+    settled.records = settled.records.map((record3) => record3.id === deployment && taskStackId(record3.task) === stackId2 ? { ...record3, status } : record3);
+    settled.stackIds.push(stackId2);
+  };
   for (const [stackId2, fact] of deployFacts(records).byStack) {
-    if (fact.kind !== "open")
+    if (fact.kind !== "open" || fact.behind)
       continue;
     const run = await github.getWorkflowRun(fact.run);
     if (run && !run.completed)
       continue;
-    const status = await github.createDeploymentStatus(fact.deployment, {
-      state: "error",
-      description: deployFailureText({ kind: "run-ended" }),
-      logUrl: `${repoUrl}/actions/runs/${fact.run}`
-    });
-    settled.records = settled.records.map((record3) => record3.id === fact.deployment && taskStackId(record3.task) === stackId2 ? { ...record3, status } : record3);
-    settled.stackIds.push(stackId2);
+    await end(stackId2, fact.deployment, fact.run, false);
+  }
+  for (let ended = true;ended; ) {
+    ended = false;
+    const queued = [...deployFacts(settled.records).byStack].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+    for (const [stackId2, fact] of queued) {
+      if (fact.kind !== "open" || !fact.behind)
+        continue;
+      if (queueState(fact.behind, settled.records) !== "dead")
+        continue;
+      await end(stackId2, fact.deployment, fact.run, true);
+      ended = true;
+    }
   }
   return settled;
 }
 
 // src/render/changes.ts
 function orderChanges(diff) {
-  const changes = [...diff.changes].sort((a, b) => byCodeUnit3(a.address, b.address));
+  const changes = [...diff.changes].sort((a, b) => byCodeUnit4(a.address, b.address));
   return {
     deletes: changes.filter((change2) => change2.op === "delete"),
     replaces: changes.filter((change2) => change2.op === "replace"),
@@ -54629,7 +54811,7 @@ function dashboardCounts(rows) {
   const of = (state) => known.filter((row) => row.state === state).length;
   return {
     pending: of("pending"),
-    deploying: of("deploying"),
+    deploying: of("deploying") + of("queued"),
     previewFailed: of("preview-failed"),
     inSync: of("in-sync"),
     failedDeploys: known.filter((row) => row.failed).length
@@ -54672,7 +54854,7 @@ function json2(value) {
 `;
 }
 function scanResultFile(input2) {
-  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit3(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? { stack: stack.diff.stackId, seconds: seconds(milliseconds), ...diffOf(stack.diff) } : {
+  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit4(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? { stack: stack.diff.stackId, seconds: seconds(milliseconds), ...diffOf(stack.diff) } : {
     stack: stack.stackId,
     seconds: seconds(milliseconds),
     state: "preview-failed",
@@ -54847,6 +55029,9 @@ ${ALREADY_ENDED}
   }
   if (payload.run !== context3.runId) {
     throw new ApplyFailedError(`Deployment record ${id} of ${name} belongs to run ${payload.run}, and this is run ${context3.runId}. \`apply\` deploys a record only in the run whose \`resolve\` job created it. Nothing was deployed and the record was left alone.`);
+  }
+  if (payload.behind) {
+    throw new ApplyFailedError(`Deployment record ${id} of ${name} is queued behind ${payload.behind.map(logGroupTitle).join(" and ")}. \`apply\` never deploys a queued record: a later \`resolve\` starts it once ${payload.behind.length === 1 ? "that stack" : "those stacks"} went out. Nothing was deployed and the record was left alone.`);
   }
   report.ticker = payload.ticker;
   report.outcome = "failed";
@@ -55140,16 +55325,16 @@ async function swapRow(context3, setup, id, make) {
     const mine = make(facts, attributed.get(id)?.lines);
     const rows = [];
     const carried = [];
-    let placed = false;
+    let placed2 = false;
     for (const row of live.rows) {
-      if (!placed && row.known && row.stackId === id) {
+      if (!placed2 && row.known && row.stackId === id) {
         rows.push(mine);
-        placed = true;
+        placed2 = true;
       } else {
         carried.push(row);
       }
     }
-    if (!placed)
+    if (!placed2)
       rows.push(mine);
     const fitted = fitBody({
       root: {
@@ -55248,10 +55433,10 @@ function groups(files) {
     const slash = file2.indexOf("/");
     return slash === -1 ? "." : file2.slice(0, slash);
   };
-  const byDirectory = Map.groupBy([...files].sort(byCodeUnit6), top);
-  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit6(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
+  const byDirectory = Map.groupBy([...files].sort(byCodeUnit8), top);
+  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit8(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
 }
-function byCodeUnit6(a, b) {
+function byCodeUnit8(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -55478,7 +55663,7 @@ function ticksIn(body) {
     if (seen.has(row2.stackId))
       continue;
     seen.add(row2.stackId);
-    if (row2.known && row2.ticked && row2.hash !== undefined) {
+    if (row2.known && row2.ticked && row2.hash !== undefined && row2.state !== "queued") {
       ticks.push({ kind: "row", stackId: row2.stackId, hash: row2.hash });
     }
   }
@@ -55635,7 +55820,7 @@ function clearTick(row2, options = {}) {
     return row2;
   const [first = "", ...rest] = row2.text.split(`
 `);
-  const note = INDENT + (options.note === "deploys-off" ? DEPLOYS_OFF_NOTE : ORPHAN_TICK_NOTE);
+  const note = INDENT + (options.note === "deploys-off" ? DEPLOYS_OFF_NOTE : typeof options.note === "object" ? dependencyNote(options.note.dependsOn) : ORPHAN_TICK_NOTE);
   const lines3 = options.note && !rest.includes(note) ? [note, ...rest] : rest;
   const [cleared] = parseDashboard([first.replace(TICKED_BOX, "- [ ] "), ...lines3].join(`
 `)).rows;
@@ -55666,7 +55851,7 @@ async function resolveTicks(context3, handOn) {
   const { log, github } = context3;
   const issue3 = editedIssue(context3.event);
   if (!issue3) {
-    log.info("The event that started this job is not about an issue. Nothing to do.");
+    await startQueued(context3, handOn);
     return;
   }
   const notTheDashboard = `Issue #${issue3.number} is not the open dashboard. Nothing to do.`;
@@ -55682,12 +55867,14 @@ async function resolveTicks(context3, handOn) {
   let stacks;
   let ignored = [];
   let named = [];
+  let liveRows = [];
   for (let reads = 1;; reads++) {
     const first = await github.readEditHistory(issue3.number, {
       size: HISTORY_PAGE_SIZE,
       after: undefined
     });
-    const { root } = parseDashboard(first.body);
+    const { root, rows } = parseDashboard(first.body);
+    liveRows = rows;
     if (!root) {
       log.info(`The body of #${issue3.number} has no root marker any more. Nothing to do.`);
       return;
@@ -55710,9 +55897,9 @@ async function resolveTicks(context3, handOn) {
       log.info(`${logGroupTitle(tick.stackId)} is ticked, and discovery knows no such stack. Left alone.`);
       return false;
     });
-    const tickers2 = await nameTickers(known, (after) => after === undefined ? Promise.resolve(first) : github.readEditHistory(issue3.number, { size: HISTORY_PAGE_SIZE, after }));
+    const tickers3 = await nameTickers(known, (after) => after === undefined ? Promise.resolve(first) : github.readEditHistory(issue3.number, { size: HISTORY_PAGE_SIZE, after }));
     named = known.flatMap((tick, index) => {
-      const ticker = tickers2[index];
+      const ticker = tickers3[index];
       return ticker ? [{ tick, ticker }] : [];
     });
     const moved = named.some(({ ticker }) => !ticker.named && ticker.reason === "not-in-newest-entry");
@@ -55725,7 +55912,8 @@ async function resolveTicks(context3, handOn) {
     if (tick.kind === "row")
       hashes.set(tick.stackId, tick.hash);
   const ticked = [...hashes.keys()].flatMap((id) => stacks?.get(id) ?? []);
-  const open2 = await openDeployments(context3, ticked);
+  const dependencies = ticked.flatMap(({ dependsOn }) => (dependsOn ?? []).flatMap((id) => stacks?.get(id) ?? []));
+  const open2 = await openDeployments(context3, [...ticked, ...dependencies]);
   const dropped = [];
   const clear = new Map;
   const toJudge = [];
@@ -55790,33 +55978,54 @@ async function resolveTicks(context3, handOn) {
   if (over.length > 0) {
     log.info(`One run starts at most ${start.length} deploys. ${plural2(over.length, "tick")} beyond that ${over.length === 1 ? "is" : "are"} cleared and ${over.length === 1 ? "needs" : "need"} a fresh tick.`);
   }
+  const plan = planDeploys({
+    allowed: start.map(({ stackId: id }) => id),
+    dependsOn: new Map([...stacks?.values() ?? []].map((one) => [stackId(one.stack), one.dependsOn ?? []])),
+    pending: new Set(liveRows.flatMap((row2) => row2.known && row2.state === "pending" ? [row2.stackId] : [])),
+    open: new Set(open2.keys())
+  });
+  for (const { stackId: id, waitingOn } of plan.refused) {
+    const one = waitingOn.length === 1;
+    log.info(`${logGroupTitle(id)} is ticked, and it depends on ${waitingOn.map(logGroupTitle).join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`);
+    const hash2 = hashes.get(id);
+    if (hash2 !== undefined)
+      clear.set(id, { hash: hash2, note: { dependsOn: waitingOn } });
+  }
+  const tickers2 = new Map(start.map(({ stackId: id, ticker }) => [id, ticker]));
+  const toCreate = [
+    ...plan.start.map((id) => ({ id, behind: undefined })),
+    ...plan.queued.map(({ stackId: id, behind }) => ({ id, behind }))
+  ];
   const failures = [];
   const started = [];
-  for (const { stackId: id, ticker } of start) {
+  for (const { id, behind } of toCreate) {
     const stack = stacks?.get(id);
     const hash2 = hashes.get(id);
-    if (!stack || hash2 === undefined)
+    const ticker = tickers2.get(id);
+    if (!stack || hash2 === undefined || ticker === undefined)
       continue;
     try {
       const record3 = await github.createDeployment({
         sha: context3.sha,
         task: deploymentTask(id),
         environment: stack.environment,
-        payload: deploymentPayload({ hash: hash2, ticker, run: context3.runId })
+        payload: deploymentPayload({ hash: hash2, ticker, run: context3.runId, behind })
       });
-      started.push({ stackId: id, environment: stack.environment, deployment: record3.id, ticker });
+      started.push({
+        stackId: id,
+        environment: stack.environment,
+        deployment: record3.id,
+        ticker,
+        behind
+      });
       await github.createDeploymentStatus(record3.id, { state: "queued", logUrl: runUrl(context3) });
-      log.info(`${logGroupTitle(id)}: deployment record ${record3.id} is queued.`);
+      log.info(behind ? `${logGroupTitle(id)}: deployment record ${record3.id} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.` : `${logGroupTitle(id)}: deployment record ${record3.id} is queued.`);
     } catch (error63) {
       failures.push(`The deployment record of ${logGroupTitle(id)} could not be written: ${message2(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). No further deploy was started, and the ticks that are left stay for the next run.`);
       break;
     }
   }
-  handOn(started.map(({ stackId: stack, environment, deployment }) => ({
-    stack,
-    environment,
-    deployment
-  })));
+  handOn(started.flatMap(({ stackId: stack, environment, deployment, behind }) => behind ? [] : [{ stack, environment, deployment }]));
   if (rescan) {
     try {
       await dispatchScan(context3);
@@ -55936,7 +56145,8 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
     runUrl: runUrl(context3),
     waiting: true,
     destroys,
-    attribution: lines3.get(one.stackId)?.lines
+    attribution: lines3.get(one.stackId)?.lines,
+    behind: one.behind
   });
   const rows = [];
   const carried = [];
@@ -55960,7 +56170,8 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
         runUrl: `${context3.repoUrl}/actions/runs/${fact.run}`,
         waiting: fact.waiting,
         destroys,
-        attribution: lines3.get(row2.stackId)?.lines
+        attribution: lines3.get(row2.stackId)?.lines,
+        behind: fact.behind
       });
     } else if (wanted && row2.ticked && row2.hash === wanted.hash) {
       carried.push(clearTick(row2, { note: wanted.note }));
@@ -55999,6 +56210,80 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
     throw new Error(`With these rows swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment records hold what was started, and the next scan brings the rows in line.`);
   }
   return fitted.body;
+}
+async function startQueued(context3, handOn) {
+  const { log, github } = context3;
+  const config2 = loadConfig(context3.root);
+  if (!config2.stacks.some(({ dependsOn }) => dependsOn !== undefined)) {
+    log.info("The event that started this job is not about an issue, and no stack has dependsOn. Nothing to do.");
+    return;
+  }
+  const { stacks, ignored } = await discover2(context3, config2);
+  const all = [...stacks.values()];
+  const involved = all.filter(({ stack, dependsOn }) => dependsOn !== undefined || all.some((other) => other.dependsOn?.includes(stackId(stack)) === true));
+  const settled = await settleEndedRuns(github, await readRecords(context3, all.map(({ environment }) => environment), involved), context3.repoUrl);
+  for (const id of settled.stackIds) {
+    log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
+  }
+  const ready = [...deployFacts(settled.records).byStack].flatMap(([id, fact]) => fact.kind === "open" && fact.behind && stacks.has(id) && queueState(fact.behind, settled.records) === "ready" ? [{ stackId: id, fact }] : []).sort((a, b) => a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0);
+  if (ready.length === 0) {
+    log.info("No queued stack is ready to start. Nothing to do.");
+    return;
+  }
+  const failures = [];
+  const started = [];
+  for (const { stackId: id, fact } of capDeploys(ready).start) {
+    const stack = stacks.get(id);
+    const old = settled.records.find((record3) => record3.id === fact.deployment);
+    const payload = old && readDeploymentPayload(old.payload);
+    if (!stack || !payload)
+      continue;
+    try {
+      const record3 = await github.createDeployment({
+        sha: context3.sha,
+        task: deploymentTask(id),
+        environment: stack.environment,
+        payload: deploymentPayload({
+          hash: payload.hash,
+          ticker: payload.ticker,
+          run: context3.runId
+        })
+      });
+      started.push({
+        stackId: id,
+        environment: stack.environment,
+        deployment: record3.id,
+        ticker: payload.ticker
+      });
+      await github.createDeploymentStatus(record3.id, { state: "queued", logUrl: runUrl(context3) });
+      await github.createDeploymentStatus(fact.deployment, {
+        state: "inactive",
+        description: HANDED_ON_DESCRIPTION,
+        logUrl: runUrl(context3)
+      });
+      log.info(`${logGroupTitle(id)}: what it waited behind went out, so it starts now. Deployment record ${record3.id} is queued and takes over from record ${fact.deployment}.`);
+    } catch (error63) {
+      failures.push(`The deployment record of ${logGroupTitle(id)} could not be written: ${message2(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). No further deploy was started, and the queued stacks that are left wait for the next run.`);
+      break;
+    }
+  }
+  handOn(started.map(({ stackId: stack, environment, deployment }) => ({
+    stack,
+    environment,
+    deployment
+  })));
+  const dashboard = started.length > 0 ? await findDashboard(github, config2.dashboard.label) : undefined;
+  if (dashboard) {
+    try {
+      const result = await writeBody(github, dashboard.number, (liveBody) => swapRows(context3, config2, all, ignored, liveBody, { started, dropped: [], clear: new Map }, new Map));
+      log.info(result.written ? `Wrote the dashboard (#${dashboard.number}).` : `The dashboard (#${dashboard.number}) already says all of this. Nothing was written.`);
+    } catch (error63) {
+      failures.push(message2(error63));
+    }
+  }
+  if (failures.length > 0)
+    throw new Error(failures.join(`
+`));
 }
 
 // src/modes/resolve-job.ts
@@ -56413,7 +56698,7 @@ function fitToBudget(entries, frameCost, budget) {
     entry.level = level;
   };
   const fits = () => frameCost(shortened) + blocks2 - 1 <= budget;
-  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit3(a.stackId, b.stackId);
+  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit4(a.stackId, b.stackId);
   for (const level of LEVELS2.slice(1)) {
     for (const entry of [...entries].sort(bySize((entry2) => entry2.level, -1))) {
       if (fits())
@@ -56454,7 +56739,7 @@ function toolDiffLine(options) {
   return `The tool's own diff of every pending stack, values included, is in the ${log}, in the stack's group.`;
 }
 function renderSummary(stacks, options = {}) {
-  const sorted = [...stacks].sort((a, b) => byCodeUnit3(stackIdOf2(a), stackIdOf2(b)));
+  const sorted = [...stacks].sort((a, b) => byCodeUnit4(stackIdOf2(a), stackIdOf2(b)));
   const diffs = sorted.filter((stack) => stack.kind === "diff");
   const pending = diffs.filter((stack) => stack.diff.changes.length > 0);
   const inSync = diffs.filter((stack) => stack.diff.changes.length === 0);
@@ -56594,7 +56879,7 @@ async function scanning(context3, report) {
   const config2 = loadConfig(context3.root);
   const found = await context3.adapter.discover(context3.root, config2);
   const ignored = ignoredStacks(config2, found);
-  const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit3(stackId(a.stack), stackId(b.stack)));
+  const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit4(stackId(a.stack), stackId(b.stack)));
   const ids = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural2(stacks.length, "stack")}.`);
   const { logDiff } = config2.scan;
@@ -56631,7 +56916,7 @@ async function scanning(context3, report) {
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit3(a.id, b.id));
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit4(a.id, b.id));
     if (round.length > 0 || rounds === 0) {
       await writeSummary2(context3, all, { logDiff, unclaimed });
       report.previewed = all;
@@ -56711,7 +56996,8 @@ async function scanning(context3, report) {
             runUrl: runUrlOf(context3, fact.run),
             waiting: fact.waiting,
             destroys: destroysOf(mine, liveRow),
-            attribution: lines4.get(id)?.lines
+            attribution: lines4.get(id)?.lines,
+            behind: fact.behind
           });
         } else if (liveRow) {
           if (ticked && decided.row === "live") {
@@ -56811,7 +57097,7 @@ async function scanning(context3, report) {
     counts: dashboardCounts(parseDashboard(written.body).rows)
   };
   if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit3(a.id, b.id));
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit4(a.id, b.id));
     await writeSummary2(context3, all, { logDiff, unclaimed }, attributed);
   }
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
@@ -56863,7 +57149,7 @@ async function lateDeploys(context3, stacks, previewed, liveBody) {
   const liveStates = new Map(parseDashboard(liveBody).rows.map((row2) => [row2.stackId, row2.state]));
   const fallBack = stacks.map(({ stack, environment }) => ({ stackId: stackId(stack), environment })).filter(({ stackId: id }) => {
     const result = previewed.get(id)?.result;
-    return result?.ok === true && result.diff.changes.length > 0 || liveStates.get(id) === "deploying";
+    return result?.ok === true && result.diff.changes.length > 0 || isDeployingState(liveStates.get(id) ?? "");
   });
   try {
     const records = await readDeploymentRecords(github, stacks.map(({ environment }) => environment), fallBack);
@@ -57190,7 +57476,11 @@ function openRecordsOfRun(records, runId) {
     const fact = deployFacts([record3]).byStack.get(stackId2);
     if (fact?.kind !== "open" || fact.run !== runId)
       continue;
-    found.set(record3.id, { id: record3.id, stackId: stackId2 });
+    found.set(record3.id, {
+      id: record3.id,
+      stackId: stackId2,
+      ...fact.behind ? { behind: fact.behind } : {}
+    });
   }
   return [...found.values()].sort((a, b) => a.id - b.id);
 }
@@ -57206,25 +57496,53 @@ async function settle2(context3) {
     context3.outputs?.set("dashboard-url", url2);
   const config2 = loadConfig(context3.root);
   const stacks = applyConfig(config2, await context3.adapter.discover(context3.root, config2));
-  const open2 = openRecordsOfRun(await readRecords2(context3, stacks), context3.runId);
-  if (open2.length === 0) {
-    log.info("No deployment record of this run is open. Every deploy it started reported a result.");
-    return;
-  }
-  for (const { id, stackId: stack } of open2) {
+  let records = await readRecords2(context3, stacks);
+  const open2 = openRecordsOfRun(records, context3.runId);
+  const end = async (id, stack, dead) => {
     try {
-      await github.createDeploymentStatus(id, {
-        state: "error",
-        description: deployFailureText({ kind: "run-ended" }),
+      const status = await github.createDeploymentStatus(id, {
+        state: dead ? "failure" : "error",
+        description: deployFailureText({ kind: dead ? "dependency-failed" : "run-ended" }),
         logUrl: `${context3.repoUrl}/actions/runs/${context3.runId}`
       });
+      records = records.map((record3) => record3.id === id ? { ...record3, status } : record3);
     } catch (error63) {
       throw new Error(`The deployment record of ${logGroupTitle(stack)} could not be given its result: ${message3(error63)}. The settle job needs the permission \`deployments: write\` (record 0003).`);
     }
+  };
+  let ended = 0;
+  for (const { id, stackId: stack, behind } of open2) {
+    if (behind)
+      continue;
+    await end(id, stack, false);
+    ended++;
     log.info(`Ended the open deployment of ${logGroupTitle(stack)} (record ${id}): this run ended without a result for it.`);
   }
+  for (let more = true;more; ) {
+    more = false;
+    for (const { id, stackId: stack, behind } of open2) {
+      if (!behind || deployFacts(records).byStack.get(stack)?.kind !== "open")
+        continue;
+      if (queueState(behind, records) !== "dead")
+        continue;
+      await end(id, stack, true);
+      ended++;
+      more = true;
+      log.info(`Ended the queued deployment of ${logGroupTitle(stack)} (record ${id}): a stack it depends on did not deploy.`);
+    }
+  }
+  const ready = [...deployFacts(records).byStack].flatMap(([stack, fact]) => fact.kind === "open" && fact.behind && queueState(fact.behind, records) === "ready" ? [stack] : []);
+  for (const stack of ready) {
+    log.info(`${logGroupTitle(stack)} can start now: what it waited behind went out. Started the workflow again, and its resolve job starts it.`);
+  }
+  if (ended === 0 && ready.length === 0) {
+    log.info(open2.length === 0 ? "No deployment record of this run is open. Every deploy it started reported a result." : "Every deploy this run started reported a result, and what is queued still waits.");
+    return;
+  }
   await dispatchScan2(context3);
-  log.info("Started a full scan, which writes the rows of these stacks again with the failure line.");
+  if (ended > 0) {
+    log.info("Started a full scan, which writes the rows of these stacks again with the failure line.");
+  }
 }
 async function readRecords2(context3, stacks) {
   try {
@@ -57239,7 +57557,7 @@ async function startedHere(context3, stacks) {
     return [];
   const { body } = await context3.github.getIssue(issue3.number);
   const rows = parseDashboard(body).rows;
-  const hinted = new Set(rows.flatMap((row2) => row2.known && (row2.state === "deploying" || row2.ticked) ? [row2.stackId] : []));
+  const hinted = new Set(rows.flatMap((row2) => row2.known && (isDeployingState(row2.state) || row2.ticked) ? [row2.stackId] : []));
   return stacks.flatMap(({ stack, environment }) => hinted.has(stackId(stack)) ? [{ stackId: stackId(stack), environment }] : []);
 }
 async function dispatchScan2(context3) {
