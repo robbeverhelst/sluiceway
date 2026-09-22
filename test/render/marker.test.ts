@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   decodeMarkerValue,
   encodeMarkerValue,
+  parseDashboard,
   RESCAN_MARKER,
   ROW_CLOSE_MARKER,
   rootMarker,
@@ -151,6 +152,32 @@ describe("writing markers", () => {
     expect(rowMarker({ stackId: "a", state: "pending", hash: "00", drift: false })).toBe(
       '<!-- sluiceway:row stack="a" state="pending" hash="00" -->',
     );
+  });
+
+  // Record 0059: the stacks a preview read from a program's stack references,
+  // after drift, so every older key keeps its place.
+  test("depends-on lists the stacks a preview read, last, and is left out when there are none", () => {
+    expect(
+      rowMarker({
+        stackId: "app:prod",
+        state: "pending",
+        hash: "00",
+        drift: true,
+        dependsOn: ["network:prod", "db:prod"],
+      }),
+    ).toBe(
+      '<!-- sluiceway:row stack="app:prod" state="pending" hash="00" drift="true" depends-on="network:prod,db:prod" -->',
+    );
+    expect(rowMarker({ stackId: "app:prod", state: "in-sync", dependsOn: [] })).toBe(
+      '<!-- sluiceway:row stack="app:prod" state="in-sync" -->',
+    );
+  });
+
+  test("an id with a comma, a percent sign or a space reads back as itself", () => {
+    const ids = ["a,b:prod", "100%:prod", "my dir:prod"];
+    const line = `- [ ] **x** ${rowMarker({ stackId: "x", state: "pending", hash: "00", dependsOn: ids })}`;
+    const [row] = parseDashboard(line).rows;
+    expect(row?.known && row.dependsOn).toEqual(ids);
   });
 
   test("a stack id is encoded on the marker", () => {

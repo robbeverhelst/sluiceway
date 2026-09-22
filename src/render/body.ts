@@ -38,8 +38,9 @@ export interface RecentDeploy {
   ticker: string;
   at: Date;
   runUrl: string;
-  // Absent for a deploy that went out (record 0051).
-  result?: "in-sync" | "rehearsed" | undefined;
+  // Absent for a deploy that went out (record 0051). A drift repair went out
+  // too, and says so (record 0059).
+  result?: "in-sync" | "rehearsed" | "drift-repaired" | undefined;
 }
 
 export interface BodyInput {
@@ -238,10 +239,14 @@ function blocks(rows: readonly ParsedRow[]): string {
 }
 
 // The trail of record 0051: a line whose record found nothing to deploy, or
-// was a rehearsal, says so.
+// was a rehearsal, says so. So does a deploy that put drift back (record
+// 0059), in the words the Drifted section uses.
+const DRIFT_REPAIRED_WORDS = "put back what changed outside the code";
+
 const RESULT_WORDS = {
   "in-sync": IN_SYNC_DESCRIPTION,
   rehearsed: REHEARSED_DESCRIPTION,
+  "drift-repaired": DRIFT_REPAIRED_WORDS,
 } as const;
 
 function recentLine(deploy: RecentDeploy): string {

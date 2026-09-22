@@ -176,3 +176,48 @@ describe("the limit of a field", () => {
     expect(page.text.split("\n")[0]).toContain("<b>precious</b>");
   });
 });
+
+// Slice 4.7 (record 0059): drift is listed on the page like a pending row's
+// changes, and a drifted stack, with nothing to deploy from its code, gets a
+// page of its own.
+describe("a preview page with drift", () => {
+  const gone = change("delete", "local:index/file:File", "notes");
+  const changed = change("update", "aws:s3/bucket:Bucket", "logs", { changedKeys: ["tags.owner"] });
+
+  test("of a drifted stack lists what changed outside the code, with every path whole", () => {
+    const page = renderPreviewPage(
+      { stackId: "network:dev", changes: [], drift: [gone, changed] },
+      LINKS,
+    );
+    expect(page.title).toBe("network:dev: 1 changed, 1 gone outside the code");
+    expect(page.summary).toBe(
+      [
+        "**network:dev** · 1 changed, 1 gone outside the code",
+        "Sluiceway's own list of what changed in real infrastructure outside the code, never what it changed to. The code has nothing to deploy, and a deploy puts these back as the code says. It is the drift the stack's row on the [dashboard](https://github.com/example-org/infra/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22sluiceway%22) shows, with every property path whole.",
+        "Every stack this scan previewed is in the [summary](https://github.com/example-org/infra/actions/runs/4242/attempts/1) of the scan, and the tool's own words are in the [job log](https://github.com/example-org/infra/actions/runs/4242/job/106502264185), in the group <code>network:dev</code>.",
+      ].join("\n\n"),
+    );
+    expect(page.text).toBe(
+      [
+        "- <kbd>changed</kbd> <code>aws:s3/bucket:Bucket</code> <b>logs</b> · <code>tags.owner</code>",
+        "- <kbd>gone</kbd> <code>local:index/file:File</code> <b>notes</b>",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("of a pending stack lists the drift after the changes, and says a deploy puts it back", () => {
+    const page = renderPreviewPage({ ...BUCKETS, drift: [gone] }, LINKS);
+    expect(page.title).toBe(
+      "storage/buckets:prod: 1 create, 1 update, 1 replace, 1 delete, 1 gone outside the code",
+    );
+    expect(page.summary.split("\n\n").slice(0, 3)).toEqual([
+      "**storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete** · 1 gone outside the code",
+      ":warning: **This deploy deletes 1, replaces 1.**",
+      "Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](https://github.com/example-org/infra/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22sluiceway%22) shows, with every property path whole. The deploy also puts back what changed outside the code, listed last.",
+    ]);
+    expect(page.text.split("\n").at(-2)).toBe(
+      "- <kbd>gone</kbd> <code>local:index/file:File</code> <b>notes</b>",
+    );
+  });
+});

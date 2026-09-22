@@ -1,7 +1,7 @@
 // What the tests of the resolve mode share. The dashboard is written by a real
 // scan against the same fake GitHub, so every row is one the real renderer
 // made, and a person's tick is an edit of that body.
-import type { ApplyResult, PreviewResult } from "../../src/adapters/adapter.ts";
+import type { ApplyResult } from "../../src/adapters/adapter.ts";
 import type { IssueAuthor } from "../../src/github/port.ts";
 import { type ResolveContext, resolve } from "../../src/modes/resolve.ts";
 import { scan } from "../../src/modes/scan.ts";
@@ -49,7 +49,7 @@ export interface ResolveHarness {
 // requests of the scan are forgotten, so a test counts only what `resolve`
 // asked.
 export async function scanned(
-  table: Record<string, PreviewResult>,
+  table: Parameters<typeof tableAdapter>[0],
   options: {
     config?: string;
     repoUrl?: string;

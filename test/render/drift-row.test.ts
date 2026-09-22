@@ -42,10 +42,10 @@ function driftRow(extra: Partial<DriftRow> = {}): DriftRow {
 }
 
 describe("a drift row", () => {
-  test("has a box, the drift counts, a link to the summary, and every drift line in a fold", () => {
+  test("has a box, the drift counts, a preview link that lands on the summary without a page, and every drift line in a fold", () => {
     expect(renderRow(driftRow())).toBe(
       [
-        `- [ ] **site:prod** · 1 changed, 1 gone outside the code · [summary](${RUN}) <!-- sluiceway:row stack="site:prod" state="drift" hash="3503645c1819ce4f" drift="true" -->`,
+        `- [ ] **site:prod** · 1 changed, 1 gone outside the code · [preview](${RUN}) <!-- sluiceway:row stack="site:prod" state="drift" hash="3503645c1819ce4f" drift="true" -->`,
         "  <details><summary>2 changes outside the code</summary>",
         "  <kbd>changed</kbd> <code>aws:s3/bucket:Bucket</code> <b>assets</b> · <code>tags.owner</code>, <code>versioning.enabled</code><br>",
         "  <kbd>gone</kbd> <code>local:index/file:File</code> <b>notes</b><br>",
@@ -80,7 +80,7 @@ describe("a drift row", () => {
   test("redacted, it names no type, name or path, and keeps the counts", () => {
     expect(renderRow(driftRow(), { redact: true })).toBe(
       [
-        `- [ ] **site:prod** · 1 changed, 1 gone outside the code · [summary](${RUN}) <!-- sluiceway:row stack="site:prod" state="drift" hash="3503645c1819ce4f" drift="true" -->`,
+        `- [ ] **site:prod** · 1 changed, 1 gone outside the code · [preview](${RUN}) <!-- sluiceway:row stack="site:prod" state="drift" hash="3503645c1819ce4f" drift="true" -->`,
         `  Changes outside the code are listed in the [summary](${RUN})`,
         "  <!-- /sluiceway:row -->",
       ].join("\n"),

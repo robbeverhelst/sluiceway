@@ -139,6 +139,22 @@ describe("what a writer does not know", () => {
 
   // Record 0055: drift was the first state that arrived after v1 (record
   // 0009), and it is known now.
+  // Record 0059.
+  test("depends-on is read as a list, and a row without it has none", () => {
+    const body = [
+      '<!-- sluiceway:dashboard v="1" -->',
+      '- [ ] **a:prod** · pending <!-- sluiceway:row stack="a:prod" state="pending" hash="00" depends-on="b:prod,c:prod" -->',
+      '- [ ] **d:prod** · pending <!-- sluiceway:row stack="d:prod" state="pending" hash="01" -->',
+      '- [ ] **e:prod** · pending <!-- sluiceway:row stack="e:prod" state="pending" hash="02" depends-on="" -->',
+    ].join("\n");
+    const { rows } = parseDashboard(body);
+    expect(rows.map((row) => (row.known ? row.dependsOn : "unknown"))).toEqual([
+      ["b:prod", "c:prod"],
+      undefined,
+      undefined,
+    ]);
+  });
+
   test("a drift row is known, ticked, and says that its hash includes drift", () => {
     const body = [
       '- [x] **a:prod** · drift <!-- sluiceway:row stack="a:prod" state="drift" hash="00" drift="true" -->',

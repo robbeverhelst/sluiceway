@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { PreviewOptions, PreviewResult } from "../../src/adapters/adapter.ts";
 import { HANDED_ON_DESCRIPTION } from "../../src/core/deployment.ts";
 import { change, inSync, pending, REPO_URL } from "./harness.ts";
 import {
@@ -216,5 +217,65 @@ describe("a resolve that a dispatch started", () => {
 
     expect(matrix(h)).toEqual([]);
     expect(h.github.requests).toEqual([]);
+  });
+});
+
+// `dependsOn: auto` (slice 4.7, record 0059): the scan puts what a stack's
+// preview read from its stack references on its row, and `resolve` waits on
+// those stacks the way it waits on the ones the file names.
+describe("a stack with dependsOn: auto", () => {
+  const AUTO = "stacks:\n  - path: app\n    dependsOn: auto\n";
+  const reads = (result: PreviewResult, ids: string[]) => async (options: PreviewOptions) =>
+    options.dependencies !== undefined && result.ok
+      ? { ...result, dependencies: { stackIds: ids, elsewhere: 0 } }
+      : result;
+  const READING = { ...TABLE, "app:prod": reads(TABLE["app:prod"], ["network:prod"]) };
+
+  test("a tick is refused while a stack it read has a change waiting", async () => {
+    const h = await scanned(READING, { config: AUTO });
+    tick(h, ALICE, ["app:prod"]);
+
+    await wake(h);
+
+    expect(matrix(h)).toEqual([]);
+    expect(rowsOf(h)["app:prod"]?.split("\n")[1]).toBe(
+      "  :information_source: this tick started nothing: it depends on **network:prod**, which has a change waiting. Tick both to deploy them in order, or deploy **network:prod** first.",
+    );
+  });
+
+  test("ticked together, the stack it read goes first and it is queued behind it", async () => {
+    const h = await scanned(READING, { config: AUTO });
+    tick(h, ALICE, ["app:prod", "network:prod"]);
+
+    await wake(h);
+
+    expect(records(h).map(({ stack }) => stack)).toEqual(["network:prod"]);
+    expect(rowsOf(h)["app:prod"]?.split("\n")[0]).toContain("· queued behind **network:prod** ·");
+  });
+
+  test("a read that would close a circle with the file is dropped, and the log says so", async () => {
+    const h = await scanned(
+      { ...TABLE, "app:prod": reads(TABLE["app:prod"], ["site:prod"]) },
+      { config: `${AUTO}  - path: site\n    dependsOn: [app:prod]\n` },
+    );
+    tick(h, ALICE, ["app:prod"]);
+
+    await wake(h);
+
+    expect((matrix(h) as { stack: string }[]).map(({ stack }) => stack)).toEqual(["app:prod"]);
+    expect(h.log.lines).toContain(
+      "app:prod reads site:prod through its stack references, and site:prod already depends on app:prod. That would be a circle, so app:prod does not wait on site:prod.",
+    );
+  });
+
+  test("without auto, what a row says it read is not read", async () => {
+    const h = await scanned(READING, { config: AUTO });
+    // The same body, with the config that names no auto.
+    await Bun.write(`${h.context.root}/sluiceway.yaml`, "");
+    tick(h, ALICE, ["app:prod"]);
+
+    await wake(h);
+
+    expect((matrix(h) as { stack: string }[]).map(({ stack }) => stack)).toEqual(["app:prod"]);
   });
 });

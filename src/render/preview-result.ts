@@ -37,20 +37,25 @@ export function previewRow(
     };
   }
   const drifted = (result.diff.drift ?? []).length > 0;
+  // What the preview read from the program's stack references (record 0059).
+  const read = result.dependencies?.stackIds ?? [];
+  const dependsOn = read.length === 0 ? {} : { dependsOn: read };
   if (result.diff.changes.length === 0) {
     // Nothing to deploy from the code, and drift found (record 0055). The
-    // row links to the summary, which lists the drift. A preview page shows a
-    // pending diff only.
+    // row links to its preview page, which lists the drift like a pending
+    // row's changes, or to the summary without one (record 0059).
     if (drifted) {
       return {
         state: "drift",
         diff: result.diff,
         hash: diffHash(result.diff),
         runUrl: links.summary,
+        previewUrl: options.pageUrl,
         failure,
+        ...dependsOn,
       };
     }
-    return { state: "in-sync", stackId, failure };
+    return { state: "in-sync", stackId, failure, ...dependsOn };
   }
   return {
     state: "pending",
@@ -59,6 +64,7 @@ export function previewRow(
     runUrl: links.summary,
     previewUrl: options.pageUrl ?? (options.toolDiffInLog ? links.log : undefined),
     failure,
+    ...dependsOn,
   };
 }
 

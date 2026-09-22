@@ -616,7 +616,7 @@ describe("the job of a narrowed scan", () => {
       "Previewed network:dev in 0.5 s: pending",
       "Previewed network:prod in 0.5 s: in sync",
       "Previewed 2 stacks in 2.5 s with a pool of 1. Added up, the previews took 1.0 s. The slowest was network:dev with 0.5 s.",
-      "Wrote the preview pages of 1 pending stack on 0123456: 1 created, 0 updated.",
+      "Wrote the preview pages of 1 stack on 0123456: 1 created, 0 updated.",
       `Wrote the dashboard: https://github.com/acme/infra/issues/1 (${size} of 65,536 characters).`,
       "Carried 2 rows through as they were, for the stacks this scan did not preview.",
     ]);

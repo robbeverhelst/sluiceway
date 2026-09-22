@@ -5,7 +5,13 @@
 // Every other scan, and every narrowed scan that cannot trust its comparison,
 // is a full scan.
 
-import type { Adapter, DriftResult, PreviewResult, ToolDiffResult } from "../adapters/adapter.ts";
+import type {
+  Adapter,
+  DriftResult,
+  PreviewResult,
+  ReadDependencies,
+  ToolDiffResult,
+} from "../adapters/adapter.ts";
 import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import type { Attribution } from "../core/attribution.ts";
@@ -303,7 +309,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   const knownDrift = new Set<string>();
   const plan = await makePlan(context, config, stacks, knownDrift);
   logPlan(context, plan, stacks.length);
-  const checkDrift = driftCheckRule(config, context, knownDrift);
+  const checkDrift = driftCheckRule(config, context, knownDrift, stacks);
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
   const unclaimed = unclaimedFiles(plan, config);
   let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
@@ -361,6 +367,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       shownValues(config.dashboard),
       prepared,
       checkDrift,
+      stacks.map(({ stack }) => stack),
     );
     for (const one of round) previewed.set(one.id, one);
     logResults(context, round);
@@ -945,16 +952,22 @@ async function checkVersion(context: ScanContext, stacks: Stack[]): Promise<void
 // a deploy or the rescan box, and checking there would read every real
 // resource after every deploy. Any other scan checks only the stacks whose
 // row showed drift at its first read, so drift that is known is not dropped
-// when a push previews the stack.
+// when a push previews the stack. A stack entry turns the check on or off for
+// its own stacks, and the same scans check (record 0059).
 function driftCheckRule(
   config: ReturnType<typeof loadConfig>,
   context: ScanContext,
   knownDrift: ReadonlySet<string>,
+  stacks: readonly ConfiguredStack[],
 ): (id: string) => boolean {
-  if (!config.drift.enabled) return () => false;
-  if (context.event === "schedule") return () => true;
-  if (context.event === "workflow_dispatch" && context.startedByPerson) return () => true;
-  return (id) => knownDrift.has(id);
+  const enabled = new Set(
+    stacks.flatMap((one) => ((one.drift ?? config.drift.enabled) ? [stackId(one.stack)] : [])),
+  );
+  if (enabled.size === 0) return () => false;
+  const every =
+    context.event === "schedule" ||
+    (context.event === "workflow_dispatch" && context.startedByPerson === true);
+  return (id) => enabled.has(id) && (every || knownDrift.has(id));
 }
 
 async function previewAll(
@@ -964,6 +977,9 @@ async function previewAll(
   showValues: readonly string[],
   prepared: Set<string>,
   checkDrift: (id: string) => boolean,
+  // Every stack of the repo, which a stack with `dependsOn: auto` may depend
+  // on (record 0059).
+  repoStacks: readonly Stack[],
 ): Promise<Previewed[]> {
   const { log, now, adapter } = context;
   // Nothing to preview, so a repo without stacks needs no tool, and neither
@@ -1004,11 +1020,17 @@ async function previewAll(
       timeoutMinutes: configured.previewTimeout ?? context.previewTimeoutMinutes,
       showValues,
     };
-    const previewedOnly = await adapter.preview(configured.stack, options);
+    const previewedOnly = await adapter.preview(configured.stack, {
+      ...options,
+      ...(configured.dependsOnAuto ? { dependencies: repoStacks } : {}),
+    });
     let milliseconds = now().getTime() - started;
     log.info(
       `Previewed ${logGroupTitle(id)} in ${seconds(milliseconds)}: ${previewOutcome(previewedOnly)}`,
     );
+    if (previewedOnly.ok && previewedOnly.dependencies) {
+      log.info(readDependenciesText(id, previewedOnly.dependencies));
+    }
     // The drift check takes the same slot of the pool and the same time limit,
     // right after the preview, so one stack never runs the tool twice at once
     // (record 0055). A stack whose preview failed has no row to show drift on.
@@ -1054,6 +1076,18 @@ async function previewAll(
     `Previewed ${plural(previewed.length, "stack")} in ${seconds(total)} with a pool of ${context.concurrency}. Added up, the previews took ${seconds(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds(slowest.milliseconds)}.`,
   );
   return [...previewed, ...unpreparedFailures];
+}
+
+// What a stack with `dependsOn: auto` read (record 0059). A reference to a
+// stack outside the repo is said out loud, never kept silent.
+function readDependenciesText(id: string, read: ReadDependencies): string {
+  const named =
+    read.stackIds.length === 0
+      ? `${logGroupTitle(id)} reads no stack of this repo through its stack references.`
+      : `${logGroupTitle(id)} reads ${read.stackIds.map(logGroupTitle).join(", ")} through its stack references.`;
+  if (read.elsewhere === 0) return named;
+  const one = read.elsewhere === 1;
+  return `${named} ${plural(read.elsewhere, "stack reference")} ${one ? "names" : "name"} no stack of this repo that Sluiceway knows, so nothing waits on ${one ? "it" : "them"}.`;
 }
 
 // The tool's own words and every diff in full go to the job log, grouped per
@@ -1112,7 +1146,10 @@ async function writePages(
   for (const { id, result } of round) {
     // A stack previewed again takes the page of its newest preview or none.
     urls.delete(id);
-    if (!result.ok || result.diff.changes.length === 0) continue;
+    // A pending stack, and a drifted one, whose drift the page lists like a
+    // pending stack's changes (record 0059).
+    if (!result.ok) continue;
+    if (result.diff.changes.length === 0 && (result.diff.drift ?? []).length === 0) continue;
     const page = renderPreviewPage(
       result.diff,
       {
@@ -1133,7 +1170,7 @@ async function writePages(
     logDiff && context.jobId !== undefined ? "the job log" : "the summary of the scan";
   if (written.urls.size > 0) {
     log.info(
-      `Wrote the preview pages of ${plural(written.urls.size, "pending stack")} on ${short(context.sha)}: ${written.created} created, ${written.updated} updated.`,
+      `Wrote the preview pages of ${plural(written.urls.size, "stack")} on ${short(context.sha)}: ${written.created} created, ${written.updated} updated.`,
     );
   }
   for (const { stackId: id, message } of written.failed) {
@@ -1149,7 +1186,7 @@ async function writePages(
     );
   } else {
     log.info(
-      `GitHub answered "${refused.message}" while the preview pages were written. No more pages are written in this scan, and the preview links of ${plural(written.skipped.length, "pending stack")} land on ${fallBack}.`,
+      `GitHub answered "${refused.message}" while the preview pages were written. No more pages are written in this scan, and the preview links of ${plural(written.skipped.length, "stack")} land on ${fallBack}.`,
     );
   }
 }

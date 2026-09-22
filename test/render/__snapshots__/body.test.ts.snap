@@ -1875,7 +1875,7 @@ Nothing to deploy from the code.
 
 Real infrastructure changed outside the code. Deploying a stack puts it back as its code says.
 
-- [ ] **g:drift** · 1 gone outside the code · [summary](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="g:drift" state="drift" hash="4be1a0c93d7e5f20" drift="true" -->
+- [ ] **g:drift** · 1 gone outside the code · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="g:drift" state="drift" hash="4be1a0c93d7e5f20" drift="true" -->
   <details><summary>1 change outside the code</summary>
   <kbd>gone</kbd> <code>local:index/file:File</code> <b>notes</b><br>
   </details>

@@ -52,6 +52,10 @@ describe("a tick on a drifted row", () => {
     expect(h.log.lines).toContain(
       "Checked network:dev for drift again, because the diff hash the tick approved covers drift.",
     );
+    // Slice 4.7 (record 0059): the trail says the deploy put the drift back.
+    expect(h.github.issue(1).body).toContain(
+      "- network:dev · ticked by alice · put back what changed outside the code · ",
+    );
   });
 
   test("drift that moved after the tick stops the deploy, and the row shows the fresh drift", async () => {

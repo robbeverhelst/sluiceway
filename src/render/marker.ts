@@ -80,6 +80,21 @@ export interface RowFacts {
   // The diff hash covers drift (records 0009 and 0055), so `apply` checks
   // drift again before it compares, and a deploy puts the drift back.
   drift?: boolean | undefined;
+  // The stacks this stack's preview read from its program's stack references,
+  // for a stack with `dependsOn: auto` (record 0059). `resolve` never
+  // previews, so the row is where it finds them.
+  dependsOn?: readonly string[] | undefined;
+}
+
+// A list of stack ids in one marker value, split on commas. An id is
+// escaped for the comma and the percent sign first, so any id reads back as
+// itself.
+function encodeIds(ids: readonly string[]): string {
+  return ids.map((id) => id.replace(/[%,]/g, (char) => (char === "%" ? "%25" : "%2C"))).join(",");
+}
+
+function decodeIds(value: string): string[] {
+  return value.split(",").map(decodeMarkerValue);
 }
 
 // A pull request the dashboard offers to merge and deploy (record 0054). One
@@ -125,6 +140,9 @@ export function rowMarker(facts: RowFacts): string {
   if (facts.failed) pairs.push(["failed", "true"]);
   if (facts.shortened) pairs.push(["shortened", String(facts.shortened)]);
   if (facts.drift) pairs.push(["drift", "true"]);
+  if (facts.dependsOn && facts.dependsOn.length > 0) {
+    pairs.push(["depends-on", encodeIds(facts.dependsOn)]);
+  }
   return marker("row", pairs);
 }
 
@@ -161,6 +179,9 @@ export type ParsedRow =
       shortened: number;
       // The hash covers drift (record 0055).
       drift: boolean;
+      // Read from the program's stack references (record 0059). Absent when
+      // the marker names none.
+      dependsOn?: string[];
       ticked: boolean;
       text: string;
     }
@@ -258,6 +279,7 @@ export function parseDashboard(body: string): ParsedDashboard {
       const value = pairs.get(key) ?? "";
       return /^\d+$/.test(value) ? Number(value) : 0;
     };
+    const dependsOn = pairs.get("depends-on") ?? "";
     rows.push({
       known: true,
       stackId,
@@ -267,6 +289,7 @@ export function parseDashboard(body: string): ParsedDashboard {
       failed: pairs.get("failed") === "true",
       shortened: count("shortened"),
       drift: pairs.get("drift") === "true",
+      ...(dependsOn === "" ? {} : { dependsOn: decodeIds(dependsOn) }),
       ticked: match[1] === "x" || match[1] === "X",
       text,
     });

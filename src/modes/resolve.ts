@@ -15,7 +15,7 @@ import {
   ignoredStacks,
 } from "../core/config.ts";
 import { loadConfig } from "../core/config-file.ts";
-import { planDeploys, queueState } from "../core/dependencies.ts";
+import { planDeploys, queueState, withReadDependencies } from "../core/dependencies.ts";
 import {
   type DeployFact,
   deployFacts,
@@ -224,6 +224,9 @@ async function resolveTicks(
     if (!moved || reads === MAX_READS) break;
     log.info("The body moved between the read and the walk. Reading again.");
   }
+
+  // What the rows say the previews read from stack references (record 0059).
+  if (stacks) stacks = withRowDependencies(context, stacks, liveRows);
 
   // A stack with an open deployment is taken (record 0003): a second tick for
   // it is dropped, whoever made it.
@@ -990,6 +993,41 @@ async function swapRows(
   return fitted.body;
 }
 
+// `dependsOn: auto` (record 0059): a stack with auto depends on what the file
+// names and on what its row says its last preview read from the program's
+// stack references. A read that would close a circle is dropped and said.
+function withRowDependencies(
+  context: ResolveContext,
+  stacks: Map<string, ConfiguredStack>,
+  rows: readonly ParsedRow[],
+): Map<string, ConfiguredStack> {
+  const auto = new Set(
+    [...stacks.values()].flatMap((one) => (one.dependsOnAuto ? [stackId(one.stack)] : [])),
+  );
+  if (auto.size === 0) return stacks;
+  const read = new Map<string, string[]>();
+  for (const row of rows) {
+    if (row.known && row.dependsOn && !read.has(row.stackId)) read.set(row.stackId, row.dependsOn);
+  }
+  const { dependsOn, dropped } = withReadDependencies({
+    configured: new Map([...stacks].map(([id, one]) => [id, one.dependsOn ?? []])),
+    auto,
+    read,
+  });
+  for (const { stackId: id, dependency } of dropped) {
+    context.log.info(
+      `${logGroupTitle(id)} reads ${logGroupTitle(dependency)} through its stack references, and ${logGroupTitle(dependency)} already depends on ${logGroupTitle(id)}. That would be a circle, so ${logGroupTitle(id)} does not wait on ${logGroupTitle(dependency)}.`,
+    );
+  }
+  return new Map(
+    [...stacks].map(([id, one]) => {
+      const ids = dependsOn.get(id) ?? [];
+      const { dependsOn: _, ...rest } = one;
+      return [id, ids.length === 0 ? rest : { ...rest, dependsOn: ids }];
+    }),
+  );
+}
+
 // A `resolve` that no issue edit started: the one `settle` starts, and any
 // other dispatch of the workflow (record 0056). It starts every queued stack
 // whose dependencies went out, under a record of its own run, because `apply`
@@ -1011,8 +1049,12 @@ async function startQueued(
   }
   const { stacks, ignored } = await discover(context, config);
   const all = [...stacks.values()];
+  // A stack with auto may depend on any stack, and only its row knows which
+  // (record 0059).
+  const anyAuto = all.some(({ dependsOnAuto }) => dependsOnAuto);
   const involved = all.filter(
     ({ stack, dependsOn }) =>
+      anyAuto ||
       dependsOn !== undefined ||
       all.some((other) => other.dependsOn?.includes(stackId(stack)) === true),
   );

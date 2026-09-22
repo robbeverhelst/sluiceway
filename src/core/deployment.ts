@@ -176,8 +176,9 @@ export interface SucceededDeploy {
   sha: string;
   // Absent for a deploy that went out. "in-sync": the fresh preview had
   // nothing to deploy. "rehearsed": a rehearsal, nothing went out (record
-  // 0051).
-  result?: "in-sync" | "rehearsed";
+  // 0051). "drift-repaired": it went out, and the approved hash covered
+  // drift, which it put back (record 0059).
+  result?: "in-sync" | "rehearsed" | "drift-repaired";
 }
 
 export interface DeployFacts {
@@ -313,7 +314,11 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
         run: fact.run,
         at: fact.at,
         sha: record.sha,
-        ...(fact.inSync ? { result: "in-sync" as const } : {}),
+        ...(fact.inSync
+          ? { result: "in-sync" as const }
+          : payload.drift
+            ? { result: "drift-repaired" as const }
+            : {}),
       });
     }
   }

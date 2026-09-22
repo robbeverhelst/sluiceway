@@ -68,11 +68,18 @@ describe("a preview with drift", () => {
     toolLog: "",
   };
 
-  test("with no change is a drift row that links to the summary", () => {
+  // Slice 4.7 (record 0059): its drift is listed like a pending row's changes,
+  // on a preview page of its own.
+  test("with no change is a drift row whose preview link lands on its preview page", () => {
     const row = previewRow("network:dev", DRIFTED, LINKS, undefined, { pageUrl: "https://page" });
     expect(row.state).toBe("drift");
-    expect(renderRow(row).split("\n")[0]).toContain(`[summary](${LINKS.summary})`);
+    expect(renderRow(row).split("\n")[0]).toContain("· [preview](https://page) ");
     expect(previewOutcome(DRIFTED)).toBe("drift");
+  });
+
+  test("without a preview page the drift row's preview link lands on the summary", () => {
+    const row = previewRow("network:dev", DRIFTED, LINKS);
+    expect(renderRow(row).split("\n")[0]).toContain(`· [preview](${LINKS.summary}) `);
   });
 
   test("with changes is a pending row that also shows the drift", () => {
@@ -92,5 +99,53 @@ describe("a preview with drift", () => {
     };
     expect(previewRow("network:dev", none, LINKS).state).toBe("in-sync");
     expect(previewOutcome(none)).toBe("in sync");
+  });
+});
+
+// Record 0059: the stacks a preview read from the program's stack references
+// ride on every row the preview gives, so `resolve`, which never previews,
+// finds them in the body.
+describe("a preview that read what its stack depends on", () => {
+  const read = (result: PreviewResult): PreviewResult =>
+    result.ok ? { ...result, dependencies: { stackIds: ["network:prod"], elsewhere: 1 } } : result;
+  const marker = (result: PreviewResult) =>
+    renderRow(previewRow("app:prod", result, LINKS)).split("\n")[0] ?? "";
+
+  test("puts them on a pending row, a drift row and an in sync row", () => {
+    if (!PENDING.ok) throw new Error("the fixture is a diff");
+    const inSync: PreviewResult = {
+      ok: true,
+      diff: { stackId: "app:prod", changes: [] },
+      toolLog: "",
+    };
+    const drifted: PreviewResult = {
+      ok: true,
+      diff: {
+        stackId: "app:prod",
+        changes: [],
+        drift: [
+          {
+            address: "x",
+            type: "local:index/file:File",
+            name: "notes",
+            op: "delete",
+            changedKeys: [],
+            replaceKeys: [],
+          },
+        ],
+      },
+      toolLog: "",
+    };
+    for (const result of [PENDING, inSync, drifted]) {
+      expect(marker(read(result))).toContain(' depends-on="network:prod" -->');
+    }
+  });
+
+  test("a preview that read none, or was not asked, adds nothing", () => {
+    if (!PENDING.ok) throw new Error("the fixture is a diff");
+    expect(marker(PENDING)).not.toContain("depends-on");
+    expect(marker({ ...PENDING, dependencies: { stackIds: [], elsewhere: 2 } })).not.toContain(
+      "depends-on",
+    );
   });
 });

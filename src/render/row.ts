@@ -49,6 +49,9 @@ export interface PendingRow {
   // log that holds the tool's own diff of the stack, when it holds one (record
   // 0048).
   pendingAgain?: { logUrl?: string | undefined } | undefined;
+  // The stacks its preview read from the program's stack references (record
+  // 0059). They go on the marker and nowhere else.
+  dependsOn?: readonly string[] | undefined;
 }
 
 // A stack with nothing to deploy from its code and drift in real
@@ -61,9 +64,13 @@ export interface DriftRow {
   hash: string;
   // The attempt of the run whose summary lists the drift (record 0044).
   runUrl: string;
+  // The stack's preview page, which lists the drift (record 0059). The
+  // `preview` link lands on the summary without one.
+  previewUrl?: string | undefined;
   failure?: FailureLine | undefined;
   orphanTick?: boolean | undefined;
   ticked?: boolean | undefined;
+  dependsOn?: readonly string[] | undefined;
 }
 
 // Written by `resolve` without a diff (record 0014), so it has no box, no
@@ -99,6 +106,7 @@ export interface InSyncRow {
   state: "in-sync";
   stackId: string;
   failure?: FailureLine | undefined;
+  dependsOn?: readonly string[] | undefined;
 }
 
 export type Row = PendingRow | DriftRow | DeployingRow | PreviewFailedRow | InSyncRow;
@@ -325,14 +333,17 @@ function driftRow(row: DriftRow, options: RowOptions): string[] {
   const summary = `[summary](${row.runUrl})`;
   const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
   const lines = [
-    `- ${box}**${escapeText(row.diff.stackId)}** · ${driftCounts(drift)} · ${summary} ${rowMarker({
-      stackId: row.diff.stackId,
-      state: "drift",
-      hash: row.hash,
-      failed: row.failure !== undefined,
-      shortened: level >= 2 ? level : 0,
-      drift: true,
-    })}`,
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${driftCounts(drift)} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker(
+      {
+        stackId: row.diff.stackId,
+        state: "drift",
+        hash: row.hash,
+        failed: row.failure !== undefined,
+        shortened: level >= 2 ? level : 0,
+        drift: true,
+        dependsOn: row.dependsOn,
+      },
+    )}`,
   ];
   if (row.failure) lines.push(failureLine(row.failure));
   if (row.orphanTick && !options.readOnly) lines.push(ORPHAN_TICK_NOTE);
@@ -364,6 +375,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
         failed: row.failure !== undefined,
         shortened: level,
         drift: drift.length > 0,
+        dependsOn: row.dependsOn,
       },
     )}`,
   ];
@@ -445,6 +457,7 @@ function inSyncRow(row: InSyncRow): string[] {
       stackId: row.stackId,
       state: "in-sync",
       failed: row.failure !== undefined,
+      dependsOn: row.dependsOn,
     })}`,
   ];
   if (row.failure) lines.push(failureLine(row.failure));

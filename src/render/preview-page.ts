@@ -1,4 +1,4 @@
-// The preview page of a pending stack (record 0050): a check run on the
+// The preview page of a pending or a drifted stack (records 0050 and 0059): a check run on the
 // scanned commit whose output is Sluiceway's own diff of that stack. It is
 // rendered from the same diff as the row and the summary and shows nothing
 // they could not show: addresses, ops, tracking changes and property paths,
@@ -8,7 +8,7 @@
 import type { Diff } from "../core/diff.ts";
 import { orderChanges } from "./changes.ts";
 import { escapeText } from "./escape.ts";
-import { changeLine, counts, destroyWords } from "./row.ts";
+import { changeLine, counts, destroyWords, driftCounts, driftLine, sortedDrift } from "./row.ts";
 
 // GitHub refuses a summary or a text over 65,535 characters, and a summary
 // over 65,535 UTF-8 bytes. A text over 65,535 bytes is cut without an error,
@@ -72,16 +72,28 @@ export function renderPreviewPage(
   const id = escapeText(diff.stackId);
   const { deletes, replaces, others } = orderChanges(diff);
   const destroys = [...deletes, ...replaces];
-  const counted = counts([...destroys, ...others]);
+  // Drift is listed after the changes, like on the row (record 0059). A
+  // resource gone outside the code is no destroy: a deploy creates it again.
+  const drift = sortedDrift(diff);
+  const counted = [
+    ...(diff.changes.length > 0 ? [counts([...destroys, ...others])] : []),
+    ...(drift.length > 0 ? [driftCounts(drift)] : []),
+  ];
+  const also =
+    drift.length > 0
+      ? " The deploy also puts back what changed outside the code, listed last."
+      : "";
 
   const summary = [
-    `**${id}** · ${counted}`,
+    `**${id}** · ${counted.join(" · ")}`,
     ...(destroys.length > 0
       ? [`:warning: **This deploy ${destroyWords(deletes.length, replaces.length)}.**`]
       : []),
-    diff.changes.some((change) => (change.values ?? []).length > 0)
-      ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.`
-      : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.`,
+    diff.changes.length === 0
+      ? `Sluiceway's own list of what changed in real infrastructure outside the code, never what it changed to. The code has nothing to deploy, and a deploy puts these back as the code says. It is the drift the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.`
+      : diff.changes.some((change) => (change.values ?? []).length > 0)
+        ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}`
+        : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}`,
     `Every stack this scan previewed is in the [summary](${links.summary}) of the scan, and the tool's own words are in the ${jobLog(links)}, in the group <code>${id}</code>.`,
     ...(options.toolDiffInLog
       ? [
@@ -94,6 +106,7 @@ export function renderPreviewPage(
   const lines = [
     ...destroys.map((change) => `- :warning: ${changeLine(change)}\n`),
     ...others.map((change) => `- ${changeLine(change)}\n`),
+    ...drift.map((change) => `- ${driftLine(change)}\n`),
   ];
   const limit = options.limit ?? PREVIEW_PAGE_FIELD_LIMIT;
   const sizes = lines.map(byteLength);
@@ -113,7 +126,7 @@ export function renderPreviewPage(
 
   return {
     // The title is shown as plain text, so it only loses what could break a line.
-    title: `${diff.stackId.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")}: ${counted.replaceAll("**", "")}`,
+    title: `${diff.stackId.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")}: ${counted.join(", ").replaceAll("**", "")}`,
     summary,
     text,
     unlisted,

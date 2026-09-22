@@ -107,7 +107,7 @@ describe("a body with drift (record 0055)", () => {
         "",
         "Real infrastructure changed outside the code. Deploying a stack puts it back as its code says.",
         "",
-        `- [ ] **apps/api:prod** · 1 gone outside the code · [summary](${RUN_URL}) <!-- sluiceway:row stack="apps/api:prod" state="drift" hash="4be1a0c93d7e5f20" drift="true" -->`,
+        `- [ ] **apps/api:prod** · 1 gone outside the code · [preview](${RUN_URL}) <!-- sluiceway:row stack="apps/api:prod" state="drift" hash="4be1a0c93d7e5f20" drift="true" -->`,
         "  <details><summary>1 change outside the code</summary>",
         "  <kbd>gone</kbd> <code>local:index/file:File</code> <b>notes</b><br>",
         "  </details>",
@@ -832,6 +832,20 @@ describe("recently deployed", () => {
     );
     expect(all[all.indexOf("## Recently deployed") + 1]).toBe(
       "- apps/auth:prod · ticked by alice · rehearsed, nothing was deployed · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
+    );
+  });
+
+  // Slice 4.7 (record 0059): a deploy that put drift back says so.
+  test("a drift repair says so", () => {
+    const all = paragraphs(
+      renderBody(
+        input(DASHBOARDS["in-sync"], {
+          recentlyDeployed: [{ ...(RECENT[0] as RecentDeploy), result: "drift-repaired" }],
+        }),
+      ),
+    );
+    expect(all[all.indexOf("## Recently deployed") + 1]).toBe(
+      "- apps/auth:prod · ticked by alice · put back what changed outside the code · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
     );
   });
 

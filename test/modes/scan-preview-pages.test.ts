@@ -70,7 +70,7 @@ describe("the preview pages of a scan", () => {
     const { context, log } = harness(tableAdapter(TABLE()));
     await scan(context);
     expect(log.lines).toContain(
-      "Wrote the preview pages of 2 pending stacks on 0123456: 2 created, 0 updated.",
+      "Wrote the preview pages of 2 stacks on 0123456: 2 created, 0 updated.",
     );
   });
 
@@ -86,7 +86,7 @@ describe("the preview pages of a scan", () => {
     const checks = github.requests.filter((one) => one.includes("CheckRun"));
     expect(checks).toEqual(["listCheckRuns", "updateCheckRun", "updateCheckRun"]);
     expect(log.lines).toContain(
-      "Wrote the preview pages of 2 pending stacks on 0123456: 0 created, 2 updated.",
+      "Wrote the preview pages of 2 stacks on 0123456: 0 created, 2 updated.",
     );
   });
 
@@ -167,7 +167,7 @@ describe("a refusal that is not about the permission", () => {
     await scan(context);
     expect(dashboardBody(github)).toContain(`· 1 update · [preview](${SUMMARY_URL})`);
     expect(log.lines).toContain(
-      'GitHub answered "You have exceeded a secondary rate limit." while the preview pages were written. No more pages are written in this scan, and the preview links of 2 pending stacks land on the summary of the scan.',
+      'GitHub answered "You have exceeded a secondary rate limit." while the preview pages were written. No more pages are written in this scan, and the preview links of 2 stacks land on the summary of the scan.',
     );
   });
 });
@@ -190,7 +190,7 @@ describe("a page that fails on its own", () => {
       "The preview page of zone:dev could not be written: Server Error. Its preview link lands on the summary of the scan.",
     );
     expect(log.lines).toContain(
-      "Wrote the preview pages of 1 pending stack on 0123456: 1 created, 0 updated.",
+      "Wrote the preview pages of 1 stack on 0123456: 1 created, 0 updated.",
     );
   });
 });

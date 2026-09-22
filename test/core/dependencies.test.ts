@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { planDeploys, queueState } from "../../src/core/dependencies.ts";
+import { planDeploys, queueState, withReadDependencies } from "../../src/core/dependencies.ts";
 import {
   type DeploymentRecord,
   deployFacts,
@@ -220,5 +220,71 @@ describe("queueState", () => {
         ],
       ),
     ).toBe("waiting");
+  });
+});
+
+// `dependsOn: auto` (slice 4.7, record 0059): `resolve` adds what a stack's
+// row says its preview read to what sluiceway.yaml names. A read that names a
+// stack discovery does not know, or the stack itself, is left out, and one
+// that would close a circle is dropped and named, so a chain can never wait
+// on itself.
+describe("withReadDependencies", () => {
+  const configured = new Map<string, string[]>([
+    ["app:prod", []],
+    ["db:prod", []],
+    ["network:prod", []],
+    ["site:prod", ["app:prod"]],
+  ]);
+
+  test("adds what the row read, only for a stack with auto", () => {
+    const { dependsOn, dropped } = withReadDependencies({
+      configured,
+      auto: new Set(["app:prod"]),
+      read: new Map([
+        ["app:prod", ["network:prod", "db:prod"]],
+        ["db:prod", ["network:prod"]],
+      ]),
+    });
+    expect(dependsOn.get("app:prod")).toEqual(["db:prod", "network:prod"]);
+    // db:prod has no auto, so its row is not read.
+    expect(dependsOn.get("db:prod")).toEqual([]);
+    expect(dependsOn.get("site:prod")).toEqual(["app:prod"]);
+    expect(dropped).toEqual([]);
+  });
+
+  test("keeps what the file names, and each stack once", () => {
+    const { dependsOn } = withReadDependencies({
+      configured: new Map([...configured, ["app:prod", ["network:prod"]]]),
+      auto: new Set(["app:prod"]),
+      read: new Map([["app:prod", ["network:prod", "db:prod"]]]),
+    });
+    expect(dependsOn.get("app:prod")).toEqual(["db:prod", "network:prod"]);
+  });
+
+  test("a stack discovery does not know, and the stack itself, are left out", () => {
+    const { dependsOn } = withReadDependencies({
+      configured,
+      auto: new Set(["app:prod"]),
+      read: new Map([["app:prod", ["gone:prod", "app:prod"]]]),
+    });
+    expect(dependsOn.get("app:prod")).toEqual([]);
+  });
+
+  test("a read that closes a circle is dropped and named", () => {
+    const { dependsOn, dropped } = withReadDependencies({
+      configured,
+      auto: new Set(["app:prod", "network:prod"]),
+      read: new Map([
+        // site:prod depends on app:prod in the file.
+        ["app:prod", ["site:prod", "network:prod"]],
+        ["network:prod", ["app:prod"]],
+      ]),
+    });
+    expect(dependsOn.get("app:prod")).toEqual(["network:prod"]);
+    expect(dependsOn.get("network:prod")).toEqual([]);
+    expect(dropped).toEqual([
+      { stackId: "app:prod", dependency: "site:prod" },
+      { stackId: "network:prod", dependency: "app:prod" },
+    ]);
   });
 });

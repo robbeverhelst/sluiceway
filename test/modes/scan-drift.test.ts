@@ -216,3 +216,55 @@ describe("a tick on a drifted row that nothing picked up", () => {
     expect(adapter.applied).toEqual([]);
   });
 });
+
+// Slice 4.7 (record 0059): drift per stack, and a drifted stack's page.
+describe("drift on a stack entry", () => {
+  test("turns the check off for its stacks while the top level has it on", async () => {
+    const adapter = tableAdapter(TABLE, {}, {}, DRIFTS);
+    const { context } = harness(adapter, {
+      config: `${ON}stacks:\n  - path: network\n    drift:\n      enabled: false\n`,
+      event: "schedule",
+    });
+    await scan(context);
+    expect(adapter.driftChecked.sort()).toEqual(["app:prod", "site:prod"]);
+  });
+
+  test("turns it on for its stacks alone while the top level has it off", async () => {
+    const adapter = tableAdapter(TABLE, {}, {}, DRIFTS);
+    const { context, github } = harness(adapter, {
+      config: "stacks:\n  - path: network\n    drift:\n      enabled: true\n",
+      event: "schedule",
+    });
+    await scan(context);
+    expect(adapter.driftChecked).toEqual(["network:dev"]);
+    expect(rowsOf(dashboardBody(github))["network:dev"]).toMatchObject({ state: "drift" });
+  });
+
+  test("the same scans check: a dispatch by the workflow token does not", async () => {
+    const adapter = tableAdapter(TABLE, {}, {}, DRIFTS);
+    const { context } = harness(adapter, {
+      config: "stacks:\n  - path: network\n    drift:\n      enabled: true\n",
+      event: "workflow_dispatch",
+      startedByPerson: false,
+    });
+    await scan(context);
+    expect(adapter.driftChecked).toEqual([]);
+  });
+});
+
+describe("the preview page of a drifted stack", () => {
+  test("lists its drift, and the drifted row's preview link lands on it", async () => {
+    const adapter = tableAdapter(TABLE, {}, {}, DRIFTS);
+    const { context, github } = harness(adapter, { config: ON, event: "schedule" });
+    await scan(context);
+    const page = github.checkRuns(SHA).find((run) => run.name === "sluiceway / network:dev");
+    expect(page?.output?.title).toBe("network:dev: 1 gone outside the code");
+    expect(page?.output?.text).toContain("<kbd>gone</kbd>");
+    expect(dashboardBody(github)).toContain(
+      `- [ ] **network:dev** · 1 gone outside the code · [preview](${page?.htmlUrl})`,
+    );
+    // A pending stack that also drifted lists its drift on its page too.
+    const app = github.checkRuns(SHA).find((run) => run.name === "sluiceway / app:prod");
+    expect(app?.output?.text).toContain("<kbd>changed</kbd>");
+  });
+});

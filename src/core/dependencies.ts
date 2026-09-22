@@ -103,3 +103,49 @@ export function queueState(
   }
   return waiting ? "waiting" : "ready";
 }
+
+export interface ReadDependenciesInput {
+  // Stack id to the stack ids sluiceway.yaml names, for every stack that
+  // discovery found and ignore kept.
+  configured: ReadonlyMap<string, readonly string[]>;
+  // The stacks with `dependsOn: auto`.
+  auto: ReadonlySet<string>;
+  // Stack id to the stack ids its row says its preview read.
+  read: ReadonlyMap<string, readonly string[]>;
+}
+
+// `dependsOn: auto` (record 0059): what a stack with auto depends on is what
+// the file names and what its row says its preview read from the program's
+// stack references. `resolve` never previews, so the row is its one source,
+// as it is for the pending state (record 0056). A read that names a stack
+// discovery does not know, or the stack itself, is left out. The file's list
+// has no circle (the loader refuses one), and a read that would close one is
+// dropped, in stack id order, so a chain never waits on itself.
+export function withReadDependencies(input: ReadDependenciesInput): {
+  dependsOn: Map<string, string[]>;
+  dropped: { stackId: string; dependency: string }[];
+} {
+  const dependsOn = new Map([...input.configured].map(([id, ids]) => [id, [...ids]]));
+  const reaches = (from: string, to: string): boolean => {
+    const seen = new Set<string>();
+    const walk = (at: string): boolean => {
+      if (at === to) return true;
+      if (seen.has(at)) return false;
+      seen.add(at);
+      return (dependsOn.get(at) ?? []).some(walk);
+    };
+    return walk(from);
+  };
+  const dropped: { stackId: string; dependency: string }[] = [];
+  for (const id of [...input.auto].sort(byCodeUnit)) {
+    const list = dependsOn.get(id);
+    if (list === undefined) continue;
+    for (const dependency of [...(input.read.get(id) ?? [])].sort(byCodeUnit)) {
+      if (dependency === id || !dependsOn.has(dependency) || list.includes(dependency)) continue;
+      if (reaches(dependency, id)) dropped.push({ stackId: id, dependency });
+      else list.push(dependency);
+    }
+    list.sort(byCodeUnit);
+  }
+  return { dependsOn, dropped };
+}
