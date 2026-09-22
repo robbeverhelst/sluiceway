@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.23.0](https://github.com/sluiceway/sluiceway/compare/v0.22.0...v0.23.0) (2026-09-22)
+
+
+### Features
+
+* a later deploy, outside deploys included, ends a failure line in the core ([fe1f04a](https://github.com/sluiceway/sluiceway/commit/fe1f04ae1e1d6ba9369baeff16a950af4a20efea))
+* notify.events in sluiceway.yaml, and which stacks a scan and an apply tell (slice 5.13) ([e7e8809](https://github.com/sluiceway/sluiceway/commit/e7e88093f5c77725282672f8de63c2f08cd73b4a))
+* scan, resolve and apply send the built-in notifications (slice 5.13) ([41c4b21](https://github.com/sluiceway/sluiceway/commit/41c4b2102dea4b3d93fbd0d4c4254b64559135e4))
+* the scan and apply drop a failure line that a later outside deploy ended ([18a3765](https://github.com/sluiceway/sluiceway/commit/18a376517b074d1c9fe239a6429eaa9388ec4293))
+* the words and the sender of the built-in notifications (slice 5.13) ([f214e57](https://github.com/sluiceway/sluiceway/commit/f214e57f93d7188031f99037b935b172b129eb6e))
+
 ## [0.22.0](https://github.com/sluiceway/sluiceway/compare/v0.21.0...v0.22.0) (2026-09-22)
 
 
