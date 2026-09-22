@@ -2,10 +2,21 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigError, parseConfig } from "../../src/core/config.ts";
+import { ConfigError, type ConfigIssue, parseConfig } from "../../src/core/config.ts";
 import { configFileName, loadConfig } from "../../src/core/config-file.ts";
 
 let root: string;
+
+// The issues as facts. Their words are test/render/config-problems.test.ts's.
+function issues(): ConfigIssue[] {
+  try {
+    loadConfig(root);
+  } catch (error) {
+    if (error instanceof ConfigError) return error.issues;
+    throw error;
+  }
+  throw new Error("expected the config to be refused");
+}
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "sluiceway-config-"));
@@ -38,17 +49,18 @@ describe("loading sluiceway.yaml from the repo root", () => {
     expect(configFileName(root)).toBe("sluiceway.yml");
   });
 
-  test("a bad sluiceway.yml names itself", () => {
+  test("a bad sluiceway.yml names itself, and keeps the issues of the file", () => {
     writeFileSync(join(root, "sluiceway.yml"), "tickerz: admin\n");
     expect(() => loadConfig(root)).toThrow(/^sluiceway\.yml is not valid:\n- /);
+    expect(issues().map((issue) => issue.kind)).toEqual(["unknown-key"]);
   });
 
   test("both spellings at once are refused, because one of them would be dropped without a word", () => {
     writeFileSync(join(root, "sluiceway.yaml"), "tickers: write\n");
     writeFileSync(join(root, "sluiceway.yml"), "tickers: admin\n");
-    expect(() => loadConfig(root)).toThrow(
-      "sluiceway.yaml is not valid:\n- found both sluiceway.yaml and sluiceway.yml. Keep one of them.",
-    );
+    expect(issues()).toEqual([
+      { kind: "two-config-files", files: ["sluiceway.yaml", "sluiceway.yml"], path: [] },
+    ]);
   });
 
   test("without either file there is no config file", () => {
@@ -57,7 +69,7 @@ describe("loading sluiceway.yaml from the repo root", () => {
 
   test("a directory named sluiceway.yaml is refused, not read as no config", () => {
     mkdirSync(join(root, "sluiceway.yaml"));
-    expect(() => loadConfig(root)).toThrow("sluiceway.yaml is not valid:\n- it is not a file.");
+    expect(issues()).toEqual([{ kind: "not-a-file", path: [] }]);
   });
 
   test("a file deeper in the repo is not the config", () => {

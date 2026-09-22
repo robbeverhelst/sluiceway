@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyConfig, ConfigError, parseConfig } from "../../src/core/config.ts";
+import { applyConfig, ConfigError, type ConfigIssue, parseConfig } from "../../src/core/config.ts";
 import type { Stack } from "../../src/core/stack.ts";
 
 // `dependsOn` in sluiceway.yaml (slice 4.4, record 0056): stack ids of the
@@ -22,11 +22,12 @@ function configured(text: string, found = FOUND) {
   return applyConfig(parseConfig(text), found);
 }
 
-function problems(text: string, found = FOUND): string[] {
+// The issues as facts. Their words are test/render/config-problems.test.ts's.
+function issues(text: string, found = FOUND): ConfigIssue[] {
   try {
     configured(text, found);
   } catch (error) {
-    if (error instanceof ConfigError) return error.problems;
+    if (error instanceof ConfigError) return error.issues;
     throw error;
   }
   throw new Error("expected the config to be refused");
@@ -65,53 +66,79 @@ describe("dependsOn", () => {
   });
 
   test("a stack that discovery did not find is an error", () => {
-    expect(problems("stacks:\n  - path: app\n    dependsOn: [network:staging]\n")).toEqual([
-      'stacks[0].dependsOn[0]: "network:staging" is not a stack that discovery found. Write the stack id as a row shows it, such as "network:dev".',
+    expect(issues("stacks:\n  - path: app\n    dependsOn: [network:staging]\n")).toEqual([
+      {
+        kind: "depends-on-unknown",
+        stackId: "network:staging",
+        example: "network:dev",
+        path: ["stacks", 0, "dependsOn", 0],
+      },
     ]);
   });
 
   test("an ignored stack is an error, because the dependency could never hold anything back", () => {
     expect(
-      problems(
-        'ignore: ["playground:*"]\nstacks:\n  - path: app\n    dependsOn: [playground:dev]\n',
-      ),
+      issues('ignore: ["playground:*"]\nstacks:\n  - path: app\n    dependsOn: [playground:dev]\n'),
     ).toEqual([
-      'stacks[0].dependsOn[0]: "playground:dev" is left out by ignore, so it never has a change to wait for. Remove it here, or change ignore.',
+      {
+        kind: "depends-on-ignored",
+        stackId: "playground:dev",
+        path: ["stacks", 0, "dependsOn", 0],
+      },
     ]);
   });
 
   test("an ignored stack whose ignore entry has a reason is refused with that reason (record 0059)", () => {
     expect(
-      problems(
+      issues(
         'ignore:\n  - glob: "playground:*"\n    reason: a sandbox nobody deploys\nstacks:\n  - path: app\n    dependsOn: [playground:dev]\n',
       ),
     ).toEqual([
-      'stacks[0].dependsOn[0]: "playground:dev" is left out by ignore ("a sandbox nobody deploys"), so it never has a change to wait for. Remove it here, or change ignore.',
+      {
+        kind: "depends-on-ignored",
+        stackId: "playground:dev",
+        reason: "a sandbox nobody deploys",
+        path: ["stacks", 0, "dependsOn", 0],
+      },
     ]);
   });
 
   test("a stack that depends on itself is refused", () => {
-    expect(problems("stacks:\n  - path: app\n    dependsOn: [app:prod]\n")).toEqual([
-      'stacks[0].dependsOn[0]: "app:prod" is the stack itself. A stack cannot depend on itself.',
+    expect(issues("stacks:\n  - path: app\n    dependsOn: [app:prod]\n")).toEqual([
+      { kind: "depends-on-itself", stackId: "app:prod", path: ["stacks", 0, "dependsOn", 0] },
     ]);
   });
 
   test("a cycle is refused at config load, named once in stack id order", () => {
     expect(
-      problems(
+      issues(
         "stacks:\n  - path: network\n    name: prod\n    dependsOn: [site:prod]\n  - path: app\n    dependsOn: [network:prod]\n  - path: site\n    dependsOn: [app:prod]\n",
       ),
     ).toEqual([
-      "dependsOn goes round in a circle: app:prod depends on network:prod, which depends on site:prod, which depends on app:prod. Nothing in a circle could ever deploy first, so take one of these out.",
+      {
+        kind: "depends-on-circle",
+        circle: [
+          { stack: "app:prod" },
+          { stack: "network:prod" },
+          { stack: "site:prod" },
+          { stack: "app:prod" },
+        ],
+        path: [],
+      },
     ]);
   });
 
   test("the list is text, and an empty entry is refused", () => {
-    expect(problems("stacks:\n  - path: app\n    dependsOn: network:prod\n")).toEqual([
-      'stacks[0].dependsOn: expected a list of stack ids, or auto, got "network:prod".',
+    expect(issues("stacks:\n  - path: app\n    dependsOn: network:prod\n")).toEqual([
+      {
+        kind: "not-a-depends-on",
+        value: "network:prod",
+        auto: "auto",
+        path: ["stacks", 0, "dependsOn"],
+      },
     ]);
-    expect(problems('stacks:\n  - path: app\n    dependsOn: [""]\n')).toEqual([
-      "stacks[0].dependsOn[0]: must not be empty.",
+    expect(issues('stacks:\n  - path: app\n    dependsOn: [""]\n')).toEqual([
+      { kind: "empty", path: ["stacks", 0, "dependsOn", 0] },
     ]);
   });
 });
@@ -138,8 +165,13 @@ describe("dependsOn: auto", () => {
   });
 
   test("any other word is refused", () => {
-    expect(problems("stacks:\n  - path: app\n    dependsOn: automatic\n")).toEqual([
-      'stacks[0].dependsOn: expected a list of stack ids, or auto, got "automatic".',
+    expect(issues("stacks:\n  - path: app\n    dependsOn: automatic\n")).toEqual([
+      {
+        kind: "not-a-depends-on",
+        value: "automatic",
+        auto: "auto",
+        path: ["stacks", 0, "dependsOn"],
+      },
     ]);
   });
 });

@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { applyConfig, ConfigError, ignoredStacks, parseConfig } from "../../src/core/config.ts";
+import {
+  applyConfig,
+  ConfigError,
+  type ConfigIssue,
+  ignoredStacks,
+  parseConfig,
+} from "../../src/core/config.ts";
 import type { Stack } from "../../src/core/stack.ts";
 
 const stack = (path: string, name?: string): Stack =>
@@ -7,11 +13,12 @@ const stack = (path: string, name?: string): Stack =>
 
 const FOUND = [stack("apps/grafana", "dev"), stack("apps/grafana", "prod"), stack("envs/prod")];
 
-function problems(text: string, stacks: Stack[]): string[] {
+// The issues as facts. Their words are test/render/config-problems.test.ts's.
+function issues(text: string, stacks: Stack[]): ConfigIssue[] {
   try {
     applyConfig(parseConfig(text), stacks);
   } catch (error) {
-    if (error instanceof ConfigError) return error.problems;
+    if (error instanceof ConfigError) return error.issues;
     throw error;
   }
   throw new Error("expected the config to be refused");
@@ -118,20 +125,32 @@ stacks:
 
   test("never creates a stack: one that matches nothing is a config error", () => {
     expect(
-      problems(
+      issues(
         "stacks:\n  - path: apps/loki\n  - path: apps/grafana\n    name: staging\n  - path: envs/prod\n    name: prod\n",
         FOUND,
       ),
     ).toEqual([
-      'stacks[0]: no stack was found in "apps/loki". An entry adds settings to a stack that exists, it never creates one.',
-      'stacks[1]: no stack named "staging" was found in "apps/grafana". Found there: dev, prod.',
-      'stacks[2]: no stack named "prod" was found in "envs/prod". The stack found there has no name.',
+      { kind: "entry-no-stack", stackPath: "apps/loki", path: ["stacks", 0] },
+      {
+        kind: "entry-no-named-stack",
+        name: "staging",
+        stackPath: "apps/grafana",
+        names: ["dev", "prod"],
+        path: ["stacks", 1],
+      },
+      {
+        kind: "entry-no-named-stack",
+        name: "prod",
+        stackPath: "envs/prod",
+        names: [],
+        path: ["stacks", 2],
+      },
     ]);
   });
 
   test("does not match a directory inside its path", () => {
-    expect(problems("stacks:\n  - path: apps\n", FOUND)).toEqual([
-      'stacks[0]: no stack was found in "apps". An entry adds settings to a stack that exists, it never creates one.',
+    expect(issues("stacks:\n  - path: apps\n", FOUND)).toEqual([
+      { kind: "entry-no-stack", stackPath: "apps", path: ["stacks", 0] },
     ]);
   });
 });
@@ -161,9 +180,9 @@ describe("ignore", () => {
       "  - path: envs/prod",
       "",
     ].join("\n");
-    expect(problems(text, FOUND)).toEqual([
-      'stacks[0]: the stack "apps/grafana:dev" is left out by ignore, so these settings would do nothing. Remove the entry, or change ignore.',
-      'stacks[1]: the stack "envs/prod" is left out by ignore, so these settings would do nothing. Remove the entry, or change ignore.',
+    expect(issues(text, FOUND)).toEqual([
+      { kind: "entry-only-ignored", stackIds: ["apps/grafana:dev"], path: ["stacks", 0] },
+      { kind: "entry-only-ignored", stackIds: ["envs/prod"], path: ["stacks", 1] },
     ]);
   });
 

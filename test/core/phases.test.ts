@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyConfig, ConfigError, parseConfig } from "../../src/core/config.ts";
+import { applyConfig, ConfigError, type ConfigIssue, parseConfig } from "../../src/core/config.ts";
 import type { Stack } from "../../src/core/stack.ts";
 
 // Phases (slice 4.16, record 0067): `phases` is an ordered list of names, and
@@ -34,11 +34,12 @@ function configured(text: string, found = FOUND) {
   return applyConfig(parseConfig(text), found);
 }
 
-function problems(run: () => unknown): string[] {
+// The issues as facts. Their words are test/render/config-problems.test.ts's.
+function issues(run: () => unknown): ConfigIssue[] {
   try {
     run();
   } catch (error) {
-    if (error instanceof ConfigError) return error.problems;
+    if (error instanceof ConfigError) return error.issues;
     throw error;
   }
   throw new Error("expected the config to be refused");
@@ -129,38 +130,43 @@ stacks:
 describe("phases refused at load", () => {
   test("an unknown phase", () => {
     expect(
-      problems(() =>
+      issues(() =>
         parseConfig("phases: [infrastructure]\nstacks:\n  - path: app\n    phase: aplications\n"),
       ),
     ).toEqual([
-      'stacks[0].phase: "aplications" is not one of the phases. The phases are: infrastructure.',
+      {
+        kind: "unknown-phase",
+        phase: "aplications",
+        phases: ["infrastructure"],
+        path: ["stacks", 0, "phase"],
+      },
     ]);
   });
 
   test("a phase without a phases list", () => {
     expect(
-      problems(() => parseConfig("stacks:\n  - path: app\n    phase: infrastructure\n")),
+      issues(() => parseConfig("stacks:\n  - path: app\n    phase: infrastructure\n")),
     ).toEqual([
-      'stacks[0].phase: "infrastructure" is not one of the phases, and sluiceway.yaml has no phases. List them in order at the top: phases: [first, second].',
+      { kind: "unknown-phase", phase: "infrastructure", phases: [], path: ["stacks", 0, "phase"] },
     ]);
   });
 
   test("a phase named twice", () => {
-    expect(problems(() => parseConfig("phases: [infrastructure, apps, infrastructure]\n"))).toEqual(
-      ['phases[2]: "infrastructure" is already phases[0]. Each phase is named once.'],
-    );
+    expect(issues(() => parseConfig("phases: [infrastructure, apps, infrastructure]\n"))).toEqual([
+      { kind: "phase-named-twice", phase: "infrastructure", first: 0, path: ["phases", 2] },
+    ]);
   });
 
   test("a phase name that is not a plain word", () => {
-    expect(problems(() => parseConfig('phases: ["infra structure"]\n'))).toEqual([
-      'phases[0]: "infra structure" is not a phase name. Use letters, digits, ".", "_" and "-".',
+    expect(issues(() => parseConfig('phases: ["infra structure"]\n'))).toEqual([
+      { kind: "not-a-phase-name", value: "infra structure", path: ["phases", 0] },
     ]);
   });
 
   test("a phase that is not a name or a mapping", () => {
     expect(
-      problems(() => parseConfig("phases: [a]\nstacks:\n  - path: app\n    phase: [a]\n")),
-    ).toEqual(["stacks[0].phase: expected a phase name, or a mapping with from, got a list."]);
+      issues(() => parseConfig("phases: [a]\nstacks:\n  - path: app\n    phase: [a]\n")),
+    ).toEqual([{ kind: "not-a-phase", value: ["a"], path: ["stacks", 0, "phase"] }]);
   });
 
   test("a dependsOn on a stack of a later phase is a circle through the phases", () => {
@@ -174,8 +180,15 @@ stacks:
   - path: app
     phase: applications
 `;
-    expect(problems(() => configured(text))).toEqual([
-      'stacks[1].dependsOn[0]: "app:prod" is in the applications phase, which comes after the infrastructure phase of network:prod. app:prod already waits on every stack of the infrastructure phase, so take this out, or move one of them to another phase.',
+    expect(issues(() => configured(text))).toEqual([
+      {
+        kind: "depends-on-earlier-phase",
+        stackId: "app:prod",
+        phase: "applications",
+        stack: "network:prod",
+        stackPhase: "infrastructure",
+        path: ["stacks", 1, "dependsOn", 0],
+      },
     ]);
   });
 
@@ -191,8 +204,18 @@ stacks:
   - path: app
     phase: applications
 `;
-    expect(problems(() => configured(text))).toEqual([
-      "dependsOn goes round in a circle: app:prod waits on the infrastructure phase, which holds network:dev, which depends on site:prod, which depends on app:prod. Nothing in a circle could ever deploy first, so take one of these out.",
+    expect(issues(() => configured(text))).toEqual([
+      {
+        kind: "depends-on-circle",
+        circle: [
+          { stack: "app:prod" },
+          { phase: "infrastructure" },
+          { stack: "network:dev" },
+          { stack: "site:prod" },
+          { stack: "app:prod" },
+        ],
+        path: [],
+      },
     ]);
   });
 });
@@ -220,27 +243,39 @@ describe("phase: from", () => {
   test("a stack whose file has no such key is refused", () => {
     const text =
       "phases: [infrastructure]\nstacks:\n  - path: site\n    phase: { from: example:phase }\n";
-    expect(problems(() => configured(text, KEYED))).toEqual([
-      "stacks[0].phase: site:prod has no text under example:phase in its project file, under config or at the top level. Add it there, or name the phase here.",
+    expect(issues(() => configured(text, KEYED))).toEqual([
+      {
+        kind: "no-phase-key",
+        stackId: "site:prod",
+        key: "example:phase",
+        path: ["stacks", 0, "phase"],
+      },
     ]);
   });
 
   test("a value that names no phase is refused, without quoting it", () => {
     const text =
       "phases: [infrastructure]\nstacks:\n  - path: app\n    phase: { from: example:phase }\n";
-    expect(problems(() => configured(text, KEYED))).toEqual([
-      "stacks[0].phase: the text under example:phase in the project file of app:prod is not one of the phases. The phases are: infrastructure.",
+    // The issue holds no value to quote: it is a value of the tool's file.
+    expect(issues(() => configured(text, KEYED))).toEqual([
+      {
+        kind: "phase-key-unknown",
+        stackId: "app:prod",
+        key: "example:phase",
+        phases: ["infrastructure"],
+        path: ["stacks", 0, "phase"],
+      },
     ]);
   });
 
   test("from must not be empty, and nothing else goes in the mapping", () => {
     expect(
-      problems(() =>
+      issues(() =>
         parseConfig('phases: [a]\nstacks:\n  - path: app\n    phase: { from: "", at: x }\n'),
       ),
     ).toEqual([
-      "stacks[0].phase.from: must not be empty.",
-      'stacks[0].phase: unknown key "at". Known keys here: from.',
+      { kind: "empty", path: ["stacks", 0, "phase", "from"] },
+      { kind: "unknown-key", key: "at", known: ["from"], path: ["stacks", 0, "phase"] },
     ]);
   });
 });

@@ -1,15 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { ConfigError, parseConfig } from "../../src/core/config.ts";
+import { ConfigError, type ConfigIssue, parseConfig } from "../../src/core/config.ts";
 
 // Slice 5.13 (record 0078): which events the built-in notifications send on.
 // The channels are inputs, from the repo's own secrets. This list is the
 // reviewed part.
 
-function problems(text: string): string[] {
+// The issues as facts. Their words are test/render/config-problems.test.ts's.
+function issues(text: string): ConfigIssue[] {
   try {
     parseConfig(text);
   } catch (error) {
-    if (error instanceof ConfigError) return error.problems;
+    if (error instanceof ConfigError) return error.issues;
     throw error;
   }
   return [];
@@ -34,14 +35,19 @@ describe("notify.events", () => {
   });
 
   test("an unknown event is an error that names the five", () => {
-    expect(problems("notify:\n  events: [pending, merged]\n")).toEqual([
-      'notify.events[1]: "merged" is not an event. The events are: pending, drift, deployed, failed, refused.',
+    expect(issues("notify:\n  events: [pending, merged]\n")).toEqual([
+      {
+        kind: "not-an-event",
+        value: "merged",
+        events: ["pending", "drift", "deployed", "failed", "refused"],
+        path: ["notify", "events", 1],
+      },
     ]);
   });
 
   test("a channel in the file is an error that points at the inputs", () => {
-    expect(problems("notify:\n  slack: https://hooks.slack.com/services/x\n")).toEqual([
-      'notify: unknown key "slack". Known keys here: events. A channel is an input of the step, from a secret, never a key of sluiceway.yaml.',
+    expect(issues("notify:\n  slack: https://hooks.slack.com/services/x\n")).toEqual([
+      { kind: "notify-unknown-key", key: "slack", known: ["events"], path: ["notify"] },
     ]);
   });
 });
