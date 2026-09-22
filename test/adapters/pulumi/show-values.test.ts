@@ -104,18 +104,19 @@ for (const version of VERSIONS) {
       expect(changes(result)[0]?.values).toEqual([{ path: "environment.STAGE", new: "second" }]);
     });
 
-    // Record 0008 hashes names. The list decides what a row shows, never what
-    // a tick approves, so turning it on voids no tick.
-    test("the hash is the same with and without the list", async () => {
-      const without = await previewWith(K8S, replay(version, "nested-paths"), []);
-      const withList = await previewWith(K8S, replay(version, "nested-paths"), [
-        IMAGE,
-        ENV_VALUE,
-        PROPERTIES,
-      ]);
+    // Record 0008: what a row shows is hashed. A list that shows a value
+    // gives another hash, and a list that shows none gives the same.
+    test("the hash covers the values a list shows, and nothing else", async () => {
+      const hash = async (list: string[]) => {
+        const result = await previewWith(K8S, replay(version, "nested-paths"), list);
+        if (!result.ok) throw new Error("expected a diff");
+        return diffHash(result.diff);
+      };
+      const without = await hash([]);
 
-      if (!without.ok || !withList.ok) throw new Error("expected two diffs");
-      expect(diffHash(withList.diff)).toBe(diffHash(without.diff));
+      expect(await hash(["spec.template.spec.containers[0].ports"])).toBe(without);
+      expect(await hash([IMAGE])).not.toBe(without);
+      expect(await hash([IMAGE])).not.toBe(await hash([IMAGE, ENV_VALUE]));
     });
 
     test("the parsed document holds a value only at a listed path", () => {

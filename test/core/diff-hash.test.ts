@@ -87,6 +87,70 @@ describe("fixed vectors", () => {
     expect(diffHash(nested)).toBe("4a831612a802540d");
     expect(diffHash(paths(["metadata", "spec"], ["data"]))).toBe("499ca3a5fae7b813");
   });
+
+  // Record 0052: a value that a row shows is hashed, so a tick approves it and
+  // a value that moved after the tick stops the deploy (record 0008). Hashed
+  // outside the code with `shasum -a 256`.
+  test("the values of listed paths, as a row shows them", () => {
+    const release = (values?: Change["values"]): Diff => ({
+      stackId: "apps:prod",
+      changes: [
+        {
+          address: "urn:odoo",
+          type: "kubernetes:helm.sh/v3:Release",
+          name: "odoo-release",
+          op: "update",
+          changedKeys: ["version", "values.image.tag"],
+          replaceKeys: [],
+          ...(values === undefined ? {} : { values }),
+        },
+      ],
+    });
+    const bump = release([{ path: "version", old: "17.0.3", new: "17.0.4" }]);
+
+    expect(canonicalDiff(bump)).toBe(
+      '{"changes":[{"address":"urn:odoo","changedKeys":["values.image.tag","version"],"name":"odoo-release","op":"update","replaceKeys":[],"type":"kubernetes:helm.sh/v3:Release","values":[{"new":"17.0.4","old":"17.0.3","path":"version"}]}],"stackId":"apps:prod"}',
+    );
+    expect(diffHash(bump)).toBe("d6ea6ff029d1723e");
+    expect(diffHash(release([{ path: "version", old: "17.0.3", new: "17.0.5" }]))).toBe(
+      "8d358cf6b66badc9",
+    );
+    // No list, or a list that shows nothing, gives the hash of every earlier
+    // version.
+    expect(diffHash(release())).toBe("4732a5978fdbdf00");
+    expect(diffHash(release([]))).toBe("4732a5978fdbdf00");
+  });
+
+  test("values in any order, with their fields in any order", () => {
+    const a: Diff = {
+      stackId: "s",
+      changes: [
+        change({
+          changedKeys: ["k", "j"],
+          values: [
+            { path: "k", new: "2", old: "1" },
+            { path: "j", new: "x" },
+          ],
+        }),
+      ],
+    };
+    const b: Diff = {
+      stackId: "s",
+      changes: [
+        change({
+          changedKeys: ["j", "k"],
+          values: [
+            { old: "1", path: "k", new: "2" },
+            { new: "x", path: "j" },
+          ],
+        }),
+      ],
+    };
+    expect(canonicalDiff(a)).toBe(canonicalDiff(b));
+    expect(canonicalDiff(a)).toContain(
+      '"values":[{"new":"x","path":"j"},{"new":"2","old":"1","path":"k"}]',
+    );
+  });
 });
 
 function change(fields: Partial<Change> = {}): Change {

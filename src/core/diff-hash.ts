@@ -39,7 +39,19 @@ function canonicalChange(change: Change): Canonical {
     previousAddress: change.previousAddress,
     changedKeys: sortedSet(change.changedKeys),
     replaceKeys: sortedSet(change.replaceKeys),
+    values: canonicalValues(change.values),
   };
+}
+
+// The values a row shows at the paths `dashboard.showValues` lists, as the
+// row shows them, so a tick approves them and a value that moved after the
+// tick stops the deploy (records 0008 and 0052). Without any the field is
+// left out, so a diff without a list hashes as it always did.
+function canonicalValues(values: Change["values"]): Canonical | undefined {
+  if (values === undefined || values.length === 0) return undefined;
+  return [...values]
+    .sort((a, b) => byCodeUnit(a.path, b.path))
+    .map((value) => ({ path: value.path, old: value.old, new: value.new }));
 }
 
 // The canonical document of a diff: the exact text the diff hash is taken

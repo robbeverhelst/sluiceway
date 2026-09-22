@@ -1,5 +1,7 @@
 # Redact strips the issue, not the summary, and the hash still covers the whole diff
 
+> Amended by 0052: redact also turns `dashboard.showValues` off, so no value is read or hashed. In a repo with a list, turning redact on or off therefore gives the rows that showed a value a new hash once, and a tick on such a row is refused as moved.
+
 With no values shown (0021), what is left on a row is names: resource types, resource names and property names. Some teams do not want those in an issue either, mostly on public repos. `dashboard.redact: true` is for them. A redacted row shows the stack id, the counts by op, the destroy warning, the failure line and the links. It has no "Show changes" block, so no resource type, resource name or property name appears in the issue.
 
 Redact is about reach, not about access. An issue body is emailed, sent to integrations, indexed on a public repo and kept in edit history. A job summary sits behind a click and expires with the run. But whoever can read the repo can open the run, and the code that names the resources is in the repo as well. So redact does not hide anything from a reader who goes looking, and the docs must say exactly that. It is not access control.

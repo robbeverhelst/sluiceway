@@ -53350,8 +53350,14 @@ function canonicalChange(change) {
     tracking: change.tracking,
     previousAddress: change.previousAddress,
     changedKeys: sortedSet2(change.changedKeys),
-    replaceKeys: sortedSet2(change.replaceKeys)
+    replaceKeys: sortedSet2(change.replaceKeys),
+    values: canonicalValues(change.values)
   };
+}
+function canonicalValues(values) {
+  if (values === undefined || values.length === 0)
+    return;
+  return [...values].sort((a, b) => byCodeUnit4(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
 }
 function canonicalDiff(diff) {
   const changes = diff.changes.map((change) => ({ address: change.address, text: canonicalJson(canonicalChange(change)) })).sort((a, b) => byCodeUnit4(a.address, b.address) || byCodeUnit4(a.text, b.text)).map((change) => change.text);

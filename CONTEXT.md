@@ -63,7 +63,7 @@ What a property is set to, before or after a deploy. A value never leaves the to
 _Avoid_: Secret (a secret is only one kind of value, and all values are treated alike), content, setting
 
 **Value list**:
-The property paths a repo names in `dashboard.showValues`, whose old and new value appear as `old → new` after the path, everywhere the path does. Only exact paths and globs a person wrote match, never a guess. A value the tool marks secret never shows, and `dashboard.redact` turns the list off. The diff hash does not cover the values.
+The property paths a repo names in `dashboard.showValues`, whose old and new value appear as `old → new` after the path, everywhere the path does. Only exact paths and globs a person wrote match, never a guess. A value the tool marks secret never shows, and `dashboard.redact` turns the list off. The diff hash covers a listed value as the row shows it, so a tick approves it.
 _Avoid_: Allowlist, safe values, visible values
 
 **Property path**:

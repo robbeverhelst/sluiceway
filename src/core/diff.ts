@@ -26,8 +26,8 @@ export interface Change {
   // The changed keys that forced a replace.
   replaceKeys: string[];
   // The old and new value at changed paths that `dashboard.showValues` lists,
-  // sorted by path. Absent when there are none. Display only: the diff hash
-  // leaves them out (record 0052).
+  // sorted by path. Absent when there are none. The diff hash covers them, as
+  // a row shows them (records 0008 and 0052).
   values?: ShownValue[];
 }
 

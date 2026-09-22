@@ -88,3 +88,47 @@ describe("apply", () => {
     expect(asked[0]).toEqual(["version", "values.image.tag"]);
   });
 });
+
+// Records 0008 and 0052: a value the row showed is part of what the tick
+// approved. A merge that moves it after the tick stops the deploy, and the
+// row comes back with the value the code has now.
+describe("a listed value that moved since the tick", () => {
+  function bump(to: string): PreviewResult {
+    return {
+      ok: true,
+      toolLog: "",
+      diff: {
+        stackId: "apps:prod",
+        changes: [
+          {
+            address: "urn:odoo",
+            type: "kubernetes:helm.sh/v3:Release",
+            name: "odoo-release",
+            op: "update",
+            changedKeys: ["version"],
+            replaceKeys: [],
+            values: [{ path: "version", old: "17.0.3", new: to }],
+          },
+        ],
+      },
+    };
+  }
+
+  test("deploys nothing, and the row shows the new value", async () => {
+    const h = await handedOn({ "apps:prod": bump("17.0.4") }, ["apps:prod"], { config: LIST });
+    h.table["apps:prod"] = bump("17.0.5");
+
+    await expect(runApply(h)).rejects.toThrow("the change moved since the tick");
+    expect(h.adapter.applied).toEqual([]);
+    expect(dashboardBody(h.github, h.number)).toContain(
+      "<code>version</code> <code>17.0.3</code> → <code>17.0.5</code>",
+    );
+  });
+
+  test("the same value deploys", async () => {
+    const h = await handedOn({ "apps:prod": bump("17.0.4") }, ["apps:prod"], { config: LIST });
+
+    await runApply(h);
+    expect(h.adapter.applied).toEqual(["apps:prod"]);
+  });
+});

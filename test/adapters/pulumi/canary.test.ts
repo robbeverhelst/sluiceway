@@ -287,14 +287,17 @@ for (const version of VERSIONS) {
       expect(leaks(JSON.stringify(diff) + rows(diff) + annex(diff))).toEqual([]);
     });
 
-    test("the canary value on a listed path appears, the one on the unlisted path does not, and neither is in the hash", async () => {
+    // The listed value is hashed, as a row shows it (records 0008 and 0052),
+    // so a tick approves it. The unlisted one is in nothing, the hash included.
+    test("the canary value on a listed path appears and is hashed, the one on the unlisted path is in nothing", async () => {
       const diff = await listing([LISTED]);
       const made = JSON.stringify(diff) + rows(diff) + annex(diff);
 
       expect(made).toContain(`${CANARY_VALUE}-2`);
       expect(made).not.toContain(`${CANARY_VALUE}-3`);
-      expect(canonicalDiff(diff)).not.toContain("CANARY");
-      expect(diffHash(diff)).toBe(diffHash(await listing([])));
+      expect(canonicalDiff(diff)).toContain(`${CANARY_VALUE}-2`);
+      expect(canonicalDiff(diff)).not.toContain(`${CANARY_VALUE}-3`);
+      expect(diffHash(diff)).not.toBe(diffHash(await listing([])));
       // A redacted row shows no value, whatever the diff holds.
       const row = { state: "pending", diff, hash: diffHash(diff), runUrl: "run-url" } as const;
       expect(leaks(renderRow(row, { redact: true }))).toEqual([]);

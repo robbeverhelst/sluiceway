@@ -94,9 +94,9 @@ Pin the dashboard issue to the top of the repo's issue list when Sluiceway creat
 
 Default: `false`
 
-Keep resource types, resource names and property names out of the issue. A redacted row shows the stack id, the counts by op, the destroy warning, the failure line and a link to the run's summary, which stays full. It also turns [`dashboard.showValues`](#dashboardshowvalues) off, so no value is shown anywhere.
+Keep resource types, resource names and property names out of the issue. A redacted row shows the stack id, the counts by op, the destroy warning, the failure line and a link to the run's summary, which stays full. It also turns [`dashboard.showValues`](#dashboardshowvalues) off, so no value is shown anywhere. In a repo with that list, turning redact on or off voids the ticks on rows that showed a value, once.
 
-Redact is about reach, not access. An issue body is emailed, sent to integrations and indexed on a public repo. A job summary sits behind a click. But anyone who can read the repo can open the run and read the code that names the resources. **It is not access control.** Turning it on or off never voids a tick: the diff hash covers the whole diff either way.
+Redact is about reach, not access. An issue body is emailed, sent to integrations and indexed on a public repo. A job summary sits behind a click. But anyone who can read the repo can open the run and read the code that names the resources. **It is not access control.** Turning it on or off never voids a tick, unless `dashboard.showValues` is set: the diff hash covers the whole diff either way.
 
 ### `dashboard.personality`
 
@@ -137,7 +137,8 @@ Without this key Sluiceway shows which properties change and never what they cha
 - **Only single-line text, numbers and booleans are shown.** A whole object or list, a value of several lines, and a value that is known only once the deploy runs show nothing. A value longer than 40 characters keeps its start and its end.
 - **The same values appear in the summary, on the preview page, in the result file and in the job log.** The issue is emailed and kept in its edit history, so a value that reached it cannot be taken back.
 - **`dashboard.redact: true` turns the list off.** No value is even read.
-- **The diff hash does not cover values.** A tick approves the paths, as without the list: if a later merge moves `17.0.4` to `17.0.5` before the deploy, `17.0.5` deploys. See [what a tick promises](security.md#what-a-tick-promises).
+- **A tick approves the values it shows.** The diff hash covers them, so if a later merge moves `17.0.4` to `17.0.5` before the deploy, nothing deploys and the row comes back with `17.0.5`. A path that is not listed is approved at whatever value the code has, as before. See [what a tick promises](security.md#what-a-tick-promises).
+- **Changing the list voids ticks once.** Adding or removing a path, or turning `dashboard.redact` on or off, gives the rows that show a value a new hash, so a tick on a row written before is refused as moved and the row asks for a fresh one.
 
 A list to copy in, of paths that are nearly always safe to show:
 
