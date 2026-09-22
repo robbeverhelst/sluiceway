@@ -1,3 +1,4 @@
+import { LOOKBACK } from "../../src/core/attribution.ts";
 import { HISTORY_CAP } from "../../src/core/edit-history.ts";
 import type { RemoteFile } from "../../src/core/renovate-config.ts";
 import type {
@@ -478,14 +479,23 @@ export class FakeGitHub implements GitHubPort {
       .map((run) => ({ ...run }));
   }
 
-  async walkCommits(head: string): Promise<CommitWalk> {
-    this.#count("walkCommits");
-    const walk = this.#commits.walk(head);
+  // One request per page of 100 commits, as the GraphQL walk pages them.
+  async walkCommits(head: string, lookback = LOOKBACK): Promise<CommitWalk> {
+    const walk = this.#commits.walk(head, lookback);
+    const pages = Math.max(1, Math.ceil((walk?.commits.length ?? 0) / PAGE_SIZE));
+    for (let page = 0; page < pages; page++) this.#count("walkCommits");
     // Real GitHub answers with no object, which the port turns into this, in
     // the port's own words.
     if (!walk)
       throw new FakeGitHubError(404, `GitHub has no commit ${head.slice(0, 7)} to walk back from.`);
     return walk;
+  }
+
+  async listPullRequestFiles(number: number): Promise<string[]> {
+    this.#count("listPullRequestFiles");
+    const files = this.#commits.pullRequestFiles(number);
+    if (!files) throw new FakeGitHubError(404, "Not Found");
+    return files;
   }
 
   async listCommitFiles(sha: string): Promise<string[]> {

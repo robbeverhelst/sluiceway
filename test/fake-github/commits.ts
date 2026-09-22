@@ -22,7 +22,9 @@ export interface SeedPullRequest {
   author?: string | undefined;
   base?: string;
   merged?: boolean;
-  files: string[];
+  // What it changed. A renamed file has its old path too, which GraphQL
+  // leaves out and REST gives (record 0072).
+  files: (string | { path: string; previousPath: string })[];
   // The commits GitHub associates with it: a squash commit, the commits of a
   // rebase merge, or a merge commit and the branch commits under it.
   commits: string[];
@@ -53,7 +55,7 @@ export class FakeCommits {
 
   // The newest commits that can be reached from `head`, newest first, which
   // lists children before parents. Nothing for a commit the repo lacks.
-  walk(head: string): CommitWalk | undefined {
+  walk(head: string, lookback = LOOKBACK): CommitWalk | undefined {
     const bySha = new Map(this.#commits.map((commit) => [commit.sha, commit]));
     if (!bySha.has(head)) return undefined;
     const reached = new Set<string>();
@@ -66,7 +68,7 @@ export class FakeCommits {
     const commits = [...this.#commits]
       .reverse()
       .filter(({ sha }) => reached.has(sha))
-      .slice(0, LOOKBACK)
+      .slice(0, lookback)
       .map((commit) => ({
         sha: commit.sha,
         parents: [...commit.parents],
@@ -81,10 +83,22 @@ export class FakeCommits {
             base: pullRequest.base ?? this.defaultBranch,
             merged: pullRequest.merged ?? true,
             changedFiles: pullRequest.files.length,
-            files: pullRequest.files.slice(0, PULL_REQUEST_FILES_PAGE),
+            files: pullRequest.files
+              .slice(0, PULL_REQUEST_FILES_PAGE)
+              .map((file) => (typeof file === "string" ? file : file.path)),
+            renamed: pullRequest.files.some((file) => typeof file !== "string"),
           })),
       }));
     return { defaultBranch: this.defaultBranch, commits };
+  }
+
+  // The files of one pull request as REST gives them, a renamed file under
+  // both paths. Nothing for a pull request the repo lacks.
+  pullRequestFiles(number: number): string[] | undefined {
+    return this.#pullRequests
+      .find((pullRequest) => pullRequest.number === number)
+      ?.files.slice(0, PULL_REQUEST_FILES_PAGE)
+      .flatMap((file) => (typeof file === "string" ? [file] : [file.path, file.previousPath]));
   }
 
   files(sha: string): string[] | undefined {

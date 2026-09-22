@@ -186,11 +186,17 @@ export interface GitHubPort {
   // tick makes this call.
   listIssuesRuns(workflow: string): Promise<IssuesRun[]>;
 
-  // The lookback (record 0026): one GraphQL query for the newest 100 commits
-  // from `head` back, children before parents, each with its parents, its
-  // author and its pull requests with their changed files. Works with
-  // `contents: read`. Fails for a commit GitHub does not have.
-  walkCommits(head: string): Promise<CommitWalk>;
+  // The lookback (record 0026): one GraphQL query per 100 of the newest
+  // `lookback` commits from `head` back (100 when not given, record 0072),
+  // children before parents, each with its parents, its author and its pull
+  // requests with their changed files. Works with `contents: read`. Fails for
+  // a commit GitHub does not have.
+  walkCommits(head: string, lookback?: number): Promise<CommitWalk>;
+
+  // The changed files of one pull request over REST, a renamed file under
+  // both paths, the first 100 (record 0072). GraphQL gives only the new path,
+  // so attribution reads this for a pull request that renamed a file.
+  listPullRequestFiles(number: number): Promise<string[]>;
 
   // The changed files of one commit, a renamed file under both paths. The
   // only call attribution makes per commit, and only for a direct push.

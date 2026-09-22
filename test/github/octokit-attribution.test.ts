@@ -35,10 +35,14 @@ function portThatAnswers(answers: Answer[]) {
 const HEAD = "a55ea6ea1b09b67ca25e41bcff94b0173b571998";
 const PARENT = "b5135544429157e154422f7fd43600dd0fc9f251";
 
-function walked(nodes: unknown[], branch: unknown = { name: "main" }): Answer {
+function walked(
+  nodes: unknown[],
+  branch: unknown = { name: "main" },
+  pageInfo: unknown = { hasNextPage: false, endCursor: null },
+): Answer {
   return {
     json: {
-      data: { repository: { defaultBranchRef: branch, object: { history: { nodes } } } },
+      data: { repository: { defaultBranchRef: branch, object: { history: { pageInfo, nodes } } } },
     },
   };
 }
@@ -93,6 +97,7 @@ describe("walking the commits", () => {
               merged: true,
               changedFiles: 2,
               files: ["README.md", "dist/index.js"],
+              renamed: false,
             },
           ],
         },
@@ -104,10 +109,69 @@ describe("walking the commits", () => {
     const [{ method, path, body }] = sent as [(typeof sent)[number]];
     expect([method, path]).toEqual(["POST", "/graphql"]);
     const { query, variables } = body as { query: string; variables: unknown };
-    expect(variables).toEqual({ owner: "acme", repo: "infra", head: HEAD });
+    expect(variables).toEqual({
+      owner: "acme",
+      repo: "infra",
+      head: HEAD,
+      first: 100,
+      after: null,
+    });
     expect(query).toContain("object(oid: $head)");
-    expect(query).toContain("history(first: 100)");
+    expect(query).toContain("history(first: $first, after: $after)");
     expect(query).toContain("files(first: 100)");
+  });
+
+  // Slice 5.5 (record 0072): a lookback past 100 is paged, and a pull
+  // request that renamed a file says so. Seen on 2026-09-22 against this
+  // repo: `changeType` is `RENAMED`, and GraphQL has no old path.
+  test("a lookback past one page asks for the next page after the cursor, for what is left", async () => {
+    const node = (oid: string, changeType = "MODIFIED") => ({
+      oid,
+      messageHeadline: "m",
+      author: null,
+      parents: { nodes: [] },
+      associatedPullRequests: {
+        nodes: [
+          {
+            number: 84,
+            title: "t",
+            merged: true,
+            baseRefName: "main",
+            author: null,
+            changedFiles: 1,
+            files: { nodes: [{ path: "a.ts", changeType }] },
+          },
+        ],
+      },
+    });
+    const { port, sent } = portThatAnswers([
+      walked(
+        Array.from({ length: 100 }, () => node(HEAD)),
+        undefined,
+        {
+          hasNextPage: true,
+          endCursor: "cursor-1",
+        },
+      ),
+      walked([node(PARENT, "RENAMED")]),
+    ]);
+    const walk = await port.walkCommits(HEAD, 150);
+    expect(walk.commits).toHaveLength(101);
+    expect(walk.commits.at(-1)?.sha).toBe(PARENT);
+    expect(walk.commits.map(({ pullRequests }) => pullRequests[0]?.renamed).slice(99)).toEqual([
+      false,
+      true,
+    ]);
+    expect(sent.map(({ body }) => (body as { variables: unknown }).variables)).toEqual([
+      { owner: "acme", repo: "infra", head: HEAD, first: 100, after: null },
+      { owner: "acme", repo: "infra", head: HEAD, first: 50, after: "cursor-1" },
+    ]);
+  });
+
+  test("a history that ends before the lookback stops asking", async () => {
+    const { port, sent } = portThatAnswers([walked([])]);
+    expect((await port.walkCommits(HEAD, 500)).commits).toEqual([]);
+    expect(sent).toHaveLength(1);
   });
 
   test("GraphQL names a bot without its suffix, and the port gives the login as the site writes it", async () => {
@@ -180,6 +244,7 @@ describe("walking the commits", () => {
             merged: true,
             changedFiles: 3001,
             files: [],
+            renamed: false,
           },
         ],
       },
@@ -225,5 +290,30 @@ describe("the files of one commit", () => {
   test("a commit without files", async () => {
     const { port } = portThatAnswers([{ json: { sha: HEAD } }]);
     expect(await port.listCommitFiles(HEAD)).toEqual([]);
+  });
+});
+
+describe("the files of a pull request", () => {
+  test("are one REST call for a page of 100, and a renamed file counts under both paths", async () => {
+    const { port, sent } = portThatAnswers([
+      {
+        json: [
+          {
+            filename: "test/render/pending-crates.test.ts",
+            previous_filename: "test/render/pending-level.test.ts",
+            status: "renamed",
+          },
+          { filename: "README.md", status: "modified" },
+        ],
+      },
+    ]);
+    expect(await port.listPullRequestFiles(84)).toEqual([
+      "test/render/pending-crates.test.ts",
+      "test/render/pending-level.test.ts",
+      "README.md",
+    ]);
+    expect(sent.map(({ method, path, search }) => [method, path, search])).toEqual([
+      ["GET", "/repos/acme/infra/pulls/84/files", "?per_page=100"],
+    ]);
   });
 });

@@ -63,6 +63,7 @@ describe("the walk", () => {
       merged: true,
       changedFiles: 2,
       files: ["apps/grafana/a.ts", "apps/grafana/b.ts"],
+      renamed: false,
     };
     expect(walk.commits.map((commit) => commit.pullRequests)).toEqual([
       [],
@@ -92,8 +93,33 @@ describe("the walk", () => {
     expect(walk.commits.at(-1)?.sha).toBe(sha("n30x"));
   });
 
+  // Slice 5.5 (record 0072): `attribution.lookback`, one GraphQL page per
+  // 100 commits.
+  test("holds the lookback it is asked for, at one request per page of 100", async () => {
+    const fake = new FakeGitHub();
+    for (let index = 0; index < 260; index++) {
+      fake.seedCommit({
+        sha: sha(`n${index}x`),
+        parents: index === 0 ? [] : [sha(`n${index - 1}x`)],
+      });
+    }
+    const walk = await fake.walkCommits(sha("n259x"), 250);
+    expect(walk.commits).toHaveLength(250);
+    expect(walk.commits.at(-1)?.sha).toBe(sha("n10x"));
+    expect(fake.requests).toEqual(["walkCommits", "walkCommits", "walkCommits"]);
+    expect((await fake.walkCommits(sha("n259x"), 20)).commits).toHaveLength(20);
+  });
+
   test("a commit the repo does not have fails", async () => {
     await expect(repo().walkCommits(sha("gone"))).rejects.toThrow();
+  });
+
+  test("a pull request that renamed a file says so, and lists only the new path", async () => {
+    const [commit] = (await renamed().walkCommits(sha("c1"))).commits;
+    expect(commit?.pullRequests[0]?.renamed).toBe(true);
+    expect(commit?.pullRequests[0]?.files).toEqual(["apps/loki/rules.ts", "README.md"]);
+    const [plain] = (await repo().walkCommits(sha("m"))).commits;
+    expect(plain?.pullRequests[0]?.renamed).toBe(false);
   });
 
   test("a pull request lists its first 100 files and says how many it changed", async () => {
@@ -107,6 +133,34 @@ describe("the walk", () => {
     const [commit] = (await fake.walkCommits(sha("c1"))).commits;
     expect(commit?.pullRequests[0]?.changedFiles).toBe(140);
     expect(commit?.pullRequests[0]?.files).toHaveLength(100);
+  });
+});
+
+// Pull request 12 moved a file out of grafana into loki.
+function renamed(): FakeGitHub {
+  const fake = new FakeGitHub();
+  fake.seedCommit({ sha: sha("c1") });
+  fake.seedPullRequest({
+    number: 12,
+    files: [{ path: "apps/loki/rules.ts", previousPath: "apps/grafana/rules.ts" }, "README.md"],
+    commits: [sha("c1")],
+  });
+  return fake;
+}
+
+describe("the files of a pull request", () => {
+  test("a renamed file comes under both paths, in one request", async () => {
+    const fake = renamed();
+    expect(await fake.listPullRequestFiles(12)).toEqual([
+      "apps/loki/rules.ts",
+      "apps/grafana/rules.ts",
+      "README.md",
+    ]);
+    expect(fake.requests).toEqual(["listPullRequestFiles"]);
+  });
+
+  test("a pull request the repo does not have fails", async () => {
+    await expect(renamed().listPullRequestFiles(99)).rejects.toThrow();
   });
 });
 
@@ -152,6 +206,26 @@ describe("over HTTP behind the real port", () => {
     const port = await served(fake);
     expect(await port.walkCommits(sha("d1"))).toEqual(await fake.walkCommits(sha("d1")));
     expect(await port.listCommitFiles(sha("d1"))).toEqual(await fake.listCommitFiles(sha("d1")));
+  });
+
+  test("a lookback past one page is paged, and a renamed file's old path is read", async () => {
+    const fake = new FakeGitHub();
+    for (let index = 0; index < 160; index++) {
+      fake.seedCommit({
+        sha: sha(`n${index}x`),
+        parents: index === 0 ? [] : [sha(`n${index - 1}x`)],
+      });
+    }
+    fake.seedPullRequest({
+      number: 12,
+      files: [{ path: "apps/loki/rules.ts", previousPath: "apps/grafana/rules.ts" }],
+      commits: [sha("n150x")],
+    });
+    const port = await served(fake);
+    expect(await port.walkCommits(sha("n159x"), 150)).toEqual(
+      await fake.walkCommits(sha("n159x"), 150),
+    );
+    expect(await port.listPullRequestFiles(12)).toEqual(await fake.listPullRequestFiles(12));
   });
 
   test("a bot's pull request goes over the wire the way GraphQL names a bot, without the suffix", async () => {
