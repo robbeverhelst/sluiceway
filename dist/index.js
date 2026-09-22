@@ -27355,6 +27355,9 @@ function error(message, properties = {}) {
 function warning(message, properties = {}) {
   issueCommand("warning", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
+function notice(message, properties = {}) {
+  issueCommand("notice", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+}
 function info(message) {
   process.stdout.write(message + os4.EOL);
 }
@@ -27363,6 +27366,16 @@ function startGroup(name) {
 }
 function endGroup() {
   issue("endgroup");
+}
+function saveState(name, value) {
+  const filePath = process.env["GITHUB_STATE"] || "";
+  if (filePath) {
+    return issueFileCommand("STATE", prepareKeyValueMessage(name, value));
+  }
+  issueCommand("save-state", { name }, toCommandValue(value));
+}
+function getState(name) {
+  return process.env[`STATE_${name}`] || "";
 }
 
 // src/github/action-ref.ts
@@ -27475,14 +27488,19 @@ function readBackend(getInput2) {
 }
 function refuseDeploymentId(mode, getInput2) {
   const only = (name, of = "apply") => new Error(`The "${name}" input is only for ${of} mode, and this step runs ${mode} mode. Take it out of this step.`);
-  if (mode !== "check" && getInput2("backend").trim() === "true")
+  const auto = mode === "auto";
+  if (!auto && mode !== "check" && getInput2("backend").trim() === "true") {
     throw only("backend", "check");
-  if (mode !== "scan" && getInput2("strict").trim() === "true")
+  }
+  if (!auto && mode !== "scan" && getInput2("strict").trim() === "true") {
     throw only("strict", "scan");
+  }
   if (mode === "apply")
     return;
   if (getInput2("deployment-id").trim() !== "")
     throw only("deployment-id");
+  if (auto)
+    return;
   if (getInput2("deploy-timeout").trim() !== "")
     throw only("deploy-timeout");
   if (getInput2("dry-run").trim() === "true")
@@ -27529,7 +27547,7 @@ function readNotifyTargets(getInput2) {
   return { targets, problems, secrets };
 }
 function unusedNotifyInputs(mode, getInput2) {
-  if (mode === "scan" || mode === "resolve" || mode === "apply")
+  if (mode === "auto" || mode === "scan" || mode === "resolve" || mode === "apply")
     return [];
   return NOTIFY_INPUTS.filter((name) => getInput2(name).trim() !== "");
 }
@@ -59836,11 +59854,11 @@ function deployLimit(run, minutes) {
 }
 
 // src/modes/apply-job.ts
-async function runApply(directory) {
+async function runApply(directory, handed) {
   const env = process.env;
-  const inputs = readApplyInputs(getInput);
+  const inputs = readApplyInputs((name) => handed && name === "deployment-id" ? String(handed.deploymentId) : getInput(name));
   const job = readJob(env);
-  const log = actionsLog();
+  const log = handed?.step.log ?? actionsLog();
   await apply5({
     root: job.root,
     env,
@@ -59860,1694 +59878,80 @@ async function runApply(directory) {
     deploymentId: inputs.deploymentId,
     dryRun: inputs.dryRun,
     event: readEventPayload(env, (path) => readFileSync6(path, "utf8")),
-    outputs: actionsOutputs(env.RUNNER_TEMP),
+    outputs: handed?.step.outputs ?? actionsOutputs(env.RUNNER_TEMP),
     notifier: stepNotifier(getInput, log, setSecret)
   });
 }
 
-// src/modes/check-backend.ts
-var backendContext = (env) => {
-  return { adapter: tools, env, run: (run) => runProcess(run) };
-};
+// src/modes/auto-job.ts
+import { readFileSync as readFileSync12 } from "node:fs";
 
-// src/core/check.ts
-var SUGGESTIONS = ["docs/**"];
-function checkSetup(config2, found, files, references = new Map) {
-  const stacks = applyConfig(config2, found);
-  const claimants = stacks.map(({ stack, inputs }) => ({
-    id: stackId(stack),
-    path: stack.path,
-    inputs
-  }));
-  const { unclaimed } = claim2(claimants, files, config2.scan.unrelated);
-  const reads = readsOf(claimants, files, new Set(unclaimed), references);
-  return {
-    stacks,
-    ignore: config2.ignore.map((entry3) => ignoreReport(ignoreGlob(entry3), found)),
-    unclaimed: groups(unclaimed),
-    suggested: suggestedUnrelated(unclaimed),
-    phases: phaseGroups(config2.phases, new Map(stacks.flatMap((one) => one.phase === undefined ? [] : [[stackId(one.stack), one.phase]]))),
-    reads,
-    inputs: inputsEntries(stacks, reads)
-  };
-}
-function readsOf(claimants, files, unclaimed, references) {
-  return claimants.flatMap(({ id, path, inputs }) => {
-    const matches = globMatcher(inputs);
-    const claims = (file2) => path === "." || file2.startsWith(`${path}/`) || matches(file2);
-    const read3 = references.get(id) ?? [];
-    return [...read3].sort((a, b) => byCodeUnit16(a.path, b.path)).flatMap((reference) => {
-      const under = reference.kind === "file" ? [reference.path] : files.filter((file2) => file2.startsWith(`${reference.path}/`));
-      const left = under.filter((file2) => !claims(file2));
-      if (left.length === 0)
-        return [];
-      const missed = left.some((file2) => !unclaimed.has(file2));
-      return [{ ...reference, stackId: id, missed }];
-    });
-  });
-}
-function globFor({ path, kind }) {
-  return kind === "file" ? globOf(path) : `${globOf(path)}/**`;
-}
-function inputsEntries(stacks, reads) {
-  const byStack = Map.groupBy(reads, (read3) => read3.stackId);
-  const byPath = Map.groupBy(stacks, ({ stack }) => stack.path);
-  return [...byPath].flatMap(([path, inPath]) => {
-    const globs2 = inPath.map(({ stack }) => (byStack.get(stackId(stack)) ?? []).map(globFor).join(`
-`));
-    if (globs2.every((one) => one === ""))
-      return [];
-    if (globs2.every((one) => one === globs2[0])) {
-      return [{ path, globs: (globs2[0] ?? "").split(`
-`) }];
-    }
-    return inPath.flatMap(({ stack }, index) => {
-      const own2 = globs2[index] ?? "";
-      if (own2 === "")
-        return [];
-      return [
-        { path, ...stack.name === undefined ? {} : { name: stack.name }, globs: own2.split(`
-`) }
-      ];
-    });
-  });
-}
-function suggestedUnrelated(unclaimed) {
-  return SUGGESTIONS.filter((glob) => unclaimed.some(globMatcher([glob])));
-}
-function ignoreReport(glob, found) {
-  const matches = globMatcher([glob]);
-  const stacks = found.map(stackId).filter(matches);
-  if (stacks.length > 0)
-    return { glob, stacks };
-  const better = `${glob}:*`;
-  const works = globMatcher([better]);
-  const hinted = found.filter((stack) => matches(stack.path)).map(stackId).filter(works);
-  return hinted.length === 0 ? { glob, stacks } : { glob, stacks, hint: { glob: better, stacks: hinted } };
-}
-function groups(files) {
-  const top = (file2) => {
-    const slash = file2.indexOf("/");
-    return slash === -1 ? "." : file2.slice(0, slash);
-  };
-  const byDirectory = Map.groupBy([...files].sort(byCodeUnit16), top);
-  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit16(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
-}
-function byCodeUnit16(a, b) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
-// src/core/repo-files.ts
-import { readdir as readdir3 } from "node:fs/promises";
-import { join as join30 } from "node:path";
-var SKIPPED2 = new Set([".git", "node_modules"]);
-async function repoFiles(root) {
-  const files = [];
-  const walk3 = async (relative5) => {
-    const entries = await readdir3(join30(root, ...relative5), { withFileTypes: true });
-    for (const entry3 of entries) {
-      if (entry3.name === ".git")
-        continue;
-      if (entry3.isDirectory()) {
-        if (!SKIPPED2.has(entry3.name))
-          await walk3([...relative5, entry3.name]);
-      } else {
-        files.push([...relative5, entry3.name].join("/"));
+// src/core/auto-mode.ts
+var NOTHING = "Nothing to do.";
+function autoModes(event, config2) {
+  switch (event.name) {
+    case "push":
+      if (event.defaultBranch !== undefined && event.ref !== `refs/heads/${event.defaultBranch}`) {
+        return {
+          notice: `A push to ${event.ref ?? "an unknown ref"} is not a push to the default branch, ${event.defaultBranch}. Sluiceway scans only the default branch. ${NOTHING}`
+        };
       }
-    }
-  };
-  await walk3([]);
-  return files.sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+      return { modes: ["scan"] };
+    case "schedule":
+      return { modes: ["scan"] };
+    case "workflow_dispatch":
+      return { modes: config2.readOnly ? ["scan"] : ["resolve", "scan"] };
+    case "issues":
+      if (event.action !== "edited") {
+        return {
+          notice: `An issue was ${event.action ?? "changed"}. Sluiceway acts only on an edit of its dashboard. ${NOTHING}`
+        };
+      }
+      if (config2.readOnly) {
+        return {
+          notice: `The dashboard is read only (dashboard.readOnly), so an issue edit asks nothing of Sluiceway. ${NOTHING}`
+        };
+      }
+      return { modes: ["resolve"] };
+    case "pull_request":
+    case "merge_group":
+      return { modes: ["check"] };
+    default:
+      return {
+        notice: `Sluiceway has nothing to do on a ${event.name} event. It scans on push, schedule and workflow_dispatch, acts on an edit of its dashboard, and checks a pull request. ${NOTHING}`
+      };
+  }
 }
 
-// src/core/workflow-check.ts
-import { readdirSync as readdirSync3, readFileSync as readFileSync7 } from "node:fs";
-import { join as join31 } from "node:path";
-var WORKFLOW_DIRECTORY = ".github/workflows";
-function readWorkflowFiles(root) {
-  let names2;
+// src/core/resolve.ts
+function matrixOutput(entries) {
+  return JSON.stringify(entries.map(({ stack, environment, deployment }) => ({ stack, environment, deployment })));
+}
+var MAX_DEPLOYS_PER_RUN = 256;
+function capDeploys(allowed) {
+  const sorted = [...allowed].sort((a, b) => a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0);
+  return { start: sorted.slice(0, MAX_DEPLOYS_PER_RUN), over: sorted.slice(MAX_DEPLOYS_PER_RUN) };
+}
+function parseMatrixOutput(text6) {
+  let parsed;
   try {
-    names2 = readdirSync3(join31(root, WORKFLOW_DIRECTORY), { withFileTypes: true }).filter((entry3) => entry3.isFile() && /\.ya?ml$/.test(entry3.name)).map((entry3) => entry3.name);
+    parsed = JSON.parse(text6);
   } catch {
     return [];
   }
-  return names2.sort(byCodeUnit17).map((name) => ({
-    path: `${WORKFLOW_DIRECTORY}/${name}`,
-    text: readFileSync7(join31(root, WORKFLOW_DIRECTORY, name), "utf8")
-  }));
-}
-var MODES = ["scan", "resolve", "apply", "settle", "check", "init"];
-function needs(mode, config2) {
-  switch (mode) {
-    case "scan":
-      return {
-        contents: "read",
-        issues: "write",
-        deployments: "write",
-        actions: "read",
-        "pull-requests": "read"
-      };
-    case "resolve":
-      return {
-        contents: config2.mergeAndDeploy.authors.length > 0 ? "write" : "read",
-        issues: "write",
-        deployments: "write",
-        actions: "write",
-        "pull-requests": "read"
-      };
-    case "apply":
-      return {
-        contents: "read",
-        issues: "write",
-        deployments: "write",
-        "pull-requests": "read"
-      };
-    case "settle":
-      return { contents: "read", issues: "read", deployments: "write", actions: "write" };
-    case "check":
-    case "init":
-      return { contents: "read" };
-  }
-}
-var SLUICEWAY_STEP = /^sluiceway\/sluiceway@(.+)$/i;
-function refKind(ref) {
-  if (/^v\d+$/.test(ref))
-    return "moving";
-  if (/^v\d+\.\d+\.\d+$/.test(ref))
-    return "release";
-  if (/^[0-9a-f]{40}$/.test(ref))
-    return "commit";
-  return "other";
-}
-function isRecord2(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function permissionsOf(value) {
-  if (value === "read-all" || value === "write-all")
-    return value;
-  if (!isRecord2(value))
-    return;
-  return Object.fromEntries(Object.entries(value).map(([key, level]) => [key, String(level)]));
-}
-function triggersOf(value) {
-  if (typeof value === "string")
-    return { [value]: null };
-  if (Array.isArray(value))
-    return Object.fromEntries(value.map((event) => [String(event), null]));
-  return isRecord2(value) ? value : {};
-}
-function concurrencyOf(value) {
-  if (typeof value === "string" || typeof value === "number") {
-    return { group: String(value), queue: "", cancels: false };
-  }
-  if (!isRecord2(value) || value.group === undefined)
-    return;
-  const cancels = value["cancel-in-progress"];
-  return {
-    group: String(value.group),
-    queue: value.queue === undefined ? "" : String(value.queue),
-    cancels: cancels === true || cancels === "true"
-  };
-}
-function parseWorkflow(text6) {
-  let document;
-  try {
-    document = $parse(text6);
-  } catch {
-    return "unreadable";
-  }
-  if (!isRecord2(document) || !isRecord2(document.jobs))
-    return;
-  const jobs = {};
-  for (const [name, job] of Object.entries(document.jobs)) {
-    if (!isRecord2(job))
-      continue;
-    jobs[name] = {
-      permissions: permissionsOf(job.permissions),
-      steps: Array.isArray(job.steps) ? job.steps : [],
-      concurrency: concurrencyOf(job.concurrency),
-      condition: job.if === undefined || job.if === null ? "" : String(job.if),
-      needs: typeof job.needs === "string" ? [job.needs] : Array.isArray(job.needs) ? job.needs.map(String) : [],
-      outputs: isRecord2(job.outputs) ? Object.keys(job.outputs) : [],
-      strategy: job.strategy === undefined ? "" : JSON.stringify(job.strategy)
-    };
-  }
-  return { on: triggersOf(document.on), permissions: permissionsOf(document.permissions), jobs };
-}
-function sluicewayJob(job, steps) {
-  for (const step3 of steps) {
-    if (!isRecord2(step3) || typeof step3.uses !== "string")
-      continue;
-    const ref = SLUICEWAY_STEP.exec(step3.uses.trim())?.[1];
-    if (ref === undefined)
-      continue;
-    const named = isRecord2(step3.with) ? String(step3.with.mode ?? "") : "";
-    const mode = MODES.includes(named) ? named : undefined;
-    return { job, mode, ref, refKind: refKind(ref), named };
-  }
-  return;
-}
-function missing(granted, wanted) {
-  return Object.entries(wanted).filter(([scope, level]) => {
-    if (granted === "write-all")
-      return false;
-    if (granted === "read-all")
-      return level === "write";
-    const has = granted?.[scope];
-    return !(has === "write" || has === "read" && level === "read");
-  }).map(([scope, level]) => `${scope}: ${level}`);
-}
-function has(granted, scope) {
-  return granted === "write-all" || isRecord2(granted) && granted[scope] === "write";
-}
-function checkWorkflows(files, config2) {
-  const report = { workflows: [], warnings: [], notes: [] };
-  for (const { path, text: text6 } of files) {
-    const parsed = parseWorkflow(text6);
-    if (parsed === "unreadable") {
-      if (/sluiceway\/sluiceway@/i.test(text6)) {
-        report.warnings.push({ kind: "unreadable", path });
-      }
-      continue;
-    }
-    if (parsed === undefined)
-      continue;
-    checkOne2(path, parsed, config2, report);
-  }
-  return report;
-}
-function checkOne2(path, workflow, config2, report) {
-  const found = Object.entries(workflow.jobs).flatMap(([name, job]) => {
-    const step3 = sluicewayJob(name, job.steps);
-    return step3 ? [{ step: step3, permissions: job.permissions ?? workflow.permissions }] : [];
-  });
-  if (found.length === 0)
-    return;
-  const { warnings, notes } = report;
-  report.workflows.push({
-    path,
-    jobs: found.map(({ step: { job, mode, ref, refKind: refKind2 } }) => ({ job, mode, ref, refKind: refKind2 }))
-  });
-  for (const { step: step3 } of found) {
-    if (step3.mode === undefined) {
-      warnings.push({ kind: "unknown-mode", path, job: step3.job, mode: step3.named });
-    }
-    if (step3.refKind === "other") {
-      warnings.push({ kind: "unreleased-ref", path, job: step3.job, ref: step3.ref });
-    }
-  }
-  const refs = [...new Set(found.map(({ step: step3 }) => step3.ref))];
-  if (refs.length > 1)
-    warnings.push({ kind: "mixed-refs", path, refs });
-  const called = "workflow_call" in workflow.on;
-  if (called)
-    notes.push({ kind: "called", path });
-  const modes = new Set(found.map(({ step: step3 }) => step3.mode));
-  const runs = (mode) => modes.has(mode);
-  const deploys = [...modes].some((mode) => mode !== undefined && mode !== "check" && mode !== "init");
-  if (!called && deploys) {
-    for (const trigger of ["pull_request", "pull_request_target", "merge_group"]) {
-      if (trigger in workflow.on)
-        warnings.push({ kind: "forbidden-trigger", path, trigger });
-    }
-  }
-  if (!called && runs("scan")) {
-    for (const trigger of ["push", "schedule", "workflow_dispatch"]) {
-      if (!(trigger in workflow.on))
-        warnings.push({ kind: "missing-trigger", path, trigger });
-    }
-  }
-  if (!called && runs("resolve") && !listensToEdits(workflow.on.issues, "issues" in workflow.on)) {
-    warnings.push({ kind: "missing-trigger", path, trigger: "issues" });
-  }
-  if (runs("resolve") || runs("apply") || runs("settle")) {
-    for (const mode of ["scan", "resolve", "apply", "settle"]) {
-      if (!runs(mode))
-        warnings.push({ kind: "missing-job", path, mode });
-    }
-  } else if (runs("scan") && !config2.dashboard.readOnly) {
-    warnings.push({ kind: "boxes-do-nothing", path });
-  }
-  checkJobs(path, workflow, found, config2, warnings);
-  if (called)
-    return;
-  for (const { step: step3, permissions } of found) {
-    if (step3.mode === undefined)
-      continue;
-    const { job, mode } = step3;
-    if (permissions === undefined) {
-      warnings.push({
-        kind: "no-permissions",
-        path,
-        job,
-        mode,
-        needs: missing({}, needs(mode, config2))
-      });
-      continue;
-    }
-    const lacks = missing(permissions, needs(mode, config2));
-    if (lacks.length > 0)
-      warnings.push({ kind: "missing-permissions", path, job, mode, missing: lacks });
-    if (mode === "scan" && !has(permissions, "checks")) {
-      notes.push({ kind: "no-preview-pages", path, job });
-    }
-  }
-}
-function checkJobs(path, workflow, found, config2, warnings) {
-  const jobOf = (name) => workflow.jobs[name];
-  const withMode = (mode) => found.filter(({ step: step3 }) => step3.mode === mode).map(({ step: step3 }) => step3.job);
-  for (const { step: step3 } of found) {
-    const { job, mode } = step3;
-    const { concurrency, condition } = jobOf(job);
-    if (mode === "scan" || mode === "resolve" || mode === "apply") {
-      if (concurrency === undefined) {
-        warnings.push({ kind: "no-concurrency", path, job, mode });
-      } else if (mode === "apply") {
-        if (!/\bmatrix\.stack\b/.test(concurrency.group)) {
-          warnings.push({ kind: "apply-group-shared", path, job });
-        }
-        if (concurrency.queue !== "max")
-          warnings.push({ kind: "apply-no-queue", path, job });
-        if (concurrency.cancels)
-          warnings.push({ kind: "apply-cancels", path, job });
-      }
-    }
-    if (mode === "apply" && !/!\s*cancelled\(\s*\)|\balways\(\s*\)/.test(condition)) {
-      warnings.push({ kind: "no-status-check", path, job, mode });
-    }
-    if (mode === "settle" && !/(^|[^!\w])always\(\s*\)/.test(condition)) {
-      warnings.push({ kind: "no-status-check", path, job, mode });
-    }
-  }
-  const applies = withMode("apply");
-  for (const settle2 of withMode("settle")) {
-    const { needs: needs2 } = jobOf(settle2);
-    for (const apply6 of applies) {
-      if (!needs2.includes(apply6)) {
-        warnings.push({ kind: "settle-skips-apply", path, job: settle2, apply: apply6 });
-      }
-    }
-  }
-  const scans = withMode("scan");
-  const fromScan = applies.flatMap((apply6) => {
-    const source = /needs\.([\w-]+)\.outputs\.matrix/.exec(jobOf(apply6).strategy)?.[1];
-    return source !== undefined && scans.includes(source) ? [{ apply: apply6, scan: source }] : [];
-  });
-  for (const { apply: apply6, scan } of fromScan) {
-    if (!jobOf(scan).outputs.includes("matrix")) {
-      warnings.push({ kind: "scan-no-matrix-output", path, job: apply6, scan });
-    }
-  }
-  const mergesAndDeploys = config2.mergeAndDeploy.authors.length > 0;
-  if (mergesAndDeploys && scans.length > 0 && withMode("resolve").length > 0) {
-    if (fromScan.length === 0)
-      warnings.push({ kind: "no-merged-apply", path });
-  }
-}
-function listensToEdits(issues, present3) {
-  if (!present3)
-    return false;
-  if (!isRecord2(issues) || issues.types === undefined)
-    return true;
-  const types = issues.types;
-  return Array.isArray(types) ? types.includes("edited") : types === "edited";
-}
-function byCodeUnit17(a, b) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
-// src/render/check.ts
-var VALID = "The setup is valid.";
-var NO_CONFIG_FILE = "No sluiceway.yaml, so every setting is its default.";
-var CANNOT_TELL = "A check reads files only, so it cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan.";
-var CANNOT_TELL_WITH_BACKEND = "A check cannot say that a preview will work: a missing credential for a provider or a registry the runner cannot reach shows only in a scan.";
-var BACKEND_OFF = "With backend: true the check also asks the backend which stacks it holds, with the credentials of its job.";
-var BACKEND_TITLE = "Stacks in the backend";
-var BACKEND_PASTE_TITLE = "Ready to paste into sluiceway.yaml, over ignore";
-var NOT_IN_BACKEND_TITLE = "A stack is not in the backend";
-var COULD_NOT_ASK_TITLE = "Could not ask the backend";
-var ALL_IN_BACKEND = "Every stack the backend was asked about is in it.";
-var BACKEND_PASTE_NOTE = "The block below keeps what ignore has and adds the stacks the backend does not hold. Leave out any stack you are about to create.";
-var WHERE_FILES_BELONG = "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.";
-var PASTE_NOTE = "The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.";
-var READS_TITLE = "Files stacks read and do not claim";
-var READS_PASTE_TITLE = "Ready to paste into sluiceway.yaml, under stacks";
-var READ_WARNING_TITLE = "A stack reads a file it does not claim";
-var READS_NOTE = "The stack's own files name these as read. The entries below add them to the stacks' inputs, and inputs of several entries add up, so they can go under stacks next to the entries you have. Sluiceway reads only what the files name plainly: a path a program builds at run time does not show here.";
-var WORKFLOW_WARNING_TITLE = "A workflow is missing something";
-var NOTHING_MISSING = "Nothing is missing from the workflows.";
-var NO_SCAN_WORKFLOW = "No workflow in .github/workflows runs a scan yet.";
-var WORKFLOWS_AS_TEXT = "The check reads the workflow files as text. The repo's default token permissions, the rules of an environment and what GitHub itself validates live elsewhere and do not show here.";
-var FILES_PER_DIRECTORY = 20;
-function foundText(count3) {
-  return count3 === 0 ? "Found no stacks." : `Found ${plural2(count3, "stack")}.`;
-}
-function settingsText(configured, phases = []) {
-  const { environment, tickers: tickers2, inputs } = configured;
-  const rule = typeof tickers2 === "string" ? tickers2 : tickers2.join(", ");
-  const claims = inputs.length === 0 ? "no inputs" : `inputs ${inputs.join(", ")}`;
-  const phase = configured.phase === undefined ? "" : `, phase ${phaseWords(configured, " (read from ", ")")}`;
-  const waits = dependsOnWords(configured, phases);
-  return `environment ${environment}, tickers ${rule}, ${claims}${phase}${waits === undefined ? "" : `, depends on ${waits}`}`;
-}
-function phaseWords({ phase, phaseFrom }, before, after) {
-  return phaseFrom === undefined ? `${phase}` : `${phase}${before}${phaseFrom}${after}`;
-}
-function split(configured, phases) {
-  return waitsByPhase({
-    phases: phases.map(({ phase }) => phase),
-    phaseOf: new Map(phases.flatMap(({ phase, stackIds }) => stackIds.map((id) => [id, phase]))),
-    stackId: stackId(configured.stack),
-    waitingOn: configured.dependsOn ?? []
-  });
-}
-function dependsOnWords(configured, phases) {
-  const { named, phases: through } = split(configured, phases);
-  const parts = [
-    ...named,
-    ...through.map(({ phase, stackIds }) => `${stackIds.join(", ")} through the ${phase} phase`),
-    ...configured.dependsOnAuto ? ["the stacks its stack references name, read at each preview (auto)"] : []
-  ];
-  return parts.length === 0 ? undefined : parts.join(", ");
-}
-function dependsOnCell(configured, phases) {
-  const { named, phases: through } = split(configured, phases);
-  const parts = [
-    ...named,
-    ...through.map(({ phase }) => `the ${phase} phase`),
-    ...configured.dependsOnAuto ? ["auto: its stack references, read at each preview"] : []
-  ];
-  return parts.length === 0 ? "none" : parts.join(", ");
-}
-function phaseLines(phases) {
-  return phases.map(({ phase, stackIds }, index) => {
-    const earlier = phases.slice(0, index).map((one) => one.phase);
-    const stacks = stackIds.length === 0 ? "no stack" : stackIds.join(", ");
-    const waits = earlier.length === 0 ? "" : `. Waits on every stack of ${listed4(earlier)}`;
-    return `${index + 1}. ${phase}: ${stacks}${waits}`;
-  });
-}
-function listed4(words) {
-  return words.length <= 1 ? words[0] ?? "" : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
-}
-function ignoreText({ glob, stacks }) {
-  return `ignore ${JSON.stringify(glob)} leaves out ${plural2(stacks.length, "stack")}: ${stacks.join(", ")}.`;
-}
-function unmatchedText(entry3) {
-  return `ignore ${JSON.stringify(entry3.glob)} matches no stack. ${unmatchedWhy(entry3)}`;
-}
-function unmatchedWhy({ hint }) {
-  const why = "It is matched against the stack id, not the directory.";
-  return hint === undefined ? why : `${why} ${JSON.stringify(hint.glob)} would leave out ${hint.stacks.join(", ")}.`;
-}
-function unclaimedText(count3) {
-  return `${plural2(count3, "file")} ${count3 === 1 ? "is" : "are"} claimed by no stack. A push that changes one of them gives a full scan.`;
-}
-function unrelatedBlock(existing, suggested) {
-  const globs2 = [...new Set([...existing, ...suggested])];
-  return ["scan:", "  unrelated:", ...globs2.map((glob) => `    - ${JSON.stringify(glob)}`)];
-}
-function readText(read3) {
-  const shown3 = read3.kind === "directory" ? `${read3.path}/` : read3.path;
-  return `${read3.stackId} reads ${shown3}, named in ${read3.namedIn}.`;
-}
-function readWarningText(read3) {
-  return `${readText(read3)} A push that changes it does not preview ${read3.stackId}. Add it to the inputs of the stack.`;
-}
-function inputsBlock(entries) {
-  return [
-    "stacks:",
-    ...entries.flatMap(({ path, name, globs: globs2 }) => [
-      `  - path: ${JSON.stringify(path)}`,
-      ...name === undefined ? [] : [`    name: ${JSON.stringify(name)}`],
-      "    inputs:",
-      ...globs2.map((glob) => `      - ${JSON.stringify(glob)}`)
-    ])
-  ];
-}
-function askFailureText(reason) {
-  return reason.kind === "timed-out" ? `the question timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}` : previewFailureText(reason);
-}
-function backendText(check2) {
-  switch (check2.found) {
-    case true:
-      return `${check2.stackId} is in the backend.`;
-    case false:
-      return `${check2.stackId} is not in the backend.`;
-    case "unknown":
-      return `${check2.stackId}: could not ask the backend, ${askFailureText(check2.reason)}.`;
-    case "unchecked":
-      return `${check2.stackId}: not checked, its tool has no list of stacks to ask.`;
-  }
-}
-function notInBackendText(stackId2) {
-  return `${stackId2} has files in the repo and no stack in the backend, so a scan gives its row a preview failure. Create the stack, or leave it out with the ignore block of this check.`;
-}
-function couldNotAskText(check2) {
-  return `${backendText(check2)} The tool's own words are in the job log.`;
-}
-function ignoreBlock(existing, stackIds) {
-  return [
-    "ignore:",
-    ...existing.flatMap((entry3) => typeof entry3 === "string" ? [`  - ${JSON.stringify(entry3)}`] : [
-      `  - glob: ${JSON.stringify(entry3.glob)}`,
-      `    reason: ${JSON.stringify(entry3.reason)}`
-    ]),
-    ...stackIds.map((id) => `  - ${JSON.stringify(globOf(id))}`)
-  ];
-}
-function backendCell(check2) {
-  switch (check2.found) {
-    case true:
-      return "Yes";
-    case false:
-      return "No";
-    case "unknown":
-      return `Could not ask: ${askFailureText(check2.reason)}`;
-    case "unchecked":
-      return "Not checked";
-  }
-}
-function backendParts(checks3, ignore) {
-  const parts = [
-    "### The backend",
-    [
-      "| Stack | In the backend |",
-      "|---|---|",
-      ...checks3.map((check2) => row([check2.stackId, backendCell(check2)]))
-    ].join(`
-`)
-  ];
-  const missing2 = checks3.filter((check2) => check2.found === false).map((check2) => check2.stackId);
-  if (missing2.length === 0) {
-    if (checks3.some((check2) => check2.found === true))
-      parts.push(ALL_IN_BACKEND);
-  } else {
-    parts.push(BACKEND_PASTE_NOTE, ["```yaml", ...ignoreBlock(ignore, missing2), "```"].join(`
-`));
-  }
-  return parts;
-}
-function refText({ ref, refKind: refKind2 }) {
-  switch (refKind2) {
-    case "moving":
-      return `at ${ref}, which follows every release of ${ref}`;
-    case "release":
-      return `at ${ref}, one release that stays as it is`;
-    case "commit":
-      return `at commit ${ref.slice(0, 12)}, pinned`;
-    case "other":
-      return `at ${ref}, which is not a release`;
-  }
-}
-function workflowJobText(path, job) {
-  const mode = job.mode === undefined ? "no known mode" : `mode ${job.mode}`;
-  return `${path}, job ${job.job}: ${mode}, ${refText(job)}.`;
-}
-var MODE_LIST = "scan, resolve, apply, settle, check";
-function workflowWarningText(warning2) {
-  const { path } = warning2;
-  switch (warning2.kind) {
-    case "unreadable":
-      return `${path} is not valid YAML, so the check cannot read how it runs Sluiceway. The Actions tab of the repo shows GitHub's own error.`;
-    case "unknown-mode":
-      return warning2.mode === "" ? `${path}, job ${warning2.job}: the Sluiceway step has no mode. Use one of: ${MODE_LIST}.` : `${path}, job ${warning2.job}: the Sluiceway step has mode ${JSON.stringify(warning2.mode)}, which does not exist. Use one of: ${MODE_LIST}.`;
-    case "unreleased-ref":
-      return `${path}, job ${warning2.job}: sluiceway/sluiceway@${warning2.ref} is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.`;
-    case "mixed-refs":
-      return `${path} runs Sluiceway at ${warning2.refs.join(" and ")}. Use one ref in every job, so that a scan and the deploy it leads to run the same version.`;
-    case "missing-trigger":
-      return MISSING_TRIGGER[warning2.trigger](path);
-    case "forbidden-trigger":
-      return `${path} runs on ${warning2.trigger}. A scan would write the dashboard from code that is not on the default branch yet. Only the workflow of the check may run on pull requests or in a merge queue.`;
-    case "missing-job":
-      return `${path} has no ${warning2.mode} job. The four jobs scan, resolve, apply and settle stay in one file: a scan looks for waiting ticks among the runs of its own workflow, and the rescan box and settle start that same workflow again.`;
-    case "boxes-do-nothing":
-      return `${path} scans, and no job in it resolves a tick, so a box on the dashboard does nothing. For a workflow that only scans, set dashboard.readOnly: true in sluiceway.yaml.`;
-    case "no-permissions":
-      return `${path}, job ${warning2.job}: there is no permissions block, so the token gets the repo's default, which a file does not show. ${warning2.mode} needs ${warning2.needs.join(", ")}.`;
-    case "missing-permissions":
-      return `${path}, job ${warning2.job}: ${warning2.mode} needs ${warning2.missing.join(", ")}. A job's own permissions replace the workflow's.`;
-    case "no-concurrency":
-      return `${path}, job ${warning2.job}: there is no concurrency group. ${NO_CONCURRENCY[warning2.mode]}`;
-    case "apply-group-shared":
-      return `${path}, job ${warning2.job}: the concurrency group does not name the stack, so a deploy waits for the deploy of every other stack. Use group: sluiceway-apply-\${{ matrix.stack }}.`;
-    case "apply-no-queue":
-      return `${path}, job ${warning2.job}: the concurrency group has no queue: max, so a deploy that waits is cancelled when a newer one for the same stack arrives.`;
-    case "apply-cancels":
-      return `${path}, job ${warning2.job}: cancel-in-progress stops a deploy half way when a newer one for the same stack arrives. Take it out of this job.`;
-    case "no-status-check":
-      return warning2.mode === "apply" ? `${path}, job ${warning2.job}: the if: has no !cancelled(). Without a status check GitHub skips the deploys that resolve started whenever resolve itself ends red.` : `${path}, job ${warning2.job}: the if: has no always(). settle exists for deploys that were cancelled or failed, and without always() GitHub skips it exactly then.`;
-    case "settle-skips-apply":
-      return `${path}, job ${warning2.job}: settle does not wait for the job ${warning2.apply}. Add ${warning2.apply} to its needs, so it ends the records of those deploys too.`;
-    case "no-merged-apply":
-      return `${path}: mergeAndDeploy is on, and no apply job takes the matrix of the scan. The scan after a merge hands the deploy on through its own matrix output, so a merged update would never deploy. Add a copy of the apply job that takes needs.scan.outputs.matrix.`;
-    case "scan-no-matrix-output":
-      return `${path}, job ${warning2.job}: it takes the matrix of the job ${warning2.scan}, which has no matrix output. Add outputs: matrix: \${{ steps.<id>.outputs.matrix }} to ${warning2.scan}, with that id on its Sluiceway step.`;
-  }
-}
-var MISSING_TRIGGER = {
-  push: (path) => `${path} scans and has no push trigger. A push to the default branch starts the scan that shows its change as pending.`,
-  schedule: (path) => `${path} scans and has no schedule. The daily full scan catches a change that is not a file in the repo, such as another stack's output.`,
-  workflow_dispatch: (path) => `${path} has no workflow_dispatch trigger. The rescan box and settle start a scan through it.`,
-  issues: (path) => `${path} has a resolve job and does not listen to issue edits (issues, with the type edited). A tick would start nothing.`
-};
-var NO_CONCURRENCY = {
-  scan: "Scans would run side by side. Use concurrency: sluiceway-scan, so they run one at a time.",
-  resolve: "Two runs could handle the same tick. Use concurrency: sluiceway-resolve, so ticks are handled one run at a time.",
-  apply: "Two deploys of one stack could run at once. Use a group per stack, group: sluiceway-apply-${{ matrix.stack }}, with queue: max."
-};
-function workflowNoteText(note) {
-  switch (note.kind) {
-    case "no-preview-pages":
-      return `${note.path}, job ${note.job}: without checks: write there are no preview pages, and a pending row's preview link opens the run's summary.`;
-    case "called":
-      return `${note.path} is called from another workflow. Its triggers and permissions come from the caller, which the check does not follow.`;
-  }
-}
-function scansSomewhere(workflows) {
-  return workflows.workflows.some(({ jobs }) => jobs.some((job) => job.mode === "scan"));
-}
-function renderCheckSummary({
-  report,
-  workflows,
-  unrelated,
-  hasConfigFile: hasConfigFile2,
-  backend
-}) {
-  const parts = ["## Sluiceway check", VALID];
-  if (!hasConfigFile2)
-    parts.push(NO_CONFIG_FILE);
-  parts.push("### Stacks", foundText(report.stacks.length));
-  if (report.stacks.length > 0) {
-    const waits = report.stacks.some((configured) => configured.dependsOn !== undefined || configured.dependsOnAuto);
-    const phased = report.stacks.some((configured) => configured.phase !== undefined);
-    parts.push([
-      `| Stack | Environment | Tickers | Inputs |${phased ? " Phase |" : ""}${waits ? " Depends on |" : ""}`,
-      `|---|---|---|---|${phased ? "---|" : ""}${waits ? "---|" : ""}`,
-      ...report.stacks.map((configured) => {
-        const { environment, tickers: tickers2, inputs } = configured;
-        return row([
-          stackId(configured.stack),
-          environment,
-          typeof tickers2 === "string" ? tickers2 : tickers2.join(", "),
-          inputs.length === 0 ? "none" : inputs.join(", "),
-          ...phased ? [configured.phase === undefined ? "none" : phaseWords(configured, ", from ", "")] : [],
-          ...waits ? [dependsOnCell(configured, report.phases)] : []
-        ]);
-      })
-    ].join(`
-`));
-  }
-  if (report.phases.length > 0) {
-    parts.push("### Phases", [
-      "| Phase | Stacks | Waits on |",
-      "|---|---|---|",
-      ...report.phases.map(({ phase, stackIds }, index) => {
-        const earlier = report.phases.slice(0, index).map((one) => one.phase);
-        return row([
-          phase,
-          stackIds.length === 0 ? "none" : stackIds.join(", "),
-          earlier.length === 0 ? "nothing" : earlier.join(", ")
-        ]);
-      })
-    ].join(`
-`));
-  }
-  if (report.ignore.length > 0) {
-    parts.push("### Ignore", [
-      "| Glob | Leaves out |",
-      "|---|---|",
-      ...report.ignore.map((entry3) => row([
-        entry3.glob,
-        entry3.stacks.length > 0 ? entry3.stacks.join(", ") : `No stack. ${unmatchedWhy(entry3)}`
-      ]))
-    ].join(`
-`));
-  }
-  parts.push("### Files that no stack claims");
-  const count3 = report.unclaimed.reduce((sum, group) => sum + group.files.length, 0);
-  if (count3 === 0) {
-    parts.push("Every file is claimed by a stack, covered by scan.unrelated, or one of the docs and tooling files that force nothing by default.");
-  } else {
-    parts.push(unclaimedText(count3), report.unclaimed.map(groupLine).join(`
-`), WHERE_FILES_BELONG);
-    if (report.suggested.length > 0) {
-      parts.push(PASTE_NOTE, ["```yaml", ...unrelatedBlock(unrelated, report.suggested), "```"].join(`
-`));
-    }
-  }
-  if (report.reads.length > 0) {
-    parts.push(`### ${READS_TITLE}`, report.reads.map((read3) => `- ${escapeText(read3.missed ? readWarningText(read3) : readText(read3))}`).join(`
-`), READS_NOTE, ["```yaml", ...inputsBlock(report.inputs), "```"].join(`
-`));
-  }
-  parts.push("### Workflows", ...workflowParts(workflows));
-  if (backend !== undefined)
-    parts.push(...backendParts(backend.checks, backend.ignore));
-  parts.push("### What a check cannot tell", ...backend === undefined ? [CANNOT_TELL, BACKEND_OFF] : [CANNOT_TELL_WITH_BACKEND]);
-  return `${parts.join(`
-
-`)}
-`;
-}
-function renderCheckFailure(kind, problems) {
-  const title = kind === "config" ? "sluiceway.yaml is not valid." : "Could not work out the stacks of this repo.";
-  return `${[
-    "## Sluiceway check",
-    title,
-    problems.map((problem4) => `- ${escapeText(problem4)}`).join(`
-`),
-    "Fix these and run the check again. A scan stops at the same place."
-  ].join(`
-
-`)}
-`;
-}
-function workflowParts(workflows) {
-  const parts = [];
-  if (workflows.workflows.length > 0) {
-    parts.push([
-      "| Workflow | Job | Mode | Action ref |",
-      "|---|---|---|---|",
-      ...workflows.workflows.flatMap(({ path, jobs }) => jobs.map((job) => row([path, job.job, job.mode ?? "none", refText(job)])))
-    ].join(`
-`));
-  }
-  if (!scansSomewhere(workflows))
-    parts.push(NO_SCAN_WORKFLOW);
-  if (workflows.warnings.length > 0) {
-    parts.push(workflows.warnings.map((warning2) => `- ${escapeText(workflowWarningText(warning2))}`).join(`
-`));
-  }
-  if (workflows.notes.length > 0) {
-    parts.push(workflows.notes.map((note) => `- ${escapeText(workflowNoteText(note))}`).join(`
-`));
-  }
-  if (workflows.workflows.length > 0 && workflows.warnings.length === 0) {
-    parts.push(NOTHING_MISSING);
-  }
-  parts.push(WORKFLOWS_AS_TEXT);
-  return parts;
-}
-function groupLine({ directory, files }) {
-  const where2 = directory === "." ? "The repo root" : escapeText(`${directory}/`);
-  const shown3 = files.slice(0, FILES_PER_DIRECTORY).map(escapeText).join(", ");
-  const rest = files.length - FILES_PER_DIRECTORY;
-  const more = rest > 0 ? `, and ${plural2(rest, "more file")}. The job log lists them all.` : "";
-  return `- ${where2}, ${plural2(files.length, "file")}: ${shown3}${more}`;
-}
-function row(cells) {
-  return `| ${cells.map(escapeText).join(" | ")} |`;
-}
-
-// src/modes/check.ts
-var line = logGroupTitle;
-async function check2(context3) {
-  const { log, root } = context3;
-  let config2;
-  let report;
-  try {
-    config2 = loadConfig(root);
-    const found = await context3.adapter.discover(root, config2);
-    const references = new Map;
-    const readsFiles4 = context3.adapter.readsFiles;
-    if (readsFiles4 !== undefined) {
-      for (const stack of found)
-        references.set(stackId(stack), await readsFiles4(root, stack));
-    }
-    report = checkSetup(config2, found, await repoFiles(root), references);
-  } catch (error63) {
-    if (error63 instanceof ConfigError || error63 instanceof DiscoveryError) {
-      await summary2(context3, renderCheckFailure(error63 instanceof ConfigError ? "config" : "discovery", error63.problems));
-    }
-    throw error63;
-  }
-  const configFile = hasConfigFile(root);
-  if (!configFile)
-    log.info(NO_CONFIG_FILE);
-  log.info(foundText(report.stacks.length));
-  if (report.stacks.length > 0) {
-    log.group("Stacks", report.stacks.map((configured) => line(`${stackId(configured.stack)}: ${settingsText(configured, report.phases)}`)));
-  }
-  if (report.phases.length > 0)
-    log.group("Phases", phaseLines(report.phases).map(line));
-  for (const entry3 of report.ignore) {
-    if (entry3.stacks.length > 0)
-      log.info(line(ignoreText(entry3)));
-    else
-      log.warning(line(unmatchedText(entry3)), "An ignore glob matches no stack");
-  }
-  const unclaimed = report.unclaimed.flatMap((group) => group.files);
-  if (unclaimed.length > 0) {
-    log.info(unclaimedText(unclaimed.length));
-    log.group("Files that no stack claims", unclaimed.map(line));
-    log.info(WHERE_FILES_BELONG);
-    if (report.suggested.length > 0) {
-      log.group("Ready to paste into sluiceway.yaml", unrelatedBlock(config2.scan.unrelated, report.suggested).map(line));
-    }
-  }
-  if (report.reads.length > 0) {
-    log.group(READS_TITLE, report.reads.map((read3) => line(readText(read3))));
-    for (const read3 of report.reads.filter((one) => one.missed)) {
-      log.warning(line(readWarningText(read3)), READ_WARNING_TITLE);
-    }
-    log.info(READS_NOTE);
-    log.group(READS_PASTE_TITLE, inputsBlock(report.inputs).map(line));
-  }
-  const workflows = checkWorkflows(readWorkflowFiles(root), config2);
-  logWorkflows(log, workflows);
-  const backend = context3.backend === undefined ? undefined : await askBackend(context3.backend, root, report.stacks.map(({ stack }) => stack), config2.ignore, log);
-  await summary2(context3, renderCheckSummary({
-    report,
-    workflows,
-    unrelated: config2.scan.unrelated,
-    hasConfigFile: configFile,
-    backend: backend === undefined ? undefined : { checks: backend, ignore: config2.ignore }
-  }));
-  log.info(VALID);
-  if (backend === undefined) {
-    log.info(CANNOT_TELL);
-    log.info(BACKEND_OFF);
-  } else {
-    log.info(CANNOT_TELL_WITH_BACKEND);
-  }
-}
-async function askBackend(backend, root, stacks, ignore, log) {
-  const result = await backend.adapter.findInBackend?.(stacks, {
-    root,
-    env: backend.env,
-    run: backend.run
-  });
-  const answers = new Map((result?.answers ?? []).map((answer) => [stackId(answer.stack), answer]));
-  const checks3 = stacks.map((stack) => {
-    const id = stackId(stack);
-    const answer = answers.get(id);
-    if (answer === undefined)
-      return { stackId: id, found: "unchecked" };
-    return answer.found === "unknown" ? { stackId: id, found: "unknown", reason: answer.reason } : { stackId: id, found: answer.found };
-  });
-  if (result !== undefined && result.toolLog !== "") {
-    log.group("The tool's own words", result.toolLog.replace(/\n$/, "").split(`
-`));
-  }
-  log.group(BACKEND_TITLE, checks3.map((check3) => line(backendText(check3))));
-  for (const check3 of checks3) {
-    if (check3.found === "unknown")
-      log.warning(line(couldNotAskText(check3)), COULD_NOT_ASK_TITLE);
-    if (check3.found === false)
-      log.warning(line(notInBackendText(check3.stackId)), NOT_IN_BACKEND_TITLE);
-  }
-  const missing2 = checks3.filter((check3) => check3.found === false).map((check3) => check3.stackId);
-  if (missing2.length > 0) {
-    log.info(BACKEND_PASTE_NOTE);
-    log.group(BACKEND_PASTE_TITLE, ignoreBlock(ignore, missing2).map(line));
-  } else if (checks3.some((check3) => check3.found === true)) {
-    log.info(ALL_IN_BACKEND);
-  }
-  return checks3;
-}
-function logWorkflows(log, workflows) {
-  if (workflows.workflows.length > 0) {
-    log.group("Workflows", workflows.workflows.flatMap(({ path, jobs }) => jobs.map((job) => line(workflowJobText(path, job)))));
-  }
-  if (!scansSomewhere(workflows))
-    log.info(NO_SCAN_WORKFLOW);
-  for (const warning2 of workflows.warnings) {
-    log.warning(line(workflowWarningText(warning2)), WORKFLOW_WARNING_TITLE);
-  }
-  for (const note of workflows.notes)
-    log.info(line(workflowNoteText(note)));
-  if (workflows.workflows.length > 0 && workflows.warnings.length === 0) {
-    log.info(NOTHING_MISSING);
-  }
-}
-async function summary2(context3, text6) {
-  try {
-    await context3.log.writeSummary(text6);
-  } catch (error63) {
-    context3.log.info(`Writing the summary failed: ${error63 instanceof Error ? error63.message : error63}`);
-  }
-}
-
-// src/modes/check-job.ts
-async function runCheck(makeBackend) {
-  const root = process.env.GITHUB_WORKSPACE;
-  if (!root) {
-    throw new Error("GITHUB_WORKSPACE is not set. Sluiceway runs as a step of a GitHub Actions job.");
-  }
-  const asked = readBackend(getInput);
-  if (asked && makeBackend === undefined) {
-    throw new Error("backend: true needs a runner for the tool, and this check has none.");
-  }
-  const backend = asked ? makeBackend?.({ ...process.env }) : undefined;
-  await check2({
-    root,
-    ...backend === undefined ? {} : { backend },
-    adapter: { discover: discoverAll, readsFiles: readsFiles3 },
-    log: actionsLog()
-  });
-}
-
-// src/modes/init.ts
-import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync8, statSync as statSync4, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname2, join as join32 } from "node:path";
-
-// src/adapters/init-findings.ts
-import { posix } from "node:path";
-var SKIPPED3 = /(^|\/)(\.terraform|node_modules|\.git)(\/|$)/;
-function findDeclarable(files, read3, taken) {
-  const used = new Set(taken);
-  const opentofu2 = openTofuRoots(files, read3).filter(({ path }) => !used.has(path));
-  for (const { path } of opentofu2)
-    used.add(path);
-  const helm2 = helmCharts(files, read3).filter(({ path }) => !used.has(path));
-  return { opentofu: opentofu2, helm: helm2 };
-}
-function openTofuRoots(files, read3) {
-  const code2 = files.filter((file2) => /\.(tf|tofu)$/.test(file2) && !SKIPPED3.test(file2));
-  const directories = [...new Set(code2.map(directoryOf))];
-  const called = new Set(code2.flatMap((file2) => [...(read3(file2) ?? "").matchAll(/^\s*source\s*=\s*"(\.\.?\/[^"]*)"/gm)].map((match) => normal(posix.join(directoryOf(file2), match[1] ?? "")))));
-  return directories.filter((path) => !called.has(path) && !path.split("/").includes("modules")).sort(byCodeUnit18).map((path) => ({
-    path,
-    varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit18)
-  }));
-}
-function openTofuStacks(root) {
-  if (root.varFiles.length === 0)
-    return [{}];
-  const [only] = root.varFiles;
-  if (root.varFiles.length === 1 && only !== undefined)
-    return [{ varFile: only }];
-  return root.varFiles.map((varFile) => ({ name: varFileName(varFile), varFile }));
-}
-function varFileName(file2) {
-  return file2.replace(/\.tfvars(\.json)?$/, "");
-}
-function helmCharts(files, read3) {
-  const charts = files.filter((file2) => /(^|\/)Chart\.yaml$/.test(file2) && !SKIPPED3.test(file2));
-  const chartDirectories = new Set(charts.map(directoryOf));
-  return charts.flatMap((file2) => {
-    const path = directoryOf(file2);
-    const parent = directoryOf(path);
-    if (posix.basename(parent) === "charts" && chartDirectories.has(directoryOf(parent))) {
+  if (!Array.isArray(parsed))
+    return [];
+  return parsed.flatMap((entry3) => {
+    if (typeof entry3 !== "object" || entry3 === null)
       return [];
-    }
-    const chart = yamlObject2(read3(file2));
-    if (chart === undefined || chart.type === "library")
-      return [];
-    const release2 = releaseName(typeof chart.name === "string" ? chart.name : "", path);
-    return release2 === undefined ? [] : [{ path, release: release2 }];
-  }).sort((a, b) => byCodeUnit18(a.path, b.path));
-}
-function releaseName(name, path) {
-  for (const candidate of [name, posix.basename(path)]) {
-    const cleaned = candidate.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 53).replace(/-+$/, "");
-    if (cleaned !== "")
-      return cleaned;
-  }
-  return;
-}
-var LOCKFILES = [
-  ["package-lock.json", "npm"],
-  ["pnpm-lock.yaml", "pnpm"],
-  ["yarn.lock", "yarn"],
-  ["bun.lock", "bun"],
-  ["bun.lockb", "bun"]
-];
-var SECRET_REFERENCE = "op://";
-function findForWorkflow(stacks, files, read3) {
-  const tool = (stack) => stack.options.tool;
-  const pulumiPaths = [
-    ...new Set(stacks.filter((stack) => tool(stack) === undefined).map((s) => s.path))
-  ];
-  const runtimes = pulumiPaths.map((path) => ({ path, runtime: pulumiRuntime(path, files, read3) }));
-  const nodePaths = runtimes.filter(({ runtime }) => runtime === "nodejs").map((p) => p.path);
-  const other = Map.groupBy(runtimes.filter(({ runtime }) => runtime !== "nodejs" && runtime !== "yaml"), ({ runtime }) => runtime);
-  return {
-    pulumi: pulumiPaths.length > 0,
-    opentofu: stacks.some((stack) => tool(stack) === OPENTOFU),
-    helm: stacks.some((stack) => tool(stack) === HELM),
-    kubectl: stacks.some((stack) => tool(stack) === KUBECTL),
-    node: nodePaths.length === 0 ? undefined : nodeFindings(nodePaths, files, read3),
-    otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit18(a.runtime, b.runtime)),
-    helmRepositories: helmRepositories(stacks, read3),
-    envFiles: envFiles(files, read3)
-  };
-}
-function pulumiRuntime(path, files, read3) {
-  const file2 = ["Pulumi.yaml", "Pulumi.yml", "Pulumi.json"].map((name) => path === "." ? name : `${path}/${name}`).find((candidate) => files.includes(candidate));
-  const project = file2 === undefined ? undefined : yamlObject2(read3(file2));
-  const runtime = project?.runtime;
-  if (typeof runtime === "string")
-    return runtime;
-  if (typeof runtime === "object" && runtime !== null && "name" in runtime) {
-    return typeof runtime.name === "string" ? runtime.name : "yaml";
-  }
-  return "yaml";
-}
-function nodeFindings(paths2, files, read3) {
-  const lockfile = (directory) => LOCKFILES.find(([name]) => files.includes(directory === "." ? name : `${directory}/${name}`));
-  const installs = new Map;
-  const withoutLockfile = [];
-  for (const path of paths2) {
-    const directory = ancestors(path).find((candidate) => lockfile(candidate) !== undefined);
-    const found = directory === undefined ? undefined : lockfile(directory);
-    if (directory === undefined || found === undefined)
-      withoutLockfile.push(path);
-    else
-      installs.set(directory, found[1]);
-  }
-  const managers = new Set(installs.values());
-  const manifest = yamlObject2(read3("package.json"));
-  return {
-    installs: [...installs].map(([directory, manager]) => ({ directory, manager })).sort((a, b) => byCodeUnit18(a.directory, b.directory)),
-    withoutLockfile,
-    versionFile: [".nvmrc", ".node-version"].find((file2) => files.includes(file2)),
-    yarnBerry: managers.has("yarn") && files.includes(".yarnrc.yml"),
-    pnpmWithoutVersion: managers.has("pnpm") && !(typeof manifest?.packageManager === "string" && manifest.packageManager.startsWith("pnpm@"))
-  };
-}
-function helmRepositories(stacks, read3) {
-  const repositories = stacks.flatMap((stack) => {
-    const chartDir = stack.options.tool === HELM ? stack.options.chartDir : undefined;
-    if (typeof chartDir !== "string")
-      return [];
-    const chart = yamlObject2(read3(chartDir === "." ? "Chart.yaml" : `${chartDir}/Chart.yaml`));
-    const dependencies = Array.isArray(chart?.dependencies) ? chart.dependencies : [];
-    return dependencies.flatMap((dependency) => {
-      const repository = dependency?.repository;
-      return typeof repository === "string" && /^https?:\/\//.test(repository) ? [repository] : [];
-    });
+    const { stack, environment, deployment } = entry3;
+    return typeof stack === "string" && typeof environment === "string" && Number.isSafeInteger(deployment) ? [{ stack, environment, deployment }] : [];
   });
-  return [...new Set(repositories)].sort(byCodeUnit18);
-}
-function envFiles(files, read3) {
-  const found = files.filter((file2) => /(^|\/)(\.env(\.[^/]+)?|[^/]+\.env)$/.test(file2)).filter((file2) => /^[\w./-]+$/.test(file2)).filter((file2) => (read3(file2) ?? "").split(`
-`).some((line2) => /^\s*(export\s+)?[A-Za-z_]\w*\s*=/.test(line2) && line2.includes(SECRET_REFERENCE)));
-  if (found.length === 0)
-    return;
-  const named = (pattern) => found.find((file2) => pattern.test(posix.basename(file2)));
-  const deploy2 = named(/deploy|apply|write/i);
-  const preview5 = named(/preview|read|scan|plan/i);
-  const [first] = found;
-  const pair = deploy2 !== undefined && preview5 !== undefined && deploy2 !== preview5 ? { preview: preview5, deploy: deploy2 } : { preview: first, deploy: first };
-  return {
-    ...pair,
-    others: found.filter((file2) => file2 !== pair.preview && file2 !== pair.deploy)
-  };
-}
-function yamlObject2(text6) {
-  if (text6 === undefined)
-    return;
-  try {
-    const value = $parse(text6, { uniqueKeys: false });
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
-  } catch {
-    return;
-  }
-}
-function ancestors(path) {
-  const found = [path];
-  let current = path;
-  while (current !== ".") {
-    current = directoryOf(current);
-    found.push(current);
-  }
-  return found;
-}
-function directoryOf(file2) {
-  const directory = posix.dirname(file2);
-  return directory === "" ? "." : directory;
-}
-function normal(path) {
-  const joined2 = posix.normalize(path).replace(/\/$/, "");
-  return joined2 === "" ? "." : joined2;
-}
-function byCodeUnit18(a, b) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
-// examples/workflows/export-env.sh
-var export_env_default = `#!/usr/bin/env bash
-# Loads an env file of secret references into the job environment, masked.
-# Run it inside your secret manager's \`run\` command, which resolves every
-# reference of the file into this process's environment, for example:
-#
-#   op run --env-file=ci.env --no-masking -- bash export-env.sh ci.env
-#
-# It prints nothing but ::add-mask:: commands. Never add \`set -x\` or an echo.
-set -euo pipefail
-file="$1"
-# A line whose value holds this is a secret. Every other line is a plain value.
-reference="\${SECRET_REFERENCE:-op://}"
-
-while IFS= read -r raw || [ -n "$raw" ]; do
-  raw="\${raw%$'\\r'}"
-  # Take NAME from lines like \`NAME=...\`, \`NAME = ...\` or \`export NAME=...\`.
-  [[ "$raw" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*= ]] || continue
-  name="\${BASH_REMATCH[2]}"
-  # The secret manager's own token and settings stay on this step, and the
-  # runner does not let a step set its own names.
-  case "$name" in OP_* | GITHUB_* | RUNNER_*) continue ;; esac
-  value="\${!name-}"
-  [ -n "$value" ] || continue
-
-  # Mask first, every line on its own, because the log is matched line by line.
-  if [[ "$raw" == *"$reference"* ]]; then
-    while IFS= read -r line || [ -n "$line" ]; do
-      line="\${line%$'\\r'}"
-      [ -n "$line" ] || continue
-      printf '::add-mask::%s\\n' "\${line//%/%25}"
-    done <<<"$value"
-  fi
-
-  # Then write, in the delimiter form so that newlines survive.
-  delimiter="ghadelimiter_$(od -An -N16 -tx1 /dev/urandom | tr -d ' \\n')"
-  if [[ "$value" == *"$delimiter"* ]]; then
-    echo "The value of $name holds the delimiter. Run the step again." >&2
-    exit 1
-  fi
-  printf '%s<<%s\\n%s\\n%s\\n' "$name" "$delimiter" "$value" "$delimiter" >>"$GITHUB_ENV"
-done <"$file"
-`;
-
-// src/render/init.ts
-var WORKFLOW_FILE = ".github/workflows/deploy-dashboard.yml";
-var EXPORT_ENV_FILE = ".github/scripts/export-env.sh";
-var EXPORT_ENV = export_env_default;
-var DEFAULT_BRANCH = "main";
-var RUNS_ON = "ubuntu-latest";
-function starterWorkflow(options) {
-  const { findings, label, merges } = options;
-  const branch = options.branch ?? DEFAULT_BRANCH;
-  const lines3 = [
-    "# Written by sluiceway init from the files of this repo. Review every step",
-    "# before you commit it: docs/example-workflows.md says what to change, and",
-    "# init printed what it could not know.",
-    "#",
-    "# `@v0` follows every release until 1.0.0. To review every update yourself,",
-    `# pin a full commit SHA instead, as the README's "Pin a commit" says.`,
-    "name: deploy-dashboard",
-    "",
-    "on:",
-    "  push:",
-    `    branches: [${quotedIfNeeded(branch)}]`,
-    "  schedule:",
-    '    - cron: "0 6 * * *"',
-    "  workflow_dispatch:",
-    ...merges ? [
-      "    inputs:",
-      `      ${MERGE_SCAN_INPUT}:`,
-      "        description: Set by Sluiceway after a merge from the dashboard. Leave it empty.",
-      "        required: false"
-    ] : [],
-    "  issues:",
-    "    types: [edited]",
-    "",
-    "permissions:",
-    ...PERMISSIONS.map((line2) => `  ${line2}`),
-    "",
-    "jobs:",
-    "  scan:",
-    "    if: github.event_name != 'issues'",
-    `    runs-on: ${RUNS_ON}`,
-    "    concurrency: sluiceway-scan",
-    ...merges ? ["    outputs:", "      matrix: ${{ steps.scan.outputs.matrix }}"] : [],
-    "    steps:",
-    "      - uses: actions/checkout@v7",
-    ...toolSteps(findings, "scan"),
-    ...credentialSteps(findings.envFiles, "scan"),
-    ...merges ? ["      - id: scan", "        uses: sluiceway/sluiceway@v0"] : ["      - uses: sluiceway/sluiceway@v0"],
-    "        with:",
-    "          mode: scan",
-    "",
-    "  resolve:",
-    `    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, ${quoted(label)}))`,
-    `    runs-on: ${RUNS_ON}`,
-    "    concurrency: sluiceway-resolve",
-    ...merges ? [
-      "    permissions:",
-      ...PERMISSIONS.map((line2) => line2.startsWith("contents:") ? "      contents: write" : `      ${line2}`)
-    ] : [],
-    "    outputs:",
-    "      matrix: ${{ steps.resolve.outputs.matrix }}",
-    "    steps:",
-    "      - uses: actions/checkout@v7",
-    "      # No tool and no credentials in this job. It never runs the tool.",
-    "      - id: resolve",
-    "        uses: sluiceway/sluiceway@v0",
-    "        with:",
-    "          mode: resolve",
-    "",
-    ...applyJob("apply", "resolve", findings),
-    ...merges ? ["", ...applyJob("apply-merged", "scan", findings)] : [],
-    "",
-    "  settle:",
-    ...merges ? [
-      "    needs: [scan, resolve, apply, apply-merged]",
-      "    if: always() && ((needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]') || (needs.scan.outputs.matrix != '' && needs.scan.outputs.matrix != '[]'))"
-    ] : [
-      "    needs: [resolve, apply]",
-      "    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'"
-    ],
-    `    runs-on: ${RUNS_ON}`,
-    "    steps:",
-    "      - uses: actions/checkout@v7",
-    "      - uses: sluiceway/sluiceway@v0",
-    "        with:",
-    "          mode: settle"
-  ];
-  return `${lines3.join(`
-`)}
-`;
-}
-var PERMISSIONS = [
-  "contents: read",
-  "issues: write",
-  "deployments: write",
-  "actions: write",
-  "pull-requests: read",
-  "checks: write"
-];
-function applyJob(name, source, findings) {
-  return [
-    `  ${name}:`,
-    `    needs: ${source}`,
-    `    if: \${{ !cancelled() && needs.${source}.outputs.matrix != '' && needs.${source}.outputs.matrix != '[]' }}`,
-    "    strategy:",
-    "      fail-fast: false",
-    "      matrix:",
-    `        include: \${{ fromJson(needs.${source}.outputs.matrix) }}`,
-    `    runs-on: ${RUNS_ON}`,
-    "    timeout-minutes: 60",
-    "    concurrency:",
-    "      group: sluiceway-apply-${{ matrix.stack }}",
-    "      queue: max",
-    "    environment:",
-    "      name: ${{ matrix.environment }}",
-    "      deployment: false",
-    "    steps:",
-    "      - uses: actions/checkout@v7",
-    ...toolSteps(findings, "apply"),
-    ...credentialSteps(findings.envFiles, "apply"),
-    "      - uses: sluiceway/sluiceway@v0",
-    "        with:",
-    "          mode: apply",
-    "          deployment-id: ${{ matrix.deployment }}"
-  ];
-}
-function toolSteps(findings, job) {
-  return [
-    ...findings.node === undefined ? [] : nodeSteps(findings.node, job),
-    ...findings.pulumi ? pulumiSteps(findings, job) : [],
-    ...findings.opentofu ? OPENTOFU_STEPS : [],
-    ...findings.helm ? helmSteps(findings.helmRepositories) : [],
-    ...findings.kubectl ? KUBECTL_STEPS : []
-  ];
-}
-var LOCKFILE = {
-  npm: "package-lock.json",
-  pnpm: "pnpm-lock.yaml",
-  yarn: "yarn.lock",
-  bun: "bun.lock"
-};
-function nodeSteps(node2, job) {
-  const managers = [...new Set(node2.installs.map(({ manager }) => manager))];
-  const [only] = managers;
-  const cache = managers.length === 1 && only !== undefined && only !== "bun" ? only : undefined;
-  const nested = node2.installs.some(({ directory }) => directory !== ".");
-  const steps = [
-    ...node2.yarnBerry ? ["      - run: corepack enable"] : [],
-    ...managers.includes("pnpm") ? ["      - uses: pnpm/action-setup@v6"] : [],
-    "      - uses: actions/setup-node@v7",
-    "        with:",
-    node2.versionFile === undefined ? "          node-version: lts/*" : `          node-version-file: ${node2.versionFile}`,
-    ...cache === undefined ? [] : [`          cache: ${cache}`],
-    ...cache !== undefined && nested ? [`          cache-dependency-path: ${quoted(`**/${LOCKFILE[cache]}`)}`] : [],
-    ...managers.includes("bun") ? ["      - uses: oven-sh/setup-bun@v2"] : []
-  ];
-  const installs = node2.installs.flatMap(({ directory, manager }) => [
-    `      - run: ${installCommand(manager, node2.yarnBerry)}`,
-    ...directory === "." ? [] : [`        working-directory: ${directory}`]
-  ]);
-  if (installs.length === 0)
-    return steps;
-  const comment = job === "scan" ? ["      # Once for every program in the repo, not once per stack."] : [];
-  return [...steps, ...comment, ...installs];
-}
-function installCommand(manager, yarnBerry) {
-  switch (manager) {
-    case "npm":
-      return "npm ci";
-    case "pnpm":
-      return "pnpm install --frozen-lockfile";
-    case "yarn":
-      return yarnBerry ? "yarn install --immutable" : "yarn install --frozen-lockfile";
-    case "bun":
-      return "bun install --frozen-lockfile";
-  }
-}
-function pulumiSteps(findings, job) {
-  const managers = [...new Set(findings.node?.installs.map(({ manager }) => manager) ?? [])];
-  const keyFiles = managers.length > 0 ? managers.map((manager) => `'**/${LOCKFILE[manager]}'`) : ["'**/Pulumi.yaml'", "'**/Pulumi.yml'", "'**/Pulumi.json'"];
-  const others = findings.otherRuntimes.flatMap(({ runtime, paths: paths2 }) => [
-    `      # The packages of the ${runtime} programs, with the ${runtime} the runner has.`,
-    ...paths2.flatMap((path) => [
-      "      - run: pulumi install",
-      ...path === "." ? [] : [`        working-directory: ${path}`]
-    ])
-  ]);
-  return [
-    "      - uses: pulumi/actions@v7 # without a command this only installs the CLI",
-    "        with:",
-    "          pulumi-version: ^3.229.0",
-    ...job === "scan" ? [
-      "      # The providers the programs use. The first run fills the cache.",
-      "      - uses: actions/cache@v6"
-    ] : ["      - uses: actions/cache/restore@v6"],
-    "        with:",
-    "          path: ~/.pulumi/plugins",
-    `          key: pulumi-plugins-\${{ runner.os }}-\${{ hashFiles(${keyFiles.join(", ")}) }}`,
-    ...others
-  ];
-}
-var OPENTOFU_STEPS = [
-  "      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2",
-  "        with:",
-  "          tofu_version: 1.12.6",
-  "          tofu_wrapper: false"
-];
-var HELM_STEPS = [
-  "      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1",
-  "        with:",
-  "          version: v4.3.0",
-  "      - name: Install the diff plugin",
-  "        run: helm plugin install https://github.com/databus23/helm-diff --version v3.15.13 --verify=false"
-];
-var KUBECTL_STEPS = [
-  "      - uses: azure/setup-kubectl@v5",
-  "        with:",
-  "          version: v1.37.0"
-];
-function helmSteps(repositories) {
-  if (repositories.length === 0)
-    return HELM_STEPS;
-  return [
-    ...HELM_STEPS,
-    "      # The repositories the dependencies of the local charts come from.",
-    "      - name: Add the chart repositories",
-    "        run: |",
-    ...repositories.map((repository, index) => `          helm repo add dependency-${index + 1} ${repository}`)
-  ];
-}
-var PREVIEW_TOKEN = "OP_PREVIEW_TOKEN";
-var DEPLOY_TOKEN = "OP_DEPLOY_TOKEN";
-function credentialSteps(envFiles2, job) {
-  if (envFiles2 === undefined) {
-    return job === "scan" ? [
-      "      # Load your credentials and your state backend settings into the job",
-      "      # environment here. Sluiceway passes the environment to the tool and",
-      "      # never looks inside. Whatever loads a secret must also mask it."
-    ] : [
-      "      # Same credential steps as in the scan job. These credentials must be",
-      "      # able to change things."
-    ];
-  }
-  const file2 = job === "scan" ? envFiles2.preview : envFiles2.deploy;
-  const token = job === "scan" ? PREVIEW_TOKEN : DEPLOY_TOKEN;
-  return [
-    "      # Leave this out when op is part of your runner image.",
-    "      - uses: 1password/install-cli-action@v4",
-    ...job === "scan" ? [
-      "      # One `op run` resolves the whole file. The service account of this job",
-      "      # should see only the credentials that read."
-    ] : [
-      "      # The token that reaches the credentials that change things is a secret",
-      "      # of the environment above."
-    ],
-    "      - name: Load the environment",
-    "        env:",
-    `          OP_SERVICE_ACCOUNT_TOKEN: \${{ secrets.${token} }}`,
-    `        run: op run --env-file=${file2} --no-masking -- bash ${EXPORT_ENV_FILE} ${file2}`
-  ];
-}
-var HINTED = 10;
-var SCHEMA = "# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json";
-function starterConfig({ declarable, unrelated, unclaimed }) {
-  const { opentofu: opentofu2, helm: helm2 } = declarable;
-  const lines3 = [
-    SCHEMA,
-    "#",
-    "# Written by sluiceway init from the files of this repo. Review it before",
-    "# you commit it: docs/configuration.md explains every key."
-  ];
-  if (opentofu2.length + helm2.length > 0) {
-    lines3.push("", "stacks:");
-    for (const root of opentofu2) {
-      const stacks = openTofuStacks(root);
-      lines3.push(stacks.length > 1 ? `  # An OpenTofu root module with a var file per stack, each in a workspace of its name.` : "  # An OpenTofu root module.");
-      for (const { name, varFile } of stacks) {
-        lines3.push(`  - path: ${quotedIfNeeded(root.path)}`);
-        if (name !== undefined)
-          lines3.push(`    name: ${quotedIfNeeded(name)}`);
-        lines3.push("    tool: opentofu");
-        if (varFile !== undefined) {
-          lines3.push("    options:");
-          if (name !== undefined)
-            lines3.push(`      workspace: ${quotedIfNeeded(name)}`);
-          lines3.push(`      varFiles: [${quotedIfNeeded(varFile)}]`);
-        }
-      }
-    }
-    for (const chart of helm2) {
-      lines3.push("  # A local chart. Set the release and the namespace it runs as, and its", "  # values files: init named both after the chart.", `  - path: ${quotedIfNeeded(chart.path)}`, "    tool: helm", "    options:", `      release: ${chart.release}`, `      namespace: ${chart.release}`, "      chart: .");
-    }
-  }
-  if (unrelated.length > 0) {
-    lines3.push("", "# Files that look like docs and tooling. A push that changes only these", "# previews nothing. Take out any that one of your programs reads.", "scan:", "  unrelated:", ...unrelated.map((glob) => `    - ${JSON.stringify(glob)}`));
-  }
-  if (unclaimed !== undefined) {
-    const [first] = unclaimed.directories;
-    lines3.push("", "# No stack claims the files in these directories, so a push that changes", "# one of them previews every stack:", ...unclaimed.directories.slice(0, HINTED).map((directory) => `#   ${directory}/`), ...unclaimed.directories.length > HINTED ? [`#   and ${unclaimed.directories.length - HINTED} more, which the check lists`] : [], "# When a stack reads one, name it under inputs in that stack's entry:", "#", "#   stacks:", `#     - path: ${unclaimed.stack}`, "#       inputs:", `#         - "${first}/**"`);
-  }
-  return `${lines3.join(`
-`)}
-`;
-}
-var NOT_A_REPO_ROOT = "This is not the root of a git repo. Run init in the top directory of your checkout.";
-function noStacksText() {
-  return "init found no stack to set up: no Pulumi project, no OpenTofu root module and no Helm chart. It wrote nothing.";
-}
-function workflowExistsText(paths2) {
-  return `A workflow runs Sluiceway already: ${paths2.join(", ")}. init never overwrites one, and wrote nothing. Run the check (mode: check) to see what it lacks.`;
-}
-function wroteText(file2) {
-  return `Wrote ${file2}.`;
-}
-var KEPT_CONFIG = "Kept sluiceway.yaml as it is, and set the workflow up from it.";
-var NEEDS_A_PERSON = "Still to do by a person:";
-function needsText({ findings, declarable, branchGuessed }) {
-  const needs2 = [];
-  const { envFiles: envFiles2, node: node2 } = findings;
-  if (envFiles2 === undefined) {
-    needs2.push("Load the credentials and the state backend settings of your stacks in the scan and apply jobs, where the comments in the workflow say. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.");
-  } else {
-    needs2.push(`Create the secret ${PREVIEW_TOKEN}, a 1Password service account token that resolves ${envFiles2.preview} and reads only, and ${DEPLOY_TOKEN}, one that resolves ${envFiles2.deploy}, as a secret of the environment of each stack.`);
-    if (envFiles2.preview === envFiles2.deploy) {
-      needs2.push(`Both jobs load ${envFiles2.preview}. The scan needs credentials that read and nothing more: give it an env file of its own.`);
-    }
-    if (envFiles2.others.length > 0) {
-      needs2.push(`init did not use these env files of secret references: ${envFiles2.others.join(", ")}.`);
-    }
-  }
-  if (findings.helm || findings.kubectl) {
-    needs2.push("The scan and apply jobs need a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).");
-  }
-  if (declarable.helm.length > 0) {
-    needs2.push(`sluiceway.yaml names each Helm release and its namespace after the chart: ${declarable.helm.map(({ path }) => path).join(", ")}. Set both to where the release runs, and add its values files. The namespace must exist.`);
-  }
-  if (findings.helmRepositories.length > 0) {
-    needs2.push("The workflow adds the chart repositories the local charts depend on. Log in to any that is private before that step.");
-  }
-  const workspaces = declarable.opentofu.filter(({ varFiles }) => varFiles.length > 1);
-  if (workspaces.length > 0) {
-    needs2.push(`${workspaces.map(({ path }) => path).join(", ")}: one stack per var file, each in a workspace of the same name. Change workspace where yours is named otherwise.`);
-  }
-  if (node2 !== undefined && node2.withoutLockfile.length > 0) {
-    needs2.push(`No lockfile for the Node programs in ${node2.withoutLockfile.join(", ")}: add one, or install their packages in the workflow yourself.`);
-  }
-  if (node2?.pnpmWithoutVersion) {
-    needs2.push("pnpm/action-setup reads the pnpm version from packageManager in package.json, which names none. Add it there, or set version on the step.");
-  }
-  for (const { runtime } of findings.otherRuntimes) {
-    needs2.push(`The ${runtime} programs run on the ${runtime} the runner has. Add its setup action before pulumi install to pin a version.`);
-  }
-  if (branchGuessed) {
-    needs2.push(`The workflow scans after a push to ${DEFAULT_BRANCH}: init could not read the default branch. Change it if yours is another.`);
-  }
-  needs2.push(`Every job runs on ${RUNS_ON}. For self-hosted runners change runs-on of scan and apply, with runner 2.328.0 or newer. resolve and settle hold no credentials and can stay on hosted runners.`, "apply deploys in the GitHub Environment of each stack, sluiceway unless sluiceway.yaml names another. Put the credentials that change things there, or remove the environment block where your plan has no environments.", "Review the files, run the check (mode: check) in a pull request, and commit them. init commits nothing.");
-  return needs2;
-}
-function quoted(text6) {
-  return `'${text6.replaceAll("'", "''")}'`;
-}
-function quotedIfNeeded(text6) {
-  return /^[A-Za-z0-9_][\w./-]*$/.test(text6) && !/^(true|false|null|yes|no|on|off|~)$/i.test(text6) ? text6 : JSON.stringify(text6);
-}
-
-// src/modes/init.ts
-async function init(context3) {
-  const { root, log } = context3;
-  if (!existsSync4(join32(root, ".git")))
-    throw new Error(NOT_A_REPO_ROOT);
-  const configKept = hasConfigFile(root);
-  const existing = loadConfig(root);
-  const running = checkWorkflows(readWorkflowFiles(root), existing).workflows.filter(({ jobs }) => jobs.some(({ mode }) => mode !== "check" && mode !== "init")).map(({ path }) => path);
-  const taken = [...new Set([...running, ...exists2(root, WORKFLOW_FILE) ? [WORKFLOW_FILE] : []])];
-  if (taken.length > 0)
-    throw new Error(workflowExistsText(taken.sort()));
-  const files = await repoFiles(root);
-  const read3 = (file2) => {
-    try {
-      return readFileSync8(join32(root, file2), "utf8");
-    } catch {
-      return;
-    }
-  };
-  const found = await context3.adapter.discover(root, existing);
-  const declarable = configKept ? { opentofu: [], helm: [] } : findDeclarable(files, read3, found.map(({ path }) => path));
-  let config2 = existing;
-  let configText2;
-  let stacks = found;
-  if (!configKept) {
-    const declared = starterConfig({ declarable, unrelated: [], unclaimed: undefined });
-    config2 = parseConfig(declared);
-    stacks = await context3.adapter.discover(root, config2);
-  }
-  if (stacks.length === 0)
-    throw new Error(noStacksText());
-  const findings = findForWorkflow(stacks, files, read3);
-  const written = [
-    WORKFLOW_FILE,
-    ...configKept ? [] : [CONFIG_FILE],
-    ...findings.envFiles !== undefined && !exists2(root, EXPORT_ENV_FILE) ? [EXPORT_ENV_FILE] : []
-  ];
-  if (!configKept) {
-    const report = checkSetup(config2, stacks, [...new Set([...files, ...written])].sort());
-    const unrelated = report.suggested;
-    const covered = checkSetup(parseConfig(starterConfig({ declarable, unrelated, unclaimed: undefined })), stacks, files);
-    const directories = [
-      ...new Set(covered.unclaimed.flatMap(({ files: unclaimed }) => unclaimed.map((file2) => dirname2(file2)).filter((directory) => directory !== ".")))
-    ].sort();
-    const [first] = directories;
-    configText2 = starterConfig({
-      declarable,
-      unrelated,
-      unclaimed: first === undefined ? undefined : {
-        directories,
-        stack: nearest(first, stacks.map(({ path }) => path))
-      }
-    });
-    config2 = parseConfig(configText2);
-    stacks = await context3.adapter.discover(root, config2);
-  }
-  const branch = defaultBranch(root);
-  const workflow = starterWorkflow({
-    findings,
-    branch,
-    label: config2.dashboard.label,
-    merges: config2.mergeAndDeploy.authors.length > 0
-  });
-  write(root, WORKFLOW_FILE, workflow);
-  if (configText2 !== undefined)
-    write(root, CONFIG_FILE, configText2);
-  if (written.includes(EXPORT_ENV_FILE))
-    write(root, EXPORT_ENV_FILE, EXPORT_ENV);
-  log.info(foundText(stacks.length));
-  log.group("Stacks", stacks.map((stack) => stackId(stack)));
-  for (const file2 of written)
-    log.info(wroteText(file2));
-  if (configKept)
-    log.info(KEPT_CONFIG);
-  log.group(NEEDS_A_PERSON, needsText({ findings, declarable, branchGuessed: branch === undefined }).map((need) => `- ${need}`));
-}
-function nearest(directory, paths2) {
-  const shared = (path) => {
-    const a = directory.split("/");
-    const b = path.split("/");
-    let count3 = 0;
-    while (count3 < a.length && a[count3] === b[count3])
-      count3++;
-    return count3;
-  };
-  return paths2.reduce((best, path) => shared(path) > shared(best) ? path : best);
-}
-function exists2(root, file2) {
-  return existsSync4(join32(root, file2));
-}
-function write(root, file2, text6) {
-  mkdirSync(dirname2(join32(root, file2)), { recursive: true });
-  writeFileSync2(join32(root, file2), text6, { flag: "wx" });
-}
-function defaultBranch(root) {
-  const file2 = join32(root, ".git", "refs", "remotes", "origin", "HEAD");
-  try {
-    if (!statSync4(join32(root, ".git")).isDirectory())
-      return;
-    const match = /^ref: refs\/remotes\/origin\/(\S+)\s*$/.exec(readFileSync8(file2, "utf8"));
-    return match?.[1];
-  } catch {
-    return;
-  }
-}
-
-// src/modes/init-job.ts
-async function runInit() {
-  refuseOldNode(process.versions.node);
-  const root = process.env.GITHUB_WORKSPACE || process.cwd();
-  await init({
-    root,
-    adapter: { discover: discoverAll },
-    log: process.env.GITHUB_ACTIONS === "true" ? actionsLog() : terminalLog()
-  });
-}
-function refuseOldNode(version3) {
-  const major = Number(version3.split(".")[0]);
-  if (major < 22) {
-    throw new Error(`init needs Node 22 or newer, and this is Node ${version3}.`);
-  }
-}
-function terminalLog(write2 = console.log) {
-  return {
-    info: write2,
-    group(title, lines3) {
-      write2(title);
-      for (const line2 of lines3)
-        write2(`  ${line2}`);
-    },
-    warning: (message2, title) => write2(`${title}: ${message2}`),
-    writeSummary: async () => {}
-  };
-}
-
-// src/modes/resolve-job.ts
-import { readFileSync as readFileSync10 } from "node:fs";
-
-// src/github/workflow-ref.ts
-function readWorkflowRef(env) {
-  const value = env.GITHUB_WORKFLOW_REF ?? "";
-  const at = value.indexOf("@");
-  if (at < 0)
-    return;
-  const file2 = value.slice(0, at).split("/").at(-1) ?? "";
-  const ref = value.slice(at + 1);
-  return file2 === "" || ref === "" ? undefined : { file: file2, ref };
 }
 
 // src/modes/resolve.ts
-import { readFileSync as readFileSync9 } from "node:fs";
-import { join as join33 } from "node:path";
+import { readFileSync as readFileSync8 } from "node:fs";
+import { join as join31 } from "node:path";
 
 // src/core/edit-history.ts
 var HISTORY_CAP = 100;
@@ -61559,23 +59963,23 @@ function holds(dashboard, tick) {
     const merge3 = dashboard.merges.find((candidate) => candidate.pr === tick.pr);
     return merge3?.ticked === true && merge3.head === tick.head && JSON.stringify(merge3.stackIds) === JSON.stringify(tick.stackIds);
   }
-  const row2 = dashboard.rows.find((candidate) => candidate.stackId === tick.stackId);
-  return row2?.known === true && row2.ticked && row2.hash === tick.hash;
+  const row = dashboard.rows.find((candidate) => candidate.stackId === tick.stackId);
+  return row?.known === true && row.ticked && row.hash === tick.hash;
 }
 function ticksIn(body) {
   const dashboard = parseDashboard(body);
   const ticks = [];
   const seen = new Set;
-  for (const row2 of dashboard.rows) {
-    if (seen.has(row2.stackId))
+  for (const row of dashboard.rows) {
+    if (seen.has(row.stackId))
       continue;
-    seen.add(row2.stackId);
-    if (row2.known && row2.ticked && row2.hash !== undefined && row2.state !== "queued") {
+    seen.add(row.stackId);
+    if (row.known && row.ticked && row.hash !== undefined && row.state !== "queued") {
       ticks.push({
         kind: "row",
-        stackId: row2.stackId,
-        hash: row2.hash,
-        ...row2.drift ? { drift: true } : {}
+        stackId: row.stackId,
+        hash: row.hash,
+        ...row.drift ? { drift: true } : {}
       });
     }
   }
@@ -61954,14 +60358,339 @@ async function renovateMergeSetting(readFile3, repo, readRemote) {
   return { strategy: await strategyOf(config2, 0), file: file2, unread };
 }
 
-// src/core/resolve.ts
-function matrixOutput(entries) {
-  return JSON.stringify(entries.map(({ stack, environment, deployment }) => ({ stack, environment, deployment })));
+// src/core/workflow-check.ts
+import { readdirSync as readdirSync3, readFileSync as readFileSync7 } from "node:fs";
+import { join as join30 } from "node:path";
+var WORKFLOW_DIRECTORY = ".github/workflows";
+function readWorkflowFiles(root) {
+  let names2;
+  try {
+    names2 = readdirSync3(join30(root, WORKFLOW_DIRECTORY), { withFileTypes: true }).filter((entry3) => entry3.isFile() && /\.ya?ml$/.test(entry3.name)).map((entry3) => entry3.name);
+  } catch {
+    return [];
+  }
+  return names2.sort(byCodeUnit16).map((name) => ({
+    path: `${WORKFLOW_DIRECTORY}/${name}`,
+    text: readFileSync7(join30(root, WORKFLOW_DIRECTORY, name), "utf8")
+  }));
 }
-var MAX_DEPLOYS_PER_RUN = 256;
-function capDeploys(allowed) {
-  const sorted = [...allowed].sort((a, b) => a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0);
-  return { start: sorted.slice(0, MAX_DEPLOYS_PER_RUN), over: sorted.slice(MAX_DEPLOYS_PER_RUN) };
+var MODES = ["auto", "scan", "resolve", "apply", "settle", "check", "init"];
+function needs(mode, config2) {
+  switch (mode) {
+    case "scan":
+      return {
+        contents: "read",
+        issues: "write",
+        deployments: "write",
+        actions: "read",
+        "pull-requests": "read"
+      };
+    case "resolve":
+      return {
+        contents: config2.mergeAndDeploy.authors.length > 0 ? "write" : "read",
+        issues: "write",
+        deployments: "write",
+        actions: "write",
+        "pull-requests": "read"
+      };
+    case "apply":
+      return {
+        contents: "read",
+        issues: "write",
+        deployments: "write",
+        "pull-requests": "read"
+      };
+    case "settle":
+      return { contents: "read", issues: "read", deployments: "write", actions: "write" };
+    case "auto":
+      return {};
+    case "check":
+    case "init":
+      return { contents: "read" };
+  }
+}
+var SLUICEWAY_STEP = /^sluiceway\/sluiceway@(.+)$/i;
+function refKind(ref) {
+  if (/^v\d+$/.test(ref))
+    return "moving";
+  if (/^v\d+\.\d+\.\d+$/.test(ref))
+    return "release";
+  if (/^[0-9a-f]{40}$/.test(ref))
+    return "commit";
+  return "other";
+}
+function isRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function permissionsOf(value) {
+  if (value === "read-all" || value === "write-all")
+    return value;
+  if (!isRecord2(value))
+    return;
+  return Object.fromEntries(Object.entries(value).map(([key, level]) => [key, String(level)]));
+}
+function triggersOf(value) {
+  if (typeof value === "string")
+    return { [value]: null };
+  if (Array.isArray(value))
+    return Object.fromEntries(value.map((event) => [String(event), null]));
+  return isRecord2(value) ? value : {};
+}
+function concurrencyOf(value) {
+  if (typeof value === "string" || typeof value === "number") {
+    return { group: String(value), queue: "", cancels: false };
+  }
+  if (!isRecord2(value) || value.group === undefined)
+    return;
+  const cancels = value["cancel-in-progress"];
+  return {
+    group: String(value.group),
+    queue: value.queue === undefined ? "" : String(value.queue),
+    cancels: cancels === true || cancels === "true"
+  };
+}
+function parseWorkflow(text6) {
+  let document;
+  try {
+    document = $parse(text6);
+  } catch {
+    return "unreadable";
+  }
+  if (!isRecord2(document) || !isRecord2(document.jobs))
+    return;
+  const jobs = {};
+  for (const [name, job] of Object.entries(document.jobs)) {
+    if (!isRecord2(job))
+      continue;
+    jobs[name] = {
+      permissions: permissionsOf(job.permissions),
+      steps: Array.isArray(job.steps) ? job.steps : [],
+      concurrency: concurrencyOf(job.concurrency),
+      condition: job.if === undefined || job.if === null ? "" : String(job.if),
+      needs: typeof job.needs === "string" ? [job.needs] : Array.isArray(job.needs) ? job.needs.map(String) : [],
+      outputs: isRecord2(job.outputs) ? Object.keys(job.outputs) : [],
+      strategy: job.strategy === undefined ? "" : JSON.stringify(job.strategy)
+    };
+  }
+  return { on: triggersOf(document.on), permissions: permissionsOf(document.permissions), jobs };
+}
+function sluicewayJob(job, steps, auto) {
+  for (const step3 of steps) {
+    if (!isRecord2(step3) || typeof step3.uses !== "string")
+      continue;
+    const ref = SLUICEWAY_STEP.exec(step3.uses.trim())?.[1];
+    if (ref === undefined)
+      continue;
+    const written = isRecord2(step3.with) ? String(step3.with.mode ?? "").trim() : "";
+    const named = written === "" ? "auto" : written;
+    const mode = MODES.includes(named) ? named : undefined;
+    const runs = mode === undefined ? [] : mode === "auto" ? auto : [mode];
+    return { job, mode, runs, ref, refKind: refKind(ref), named };
+  }
+  return;
+}
+function autoRuns(on, config2) {
+  const called = "workflow_call" in on;
+  const scans = called || "push" in on || "schedule" in on || "workflow_dispatch" in on;
+  const resolves = !config2.dashboard.readOnly && (called || listensToEdits(on.issues, "issues" in on));
+  const checks3 = "pull_request" in on || "merge_group" in on;
+  return [
+    ...scans ? ["scan"] : [],
+    ...resolves ? ["resolve", "apply", "settle"] : [],
+    ...checks3 ? ["check"] : []
+  ];
+}
+function needsAll(modes, config2) {
+  const all = {};
+  for (const mode of modes) {
+    for (const [scope, level] of Object.entries(needs(mode, config2))) {
+      if (all[scope] !== "write")
+        all[scope] = level;
+    }
+  }
+  return all;
+}
+function missing(granted, wanted) {
+  return Object.entries(wanted).filter(([scope, level]) => {
+    if (granted === "write-all")
+      return false;
+    if (granted === "read-all")
+      return level === "write";
+    const has = granted?.[scope];
+    return !(has === "write" || has === "read" && level === "read");
+  }).map(([scope, level]) => `${scope}: ${level}`);
+}
+function has(granted, scope) {
+  return granted === "write-all" || isRecord2(granted) && granted[scope] === "write";
+}
+function checkWorkflows(files, config2) {
+  const report = { workflows: [], warnings: [], notes: [] };
+  for (const { path, text: text6 } of files) {
+    const parsed = parseWorkflow(text6);
+    if (parsed === "unreadable") {
+      if (/sluiceway\/sluiceway@/i.test(text6)) {
+        report.warnings.push({ kind: "unreadable", path });
+      }
+      continue;
+    }
+    if (parsed === undefined)
+      continue;
+    checkOne2(path, parsed, config2, report);
+  }
+  return report;
+}
+function checkOne2(path, workflow, config2, report) {
+  const auto = autoRuns(workflow.on, config2);
+  const found = Object.entries(workflow.jobs).flatMap(([name, job]) => {
+    const step3 = sluicewayJob(name, job.steps, auto);
+    return step3 ? [{ step: step3, permissions: job.permissions ?? workflow.permissions }] : [];
+  });
+  if (found.length === 0)
+    return;
+  const { warnings, notes } = report;
+  report.workflows.push({
+    path,
+    jobs: found.map(({ step: { job, mode, runs: runs2, ref, refKind: refKind2 } }) => ({
+      job,
+      mode,
+      runs: runs2,
+      ref,
+      refKind: refKind2
+    }))
+  });
+  for (const { step: step3 } of found) {
+    if (step3.mode === undefined) {
+      warnings.push({ kind: "unknown-mode", path, job: step3.job, mode: step3.named });
+    }
+    if (step3.refKind === "other") {
+      warnings.push({ kind: "unreleased-ref", path, job: step3.job, ref: step3.ref });
+    }
+  }
+  const refs = [...new Set(found.map(({ step: step3 }) => step3.ref))];
+  if (refs.length > 1)
+    warnings.push({ kind: "mixed-refs", path, refs });
+  const called = "workflow_call" in workflow.on;
+  if (called)
+    notes.push({ kind: "called", path });
+  const modes = new Set(found.flatMap(({ step: step3 }) => step3.runs));
+  const runs = (mode) => modes.has(mode);
+  const deploys = [...modes].some((mode) => mode !== "check" && mode !== "init");
+  const autoDeploys = found.some(({ step: step3 }) => step3.mode === "auto" && step3.runs.some((mode) => mode !== "check"));
+  if (!called && deploys) {
+    for (const trigger of ["pull_request", "pull_request_target", "merge_group"]) {
+      if (!(trigger in workflow.on))
+        continue;
+      warnings.push(autoDeploys ? { kind: "forbidden-trigger", path, trigger, auto: true } : { kind: "forbidden-trigger", path, trigger });
+    }
+  }
+  if (!called && runs("scan")) {
+    for (const trigger of ["push", "schedule", "workflow_dispatch"]) {
+      if (!(trigger in workflow.on))
+        warnings.push({ kind: "missing-trigger", path, trigger });
+    }
+  }
+  if (!called && runs("resolve") && !listensToEdits(workflow.on.issues, "issues" in workflow.on)) {
+    warnings.push({ kind: "missing-trigger", path, trigger: "issues" });
+  }
+  if (runs("resolve") || runs("apply") || runs("settle")) {
+    for (const mode of ["scan", "resolve", "apply", "settle"]) {
+      if (!runs(mode))
+        warnings.push({ kind: "missing-job", path, mode });
+    }
+  } else if (runs("scan") && !config2.dashboard.readOnly) {
+    warnings.push({ kind: "boxes-do-nothing", path });
+  }
+  checkJobs(path, workflow, found, config2, warnings);
+  if (called)
+    return;
+  for (const { step: step3, permissions } of found) {
+    if (step3.mode === undefined)
+      continue;
+    const { job, mode } = step3;
+    const wanted = needsAll(step3.runs, config2);
+    if (permissions === undefined) {
+      warnings.push({ kind: "no-permissions", path, job, mode, needs: missing({}, wanted) });
+      continue;
+    }
+    const lacks = missing(permissions, wanted);
+    if (lacks.length > 0)
+      warnings.push({ kind: "missing-permissions", path, job, mode, missing: lacks });
+    if (step3.runs.includes("scan") && !has(permissions, "checks")) {
+      notes.push({ kind: "no-preview-pages", path, job });
+    }
+  }
+}
+function checkJobs(path, workflow, found, config2, warnings) {
+  const jobOf = (name) => workflow.jobs[name];
+  const withMode = (mode) => found.filter(({ step: step3 }) => step3.mode === mode).map(({ step: step3 }) => step3.job);
+  for (const { step: step3 } of found) {
+    const { job, mode } = step3;
+    const { concurrency, condition } = jobOf(job);
+    if (mode === "auto" && step3.runs.some((one) => one !== "check")) {
+      if (concurrency === undefined) {
+        warnings.push({ kind: "no-concurrency", path, job, mode });
+      } else {
+        if (concurrency.queue !== "max")
+          warnings.push({ kind: "auto-no-queue", path, job });
+        if (concurrency.cancels)
+          warnings.push({ kind: "auto-cancels", path, job });
+      }
+    }
+    if (mode === "scan" || mode === "resolve" || mode === "apply") {
+      if (concurrency === undefined) {
+        warnings.push({ kind: "no-concurrency", path, job, mode });
+      } else if (mode === "apply") {
+        if (!/\bmatrix\.stack\b/.test(concurrency.group)) {
+          warnings.push({ kind: "apply-group-shared", path, job });
+        }
+        if (concurrency.queue !== "max")
+          warnings.push({ kind: "apply-no-queue", path, job });
+        if (concurrency.cancels)
+          warnings.push({ kind: "apply-cancels", path, job });
+      }
+    }
+    if (mode === "apply" && !/!\s*cancelled\(\s*\)|\balways\(\s*\)/.test(condition)) {
+      warnings.push({ kind: "no-status-check", path, job, mode });
+    }
+    if (mode === "settle" && !/(^|[^!\w])always\(\s*\)/.test(condition)) {
+      warnings.push({ kind: "no-status-check", path, job, mode });
+    }
+  }
+  const applies = withMode("apply");
+  for (const settle2 of withMode("settle")) {
+    const { needs: needs2 } = jobOf(settle2);
+    for (const apply6 of applies) {
+      if (!needs2.includes(apply6)) {
+        warnings.push({ kind: "settle-skips-apply", path, job: settle2, apply: apply6 });
+      }
+    }
+  }
+  const scans = withMode("scan");
+  const fromScan = applies.flatMap((apply6) => {
+    const source = /needs\.([\w-]+)\.outputs\.matrix/.exec(jobOf(apply6).strategy)?.[1];
+    return source !== undefined && scans.includes(source) ? [{ apply: apply6, scan: source }] : [];
+  });
+  for (const { apply: apply6, scan } of fromScan) {
+    if (!jobOf(scan).outputs.includes("matrix")) {
+      warnings.push({ kind: "scan-no-matrix-output", path, job: apply6, scan });
+    }
+  }
+  const mergesAndDeploys = config2.mergeAndDeploy.authors.length > 0;
+  if (mergesAndDeploys && scans.length > 0 && withMode("resolve").length > 0) {
+    if (fromScan.length === 0)
+      warnings.push({ kind: "no-merged-apply", path });
+  }
+}
+function listensToEdits(issues, present3) {
+  if (!present3)
+    return false;
+  if (!isRecord2(issues) || issues.types === undefined)
+    return true;
+  const types = issues.types;
+  return Array.isArray(types) ? types.includes("edited") : types === "edited";
+}
+function byCodeUnit16(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 // src/core/tick-rule.ts
@@ -62024,7 +60753,7 @@ function why({ target: target2, reason, detail, waitsOn }) {
   const names2 = rest > 0 ? `${named} and ${rest} more in sluiceway.yaml` : named;
   return `The tick was refused: the tick rule of this stack names who can tick it: ${names2}.`;
 }
-function line2(refused) {
+function line(refused) {
   return `@${refused.login} ticked ${what(refused.target)}. ${why(refused)}`;
 }
 function refusedTicksComment(refused) {
@@ -62032,11 +60761,11 @@ function refusedTicksComment(refused) {
   if (!only)
     throw new Error("A comment needs a tick to be about, and no refused tick was given.");
   if (others.length === 0)
-    return `${line2(only)} Nothing was started and the box is cleared.`;
+    return `${line(only)} Nothing was started and the box is cleared.`;
   return [
     "Nothing was started for these ticks and their boxes are cleared.",
     "",
-    ...refused.map((one) => `- ${line2(one)}`)
+    ...refused.map((one) => `- ${line(one)}`)
   ].join(`
 `);
 }
@@ -62104,10 +60833,10 @@ function refusedTicks(outcomes, merges = []) {
 
 // src/render/clear-tick.ts
 var TICKED_BOX = /^- \[[xX]\] /;
-function clearTick(row2, options = {}) {
-  if (!row2.known || !row2.ticked)
-    return row2;
-  const [first = "", ...rest] = row2.text.split(`
+function clearTick(row, options = {}) {
+  if (!row.known || !row.ticked)
+    return row;
+  const [first = "", ...rest] = row.text.split(`
 `);
   const note = INDENT + (options.note === "deploys-off" ? DEPLOYS_OFF_NOTE : typeof options.note === "object" ? dependencyNote(options.note.dependsOn, options.note.phases) : ORPHAN_TICK_NOTE);
   const lines3 = options.note && !rest.includes(note) ? [note, ...rest] : rest;
@@ -62122,7 +60851,7 @@ function clearTick(row2, options = {}) {
 function resolveSummary({ lines: lines3, scanUrl, scanStarted }) {
   const parts = [
     "### Sluiceway resolve",
-    lines3.length === 0 ? "Nothing to report." : lines3.map((line3) => `- ${escapeText(line3)}`).join(`
+    lines3.length === 0 ? "Nothing to report." : lines3.map((line2) => `- ${escapeText(line2)}`).join(`
 `)
   ];
   if (scanUrl !== undefined)
@@ -62147,10 +60876,10 @@ async function resolve(context3) {
     ...context3,
     log: {
       ...context3.log,
-      info: (line3) => {
+      info: (line2) => {
         if (report.acting)
-          report.lines.push(line3);
-        context3.log.info(line3);
+          report.lines.push(line2);
+        context3.log.info(line2);
       }
     }
   };
@@ -62162,6 +60891,12 @@ async function resolve(context3) {
     if (report.acting)
       await writeRunSummary(context3, report);
   }
+}
+function notTheDashboardText(issue3, root) {
+  const text6 = `Issue #${issue3.number} is not the open dashboard. Nothing to do.`;
+  if (issue3.state !== "open" || !isBotIssueWithRootMarker(issue3))
+    return text6;
+  return issue3.labels.includes(loadConfig(root).dashboard.label) ? undefined : text6;
 }
 async function writeRunSummary(context3, report) {
   try {
@@ -62186,16 +60921,12 @@ async function resolveTicks(context3, handOn, report) {
     await startQueued(context3, handOn);
     return;
   }
-  const notTheDashboard = `Issue #${issue3.number} is not the open dashboard. Nothing to do.`;
-  if (issue3.state !== "open" || !isBotIssueWithRootMarker(issue3)) {
+  const notTheDashboard = notTheDashboardText(issue3, context3.root);
+  if (notTheDashboard !== undefined) {
     log.info(notTheDashboard);
     return;
   }
   const config2 = loadConfig(context3.root);
-  if (!issue3.labels.includes(config2.dashboard.label)) {
-    log.info(notTheDashboard);
-    return;
-  }
   report.acting = true;
   let stacks;
   let ignored = [];
@@ -62362,7 +61093,7 @@ async function resolveTicks(context3, handOn, report) {
   const plan = planDeploys({
     allowed: start.map(({ stackId: id }) => id),
     dependsOn: new Map([...stacks?.values() ?? []].map((one) => [stackId(one.stack), one.dependsOn ?? []])),
-    pending: new Set(liveRows.flatMap((row2) => row2.known && row2.state === "pending" ? [row2.stackId] : [])),
+    pending: new Set(liveRows.flatMap((row) => row.known && row.state === "pending" ? [row.stackId] : [])),
     open: new Set(open2.keys())
   });
   const phaseOf = new Map([...stacks?.values() ?? []].flatMap((one) => one.phase === undefined ? [] : [[stackId(one.stack), one.phase]]));
@@ -62428,7 +61159,7 @@ async function resolveTicks(context3, handOn, report) {
     }
   }
   handOn(started.flatMap(({ stackId: stack, environment, deployment, behind }) => behind ? [] : [{ stack, environment, deployment }]));
-  const pendingIds = new Set(liveRows.flatMap((row2) => row2.known && row2.state === "pending" ? [row2.stackId] : []));
+  const pendingIds = new Set(liveRows.flatMap((row) => row.known && row.state === "pending" ? [row.stackId] : []));
   const waitingOn = (id) => (stacks?.get(id)?.dependsOn ?? []).filter((one) => pendingIds.has(one) || open2.has(one));
   const merging = await mergeAll(context3, config2, stacks, allowedMerges, waitingOn);
   if (merging.failure !== undefined)
@@ -62515,7 +61246,7 @@ async function renovateStrategyOf(context3) {
   const [owner = "", repo = ""] = new URL(context3.repoUrl).pathname.split("/").filter(Boolean);
   const setting = await renovateMergeSetting((path) => {
     try {
-      return readFileSync9(join33(context3.root, path), "utf8");
+      return readFileSync8(join31(context3.root, path), "utf8");
     } catch {
       return;
     }
@@ -62674,7 +61405,7 @@ function workflowText(context3) {
   if (!context3.workflow)
     return "";
   try {
-    return readFileSync9(join33(context3.root, WORKFLOW_DIRECTORY, context3.workflow.file), "utf8");
+    return readFileSync8(join31(context3.root, WORKFLOW_DIRECTORY, context3.workflow.file), "utf8");
   } catch {
     return "";
   }
@@ -62756,34 +61487,34 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
   const rows = [];
   const carried = [];
   const seen = new Set;
-  for (const row2 of live.rows) {
-    const first = !seen.has(row2.stackId);
-    seen.add(row2.stackId);
-    const one = startedBy.get(row2.stackId);
-    const fact = facts.byStack.get(row2.stackId);
-    const wanted = swap.clear.get(row2.stackId);
-    const destroys = row2.known ? row2.destroys : 0;
-    const deletes = row2.known ? row2.deletes : undefined;
-    if (!first || !row2.known) {
-      carried.push(row2);
+  for (const row of live.rows) {
+    const first = !seen.has(row.stackId);
+    seen.add(row.stackId);
+    const one = startedBy.get(row.stackId);
+    const fact = facts.byStack.get(row.stackId);
+    const wanted = swap.clear.get(row.stackId);
+    const destroys = row.known ? row.destroys : 0;
+    const deletes = row.known ? row.deletes : undefined;
+    if (!first || !row.known) {
+      carried.push(row);
     } else if (one) {
       rows.push(mine(one, destroys, deletes));
-    } else if (swap.dropped.includes(row2.stackId) && fact?.kind === "open" && row2.state !== "deploying") {
+    } else if (swap.dropped.includes(row.stackId) && fact?.kind === "open" && row.state !== "deploying") {
       rows.push({
         state: "deploying",
-        stackId: row2.stackId,
+        stackId: row.stackId,
         ticker: fact.ticker,
         runUrl: runUrl(context3.repoUrl, fact.run, fact.attempt),
         waiting: fact.waiting,
         destroys,
         deletes,
-        attribution: lines3.get(row2.stackId)?.lines,
+        attribution: lines3.get(row.stackId)?.lines,
         behind: fact.behind
       });
-    } else if (wanted && row2.ticked && row2.hash === wanted.hash) {
-      carried.push(clearTick(row2, { note: wanted.note }));
+    } else if (wanted && row.ticked && row.hash === wanted.hash) {
+      carried.push(clearTick(row, { note: wanted.note }));
     } else {
-      carried.push(row2);
+      carried.push(row);
     }
   }
   for (const one of swap.started)
@@ -62834,9 +61565,9 @@ function withRowDependencies(context3, stacks, rows) {
   if (auto.size === 0)
     return stacks;
   const read3 = new Map;
-  for (const row2 of rows) {
-    if (row2.known && row2.dependsOn && !read3.has(row2.stackId))
-      read3.set(row2.stackId, row2.dependsOn);
+  for (const row of rows) {
+    if (row.known && row.dependsOn && !read3.has(row.stackId))
+      read3.set(row.stackId, row.dependsOn);
   }
   const { dependsOn, dropped } = withReadDependencies({
     configured: new Map([...stacks].map(([id, one]) => [id, one.dependsOn ?? []])),
@@ -62929,13 +61660,801 @@ async function startQueued(context3, handOn) {
 `));
 }
 
+// src/modes/auto.ts
+function record3(value) {
+  return typeof value === "object" && value !== null ? value : undefined;
+}
+function text6(value) {
+  return typeof value === "string" ? value : undefined;
+}
+function autoEvent(eventName, payload) {
+  const body = record3(payload);
+  return {
+    name: eventName,
+    action: text6(body?.action),
+    ref: text6(body?.ref),
+    defaultBranch: text6(record3(body?.repository)?.default_branch)
+  };
+}
+function readOnly(root) {
+  try {
+    return loadConfig(root).dashboard.readOnly;
+  } catch {
+    return false;
+  }
+}
+function message3(error63) {
+  return error63 instanceof Error ? error63.message : String(error63);
+}
+async function auto(context3) {
+  const plan = autoModes(autoEvent(context3.eventName, context3.event), {
+    readOnly: readOnly(context3.root)
+  });
+  if ("notice" in plan) {
+    context3.notice(plan.notice);
+    return;
+  }
+  if (context3.eventName === "issues") {
+    const issue3 = editedIssue(context3.event);
+    const not = issue3 === undefined ? "The issue event names no issue. Nothing to do." : notTheDashboardText(issue3, context3.root);
+    if (not !== undefined) {
+      context3.notice(not);
+      return;
+    }
+  }
+  const summaries = [];
+  const failures = [];
+  const started = [];
+  let slot = 0;
+  const stepFor = () => {
+    const mine = slot++;
+    let handed = [];
+    return {
+      log: {
+        ...context3.log,
+        async writeSummary(text7) {
+          summaries[mine] = text7;
+          await context3.log.writeSummary(summaries.filter((part) => part !== undefined).join(`
+
+`));
+        }
+      },
+      outputs: {
+        ...context3.outputs,
+        set(name, value) {
+          if (name === "matrix")
+            handed = parseMatrixOutput(value);
+          else
+            context3.outputs.set(name, value);
+        },
+        writeResultFile: (mode, text7) => context3.outputs.writeResultFile(mode, text7)
+      },
+      handed: () => handed
+    };
+  };
+  const attempt = async (what2, run) => {
+    try {
+      await run();
+    } catch (error63) {
+      failures.push(`${what2}: ${message3(error63)}`);
+    }
+  };
+  try {
+    for (const mode of plan.modes) {
+      const step3 = stepFor();
+      context3.log.info(`Sluiceway runs ${mode}, for the ${context3.eventName} event of this run.`);
+      await attempt(mode, () => runMode(context3, mode, step3));
+      const entries = step3.handed();
+      if (entries.length > 0 && started.length === 0)
+        context3.handedOn?.();
+      started.push(...entries);
+      for (const entry3 of entries) {
+        context3.log.info(`Sluiceway runs apply, for ${entry3.stack} (deployment record ${entry3.deployment}).`);
+        await attempt(`apply of ${entry3.stack}`, () => context3.run.apply(entry3.deployment, stepFor()));
+      }
+    }
+    if (started.length > 0) {
+      context3.log.info("Sluiceway runs settle, for the deploys this run started.");
+      await attempt("settle", () => context3.run.settle(stepFor()));
+      context3.settled?.();
+    }
+  } finally {
+    context3.outputs.set("matrix", matrixOutput(started));
+  }
+  if (failures.length > 0)
+    throw new Error(failures.join(" "));
+}
+function runMode(context3, mode, step3) {
+  switch (mode) {
+    case "scan":
+      return context3.run.scan(step3);
+    case "resolve":
+      return context3.run.resolve(step3);
+    case "check":
+      return context3.run.check(step3);
+  }
+}
+
+// src/modes/check-backend.ts
+var backendContext = (env) => {
+  return { adapter: tools, env, run: (run) => runProcess(run) };
+};
+
+// src/core/check.ts
+var SUGGESTIONS = ["docs/**"];
+function checkSetup(config2, found, files, references = new Map) {
+  const stacks = applyConfig(config2, found);
+  const claimants = stacks.map(({ stack, inputs }) => ({
+    id: stackId(stack),
+    path: stack.path,
+    inputs
+  }));
+  const { unclaimed } = claim2(claimants, files, config2.scan.unrelated);
+  const reads = readsOf(claimants, files, new Set(unclaimed), references);
+  return {
+    stacks,
+    ignore: config2.ignore.map((entry3) => ignoreReport(ignoreGlob(entry3), found)),
+    unclaimed: groups(unclaimed),
+    suggested: suggestedUnrelated(unclaimed),
+    phases: phaseGroups(config2.phases, new Map(stacks.flatMap((one) => one.phase === undefined ? [] : [[stackId(one.stack), one.phase]]))),
+    reads,
+    inputs: inputsEntries(stacks, reads)
+  };
+}
+function readsOf(claimants, files, unclaimed, references) {
+  return claimants.flatMap(({ id, path, inputs }) => {
+    const matches = globMatcher(inputs);
+    const claims = (file2) => path === "." || file2.startsWith(`${path}/`) || matches(file2);
+    const read3 = references.get(id) ?? [];
+    return [...read3].sort((a, b) => byCodeUnit17(a.path, b.path)).flatMap((reference) => {
+      const under = reference.kind === "file" ? [reference.path] : files.filter((file2) => file2.startsWith(`${reference.path}/`));
+      const left = under.filter((file2) => !claims(file2));
+      if (left.length === 0)
+        return [];
+      const missed = left.some((file2) => !unclaimed.has(file2));
+      return [{ ...reference, stackId: id, missed }];
+    });
+  });
+}
+function globFor({ path, kind }) {
+  return kind === "file" ? globOf(path) : `${globOf(path)}/**`;
+}
+function inputsEntries(stacks, reads) {
+  const byStack = Map.groupBy(reads, (read3) => read3.stackId);
+  const byPath = Map.groupBy(stacks, ({ stack }) => stack.path);
+  return [...byPath].flatMap(([path, inPath]) => {
+    const globs2 = inPath.map(({ stack }) => (byStack.get(stackId(stack)) ?? []).map(globFor).join(`
+`));
+    if (globs2.every((one) => one === ""))
+      return [];
+    if (globs2.every((one) => one === globs2[0])) {
+      return [{ path, globs: (globs2[0] ?? "").split(`
+`) }];
+    }
+    return inPath.flatMap(({ stack }, index) => {
+      const own2 = globs2[index] ?? "";
+      if (own2 === "")
+        return [];
+      return [
+        { path, ...stack.name === undefined ? {} : { name: stack.name }, globs: own2.split(`
+`) }
+      ];
+    });
+  });
+}
+function suggestedUnrelated(unclaimed) {
+  return SUGGESTIONS.filter((glob) => unclaimed.some(globMatcher([glob])));
+}
+function ignoreReport(glob, found) {
+  const matches = globMatcher([glob]);
+  const stacks = found.map(stackId).filter(matches);
+  if (stacks.length > 0)
+    return { glob, stacks };
+  const better = `${glob}:*`;
+  const works = globMatcher([better]);
+  const hinted = found.filter((stack) => matches(stack.path)).map(stackId).filter(works);
+  return hinted.length === 0 ? { glob, stacks } : { glob, stacks, hint: { glob: better, stacks: hinted } };
+}
+function groups(files) {
+  const top = (file2) => {
+    const slash = file2.indexOf("/");
+    return slash === -1 ? "." : file2.slice(0, slash);
+  };
+  const byDirectory = Map.groupBy([...files].sort(byCodeUnit17), top);
+  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit17(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
+}
+function byCodeUnit17(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// src/core/repo-files.ts
+import { readdir as readdir3 } from "node:fs/promises";
+import { join as join32 } from "node:path";
+var SKIPPED2 = new Set([".git", "node_modules"]);
+async function repoFiles(root) {
+  const files = [];
+  const walk3 = async (relative5) => {
+    const entries = await readdir3(join32(root, ...relative5), { withFileTypes: true });
+    for (const entry3 of entries) {
+      if (entry3.name === ".git")
+        continue;
+      if (entry3.isDirectory()) {
+        if (!SKIPPED2.has(entry3.name))
+          await walk3([...relative5, entry3.name]);
+      } else {
+        files.push([...relative5, entry3.name].join("/"));
+      }
+    }
+  };
+  await walk3([]);
+  return files.sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+}
+
+// src/render/check.ts
+var VALID = "The setup is valid.";
+var NO_CONFIG_FILE = "No sluiceway.yaml, so every setting is its default.";
+var CANNOT_TELL = "A check reads files only, so it cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan.";
+var CANNOT_TELL_WITH_BACKEND = "A check cannot say that a preview will work: a missing credential for a provider or a registry the runner cannot reach shows only in a scan.";
+var BACKEND_OFF = "With backend: true the check also asks the backend which stacks it holds, with the credentials of its job.";
+var BACKEND_TITLE = "Stacks in the backend";
+var BACKEND_PASTE_TITLE = "Ready to paste into sluiceway.yaml, over ignore";
+var NOT_IN_BACKEND_TITLE = "A stack is not in the backend";
+var COULD_NOT_ASK_TITLE = "Could not ask the backend";
+var ALL_IN_BACKEND = "Every stack the backend was asked about is in it.";
+var BACKEND_PASTE_NOTE = "The block below keeps what ignore has and adds the stacks the backend does not hold. Leave out any stack you are about to create.";
+var WHERE_FILES_BELONG = "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.";
+var PASTE_NOTE = "The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.";
+var READS_TITLE = "Files stacks read and do not claim";
+var READS_PASTE_TITLE = "Ready to paste into sluiceway.yaml, under stacks";
+var READ_WARNING_TITLE = "A stack reads a file it does not claim";
+var READS_NOTE = "The stack's own files name these as read. The entries below add them to the stacks' inputs, and inputs of several entries add up, so they can go under stacks next to the entries you have. Sluiceway reads only what the files name plainly: a path a program builds at run time does not show here.";
+var WORKFLOW_WARNING_TITLE = "A workflow is missing something";
+var NOTHING_MISSING = "Nothing is missing from the workflows.";
+var NO_SCAN_WORKFLOW = "No workflow in .github/workflows runs a scan yet.";
+var WORKFLOWS_AS_TEXT = "The check reads the workflow files as text. The repo's default token permissions, the rules of an environment and what GitHub itself validates live elsewhere and do not show here.";
+var FILES_PER_DIRECTORY = 20;
+function foundText(count3) {
+  return count3 === 0 ? "Found no stacks." : `Found ${plural2(count3, "stack")}.`;
+}
+function settingsText(configured, phases = []) {
+  const { environment, tickers: tickers2, inputs } = configured;
+  const rule = typeof tickers2 === "string" ? tickers2 : tickers2.join(", ");
+  const claims = inputs.length === 0 ? "no inputs" : `inputs ${inputs.join(", ")}`;
+  const phase = configured.phase === undefined ? "" : `, phase ${phaseWords(configured, " (read from ", ")")}`;
+  const waits = dependsOnWords(configured, phases);
+  return `environment ${environment}, tickers ${rule}, ${claims}${phase}${waits === undefined ? "" : `, depends on ${waits}`}`;
+}
+function phaseWords({ phase, phaseFrom }, before, after) {
+  return phaseFrom === undefined ? `${phase}` : `${phase}${before}${phaseFrom}${after}`;
+}
+function split(configured, phases) {
+  return waitsByPhase({
+    phases: phases.map(({ phase }) => phase),
+    phaseOf: new Map(phases.flatMap(({ phase, stackIds }) => stackIds.map((id) => [id, phase]))),
+    stackId: stackId(configured.stack),
+    waitingOn: configured.dependsOn ?? []
+  });
+}
+function dependsOnWords(configured, phases) {
+  const { named, phases: through } = split(configured, phases);
+  const parts = [
+    ...named,
+    ...through.map(({ phase, stackIds }) => `${stackIds.join(", ")} through the ${phase} phase`),
+    ...configured.dependsOnAuto ? ["the stacks its stack references name, read at each preview (auto)"] : []
+  ];
+  return parts.length === 0 ? undefined : parts.join(", ");
+}
+function dependsOnCell(configured, phases) {
+  const { named, phases: through } = split(configured, phases);
+  const parts = [
+    ...named,
+    ...through.map(({ phase }) => `the ${phase} phase`),
+    ...configured.dependsOnAuto ? ["auto: its stack references, read at each preview"] : []
+  ];
+  return parts.length === 0 ? "none" : parts.join(", ");
+}
+function phaseLines(phases) {
+  return phases.map(({ phase, stackIds }, index) => {
+    const earlier = phases.slice(0, index).map((one) => one.phase);
+    const stacks = stackIds.length === 0 ? "no stack" : stackIds.join(", ");
+    const waits = earlier.length === 0 ? "" : `. Waits on every stack of ${listed4(earlier)}`;
+    return `${index + 1}. ${phase}: ${stacks}${waits}`;
+  });
+}
+function listed4(words) {
+  return words.length <= 1 ? words[0] ?? "" : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+function ignoreText({ glob, stacks }) {
+  return `ignore ${JSON.stringify(glob)} leaves out ${plural2(stacks.length, "stack")}: ${stacks.join(", ")}.`;
+}
+function unmatchedText(entry3) {
+  return `ignore ${JSON.stringify(entry3.glob)} matches no stack. ${unmatchedWhy(entry3)}`;
+}
+function unmatchedWhy({ hint }) {
+  const why2 = "It is matched against the stack id, not the directory.";
+  return hint === undefined ? why2 : `${why2} ${JSON.stringify(hint.glob)} would leave out ${hint.stacks.join(", ")}.`;
+}
+function unclaimedText(count3) {
+  return `${plural2(count3, "file")} ${count3 === 1 ? "is" : "are"} claimed by no stack. A push that changes one of them gives a full scan.`;
+}
+function unrelatedBlock(existing, suggested) {
+  const globs2 = [...new Set([...existing, ...suggested])];
+  return ["scan:", "  unrelated:", ...globs2.map((glob) => `    - ${JSON.stringify(glob)}`)];
+}
+function readText(read3) {
+  const shown3 = read3.kind === "directory" ? `${read3.path}/` : read3.path;
+  return `${read3.stackId} reads ${shown3}, named in ${read3.namedIn}.`;
+}
+function readWarningText(read3) {
+  return `${readText(read3)} A push that changes it does not preview ${read3.stackId}. Add it to the inputs of the stack.`;
+}
+function inputsBlock(entries) {
+  return [
+    "stacks:",
+    ...entries.flatMap(({ path, name, globs: globs2 }) => [
+      `  - path: ${JSON.stringify(path)}`,
+      ...name === undefined ? [] : [`    name: ${JSON.stringify(name)}`],
+      "    inputs:",
+      ...globs2.map((glob) => `      - ${JSON.stringify(glob)}`)
+    ])
+  ];
+}
+function askFailureText(reason) {
+  return reason.kind === "timed-out" ? `the question timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}` : previewFailureText(reason);
+}
+function backendText(check2) {
+  switch (check2.found) {
+    case true:
+      return `${check2.stackId} is in the backend.`;
+    case false:
+      return `${check2.stackId} is not in the backend.`;
+    case "unknown":
+      return `${check2.stackId}: could not ask the backend, ${askFailureText(check2.reason)}.`;
+    case "unchecked":
+      return `${check2.stackId}: not checked, its tool has no list of stacks to ask.`;
+  }
+}
+function notInBackendText(stackId2) {
+  return `${stackId2} has files in the repo and no stack in the backend, so a scan gives its row a preview failure. Create the stack, or leave it out with the ignore block of this check.`;
+}
+function couldNotAskText(check2) {
+  return `${backendText(check2)} The tool's own words are in the job log.`;
+}
+function ignoreBlock(existing, stackIds) {
+  return [
+    "ignore:",
+    ...existing.flatMap((entry3) => typeof entry3 === "string" ? [`  - ${JSON.stringify(entry3)}`] : [
+      `  - glob: ${JSON.stringify(entry3.glob)}`,
+      `    reason: ${JSON.stringify(entry3.reason)}`
+    ]),
+    ...stackIds.map((id) => `  - ${JSON.stringify(globOf(id))}`)
+  ];
+}
+function backendCell(check2) {
+  switch (check2.found) {
+    case true:
+      return "Yes";
+    case false:
+      return "No";
+    case "unknown":
+      return `Could not ask: ${askFailureText(check2.reason)}`;
+    case "unchecked":
+      return "Not checked";
+  }
+}
+function backendParts(checks3, ignore) {
+  const parts = [
+    "### The backend",
+    [
+      "| Stack | In the backend |",
+      "|---|---|",
+      ...checks3.map((check2) => row([check2.stackId, backendCell(check2)]))
+    ].join(`
+`)
+  ];
+  const missing2 = checks3.filter((check2) => check2.found === false).map((check2) => check2.stackId);
+  if (missing2.length === 0) {
+    if (checks3.some((check2) => check2.found === true))
+      parts.push(ALL_IN_BACKEND);
+  } else {
+    parts.push(BACKEND_PASTE_NOTE, ["```yaml", ...ignoreBlock(ignore, missing2), "```"].join(`
+`));
+  }
+  return parts;
+}
+function refText({ ref, refKind: refKind2 }) {
+  switch (refKind2) {
+    case "moving":
+      return `at ${ref}, which follows every release of ${ref}`;
+    case "release":
+      return `at ${ref}, one release that stays as it is`;
+    case "commit":
+      return `at commit ${ref.slice(0, 12)}, pinned`;
+    case "other":
+      return `at ${ref}, which is not a release`;
+  }
+}
+function workflowJobText(path, job) {
+  const mode = job.mode === undefined ? "no known mode" : job.mode === "auto" ? `mode auto, which runs ${job.runs.length === 0 ? "nothing on these triggers" : job.runs.join(", ")}` : `mode ${job.mode}`;
+  return `${path}, job ${job.job}: ${mode}, ${refText(job)}.`;
+}
+function needsWho(mode) {
+  return mode === "auto" ? "the modes it runs need" : `${mode} needs`;
+}
+var MODE_LIST = "auto, scan, resolve, apply, settle, check";
+function workflowWarningText(warning2) {
+  const { path } = warning2;
+  switch (warning2.kind) {
+    case "unreadable":
+      return `${path} is not valid YAML, so the check cannot read how it runs Sluiceway. The Actions tab of the repo shows GitHub's own error.`;
+    case "unknown-mode":
+      return `${path}, job ${warning2.job}: the Sluiceway step has mode ${JSON.stringify(warning2.mode)}, which does not exist. Leave the mode out, or use one of: ${MODE_LIST}.`;
+    case "unreleased-ref":
+      return `${path}, job ${warning2.job}: sluiceway/sluiceway@${warning2.ref} is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.`;
+    case "mixed-refs":
+      return `${path} runs Sluiceway at ${warning2.refs.join(" and ")}. Use one ref in every job, so that a scan and the deploy it leads to run the same version.`;
+    case "missing-trigger":
+      return MISSING_TRIGGER[warning2.trigger](path);
+    case "forbidden-trigger":
+      if (warning2.auto) {
+        return `${path} runs on ${warning2.trigger}, and its Sluiceway job loads the credentials of your stacks before it. On ${warning2.trigger} those steps would run code that is not on the default branch yet. Keep the check in a workflow of its own, which needs no credentials.`;
+      }
+      return `${path} runs on ${warning2.trigger}. A scan would write the dashboard from code that is not on the default branch yet. Only the workflow of the check may run on pull requests or in a merge queue.`;
+    case "missing-job":
+      return `${path} has no ${warning2.mode} job. The four jobs scan, resolve, apply and settle stay in one file: a scan looks for waiting ticks among the runs of its own workflow, and the rescan box and settle start that same workflow again.`;
+    case "boxes-do-nothing":
+      return `${path} scans, and no job in it resolves a tick, so a box on the dashboard does nothing. For a workflow that only scans, set dashboard.readOnly: true in sluiceway.yaml.`;
+    case "no-permissions":
+      return `${path}, job ${warning2.job}: there is no permissions block, so the token gets the repo's default, which a file does not show. ${needsWho(warning2.mode)} ${warning2.needs.join(", ")}.`;
+    case "missing-permissions":
+      return `${path}, job ${warning2.job}: ${needsWho(warning2.mode)} ${warning2.missing.join(", ")}. A job's own permissions replace the workflow's.`;
+    case "no-concurrency":
+      return `${path}, job ${warning2.job}: there is no concurrency group. ${NO_CONCURRENCY[warning2.mode]}`;
+    case "auto-no-queue":
+      return `${path}, job ${warning2.job}: the concurrency group has no queue: max, so a run that waits is dropped when a newer one arrives, a push's scan or a deploy that a dispatch started with it.`;
+    case "auto-cancels":
+      return `${path}, job ${warning2.job}: cancel-in-progress stops a deploy half way when a newer run arrives. Take it out of this job.`;
+    case "apply-group-shared":
+      return `${path}, job ${warning2.job}: the concurrency group does not name the stack, so a deploy waits for the deploy of every other stack. Use group: sluiceway-apply-\${{ matrix.stack }}.`;
+    case "apply-no-queue":
+      return `${path}, job ${warning2.job}: the concurrency group has no queue: max, so a deploy that waits is cancelled when a newer one for the same stack arrives.`;
+    case "apply-cancels":
+      return `${path}, job ${warning2.job}: cancel-in-progress stops a deploy half way when a newer one for the same stack arrives. Take it out of this job.`;
+    case "no-status-check":
+      return warning2.mode === "apply" ? `${path}, job ${warning2.job}: the if: has no !cancelled(). Without a status check GitHub skips the deploys that resolve started whenever resolve itself ends red.` : `${path}, job ${warning2.job}: the if: has no always(). settle exists for deploys that were cancelled or failed, and without always() GitHub skips it exactly then.`;
+    case "settle-skips-apply":
+      return `${path}, job ${warning2.job}: settle does not wait for the job ${warning2.apply}. Add ${warning2.apply} to its needs, so it ends the records of those deploys too.`;
+    case "no-merged-apply":
+      return `${path}: mergeAndDeploy is on, and no apply job takes the matrix of the scan. The scan after a merge hands the deploy on through its own matrix output, so a merged update would never deploy. Add a copy of the apply job that takes needs.scan.outputs.matrix.`;
+    case "scan-no-matrix-output":
+      return `${path}, job ${warning2.job}: it takes the matrix of the job ${warning2.scan}, which has no matrix output. Add outputs: matrix: \${{ steps.<id>.outputs.matrix }} to ${warning2.scan}, with that id on its Sluiceway step.`;
+  }
+}
+var MISSING_TRIGGER = {
+  push: (path) => `${path} scans and has no push trigger. A push to the default branch starts the scan that shows its change as pending.`,
+  schedule: (path) => `${path} scans and has no schedule. The daily full scan catches a change that is not a file in the repo, such as another stack's output.`,
+  workflow_dispatch: (path) => `${path} has no workflow_dispatch trigger. The rescan box and settle start a scan through it.`,
+  issues: (path) => `${path} has a resolve job and does not listen to issue edits (issues, with the type edited). A tick would start nothing.`
+};
+var NO_CONCURRENCY = {
+  auto: "Two runs could scan or deploy at once. Use one group with queue: max, such as group: sluiceway-${{ github.event.issue.number }}, so the runs wait in line and an edit of another issue waits for none of them.",
+  scan: "Scans would run side by side. Use concurrency: sluiceway-scan, so they run one at a time.",
+  resolve: "Two runs could handle the same tick. Use concurrency: sluiceway-resolve, so ticks are handled one run at a time.",
+  apply: "Two deploys of one stack could run at once. Use a group per stack, group: sluiceway-apply-${{ matrix.stack }}, with queue: max."
+};
+function workflowNoteText(note) {
+  switch (note.kind) {
+    case "no-preview-pages":
+      return `${note.path}, job ${note.job}: without checks: write there are no preview pages, and a pending row's preview link opens the run's summary.`;
+    case "called":
+      return `${note.path} is called from another workflow. Its triggers and permissions come from the caller, which the check does not follow.`;
+  }
+}
+function scansSomewhere(workflows) {
+  return workflows.workflows.some(({ jobs }) => jobs.some((job) => job.runs.includes("scan")));
+}
+function renderCheckSummary({
+  report,
+  workflows,
+  unrelated,
+  hasConfigFile: hasConfigFile2,
+  backend
+}) {
+  const parts = ["## Sluiceway check", VALID];
+  if (!hasConfigFile2)
+    parts.push(NO_CONFIG_FILE);
+  parts.push("### Stacks", foundText(report.stacks.length));
+  if (report.stacks.length > 0) {
+    const waits = report.stacks.some((configured) => configured.dependsOn !== undefined || configured.dependsOnAuto);
+    const phased = report.stacks.some((configured) => configured.phase !== undefined);
+    parts.push([
+      `| Stack | Environment | Tickers | Inputs |${phased ? " Phase |" : ""}${waits ? " Depends on |" : ""}`,
+      `|---|---|---|---|${phased ? "---|" : ""}${waits ? "---|" : ""}`,
+      ...report.stacks.map((configured) => {
+        const { environment, tickers: tickers2, inputs } = configured;
+        return row([
+          stackId(configured.stack),
+          environment,
+          typeof tickers2 === "string" ? tickers2 : tickers2.join(", "),
+          inputs.length === 0 ? "none" : inputs.join(", "),
+          ...phased ? [configured.phase === undefined ? "none" : phaseWords(configured, ", from ", "")] : [],
+          ...waits ? [dependsOnCell(configured, report.phases)] : []
+        ]);
+      })
+    ].join(`
+`));
+  }
+  if (report.phases.length > 0) {
+    parts.push("### Phases", [
+      "| Phase | Stacks | Waits on |",
+      "|---|---|---|",
+      ...report.phases.map(({ phase, stackIds }, index) => {
+        const earlier = report.phases.slice(0, index).map((one) => one.phase);
+        return row([
+          phase,
+          stackIds.length === 0 ? "none" : stackIds.join(", "),
+          earlier.length === 0 ? "nothing" : earlier.join(", ")
+        ]);
+      })
+    ].join(`
+`));
+  }
+  if (report.ignore.length > 0) {
+    parts.push("### Ignore", [
+      "| Glob | Leaves out |",
+      "|---|---|",
+      ...report.ignore.map((entry3) => row([
+        entry3.glob,
+        entry3.stacks.length > 0 ? entry3.stacks.join(", ") : `No stack. ${unmatchedWhy(entry3)}`
+      ]))
+    ].join(`
+`));
+  }
+  parts.push("### Files that no stack claims");
+  const count3 = report.unclaimed.reduce((sum, group) => sum + group.files.length, 0);
+  if (count3 === 0) {
+    parts.push("Every file is claimed by a stack, covered by scan.unrelated, or one of the docs and tooling files that force nothing by default.");
+  } else {
+    parts.push(unclaimedText(count3), report.unclaimed.map(groupLine).join(`
+`), WHERE_FILES_BELONG);
+    if (report.suggested.length > 0) {
+      parts.push(PASTE_NOTE, ["```yaml", ...unrelatedBlock(unrelated, report.suggested), "```"].join(`
+`));
+    }
+  }
+  if (report.reads.length > 0) {
+    parts.push(`### ${READS_TITLE}`, report.reads.map((read3) => `- ${escapeText(read3.missed ? readWarningText(read3) : readText(read3))}`).join(`
+`), READS_NOTE, ["```yaml", ...inputsBlock(report.inputs), "```"].join(`
+`));
+  }
+  parts.push("### Workflows", ...workflowParts(workflows));
+  if (backend !== undefined)
+    parts.push(...backendParts(backend.checks, backend.ignore));
+  parts.push("### What a check cannot tell", ...backend === undefined ? [CANNOT_TELL, BACKEND_OFF] : [CANNOT_TELL_WITH_BACKEND]);
+  return `${parts.join(`
+
+`)}
+`;
+}
+function renderCheckFailure(kind, problems) {
+  const title = kind === "config" ? "sluiceway.yaml is not valid." : "Could not work out the stacks of this repo.";
+  return `${[
+    "## Sluiceway check",
+    title,
+    problems.map((problem4) => `- ${escapeText(problem4)}`).join(`
+`),
+    "Fix these and run the check again. A scan stops at the same place."
+  ].join(`
+
+`)}
+`;
+}
+function workflowParts(workflows) {
+  const parts = [];
+  if (workflows.workflows.length > 0) {
+    parts.push([
+      "| Workflow | Job | Mode | Action ref |",
+      "|---|---|---|---|",
+      ...workflows.workflows.flatMap(({ path, jobs }) => jobs.map((job) => row([path, job.job, job.mode ?? "none", refText(job)])))
+    ].join(`
+`));
+  }
+  if (!scansSomewhere(workflows))
+    parts.push(NO_SCAN_WORKFLOW);
+  if (workflows.warnings.length > 0) {
+    parts.push(workflows.warnings.map((warning2) => `- ${escapeText(workflowWarningText(warning2))}`).join(`
+`));
+  }
+  if (workflows.notes.length > 0) {
+    parts.push(workflows.notes.map((note) => `- ${escapeText(workflowNoteText(note))}`).join(`
+`));
+  }
+  if (workflows.workflows.length > 0 && workflows.warnings.length === 0) {
+    parts.push(NOTHING_MISSING);
+  }
+  parts.push(WORKFLOWS_AS_TEXT);
+  return parts;
+}
+function groupLine({ directory, files }) {
+  const where2 = directory === "." ? "The repo root" : escapeText(`${directory}/`);
+  const shown3 = files.slice(0, FILES_PER_DIRECTORY).map(escapeText).join(", ");
+  const rest = files.length - FILES_PER_DIRECTORY;
+  const more = rest > 0 ? `, and ${plural2(rest, "more file")}. The job log lists them all.` : "";
+  return `- ${where2}, ${plural2(files.length, "file")}: ${shown3}${more}`;
+}
+function row(cells) {
+  return `| ${cells.map(escapeText).join(" | ")} |`;
+}
+
+// src/modes/check.ts
+var line2 = logGroupTitle;
+async function check2(context3) {
+  const { log, root } = context3;
+  let config2;
+  let report;
+  try {
+    config2 = loadConfig(root);
+    const found = await context3.adapter.discover(root, config2);
+    const references = new Map;
+    const readsFiles4 = context3.adapter.readsFiles;
+    if (readsFiles4 !== undefined) {
+      for (const stack of found)
+        references.set(stackId(stack), await readsFiles4(root, stack));
+    }
+    report = checkSetup(config2, found, await repoFiles(root), references);
+  } catch (error63) {
+    if (error63 instanceof ConfigError || error63 instanceof DiscoveryError) {
+      await summary2(context3, renderCheckFailure(error63 instanceof ConfigError ? "config" : "discovery", error63.problems));
+    }
+    throw error63;
+  }
+  const configFile = hasConfigFile(root);
+  if (!configFile)
+    log.info(NO_CONFIG_FILE);
+  log.info(foundText(report.stacks.length));
+  if (report.stacks.length > 0) {
+    log.group("Stacks", report.stacks.map((configured) => line2(`${stackId(configured.stack)}: ${settingsText(configured, report.phases)}`)));
+  }
+  if (report.phases.length > 0)
+    log.group("Phases", phaseLines(report.phases).map(line2));
+  for (const entry3 of report.ignore) {
+    if (entry3.stacks.length > 0)
+      log.info(line2(ignoreText(entry3)));
+    else
+      log.warning(line2(unmatchedText(entry3)), "An ignore glob matches no stack");
+  }
+  const unclaimed = report.unclaimed.flatMap((group) => group.files);
+  if (unclaimed.length > 0) {
+    log.info(unclaimedText(unclaimed.length));
+    log.group("Files that no stack claims", unclaimed.map(line2));
+    log.info(WHERE_FILES_BELONG);
+    if (report.suggested.length > 0) {
+      log.group("Ready to paste into sluiceway.yaml", unrelatedBlock(config2.scan.unrelated, report.suggested).map(line2));
+    }
+  }
+  if (report.reads.length > 0) {
+    log.group(READS_TITLE, report.reads.map((read3) => line2(readText(read3))));
+    for (const read3 of report.reads.filter((one) => one.missed)) {
+      log.warning(line2(readWarningText(read3)), READ_WARNING_TITLE);
+    }
+    log.info(READS_NOTE);
+    log.group(READS_PASTE_TITLE, inputsBlock(report.inputs).map(line2));
+  }
+  const workflows = checkWorkflows(readWorkflowFiles(root), config2);
+  logWorkflows(log, workflows);
+  const backend = context3.backend === undefined ? undefined : await askBackend(context3.backend, root, report.stacks.map(({ stack }) => stack), config2.ignore, log);
+  await summary2(context3, renderCheckSummary({
+    report,
+    workflows,
+    unrelated: config2.scan.unrelated,
+    hasConfigFile: configFile,
+    backend: backend === undefined ? undefined : { checks: backend, ignore: config2.ignore }
+  }));
+  log.info(VALID);
+  if (backend === undefined) {
+    log.info(CANNOT_TELL);
+    log.info(BACKEND_OFF);
+  } else {
+    log.info(CANNOT_TELL_WITH_BACKEND);
+  }
+}
+async function askBackend(backend, root, stacks, ignore, log) {
+  const result = await backend.adapter.findInBackend?.(stacks, {
+    root,
+    env: backend.env,
+    run: backend.run
+  });
+  const answers = new Map((result?.answers ?? []).map((answer) => [stackId(answer.stack), answer]));
+  const checks3 = stacks.map((stack) => {
+    const id = stackId(stack);
+    const answer = answers.get(id);
+    if (answer === undefined)
+      return { stackId: id, found: "unchecked" };
+    return answer.found === "unknown" ? { stackId: id, found: "unknown", reason: answer.reason } : { stackId: id, found: answer.found };
+  });
+  if (result !== undefined && result.toolLog !== "") {
+    log.group("The tool's own words", result.toolLog.replace(/\n$/, "").split(`
+`));
+  }
+  log.group(BACKEND_TITLE, checks3.map((check3) => line2(backendText(check3))));
+  for (const check3 of checks3) {
+    if (check3.found === "unknown")
+      log.warning(line2(couldNotAskText(check3)), COULD_NOT_ASK_TITLE);
+    if (check3.found === false)
+      log.warning(line2(notInBackendText(check3.stackId)), NOT_IN_BACKEND_TITLE);
+  }
+  const missing2 = checks3.filter((check3) => check3.found === false).map((check3) => check3.stackId);
+  if (missing2.length > 0) {
+    log.info(BACKEND_PASTE_NOTE);
+    log.group(BACKEND_PASTE_TITLE, ignoreBlock(ignore, missing2).map(line2));
+  } else if (checks3.some((check3) => check3.found === true)) {
+    log.info(ALL_IN_BACKEND);
+  }
+  return checks3;
+}
+function logWorkflows(log, workflows) {
+  if (workflows.workflows.length > 0) {
+    log.group("Workflows", workflows.workflows.flatMap(({ path, jobs }) => jobs.map((job) => line2(workflowJobText(path, job)))));
+  }
+  if (!scansSomewhere(workflows))
+    log.info(NO_SCAN_WORKFLOW);
+  for (const warning2 of workflows.warnings) {
+    log.warning(line2(workflowWarningText(warning2)), WORKFLOW_WARNING_TITLE);
+  }
+  for (const note of workflows.notes)
+    log.info(line2(workflowNoteText(note)));
+  if (workflows.workflows.length > 0 && workflows.warnings.length === 0) {
+    log.info(NOTHING_MISSING);
+  }
+}
+async function summary2(context3, text7) {
+  try {
+    await context3.log.writeSummary(text7);
+  } catch (error63) {
+    context3.log.info(`Writing the summary failed: ${error63 instanceof Error ? error63.message : error63}`);
+  }
+}
+
+// src/modes/check-job.ts
+async function runCheck(makeBackend, log) {
+  const root = process.env.GITHUB_WORKSPACE;
+  if (!root) {
+    throw new Error("GITHUB_WORKSPACE is not set. Sluiceway runs as a step of a GitHub Actions job.");
+  }
+  const asked = readBackend(getInput);
+  if (asked && makeBackend === undefined) {
+    throw new Error("backend: true needs a runner for the tool, and this check has none.");
+  }
+  const backend = asked ? makeBackend?.({ ...process.env }) : undefined;
+  await check2({
+    root,
+    ...backend === undefined ? {} : { backend },
+    adapter: { discover: discoverAll, readsFiles: readsFiles3 },
+    log: log ?? actionsLog()
+  });
+}
+
 // src/modes/resolve-job.ts
-async function runResolve(directory) {
+import { readFileSync as readFileSync9 } from "node:fs";
+
+// src/github/workflow-ref.ts
+function readWorkflowRef(env) {
+  const value = env.GITHUB_WORKFLOW_REF ?? "";
+  const at = value.indexOf("@");
+  if (at < 0)
+    return;
+  const file2 = value.slice(0, at).split("/").at(-1) ?? "";
+  const ref = value.slice(at + 1);
+  return file2 === "" || ref === "" ? undefined : { file: file2, ref };
+}
+
+// src/modes/resolve-job.ts
+async function runResolve(directory, step3) {
   const env = process.env;
-  const read3 = (path) => readFileSync10(path, "utf8");
+  const read3 = (path) => readFileSync9(path, "utf8");
   const token = readToken(getInput);
   const job = readJob(env);
-  const log = actionsLog();
+  const log = step3?.log ?? actionsLog();
   await resolve({
     root: job.root,
     adapter: tools,
@@ -62948,13 +62467,13 @@ async function runResolve(directory) {
     actionRef: readActionRef(env, directory, read3),
     event: readEventPayload(env, read3),
     workflow: readWorkflowRef(env),
-    setOutput: (name, value) => setOutput(name, value),
+    setOutput: (name, value) => step3 ? step3.outputs.set(name, value) : setOutput(name, value),
     notifier: stepNotifier(getInput, log, setSecret)
   });
 }
 
 // src/modes/scan-job.ts
-import { readFileSync as readFileSync11 } from "node:fs";
+import { readFileSync as readFileSync10 } from "node:fs";
 
 // src/github/request-count.ts
 function countRequests(octokit) {
@@ -62983,9 +62502,9 @@ function tickAtLateRead(row2) {
 // src/core/outside-deploy.ts
 function ownRuns(records) {
   const runs = new Map;
-  for (const record3 of records) {
-    const stackId2 = taskStackId(record3.task);
-    const payload = readDeploymentPayload(record3.payload);
+  for (const record4 of records) {
+    const stackId2 = taskStackId(record4.task);
+    const payload = readDeploymentPayload(record4.payload);
     if (stackId2 === undefined || payload === undefined)
       continue;
     const set2 = runs.get(stackId2) ?? new Set;
@@ -63157,8 +62676,8 @@ function previewPageName(stackId2) {
   return `sluiceway / ${stackId2}`;
 }
 var ENCODER = new TextEncoder;
-function byteLength2(text6) {
-  return ENCODER.encode(text6).length;
+function byteLength2(text7) {
+  return ENCODER.encode(text7).length;
 }
 function jobLog(links2) {
   return links2.log === undefined ? "job log of the scan" : `[job log](${links2.log})`;
@@ -63210,13 +62729,13 @@ ${pointer(lines3.length, id, links2)}
       used += sizes[kept++] ?? 0;
   }
   const unlisted = lines3.length - kept;
-  const text6 = lines3.slice(0, kept).join("") + (unlisted > 0 ? `
+  const text7 = lines3.slice(0, kept).join("") + (unlisted > 0 ? `
 ${pointer(unlisted, id, links2)}
 ` : "");
   return {
     title: `${diff2.stackId.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")}: ${counted.join(", ").replaceAll("**", "")}`,
     summary: summary3,
-    text: text6,
+    text: text7,
     unlisted
   };
 }
@@ -63232,8 +62751,8 @@ function refusal(error63) {
   const status = statusOf2(error63);
   if (status !== 403 && status !== 429)
     return;
-  const message3 = messageOf2(error63);
-  return { message: message3, permission: /not accessible by integration/i.test(message3) };
+  const message4 = messageOf2(error63);
+  return { message: message4, permission: /not accessible by integration/i.test(message4) };
 }
 function previewPages(github, sha) {
   let known;
@@ -63320,8 +62839,8 @@ function jobLog2(options) {
   return options.jobLogUrl === undefined ? "job log" : `[job log](${options.jobLogUrl})`;
 }
 var LEVELS2 = [0, 1, 2, 3];
-function firstLine(message3) {
-  return message3.split(/\r?\n/, 1)[0] ?? "";
+function firstLine(message4) {
+  return message4.split(/\r?\n/, 1)[0] ?? "";
 }
 function mergeLine(merge3) {
   const label = merge3.kind === "pull-request" ? `#${merge3.number} ${escapeText(merge3.title)}` : `${merge3.sha.slice(0, 7)} ${escapeText(firstLine(merge3.message))}`;
@@ -63385,8 +62904,8 @@ function stackIdOf2(stack) {
   return stack.kind === "diff" ? stack.diff.stackId : stack.stackId;
 }
 var ENCODER2 = new TextEncoder;
-function byteLength3(text6) {
-  return ENCODER2.encode(text6).length;
+function byteLength3(text7) {
+  return ENCODER2.encode(text7).length;
 }
 function cost(parts) {
   return parts.reduce((sum, part) => sum + byteLength3(part) + 2, 0);
@@ -63499,7 +63018,7 @@ function renderSummary(stacks, options = {}) {
   const tailCost = cost(tail);
   fitToBudget(entries, (shortened2) => cost(frame(shortened2)) + tailCost, options.budget ?? SUMMARY_BUDGET);
   const shortened = entries.filter((entry3) => entry3.level > 0).length;
-  const text6 = `${[
+  const text7 = `${[
     ...frame(shortened),
     ...entries.flatMap((entry3) => entry3.parts[entry3.level] ?? []),
     ...tail
@@ -63507,14 +63026,14 @@ function renderSummary(stacks, options = {}) {
 
 `)}
 `;
-  const bytes = byteLength3(text6);
-  return { text: text6, bytes, shortened, fits: bytes <= (options.budget ?? SUMMARY_BUDGET) };
+  const bytes = byteLength3(text7);
+  return { text: text7, bytes, shortened, fits: bytes <= (options.budget ?? SUMMARY_BUDGET) };
 }
 
 // src/modes/branch-preview.ts
 import { cp, mkdir as mkdir2, mkdtemp as mkdtemp3, realpath, rm as rm4, writeFile as writeFile3 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
-import { basename as basename2, dirname as dirname3, join as join34, resolve as resolve2, sep as sep6 } from "node:path";
+import { basename as basename2, dirname as dirname2, join as join33, resolve as resolve2, sep as sep6 } from "node:path";
 async function previewBranches(context3, stacks, updates) {
   const { log } = context3;
   const previews = new Map;
@@ -63534,7 +63053,7 @@ async function previewOne(context3, number4, head, files, stacks) {
     log.info(`#${number4} could not be previewed: ${why2}`);
     return stacks.map(({ stack }) => ({ stackId: stackId(stack) }));
   };
-  const copy = await mkdtemp3(join34(context3.env.RUNNER_TEMP || tmpdir3(), "sluiceway-branch-"));
+  const copy = await mkdtemp3(join33(context3.env.RUNNER_TEMP || tmpdir3(), "sluiceway-branch-"));
   try {
     await cp(context3.root, copy, {
       recursive: true,
@@ -63545,21 +63064,21 @@ async function previewOne(context3, number4, head, files, stacks) {
     const inside2 = await realpath(copy);
     for (const path of files) {
       const target2 = resolve2(copy, path);
-      let text6;
+      let text7;
       try {
-        text6 = await context3.github.readRepositoryFile({ owner, repo, path, ref: head });
+        text7 = await context3.github.readRepositoryFile({ owner, repo, path, ref: head });
       } catch (error63) {
         return failedAll(`${path} could not be read at its head commit: ${error63 instanceof Error ? error63.message : error63}.`);
       }
-      await mkdir2(dirname3(target2), { recursive: true });
-      const parent = await realpath(dirname3(target2));
+      await mkdir2(dirname2(target2), { recursive: true });
+      const parent = await realpath(dirname2(target2));
       if (parent !== inside2 && !parent.startsWith(`${inside2}${sep6}`)) {
         return failedAll(`${path} leads out of the copy of the checkout.`);
       }
-      if (text6 === undefined)
+      if (text7 === undefined)
         await rm4(target2, { force: true, recursive: true });
       else
-        await writeFile3(target2, text6);
+        await writeFile3(target2, text7);
     }
     const tool = { root: copy, env: context3.env, run: context3.run };
     const failed = await prepareStacks({ ...tool, log, adapter: context3.adapter }, stacks, context3.previewTimeoutMinutes);
@@ -63591,8 +63110,8 @@ async function previewOne(context3, number4, head, files, stacks) {
 }
 
 // src/modes/outside-deploys.ts
-function lines3(text6) {
-  return text6.split(`
+function lines3(text7) {
+  return text7.split(`
 `).filter((line3) => line3.trim() !== "");
 }
 async function readHistories(context3, stacks, limit) {
@@ -63640,8 +63159,8 @@ async function readHistories(context3, stacks, limit) {
 
 // src/modes/scan.ts
 class ScanFailedError extends Error {
-  constructor(message3) {
-    super(message3);
+  constructor(message4) {
+    super(message4);
     this.name = "ScanFailedError";
   }
 }
@@ -63662,8 +63181,8 @@ function seconds2(milliseconds) {
 function minutes(count3) {
   return plural2(count3, "minute");
 }
-function lines4(text6) {
-  const all = text6.split(/\r?\n/);
+function lines4(text7) {
+  const all = text7.split(/\r?\n/);
   if (all.at(-1) === "")
     all.pop();
   return all;
@@ -63704,7 +63223,7 @@ function reportOutputs2(context3, report) {
   }
   if (!previewed || !startedAt)
     return;
-  const text6 = scanResultFile({
+  const text7 = scanResultFile({
     run: runUrlOf(context3, context3.runId),
     commit: context3.sha,
     milliseconds: context3.now().getTime() - startedAt.getTime(),
@@ -63714,7 +63233,7 @@ function reportOutputs2(context3, report) {
       milliseconds
     }))
   });
-  writeResultFile(outputs, context3.log, "scan", text6);
+  writeResultFile(outputs, context3.log, "scan", text7);
 }
 async function scanning(context3, report) {
   const { log, now } = context3;
@@ -63755,7 +63274,7 @@ async function scanning(context3, report) {
     scanSha: context3.sha,
     ...config2.attribution,
     trailLength: config2.dashboard.recentlyDeployed
-  }, (message3) => log.info(`Attribution was left off the rows: ${message3}. It only explains a row, so the scan goes on without it (record 0026).`));
+  }, (message4) => log.info(`Attribution was left off the rows: ${message4}. It only explains a row, so the scan goes on without it (record 0026).`));
   let attributed = new Map;
   const previewed = new Map;
   const pageUrls = new Map;
@@ -64344,8 +63863,8 @@ async function writePages(context3, pages, round, urls, options) {
       summary: links2.summary,
       log: context3.jobId === undefined ? undefined : links2.log
     }, { toolDiffInLog: logDiff });
-    const { title, summary: summary3, text: text6 } = page;
-    toWrite.push({ stackId: id, output: { title, summary: summary3, text: text6 } });
+    const { title, summary: summary3, text: text7 } = page;
+    toWrite.push({ stackId: id, output: { title, summary: summary3, text: text7 } });
   }
   if (toWrite.length === 0)
     return;
@@ -64356,8 +63875,8 @@ async function writePages(context3, pages, round, urls, options) {
   if (written.urls.size > 0) {
     log.info(`Wrote the preview pages of ${plural2(written.urls.size, "stack")} on ${short(context3.sha)}: ${written.created} created, ${written.updated} updated.`);
   }
-  for (const { stackId: id, message: message3 } of written.failed) {
-    log.info(`The preview page of ${logGroupTitle(id)} could not be written: ${message3}. Its preview link lands on ${fallBack}.`);
+  for (const { stackId: id, message: message4 } of written.failed) {
+    log.info(`The preview page of ${logGroupTitle(id)} could not be written: ${message4}. Its preview link lands on ${fallBack}.`);
   }
   const { refused } = written;
   if (!refused)
@@ -64559,7 +64078,7 @@ async function handOffMerges(context3, config2, stacks, previewed, waiting, hand
       await end("inactive", MERGED_DESCRIPTION);
       const hash2 = diffHash(result.diff);
       try {
-        const record3 = await github.createDeployment({
+        const record4 = await github.createDeployment({
           sha: context3.sha,
           task: deploymentTask(id),
           environment: stack.environment,
@@ -64571,9 +64090,9 @@ async function handOffMerges(context3, config2, stacks, previewed, waiting, hand
             ...(result.diff.drift ?? []).length > 0 ? { drift: true } : {}
           })
         });
-        handedOn.push({ stack: id, environment: stack.environment, deployment: record3.id });
-        await github.createDeploymentStatus(record3.id, { state: "queued", logUrl });
-        log.info(`#${fact.merge} is merged: deployment record ${record3.id} of ${name} is queued with diff hash ${hash2}, ticked by ${fact.ticker}, and handed to apply.`);
+        handedOn.push({ stack: id, environment: stack.environment, deployment: record4.id });
+        await github.createDeploymentStatus(record4.id, { state: "queued", logUrl });
+        log.info(`#${fact.merge} is merged: deployment record ${record4.id} of ${name} is queued with diff hash ${hash2}, ticked by ${fact.ticker}, and handed to apply.`);
       } catch (error63) {
         throw new Error(`#${fact.merge} is merged, and the deployment record that deploys ${name} could not be written: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permission \`deployments: write\` (record 0054). Nothing deploys: the row shows the stack as pending, and a tick deploys it.`);
       }
@@ -64602,13 +64121,13 @@ async function holdsMerge(context3, deployment) {
 }
 
 // src/modes/scan-job.ts
-async function runScan(directory) {
+async function runScan(directory, step3) {
   const env = process.env;
   const inputs = readScanInputs(getInput);
   const job = readJob(env);
-  const log = actionsLog();
+  const log = step3?.log ?? actionsLog();
   const octokit = getOctokit(inputs.token);
-  const payload = readEventPayload(env, (path) => readFileSync11(path, "utf8"));
+  const payload = readEventPayload(env, (path) => readFileSync10(path, "utf8"));
   await scan({
     root: job.root,
     env,
@@ -64629,8 +64148,8 @@ async function runScan(directory) {
     event: job.event,
     afterMerge: mergedBeforeDispatch(payload),
     workflow: job.workflow,
-    actionRef: readActionRef(env, directory, (path) => readFileSync11(path, "utf8")),
-    outputs: actionsOutputs(env.RUNNER_TEMP),
+    actionRef: readActionRef(env, directory, (path) => readFileSync10(path, "utf8")),
+    outputs: step3?.outputs ?? actionsOutputs(env.RUNNER_TEMP),
     notifier: stepNotifier(getInput, log, setSecret),
     publicRepo: publicRepo(payload),
     startedByPerson: startedByPerson(payload)
@@ -64638,20 +64157,20 @@ async function runScan(directory) {
 }
 
 // src/modes/settle-job.ts
-import { readFileSync as readFileSync12 } from "node:fs";
+import { readFileSync as readFileSync11 } from "node:fs";
 
 // src/core/settle.ts
 function openRecordsOfRun(records, runId) {
   const found = new Map;
-  for (const record3 of records) {
-    const stackId2 = taskStackId(record3.task);
+  for (const record4 of records) {
+    const stackId2 = taskStackId(record4.task);
     if (stackId2 === undefined)
       continue;
-    const fact = deployFacts([record3]).byStack.get(stackId2);
+    const fact = deployFacts([record4]).byStack.get(stackId2);
     if (fact?.kind !== "open" || fact.run !== runId || fact.merge !== undefined)
       continue;
-    found.set(record3.id, {
-      id: record3.id,
+    found.set(record4.id, {
+      id: record4.id,
       stackId: stackId2,
       ...fact.behind ? { behind: fact.behind } : {}
     });
@@ -64660,7 +64179,7 @@ function openRecordsOfRun(records, runId) {
 }
 
 // src/modes/settle.ts
-function message3(error63) {
+function message4(error63) {
   return error63 instanceof Error ? error63.message : String(error63);
 }
 async function settle2(context3) {
@@ -64679,9 +64198,9 @@ async function settle2(context3) {
         description: deployFailureText({ kind: dead ? "dependency-failed" : "run-ended" }),
         logUrl: `${context3.repoUrl}/actions/runs/${context3.runId}`
       });
-      records = records.map((record3) => record3.id === id ? { ...record3, status } : record3);
+      records = records.map((record4) => record4.id === id ? { ...record4, status } : record4);
     } catch (error63) {
-      throw new Error(`The deployment record of ${logGroupTitle(stack)} could not be given its result: ${message3(error63)}. The settle job needs the permission \`deployments: write\` (record 0003).`);
+      throw new Error(`The deployment record of ${logGroupTitle(stack)} could not be given its result: ${message4(error63)}. The settle job needs the permission \`deployments: write\` (record 0003).`);
     }
   };
   let ended = 0;
@@ -64722,7 +64241,7 @@ async function readRecords2(context3, stacks) {
   try {
     return await readDeploymentRecords(context3.github, stacks.map(({ environment }) => environment), () => startedHere(context3, stacks));
   } catch (error63) {
-    throw new Error(`The deployment records could not be read: ${message3(error63)}. The settle job needs the permission \`deployments: write\` (record 0003).`);
+    throw new Error(`The deployment records could not be read: ${message4(error63)}. The settle job needs the permission \`deployments: write\` (record 0003).`);
   }
 }
 async function startedHere(context3, stacks) {
@@ -64741,12 +64260,12 @@ async function dispatchScan2(context3) {
   try {
     await context3.github.dispatchWorkflow(context3.workflow.file, context3.workflow.ref);
   } catch (error63) {
-    throw new Error(`A full scan could not be started: ${message3(error63)}. The settle job needs the permission \`actions: write\`, and the workflow (${context3.workflow.file}) needs a \`workflow_dispatch\` trigger that runs the scan (record 0017). The records are ended, and the next scan writes their rows again.`);
+    throw new Error(`A full scan could not be started: ${message4(error63)}. The settle job needs the permission \`actions: write\`, and the workflow (${context3.workflow.file}) needs a \`workflow_dispatch\` trigger that runs the scan (record 0017). The records are ended, and the next scan writes their rows again.`);
   }
 }
 
 // src/modes/settle-job.ts
-async function runSettle() {
+async function runSettle(step3) {
   const env = process.env;
   const token = readToken(getInput);
   const job = readJob(env);
@@ -64754,38 +64273,711 @@ async function runSettle() {
     root: job.root,
     adapter: tools,
     github: createOctokitPort(getOctokit(token), { owner: job.owner, repo: job.repo }),
-    log: actionsLog(),
+    log: step3?.log ?? actionsLog(),
     repoUrl: job.repoUrl,
     runId: job.runId,
-    event: readEventPayload(env, (path) => readFileSync12(path, "utf8")),
+    event: readEventPayload(env, (path) => readFileSync11(path, "utf8")),
     workflow: readWorkflowRef(env),
-    outputs: actionsOutputs(env.RUNNER_TEMP)
+    outputs: step3?.outputs ?? actionsOutputs(env.RUNNER_TEMP)
   });
 }
 
+// src/modes/auto-job.ts
+var HANDED_ON_STATE = "sluiceway-handed-on";
+var SETTLED_STATE = "sluiceway-settled";
+async function runAuto(directory) {
+  const env = process.env;
+  const job = readJob(env);
+  await auto({
+    root: job.root,
+    eventName: job.event,
+    event: readEventPayload(env, (path) => readFileSync12(path, "utf8")),
+    log: actionsLog(),
+    notice: (line3) => notice(line3),
+    outputs: actionsOutputs(env.RUNNER_TEMP),
+    handedOn: () => saveState(HANDED_ON_STATE, "true"),
+    settled: () => saveState(SETTLED_STATE, "true"),
+    run: {
+      scan: (step3) => runScan(directory, step3),
+      resolve: (step3) => runResolve(directory, step3),
+      apply: (deploymentId, step3) => runApply(directory, { deploymentId, step: step3 }),
+      settle: (step3) => runSettle(step3),
+      check: (step3) => runCheck(backendContext, step3.log)
+    }
+  });
+}
+
+// src/modes/init.ts
+import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync13, statSync as statSync4, writeFileSync as writeFileSync2 } from "node:fs";
+import { dirname as dirname3, join as join34 } from "node:path";
+
+// src/adapters/init-findings.ts
+import { posix } from "node:path";
+var SKIPPED3 = /(^|\/)(\.terraform|node_modules|\.git)(\/|$)/;
+function findDeclarable(files, read3, taken) {
+  const used = new Set(taken);
+  const opentofu2 = openTofuRoots(files, read3).filter(({ path }) => !used.has(path));
+  for (const { path } of opentofu2)
+    used.add(path);
+  const helm2 = helmCharts(files, read3).filter(({ path }) => !used.has(path));
+  return { opentofu: opentofu2, helm: helm2 };
+}
+function openTofuRoots(files, read3) {
+  const code2 = files.filter((file2) => /\.(tf|tofu)$/.test(file2) && !SKIPPED3.test(file2));
+  const directories = [...new Set(code2.map(directoryOf))];
+  const called = new Set(code2.flatMap((file2) => [...(read3(file2) ?? "").matchAll(/^\s*source\s*=\s*"(\.\.?\/[^"]*)"/gm)].map((match) => normal(posix.join(directoryOf(file2), match[1] ?? "")))));
+  return directories.filter((path) => !called.has(path) && !path.split("/").includes("modules")).sort(byCodeUnit18).map((path) => ({
+    path,
+    varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit18)
+  }));
+}
+function openTofuStacks(root) {
+  if (root.varFiles.length === 0)
+    return [{}];
+  const [only] = root.varFiles;
+  if (root.varFiles.length === 1 && only !== undefined)
+    return [{ varFile: only }];
+  return root.varFiles.map((varFile) => ({ name: varFileName(varFile), varFile }));
+}
+function varFileName(file2) {
+  return file2.replace(/\.tfvars(\.json)?$/, "");
+}
+function helmCharts(files, read3) {
+  const charts = files.filter((file2) => /(^|\/)Chart\.yaml$/.test(file2) && !SKIPPED3.test(file2));
+  const chartDirectories = new Set(charts.map(directoryOf));
+  return charts.flatMap((file2) => {
+    const path = directoryOf(file2);
+    const parent = directoryOf(path);
+    if (posix.basename(parent) === "charts" && chartDirectories.has(directoryOf(parent))) {
+      return [];
+    }
+    const chart = yamlObject2(read3(file2));
+    if (chart === undefined || chart.type === "library")
+      return [];
+    const release2 = releaseName(typeof chart.name === "string" ? chart.name : "", path);
+    return release2 === undefined ? [] : [{ path, release: release2 }];
+  }).sort((a, b) => byCodeUnit18(a.path, b.path));
+}
+function releaseName(name, path) {
+  for (const candidate of [name, posix.basename(path)]) {
+    const cleaned = candidate.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 53).replace(/-+$/, "");
+    if (cleaned !== "")
+      return cleaned;
+  }
+  return;
+}
+var LOCKFILES = [
+  ["package-lock.json", "npm"],
+  ["pnpm-lock.yaml", "pnpm"],
+  ["yarn.lock", "yarn"],
+  ["bun.lock", "bun"],
+  ["bun.lockb", "bun"]
+];
+var SECRET_REFERENCE = "op://";
+function findForWorkflow(stacks, files, read3) {
+  const tool = (stack) => stack.options.tool;
+  const pulumiPaths = [
+    ...new Set(stacks.filter((stack) => tool(stack) === undefined).map((s) => s.path))
+  ];
+  const runtimes = pulumiPaths.map((path) => ({ path, runtime: pulumiRuntime(path, files, read3) }));
+  const nodePaths = runtimes.filter(({ runtime }) => runtime === "nodejs").map((p) => p.path);
+  const other = Map.groupBy(runtimes.filter(({ runtime }) => runtime !== "nodejs" && runtime !== "yaml"), ({ runtime }) => runtime);
+  return {
+    pulumi: pulumiPaths.length > 0,
+    opentofu: stacks.some((stack) => tool(stack) === OPENTOFU),
+    helm: stacks.some((stack) => tool(stack) === HELM),
+    kubectl: stacks.some((stack) => tool(stack) === KUBECTL),
+    node: nodePaths.length === 0 ? undefined : nodeFindings(nodePaths, files, read3),
+    otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit18(a.runtime, b.runtime)),
+    helmRepositories: helmRepositories(stacks, read3),
+    envFiles: envFiles(files, read3)
+  };
+}
+function pulumiRuntime(path, files, read3) {
+  const file2 = ["Pulumi.yaml", "Pulumi.yml", "Pulumi.json"].map((name) => path === "." ? name : `${path}/${name}`).find((candidate) => files.includes(candidate));
+  const project = file2 === undefined ? undefined : yamlObject2(read3(file2));
+  const runtime = project?.runtime;
+  if (typeof runtime === "string")
+    return runtime;
+  if (typeof runtime === "object" && runtime !== null && "name" in runtime) {
+    return typeof runtime.name === "string" ? runtime.name : "yaml";
+  }
+  return "yaml";
+}
+function nodeFindings(paths2, files, read3) {
+  const lockfile = (directory) => LOCKFILES.find(([name]) => files.includes(directory === "." ? name : `${directory}/${name}`));
+  const installs = new Map;
+  const withoutLockfile = [];
+  for (const path of paths2) {
+    const directory = ancestors(path).find((candidate) => lockfile(candidate) !== undefined);
+    const found = directory === undefined ? undefined : lockfile(directory);
+    if (directory === undefined || found === undefined)
+      withoutLockfile.push(path);
+    else
+      installs.set(directory, found[1]);
+  }
+  const managers = new Set(installs.values());
+  const manifest = yamlObject2(read3("package.json"));
+  return {
+    installs: [...installs].map(([directory, manager]) => ({ directory, manager })).sort((a, b) => byCodeUnit18(a.directory, b.directory)),
+    withoutLockfile,
+    versionFile: [".nvmrc", ".node-version"].find((file2) => files.includes(file2)),
+    yarnBerry: managers.has("yarn") && files.includes(".yarnrc.yml"),
+    pnpmWithoutVersion: managers.has("pnpm") && !(typeof manifest?.packageManager === "string" && manifest.packageManager.startsWith("pnpm@"))
+  };
+}
+function helmRepositories(stacks, read3) {
+  const repositories = stacks.flatMap((stack) => {
+    const chartDir = stack.options.tool === HELM ? stack.options.chartDir : undefined;
+    if (typeof chartDir !== "string")
+      return [];
+    const chart = yamlObject2(read3(chartDir === "." ? "Chart.yaml" : `${chartDir}/Chart.yaml`));
+    const dependencies = Array.isArray(chart?.dependencies) ? chart.dependencies : [];
+    return dependencies.flatMap((dependency) => {
+      const repository = dependency?.repository;
+      return typeof repository === "string" && /^https?:\/\//.test(repository) ? [repository] : [];
+    });
+  });
+  return [...new Set(repositories)].sort(byCodeUnit18);
+}
+function envFiles(files, read3) {
+  const found = files.filter((file2) => /(^|\/)(\.env(\.[^/]+)?|[^/]+\.env)$/.test(file2)).filter((file2) => /^[\w./-]+$/.test(file2)).filter((file2) => (read3(file2) ?? "").split(`
+`).some((line3) => /^\s*(export\s+)?[A-Za-z_]\w*\s*=/.test(line3) && line3.includes(SECRET_REFERENCE)));
+  if (found.length === 0)
+    return;
+  const named = (pattern) => found.find((file2) => pattern.test(posix.basename(file2)));
+  const deploy2 = named(/deploy|apply|write/i);
+  const preview5 = named(/preview|read|scan|plan/i);
+  const [first] = found;
+  const pair = deploy2 !== undefined && preview5 !== undefined && deploy2 !== preview5 ? { preview: preview5, deploy: deploy2 } : { preview: first, deploy: first };
+  return {
+    ...pair,
+    others: found.filter((file2) => file2 !== pair.preview && file2 !== pair.deploy)
+  };
+}
+function yamlObject2(text7) {
+  if (text7 === undefined)
+    return;
+  try {
+    const value = $parse(text7, { uniqueKeys: false });
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
+  } catch {
+    return;
+  }
+}
+function ancestors(path) {
+  const found = [path];
+  let current = path;
+  while (current !== ".") {
+    current = directoryOf(current);
+    found.push(current);
+  }
+  return found;
+}
+function directoryOf(file2) {
+  const directory = posix.dirname(file2);
+  return directory === "" ? "." : directory;
+}
+function normal(path) {
+  const joined2 = posix.normalize(path).replace(/\/$/, "");
+  return joined2 === "" ? "." : joined2;
+}
+function byCodeUnit18(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// examples/workflows/export-env.sh
+var export_env_default = `#!/usr/bin/env bash
+# Loads an env file of secret references into the job environment, masked.
+# Run it inside your secret manager's \`run\` command, which resolves every
+# reference of the file into this process's environment, for example:
+#
+#   op run --env-file=ci.env --no-masking -- bash export-env.sh ci.env
+#
+# It prints nothing but ::add-mask:: commands. Never add \`set -x\` or an echo.
+set -euo pipefail
+file="$1"
+# A line whose value holds this is a secret. Every other line is a plain value.
+reference="\${SECRET_REFERENCE:-op://}"
+
+while IFS= read -r raw || [ -n "$raw" ]; do
+  raw="\${raw%$'\\r'}"
+  # Take NAME from lines like \`NAME=...\`, \`NAME = ...\` or \`export NAME=...\`.
+  [[ "$raw" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*= ]] || continue
+  name="\${BASH_REMATCH[2]}"
+  # The secret manager's own token and settings stay on this step, and the
+  # runner does not let a step set its own names.
+  case "$name" in OP_* | GITHUB_* | RUNNER_*) continue ;; esac
+  value="\${!name-}"
+  [ -n "$value" ] || continue
+
+  # Mask first, every line on its own, because the log is matched line by line.
+  if [[ "$raw" == *"$reference"* ]]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="\${line%$'\\r'}"
+      [ -n "$line" ] || continue
+      printf '::add-mask::%s\\n' "\${line//%/%25}"
+    done <<<"$value"
+  fi
+
+  # Then write, in the delimiter form so that newlines survive.
+  delimiter="ghadelimiter_$(od -An -N16 -tx1 /dev/urandom | tr -d ' \\n')"
+  if [[ "$value" == *"$delimiter"* ]]; then
+    echo "The value of $name holds the delimiter. Run the step again." >&2
+    exit 1
+  fi
+  printf '%s<<%s\\n%s\\n%s\\n' "$name" "$delimiter" "$value" "$delimiter" >>"$GITHUB_ENV"
+done <"$file"
+`;
+
+// src/render/init.ts
+var WORKFLOW_FILE = ".github/workflows/deploy-dashboard.yml";
+var EXPORT_ENV_FILE = ".github/scripts/export-env.sh";
+var EXPORT_ENV = export_env_default;
+var DEFAULT_BRANCH = "main";
+var RUNS_ON = "ubuntu-latest";
+function starterWorkflow(options) {
+  const { findings, merges } = options;
+  const branch = options.branch ?? DEFAULT_BRANCH;
+  const lines5 = [
+    "# Written by sluiceway init from the files of this repo. Review every step",
+    "# before you commit it: docs/example-workflows.md says what to change, and",
+    "# init printed what it could not know.",
+    "#",
+    "# `@v0` follows every release until 1.0.0. To review every update yourself,",
+    `# pin a full commit SHA instead, as the README's "Pin a commit" says.`,
+    "name: deploy-dashboard",
+    "",
+    "on:",
+    "  push:",
+    `    branches: [${quotedIfNeeded(branch)}]`,
+    "  schedule:",
+    '    - cron: "0 6 * * *"',
+    "  workflow_dispatch:",
+    ...merges ? [
+      "    inputs:",
+      `      ${MERGE_SCAN_INPUT}:`,
+      "        description: Set by Sluiceway after a merge from the dashboard. Leave it empty.",
+      "        required: false"
+    ] : [],
+    "  issues:",
+    "    types: [edited]",
+    "",
+    "permissions:",
+    ...PERMISSIONS.map((line3) => merges && line3.startsWith("contents:") ? "  contents: write" : `  ${line3}`),
+    "",
+    "jobs:",
+    "  sluiceway:",
+    `    runs-on: ${RUNS_ON}`,
+    "    timeout-minutes: 60",
+    "    # One run at a time and none dropped. An edit of any other issue gets a",
+    "    # group of its own, so it never waits for a scan or a deploy.",
+    "    concurrency:",
+    "      group: sluiceway-${{ github.event.issue.number }}",
+    "      queue: max",
+    "    steps:",
+    "      - uses: actions/checkout@v7",
+    ...toolSteps(findings),
+    ...credentialSteps(findings.envFiles),
+    "      # It reads the event of the run: it scans, or deploys what a tick asks for.",
+    "      - uses: sluiceway/sluiceway@v0"
+  ];
+  return `${lines5.join(`
+`)}
+`;
+}
+var PERMISSIONS = [
+  "contents: read",
+  "issues: write",
+  "deployments: write",
+  "actions: write",
+  "pull-requests: read",
+  "checks: write"
+];
+function toolSteps(findings) {
+  return [
+    ...findings.node === undefined ? [] : nodeSteps(findings.node),
+    ...findings.pulumi ? pulumiSteps(findings) : [],
+    ...findings.opentofu ? OPENTOFU_STEPS : [],
+    ...findings.helm ? helmSteps(findings.helmRepositories) : [],
+    ...findings.kubectl ? KUBECTL_STEPS : []
+  ];
+}
+var LOCKFILE = {
+  npm: "package-lock.json",
+  pnpm: "pnpm-lock.yaml",
+  yarn: "yarn.lock",
+  bun: "bun.lock"
+};
+function nodeSteps(node2) {
+  const managers = [...new Set(node2.installs.map(({ manager }) => manager))];
+  const [only] = managers;
+  const cache = managers.length === 1 && only !== undefined && only !== "bun" ? only : undefined;
+  const nested = node2.installs.some(({ directory }) => directory !== ".");
+  const steps = [
+    ...node2.yarnBerry ? ["      - run: corepack enable"] : [],
+    ...managers.includes("pnpm") ? ["      - uses: pnpm/action-setup@v6"] : [],
+    "      - uses: actions/setup-node@v7",
+    "        with:",
+    node2.versionFile === undefined ? "          node-version: lts/*" : `          node-version-file: ${node2.versionFile}`,
+    ...cache === undefined ? [] : [`          cache: ${cache}`],
+    ...cache !== undefined && nested ? [`          cache-dependency-path: ${quoted(`**/${LOCKFILE[cache]}`)}`] : [],
+    ...managers.includes("bun") ? ["      - uses: oven-sh/setup-bun@v2"] : []
+  ];
+  const installs = node2.installs.flatMap(({ directory, manager }) => [
+    `      - run: ${installCommand(manager, node2.yarnBerry)}`,
+    ...directory === "." ? [] : [`        working-directory: ${directory}`]
+  ]);
+  if (installs.length === 0)
+    return steps;
+  return [...steps, "      # Once for every program in the repo, not once per stack.", ...installs];
+}
+function installCommand(manager, yarnBerry) {
+  switch (manager) {
+    case "npm":
+      return "npm ci";
+    case "pnpm":
+      return "pnpm install --frozen-lockfile";
+    case "yarn":
+      return yarnBerry ? "yarn install --immutable" : "yarn install --frozen-lockfile";
+    case "bun":
+      return "bun install --frozen-lockfile";
+  }
+}
+function pulumiSteps(findings) {
+  const managers = [...new Set(findings.node?.installs.map(({ manager }) => manager) ?? [])];
+  const keyFiles = managers.length > 0 ? managers.map((manager) => `'**/${LOCKFILE[manager]}'`) : ["'**/Pulumi.yaml'", "'**/Pulumi.yml'", "'**/Pulumi.json'"];
+  const others = findings.otherRuntimes.flatMap(({ runtime, paths: paths2 }) => [
+    `      # The packages of the ${runtime} programs, with the ${runtime} the runner has.`,
+    ...paths2.flatMap((path) => [
+      "      - run: pulumi install",
+      ...path === "." ? [] : [`        working-directory: ${path}`]
+    ])
+  ]);
+  return [
+    "      - uses: pulumi/actions@v7 # without a command this only installs the CLI",
+    "        with:",
+    "          pulumi-version: ^3.229.0",
+    "      # The providers the programs use. The first run fills the cache.",
+    "      - uses: actions/cache@v6",
+    "        with:",
+    "          path: ~/.pulumi/plugins",
+    `          key: pulumi-plugins-\${{ runner.os }}-\${{ hashFiles(${keyFiles.join(", ")}) }}`,
+    ...others
+  ];
+}
+var OPENTOFU_STEPS = [
+  "      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2",
+  "        with:",
+  "          tofu_version: 1.12.6",
+  "          tofu_wrapper: false"
+];
+var HELM_STEPS = [
+  "      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1",
+  "        with:",
+  "          version: v4.3.0",
+  "      - name: Install the diff plugin",
+  "        run: helm plugin install https://github.com/databus23/helm-diff --version v3.15.13 --verify=false"
+];
+var KUBECTL_STEPS = [
+  "      - uses: azure/setup-kubectl@v5",
+  "        with:",
+  "          version: v1.37.0"
+];
+function helmSteps(repositories) {
+  if (repositories.length === 0)
+    return HELM_STEPS;
+  return [
+    ...HELM_STEPS,
+    "      # The repositories the dependencies of the local charts come from.",
+    "      - name: Add the chart repositories",
+    "        run: |",
+    ...repositories.map((repository, index) => `          helm repo add dependency-${index + 1} ${repository}`)
+  ];
+}
+var TOKEN_SECRET = "OP_SERVICE_ACCOUNT_TOKEN";
+function credentialSteps(envFiles2) {
+  if (envFiles2 === undefined) {
+    return [
+      "      # Load your credentials and your state backend settings into the job",
+      "      # environment here. Sluiceway passes the environment to the tool and",
+      "      # never looks inside. Whatever loads a secret must also mask it."
+    ];
+  }
+  const file2 = envFiles2.deploy;
+  return [
+    "      # Leave this out when op is part of your runner image.",
+    "      - uses: 1password/install-cli-action@v4",
+    "      # One `op run` resolves the whole file. These credentials preview and",
+    "      # deploy, so they must be able to change things.",
+    "      - name: Load the environment",
+    "        env:",
+    `          OP_SERVICE_ACCOUNT_TOKEN: \${{ secrets.${TOKEN_SECRET} }}`,
+    `        run: op run --env-file=${file2} --no-masking -- bash ${EXPORT_ENV_FILE} ${file2}`
+  ];
+}
+var HINTED = 10;
+var SCHEMA = "# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json";
+function starterConfig({ declarable, unrelated, unclaimed }) {
+  const { opentofu: opentofu2, helm: helm2 } = declarable;
+  const lines5 = [
+    SCHEMA,
+    "#",
+    "# Written by sluiceway init from the files of this repo. Review it before",
+    "# you commit it: docs/configuration.md explains every key."
+  ];
+  if (opentofu2.length + helm2.length > 0) {
+    lines5.push("", "stacks:");
+    for (const root of opentofu2) {
+      const stacks = openTofuStacks(root);
+      lines5.push(stacks.length > 1 ? `  # An OpenTofu root module with a var file per stack, each in a workspace of its name.` : "  # An OpenTofu root module.");
+      for (const { name, varFile } of stacks) {
+        lines5.push(`  - path: ${quotedIfNeeded(root.path)}`);
+        if (name !== undefined)
+          lines5.push(`    name: ${quotedIfNeeded(name)}`);
+        lines5.push("    tool: opentofu");
+        if (varFile !== undefined) {
+          lines5.push("    options:");
+          if (name !== undefined)
+            lines5.push(`      workspace: ${quotedIfNeeded(name)}`);
+          lines5.push(`      varFiles: [${quotedIfNeeded(varFile)}]`);
+        }
+      }
+    }
+    for (const chart of helm2) {
+      lines5.push("  # A local chart. Set the release and the namespace it runs as, and its", "  # values files: init named both after the chart.", `  - path: ${quotedIfNeeded(chart.path)}`, "    tool: helm", "    options:", `      release: ${chart.release}`, `      namespace: ${chart.release}`, "      chart: .");
+    }
+  }
+  if (unrelated.length > 0) {
+    lines5.push("", "# Files that look like docs and tooling. A push that changes only these", "# previews nothing. Take out any that one of your programs reads.", "scan:", "  unrelated:", ...unrelated.map((glob) => `    - ${JSON.stringify(glob)}`));
+  }
+  if (unclaimed !== undefined) {
+    const [first] = unclaimed.directories;
+    lines5.push("", "# No stack claims the files in these directories, so a push that changes", "# one of them previews every stack:", ...unclaimed.directories.slice(0, HINTED).map((directory) => `#   ${directory}/`), ...unclaimed.directories.length > HINTED ? [`#   and ${unclaimed.directories.length - HINTED} more, which the check lists`] : [], "# When a stack reads one, name it under inputs in that stack's entry:", "#", "#   stacks:", `#     - path: ${unclaimed.stack}`, "#       inputs:", `#         - "${first}/**"`);
+  }
+  return `${lines5.join(`
+`)}
+`;
+}
+var NOT_A_REPO_ROOT = "This is not the root of a git repo. Run init in the top directory of your checkout.";
+function noStacksText() {
+  return "init found no stack to set up: no Pulumi project, no OpenTofu root module and no Helm chart. It wrote nothing.";
+}
+function workflowExistsText(paths2) {
+  return `A workflow runs Sluiceway already: ${paths2.join(", ")}. init never overwrites one, and wrote nothing. Run the check (mode: check) to see what it lacks.`;
+}
+function wroteText(file2) {
+  return `Wrote ${file2}.`;
+}
+var KEPT_CONFIG = "Kept sluiceway.yaml as it is, and set the workflow up from it.";
+var NEEDS_A_PERSON = "Still to do by a person:";
+function needsText({ findings, declarable, branchGuessed }) {
+  const needs2 = [];
+  const { envFiles: envFiles2, node: node2 } = findings;
+  if (envFiles2 === undefined) {
+    needs2.push("Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.");
+  } else {
+    needs2.push(`Create the secret ${TOKEN_SECRET}, a 1Password service account token that resolves ${envFiles2.deploy}.`);
+    const unused = [
+      ...envFiles2.preview === envFiles2.deploy ? [] : [envFiles2.preview],
+      ...envFiles2.others
+    ];
+    if (unused.length > 0) {
+      needs2.push(`init did not use ${unused.join(", ")}: one job previews and deploys, with the credentials of ${envFiles2.deploy}. For credentials that only read in scans, use the split workflow (docs/split-workflow.md).`);
+    }
+  }
+  if (findings.helm || findings.kubectl) {
+    needs2.push("The job needs a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).");
+  }
+  if (declarable.helm.length > 0) {
+    needs2.push(`sluiceway.yaml names each Helm release and its namespace after the chart: ${declarable.helm.map(({ path }) => path).join(", ")}. Set both to where the release runs, and add its values files. The namespace must exist.`);
+  }
+  if (findings.helmRepositories.length > 0) {
+    needs2.push("The workflow adds the chart repositories the local charts depend on. Log in to any that is private before that step.");
+  }
+  const workspaces = declarable.opentofu.filter(({ varFiles }) => varFiles.length > 1);
+  if (workspaces.length > 0) {
+    needs2.push(`${workspaces.map(({ path }) => path).join(", ")}: one stack per var file, each in a workspace of the same name. Change workspace where yours is named otherwise.`);
+  }
+  if (node2 !== undefined && node2.withoutLockfile.length > 0) {
+    needs2.push(`No lockfile for the Node programs in ${node2.withoutLockfile.join(", ")}: add one, or install their packages in the workflow yourself.`);
+  }
+  if (node2?.pnpmWithoutVersion) {
+    needs2.push("pnpm/action-setup reads the pnpm version from packageManager in package.json, which names none. Add it there, or set version on the step.");
+  }
+  for (const { runtime } of findings.otherRuntimes) {
+    needs2.push(`The ${runtime} programs run on the ${runtime} the runner has. Add its setup action before pulumi install to pin a version.`);
+  }
+  if (branchGuessed) {
+    needs2.push(`The workflow scans after a push to ${DEFAULT_BRANCH}: init could not read the default branch. Change it if yours is another.`);
+  }
+  needs2.push(`The job runs on ${RUNS_ON} with timeout-minutes: 60. Raise it when a scan or a deploy of yours takes longer, since one run can hold both. For a self-hosted runner change runs-on, with runner 2.328.0 or newer.`, "Review the files, run the check in a pull request, and commit them. init commits nothing.");
+  return needs2;
+}
+function quoted(text7) {
+  return `'${text7.replaceAll("'", "''")}'`;
+}
+function quotedIfNeeded(text7) {
+  return /^[A-Za-z0-9_][\w./-]*$/.test(text7) && !/^(true|false|null|yes|no|on|off|~)$/i.test(text7) ? text7 : JSON.stringify(text7);
+}
+
+// src/modes/init.ts
+async function init(context3) {
+  const { root, log } = context3;
+  if (!existsSync4(join34(root, ".git")))
+    throw new Error(NOT_A_REPO_ROOT);
+  const configKept = hasConfigFile(root);
+  const existing = loadConfig(root);
+  const running = checkWorkflows(readWorkflowFiles(root), existing).workflows.filter(({ jobs }) => jobs.some(({ runs }) => runs.some((mode) => mode !== "check" && mode !== "init"))).map(({ path }) => path);
+  const taken = [...new Set([...running, ...exists2(root, WORKFLOW_FILE) ? [WORKFLOW_FILE] : []])];
+  if (taken.length > 0)
+    throw new Error(workflowExistsText(taken.sort()));
+  const files = await repoFiles(root);
+  const read3 = (file2) => {
+    try {
+      return readFileSync13(join34(root, file2), "utf8");
+    } catch {
+      return;
+    }
+  };
+  const found = await context3.adapter.discover(root, existing);
+  const declarable = configKept ? { opentofu: [], helm: [] } : findDeclarable(files, read3, found.map(({ path }) => path));
+  let config2 = existing;
+  let configText2;
+  let stacks = found;
+  if (!configKept) {
+    const declared = starterConfig({ declarable, unrelated: [], unclaimed: undefined });
+    config2 = parseConfig(declared);
+    stacks = await context3.adapter.discover(root, config2);
+  }
+  if (stacks.length === 0)
+    throw new Error(noStacksText());
+  const findings = findForWorkflow(stacks, files, read3);
+  const written = [
+    WORKFLOW_FILE,
+    ...configKept ? [] : [CONFIG_FILE],
+    ...findings.envFiles !== undefined && !exists2(root, EXPORT_ENV_FILE) ? [EXPORT_ENV_FILE] : []
+  ];
+  if (!configKept) {
+    const report = checkSetup(config2, stacks, [...new Set([...files, ...written])].sort());
+    const unrelated = report.suggested;
+    const covered = checkSetup(parseConfig(starterConfig({ declarable, unrelated, unclaimed: undefined })), stacks, files);
+    const directories = [
+      ...new Set(covered.unclaimed.flatMap(({ files: unclaimed }) => unclaimed.map((file2) => dirname3(file2)).filter((directory) => directory !== ".")))
+    ].sort();
+    const [first] = directories;
+    configText2 = starterConfig({
+      declarable,
+      unrelated,
+      unclaimed: first === undefined ? undefined : {
+        directories,
+        stack: nearest(first, stacks.map(({ path }) => path))
+      }
+    });
+    config2 = parseConfig(configText2);
+    stacks = await context3.adapter.discover(root, config2);
+  }
+  const branch = defaultBranch(root);
+  const workflow = starterWorkflow({
+    findings,
+    branch,
+    merges: config2.mergeAndDeploy.authors.length > 0
+  });
+  write(root, WORKFLOW_FILE, workflow);
+  if (configText2 !== undefined)
+    write(root, CONFIG_FILE, configText2);
+  if (written.includes(EXPORT_ENV_FILE))
+    write(root, EXPORT_ENV_FILE, EXPORT_ENV);
+  log.info(foundText(stacks.length));
+  log.group("Stacks", stacks.map((stack) => stackId(stack)));
+  for (const file2 of written)
+    log.info(wroteText(file2));
+  if (configKept)
+    log.info(KEPT_CONFIG);
+  log.group(NEEDS_A_PERSON, needsText({ findings, declarable, branchGuessed: branch === undefined }).map((need) => `- ${need}`));
+}
+function nearest(directory, paths2) {
+  const shared = (path) => {
+    const a = directory.split("/");
+    const b = path.split("/");
+    let count3 = 0;
+    while (count3 < a.length && a[count3] === b[count3])
+      count3++;
+    return count3;
+  };
+  return paths2.reduce((best, path) => shared(path) > shared(best) ? path : best);
+}
+function exists2(root, file2) {
+  return existsSync4(join34(root, file2));
+}
+function write(root, file2, text7) {
+  mkdirSync(dirname3(join34(root, file2)), { recursive: true });
+  writeFileSync2(join34(root, file2), text7, { flag: "wx" });
+}
+function defaultBranch(root) {
+  const file2 = join34(root, ".git", "refs", "remotes", "origin", "HEAD");
+  try {
+    if (!statSync4(join34(root, ".git")).isDirectory())
+      return;
+    const match = /^ref: refs\/remotes\/origin\/(\S+)\s*$/.exec(readFileSync13(file2, "utf8"));
+    return match?.[1];
+  } catch {
+    return;
+  }
+}
+
+// src/modes/init-job.ts
+async function runInit() {
+  refuseOldNode(process.versions.node);
+  const root = process.env.GITHUB_WORKSPACE || process.cwd();
+  await init({
+    root,
+    adapter: { discover: discoverAll },
+    log: process.env.GITHUB_ACTIONS === "true" ? actionsLog() : terminalLog()
+  });
+}
+function refuseOldNode(version3) {
+  const major = Number(version3.split(".")[0]);
+  if (major < 22) {
+    throw new Error(`init needs Node 22 or newer, and this is Node ${version3}.`);
+  }
+}
+function terminalLog(write2 = console.log) {
+  return {
+    info: write2,
+    group(title, lines5) {
+      write2(title);
+      for (const line3 of lines5)
+        write2(`  ${line3}`);
+    },
+    warning: (message5, title) => write2(`${title}: ${message5}`),
+    writeSummary: async () => {}
+  };
+}
+
 // src/mode.ts
-var MODES2 = ["scan", "resolve", "apply", "settle", "check", "init"];
+var MODES2 = ["auto", "scan", "resolve", "apply", "settle", "check", "init"];
 function parseMode(input2) {
   const mode = input2.trim();
   if (isMode(mode))
     return mode;
-  if (mode === "") {
-    throw new Error(`The "mode" input is required. Use one of: ${MODES2.join(", ")}.`);
-  }
+  if (mode === "")
+    return "auto";
   throw new Error(`Unknown mode "${mode}". Use one of: ${MODES2.join(", ")}.`);
 }
 function isMode(value) {
   return MODES2.includes(value);
 }
 var handlers = {
+  auto: runAuto,
   scan: runScan,
   resolve: runResolve,
   apply: runApply,
-  settle: runSettle,
+  settle: () => runSettle(),
   check: () => runCheck(backendContext),
   init: runInit
 };
-async function run(mode, directory, getInput2 = getInput, warn = (message4, title) => warning(message4, { title })) {
+async function run(mode, directory, getInput2 = getInput, warn = (message5, title) => warning(message5, { title })) {
   refuseDeploymentId(mode, getInput2);
   const unused = unusedNotifyInputs(mode, getInput2);
   if (unused.length > 0) {
@@ -64793,10 +64985,23 @@ async function run(mode, directory, getInput2 = getInput, warn = (message4, titl
   }
   return handlers[mode](directory);
 }
+async function post(mode, getState2, settle3) {
+  if (mode !== "auto")
+    return;
+  if (getState2(HANDED_ON_STATE) !== "true" || getState2(SETTLED_STATE) === "true")
+    return;
+  await settle3();
+}
 
 // src/main.ts
+var isPost = globalThis.sluicewayPost === true;
 try {
-  await run(parseMode(getInput("mode")), actionDirectory(import.meta.url));
+  const mode = parseMode(getInput("mode"));
+  if (isPost) {
+    await post(mode, (name) => getState(name), () => runSettle());
+  } else {
+    await run(mode, actionDirectory(import.meta.url));
+  }
 } catch (error63) {
   setFailed(error63 instanceof Error ? error63.message : String(error63));
 }
