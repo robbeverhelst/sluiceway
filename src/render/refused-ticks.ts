@@ -11,15 +11,34 @@ export interface RefusedTick {
   target: TickTarget;
   // As GitHub writes it. It is mentioned, so the person hears about it.
   login: string;
-  // "unverified" is a lookup that failed: no answer, so nothing to judge.
-  reason: RefusalReason | "unverified";
+  // "unverified" is a lookup that failed: no answer, so nothing to judge. The
+  // other three are about the pull request of a merge tick (record 0054):
+  // GitHub refused the merge, with its own words in `detail`; its head moved
+  // since the tick; or it no longer qualifies, with why in `detail`.
+  reason: RefusalReason | "unverified" | "merge-refused" | "head-moved" | "not-qualified";
+  detail?: string | undefined;
 }
 
 function what(target: TickTarget): string {
-  return target.kind === "rescan" ? "the rescan box" : `**${escapeText(target.stackId)}**`;
+  if (target.kind === "rescan") return "the rescan box";
+  const stack = `**${escapeText(target.stackId)}**`;
+  return target.kind === "merge" ? `the merge of #${target.pr} for ${stack}` : stack;
 }
 
-function why({ target, reason }: RefusedTick): string {
+// GitHub's words end in a full stop or not. The sentence gets one.
+function sentence(text: string): string {
+  const trimmed = escapeText(text).trim();
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+function why({ target, reason, detail }: RefusedTick): string {
+  if (reason === "merge-refused") return `GitHub refused the merge: ${sentence(detail ?? "")}`;
+  if (reason === "head-moved") {
+    return "The pull request changed since the tick, so it was not merged.";
+  }
+  if (reason === "not-qualified") {
+    return `The pull request no longer qualifies: ${sentence(detail ?? "")}`;
+  }
   if (reason === "unverified") {
     return "The tick could not be verified, because the permission lookup failed. Tick the box again for a fresh try.";
   }

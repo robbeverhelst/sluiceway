@@ -78,12 +78,16 @@ export async function judgeTicks(
 // One comment for every tick of the run that was refused or could not be
 // verified. Says whether a comment was written. The bot's comment starts no
 // workflow (record 0017).
+// `merges` are the merge ticks of the run that were allowed and still started
+// nothing, because of their pull request (record 0054). They share the one
+// comment.
 export async function commentOnRefusedTicks(
   github: Pick<GitHubPort, "createComment">,
   dashboard: number,
   outcomes: TickOutcome[],
+  merges: readonly RefusedTick[] = [],
 ): Promise<boolean> {
-  const refused = outcomes.flatMap((outcome): RefusedTick[] => {
+  const judged = outcomes.flatMap((outcome): RefusedTick[] => {
     if (outcome.outcome !== "refused" && outcome.outcome !== "unverified") return [];
     return [
       {
@@ -93,6 +97,7 @@ export async function commentOnRefusedTicks(
       },
     ];
   });
+  const refused = [...judged, ...merges];
   if (refused.length === 0) return false;
   await github.createComment(dashboard, refusedTicksComment(refused));
   return true;
