@@ -207,12 +207,34 @@
             "description": "Time limit for one preview of this stack, in whole minutes. Default: the preview-timeout input."
           },
           "dependsOn": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "auto"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            ],
+            "description": "Stack ids of the stacks this stack depends on, or auto to read them from the program's stack references at each preview. A tick on this stack is refused while one of them has a change waiting, and when both are ticked they deploy in order."
+          },
+          "drift": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "description": "Check these stacks for drift, or not, whatever drift.enabled at the top level says. The scans that check are the same."
+              }
             },
-            "description": "Stack ids of the stacks this stack depends on. A tick on this stack is refused while one of them has a change waiting, and when both are ticked they deploy in order."
+            "required": [
+              "enabled"
+            ],
+            "additionalProperties": false,
+            "description": "The drift check of these stacks. Default: the top level drift."
           },
           "options": {
             "description": "Named adapter options of the tool. Only an entry with tool takes them.",

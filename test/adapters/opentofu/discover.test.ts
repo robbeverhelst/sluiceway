@@ -145,6 +145,13 @@ describe("what discovery refuses", () => {
       "stacks[1].options.varFiles: expected a list of file names.",
     ]);
   });
+
+  test("dependsOn: auto, because only a Pulumi program has stack references (record 0059)", async () => {
+    const config = "stacks:\n  - path: infra/network\n    tool: opentofu\n    dependsOn: auto\n";
+    expect(await problems(MODULE, config)).toEqual([
+      "stacks[0].dependsOn: auto reads the stack references of a Pulumi program, and an opentofu stack has none. Name the stack ids instead.",
+    ]);
+  });
 });
 
 describe("a repo with Pulumi and OpenTofu stacks", () => {

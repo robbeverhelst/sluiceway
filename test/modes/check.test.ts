@@ -150,6 +150,33 @@ describe("a valid setup", () => {
     ]);
   });
 
+  // Slice 4.7 (record 0059): the check lists what each stack depends on, the
+  // ids the file names and auto, which a scan reads at each preview.
+  test("lists dependsOn, in the job log and as a column of the summary", async () => {
+    const files = {
+      ...FIXTURE,
+      "sluiceway.yaml": `${FIXTURE["sluiceway.yaml"]}    dependsOn: auto\n  - path: app\n    name: prod\n    dependsOn: [network:prod]\n`,
+    };
+    const { error, log, summary } = await run(files);
+    expect(error).toBeUndefined();
+    expect(log.groups.find((group) => group.title === "Stacks")?.lines).toEqual([
+      "app:prod: environment sluiceway, tickers alice, bob, inputs shared/**, depends on network:prod",
+      "network:prod: environment production, tickers maintain, no inputs, depends on the stacks its stack references name, read at each preview (auto)",
+    ]);
+    expect(summary).toContain("| Stack | Environment | Tickers | Inputs | Depends on |");
+    expect(summary).toContain(
+      "| app:prod | sluiceway | alice, bob | shared/&#42;&#42; | network:prod |",
+    );
+    expect(summary).toContain(
+      "| network:prod | production | maintain | none | auto: its stack references, read at each preview |",
+    );
+  });
+
+  test("a setup without dependsOn has no such column", async () => {
+    const { summary } = await run(FIXTURE);
+    expect(summary).not.toContain("Depends on");
+  });
+
   test("says which stacks each ignore glob leaves out", async () => {
     const { log } = await run(FIXTURE);
     expect(log.lines).toContain(
@@ -243,7 +270,11 @@ const CONFIG_MESSAGES: [string, string][] = [
   ["drift: true", "drift: expected a mapping, got true."],
   [
     "stacks:\n  - path: network\n    drift: true",
-    'stacks[0]: "drift" is not in this version of Sluiceway yet. Remove it.',
+    "stacks[0].drift: expected a mapping, got true. Write it as the top level has it: drift: { enabled: true }.",
+  ],
+  [
+    "stacks:\n  - path: network\n    dependsOn: automatic",
+    'stacks[0].dependsOn: expected a list of stack ids, or auto, got "automatic".',
   ],
   [
     "tickers: [alice, acme/platform]",

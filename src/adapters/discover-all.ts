@@ -1,5 +1,5 @@
 import type { Config } from "../core/config.ts";
-import { ConfigError } from "../core/config.ts";
+import { ConfigError, DEPENDS_ON_AUTO } from "../core/config.ts";
 import type { Stack } from "../core/stack.ts";
 import { discoverOpenTofu } from "./opentofu/discover.ts";
 import { OPENTOFU } from "./opentofu/options.ts";
@@ -15,13 +15,21 @@ import { discover as discoverPulumi } from "./pulumi/discover.ts";
 export const TOOLS = [OPENTOFU] as const;
 
 export async function discoverAll(root: string, config: Config): Promise<Stack[]> {
-  const toolProblems = config.stacks.flatMap((entry, index) =>
-    entry.tool === undefined || (TOOLS as readonly string[]).includes(entry.tool)
-      ? []
-      : [
-          `stacks[${index}].tool: unknown tool ${JSON.stringify(entry.tool)}. Known tools: ${TOOLS.join(", ")}.`,
-        ],
-  );
+  const toolProblems = config.stacks.flatMap((entry, index) => {
+    if (entry.tool === undefined) return [];
+    if (!(TOOLS as readonly string[]).includes(entry.tool)) {
+      return [
+        `stacks[${index}].tool: unknown tool ${JSON.stringify(entry.tool)}. Known tools: ${TOOLS.join(", ")}.`,
+      ];
+    }
+    // Stack references are Pulumi's (record 0059). A stack of another tool
+    // with auto would wait on nothing and say nothing.
+    return entry.dependsOn === DEPENDS_ON_AUTO
+      ? [
+          `stacks[${index}].dependsOn: ${DEPENDS_ON_AUTO} reads the stack references of a Pulumi program, and an ${entry.tool} stack has none. Name the stack ids instead.`,
+        ]
+      : [];
+  });
   const { stacks: declared, optionProblems } = discoverOpenTofu(root, config);
   const problems = [...toolProblems, ...optionProblems];
   if (problems.length > 0) throw new ConfigError(problems.sort(byEntry));

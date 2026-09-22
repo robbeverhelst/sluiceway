@@ -27,10 +27,30 @@ export function foundText(count: number): string {
 }
 
 // The settings of one stack, in the words of sluiceway.yaml.
-export function settingsText({ environment, tickers, inputs }: ConfiguredStack): string {
+export function settingsText(configured: ConfiguredStack): string {
+  const { environment, tickers, inputs } = configured;
   const rule = typeof tickers === "string" ? tickers : tickers.join(", ");
   const claims = inputs.length === 0 ? "no inputs" : `inputs ${inputs.join(", ")}`;
-  return `environment ${environment}, tickers ${rule}, ${claims}`;
+  const waits = dependsOnWords(configured);
+  return `environment ${environment}, tickers ${rule}, ${claims}${waits === undefined ? "" : `, depends on ${waits}`}`;
+}
+
+// What a stack depends on (records 0056 and 0059): the stack ids the file
+// names, and auto, whose stacks only a preview can read. Undefined for none.
+function dependsOnWords({ dependsOn, dependsOnAuto }: ConfiguredStack): string | undefined {
+  const parts = [
+    ...(dependsOn ?? []),
+    ...(dependsOnAuto ? ["the stacks its stack references name, read at each preview (auto)"] : []),
+  ];
+  return parts.length === 0 ? undefined : parts.join(", ");
+}
+
+function dependsOnCell({ dependsOn, dependsOnAuto }: ConfiguredStack): string {
+  const parts = [
+    ...(dependsOn ?? []),
+    ...(dependsOnAuto ? ["auto: its stack references, read at each preview"] : []),
+  ];
+  return parts.length === 0 ? "none" : parts.join(", ");
 }
 
 export function ignoreText({ glob, stacks }: IgnoreReport): string {
@@ -74,10 +94,15 @@ export function renderCheckSummary({ report, unrelated, hasConfigFile }: CheckFa
 
   parts.push("### Stacks", foundText(report.stacks.length));
   if (report.stacks.length > 0) {
+    // The column is there only when a stack depends on another, so a setup
+    // without dependsOn keeps its table.
+    const waits = report.stacks.some(
+      (configured) => configured.dependsOn !== undefined || configured.dependsOnAuto,
+    );
     parts.push(
       [
-        "| Stack | Environment | Tickers | Inputs |",
-        "|---|---|---|---|",
+        `| Stack | Environment | Tickers | Inputs |${waits ? " Depends on |" : ""}`,
+        `|---|---|---|---|${waits ? "---|" : ""}`,
         ...report.stacks.map((configured) => {
           const { environment, tickers, inputs } = configured;
           return row([
@@ -85,6 +110,7 @@ export function renderCheckSummary({ report, unrelated, hasConfigFile }: CheckFa
             environment,
             typeof tickers === "string" ? tickers : tickers.join(", "),
             inputs.length === 0 ? "none" : inputs.join(", "),
+            ...(waits ? [dependsOnCell(configured)] : []),
           ]);
         }),
       ].join("\n"),

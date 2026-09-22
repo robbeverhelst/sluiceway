@@ -80,6 +80,16 @@ describe("dependsOn", () => {
     ]);
   });
 
+  test("an ignored stack whose ignore entry has a reason is refused with that reason (record 0059)", () => {
+    expect(
+      problems(
+        'ignore:\n  - glob: "playground:*"\n    reason: a sandbox nobody deploys\nstacks:\n  - path: app\n    dependsOn: [playground:dev]\n',
+      ),
+    ).toEqual([
+      'stacks[0].dependsOn[0]: "playground:dev" is left out by ignore ("a sandbox nobody deploys"), so it never has a change to wait for. Remove it here, or change ignore.',
+    ]);
+  });
+
   test("a stack that depends on itself is refused", () => {
     expect(problems("stacks:\n  - path: app\n    dependsOn: [app:prod]\n")).toEqual([
       'stacks[0].dependsOn[0]: "app:prod" is the stack itself. A stack cannot depend on itself.',
@@ -98,10 +108,38 @@ describe("dependsOn", () => {
 
   test("the list is text, and an empty entry is refused", () => {
     expect(problems("stacks:\n  - path: app\n    dependsOn: network:prod\n")).toEqual([
-      'stacks[0].dependsOn: expected a list, got "network:prod".',
+      'stacks[0].dependsOn: expected a list of stack ids, or auto, got "network:prod".',
     ]);
     expect(problems('stacks:\n  - path: app\n    dependsOn: [""]\n')).toEqual([
       "stacks[0].dependsOn[0]: must not be empty.",
+    ]);
+  });
+});
+
+// `dependsOn: auto` (slice 4.7, record 0059): the stacks a stack depends on
+// are read from its program's stack references at each preview, not named in
+// the file.
+describe("dependsOn: auto", () => {
+  test("marks the stack, and names no stack in the file", () => {
+    const stacks = configured("stacks:\n  - path: app\n    dependsOn: auto\n");
+    const app = stacks.find((one) => one.stack.path === "app");
+    expect(app?.dependsOnAuto).toBe(true);
+    expect(app?.dependsOn).toBeUndefined();
+    expect(stacks.filter((one) => one.dependsOnAuto).length).toBe(1);
+  });
+
+  test("adds up with a list from another entry", () => {
+    const stacks = configured(
+      "stacks:\n  - path: app\n    dependsOn: auto\n  - path: app\n    name: prod\n    dependsOn: [network:dev]\n",
+    );
+    const app = stacks.find((one) => one.stack.path === "app");
+    expect(app?.dependsOnAuto).toBe(true);
+    expect(app?.dependsOn).toEqual(["network:dev"]);
+  });
+
+  test("any other word is refused", () => {
+    expect(problems("stacks:\n  - path: app\n    dependsOn: automatic\n")).toEqual([
+      'stacks[0].dependsOn: expected a list of stack ids, or auto, got "automatic".',
     ]);
   });
 });

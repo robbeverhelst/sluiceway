@@ -212,3 +212,30 @@ ignore:
     expect(ignoredStacks(parseConfig(undefined), found)).toEqual([]);
   });
 });
+
+// Drift per stack (slice 4.7, record 0059): a stack entry turns the drift
+// check on or off for its stacks, and the entry with a name wins.
+describe("drift on a stack", () => {
+  test("is absent when no entry sets it, so the top level decides", () => {
+    expect(
+      applyConfig(parseConfig("drift:\n  enabled: true\n"), FOUND).map((one) => one.drift),
+    ).toEqual([undefined, undefined, undefined]);
+  });
+
+  test("an entry sets its stacks, and the entry with a name wins", () => {
+    const configured = applyConfig(
+      parseConfig(`
+stacks:
+  - path: apps/grafana
+    name: prod
+    drift:
+      enabled: true
+  - path: apps/grafana
+    drift:
+      enabled: false
+`),
+      FOUND,
+    );
+    expect(configured.map((one) => one.drift)).toEqual([false, true, undefined]);
+  });
+});

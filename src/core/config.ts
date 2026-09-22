@@ -5,6 +5,9 @@ import { globMatcher } from "./glob.ts";
 import { showValuesEntryProblem } from "./show-values.ts";
 import { type Stack, stackId } from "./stack.ts";
 
+// The word that reads a stack's dependencies from its program (record 0059).
+export const DEPENDS_ON_AUTO = "auto";
+
 // Loose on purpose: old logins break today's rules, and managed accounts
 // carry an underscore. What matters is that a slash or an "@" never passes.
 const username = z.string().regex(/^[A-Za-z0-9_-]+$/);
@@ -92,12 +95,24 @@ const stackEntry = z
         "Time limit for one preview of this stack, in whole minutes. Default: the preview-timeout input.",
       )
       .exactOptional(),
-    // Stack ids, exact, checked against discovery (record 0056).
+    // Stack ids, exact, checked against discovery (record 0056), or `auto`:
+    // read from the program's stack references at each preview (record 0059).
     dependsOn: z
-      .array(text)
+      .union([z.literal(DEPENDS_ON_AUTO), z.array(text)])
       .describe(
-        "Stack ids of the stacks this stack depends on. A tick on this stack is refused while one of them has a change waiting, and when both are ticked they deploy in order.",
+        "Stack ids of the stacks this stack depends on, or auto to read them from the program's stack references at each preview. A tick on this stack is refused while one of them has a change waiting, and when both are ticked they deploy in order.",
       )
+      .exactOptional(),
+    // The drift check of these stacks, like the top level (record 0059).
+    drift: z
+      .strictObject({
+        enabled: z
+          .boolean()
+          .describe(
+            "Check these stacks for drift, or not, whatever drift.enabled at the top level says. The scans that check are the same.",
+          ),
+      })
+      .describe("The drift check of these stacks. Default: the top level drift.")
       .exactOptional(),
     // Named adapter options (records 0006, 0015). Only an entry with a tool
     // takes them, and its adapter checks their names and values (record 0053).
@@ -337,6 +352,19 @@ function describe(issue: Issue, raw: unknown): Problem[] {
       describe({ ...inner, path: [...issue.path, ...inner.path] }, raw),
     );
   }
+  if (issue.code === "invalid_union" && key === "dependsOn") {
+    if (!Array.isArray(value)) {
+      return problem(`expected a list of stack ids, or ${DEPENDS_ON_AUTO}, got ${show(value)}.`);
+    }
+    return (issue.errors[1] ?? []).flatMap((inner) =>
+      describe({ ...inner, path: [...issue.path, ...inner.path] }, raw),
+    );
+  }
+  if (issue.code === "invalid_type" && key === "drift" && issue.path[0] === "stacks") {
+    return problem(
+      `expected a mapping, got ${show(value)}. Write it as the top level has it: drift: { enabled: ${typeof value === "boolean" ? value : true} }.`,
+    );
+  }
   // The other union in the schema is the tick rule.
   if (issue.code === "invalid_union") {
     if (!Array.isArray(value)) {
@@ -433,9 +461,9 @@ function inFileOrder(problems: Problem[], raw: unknown): Problem[] {
 }
 
 // Keys of features that are planned and not in v1. They fail with their own
-// message and are never ignored (build-plan.md, section 3). `drift` is a top
-// level key since record 0055, and stays reserved on a stack.
-const RESERVED_KEYS = ["drift"];
+// message and are never ignored (build-plan.md, section 3). None is reserved
+// now: `drift` on a stack arrived with record 0059.
+const RESERVED_KEYS: string[] = [];
 
 // "stacks[0].path: ", or nothing for the top level.
 function where(path: PropertyKey[]): string {
@@ -461,7 +489,11 @@ function knownKeys(path: PropertyKey[]): string[] {
 // Through defaults, and into the mapping of a union that has one.
 function unwrap(schema: z.core.$ZodType): z.core.$ZodType {
   let inner = schema;
-  while (inner instanceof z.ZodDefault || inner instanceof z.ZodPrefault) {
+  while (
+    inner instanceof z.ZodDefault ||
+    inner instanceof z.ZodPrefault ||
+    inner instanceof z.ZodExactOptional
+  ) {
     inner = inner.def.innerType;
   }
   if (inner instanceof z.ZodUnion) {
@@ -510,6 +542,12 @@ export interface ConfiguredStack {
   // The stack ids this stack depends on, in stack id order (record 0056).
   // Absent when it depends on none.
   dependsOn?: string[];
+  // `dependsOn: auto` (record 0059): the stacks its program's stack
+  // references name are read at each preview, and ride on its row.
+  dependsOnAuto?: true;
+  // `drift.enabled` of its stack entries (record 0059). Absent when no entry
+  // sets it, and the top level decides.
+  drift?: boolean;
 }
 
 const DEFAULT_ENVIRONMENT = "sluiceway";
@@ -536,6 +574,7 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
       .filter((entry) => covers(entry, stack))
       .sort((a, b) => Number(a.name !== undefined) - Number(b.name !== undefined));
     const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
+    const drift = entries.findLast((entry) => entry.drift)?.drift?.enabled;
     return {
       stack,
       environment:
@@ -544,14 +583,23 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
       inputs: [...new Set(entries.flatMap((entry) => entry.inputs ?? []))],
       ...(previewTimeout === undefined ? {} : { previewTimeout }),
       ...dependsOnOf(entries),
+      ...(entries.some((entry) => entry.dependsOn === DEPENDS_ON_AUTO)
+        ? { dependsOnAuto: true as const }
+        : {}),
+      ...(drift === undefined ? {} : { drift }),
     };
   });
 }
 
 // Like inputs, dependencies only ever add up.
 function dependsOnOf(entries: StackEntry[]): { dependsOn?: string[] } {
-  const ids = [...new Set(entries.flatMap((entry) => entry.dependsOn ?? []))].sort(byCodeUnit);
+  const ids = [...new Set(entries.flatMap((entry) => listed(entry.dependsOn)))].sort(byCodeUnit);
   return ids.length === 0 ? {} : { dependsOn: ids };
+}
+
+// The stack ids an entry names. `auto` names none in the file.
+function listed(dependsOn: StackEntry["dependsOn"]): string[] {
+  return Array.isArray(dependsOn) ? dependsOn : [];
 }
 
 function byCodeUnit(a: string, b: string): number {
@@ -565,12 +613,16 @@ function checkDependsOn(config: Config, found: Stack[], stacks: Stack[]): string
   const known = new Set(stacks.map(stackId));
   const all = new Set(found.map(stackId));
   const problems = config.stacks.flatMap((entry, index) =>
-    (entry.dependsOn ?? []).flatMap((id, at) => {
+    listed(entry.dependsOn).flatMap((id, at) => {
       const where = `stacks[${index}].dependsOn[${at}]: ${show(id)}`;
-      if (all.has(id) && !known.has(id))
+      if (all.has(id) && !known.has(id)) {
+        // The reason the ignore entry gives, when it gives one (record 0059).
+        const reason = ignoredStacks(config, found).find((one) => one.stackId === id)?.reason;
+        const why = reason === undefined ? "" : ` (${show(reason)})`;
         return [
-          `${where} is left out by ignore, so it never has a change to wait for. Remove it here, or change ignore.`,
+          `${where} is left out by ignore${why}, so it never has a change to wait for. Remove it here, or change ignore.`,
         ];
+      }
       if (!known.has(id))
         return [
           `${where} is not a stack that discovery found. Write the stack id as a row shows it, such as ${show(stacks[0] ? stackId(stacks[0]) : "network:dev")}.`,

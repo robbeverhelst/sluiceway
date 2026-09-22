@@ -98,11 +98,25 @@ describe("unknown keys", () => {
   });
 });
 
-describe("the reserved keys", () => {
-  test("drift on a stack still fails: drift is turned on for the whole repo", () => {
+describe("drift on a stack (record 0059)", () => {
+  test("takes enabled, like the top level", () => {
+    expect(
+      parseConfig("stacks:\n  - path: apps/a\n    drift:\n      enabled: false\n").stacks,
+    ).toEqual([{ path: "apps/a", drift: { enabled: false } }]);
+  });
+
+  test("true or false alone says how to write it", () => {
     expect(problems("stacks:\n  - path: apps/a\n    drift: true\n")).toEqual([
-      'stacks[0]: "drift" is not in this version of Sluiceway yet. Remove it.',
+      "stacks[0].drift: expected a mapping, got true. Write it as the top level has it: drift: { enabled: true }.",
     ]);
+  });
+
+  test("another key names the known ones", () => {
+    expect(
+      problems(
+        "stacks:\n  - path: apps/a\n    drift:\n      enabled: true\n      schedule: daily\n",
+      ),
+    ).toEqual(['stacks[0].drift: unknown key "schedule". Known keys here: enabled.']);
   });
 });
 
@@ -295,8 +309,8 @@ stacks:
 
   test("the brief's old keys are unknown keys", () => {
     expect(problems("stacks:\n  - path: a\n    stack: prod\n    approvers: write\n")).toEqual([
-      'stacks[0]: unknown key "stack". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, dependsOn, options.',
-      'stacks[0]: unknown key "approvers". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, dependsOn, options.',
+      'stacks[0]: unknown key "stack". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, dependsOn, drift, options.',
+      'stacks[0]: unknown key "approvers". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, dependsOn, drift, options.',
     ]);
   });
 
