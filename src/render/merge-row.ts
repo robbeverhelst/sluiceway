@@ -36,7 +36,7 @@ export interface MergeRowOptions {
 // which dependency moves to which version, which is what the row is for.
 export const TITLE_LENGTH = 80;
 
-function shorten(title: string): string {
+export function shortenTitle(title: string): string {
   const chars = [...title];
   return chars.length <= TITLE_LENGTH ? title : `${chars.slice(0, TITLE_LENGTH - 3).join("")}...`;
 }
@@ -45,7 +45,7 @@ export function renderMergeRow(row: MergeRow, options: MergeRowOptions = {}): st
   const by = row.author === undefined ? "" : ` by ${escapeText(row.author)}`;
   const parts = [
     row.stackIds.map((id) => `**${escapeText(id)}**`).join(", "),
-    ...(options.redact ? [] : [escapeText(shorten(row.title))]),
+    ...(options.redact ? [] : [escapeText(shortenTitle(row.title))]),
     `#${row.pr}${by}`,
     ...(row.preview && row.preview.length > 0 ? [previewText(row.preview)] : []),
   ];

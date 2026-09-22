@@ -20,6 +20,7 @@ import {
   outsideMarker,
   type ParsedMerge,
   type ParsedRow,
+  type ParsedWaiting,
   parseDashboard,
   RESCAN_MARKER,
   type RootFacts,
@@ -38,6 +39,7 @@ import {
   PREVIEW_FAILED_LINE,
   READ_ONLY_LINE,
   shortenedNote,
+  WAITING_ON_CHECKS_LINE,
   WARM,
 } from "./voice.ts";
 
@@ -95,6 +97,10 @@ export interface BodyInput {
   // every other writer carries them as `parseDashboard` read them, less the
   // ones it merged.
   merges?: readonly ParsedMerge[] | undefined;
+  // The updates waiting on their checks (record 0081), drawn and carried as
+  // the merges are. A line for a pull request that has a merge row is left
+  // out.
+  waiting?: readonly ParsedWaiting[] | undefined;
   // The size budget's first cut after the spinners (record 0072): what each
   // deploy of the trail shipped becomes a count, as a row's names do.
   shortTrail?: boolean | undefined;
@@ -384,8 +390,17 @@ export function renderBody(input: BodyInput): string {
   const merges = [...(input.merges ?? [])]
     .filter((merge, index, all) => all.findIndex((one) => one.pr === merge.pr) === index)
     .sort((a, b) => a.pr - b.pr);
+  const waiting = [...(input.waiting ?? [])]
+    .filter(
+      (line, index, all) =>
+        all.findIndex((one) => one.pr === line.pr) === index &&
+        !merges.some((merge) => merge.pr === line.pr),
+    )
+    .sort((a, b) => a.pr - b.pr);
+  // The section is gone when nothing waits at all.
+  if (merges.length > 0 || waiting.length > 0) out.push("## Updates waiting to merge");
   if (merges.length > 0) {
-    out.push("## Updates waiting to merge", MERGE_LINE);
+    out.push(MERGE_LINE);
     out.push(
       merges
         .slice(0, MERGE_FOLD_AFTER)
@@ -401,6 +416,12 @@ export function renderBody(input: BodyInput): string {
         "</details>",
       );
     }
+  }
+  // Under the ones that can be merged, and outside the fold: they count
+  // toward none of its numbers, since nothing can be ticked on them (record
+  // 0081).
+  if (waiting.length > 0) {
+    out.push(WAITING_ON_CHECKS_LINE, waiting.map((line) => line.text).join("\n"));
   }
 
   // Pending is always shown. The other sections are left out when empty.

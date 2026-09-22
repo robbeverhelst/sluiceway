@@ -120,6 +120,14 @@ export interface MergeFacts {
   head: string;
 }
 
+// A pull request that waits on its checks (record 0081): its number and the
+// stacks it would deploy. There is no head commit, because nothing is ticked
+// on such a line.
+export interface WaitingFacts {
+  pr: number;
+  stackIds: string[];
+}
+
 export const ROW_CLOSE_MARKER = "<!-- /sluiceway:row -->";
 export const RESCAN_MARKER = "<!-- sluiceway:rescan -->";
 
@@ -166,6 +174,15 @@ export function mergeMarker(facts: MergeFacts): string {
     // as one id that no stack has, so it merges nothing (record 0071).
     ["stack", encodeIds(facts.stackIds)],
     ["head", facts.head],
+  ]);
+}
+
+// A line of an update waiting on its checks (record 0081). A marker of its own
+// kind, so no reader of merge rows ever takes it for one that can be ticked.
+export function waitingMarker(facts: WaitingFacts): string {
+  return marker("waiting", [
+    ["pr", String(facts.pr)],
+    ["stack", encodeIds(facts.stackIds)],
   ]);
 }
 
@@ -231,6 +248,11 @@ export interface ParsedMerge extends MergeFacts {
   text: string;
 }
 
+// A line of an update waiting on its checks as it stands in the body.
+export interface ParsedWaiting extends WaitingFacts {
+  text: string;
+}
+
 export interface ParsedDashboard {
   // Absent when the first line of the body is not a root marker.
   root: ParsedRoot | undefined;
@@ -238,6 +260,8 @@ export interface ParsedDashboard {
   // In body order. Of two lines for one pull request both are here: the
   // readers take the first.
   merges: ParsedMerge[];
+  // The updates waiting on their checks, in body order (record 0081).
+  waiting: ParsedWaiting[];
   // The outside deploys on the trail, in body order (record 0073).
   outside: OutsideDeploy[];
   rescanTicked: boolean;
@@ -249,6 +273,7 @@ const ROOT_LINE = new RegExp(`^<!-- sluiceway:dashboard${PAIRS} -->[ \\t]*$`);
 // marker at the end. The visible text between them is never parsed.
 const ROW_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:row${PAIRS} -->[ \\t]*$`);
 const MERGE_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:merge${PAIRS} -->[ \\t]*$`);
+const WAITING_LINE = new RegExp(`^- .*<!-- sluiceway:waiting${PAIRS} -->[ \\t]*$`);
 const OUTSIDE_LINE = new RegExp(`^- .*<!-- sluiceway:outside${PAIRS} -->[ \\t]*$`);
 const RESCAN_LINE = /^- \[[xX]\] .*<!-- sluiceway:rescan -->[ \t]*$/;
 
@@ -284,6 +309,7 @@ export function parseDashboard(body: string): ParsedDashboard {
   const lines = body.replace(/\r\n?/g, "\n").split("\n");
   const rows: ParsedRow[] = [];
   const merges: ParsedMerge[] = [];
+  const waiting: ParsedWaiting[] = [];
   const outside: OutsideDeploy[] = [];
   let rescanTicked = false;
 
@@ -293,6 +319,11 @@ export function parseDashboard(body: string): ParsedDashboard {
     const deploy = readOutside(line);
     if (deploy) {
       outside.push(deploy);
+      continue;
+    }
+    const waits = readWaiting(line);
+    if (waits) {
+      waiting.push(waits);
       continue;
     }
     const merge = readMerge(line);
@@ -351,7 +382,7 @@ export function parseDashboard(body: string): ParsedDashboard {
     });
   }
 
-  return { root: readRoot(lines[0] ?? ""), rows, merges, outside, rescanTicked };
+  return { root: readRoot(lines[0] ?? ""), rows, merges, waiting, outside, rescanTicked };
 }
 
 // A merge line whose marker lacks a number, a stack or a whole commit id is
@@ -377,6 +408,17 @@ function readMerge(line: string): ParsedMerge | undefined {
     ticked: match[1] === "x" || match[1] === "X",
     text: line,
   };
+}
+
+// A waiting line whose marker lacks a number or a stack is not one.
+function readWaiting(line: string): ParsedWaiting | undefined {
+  const match = WAITING_LINE.exec(line);
+  if (!match) return undefined;
+  const pairs = readPairs(match[1] ?? "");
+  const pr = pairs.get("pr") ?? "";
+  const stack = pairs.get("stack");
+  if (!/^[1-9]\d*$/.test(pr) || stack === undefined) return undefined;
+  return { pr: Number(pr), stackIds: decodeIds(stack), text: line };
 }
 
 // A line whose marker lacks a stack, a kind this version knows or a time, or

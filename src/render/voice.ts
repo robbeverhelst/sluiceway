@@ -60,6 +60,10 @@ export const INSTRUCTION_LINE = "Tick a box to deploy that stack exactly as its 
 export const MERGE_LINE =
   "Tick a box to merge that pull request. Its stack is then previewed again and deployed as that preview shows it.";
 
+// Above the updates waiting on their checks (record 0081). Plain.
+export const WAITING_ON_CHECKS_LINE =
+  "These wait on their own checks. Each gets a box here once its checks are green.";
+
 // Under the Pending heading of a read-only dashboard while rows are pending
 // (slice 2.17). Plain, like every line but the two of record 0032.
 export const READ_ONLY_LINE =
