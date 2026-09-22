@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.9.0](https://github.com/sluiceway/sluiceway/compare/v0.8.0...v0.9.0) (2026-09-22)
+
+
+### Features
+
+* a credential-free Helm example and the fixture recorder for it ([ec5e9a6](https://github.com/sluiceway/sluiceway/commit/ec5e9a635d3f1b3ccd839e242e5493ca9b22c0ce))
+* a deploy the adapter refuses as moved ends like any moved change ([9304790](https://github.com/sluiceway/sluiceway/commit/930479061891aa8d244b25c860f5d276997e4221))
+* CI records the Helm fixtures and the e2e runs three adapters ([f0444b1](https://github.com/sluiceway/sluiceway/commit/f0444b1e56ecd627445da6c53320e0a99c3f16c1))
+* dependsOn: auto and drift per stack in sluiceway.yaml, and the check lists dependsOn ([a01f805](https://github.com/sluiceway/sluiceway/commit/a01f805dcea772cffffb5b4729a164ca70c81093))
+* rebuild dist with the Helm adapter ([777cc7e](https://github.com/sluiceway/sluiceway/commit/777cc7e1a2ec5337f0669531e5ff2475d44670a9))
+* record 0058 and the docs of the Helm adapter ([80046e6](https://github.com/sluiceway/sluiceway/commit/80046e6936deadbb9f32101ed3225d001ae16d7b))
+* rows carry what a preview read, resolve waits on it, and drift gets a preview page and a trail line ([e7c2a6b](https://github.com/sluiceway/sluiceway/commit/e7c2a6b0e17740cd24ef822a419f647f4e6e3b18))
+* the headlines of the job log start with the dot of the result (slice 4.5) ([7e2d61e](https://github.com/sluiceway/sluiceway/commit/7e2d61ee9ae96ddd4a74c5f26840188e646b433a))
+* the Helm adapter: a release in a namespace is a stack ([288f454](https://github.com/sluiceway/sluiceway/commit/288f4549249100038bd2610899031fd584d39f0e))
+* the Helm fixtures as the fixtures-helm job of CI recorded them ([79dd36d](https://github.com/sluiceway/sluiceway/commit/79dd36d1e3e46a10883de5e133157155db9cb29a))
+* the Pulumi adapter reads the stacks a stack depends on from its stack references ([374f965](https://github.com/sluiceway/sluiceway/commit/374f9658ce5e79c18ff9314c5a92e426bfffaf65))
+* the recently deployed list starts each line with the dot of its result (slice 4.5) ([4111fca](https://github.com/sluiceway/sluiceway/commit/4111fcac2df3789a86cd6d09526f6e8053ecae5a))
+* the roadmap and the build plan count the Helm adapter as built ([24cb963](https://github.com/sluiceway/sluiceway/commit/24cb963eb42b15836424e0745d6f10ba3b0cdcd1))
+
 ## [0.8.0](https://github.com/sluiceway/sluiceway/compare/v0.7.0...v0.8.0) (2026-09-22)
 
 
