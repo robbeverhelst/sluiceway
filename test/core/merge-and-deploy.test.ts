@@ -5,7 +5,6 @@ import {
   type OpenPullRequest,
   type QualifyOptions,
   qualify,
-  renovateStrategy,
   waitingUpdates,
 } from "../../src/core/merge-and-deploy.ts";
 
@@ -168,13 +167,19 @@ describe("the merge method", () => {
   });
 
   test("falls back to an allowed one when Renovate's is not allowed", () => {
-    expect(mergeMethod({ squash: false, rebase: true, merge: true }, "squash")).toBe("rebase");
+    expect(mergeMethod({ squash: false, rebase: true, merge: true }, "squash")).toBe("merge");
     expect(mergeMethod({ squash: true, rebase: false, merge: true }, "rebase")).toBe("squash");
     expect(mergeMethod({ squash: false, rebase: false, merge: true }, undefined)).toBe("merge");
   });
 
-  test("reads fast-forward as rebase, the one GitHub method that keeps the commits", () => {
-    expect(mergeMethod(ALL, "fast-forward")).toBe("rebase");
+  test("falls back in Renovate's own order on GitHub: squash, then a merge commit, then rebase", () => {
+    expect(mergeMethod({ squash: false, rebase: true, merge: true }, undefined)).toBe("merge");
+    expect(mergeMethod({ squash: false, rebase: true, merge: false }, undefined)).toBe("rebase");
+  });
+
+  test("reads fast-forward as Renovate does on GitHub: not supported, so the repo's method", () => {
+    expect(mergeMethod(ALL, "fast-forward")).toBe("squash");
+    expect(mergeMethod({ squash: false, rebase: true, merge: true }, "fast-forward")).toBe("merge");
   });
 
   test("is squash when GitHub did not say what is allowed, and GitHub decides", () => {
@@ -184,18 +189,5 @@ describe("the merge method", () => {
 
   test("is nothing when the repo allows no method at all", () => {
     expect(mergeMethod({ squash: false, rebase: false, merge: false }, undefined)).toBeUndefined();
-  });
-});
-
-describe("Renovate's strategy", () => {
-  test("is read from the top level of its config", () => {
-    expect(renovateStrategy('{ "automergeStrategy": "rebase" }')).toBe("rebase");
-  });
-
-  test("is nothing when the config does not set it, or cannot be read as JSON", () => {
-    expect(renovateStrategy('{ "extends": ["config:recommended"] }')).toBeUndefined();
-    expect(renovateStrategy("{ // json5\n automergeStrategy: 'rebase' }")).toBeUndefined();
-    expect(renovateStrategy('{ "automergeStrategy": 3 }')).toBeUndefined();
-    expect(renovateStrategy("[]")).toBeUndefined();
   });
 });

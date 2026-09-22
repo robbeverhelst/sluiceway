@@ -35,14 +35,8 @@ import {
   type Ticker,
   ticksIn,
 } from "../core/edit-history.ts";
-import {
-  type MergeMethod,
-  mergeMethod,
-  NOT_QUALIFIED,
-  qualify,
-  RENOVATE_CONFIG_FILES,
-  renovateStrategy,
-} from "../core/merge-and-deploy.ts";
+import { type MergeMethod, mergeMethod, NOT_QUALIFIED, qualify } from "../core/merge-and-deploy.ts";
+import { renovateMergeSetting } from "../core/renovate-config.ts";
 import { capDeploys, type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import { stackId } from "../core/stack.ts";
 import { type AttributionSource, attributionSource } from "../github/attribution.ts";
@@ -561,19 +555,36 @@ interface Merging {
   failure?: string | undefined;
 }
 
-// The method Renovate would use, from the first of its config files in the
-// repo that exists. A file that is not JSON gives nothing (record 0054).
-function renovateStrategyOf(root: string): string | undefined {
-  for (const file of RENOVATE_CONFIG_FILES) {
-    let text: string;
-    try {
-      text = readFileSync(join(root, file), "utf8");
-    } catch {
-      continue;
-    }
-    return renovateStrategy(text);
-  }
-  return undefined;
+// The method Renovate would use, read from its config in the checkout as
+// Renovate reads it on GitHub (record 0064). The job log says where it came
+// from, and names the presets that were not read.
+function renovateStrategyOf(context: ResolveContext): string | undefined {
+  const [owner = "", repo = ""] = new URL(context.repoUrl).pathname.split("/").filter(Boolean);
+  const setting = renovateMergeSetting(
+    (path) => {
+      try {
+        return readFileSync(join(context.root, path), "utf8");
+      } catch {
+        return undefined;
+      }
+    },
+    { owner, repo },
+  );
+  const one = setting.unread.length === 1;
+  const unread =
+    setting.unread.length === 0
+      ? ""
+      : ` The ${one ? "preset" : "presets"} ${setting.unread.map(logGroupTitle).join(" and ")} ${one ? "was" : "were"} not read: only a preset in a file of this repo is.`;
+  const none =
+    setting.file === undefined
+      ? "No Renovate config sets automergeStrategy"
+      : `Renovate's config ${logGroupTitle(setting.file)} sets no automergeStrategy`;
+  context.log.info(
+    setting.strategy === undefined
+      ? `${none}, so the method is the first the repo allows of squash, merge and rebase, as Renovate picks it.${unread}`
+      : `Renovate's config is ${logGroupTitle(setting.file ?? "")}, and it sets automergeStrategy to ${logGroupTitle(setting.strategy)}.${unread}`,
+  );
+  return setting.strategy;
 }
 
 // Judges each allowed merge tick against the live pull request again, merges
@@ -601,7 +612,7 @@ async function mergeAll(
     return result;
   }
   try {
-    method = mergeMethod(await github.allowedMergeMethods(), renovateStrategyOf(context.root));
+    method = mergeMethod(await github.allowedMergeMethods(), renovateStrategyOf(context));
   } catch (error) {
     result.failure = `The merge settings of the repo could not be read: ${message(error)}. The resolve job needs the permission \`contents: write\` to merge (record 0054). Nothing was merged, and the boxes stay ticked for the next run.`;
     return result;

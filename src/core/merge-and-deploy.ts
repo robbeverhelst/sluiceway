@@ -122,22 +122,22 @@ export interface AllowedMethods {
   merge?: boolean | undefined;
 }
 
-// Renovate's `automergeStrategy` in GitHub's words. GitHub has no
-// fast-forward merge, and a rebase keeps the commits as they are, which is
-// what fast-forward is for.
+// Renovate's `automergeStrategy` in GitHub's words, as Renovate maps it on
+// GitHub. GitHub has no fast-forward merge, and Renovate falls back to the
+// repo's method for it, as for `auto` (record 0064).
 const RENOVATE_METHODS: Record<string, MergeMethod> = {
   squash: "squash",
   rebase: "rebase",
-  "fast-forward": "rebase",
   "merge-commit": "merge",
 };
 
-// The order when Renovate names none, or names one the repo does not allow.
-const FALLBACK: MergeMethod[] = ["squash", "rebase", "merge"];
+// The order Renovate picks the repo's method in on GitHub: squash, then a
+// merge commit, then rebase (record 0064, amending the order of 0054).
+const FALLBACK: MergeMethod[] = ["squash", "merge", "rebase"];
 
 // The method Renovate would use, when the repo allows it, else the first
-// allowed one of squash, rebase and merge. A method GitHub did not say
-// anything about counts as allowed: GitHub answers the merge call if not.
+// allowed one in Renovate's order. A method GitHub did not say anything about
+// counts as allowed: GitHub answers the merge call if not.
 export function mergeMethod(
   allowed: AllowedMethods,
   strategy: string | undefined,
@@ -145,28 +145,4 @@ export function mergeMethod(
   const renovate = strategy === undefined ? undefined : RENOVATE_METHODS[strategy];
   const candidates = renovate === undefined ? FALLBACK : [renovate, ...FALLBACK];
   return candidates.find((method) => allowed[method] !== false);
-}
-
-// Where Renovate reads its config in a repo, in its own order. The JSON5
-// files and presets are not read: Sluiceway has no JSON5 parser, and a preset
-// lives in another repo.
-export const RENOVATE_CONFIG_FILES = [
-  "renovate.json",
-  ".github/renovate.json",
-  ".gitlab/renovate.json",
-  ".renovaterc",
-  ".renovaterc.json",
-];
-
-// `automergeStrategy` at the top level of a Renovate config, or nothing.
-export function renovateStrategy(text: string): string | undefined {
-  let config: unknown;
-  try {
-    config = JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-  if (typeof config !== "object" || config === null || Array.isArray(config)) return undefined;
-  const strategy = (config as Record<string, unknown>).automergeStrategy;
-  return typeof strategy === "string" ? strategy : undefined;
 }

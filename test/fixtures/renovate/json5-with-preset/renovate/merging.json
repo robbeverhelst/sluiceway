@@ -1,0 +1,5 @@
+{
+  "description": "How updates are merged in this repo.",
+  "automergeType": "pr",
+  "automergeStrategy": "merge-commit"
+}

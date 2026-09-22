@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseDashboard } from "../../src/render/marker.ts";
 import { renderMergeRow } from "../../src/render/merge-row.ts";
@@ -121,6 +121,41 @@ describe("a tick on an update waiting to merge", () => {
     await wake(h);
 
     expect(h.github.merges).toMatchObject([{ method: "rebase" }]);
+  });
+
+  test("reads Renovate's JSON5 config and its preset in this repo (slice 4.13)", async () => {
+    const h = await ready();
+    mkdirSync(join(h.context.root, ".github"), { recursive: true });
+    mkdirSync(join(h.context.root, "renovate"), { recursive: true });
+    writeFileSync(
+      join(h.context.root, ".github/renovate.json5"),
+      "{\n  // merged the way this repo merges\n  extends: ['config:recommended', 'local>acme/infra//renovate/merging', 'github>acme/shared'],\n}\n",
+    );
+    writeFileSync(
+      join(h.context.root, "renovate/merging.json"),
+      '{ "automergeStrategy": "merge-commit" }',
+    );
+    tickMerge(h);
+
+    await wake(h);
+
+    expect(h.github.merges).toMatchObject([{ method: "merge" }]);
+    expect(h.log.lines).toContain(
+      "Renovate's config is .github/renovate.json5, and it sets automergeStrategy to merge-commit. The preset github>acme/shared was not read: only a preset in a file of this repo is.",
+    );
+  });
+
+  test("uses the repo's method in Renovate's order when Renovate says nothing", async () => {
+    const h = await ready();
+    h.github.setAllowedMergeMethods({ squash: false, rebase: true, merge: true });
+    tickMerge(h);
+
+    await wake(h);
+
+    expect(h.github.merges).toMatchObject([{ method: "merge" }]);
+    expect(h.log.lines).toContain(
+      "No Renovate config sets automergeStrategy, so the method is the first the repo allows of squash, merge and rebase, as Renovate picks it.",
+    );
   });
 
   test("uses an allowed method when Renovate's is not allowed", async () => {

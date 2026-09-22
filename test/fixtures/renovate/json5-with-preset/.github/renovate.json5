@@ -1,0 +1,13 @@
+// Renovate's config, as a repo that keeps it next to its workflows writes it.
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    'github>acme/shared-renovate',
+    'local>acme/infra//renovate/merging',
+  ],
+  automerge: true,
+  packageRules: [
+    { matchUpdateTypes: ['patch'], automergeType: 'branch' },
+  ],
+}
