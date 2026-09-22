@@ -20,6 +20,7 @@ import type { JobLog } from "../github/job-log.ts";
 import { eventDashboardUrl, type StepOutputs } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
 import type { WorkflowRef } from "../github/workflow-ref.ts";
+import { DOT_AT_ZERO, RESULT_DOT } from "../render/dots.ts";
 import { logGroupTitle } from "../render/log-text.ts";
 import { isDeployingState, parseDashboard } from "../render/marker.ts";
 
@@ -84,7 +85,7 @@ export async function settle(context: SettleContext): Promise<void> {
     await end(id, stack, false);
     ended++;
     log.info(
-      `Ended the open deployment of ${logGroupTitle(stack)} (record ${id}): this run ended without a result for it.`,
+      `${RESULT_DOT.failed} Ended the open deployment of ${logGroupTitle(stack)} (record ${id}): this run ended without a result for it.`,
     );
   }
   // A queued record of this run whose dependency did not go out can never
@@ -98,7 +99,7 @@ export async function settle(context: SettleContext): Promise<void> {
       ended++;
       more = true;
       log.info(
-        `Ended the queued deployment of ${logGroupTitle(stack)} (record ${id}): a stack it depends on did not deploy.`,
+        `${RESULT_DOT.failed} Ended the queued deployment of ${logGroupTitle(stack)} (record ${id}): a stack it depends on did not deploy.`,
       );
     }
   }
@@ -120,8 +121,8 @@ export async function settle(context: SettleContext): Promise<void> {
   if (ended === 0 && ready.length === 0) {
     log.info(
       open.length === 0
-        ? "No deployment record of this run is open. Every deploy it started reported a result."
-        : "Every deploy this run started reported a result, and what is queued still waits.",
+        ? `${DOT_AT_ZERO} No deployment record of this run is open. Every deploy it started reported a result.`
+        : `${DOT_AT_ZERO} Every deploy this run started reported a result, and what is queued still waits.`,
     );
     return;
   }

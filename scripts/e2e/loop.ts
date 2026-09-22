@@ -287,7 +287,8 @@ export function checkRehearsal(
   problems.push(...rowState(step.body, stack, "pending"));
   const row = rows(step.body).get(stack);
   if (row?.ticked) problems.push(`The box of ${stack} is still ticked.`);
-  const trail = `- ${stack} · ticked by ${ticker} · rehearsed, nothing was deployed · `;
+  // The purple dot of a rehearsal (slice 4.5).
+  const trail = `- 🟣&nbsp;${stack} · ticked by ${ticker} · rehearsed, nothing was deployed · `;
   if (!step.body.split("\n").some((line) => line.startsWith(trail))) {
     problems.push(`Recently deployed does not say that ${stack} was rehearsed.`);
   }
@@ -360,7 +361,10 @@ export function checkRowFacts(
   }
   const recent = body.split("## Recently deployed")[1]?.split("\n---")[0] ?? "";
   for (const stack of expected.recentlyDeployed) {
-    if (!recent.split("\n").some((line) => line.startsWith(`- ${stack} · `))) {
+    // Each line starts with the dot of its result (slice 4.5): green went
+    // out, white had nothing to deploy.
+    const listed = ["🟢", "⚪"].map((dot) => `- ${dot}&nbsp;${stack} · `);
+    if (!recent.split("\n").some((line) => listed.some((start) => line.startsWith(start)))) {
       problems.push(`Recently deployed does not list ${stack}.`);
     }
   }

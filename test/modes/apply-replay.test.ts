@@ -237,7 +237,9 @@ for (const version of VERSIONS) {
       const body = github.issue(1).body;
       const row = parseDashboard(body).rows[0];
       expect(row).toMatchObject({ stackId: ID, state: "in-sync", failed: false });
-      expect(body).toContain(`- ${ID} · ticked by alice · nothing to deploy, already in sync · `);
+      expect(body).toContain(
+        `- ⚪&nbsp;${ID} · ticked by alice · nothing to deploy, already in sync · `,
+      );
       expect(github.comments(1)).toEqual([]);
       expect(outputs.resultFile("apply")).toMatchObject({ outcome: "in-sync", reason: null });
       expect(log.summaries.at(-1)).toContain(`**${ID}** · nothing to deploy, already in sync`);

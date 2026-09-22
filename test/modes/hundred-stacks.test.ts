@@ -105,7 +105,7 @@ describe("the body of a 100 stack scan (record 0028)", () => {
         .sort(),
     );
     expect(log.lines).toContain(
-      `Created the dashboard: https://github.com/acme/infra/issues/1 (${body.length.toLocaleString("en-US")} of 65,536 characters).`,
+      `🔴 Created the dashboard: https://github.com/acme/infra/issues/1 (${body.length.toLocaleString("en-US")} of 65,536 characters).`,
     );
   });
 });

@@ -54,7 +54,7 @@ describe("a tick on a drifted row", () => {
     );
     // Slice 4.7 (record 0059): the trail says the deploy put the drift back.
     expect(h.github.issue(1).body).toContain(
-      "- network:dev · ticked by alice · put back what changed outside the code · ",
+      "- 🟢&nbsp;network:dev · ticked by alice · put back what changed outside the code · ",
     );
   });
 

@@ -113,7 +113,7 @@ describe("a stack of the example project that does not exist in the backend", ()
       );
       expect(log.warnings).toContainEqual({
         title: "Preview failed",
-        message: "The preview of network:prod failed: the stack does not exist in the backend.",
+        message: "🔴 The preview of network:prod failed: the stack does not exist in the backend.",
       });
       // The tool's words, which name the stack, stay in the job log (record 0022).
       const written = [dashboard, ...summaries, ...log.lines].join("\n");
@@ -190,7 +190,7 @@ describe.each(VERSIONS)("a full scan of the example project, replayed from %s", 
     expect(log.warnings).toEqual([
       {
         title: "Preview failed",
-        message: "The preview of site:prod failed: the tool exited with an error (exit code 1).",
+        message: "🔴 The preview of site:prod failed: the tool exited with an error (exit code 1).",
       },
     ]);
   });

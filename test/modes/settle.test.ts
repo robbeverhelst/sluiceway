@@ -99,7 +99,7 @@ describe("settle", () => {
       },
     ]);
     expect(h.log.lines).toContain(
-      `Ended the open deployment of a:prod (record ${id}): this run ended without a result for it.`,
+      `🔴 Ended the open deployment of a:prod (record ${id}): this run ended without a result for it.`,
     );
   });
 
@@ -292,7 +292,7 @@ describe("settle", () => {
     expect(h.github.dispatches).toEqual([]);
     expect(h.github.issue(h.number).body).toBe(body);
     expect(h.log.lines).toEqual([
-      "No deployment record of this run is open. Every deploy it started reported a result.",
+      "⚪ No deployment record of this run is open. Every deploy it started reported a result.",
     ]);
   });
 });

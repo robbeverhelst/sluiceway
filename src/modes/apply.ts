@@ -56,6 +56,7 @@ import {
   renderApplySummary,
 } from "../render/apply-summary.ts";
 import { BODY_LIMIT, type BudgetOptions, fitBody } from "../render/budget.ts";
+import { RESULT_DOT } from "../render/dots.ts";
 import { runLinks } from "../render/links.ts";
 import {
   diffLogLines,
@@ -300,7 +301,8 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
       logUrl: runUrl,
     });
     ended = true;
-    log.info(`Deployment record ${id} ended as ${attempt.state}.`);
+    // The headline of the job: the dot of its outcome first (slice 4.5).
+    log.info(`${RESULT_DOT[report.outcome]} Deployment record ${id} ended as ${attempt.state}.`);
   } catch (error) {
     failures.push(
       `Deployment record ${id} of ${name} could not be given its result (${attempt.state}): ${message(error)}. The \`settle\` job of this run ends it. ${RECORD_PERMISSIONS}`,

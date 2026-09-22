@@ -132,7 +132,9 @@ describe("merge and deploy on the fake GitHub", () => {
     expect(parsed.rows.find((row) => row.stackId === "a:prod")?.state).toBe("in-sync");
     // The other update still waits: every writer carries the section.
     expect(parsed.merges.map(({ pr }) => pr)).toEqual([419]);
-    expect(dashboardBody(github)).toMatch(/## Recently deployed\n\n- a:prod · ticked by alice · /);
+    expect(dashboardBody(github)).toMatch(
+      /## Recently deployed\n\n- 🟢&nbsp;a:prod · ticked by alice · /,
+    );
   });
 
   test("a change that moved after the merge is refused, and the ticker gets the comment", async () => {

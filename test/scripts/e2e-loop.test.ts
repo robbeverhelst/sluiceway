@@ -202,7 +202,7 @@ describe("the checks of resolve", () => {
 // Record 0051.
 describe("the check of a rehearsal", () => {
   const trail =
-    "## Recently deployed\n\n- site:prod · ticked by alice · rehearsed, nothing was deployed · 2026-09-22 10:00 UTC · [run](x)";
+    "## Recently deployed\n\n- 🟣&nbsp;site:prod · ticked by alice · rehearsed, nothing was deployed · 2026-09-22 10:00 UTC · [run](x)";
   const rehearsed = stepped({
     summary: "## Sluiceway apply",
     outputs: { outcome: "rehearsed" },
@@ -442,7 +442,7 @@ describe("the facts on the rows", () => {
   const body = [
     dashboard(row("site:prod", "pending", ' failed="true"'), row("network:dev", "in-sync")),
     "## Recently deployed",
-    "- network:dev · ticked by alice · 2026-01-01 00:00 UTC · [run](https://github.com/acme/infra/actions/runs/4)",
+    "- 🟢&nbsp;network:dev · ticked by alice · 2026-01-01 00:00 UTC · [run](https://github.com/acme/infra/actions/runs/4)",
   ].join("\n");
 
   test("failure lines where expected and a stack in recently deployed have no problems", () => {
@@ -462,6 +462,16 @@ describe("the facts on the rows", () => {
       "The row of network:dev has no failure line.",
       "Recently deployed does not list network:dev.",
     ]);
+  });
+
+  // Slice 4.5: a line without the dot of its result is not what the renderer writes.
+  test("a recent deploy without its dot is a problem", () => {
+    expect(
+      checkRowFacts(body.replace("🟢&nbsp;", ""), {
+        failed: ["site:prod"],
+        recentlyDeployed: ["network:dev"],
+      }),
+    ).toEqual(["Recently deployed does not list network:dev."]);
   });
 });
 

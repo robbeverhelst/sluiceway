@@ -243,9 +243,9 @@ describe("recently deployed", () => {
     const list = section(dashboardBody(github), "Recently deployed").split("\n");
     expect(list).toHaveLength(10);
     expect(list[0]).toBe(
-      `- s11:prod · ticked by alice · 2026-09-21 05:11 UTC · [run](${REPO_URL}/actions/runs/111)`,
+      `- 🟢&nbsp;s11:prod · ticked by alice · 2026-09-21 05:11 UTC · [run](${REPO_URL}/actions/runs/111)`,
     );
-    expect(list.at(-1)).toContain("- s02:prod · ");
+    expect(list.at(-1)).toContain("- 🟢&nbsp;s02:prod · ");
   });
 
   test("another writer's success with GitHub's default does not erase this stack's deploy", async () => {
@@ -263,7 +263,7 @@ describe("recently deployed", () => {
 
     expect(github.deployment(1).status?.state).toBe("inactive");
     const body = dashboardBody(github);
-    expect(section(body, "Recently deployed")).toContain("- a:prod · ticked by alice · ");
+    expect(section(body, "Recently deployed")).toContain("- 🟢&nbsp;a:prod · ticked by alice · ");
     expect(body).not.toContain("last deploy failed");
   });
 });

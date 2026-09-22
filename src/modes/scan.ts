@@ -74,6 +74,8 @@ import {
   bodyDoesNotFitMessage,
   fitBody,
 } from "../render/budget.ts";
+import { COUNT_DOT, HEADER_DOT } from "../render/dots.ts";
+import { headerState } from "../render/header-state.ts";
 import { dashboardSearchUrl, type RunLinks, runLinks } from "../render/links.ts";
 import {
   diffLogLines,
@@ -1114,7 +1116,7 @@ function logResults(context: ScanContext, previewed: Previewed[]): void {
   for (const { id, result, drift } of previewed) {
     if (!result.ok) {
       log.warning(
-        `The preview of ${logGroupTitle(id)} failed: ${previewFailureText(result.reason)}.`,
+        `${COUNT_DOT["preview-failed"]} The preview of ${logGroupTitle(id)} failed: ${previewFailureText(result.reason)}.`,
         "Preview failed",
       );
     }
@@ -1264,7 +1266,12 @@ function reportDashboard(
   const { log } = context;
   const shortened = composed?.shortened ?? 0;
   const size = `${written.body.length.toLocaleString("en-US")} of ${BODY_LIMIT.toLocaleString("en-US")} characters`;
-  log.info(`${FOUND[written.found]}: ${context.repoUrl}/issues/${written.number} (${size}).`);
+  // The headline of the scan starts with the dot of the header state it wrote,
+  // so a person scanning the log sees the result at once (slice 4.5).
+  const dot = HEADER_DOT[headerState(parseDashboard(written.body).rows)];
+  log.info(
+    `${dot} ${FOUND[written.found]}: ${context.repoUrl}/issues/${written.number} (${size}).`,
+  );
   if (written.tries > 1) log.info(`The write took ${written.tries} tries.`);
   if (shortened > 0) log.info(`${plural(shortened, "row")} shortened to fit the size budget.`);
   if (composed && composed.carried.length > 0) {

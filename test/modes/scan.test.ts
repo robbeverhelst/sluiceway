@@ -162,7 +162,7 @@ describe("the job result (record 0012)", () => {
     expect(log.warnings).toEqual([
       {
         title: "Preview failed",
-        message: "The preview of b:prod failed: the tool exited with an error (exit code 255).",
+        message: "🔴 The preview of b:prod failed: the tool exited with an error (exit code 255).",
       },
     ]);
   });
@@ -368,13 +368,27 @@ describe("the job log", () => {
     ]);
   });
 
-  test("says which dashboard it wrote", async () => {
+  test("says which dashboard it wrote, behind the dot of its header state", async () => {
     const { context, log } = harness(tableAdapter({ "a:prod": inSync("a:prod") }));
     await scan(context);
     expect(log.lines.filter((line) => line.includes("dashboard"))).toEqual([
       expect.stringMatching(
-        /^Created the dashboard: https:\/\/github\.com\/acme\/infra\/issues\/1 \([\d,]+ of 65,536 characters\)\.$/,
+        /^🟢 Created the dashboard: https:\/\/github\.com\/acme\/infra\/issues\/1 \([\d,]+ of 65,536 characters\)\.$/u,
       ),
+    ]);
+  });
+
+  // Slice 4.5: a person scanning the log sees the result of the scan at once,
+  // in the colour the header state has on the counts line (record 0040).
+  test.each([
+    ["pending", { "a:prod": pending("a:prod", change("logs")), "b:prod": inSync("b:prod") }, "🟡"],
+    ["failing", { "a:prod": failing(), "b:prod": inSync("b:prod") }, "🔴"],
+    ["in sync", { "a:prod": inSync("a:prod") }, "🟢"],
+  ] as const)("a dashboard that is %s gets its dot", async (_, table, dot) => {
+    const { context, log } = harness(tableAdapter(table));
+    await scan(context);
+    expect(log.lines.filter((line) => line.includes("the dashboard:"))).toEqual([
+      expect.stringMatching(new RegExp(`^${dot} Created the dashboard: `, "u")),
     ]);
   });
 
