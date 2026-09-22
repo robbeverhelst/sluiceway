@@ -2,6 +2,7 @@ import { posix } from "node:path";
 import { parse } from "yaml";
 import type { Stack } from "../core/stack.ts";
 import { HELM } from "./helm/options.ts";
+import { KUBECTL } from "./kubectl/options.ts";
 import { OPENTOFU } from "./opentofu/options.ts";
 
 // What init learns from the files of a repo (record 0065): the stacks it can
@@ -125,6 +126,9 @@ export interface WorkflowFindings {
   pulumi: boolean;
   opentofu: boolean;
   helm: boolean;
+  // Declared in a sluiceway.yaml that is there: files alone never declare one
+  // (record 0060).
+  kubectl: boolean;
   node: NodeFindings | undefined;
   // Pulumi projects in another language than JavaScript or YAML, by runtime:
   // `pulumi install` gets their packages.
@@ -186,6 +190,7 @@ export function findForWorkflow(stacks: Stack[], files: string[], read: Read): W
     pulumi: pulumiPaths.length > 0,
     opentofu: stacks.some((stack) => tool(stack) === OPENTOFU),
     helm: stacks.some((stack) => tool(stack) === HELM),
+    kubectl: stacks.some((stack) => tool(stack) === KUBECTL),
     node: nodePaths.length === 0 ? undefined : nodeFindings(nodePaths, files, read),
     otherRuntimes: [...other]
       .map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) }))

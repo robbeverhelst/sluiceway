@@ -14,7 +14,7 @@ import { tools } from "../../src/adapters/tools.ts";
 import { check } from "../../src/modes/check.ts";
 import { init } from "../../src/modes/init.ts";
 import { NOTHING_MISSING } from "../../src/render/check.ts";
-import { HELM_STEPS, OPENTOFU_STEPS } from "../../src/render/init.ts";
+import { HELM_STEPS, KUBECTL_STEPS, OPENTOFU_STEPS } from "../../src/render/init.ts";
 import { isSluiceway, modeOf, ROOT, read, type Workflow } from "../docs/docs.ts";
 import { rememberingLog } from "./harness.ts";
 
@@ -442,5 +442,28 @@ describe("the workflow init writes", () => {
     expect(new Set(steps.map((step) => step.uses))).toEqual(new Set(["sluiceway/sluiceway@v0"]));
     expect(text).not.toContain("event.changes");
     expect(text).not.toContain("github-token");
+  });
+});
+
+// Record 0060: files alone never declare a Kubernetes manifests stack, so
+// init declares none. A sluiceway.yaml that does gets kubectl in the workflow.
+describe("Kubernetes manifests stacks that sluiceway.yaml declares", () => {
+  test("get kubectl in the workflow, as docs/credentials.md shows it, and the kubeconfig on the list", async () => {
+    const root = repo({}, { ".": "kubernetes-basic" });
+    const { error, workflow, config, log } = await run(root);
+    expect(error).toBeUndefined();
+    expect(config).toBe(readFileSync(join(ROOT, "examples/kubernetes-basic", CONFIG), "utf8"));
+    expect(workflow).toContain(KUBECTL_STEPS.join("\n"));
+    expect(read("docs/credentials.md")).toContain(KUBECTL_STEPS.map((l) => l.slice(6)).join("\n"));
+    expect(log.groups[1]?.lines.join("\n")).toContain(
+      "The scan and apply jobs need a kubeconfig for the cluster",
+    );
+    expect((await checked(root)).warnings).toEqual([]);
+  });
+
+  test("are not declared by init from a directory of manifests", async () => {
+    const root = example("kubernetes-basic");
+    const { error } = await run(root);
+    expect(String(error)).toContain("init found no stack to set up");
   });
 });

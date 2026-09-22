@@ -137,6 +137,7 @@ function toolSteps(findings: WorkflowFindings, job: Job): string[] {
     ...(findings.pulumi ? pulumiSteps(findings, job) : []),
     ...(findings.opentofu ? OPENTOFU_STEPS : []),
     ...(findings.helm ? helmSteps(findings.helmRepositories) : []),
+    ...(findings.kubectl ? KUBECTL_STEPS : []),
   ];
 }
 
@@ -234,6 +235,12 @@ export const HELM_STEPS = [
   "          version: v4.3.0",
   "      - name: Install the diff plugin",
   "        run: helm plugin install https://github.com/databus23/helm-diff --version v3.15.13 --verify=false",
+];
+
+export const KUBECTL_STEPS = [
+  "      - uses: azure/setup-kubectl@v5",
+  "        with:",
+  "          version: v1.37.0",
 ];
 
 function helmSteps(repositories: string[]): string[] {
@@ -424,9 +431,9 @@ export function needsText({ findings, declarable, branchGuessed }: NeedsInput): 
       );
     }
   }
-  if (findings.helm) {
+  if (findings.helm || findings.kubectl) {
     needs.push(
-      "The scan and apply jobs need a kubeconfig for the cluster of the Helm releases (docs/credentials.md, Helm).",
+      "The scan and apply jobs need a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).",
     );
   }
   if (declarable.helm.length > 0) {

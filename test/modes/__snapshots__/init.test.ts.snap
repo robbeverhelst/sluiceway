@@ -393,7 +393,7 @@ scan:
     {
       "lines": [
         "- Load the credentials and the state backend settings of your stacks in the scan and apply jobs, where the comments in the workflow say. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.",
-        "- The scan and apply jobs need a kubeconfig for the cluster of the Helm releases (docs/credentials.md, Helm).",
+        "- The scan and apply jobs need a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).",
         "- sluiceway.yaml names each Helm release and its namespace after the chart: charts/web, charts/worker. Set both to where the release runs, and add its values files. The namespace must exist.",
         "- The workflow scans after a push to main: init could not read the default branch. Change it if yours is another.",
         "- Every job runs on ubuntu-latest. For self-hosted runners change runs-on of scan and apply, with runner 2.328.0 or newer. resolve and settle hold no credentials and can stay on hosted runners.",
@@ -592,7 +592,7 @@ scan:
     {
       "lines": [
         "- Load the credentials and the state backend settings of your stacks in the scan and apply jobs, where the comments in the workflow say. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.",
-        "- The scan and apply jobs need a kubeconfig for the cluster of the Helm releases (docs/credentials.md, Helm).",
+        "- The scan and apply jobs need a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).",
         "- sluiceway.yaml names each Helm release and its namespace after the chart: helm/charts/web, helm/charts/worker. Set both to where the release runs, and add its values files. The namespace must exist.",
         "- tofu/network: one stack per var file, each in a workspace of the same name. Change workspace where yours is named otherwise.",
         "- The workflow scans after a push to main: init could not read the default branch. Change it if yours is another.",
