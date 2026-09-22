@@ -48,10 +48,15 @@ function node(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function listed(nodes: unknown[]): Answer {
+function listed(nodes: unknown[], pageInfo?: { hasNextPage: boolean; endCursor: string }): Answer {
   return {
     json: {
-      data: { repository: { defaultBranchRef: { name: "main" }, pullRequests: { nodes } } },
+      data: {
+        repository: {
+          defaultBranchRef: { name: "main" },
+          pullRequests: { nodes, ...(pageInfo ? { pageInfo } : {}) },
+        },
+      },
     },
   };
 }
@@ -77,6 +82,32 @@ describe("listing the open pull requests", () => {
       ],
     });
     expect(sent.map(({ method, path }) => `${method} ${path}`)).toEqual(["POST /graphql"]);
+  });
+
+  test("pages past the oldest 100 with GraphQL's cursor (slice 4.13)", async () => {
+    const { port, sent } = portThatAnswers([
+      listed([node({ number: 1 })], { hasNextPage: true, endCursor: "Y3Vyc29yOjEwMA==" }),
+      listed([node({ number: 101 })], { hasNextPage: false, endCursor: "Y3Vyc29yOjEwMQ==" }),
+    ]);
+    const { pullRequests } = await port.listOpenPullRequests();
+    expect(pullRequests.map(({ number }) => number)).toEqual([1, 101]);
+    const variables = sent.map(
+      ({ body }) => (body as { variables: Record<string, unknown> }).variables,
+    );
+    expect(variables).toEqual([
+      { owner: "acme", repo: "infra", after: null },
+      { owner: "acme", repo: "infra", after: "Y3Vyc29yOjEwMA==" },
+    ]);
+  });
+
+  test("reads at most ten pages, the oldest 1,000 open pull requests", async () => {
+    const answers = Array.from({ length: 11 }, (_, index) =>
+      listed([node({ number: index + 1 })], { hasNextPage: true, endCursor: `c${index}` }),
+    );
+    const { port, sent } = portThatAnswers(answers);
+    const { pullRequests } = await port.listOpenPullRequests();
+    expect(pullRequests).toHaveLength(10);
+    expect(sent).toHaveLength(10);
   });
 
   test("reads the checks, the merge state and a person as GitHub gives them", async () => {

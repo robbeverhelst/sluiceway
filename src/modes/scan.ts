@@ -34,6 +34,7 @@ import {
 import { diffHash } from "../core/diff-hash.ts";
 import { deployFailureText, previewFailureText } from "../core/failure-reason.ts";
 import {
+  MAX_UPDATES,
   NOT_QUALIFIED,
   qualify,
   type WaitingUpdate,
@@ -1366,12 +1367,17 @@ async function listUpdates(
       log.info(`#${pullRequest.number} is not listed to merge: ${NOT_QUALIFIED[qualified.why]}.`);
     }
   }
-  const updates = waitingUpdates(open.pullRequests, options);
+  const { listed: updates, more } = waitingUpdates(open.pullRequests, options);
   log.info(
     updates.length === 0
       ? "No pull request waits to merge."
       : `${plural(updates.length, "pull request")} ${updates.length === 1 ? "waits" : "wait"} to merge: ${updates.map(({ pullRequest }) => `#${pullRequest.number}`).join(", ")}.`,
   );
+  if (more > 0) {
+    log.info(
+      `${plural(more, "more pull request")} ${more === 1 ? "qualifies" : "qualify"} and ${more === 1 ? "is" : "are"} not listed: the dashboard lists the oldest ${MAX_UPDATES}.`,
+    );
+  }
   return { kind: "listed", updates };
 }
 

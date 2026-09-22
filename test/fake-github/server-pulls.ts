@@ -44,20 +44,33 @@ function node(pullRequest: OpenPullRequest): unknown {
   };
 }
 
-export async function openPullRequestsQuery(fake: FakeGitHub): Promise<Answer> {
-  const { defaultBranch, pullRequests } = await fake.listOpenPullRequests();
+// A page of 100, oldest first, with GraphQL's cursor: the fake's cursor is the
+// number of pull requests before the page (record 0064).
+export function openPullRequestsQuery(
+  fake: FakeGitHub,
+  variables: unknown,
+): Answer {
+  const after = (variables as { after?: unknown } | undefined)?.after;
+  const from = typeof after === "string" ? Number(after) : 0;
+  const { defaultBranch, pullRequests: page, total } = fake.openPullRequestsPage(from, PAGE);
+  const end = from + page.length;
   return {
     status: 200,
     json: {
       data: {
         repository: {
           defaultBranchRef: { name: defaultBranch },
-          pullRequests: { nodes: pullRequests.map(node) },
+          pullRequests: {
+            pageInfo: { hasNextPage: end < total, endCursor: String(end) },
+            nodes: page.map(node),
+          },
         },
       },
     },
   };
 }
+
+const PAGE = 100;
 
 export function pullRoutes(fake: FakeGitHub, repo: string): [string, RegExp, Route][] {
   return [

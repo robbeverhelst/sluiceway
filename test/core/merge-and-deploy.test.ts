@@ -132,23 +132,25 @@ describe("a pull request does not qualify", () => {
 
 describe("the updates waiting to merge", () => {
   test("are the qualifying pull requests, oldest first, each with its stack", () => {
-    const updates = waitingUpdates(
+    const { listed, more } = waitingUpdates(
       [pr({ number: 420 }), pr({ number: 419, author: "alice" }), pr({ number: 418 })],
       OPTIONS,
     );
-    expect(updates.map(({ pullRequest, stackId }) => [pullRequest.number, stackId])).toEqual([
+    expect(listed.map(({ pullRequest, stackId }) => [pullRequest.number, stackId])).toEqual([
       [418, "apps/odoo:prod"],
       [420, "apps/odoo:prod"],
     ]);
+    expect(more).toBe(0);
   });
 
-  test("are at most ten", () => {
-    const many = Array.from({ length: 14 }, (_, index) => pr({ number: 500 - index }));
-    const updates = waitingUpdates(many, OPTIONS);
-    expect(MAX_UPDATES).toBe(10);
-    expect(updates.map(({ pullRequest }) => pullRequest.number)).toEqual([
-      487, 488, 489, 490, 491, 492, 493, 494, 495, 496,
-    ]);
+  test("are at most thirty, the oldest, and the rest are counted (slice 4.13)", () => {
+    const many = Array.from({ length: 34 }, (_, index) => pr({ number: 500 - index }));
+    const { listed, more } = waitingUpdates(many, OPTIONS);
+    expect(MAX_UPDATES).toBe(30);
+    expect(listed.map(({ pullRequest }) => pullRequest.number)).toEqual(
+      Array.from({ length: 30 }, (_, index) => 467 + index),
+    );
+    expect(more).toBe(4);
   });
 });
 

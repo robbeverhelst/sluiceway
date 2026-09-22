@@ -546,9 +546,23 @@ export class FakeGitHub implements GitHubPort {
     this.#dispatches.push({ workflow, ref });
   }
 
+  // One request per page of 100, as GitHub's GraphQL gives them (record 0064).
   async listOpenPullRequests(): Promise<OpenPullRequests> {
+    const list = this.#pulls.list();
+    const pages = Math.max(1, Math.ceil(list.pullRequests.length / 100));
+    for (let page = 0; page < pages; page++) this.#count("listOpenPullRequests");
+    return list;
+  }
+
+  // One page of the list, as the HTTP server serves it: one request.
+  openPullRequestsPage(from: number, size: number): OpenPullRequests & { total: number } {
     this.#count("listOpenPullRequests");
-    return this.#pulls.list();
+    const list = this.#pulls.list();
+    return {
+      defaultBranch: list.defaultBranch,
+      pullRequests: list.pullRequests.slice(from, from + size),
+      total: list.pullRequests.length,
+    };
   }
 
   // GitHub leaves the merge settings out for a token without `contents:

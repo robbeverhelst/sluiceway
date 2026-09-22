@@ -42,3 +42,21 @@ test("the open pull requests, the merge settings and a merge go over HTTP as the
     "Resource not accessible by integration",
   );
 });
+
+test("more than 100 open pull requests come in pages over HTTP, one request each (slice 4.13)", async () => {
+  const fake = new FakeGitHub();
+  const server = await startFakeGitHubServer(fake);
+  servers.push(server);
+  const port = createOctokitPort(getOctokit("a-token", { baseUrl: server.url }), {
+    owner: "acme",
+    repo: "infra",
+  });
+  for (let number = 1; number <= 250; number++) fake.seedOpenPullRequest({ number });
+
+  const { pullRequests } = await port.listOpenPullRequests();
+
+  expect(pullRequests.map(({ number }) => number)).toEqual(
+    Array.from({ length: 250 }, (_, index) => index + 1),
+  );
+  expect(fake.requests.filter((request) => request === "listOpenPullRequests")).toHaveLength(3);
+});

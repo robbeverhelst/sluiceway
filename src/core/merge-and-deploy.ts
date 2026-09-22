@@ -95,22 +95,28 @@ export interface WaitingUpdate {
   stackId: string;
 }
 
-// The dashboard lists at most this many, so the section never eats the size
-// budget of the rows (record 0028). The rest wait for a merge of the first.
-export const MAX_UPDATES = 10;
+// The dashboard lists at most this many, and folds all but the first ten
+// (record 0064). A line is about 250 characters at most, so thirty stay under
+// an eighth of the body's target size (record 0028). The rest wait for a
+// merge of the first.
+export const MAX_UPDATES = 30;
 
-// The qualifying pull requests, oldest first.
+// The qualifying pull requests, oldest first, and how many more qualify than
+// are listed.
 export function waitingUpdates(
   pullRequests: readonly OpenPullRequest[],
   options: QualifyOptions,
-): WaitingUpdate[] {
-  return [...pullRequests]
+): { listed: WaitingUpdate[]; more: number } {
+  const qualifying = [...pullRequests]
     .sort((a, b) => a.number - b.number)
     .flatMap((pullRequest) => {
       const qualified = qualify(pullRequest, options);
       return qualified.qualifies ? [{ pullRequest, stackId: qualified.stackId }] : [];
-    })
-    .slice(0, MAX_UPDATES);
+    });
+  return {
+    listed: qualifying.slice(0, MAX_UPDATES),
+    more: Math.max(0, qualifying.length - MAX_UPDATES),
+  };
 }
 
 export type MergeMethod = "squash" | "rebase" | "merge";

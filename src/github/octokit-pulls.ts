@@ -11,15 +11,19 @@ export type PullCalls = Pick<
   "listOpenPullRequests" | "allowedMergeMethods" | "mergePullRequest"
 >;
 
-// The oldest 100 open pull requests with what the qualification rule reads:
-// the author, the base, the head commit, the files and the combined checks of
-// the head commit. `pull-requests: read` is enough.
-const OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!) {
+// A page of the open pull requests, oldest first, with what the qualification
+// rule reads: the author, the base, the head commit, the files and the
+// combined checks of the head commit. `pull-requests: read` is enough.
+const OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!, $after: String) {
   repository(owner: $owner, name: $repo) {
     defaultBranchRef {
       name
     }
-    pullRequests(states: OPEN, first: 100, orderBy: {field: CREATED_AT, direction: ASC}) {
+    pullRequests(states: OPEN, first: 100, after: $after, orderBy: {field: CREATED_AT, direction: ASC}) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         number
         title
@@ -70,9 +74,15 @@ interface PullRequestNode {
 interface OpenPullRequestsData {
   repository: {
     defaultBranchRef: { name: string } | null;
-    pullRequests: { nodes: (PullRequestNode | null)[] | null };
+    pullRequests: {
+      nodes: (PullRequestNode | null)[] | null;
+      pageInfo?: { hasNextPage: boolean; endCursor: string | null } | null;
+    };
   } | null;
 }
+
+// How many pages of 100 open pull requests one list reads.
+export const MAX_PAGES = 10;
 
 function present<T>(nodes: readonly (T | null)[] | null | undefined): T[] {
   return (nodes ?? []).filter((node): node is T => node !== null);
@@ -139,13 +149,26 @@ function messageOf(error: unknown): string {
 export function pullCalls(octokit: Octokit, repo: { owner: string; repo: string }): PullCalls {
   return {
     async listOpenPullRequests() {
-      const data = await octokit.graphql<OpenPullRequestsData>(OPEN_PULL_REQUESTS, repo);
-      const defaultBranch = data.repository?.defaultBranchRef?.name;
+      // Page by page, oldest first (record 0064). Past the tenth page the rest
+      // are left out: a repo with more than 1,000 open pull requests pays ten
+      // requests of its hourly budget for each list (record 0017).
+      let defaultBranch: string | undefined;
+      const pullRequests: OpenPullRequest[] = [];
+      let after: string | null = null;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const data: OpenPullRequestsData = await octokit.graphql<OpenPullRequestsData>(
+          OPEN_PULL_REQUESTS,
+          { ...repo, after },
+        );
+        defaultBranch ??= data.repository?.defaultBranchRef?.name;
+        const list = data.repository?.pullRequests;
+        pullRequests.push(...present(list?.nodes).map(toPullRequest));
+        const next = list?.pageInfo;
+        if (!next?.hasNextPage || !next.endCursor) break;
+        after = next.endCursor;
+      }
       if (defaultBranch === undefined) throw new Error("GitHub named no default branch.");
-      return {
-        defaultBranch,
-        pullRequests: present(data.repository?.pullRequests.nodes).map(toPullRequest),
-      };
+      return { defaultBranch, pullRequests };
     },
 
     async allowedMergeMethods() {

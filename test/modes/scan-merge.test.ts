@@ -88,6 +88,57 @@ describe("the updates waiting to merge", () => {
     expect(log.lines.filter((line) => line.startsWith("#3 "))).toEqual([]);
   });
 
+  test("folds the updates after the first ten, at 11 updates (slice 4.13)", async () => {
+    const { context, github } = harness(tableAdapter(TABLE), { config: CONFIG });
+    for (let number = 401; number <= 411; number++) {
+      github.seedOpenPullRequest({ number, files: ["a/values.yaml"] });
+    }
+
+    await scan(context);
+
+    const listed = section(dashboardBody(github), "Updates waiting to merge");
+    const [open = "", folded = ""] = listed.split(
+      "<details><summary>1 more update waiting to merge</summary>",
+    );
+    expect(parseDashboard(open).merges.map(({ pr }) => pr)).toEqual([
+      401, 402, 403, 404, 405, 406, 407, 408, 409, 410,
+    ]);
+    expect(parseDashboard(folded).merges.map(({ pr }) => pr)).toEqual([411]);
+    expect(folded.trim().endsWith("</details>")).toBe(true);
+  });
+
+  test("lists the oldest thirty, and the job log counts the rest", async () => {
+    const { context, github, log } = harness(tableAdapter(TABLE), { config: CONFIG });
+    for (let number = 401; number <= 433; number++) {
+      github.seedOpenPullRequest({ number, files: ["a/values.yaml"] });
+    }
+
+    await scan(context);
+
+    const merges = parseDashboard(dashboardBody(github)).merges;
+    expect(merges).toHaveLength(30);
+    expect(merges.at(-1)?.pr).toBe(430);
+    expect(log.lines).toContain(
+      "3 more pull requests qualify and are not listed: the dashboard lists the oldest 30.",
+    );
+  });
+
+  test("pages past the oldest 100 open pull requests, one request per page (slice 4.13)", async () => {
+    const { context, github } = harness(tableAdapter(TABLE), { config: CONFIG });
+    for (let number = 1; number <= 150; number++) {
+      github.seedOpenPullRequest({
+        number,
+        files: ["a/values.yaml"],
+        ...(number === 150 ? {} : { author: "alice" }),
+      });
+    }
+
+    await scan(context);
+
+    expect(parseDashboard(dashboardBody(github)).merges.map(({ pr }) => pr)).toEqual([150]);
+    expect(github.requests.filter((request) => request === "listOpenPullRequests")).toHaveLength(2);
+  });
+
   test("costs no request when mergeAndDeploy names no authors", async () => {
     const { context, github } = harness(tableAdapter(TABLE));
     github.seedOpenPullRequest({ number: 418, files: ["a/values.yaml"] });
