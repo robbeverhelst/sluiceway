@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.26.0](https://github.com/sluiceway/sluiceway/compare/v0.25.0...v0.26.0) (2026-09-22)
+
+
+### Features
+
+* every writer draws the bulk lines, and the scan sweeps them like orphan ticks ([29e94ff](https://github.com/sluiceway/sluiceway/commit/29e94ff167e9adbec4f04bf356e27b6788832436))
+* resolve turns a bulk tick into a confirm box, and hands a confirmed box on as one tick per stack ([85db133](https://github.com/sluiceway/sluiceway/commit/85db133050d74e11d9e6a51eaea020e9de0f5c53))
+* the bulk box and its confirm box, their marker and the rule of which one a section gets ([2b7faa4](https://github.com/sluiceway/sluiceway/commit/2b7faa4bfe02704549ad8088e0ab6f5700b0d32b))
+
 ## [0.25.0](https://github.com/sluiceway/sluiceway/compare/v0.24.1...v0.25.0) (2026-09-22)
 
 
