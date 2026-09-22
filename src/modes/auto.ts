@@ -68,7 +68,8 @@ export function autoEvent(eventName: string, payload: unknown): AutoEvent {
 }
 
 // A broken config file is the modes' to report, with their own messages, so
-// here it reads as the default.
+// here it reads as the default. Each mode auto starts reads the repo itself,
+// as the jobs of the split workflow did.
 function readOnly(root: string): boolean {
   try {
     return loadConfig(root).dashboard.readOnly;
@@ -96,7 +97,7 @@ export async function auto(context: AutoContext): Promise<void> {
     const not =
       issue === undefined
         ? "The issue event names no issue. Nothing to do."
-        : notTheDashboardText(issue, context.root);
+        : notTheDashboardText(issue, () => loadConfig(context.root));
     if (not !== undefined) {
       context.notice(not);
       return;

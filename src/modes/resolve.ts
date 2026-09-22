@@ -7,14 +7,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Adapter } from "../adapters/adapter.ts";
-import {
-  applyConfig,
-  type Config,
-  type ConfiguredStack,
-  type IgnoredStack,
-  ignoredStacks,
-} from "../core/config.ts";
-import { loadConfig } from "../core/config-file.ts";
+import type { Config, ConfiguredStack, IgnoredStack } from "../core/config.ts";
 import { planDeploys, queueState, withReadDependencies } from "../core/dependencies.ts";
 import {
   type DeployFact,
@@ -35,6 +28,7 @@ import { declaresMergeScanInput, MERGE_SCAN_INPUT, mergeScanInputs } from "../co
 import { repositoryOf } from "../core/notify.ts";
 import { waitsByPhase } from "../core/phases.ts";
 import { renovateMergeSetting } from "../core/renovate-config.ts";
+import { openRepo, type Repo, type RepoStacks } from "../core/repo.ts";
 import { capDeploys, type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import { stackId } from "../core/stack.ts";
 import { WORKFLOW_DIRECTORY } from "../core/workflow-check.ts";
@@ -137,12 +131,12 @@ export async function resolve(context: ResolveContext): Promise<void> {
 // The cheap check of record 0017, as one line for the job log, or nothing
 // when the edited issue is the dashboard. The half that needs no config comes
 // first, so a broken `sluiceway.yaml` never turns an edit of an ordinary issue
-// red. Auto mode asks the same question before it starts `resolve` (record
-// 0077).
-export function notTheDashboardText(issue: EventIssue, root: string): string | undefined {
+// red: `config` is asked only for the second half. Auto mode asks the same
+// question before it starts `resolve` (record 0077).
+export function notTheDashboardText(issue: EventIssue, config: () => Config): string | undefined {
   const text = `Issue #${issue.number} is not the open dashboard. Nothing to do.`;
   if (issue.state !== "open" || !isBotIssueWithRootMarker(issue)) return text;
-  return issue.labels.includes(loadConfig(root).dashboard.label) ? undefined : text;
+  return issue.labels.includes(config().dashboard.label) ? undefined : text;
 }
 
 // What goes on the job summary of `resolve` (slice 5.9).
@@ -210,6 +204,8 @@ async function resolveTicks(
   report: RunReport,
 ): Promise<void> {
   const { log, github } = context;
+  // Read once, whichever way the run goes.
+  const repo = openRepo(context.root, context.adapter);
 
   // The cheap check (record 0017): the edited issue is judged from the payload
   // alone, green and without an API call, because `issues.edited` fires for
@@ -218,15 +214,15 @@ async function resolveTicks(
   const issue = editedIssue(context.event);
   if (!issue) {
     report.acting = true;
-    await startQueued(context, handOn);
+    await startQueued(context, repo, handOn);
     return;
   }
-  const notTheDashboard = notTheDashboardText(issue, context.root);
+  const notTheDashboard = notTheDashboardText(issue, repo.config);
   if (notTheDashboard !== undefined) {
     log.info(notTheDashboard);
     return;
   }
-  const config = loadConfig(context.root);
+  const config = repo.config();
   report.acting = true;
 
   // Nothing else is taken from the payload (record 0025). The body and the
@@ -267,7 +263,7 @@ async function resolveTicks(
     // Discovery reads files only (record 0014). A stack that no file names
     // does not exist, and a tick on its row is left for the scan, which drops
     // the row.
-    if (!stacks) ({ stacks, ignored } = await discover(context, config));
+    if (!stacks) ({ stacks, ignored } = byId(await repo.stacks()));
     const known = ticks.filter((tick) => {
       if (tick.kind === "rescan") return true;
       const unknown = (tick.kind === "merge" ? tick.stackIds : [tick.stackId]).filter(
@@ -914,12 +910,8 @@ interface Discovered {
   ignored: IgnoredStack[];
 }
 
-async function discover(context: ResolveContext, config: Config): Promise<Discovered> {
-  const found = await context.adapter.discover(context.root, config);
-  return {
-    stacks: new Map(applyConfig(config, found).map((stack) => [stackId(stack.stack), stack])),
-    ignored: ignoredStacks(config, found),
-  };
+function byId({ stacks, ignored }: RepoStacks): Discovered {
+  return { stacks: new Map(stacks.map((stack) => [stackId(stack.stack), stack])), ignored };
 }
 
 // The rescan box, and a body of another version, start a full scan by
@@ -1195,10 +1187,11 @@ function withRowDependencies(
 // `inactive`, "started in a later run", which is no deploy fact.
 async function startQueued(
   context: ResolveContext,
+  repo: Repo,
   handOn: (entries: readonly MatrixEntry[]) => void,
 ): Promise<void> {
   const { log, github } = context;
-  const config = loadConfig(context.root);
+  const config = repo.config();
   // A phase gives dependencies too (record 0067).
   if (
     !config.stacks.some(({ dependsOn, phase }) => dependsOn !== undefined || phase !== undefined)
@@ -1208,7 +1201,7 @@ async function startQueued(
     );
     return;
   }
-  const { stacks, ignored } = await discover(context, config);
+  const { stacks, ignored } = byId(await repo.stacks());
   const all = [...stacks.values()];
   // A stack with auto may depend on any stack, and only its row knows which
   // (record 0059).

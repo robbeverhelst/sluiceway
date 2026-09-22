@@ -43,7 +43,9 @@ export async function check(context: CheckContext): Promise<void> {
   let report: ReturnType<typeof checkSetup>;
   try {
     // In the order a scan does it, so the first error is the one a scan
-    // would stop at.
+    // would stop at. Not through core/repo.ts: the check reads the files of
+    // every stack discovery found, the ignored ones too, before config is
+    // laid over them, and reports on each `ignore` entry.
     config = loadConfig(root);
     const found = await context.adapter.discover(root, config);
     // What each stack's own files name as read (record 0074).
