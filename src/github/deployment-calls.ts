@@ -1,7 +1,7 @@
 // The words of the port's deployment calls (record 0003). The records
 // themselves are declared in core/deployment.ts, because the core reads them.
 
-import type { DeploymentRecord } from "../core/deployment.ts";
+import type { DeploymentRecord, StatusToWrite } from "../core/deployment.ts";
 
 export type { Deployment, DeploymentRecord, DeploymentStatus } from "../core/deployment.ts";
 
@@ -16,12 +16,9 @@ export interface NewDeployment {
   payload: Record<string, unknown>;
 }
 
-export interface NewDeploymentStatus {
-  // `inactive` only ends a rehearsal (record 0051).
-  state: "queued" | "in_progress" | "success" | "failure" | "error" | "inactive";
-  // A failure reason from Sluiceway's fixed list (record 0022). GitHub takes
-  // at most 140 characters.
-  description?: string | undefined;
+// The state and its words come from `recordStatus` in core/deployment.ts,
+// where they are read back too.
+export interface NewDeploymentStatus extends StatusToWrite {
   // The run of the deploy.
   logUrl?: string | undefined;
 }

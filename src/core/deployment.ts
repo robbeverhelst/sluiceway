@@ -1,8 +1,11 @@
 // Deployment records (record 0003): one attempt to deploy one stack, kept in
 // GitHub's Deployments API and nowhere else. This file holds the words of a
-// record. It is declared here and not on the port because `core/` may not
-// import `github/`.
+// record: the status each step of its life writes and how a status is read
+// back. It is declared here and not on the port because `core/` may not
+// import `github/`. `github/deployments.ts` writes and reads the records
+// through the port in these words.
 
+import { type DeployFailureReason, deployFailureText } from "./failure-reason.ts";
 import type { OutsideDeploy } from "./outside-deploy.ts";
 
 // A record as GitHub holds it, in the port's words.
@@ -290,6 +293,68 @@ export function isHandedOn(status: DeploymentStatus | undefined): boolean {
 export function isOpenStatus(status: DeploymentStatus | undefined): boolean {
   const state = status?.state ?? "";
   return !SUCCEEDED.has(state) && !FAILED.has(state);
+}
+
+// A step of a record's life that Sluiceway writes as a status. Each step has
+// one status, so the readers above tell them apart again: the state words and
+// the descriptions are chosen here and nowhere else.
+export type RecordStep =
+  // `resolve` or the scan after a merge opened it: the stack is taken
+  // (record 0003).
+  | { kind: "opened" }
+  // `apply` took it and runs the fresh preview (record 0019).
+  | { kind: "claimed" }
+  | RecordEnd;
+
+// How a record ends.
+export type RecordEnd =
+  // The deploy went out.
+  | { kind: "deployed" }
+  // The fresh preview had nothing to deploy (record 0051).
+  | { kind: "in-sync" }
+  // A rehearsal: nothing went out (record 0051).
+  | { kind: "rehearsed" }
+  // A queued record whose stack starts under a record of a later run (record
+  // 0056).
+  | { kind: "handed-on" }
+  // A merge record whose deploy follows in a record of its own (record 0054).
+  | { kind: "merged" }
+  // Nothing went out, or not all of it, for a reason of the fixed list
+  // (record 0022).
+  | { kind: "failed"; reason: DeployFailureReason };
+
+export interface StatusToWrite {
+  state: "queued" | "in_progress" | "success" | "failure" | "error" | "inactive";
+  // A failure reason from the fixed list (record 0022), or the words that
+  // tell a result apart. GitHub takes at most 140 characters.
+  description?: string | undefined;
+}
+
+// A change that moved and a run that ended are `error`: the deploy never
+// started (record 0003). Every other reason is `failure`.
+export function recordStatus(step: RecordStep): StatusToWrite {
+  switch (step.kind) {
+    case "opened":
+      return { state: "queued" };
+    case "claimed":
+      return { state: "in_progress" };
+    case "deployed":
+      return { state: "success", description: undefined };
+    case "in-sync":
+      return { state: "success", description: IN_SYNC_DESCRIPTION };
+    case "rehearsed":
+      return { state: "inactive", description: REHEARSED_DESCRIPTION };
+    case "handed-on":
+      return { state: "inactive", description: HANDED_ON_DESCRIPTION };
+    case "merged":
+      return { state: "inactive", description: MERGED_DESCRIPTION };
+    case "failed":
+      return {
+        state:
+          step.reason.kind === "moved" || step.reason.kind === "run-ended" ? "error" : "failure",
+        description: deployFailureText(step.reason),
+      };
+  }
 }
 
 export function newestLast(a: DeploymentRecord, b: DeploymentRecord): number {
