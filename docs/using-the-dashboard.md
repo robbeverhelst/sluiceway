@@ -28,7 +28,9 @@ The job log of a scan says what it did, in fixed lines:
 | `Previewed <stack id> in 8.3 s: pending` | How long one preview took, and how it ended. One line per preview, in the order they finish. |
 | `Previewed 58 stacks in 412.6 s with a pool of 4. Added up, the previews took 1530.2 s. The slowest was <stack id> with 45.1 s.` | The total. The total against the sum shows what the pool gains. The slowest preview is what `preview-timeout` has to clear. |
 | `Wrote the preview pages of 12 pending stacks on 0123456: 2 created, 10 updated.` | One page per pending stack this scan previewed. Without `checks: write` it reads `No preview page was written: ...` and says what to add. |
-| `Wrote the dashboard: <url> (41,210 of 65,536 characters).` | Where the dashboard is, and how full the issue body is. `Carried 56 rows through as they were` follows on a narrowed scan. |
+| `Wrote the dashboard: <url> (41,210 of 65,536 characters).` | Where the dashboard is, and how full the issue body is. `Carried 56 rows through as they were` follows on a narrowed scan. The line starts with the dot of the header state the scan wrote. |
+| `Created the dashboard: <url> (3,120 of 65,536 characters).` | The same, on the first scan, which opens the issue. |
+| `Reopened the dashboard and wrote it: <url> (...)` | The same, when the dashboard issue was closed: the scan opens it again, so its number and every link stay. |
 | `Cleared an orphan tick on <stack id>: ...` | A box was ticked and nothing picked the tick up, so the scan cleared it and the row asks for a fresh one. A scan never deploys. While a run that an issue edit started is queued or in progress the line reads `Left the tick on <stack id> alone: ...` and the box stays ticked. |
 
 Under those lines there is one group per previewed stack, titled with the stack id. It holds the whole diff and everything the tool printed. The tool's own words never leave the job log.
