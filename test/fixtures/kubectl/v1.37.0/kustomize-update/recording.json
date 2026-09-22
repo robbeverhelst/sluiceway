@@ -1,0 +1,38 @@
+{
+  "scenario": "kustomize-update",
+  "description": "cache, a kustomization, with more replicas.",
+  "cliVersion": "v1.37.0",
+  "commands": [
+    {
+      "id": "kustomize",
+      "argv": [
+        "kubectl",
+        "kustomize",
+        "."
+      ],
+      "cwd": "cache",
+      "exitCode": 0,
+      "stdout": "kustomize.stdout",
+      "stderr": "kustomize.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "diff",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "cache",
+      "exitCode": 1,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "diff",
+      "env": {
+        "KUBECTL_EXTERNAL_DIFF": "diff -N -U1000000"
+      }
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+diff -N -U1000000 /tmp/LIVE-1143391725/apps.v1.Deployment.sluiceway-example.web /tmp/MERGED-1688177863/apps.v1.Deployment.sluiceway-example.web
+--- /tmp/LIVE-1143391725/apps.v1.Deployment.sluiceway-example.web	2026-09-22 10:40:13.211236743 +0000
++++ /tmp/MERGED-1688177863/apps.v1.Deployment.sluiceway-example.web	2026-09-22 10:40:13.212236747 +0000
+@@ -1,66 +1,66 @@
+ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+   annotations:
+     deployment.kubernetes.io/revision: "1"
+   creationTimestamp: "2026-09-22T10:40:13Z"
+-  generation: 1
++  generation: 2
+   labels:
+     app.kubernetes.io/name: web
+   name: web
+   namespace: sluiceway-example
+   resourceVersion: "589"
+   uid: db23133f-ed72-4762-878a-bb629369766f
+ spec:
+   progressDeadlineSeconds: 600
+-  replicas: 1
++  replicas: 2
+   revisionHistoryLimit: 10
+   selector:
+     matchLabels:
+       app.kubernetes.io/name: web
+   strategy:
+     rollingUpdate:
+       maxSurge: 25%
+       maxUnavailable: 25%
+     type: RollingUpdate
+   template:
+     metadata:
+       labels:
+         app.kubernetes.io/name: web
+     spec:
+       containers:
+       - envFrom:
+         - configMapRef:
+             name: web-settings
+         - secretRef:
+             name: web-credentials
+-        image: registry.k8s.io/pause:3.10
++        image: registry.k8s.io/pause:3.9
+         imagePullPolicy: IfNotPresent
+         name: web
+         resources: {}
+         terminationMessagePath: /dev/termination-log
+         terminationMessagePolicy: File
+       dnsPolicy: ClusterFirst
+       restartPolicy: Always
+       schedulerName: default-scheduler
+       securityContext: {}
+       terminationGracePeriodSeconds: 30
+ status:
+   conditions:
+   - lastTransitionTime: "2026-09-22T10:40:13Z"
+     lastUpdateTime: "2026-09-22T10:40:13Z"
+     message: Deployment does not have minimum availability.
+     reason: MinimumReplicasUnavailable
+     status: "False"
+     type: Available
+   - lastTransitionTime: "2026-09-22T10:40:13Z"
+     lastUpdateTime: "2026-09-22T10:40:13Z"
+     message: ReplicaSet "web-975b64b54" is progressing.
+     reason: ReplicaSetUpdated
+     status: "True"
+     type: Progressing
+   observedGeneration: 1
+   replicas: 1
+   terminatingReplicas: 0
+   unavailableReplicas: 1
+   updatedReplicas: 1
+diff -N -U1000000 /tmp/LIVE-1143391725/v1.ConfigMap.sluiceway-example.web-settings /tmp/MERGED-1688177863/v1.ConfigMap.sluiceway-example.web-settings
+--- /tmp/LIVE-1143391725/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 10:40:13.206236726 +0000
++++ /tmp/MERGED-1688177863/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 10:40:13.206236726 +0000
+@@ -1,13 +1,13 @@
+ apiVersion: v1
+ data:
+-  greeting: CANARY-VALUE, hello
++  greeting: CANARY-VALUE, good morning
+   log-level: info
+ kind: ConfigMap
+ metadata:
+   creationTimestamp: "2026-09-22T10:40:13Z"
+   labels:
+     app.kubernetes.io/name: web
+   name: web-settings
+   namespace: sluiceway-example
+   resourceVersion: "574"
+   uid: c4b9724f-1bd4-4b0b-b5a4-30cc698baf79
+diff -N -U1000000 /tmp/LIVE-1143391725/v1.Service.sluiceway-example.web /tmp/MERGED-1688177863/v1.Service.sluiceway-example.web
+--- /tmp/LIVE-1143391725/v1.Service.sluiceway-example.web	2026-09-22 10:40:13.220236774 +0000
++++ /tmp/MERGED-1688177863/v1.Service.sluiceway-example.web	2026-09-22 10:40:13.220236774 +0000
+@@ -1,29 +1,29 @@
+ apiVersion: v1
+ kind: Service
+ metadata:
+   creationTimestamp: "2026-09-22T10:40:13Z"
+   labels:
+     app.kubernetes.io/name: web
+   name: web
+   namespace: sluiceway-example
+   resourceVersion: "583"
+   uid: f71afa82-3c67-4b73-8791-8dfd2f351e2f
+ spec:
+   clusterIP: 10.96.81.3
+   clusterIPs:
+   - 10.96.81.3
+   internalTrafficPolicy: Cluster
+   ipFamilies:
+   - IPv4
+   ipFamilyPolicy: SingleStack
+   ports:
+   - name: http
+     port: 80
+     protocol: TCP
+-    targetPort: 8080
++    targetPort: 8081
+   selector:
+     app.kubernetes.io/name: web
+   sessionAffinity: None
+   type: ClusterIP
+ status:
+   loadBalancer: {}

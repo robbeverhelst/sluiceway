@@ -1,0 +1,69 @@
+diff -N -U1000000 /tmp/LIVE-3820932114/apps.v1.Deployment.sluiceway-example.cache /tmp/MERGED-2568960456/apps.v1.Deployment.sluiceway-example.cache
+--- /tmp/LIVE-3820932114/apps.v1.Deployment.sluiceway-example.cache	2026-09-22 10:40:23.867272933 +0000
++++ /tmp/MERGED-2568960456/apps.v1.Deployment.sluiceway-example.cache	2026-09-22 10:40:23.868272936 +0000
+@@ -1,63 +1,63 @@
+ apiVersion: apps/v1
+ kind: Deployment
+ metadata:
+   annotations:
+     deployment.kubernetes.io/revision: "1"
+   creationTimestamp: "2026-09-22T10:40:23Z"
+-  generation: 1
++  generation: 2
+   labels:
+     app.kubernetes.io/name: cache
+   name: cache
+   namespace: sluiceway-example
+   resourceVersion: "650"
+   uid: 30a5cd57-93d7-4cdb-82f5-89856f9a41bf
+ spec:
+   progressDeadlineSeconds: 600
+-  replicas: 1
++  replicas: 3
+   revisionHistoryLimit: 10
+   selector:
+     matchLabels:
+       app.kubernetes.io/name: cache
+   strategy:
+     rollingUpdate:
+       maxSurge: 25%
+       maxUnavailable: 25%
+     type: RollingUpdate
+   template:
+     metadata:
+       labels:
+         app.kubernetes.io/name: cache
+     spec:
+       containers:
+       - args:
+         - --note=CANARY-VALUE
+         image: registry.k8s.io/pause:3.10
+         imagePullPolicy: IfNotPresent
+         name: cache
+         resources: {}
+         terminationMessagePath: /dev/termination-log
+         terminationMessagePolicy: File
+       dnsPolicy: ClusterFirst
+       restartPolicy: Always
+       schedulerName: default-scheduler
+       securityContext: {}
+       terminationGracePeriodSeconds: 30
+ status:
+   conditions:
+   - lastTransitionTime: "2026-09-22T10:40:23Z"
+     lastUpdateTime: "2026-09-22T10:40:23Z"
+     message: Deployment does not have minimum availability.
+     reason: MinimumReplicasUnavailable
+     status: "False"
+     type: Available
+   - lastTransitionTime: "2026-09-22T10:40:23Z"
+     lastUpdateTime: "2026-09-22T10:40:23Z"
+     message: ReplicaSet "cache-76c8bb8996" is progressing.
+     reason: ReplicaSetUpdated
+     status: "True"
+     type: Progressing
+   observedGeneration: 1
+   replicas: 1
+   terminatingReplicas: 0
+   unavailableReplicas: 1
+   updatedReplicas: 1

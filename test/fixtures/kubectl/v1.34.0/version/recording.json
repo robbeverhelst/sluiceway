@@ -1,0 +1,21 @@
+{
+  "scenario": "version",
+  "description": "kubectl version --client, which the version check reads.",
+  "cliVersion": "v1.34.0",
+  "commands": [
+    {
+      "id": "version",
+      "argv": [
+        "kubectl",
+        "version",
+        "--client",
+        "--output=json"
+      ],
+      "cwd": ".",
+      "exitCode": 0,
+      "stdout": "version.stdout",
+      "stderr": "version.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

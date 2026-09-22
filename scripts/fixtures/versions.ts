@@ -23,3 +23,12 @@ export const FIXTURE_HELM_VERSIONS = {
   minimum: { helm: "v3.18.0", diff: "v3.15.11" },
   newest: { helm: "v4.3.0", diff: "v3.15.13" },
 } as const;
+
+// The kubectl versions of test/fixtures/kubectl/ (record 0060): the minimum
+// the adapter supports, and the newest at the time of recording. Each is
+// recorded against a kind cluster of its own minor version. The matrix of the
+// fixtures job in .github/workflows/ci.yml has to agree. A test checks it.
+export const FIXTURE_KUBECTL_VERSIONS = {
+  minimum: "v1.34.0",
+  newest: "v1.37.0",
+} as const;

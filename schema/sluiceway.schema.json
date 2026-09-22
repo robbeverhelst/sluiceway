@@ -170,9 +170,10 @@
             "type": "string",
             "enum": [
               "opentofu",
-              "helm"
+              "helm",
+              "kubectl"
             ],
-            "description": "The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at path. opentofu: a root module. helm: a release in a namespace."
+            "description": "The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at path. opentofu: a root module. helm: a release in a namespace. kubectl: a directory of Kubernetes manifests or a kustomization."
           },
           "environment": {
             "type": "string",
@@ -274,7 +275,7 @@
                 "minLength": 1,
                 "maxLength": 63,
                 "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
-                "description": "helm: The namespace of the release, passed with --namespace to every command."
+                "description": "helm: The namespace of the release, passed with --namespace to every command. kubectl: The namespace of objects that name none, passed with --namespace to every command. Without it, the namespace of the context."
               },
               "chart": {
                 "type": "string",
@@ -296,6 +297,11 @@
                   "minLength": 1
                 },
                 "description": "helm: Values files, relative to the directory of the stack, passed with --values in this order to every command."
+              },
+              "context": {
+                "type": "string",
+                "minLength": 1,
+                "description": "kubectl: The kubeconfig context of the stack, passed with --context to every command. Without it, the current context of the kubeconfig."
               }
             },
             "additionalProperties": false

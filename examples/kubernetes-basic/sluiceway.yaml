@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=../../schema/sluiceway.schema.json
+#
+# Kubernetes manifests have no zero config: a directory of YAML says nothing
+# about which cluster it goes to. Each entry with tool: kubectl declares one
+# stack.
+
+stacks:
+  # A directory of plain manifests, YAML and JSON. Objects without a namespace
+  # go to the one in options. Its stack id is web.
+  - path: web
+    tool: kubectl
+    options:
+      namespace: sluiceway-example
+
+  # A kustomization, which sets the namespace itself. Its stack id is cache.
+  - path: cache
+    tool: kubectl

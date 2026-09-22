@@ -1,0 +1,18 @@
+diff -N -U1000000 /tmp/LIVE-3315231992/v1.Secret.sluiceway-example.web-credentials /tmp/MERGED-2854485875/v1.Secret.sluiceway-example.web-credentials
+--- /tmp/LIVE-3315231992/v1.Secret.sluiceway-example.web-credentials	2026-09-22 10:40:34.490308190 +0000
++++ /tmp/MERGED-2854485875/v1.Secret.sluiceway-example.web-credentials	2026-09-22 10:40:34.490308190 +0000
+@@ -1,13 +1,13 @@
+ apiVersion: v1
+ data:
+-  password: '*** (before)'
++  password: '*** (after)'
+ kind: Secret
+ metadata:
+   creationTimestamp: "2026-09-22T10:40:34Z"
+   labels:
+     app.kubernetes.io/name: web
+   name: web-credentials
+   namespace: sluiceway-example
+   resourceVersion: "705"
+   uid: 1b387bef-4e46-464b-be3e-243be9fd49d0
+ type: Opaque

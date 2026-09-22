@@ -1,0 +1,4 @@
+configmap/web-settings serverside-applied
+deployment.apps/web serverside-applied
+secret/web-credentials serverside-applied
+service/web serverside-applied

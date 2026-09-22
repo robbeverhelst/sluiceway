@@ -1,0 +1,42 @@
+{
+  "scenario": "deploy",
+  "description": "web deployed from the rendered set its preview diffed, the way apply does it.",
+  "cliVersion": "v1.34.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 1,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "diff",
+      "env": {
+        "KUBECTL_EXTERNAL_DIFF": "diff -N -U1000000"
+      }
+    },
+    {
+      "id": "apply",
+      "argv": [
+        "kubectl",
+        "apply",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "apply.stdout",
+      "stderr": "apply.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

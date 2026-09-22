@@ -4,6 +4,8 @@ import { DiscoveryError } from "../core/discovery.ts";
 import type { Stack } from "../core/stack.ts";
 import { discoverHelm } from "./helm/discover.ts";
 import { HELM } from "./helm/options.ts";
+import { discoverKubectl } from "./kubectl/discover.ts";
+import { KUBECTL } from "./kubectl/options.ts";
 import { discoverOpenTofu } from "./opentofu/discover.ts";
 import { OPENTOFU } from "./opentofu/options.ts";
 import { discover as discoverPulumi } from "./pulumi/discover.ts";
@@ -11,12 +13,13 @@ import { discover as discoverPulumi } from "./pulumi/discover.ts";
 // Discovery of every tool, on its own so that the check job reaches files and
 // nothing that starts a tool (record 0042). Pulumi stacks are found from their
 // files, as before. OpenTofu stacks come from `stacks` entries with
-// `tool: opentofu` (record 0053), and Helm releases from entries with
-// `tool: helm` (record 0058). A repo with only Pulumi stacks gets exactly
+// `tool: opentofu` (record 0053), Helm releases from entries with
+// `tool: helm` (record 0058), and Kubernetes manifests from entries with
+// `tool: kubectl` (record 0060). A repo with only Pulumi stacks gets exactly
 // what the Pulumi adapter finds.
 
 // The tools a `stacks` entry may name.
-export const TOOLS = [OPENTOFU, HELM] as const;
+export const TOOLS = [OPENTOFU, HELM, KUBECTL] as const;
 
 export async function discoverAll(root: string, config: Config): Promise<Stack[]> {
   const toolProblems = config.stacks.flatMap((entry, index) => {
@@ -34,13 +37,19 @@ export async function discoverAll(root: string, config: Config): Promise<Stack[]
         ]
       : [];
   });
-  // Both tools' option problems come before either tool's file problems,
-  // so a config problem is always reported as one.
+  // Every tool's option problems come before any tool's file problems, so a
+  // config problem is always reported as one.
   const tofu = tryDiscover(() => discoverOpenTofu(root, config));
   const charts = tryDiscover(() => discoverHelm(root, config));
-  const problems = [...toolProblems, ...tofu.optionProblems, ...charts.optionProblems];
+  const manifests = tryDiscover(() => discoverKubectl(root, config));
+  const problems = [
+    ...toolProblems,
+    ...tofu.optionProblems,
+    ...charts.optionProblems,
+    ...manifests.optionProblems,
+  ];
   if (problems.length > 0) throw new ConfigError(problems.sort(byEntry));
-  const errors = [tofu.error, charts.error].filter((error) => error !== undefined);
+  const errors = [tofu.error, charts.error, manifests.error].filter((error) => error !== undefined);
   const other = errors.find((error) => !(error instanceof DiscoveryError));
   if (other !== undefined) throw other;
   if (errors.length > 0) {
@@ -48,7 +57,7 @@ export async function discoverAll(root: string, config: Config): Promise<Stack[]
       errors.flatMap((error) => (error as DiscoveryError).problems).sort(byEntry),
     );
   }
-  const declared = [...tofu.stacks, ...charts.stacks];
+  const declared = [...tofu.stacks, ...charts.stacks, ...manifests.stacks];
   const discovered = await discoverPulumi(root);
   if (declared.length === 0) return discovered;
   return [...discovered, ...declared].sort(

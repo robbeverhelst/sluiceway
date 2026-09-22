@@ -1,0 +1,57 @@
+{
+  "scenario": "new-stack",
+  "description": "Both stacks before their first deploy, in an empty namespace: every object is a create.",
+  "cliVersion": "v1.37.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 1,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "diff",
+      "env": {
+        "KUBECTL_EXTERNAL_DIFF": "diff -N -U1000000"
+      }
+    },
+    {
+      "id": "kustomize-cache",
+      "argv": [
+        "kubectl",
+        "kustomize",
+        "."
+      ],
+      "cwd": "cache",
+      "exitCode": 0,
+      "stdout": "kustomize-cache.stdout",
+      "stderr": "kustomize-cache.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "diff-cache",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "cache",
+      "exitCode": 1,
+      "stdout": "diff-cache.stdout",
+      "stderr": "diff-cache.stderr",
+      "stdoutFormat": "diff",
+      "env": {
+        "KUBECTL_EXTERNAL_DIFF": "diff -N -U1000000"
+      }
+    }
+  ]
+}

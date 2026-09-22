@@ -3,9 +3,11 @@
 // <out>/<cli version>/<scenario>/. Fixtures are never written by hand (0001).
 // With --tool opentofu it drives examples/opentofu-basic with tofu instead
 // (record 0053), and with --tool helm examples/helm-basic with helm and its
-// diff plugin, against the cluster KUBECONFIG names (record 0058).
+// diff plugin, against the cluster KUBECONFIG names (record 0058), and with
+// --tool kubectl examples/kubernetes-basic with kubectl, against that cluster
+// too, which has to be a kind cluster (record 0060).
 //
-//   bun run record:fixtures [--tool pulumi|opentofu|helm] [--out <dir>]
+//   bun run record:fixtures [--tool pulumi|opentofu|helm|kubectl] [--out <dir>]
 //                           [--work-dir <dir>] [--expect-version v3.229.0]
 //                           [--only <scenario>]
 //
@@ -18,6 +20,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { bundleManifests } from "../src/adapters/kubectl/render.ts";
 import {
   HELM,
   HELM_NAMESPACES,
@@ -25,6 +28,13 @@ import {
   helmEnvironment,
   helmOps,
 } from "./fixtures/helm-scenarios.ts";
+import {
+  KUBECTL,
+  KUBECTL_SCENARIOS,
+  kubectlEnvironment,
+  kubectlOps,
+  RENDERED_SET,
+} from "./fixtures/kubectl-scenarios.ts";
 import {
   OPENTOFU_SCENARIOS,
   openTofuEnvironment,
@@ -82,6 +92,9 @@ interface Tool {
   scenarios: typeof SCENARIOS;
   environment?: RecordOptions["environment"];
   ops?: (document: unknown) => string[];
+  // What the recorder needs for a tool whose plan file it writes itself.
+  planFileName?: string;
+  bundle?: (dir: string) => string;
 }
 
 const TOOLS: Record<string, Tool> = {
@@ -114,6 +127,20 @@ const TOOLS: Record<string, Tool> = {
     environment: helmEnvironment,
     ops: helmOps,
   },
+  kubectl: {
+    name: "kubectl",
+    example: "examples/kubernetes-basic",
+    fixtures: "kubectl",
+    versionArgv: KUBECTL.version,
+    version: (stdout) =>
+      (JSON.parse(stdout || "{}") as { clientVersion?: { gitVersion?: string } }).clientVersion
+        ?.gitVersion ?? "",
+    scenarios: KUBECTL_SCENARIOS,
+    environment: kubectlEnvironment,
+    ops: kubectlOps,
+    planFileName: RENDERED_SET,
+    bundle: bundleManifests,
+  },
 };
 
 const tool = TOOLS[values.tool ?? ""];
@@ -126,6 +153,21 @@ mkdirSync(workDir, { recursive: true });
 if (tool.environment !== undefined) {
   mkdirSync(join(workDir, "plugin-cache"), { recursive: true });
   mkdirSync(join(workDir, "home"), { recursive: true });
+}
+
+// The kubectl scenarios delete and make a namespace. They never run against
+// a cluster that is not a kind cluster made for them.
+if (tool.fixtures === "kubectl") {
+  const context = await run({
+    argv: ["kubectl", "config", "current-context"],
+    cwd: workDir,
+    env: { PATH: process.env.PATH ?? "", KUBECONFIG: process.env.KUBECONFIG ?? "" },
+  });
+  if (context.exitCode !== 0 || !context.stdout.trim().startsWith("kind-")) {
+    throw new Error(
+      "The current context of KUBECONFIG is not a kind cluster. The kubectl scenarios only run against one.",
+    );
+  }
 }
 
 const found = await run({
@@ -181,6 +223,8 @@ for (const scenario of scenarios) {
     parentEnv: process.env,
     runner: run,
     ...(tool.environment === undefined ? {} : { environment: tool.environment }),
+    ...(tool.planFileName === undefined ? {} : { planFileName: tool.planFileName }),
+    ...(tool.bundle === undefined ? {} : { bundle: tool.bundle }),
   });
   const found = checkRecording(
     join(outDir, scenario.name),

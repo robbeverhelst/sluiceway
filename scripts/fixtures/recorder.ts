@@ -21,7 +21,8 @@ export interface RunResult {
 export type Runner = (run: Run) => Promise<RunResult>;
 
 // "jsonl" is one JSON document per line, as the tool streams its events.
-export type StdoutFormat = "json" | "jsonl" | "text";
+// "diff" is text whose ops the tool's own reader finds (kubectl diff).
+export type StdoutFormat = "json" | "jsonl" | "text" | "diff";
 
 export type Step =
   // Replaces text in a file of the copy. The text must be there exactly once.
@@ -33,7 +34,18 @@ export type Step =
   // Writes a file into the scenario's own backend, relative to its root.
   | { kind: "backend"; file: string; content: string }
   // Runs a command to get the stack where the scenario needs it. Not saved.
-  | { kind: "setup"; cwd: string; argv: string[]; env?: Record<string, string> }
+  // With stdoutToPlan, what it printed becomes the plan file, as a rendered
+  // kustomization does for kubectl (record 0060).
+  | {
+      kind: "setup";
+      cwd: string;
+      argv: string[];
+      env?: Record<string, string>;
+      stdoutToPlan?: boolean;
+    }
+  // Writes the plan file the way the adapter does for a directory of
+  // manifests, with RecordOptions.bundle (record 0060).
+  | { kind: "bundle"; cwd: string }
   // Runs a command and saves what it printed.
   | {
       kind: "record";
@@ -45,6 +57,8 @@ export type Step =
       // Variables this one command gets on top of the scenario's environment,
       // such as the workspace an OpenTofu stack selects.
       env?: Record<string, string>;
+      // What it printed also becomes the plan file.
+      stdoutToPlan?: boolean;
     };
 
 // Stands for the path of the plan file in an argument, so that a recording
@@ -96,6 +110,10 @@ export interface RecordOptions {
   runner: Runner;
   // The environment of the tool, built from nothing. Pulumi's when absent.
   environment?: (options: RecordOptions, backend: string) => Record<string, string>;
+  // The name of the plan file, "tfplan" when absent.
+  planFileName?: string;
+  // The plan file of a directory, for the bundle step.
+  bundle?: (dir: string) => string;
 }
 
 export const RECORDING_FILE = "recording.json";
@@ -117,7 +135,7 @@ export async function recordScenario(
 
   const env = (options.environment ?? toolEnvironment)(options, backend);
   const commands: RecordedCommand[] = [];
-  const planFile = join(scenarioWork, "plan", "tfplan");
+  const planFile = join(scenarioWork, "plan", options.planFileName ?? "tfplan");
   mkdirSync(join(planFile, ".."), { recursive: true });
   const argvOf = (argv: string[]) => argv.map((arg) => arg.replace(PLAN_FILE, planFile));
 
@@ -141,6 +159,11 @@ export async function recordScenario(
       const file = join(backend, step.file);
       mkdirSync(join(file, ".."), { recursive: true });
       writeFileSync(file, step.content);
+    } else if (step.kind === "bundle") {
+      if (options.bundle === undefined) {
+        throw new Error(`Scenario "${scenario.name}": this tool has no bundle step.`);
+      }
+      writeFileSync(planFile, options.bundle(join(project, step.cwd)));
     } else if (step.kind === "setup") {
       const result = await options.runner({
         argv: argvOf(step.argv),
@@ -152,6 +175,7 @@ export async function recordScenario(
           `Scenario "${scenario.name}": setup command "${step.argv.join(" ")}" ended with exit code ${result.exitCode}.\n${result.stderr}`,
         );
       }
+      if (step.stdoutToPlan) writeFileSync(planFile, result.stdout);
     } else {
       const result = await options.runner({
         argv: argvOf(step.argv),
@@ -171,6 +195,7 @@ export async function recordScenario(
       writeFileSync(join(target, command.stdout), result.stdout);
       writeFileSync(join(target, command.stderr), result.stderr);
       commands.push(command);
+      if (step.stdoutToPlan) writeFileSync(planFile, result.stdout);
     }
   }
 
@@ -190,6 +215,7 @@ export async function recordScenario(
 export function checkRecording(
   dir: string,
   scenario: Scenario,
+  // Reads the ops of a JSON document, or of the text of a "diff" stdout.
   ops: (document: unknown) => string[] = opsOf,
 ): string[] {
   const name = basename(dir);
@@ -231,7 +257,9 @@ export function checkRecording(
 
     const stdout = readFileSync(join(dir, command.stdout), "utf8");
     let found: string[];
-    if (step.stdout === "json") {
+    if (step.stdout === "diff") {
+      found = ops(stdout);
+    } else if (step.stdout === "json") {
       let document: unknown;
       try {
         document = JSON.parse(stdout);

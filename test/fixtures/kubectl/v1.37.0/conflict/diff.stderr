@@ -1,0 +1,2 @@
+W0922 10:41:17.179756   12767 diff.go:723] Object (apps/v1, Kind=Deployment: web) keeps changing, diffing without lock
+Error from server (Conflict): Apply failed with 1 conflict: conflict with "other-team": .spec.replicas

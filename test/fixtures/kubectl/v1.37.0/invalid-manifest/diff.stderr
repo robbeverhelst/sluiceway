@@ -1,0 +1,2 @@
+error: resource mapping not found for name: "broken" namespace: "" from "/tmp/sluiceway-fixtures/scenarios/invalid-manifest/plan/manifests.yaml": no matches for kind "NoSuchKind" in version "example.com/v1"
+ensure CRDs are installed first

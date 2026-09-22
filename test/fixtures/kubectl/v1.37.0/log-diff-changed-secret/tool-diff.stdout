@@ -1,0 +1,22 @@
+diff -u -N /tmp/LIVE-818201683/v1.ConfigMap.sluiceway-example.web-settings /tmp/MERGED-1936653818/v1.ConfigMap.sluiceway-example.web-settings
+--- /tmp/LIVE-818201683/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 10:42:04.951627314 +0000
++++ /tmp/MERGED-1936653818/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 10:42:04.952627318 +0000
+@@ -1,6 +1,6 @@
+ apiVersion: v1
+ data:
+-  greeting: CANARY-VALUE, hello
++  greeting: CANARY-VALUE, good morning
+   log-level: info
+ kind: ConfigMap
+ metadata:
+diff -u -N /tmp/LIVE-818201683/v1.Secret.sluiceway-example.web-credentials /tmp/MERGED-1936653818/v1.Secret.sluiceway-example.web-credentials
+--- /tmp/LIVE-818201683/v1.Secret.sluiceway-example.web-credentials	2026-09-22 10:42:04.963627361 +0000
++++ /tmp/MERGED-1936653818/v1.Secret.sluiceway-example.web-credentials	2026-09-22 10:42:04.964627365 +0000
+@@ -1,6 +1,6 @@
+ apiVersion: v1
+ data:
+-  password: '*** (before)'
++  password: '*** (after)'
+ kind: Secret
+ metadata:
+   creationTimestamp: "2026-09-22T10:42:04Z"

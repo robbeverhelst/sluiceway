@@ -1,0 +1,23 @@
+{
+  "scenario": "log-diff-changed-secret",
+  "description": "The tool's own diff of a rotated Secret and a new ConfigMap value, for the job log (record 0048).",
+  "cliVersion": "v1.37.0",
+  "commands": [
+    {
+      "id": "tool-diff",
+      "argv": [
+        "kubectl",
+        "diff",
+        "--server-side",
+        "--namespace=sluiceway-example",
+        "-f",
+        "{plan}"
+      ],
+      "cwd": "web",
+      "exitCode": 1,
+      "stdout": "tool-diff.stdout",
+      "stderr": "tool-diff.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

@@ -13,7 +13,8 @@
       "!schema",
       "!test/fixtures/pulumi",
       "!test/fixtures/opentofu",
-      "!test/fixtures/helm"
+      "!test/fixtures/helm",
+      "!test/fixtures/kubectl"
     ]
   },
   "formatter": {

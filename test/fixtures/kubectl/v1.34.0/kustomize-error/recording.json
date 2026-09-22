@@ -1,0 +1,20 @@
+{
+  "scenario": "kustomize-error",
+  "description": "A kustomization that names a file that is not there: kustomize fails.",
+  "cliVersion": "v1.34.0",
+  "commands": [
+    {
+      "id": "kustomize",
+      "argv": [
+        "kubectl",
+        "kustomize",
+        "."
+      ],
+      "cwd": "cache",
+      "exitCode": 1,
+      "stdout": "kustomize.stdout",
+      "stderr": "kustomize.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

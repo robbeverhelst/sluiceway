@@ -1,0 +1,1 @@
+The Deployment "web" is invalid: spec.selector: Invalid value: {"matchLabels":{"app.kubernetes.io/name":"web-2"}}: field is immutable
