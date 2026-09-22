@@ -136,6 +136,17 @@ describe("when GitHub refuses", () => {
     expect(written.skipped).toEqual(["a:dev"]);
   });
 
+  test("a list that fails for another reason stops the writes too, so no page is made twice", async () => {
+    const github = new FakeGitHub();
+    github.listCheckRuns = async () => {
+      throw new FakeGitHubError(502, "Server Error");
+    };
+    const written = await previewPages(github, SHA).write([page("a:dev"), page("b:dev")]);
+    expect(written.refused).toEqual({ message: "Server Error", permission: false });
+    expect(written.skipped).toEqual(["a:dev", "b:dev"]);
+    expect(github.checkRuns(SHA)).toEqual([]);
+  });
+
   test("a refusal for another reason stops the writes and says it is not the permission", async () => {
     const github = new FakeGitHub();
     github.createCheckRun = async () => {

@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import { scan } from "../../src/modes/scan.ts";
 import { renderPreviewPage } from "../../src/render/preview-page.ts";
+import { FakeGitHubError } from "../fake-github/fake-github.ts";
 import {
   change,
   dashboardBody,
@@ -154,6 +155,20 @@ describe("without checks: write", () => {
     expect(dashboardBody(github)).toContain(`· 1 update · [preview](${JOB_URL})`);
     const said = log.lines.find((line) => line.startsWith("No preview page was written"));
     expect(said).toEndWith("Until then it lands on the job log.");
+  });
+});
+
+describe("a refusal that is not about the permission", () => {
+  test("stops the pages for the scan and says what GitHub answered", async () => {
+    const { context, github, log } = harness(tableAdapter(TABLE()));
+    github.createCheckRun = async () => {
+      throw new FakeGitHubError(403, "You have exceeded a secondary rate limit.");
+    };
+    await scan(context);
+    expect(dashboardBody(github)).toContain(`· 1 update · [preview](${SUMMARY_URL})`);
+    expect(log.lines).toContain(
+      'GitHub answered "You have exceeded a secondary rate limit." while the preview pages were written. No more pages are written in this scan, and the preview links of 2 pending stacks land on the summary of the scan.',
+    );
   });
 });
 

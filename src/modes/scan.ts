@@ -42,7 +42,11 @@ import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts
 import type { JobLog } from "../github/job-log.ts";
 import { dashboardUrl, type StepOutputs, writeResultFile } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
-import { type PreviewPages, previewPages } from "../github/preview-pages.ts";
+import {
+  type PreviewPages,
+  type PreviewPageToWrite,
+  previewPages,
+} from "../github/preview-pages.ts";
 import {
   BODY_LIMIT,
   type BudgetOptions,
@@ -895,7 +899,7 @@ async function writePages(
 ): Promise<void> {
   const { log } = context;
   const { links, logDiff } = options;
-  const toWrite = [];
+  const toWrite: PreviewPageToWrite[] = [];
   for (const { id, result } of round) {
     // A stack previewed again takes the page of its newest preview or none.
     urls.delete(id);
@@ -936,7 +940,7 @@ async function writePages(
     );
   } else {
     log.info(
-      `GitHub refused a preview page: "${refused.message}". No more pages are written in this scan, and the preview links of ${plural(written.skipped.length, "pending stack")} land on ${fallBack}.`,
+      `GitHub answered "${refused.message}" while the preview pages were written. No more pages are written in this scan, and the preview links of ${plural(written.skipped.length, "pending stack")} land on ${fallBack}.`,
     );
   }
 }

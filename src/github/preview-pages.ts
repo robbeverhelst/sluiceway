@@ -23,8 +23,9 @@ export interface WrittenPages {
   // Pages that were not tried, because GitHub refused before them.
   skipped: string[];
   // Set when GitHub refused, in this call, in a way that every later write
-  // would meet too. A later call skips every page and does not say it again.
-  // `permission` says the token has no `checks: write`.
+  // would meet too, or the list of the commit's check runs failed. A later
+  // call skips every page and does not say it again. `permission` says the
+  // token has no `checks: write`.
   refused?: { message: string; permission: boolean } | undefined;
 }
 
@@ -80,11 +81,11 @@ export function previewPages(github: GitHubPort, sha: string): PreviewPages {
         try {
           known = new Map((await github.listCheckRuns(sha)).map((run) => [run.name, run]));
         } catch (error) {
-          const stopped = refuse(error, 0);
-          if (stopped) return stopped;
-          for (const { stackId } of pages)
-            written.failed.push({ stackId, message: messageOf(error) });
-          return written;
+          // Without the list no page can be found again, and a create would
+          // add a second page of one name.
+          refused = refusal(error) ?? { message: messageOf(error), permission: false };
+          written.refused = refused;
+          return skipRest(0);
         }
       }
 

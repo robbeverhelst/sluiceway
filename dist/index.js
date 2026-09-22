@@ -55122,12 +55122,9 @@ function previewPages(github, sha) {
         try {
           known = new Map((await github.listCheckRuns(sha)).map((run) => [run.name, run]));
         } catch (error63) {
-          const stopped = refuse(error63, 0);
-          if (stopped)
-            return stopped;
-          for (const { stackId: stackId2 } of pages)
-            written.failed.push({ stackId: stackId2, message: messageOf(error63) });
-          return written;
+          refused = refusal(error63) ?? { message: messageOf(error63), permission: false };
+          written.refused = refused;
+          return skipRest(0);
         }
       }
       for (const [index, { stackId: stackId2, output: output2 }] of pages.entries()) {
@@ -55863,7 +55860,7 @@ async function writePages(context3, pages, round, urls, options) {
   if (refused.permission) {
     log.info(`No preview page was written: GitHub answered "${refused.message}". With \`checks: write\` in the permissions of the scan job, a pending row's preview link lands on a page of its own that shows the stack's diff (record 0050). Until then it lands on ${fallBack}.`);
   } else {
-    log.info(`GitHub refused a preview page: "${refused.message}". No more pages are written in this scan, and the preview links of ${plural2(written.skipped.length, "pending stack")} land on ${fallBack}.`);
+    log.info(`GitHub answered "${refused.message}" while the preview pages were written. No more pages are written in this scan, and the preview links of ${plural2(written.skipped.length, "pending stack")} land on ${fallBack}.`);
   }
 }
 async function writeSummary2(context3, previewed, logDiff, attributed = new Map) {
