@@ -40,3 +40,7 @@ An opt-in list of property names whose values are shown was also rejected for v1
 Research:
 - https://github.com/sluiceway/sluiceway/blob/research/pulumi-cli/docs/research/pulumi-cli.md
 - https://github.com/sluiceway/sluiceway/blob/research/opentofu-adapter-fit/docs/research/opentofu-adapter-fit.md
+
+## Settled while building (slice 5.9)
+
+- The process runner holds at most 128 MB of each stream of one command. 300 resources were 1.5 MB of JSON, so the limit is far past any stack seen and far below what a runner holds. The rest of a stream is dropped, never written to disk, and the result says where it was cut. The command is not stopped for it, so a deploy that prints a lot still ends by itself. A Pulumi preview whose document was cut fails with its own reason, `the tool printed more than the 128 MB Sluiceway holds`, not as output that could not be read. The other adapters read a cut document as output that could not be read, which is true and still a preview failure.

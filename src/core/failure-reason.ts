@@ -16,6 +16,9 @@ export type PreviewFailureReason =
   | { kind: "tool-timed-out" }
   | { kind: "timed-out"; minutes: number }
   | { kind: "unreadable-output" }
+  // The tool printed more than the process runner holds in memory, so its
+  // output is not whole (slice 5.9).
+  | { kind: "output-too-large"; megabytes: number }
   | { kind: "unknown-step" }
   // An error thrown past the adapter: a bug of Sluiceway's own (slice 5.9).
   // The row says so, and the job still goes red.
@@ -48,6 +51,8 @@ export function previewFailureText(reason: PreviewFailureReason): string {
       return "the tool's output could not be read";
     case "unknown-step":
       return "the tool reported a step Sluiceway does not know";
+    case "output-too-large":
+      return `the tool printed more than the ${reason.megabytes} MB Sluiceway holds`;
     case "internal-error":
       return "Sluiceway failed inside itself, which is a bug";
   }

@@ -137,3 +137,54 @@ describe("the time limit", () => {
     });
   });
 });
+
+// Slice 5.9: each stream holds at most so many bytes. The rest is dropped and
+// the result says so; the command is never stopped for it, so a deploy that
+// prints a lot still ends by itself.
+describe("the limit on output held in memory", () => {
+  test("keeps the first bytes of a stream that prints more, and says it was cut", async () => {
+    const result = await runProcess(
+      {
+        argv: ["sh", "-c", "head -c 3000 /dev/zero | tr '\\0' x; echo err >&2"],
+        cwd: dir,
+        env: { PATH },
+      },
+      200,
+      1_000,
+    );
+
+    expect(result).toEqual({
+      status: "exited",
+      exitCode: 0,
+      stdout: "x".repeat(1_000),
+      stderr: "err\n",
+      outputCutAt: 1_000,
+    });
+  });
+
+  test("output under the limit is whole and not marked", async () => {
+    const result = await runProcess(
+      { argv: ["sh", "-c", "echo out"], cwd: dir, env: { PATH } },
+      200,
+      1_000,
+    );
+    expect(result).toEqual({ status: "exited", exitCode: 0, stdout: "out\n", stderr: "" });
+  });
+});
+
+// Slice 5.9: the lines the tool writes to stderr, handed over one by one while
+// it runs, for the job log. stdout is never handed over: it holds values.
+describe("the tool's stderr while it runs", () => {
+  test("each whole line is handed over as it comes, a last line without a newline too", async () => {
+    const seen: string[] = [];
+    const result = await runProcess({
+      argv: ["sh", "-c", "echo value; printf 'one\\ntw' >&2; sleep 0.1; printf 'o\\nthree' >&2"],
+      cwd: dir,
+      env: { PATH },
+      onStderrLine: (line) => seen.push(line),
+    });
+
+    expect(seen).toEqual(["one", "two", "three"]);
+    expect(result).toMatchObject({ stdout: "value\n", stderr: "one\ntwo\nthree" });
+  });
+});

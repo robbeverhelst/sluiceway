@@ -75,6 +75,14 @@ export async function previewWithReferences(
     );
   }
 
+  // A document the runner cut at its limit is not whole (slice 5.9).
+  if (result.outputCutAt !== undefined) {
+    return failed(
+      { kind: "output-too-large", megabytes: Math.floor(result.outputCutAt / 1024 / 1024) },
+      toolLog(result.stderr),
+    );
+  }
+
   const parsed = parsePreview(result.stdout, options.showValues);
   if (!parsed.ok) {
     return failed({ kind: "unreadable-output" }, toolLog(result.stderr), parsed.problems);

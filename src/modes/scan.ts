@@ -15,6 +15,7 @@ import type {
 } from "../adapters/adapter.ts";
 import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
+import { stripAnsi } from "../adapters/pulumi/tool-log.ts";
 import type { Attribution } from "../core/attribution.ts";
 import { suggestedUnrelated } from "../core/check.ts";
 import { applyConfig, type Config, type ConfiguredStack, ignoredStacks } from "../core/config.ts";
@@ -1114,6 +1115,7 @@ async function previewAll(
     const started = startedAt.getTime();
     const options = {
       ...tool,
+      run: liveRun(tool.run, id, log),
       timeoutMinutes: configured.previewTimeout ?? context.previewTimeoutMinutes,
       showValues,
     };
@@ -1193,6 +1195,16 @@ async function previewAll(
     `Previewed ${plural(previewed.length, "stack")} in ${seconds(total)} with a pool of ${context.concurrency}. Added up, the previews took ${seconds(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds(slowest.milliseconds)}.`,
   );
   return [...previewed, ...unpreparedFailures];
+}
+
+// The runner of one stack's previews, which puts each line the tool writes to
+// stderr in the job log while it runs, behind the stack id, since previews
+// run side by side (slice 5.9). The tool's words may reach the job log
+// (record 0022), and stdout, which holds values, never does here. The group of
+// the stack still holds them all once the pool is done.
+function liveRun(run: ProcessRunner, id: string, log: JobLog): ProcessRunner {
+  const prefix = `[${logGroupTitle(id)}]`;
+  return (one) => run({ ...one, onStderrLine: (line) => log.info(`${prefix} ${stripAnsi(line)}`) });
 }
 
 // What a stack with `dependsOn: auto` read (record 0059). A reference to a

@@ -149,6 +149,25 @@ describe("which exit code means that the stack does not exist", () => {
 });
 
 describe("what a recording cannot hold", () => {
+  // Slice 5.9: the runner drops what a stream prints past its limit, so the
+  // document is not whole. That is a reason of its own, not unreadable output.
+  test("a document cut at the runner's limit says the output was too large", async () => {
+    const runner = answering({
+      status: "exited",
+      exitCode: 0,
+      stdout: '{"steps": [',
+      stderr: "",
+      outputCutAt: 128 * 1024 * 1024,
+    });
+
+    expect(await previewWith(NETWORK_DEV, runner)).toEqual({
+      ok: false,
+      reason: { kind: "output-too-large", megabytes: 128 },
+      detail: [],
+      toolLog: "",
+    });
+  });
+
   test("a preview that ran out of time says how long it had", async () => {
     const runner = answering({ status: "timed-out", stdout: "", stderr: "^C\n" });
     const result = await pulumi.preview(NETWORK_DEV, {

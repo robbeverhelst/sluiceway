@@ -126,17 +126,26 @@ describe("the pool (record 0012)", () => {
     expect(rowStates(dashboardBody(github))).toEqual({ "a:prod": "in-sync" });
   });
 
+  // The runner is the job's, with the live stderr lines of slice 5.9 added.
   test("the tool gets the root, the environment and the runner of the job", async () => {
     let seen: unknown;
+    const ran: string[][] = [];
     const adapter = tableAdapter({
       "a:prod": async (options) => {
-        seen = { root: options.root, env: options.env, run: options.run };
+        seen = { root: options.root, env: options.env };
+        await options.run({ argv: ["tool", "preview"], cwd: "a", env: {} });
         return inSync("a:prod");
       },
     });
-    const { context } = harness(adapter);
+    const { context } = harness(adapter, {
+      run: async (run) => {
+        ran.push(run.argv);
+        return { status: "exited", exitCode: 0, stdout: "", stderr: "" };
+      },
+    });
     await scan(context);
-    expect(seen).toEqual({ root: context.root, env: context.env, run: context.run });
+    expect(seen).toEqual({ root: context.root, env: context.env });
+    expect(ran).toEqual([["tool", "preview"]]);
   });
 });
 
@@ -236,6 +245,34 @@ describe("the job result (record 0012)", () => {
     const group = log.groups.find(({ title }) => title.startsWith("a:prod"));
     expect(group?.lines).toContain(
       "TypeError: Cannot read properties of undefined (reading 'steps')",
+    );
+  });
+
+  // Slice 5.9: while a preview runs, each line the tool writes to stderr goes
+  // to the job log at once, with the stack id in front, so stacks that run
+  // side by side can be told apart. The group per stack still comes after.
+  test("the tool's stderr reaches the job log while the preview runs, each line under its stack id", async () => {
+    const adapter = tableAdapter({
+      "a:prod": async (options) => {
+        await options.run({ argv: ["tool"], cwd: ".", env: {} });
+        return inSync("a:prod");
+      },
+    });
+    const { context, log } = harness(adapter, {
+      run: async (run) => {
+        run.onStderrLine?.("\u001b[1mresolving\u001b[0m plugins");
+        run.onStderrLine?.("done");
+        return { status: "exited", exitCode: 0, stdout: "{}", stderr: "" };
+      },
+    });
+
+    await scan(context);
+
+    const at = log.lines.indexOf("[a:prod] resolving plugins");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(log.lines[at + 1]).toBe("[a:prod] done");
+    expect(log.lines.findIndex((line) => line.startsWith("Previewed a:prod in"))).toBeGreaterThan(
+      at,
     );
   });
 

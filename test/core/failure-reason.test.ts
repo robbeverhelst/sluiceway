@@ -52,6 +52,12 @@ describe("why a preview failed, in Sluiceway's own words", () => {
     );
   });
 
+  test("the tool printed more than Sluiceway holds", () => {
+    expect(previewFailureText({ kind: "output-too-large", megabytes: 128 })).toBe(
+      "the tool printed more than the 128 MB Sluiceway holds",
+    );
+  });
+
   test("the tool's output could not be read", () => {
     expect(previewFailureText({ kind: "unreadable-output" })).toBe(
       "the tool's output could not be read",
