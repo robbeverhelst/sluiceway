@@ -1,0 +1,118 @@
+{
+    "config": {
+        "network:token": "[secret]",
+        "network:zone": "dev-a"
+    },
+    "steps": [
+        {
+            "op": "same",
+            "urn": "urn:pulumi:dev::network::pulumi:pulumi:Stack::network-dev",
+            "oldState": {
+                "urn": "urn:pulumi:dev::network::pulumi:pulumi:Stack::network-dev",
+                "custom": false,
+                "type": "pulumi:pulumi:Stack",
+                "outputs": {
+                    "networkName": "net-clever-manatee"
+                },
+                "created": "2026-09-22T08:46:56.682863878Z",
+                "modified": "2026-09-22T08:46:56.682863878Z",
+                "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316",
+                "stackTrace": [
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#588"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#320"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/grpc-ecosystem/grpc-opentracing@v0.0.0-20180507213350-8e809c8a8645/go/otgrpc/server.go#57"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#235"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1247"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#590"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1443"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1858"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1078"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../opt/hostedtoolcache/go/1.26.6/x64/src/runtime/asm_amd64.s#1771"
+                    }
+                ]
+            },
+            "newState": {
+                "urn": "urn:pulumi:dev::network::pulumi:pulumi:Stack::network-dev",
+                "custom": false,
+                "type": "pulumi:pulumi:Stack",
+                "created": "2026-09-22T08:46:56.682863878Z",
+                "modified": "2026-09-22T08:46:56.682863878Z",
+                "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316",
+                "stackTrace": [
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#588"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#320"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/grpc-ecosystem/grpc-opentracing@v0.0.0-20180507213350-8e809c8a8645/go/otgrpc/server.go#57"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#235"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1247"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#590"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1443"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1858"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1078"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../opt/hostedtoolcache/go/1.26.6/x64/src/runtime/asm_amd64.s#1771"
+                    }
+                ]
+            },
+            "detailedDiff": null
+        }
+    ],
+    "duration": 141662873,
+    "changeSummary": {
+        "same": 5
+    }
+}

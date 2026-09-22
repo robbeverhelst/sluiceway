@@ -20,12 +20,18 @@ export interface RunResult {
 
 export type Runner = (run: Run) => Promise<RunResult>;
 
-export type StdoutFormat = "json" | "text";
+// "jsonl" is one JSON document per line, as the tool streams its events.
+export type StdoutFormat = "json" | "jsonl" | "text";
 
 export type Step =
   // Replaces text in a file of the copy. The text must be there exactly once.
   | { kind: "edit"; file: string; find: string; replace: string }
   | { kind: "write"; file: string; content: string }
+  // Deletes a file of the copy, the way a person changes a real object behind
+  // the tool's back. The file must be there.
+  | { kind: "remove"; file: string }
+  // Writes a file into the scenario's own backend, relative to its root.
+  | { kind: "backend"; file: string; content: string }
   // Runs a command to get the stack where the scenario needs it. Not saved.
   | { kind: "setup"; cwd: string; argv: string[]; env?: Record<string, string> }
   // Runs a command and saves what it printed.
@@ -123,6 +129,18 @@ export async function recordScenario(
       const file = join(project, step.file);
       mkdirSync(join(file, ".."), { recursive: true });
       writeFileSync(file, step.content);
+    } else if (step.kind === "remove") {
+      const file = join(project, step.file);
+      if (!existsSync(file)) {
+        throw new Error(
+          `Scenario "${scenario.name}": expected ${step.file} to be there, and it is not.`,
+        );
+      }
+      rmSync(file);
+    } else if (step.kind === "backend") {
+      const file = join(backend, step.file);
+      mkdirSync(join(file, ".."), { recursive: true });
+      writeFileSync(file, step.content);
     } else if (step.kind === "setup") {
       const result = await options.runner({
         argv: argvOf(step.argv),
@@ -191,7 +209,7 @@ export function checkRecording(
       command.cwd !== step.cwd ||
       command.stdoutFormat !== step.stdout ||
       JSON.stringify(command.argv) !== JSON.stringify(step.argv) ||
-      JSON.stringify(command.env) !== JSON.stringify(step.env)
+      JSON.stringify(command.env ?? {}) !== JSON.stringify(step.env ?? {})
     ) {
       problems.push(
         `${where}: the scenario now runs a different command. Record the fixtures again.`,
@@ -209,16 +227,27 @@ export function checkRecording(
     if (step.expect?.exit === "nonzero" && command.exitCode === 0) {
       problems.push(`${where}: expected an exit code other than 0, got 0.`);
     }
-    if (step.stdout !== "json") continue;
+    if (step.stdout === "text") continue;
 
-    let document: unknown;
-    try {
-      document = JSON.parse(readFileSync(join(dir, command.stdout), "utf8"));
-    } catch {
-      problems.push(`${name}/${command.stdout}: expected JSON, and it does not parse.`);
-      continue;
+    const stdout = readFileSync(join(dir, command.stdout), "utf8");
+    let found: string[];
+    if (step.stdout === "json") {
+      let document: unknown;
+      try {
+        document = JSON.parse(stdout);
+      } catch {
+        problems.push(`${name}/${command.stdout}: expected JSON, and it does not parse.`);
+        continue;
+      }
+      found = ops(document);
+    } else {
+      const events = jsonLines(stdout);
+      if (typeof events === "string") {
+        problems.push(`${name}/${command.stdout}: expected one JSON document per line, ${events}.`);
+        continue;
+      }
+      found = events.flatMap(eventOp);
     }
-    const found = ops(document);
     for (const op of step.expect?.ops ?? []) {
       if (found.includes(op)) continue;
       const seen = found.length > 0 ? [...new Set(found)].sort().join(", ") : "none";
@@ -241,6 +270,29 @@ function opsOf(document: unknown): string[] {
   return steps.flatMap((step) =>
     typeof step === "object" && step !== null && typeof step.op === "string" ? [step.op] : [],
   );
+}
+
+// The documents of JSON lines, or what is wrong with them.
+function jsonLines(text: string): unknown[] | string {
+  const lines = text.split("\n");
+  const documents: unknown[] = [];
+  for (const [index, line] of lines.entries()) {
+    if (line.trim() === "") continue;
+    try {
+      documents.push(JSON.parse(line));
+    } catch {
+      return `and line ${index + 1} does not parse`;
+    }
+  }
+  return documents.length === 0 ? "and there is none" : documents;
+}
+
+// The op of an engine event that says what the tool found for one resource.
+function eventOp(event: unknown): string[] {
+  if (typeof event !== "object" || event === null) return [];
+  const outputs = (event as { resOutputsEvent?: { metadata?: { op?: unknown } } }).resOutputsEvent;
+  const op = outputs?.metadata?.op;
+  return typeof op === "string" ? [op] : [];
 }
 
 function replaceOnce(

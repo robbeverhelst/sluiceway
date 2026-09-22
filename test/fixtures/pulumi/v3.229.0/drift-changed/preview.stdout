@@ -1,0 +1,57 @@
+{
+    "config": {
+        "site:pages": "[\"home\",\"about\",\"contact\"]",
+        "site:token": "[secret]"
+    },
+    "steps": [
+        {
+            "op": "same",
+            "urn": "urn:pulumi:prod::site::pulumi:pulumi:Stack::site-prod",
+            "oldState": {
+                "urn": "urn:pulumi:prod::site::pulumi:pulumi:Stack::site-prod",
+                "custom": false,
+                "type": "pulumi:pulumi:Stack",
+                "outputs": {
+                    "pageNames": [
+                        "home-great-tahr",
+                        "about-great-osprey",
+                        "contact-rich-buzzard"
+                    ],
+                    "published": "site published"
+                },
+                "created": "0001-01-01T00:00:00Z",
+                "modified": "0001-01-01T00:00:00Z",
+                "sourcePosition": "project:///node_modules/@pulumi/runtime/stack.ts#37,19",
+                "stackTrace": [
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/runtime/stack.ts#37,19"
+                    },
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/cmd/run/run.ts#601,38"
+                    }
+                ]
+            },
+            "newState": {
+                "urn": "urn:pulumi:prod::site::pulumi:pulumi:Stack::site-prod",
+                "custom": false,
+                "type": "pulumi:pulumi:Stack",
+                "created": "0001-01-01T00:00:00Z",
+                "modified": "0001-01-01T00:00:00Z",
+                "sourcePosition": "project:///node_modules/@pulumi/runtime/stack.ts#37,19",
+                "stackTrace": [
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/runtime/stack.ts#37,19"
+                    },
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/cmd/run/run.ts#601,38"
+                    }
+                ]
+            },
+            "detailedDiff": null
+        }
+    ],
+    "duration": 1879045997,
+    "changeSummary": {
+        "same": 6
+    }
+}

@@ -1,0 +1,30 @@
+Updating (prod):
+
+ ~  pulumi:pulumi:Stack site-prod refreshing (0s) 
+ ~  pulumi:pulumi:Stack site-prod refreshing (0s) 
+ ~  random:index:RandomPet page-contact refreshing (0s) 
+ ~  random:index:RandomPet page-about refreshing (0s) 
+ ~  pulumi-nodejs:dynamic:Resource note refreshing (0s) 
+ ~  random:index:RandomPet page-home refreshing (0s) 
+ ~  command:local:Command publish refreshing (0s) 
+ ~  command:local:Command publish refresh (0.00s) 
+ ~  random:index:RandomPet page-about refresh (0.01s) 
+ ~  random:index:RandomPet page-contact refresh (0.01s) 
+ ~  random:index:RandomPet page-home refresh (0.01s) 
+ ~  pulumi-nodejs:dynamic:Resource note refresh (0.01s) 
+@ updating....
+    pulumi:pulumi:Stack site-prod running 
+    command:local:Command publish  
+    random:index:RandomPet page-about  
+    random:index:RandomPet page-home  
+    random:index:RandomPet page-contact  
+@ updating....
+ ~  pulumi-nodejs:dynamic:Resource note updating (0s) 
+ ~  pulumi-nodejs:dynamic:Resource note updated (0.00s) 
+    pulumi:pulumi:Stack site-prod  
+Resources:
+    ~ 1 updated
+    5 unchanged
+
+Duration: 3s
+

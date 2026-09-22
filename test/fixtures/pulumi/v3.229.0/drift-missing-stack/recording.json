@@ -1,0 +1,29 @@
+{
+  "scenario": "drift-missing-stack",
+  "description": "The drift check of a stack that the backend does not hold.",
+  "cliVersion": "v3.229.0",
+  "commands": [
+    {
+      "id": "drift",
+      "argv": [
+        "pulumi",
+        "refresh",
+        "--preview-only",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "ghost"
+      ],
+      "cwd": "network",
+      "env": {
+        "PULUMI_ENABLE_STREAMING_JSON_PREVIEW": "true"
+      },
+      "exitCode": 6,
+      "stdout": "drift.stdout",
+      "stderr": "drift.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

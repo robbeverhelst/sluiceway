@@ -202,6 +202,131 @@ describe("recording one scenario", () => {
   });
 });
 
+describe("changing things behind the tool's back (slice 4.3)", () => {
+  test("a remove step deletes a file of the copy, and the example project keeps it", async () => {
+    writeFileSync(join(example, "network", "notes.txt"), "managed\n");
+    const { runner } = replay({});
+    await record(
+      {
+        name: "drift",
+        description: "",
+        steps: [{ kind: "remove", file: "network/notes.txt" }],
+      },
+      runner,
+    );
+    expect(existsSync(join(work, "scenarios", "drift", "project", "network", "notes.txt"))).toBe(
+      false,
+    );
+    expect(existsSync(join(example, "network", "notes.txt"))).toBe(true);
+  });
+
+  test("a remove step whose file is not there stops the scenario", async () => {
+    const { runner } = replay({});
+    await expect(
+      record(
+        { name: "drift", description: "", steps: [{ kind: "remove", file: "network/gone.txt" }] },
+        runner,
+      ),
+    ).rejects.toThrow('Scenario "drift": expected network/gone.txt to be there, and it is not.');
+  });
+
+  test("a backend step writes a file into the scenario's own backend", async () => {
+    const { runner } = replay({});
+    await record(
+      {
+        name: "locked",
+        description: "",
+        steps: [{ kind: "backend", file: ".pulumi/locks/one.json", content: "{}\n" }],
+      },
+      runner,
+    );
+    expect(
+      readFileSync(join(work, "scenarios", "locked", "backend", ".pulumi/locks/one.json"), "utf8"),
+    ).toBe("{}\n");
+  });
+
+  test("a recorded command may add variables to the tool's environment, and the recording names them", async () => {
+    const { runs, runner } = replay({});
+    await record(
+      {
+        name: "drift",
+        description: "",
+        steps: [
+          {
+            kind: "record",
+            id: "drift",
+            cwd: "network",
+            argv: PREVIEW,
+            env: { PULUMI_ENABLE_STREAMING_JSON_PREVIEW: "true" },
+            stdout: "jsonl",
+          },
+        ],
+      },
+      runner,
+    );
+    expect(runs[0]?.env.PULUMI_ENABLE_STREAMING_JSON_PREVIEW).toBe("true");
+    expect(runs[0]?.env.PULUMI_SKIP_UPDATE_CHECK).toBe("true");
+    const recording = JSON.parse(readFileSync(join(out, "drift", "recording.json"), "utf8"));
+    expect(recording.commands[0].env).toEqual({ PULUMI_ENABLE_STREAMING_JSON_PREVIEW: "true" });
+  });
+});
+
+describe("checking a recording of JSON lines", () => {
+  const scenario: Scenario = {
+    name: "drift",
+    description: "",
+    steps: [
+      {
+        kind: "record",
+        id: "drift",
+        cwd: "network",
+        argv: PREVIEW,
+        env: { PULUMI_ENABLE_STREAMING_JSON_PREVIEW: "true" },
+        stdout: "jsonl",
+        expect: { exit: "zero", ops: ["delete"] },
+      },
+    ],
+  };
+  const event = (op: string) => JSON.stringify({ resOutputsEvent: { metadata: { op } } });
+
+  async function problemsFor(stdout: string, checked = scenario): Promise<string[]> {
+    await record(scenario, replay({ "pulumi preview": { stdout } }).runner);
+    return checkRecording(join(out, "drift"), checked);
+  }
+
+  test("every line parses and the op the scenario is for is there", async () => {
+    expect(await problemsFor(`${event("same")}\n${event("delete")}\n`)).toEqual([]);
+  });
+
+  test("a line that does not parse", async () => {
+    expect(await problemsFor(`${event("delete")}\nwarning: not JSON\n`)).toEqual([
+      "drift/drift.stdout: expected one JSON document per line, and line 2 does not parse.",
+    ]);
+  });
+
+  test("no line at all is not JSON lines", async () => {
+    expect(await problemsFor("")).toEqual([
+      "drift/drift.stdout: expected one JSON document per line, and there is none.",
+    ]);
+  });
+
+  test("the op the scenario is for is not among the events", async () => {
+    expect(await problemsFor(`${event("same")}\n`)).toEqual([
+      'drift/drift.stdout: expected a step with op "delete", found only: same.',
+    ]);
+  });
+
+  test("a recording made without the variable is stale", async () => {
+    const changed: Scenario = {
+      ...scenario,
+      steps: scenario.steps.map((step) => (step.kind === "record" ? { ...step, env: {} } : step)),
+    };
+    expect(await problemsFor(`${event("delete")}\n`, changed)).toEqual([
+      "drift/drift: the scenario now runs a different command. Record the fixtures again.",
+    ]);
+  });
+});
+
 describe("checking a recording against its scenario", () => {
   const scenario: Scenario = {
     name: "replace",

@@ -25,10 +25,10 @@ function up(cwd: string, stack: string): Step {
 // No --json: on `up` that streams engine events, which hold every property
 // value. The stack outputs are kept out of what the tool prints, because an
 // output can be a secret (record 0021).
-function deploy(cwd: string, stack: string, expect: Expectation): Step {
+function deploy(cwd: string, stack: string, expect: Expectation, id = "up"): Step {
   return {
     kind: "record",
-    id: "up",
+    id,
     cwd,
     argv: [
       "pulumi",
@@ -70,7 +70,108 @@ function toolDiff(cwd: string, stack: string, expect: Expectation): Step {
   };
 }
 
+// The drift check as the adapter runs it (record 0055): a refresh that only
+// previews, and changes neither the state nor anything real. The tool's one
+// JSON document lists a property that drifted as a plain "refresh" step with no
+// paths, and only its change summary counts it, on both CLI versions. Its
+// engine events name the resource and the op, so the check asks for those.
+const STREAM = { PULUMI_ENABLE_STREAMING_JSON_PREVIEW: "true" };
+
+function driftCheck(
+  cwd: string,
+  stack: string,
+  expect: Expectation,
+  id = "drift",
+  // A check that fails may print no JSON at all.
+  stdout: "jsonl" | "text" = "jsonl",
+): Step {
+  return {
+    kind: "record",
+    id,
+    cwd,
+    argv: ["pulumi", "refresh", "--preview-only", "--json", ...QUIET, "--stack", stack],
+    env: STREAM,
+    stdout,
+    expect,
+  };
+}
+
+// The deploy of a row whose diff hash covers drift (record 0055): the same
+// command line as the deploy, and --refresh, so the tool reads what is real
+// first and then puts it back as the code says.
+function repair(cwd: string, stack: string, expect: Expectation): Step {
+  return {
+    kind: "record",
+    id: "up",
+    cwd,
+    argv: [
+      "pulumi",
+      "up",
+      "--yes",
+      "--skip-preview",
+      "--refresh",
+      "--suppress-outputs",
+      ...QUIET,
+      "--stack",
+      stack,
+    ],
+    stdout: "text",
+    expect,
+  };
+}
+
 const NETWORK = "network/Pulumi.yaml";
+
+// A file the network stack manages, written by its deploy. Removing it is a
+// real object changed behind the tool's back.
+const NOTES = "network/out/notes.txt";
+
+// A resource of site/ whose provider reads the real file back on a refresh, so
+// a changed file is drift on a property and not a resource that is gone. The
+// local provider reports a file with other content as gone. The example
+// itself does not change: the scenario adds this.
+const SITE_NOTE = `
+
+// Added by the fixture recorder: a file that the stack manages, read back on
+// a refresh.
+const noteProvider: pulumi.dynamic.ResourceProvider = {
+  async create(inputs) {
+    const fs = require("node:fs");
+    fs.mkdirSync(require("node:path").dirname(inputs.path), { recursive: true });
+    fs.writeFileSync(inputs.path, inputs.text);
+    return { id: inputs.path, outs: inputs };
+  },
+  async diff(_id, olds, news) {
+    return { changes: olds.text !== news.text };
+  },
+  async update(_id, _olds, news) {
+    require("node:fs").writeFileSync(news.path, news.text);
+    return { outs: news };
+  },
+  async read(id, props) {
+    const fs = require("node:fs");
+    if (!fs.existsSync(id)) return { id: "", props: {} };
+    return { id, props: { ...props, text: fs.readFileSync(id, "utf8") } };
+  },
+};
+
+class Note extends pulumi.dynamic.Resource {
+  constructor(name: string, args: { path: string; text: string }) {
+    super(noteProvider, name, args);
+  }
+}
+
+new Note("note", { path: \`\${process.cwd()}/out/note.txt\`, text: "CANARY-VALUE" });
+`;
+
+// A lock on network:dev as a deploy that is still running holds it, in the
+// file backend's own place and form. Whatever takes the lock fails while it is
+// there.
+const HELD_LOCK = {
+  kind: "backend",
+  file: ".pulumi/locks/organization/network/dev/0f5e8a2c-9b1d-4c3e-8f7a-6d5c4b3a2918.json",
+  content: `${JSON.stringify({ pid: 4242, username: "deployer", hostname: "runner", timestamp: "2026-09-22T08:00:00Z" })}\n`,
+} as const satisfies Step;
 
 function edit(find: string, replace: string, file = NETWORK): Step {
   return { kind: "edit", file, find, replace };
@@ -480,6 +581,59 @@ ${OUTPUTS}`,
       edit("  network:zone: dev-a\n", "", "network/Pulumi.dev.yaml"),
       toolDiff("network", "dev", { exit: "nonzero" }),
     ],
+  },
+  {
+    name: "drift-gone",
+    description:
+      "A deployed stack whose managed file was removed behind the tool's back: the drift check before and after, the preview, which sees nothing, and the deploy with --refresh that puts the file back.",
+    steps: [
+      init("network", "dev"),
+      up("network", "dev"),
+      driftCheck("network", "dev", { exit: "zero" }, "drift-before"),
+      { kind: "remove", file: NOTES },
+      preview("network", "dev", { exit: "zero" }),
+      driftCheck("network", "dev", { exit: "zero", ops: ["delete"] }),
+      repair("network", "dev", { exit: "zero" }),
+      driftCheck("network", "dev", { exit: "zero" }, "drift-after"),
+    ],
+  },
+  {
+    name: "drift-changed",
+    description:
+      "The TypeScript program of site/ with a resource that reads its file back, deployed, then the file edited by hand: a property drifted. The preview sees nothing, the drift check names the resource, and the deploy with --refresh writes the file back.",
+    steps: [
+      { kind: "setup", cwd: "site", argv: ["npm", "ci", "--no-audit", "--no-fund"] },
+      edit(
+        "export const published = publish.stdout;\n",
+        `export const published = publish.stdout;\n${SITE_NOTE}`,
+        "site/index.ts",
+      ),
+      init("site", "prod"),
+      up("site", "prod"),
+      { kind: "write", file: "site/out/note.txt", content: "CANARY-VALUE, edited by hand" },
+      preview("site", "prod", { exit: "zero" }),
+      driftCheck("site", "prod", { exit: "zero", ops: ["update"] }),
+      repair("site", "prod", { exit: "zero" }),
+      driftCheck("site", "prod", { exit: "zero" }, "drift-after"),
+    ],
+  },
+  {
+    name: "drift-locked",
+    description:
+      "The drift check while a deploy holds the stack lock of the file backend. From v3.229.0 it takes no lock and runs. A deploy in the same place fails on the lock, which shows the lock is real.",
+    steps: [
+      init("network", "dev"),
+      up("network", "dev"),
+      { kind: "remove", file: NOTES },
+      HELD_LOCK,
+      driftCheck("network", "dev", { exit: "zero", ops: ["delete"] }),
+      deploy("network", "dev", { exit: "nonzero" }, "up-locked"),
+    ],
+  },
+  {
+    name: "drift-missing-stack",
+    description: "The drift check of a stack that the backend does not hold.",
+    steps: [driftCheck("network", "ghost", { exit: "nonzero" }, "drift", "text")],
   },
   {
     name: "many-resources",

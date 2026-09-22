@@ -1,0 +1,90 @@
+{
+  "scenario": "drift-changed",
+  "description": "The TypeScript program of site/ with a resource that reads its file back, deployed, then the file edited by hand: a property drifted. The preview sees nothing, the drift check names the resource, and the deploy with --refresh writes the file back.",
+  "cliVersion": "v3.263.0",
+  "commands": [
+    {
+      "id": "preview",
+      "argv": [
+        "pulumi",
+        "preview",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "prod"
+      ],
+      "cwd": "site",
+      "exitCode": 0,
+      "stdout": "preview.stdout",
+      "stderr": "preview.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "drift",
+      "argv": [
+        "pulumi",
+        "refresh",
+        "--preview-only",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "prod"
+      ],
+      "cwd": "site",
+      "env": {
+        "PULUMI_ENABLE_STREAMING_JSON_PREVIEW": "true"
+      },
+      "exitCode": 0,
+      "stdout": "drift.stdout",
+      "stderr": "drift.stderr",
+      "stdoutFormat": "jsonl"
+    },
+    {
+      "id": "up",
+      "argv": [
+        "pulumi",
+        "up",
+        "--yes",
+        "--skip-preview",
+        "--refresh",
+        "--suppress-outputs",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "prod"
+      ],
+      "cwd": "site",
+      "exitCode": 0,
+      "stdout": "up.stdout",
+      "stderr": "up.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "drift-after",
+      "argv": [
+        "pulumi",
+        "refresh",
+        "--preview-only",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "prod"
+      ],
+      "cwd": "site",
+      "env": {
+        "PULUMI_ENABLE_STREAMING_JSON_PREVIEW": "true"
+      },
+      "exitCode": 0,
+      "stdout": "drift-after.stdout",
+      "stderr": "drift-after.stderr",
+      "stdoutFormat": "jsonl"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "scenario": "drift-locked",
+  "description": "The drift check while a deploy holds the stack lock of the file backend. From v3.229.0 it takes no lock and runs. A deploy in the same place fails on the lock, which shows the lock is real.",
+  "cliVersion": "v3.263.0",
+  "commands": [
+    {
+      "id": "drift",
+      "argv": [
+        "pulumi",
+        "refresh",
+        "--preview-only",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "env": {
+        "PULUMI_ENABLE_STREAMING_JSON_PREVIEW": "true"
+      },
+      "exitCode": 0,
+      "stdout": "drift.stdout",
+      "stderr": "drift.stderr",
+      "stdoutFormat": "jsonl"
+    },
+    {
+      "id": "up-locked",
+      "argv": [
+        "pulumi",
+        "up",
+        "--yes",
+        "--skip-preview",
+        "--suppress-outputs",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "exitCode": 1,
+      "stdout": "up-locked.stdout",
+      "stderr": "up-locked.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+error: the stack is currently locked by 1 lock(s). Either wait for the other process(es) to end or delete the lock file with `pulumi cancel`.
+  file:///tmp/sluiceway-fixtures/scenarios/drift-locked/backend/.pulumi/locks/organization/network/dev/0f5e8a2c-9b1d-4c3e-8f7a-6d5c4b3a2918.json?no_tmp_dir=true: created by deployer@runner (pid 4242) at 2026-09-22T08:00:00Z
