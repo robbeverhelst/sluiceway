@@ -16,13 +16,14 @@ import { harness, repoRoot } from "../../modes/harness.ts";
 import { rememberingOutputs } from "../../modes/outputs-harness.ts";
 import { annex, RESULT, rows } from "../canary-surfaces.ts";
 import { FIXTURES, ROOT, readRecording, replay, scenarioNames, VERSIONS } from "./replay.ts";
-import { WEB, WORKER } from "./stacks.ts";
+import { WEB, WEB_NEW_NAMESPACE, WORKER } from "./stacks.ts";
 
-// The canary test of record 0021, for Helm (record 0058). What helm renders
+// The canary test of record 0021, for Helm (records 0058 and 0069). What helm renders
 // holds every value in plain text: CANARY-VALUE in a ConfigMap and
 // CANARY-SECRET in a Secret. The diff plugin's JSON holds the old and new
 // value of every changed path, and for a Secret its own stand-in, which still
-// tells the length of the value. Every recording goes through the adapter,
+// tells the length of the value. The three-way diff of the drift check holds
+// the values of the live objects too. Every recording goes through the adapter,
 // the core and every renderer, and nothing that comes out may hold a value or
 // the stand-in. This test stays in the suite forever.
 
@@ -34,12 +35,20 @@ function leaks(text: string): string[] {
 
 type Command = ReturnType<typeof readRecording>["commands"][number];
 
-const isDiff = (command: Command) =>
+const isStructured = (command: Command) =>
   command.argv[1] === "diff" && command.argv.includes("--output=structured");
+const isThreeWay = (command: Command) =>
+  isStructured(command) && command.argv.includes("--three-way-merge");
+const isDiff = (command: Command) => isStructured(command) && !isThreeWay(command);
 const isToolDiff = (command: Command) =>
   command.argv[1] === "diff" && command.argv.includes("--output=diff");
 
-const stackOf = (command: Command): Stack => (command.cwd === "worker" ? WORKER : WEB);
+const stackOf = (command: Command): Stack =>
+  command.cwd === "worker"
+    ? WORKER
+    : command.argv.includes("--namespace=sluiceway-new")
+      ? WEB_NEW_NAMESPACE
+      : WEB;
 
 describe("the check itself", () => {
   // Otherwise the tests below could pass on recordings that hold nothing.
@@ -52,6 +61,8 @@ describe("the check itself", () => {
       expect(leaks(secret)).toEqual(["bytes)", "++++++++"]);
       const update = readFileSync(join(dir, "mixed", "diff.stdout"), "utf8");
       expect(update).toContain("color=green");
+      const live = readFileSync(join(dir, "drift", "three-way.stdout"), "utf8");
+      expect(leaks(live)).toEqual([CANARY_VALUE, "CANARY"]);
     });
   }
 });
@@ -102,15 +113,32 @@ for (const version of VERSIONS) {
           if (result.ok && result.plan !== undefined) {
             expect(leaks(JSON.stringify(result.plan))).toEqual([]);
             if (renders > 1) {
-              const applied = await helm.apply(stack, options, result.plan);
+              // A deploy after a drift check puts the drift back (record 0069).
+              const repairDrift = commands.some(isThreeWay);
+              const applied = await helm.apply(stack, options, result.plan, { repairDrift });
               expect(leaks(JSON.stringify(applied))).toEqual([]);
             }
             await result.plan.dispose();
           }
         }
+        // The drift check reads a plain diff and a three-way one, whose values
+        // are the live objects', and hands over none (record 0069).
+        const drifts = replay(version, scenario);
+        for (const command of commands.filter(isThreeWay)) {
+          const stack = stackOf(command);
+          const result = await helm.detectDrift?.(stack, {
+            ...options,
+            run: drifts.run,
+            showValues: ["data.*", "spec.ports[0].targetPort"],
+          });
+          const drift = result?.ok ? result.drift : [];
+          const diff = { stackId: stackId(stack), changes: [], drift };
+          const made = canonicalDiff(diff) + rows(diff) + annex(diff);
+          expect(leaks(JSON.stringify(result) + made)).toEqual([]);
+        }
         // What the schema lets through holds values only where the fold
         // reads them, and the fold hands over none.
-        for (const command of diffs.filter((one) => one.exitCode === 0)) {
+        for (const command of commands.filter((one) => isStructured(one) && one.exitCode === 0)) {
           const stdout = readFileSync(join(FIXTURES, version, scenario, command.stdout), "utf8");
           const parsed = parseEntries(stdout);
           if (!parsed.ok) throw new Error("a recorded diff that does not parse");

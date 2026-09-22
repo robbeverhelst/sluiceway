@@ -299,7 +299,8 @@ describe("a preview that does not end well", () => {
         chart: "oci://registry.example/charts/ingress-nginx",
         version: "4.11.3",
         valuesFiles: [],
-        dependencies: false,
+        createNamespace: false,
+        builds: [],
       },
     };
     await helm.preview(remote, options(run));

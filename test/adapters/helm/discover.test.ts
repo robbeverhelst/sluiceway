@@ -7,10 +7,11 @@ import { ConfigError, parseConfig } from "../../../src/core/config.ts";
 import { DiscoveryError } from "../../../src/core/discovery.ts";
 import { WEB, WORKER } from "./stacks.ts";
 
-// Helm discovery (record 0058): no zero config. A release in a namespace is a
-// stack when a `stacks` entry names it with `tool: helm`, and discovery checks
-// from the files alone that the entry can work. It never starts the tool and
-// never reaches a cluster.
+// Helm discovery (records 0058 and 0069): no zero config. A release in a
+// namespace is a stack when a `stacks` entry names it with `tool: helm`, and
+// discovery checks from the files alone that the entry can work, and follows
+// the local charts its chart depends on. It never starts the tool and never
+// reaches a cluster.
 
 function repo(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), "sluiceway-helm-"));
@@ -33,6 +34,22 @@ async function problems(files: Record<string, string>, config: string): Promise<
     throw error;
   }
   throw new Error("Expected discovery to fail.");
+}
+
+// A Chart.yaml with these dependencies, each a name and a repository.
+function chart(name: string, ...dependencies: [string, string][]): string {
+  return [
+    "apiVersion: v2",
+    `name: ${name}`,
+    "version: 0.1.0",
+    ...(dependencies.length === 0 ? [] : ["dependencies:"]),
+    ...dependencies.flatMap(([dependency, repository]) => [
+      `  - name: ${dependency}`,
+      "    version: 0.1.0",
+      `    repository: ${repository}`,
+    ]),
+    "",
+  ].join("\n");
 }
 
 const CHART = { "charts/web/Chart.yaml": "apiVersion: v2\nname: web\nversion: 0.1.0\n" };
@@ -67,8 +84,9 @@ describe("an entry with tool: helm", () => {
           namespace: "shop",
           chart: "../../charts/web",
           valuesFiles: ["values.yaml"],
+          createNamespace: false,
           chartDir: "charts/web",
-          dependencies: false,
+          builds: [],
         },
       },
     ]);
@@ -77,11 +95,69 @@ describe("an entry with tool: helm", () => {
   test("a chart with dependencies needs them built first", async () => {
     const files = {
       ...FILES,
-      "charts/web/Chart.yaml":
-        "apiVersion: v2\nname: web\nversion: 0.1.0\ndependencies:\n  - name: db\n    version: 1.0.0\n    repository: file://../db\n",
+      "charts/web/Chart.yaml": chart("web", ["db", "file://../db"]),
+      "charts/db/Chart.yaml": chart("db"),
     };
     const [stack] = await discover(files, entry(WEB_OPTIONS));
-    expect(stack?.options.dependencies).toBe(true);
+    expect(stack?.options.builds).toEqual([{ chart: "charts/web", level: 1 }]);
+  });
+
+  test("a chart whose dependencies come from a repository is built, at level 0", async () => {
+    const files = {
+      ...FILES,
+      "charts/web/Chart.yaml": chart("web", ["redis", "oci://registry.example/charts"]),
+    };
+    const [stack] = await discover(files, entry(WEB_OPTIONS));
+    expect(stack?.options.builds).toEqual([{ chart: "charts/web", level: 0 }]);
+  });
+
+  test("a local dependency with dependencies of its own is built first, down the whole tree", async () => {
+    const files = {
+      ...FILES,
+      "charts/web/Chart.yaml": chart("web", ["api", "file://../api"], ["ui", "file://../ui"]),
+      "charts/api/Chart.yaml": chart("api", ["base", "file://../base"]),
+      "charts/ui/Chart.yaml": chart("ui"),
+      "charts/base/Chart.yaml": chart("base", ["redis", "https://charts.example"]),
+    };
+    const [stack] = await discover(files, entry(WEB_OPTIONS));
+    expect(stack?.options.builds).toEqual([
+      { chart: "charts/base", level: 0 },
+      { chart: "charts/api", level: 1 },
+      { chart: "charts/web", level: 2 },
+    ]);
+  });
+
+  test("a subchart kept in the chart's charts/ directory is left as the repo holds it", async () => {
+    const files = {
+      ...FILES,
+      "charts/web/charts/cache/Chart.yaml": chart("cache", ["redis", "https://charts.example"]),
+    };
+    const [stack] = await discover(files, entry(WEB_OPTIONS));
+    expect(stack?.options.builds).toEqual([]);
+  });
+
+  test("a local dependency discovery cannot follow is left to helm's build, which fails for that stack alone", async () => {
+    const files = {
+      ...FILES,
+      "charts/web/Chart.yaml": chart(
+        "web",
+        ["gone", "file://../gone"],
+        ["far", "file://../../../far"],
+        ["api", "file://../api"],
+      ),
+      "charts/api/Chart.yaml": chart("api", ["web", "file://../web/"], ["bad", "file://../bad"]),
+      "charts/bad/Chart.yaml": "dependencies: [\n",
+    };
+    const [stack] = await discover(files, entry(WEB_OPTIONS));
+    expect(stack?.options.builds).toEqual([
+      { chart: "charts/api", level: 0 },
+      { chart: "charts/web", level: 1 },
+    ]);
+  });
+
+  test("createNamespace makes the deploy create the namespace", async () => {
+    const [stack] = await discover(FILES, entry([...WEB_OPTIONS, "createNamespace: true"]));
+    expect(stack?.options.createNamespace).toBe(true);
   });
 
   test("a chart reference with its exact version", async () => {
@@ -101,7 +177,8 @@ describe("an entry with tool: helm", () => {
           chart: "oci://registry.example/charts/ingress-nginx",
           version: "4.11.3",
           valuesFiles: [],
-          dependencies: false,
+          createNamespace: false,
+          builds: [],
         },
       },
     ]);
@@ -146,7 +223,7 @@ describe("options that cannot work are config problems", () => {
 
   test("an unknown option names the known ones", async () => {
     expect(await problems(FILES, entry([...WEB_OPTIONS, "atomic: false"]))).toEqual([
-      'stacks[0].options: unknown option "atomic". Known options for helm: release, namespace, chart, version, valuesFiles.',
+      'stacks[0].options: unknown option "atomic". Known options for helm: release, namespace, chart, version, valuesFiles, createNamespace.',
     ]);
   });
 
@@ -180,6 +257,12 @@ describe("options that cannot work are config problems", () => {
         entry(["release: web", "namespace: shop", "chart: bitnami/nginx", 'version: "^18.0.0"']),
       ),
     ).toEqual(["stacks[0].options.version: expected an exact chart version, such as 1.2.3."]);
+  });
+
+  test("createNamespace is true or false", async () => {
+    expect(await problems(FILES, entry([...WEB_OPTIONS, "createNamespace: yes please"]))).toEqual([
+      "stacks[0].options.createNamespace: expected true or false.",
+    ]);
   });
 
   test("a local chart with a version", async () => {

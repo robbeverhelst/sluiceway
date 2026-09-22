@@ -1,8 +1,10 @@
 import { z } from "zod";
 
-// The named options of a Helm stack (records 0015 and 0058). Each is applied
-// the same way to the scan's preview, the fresh preview of `apply`, the render
-// the deploy is held to, and the deploy.
+// The named options of a Helm stack (records 0015, 0058 and 0069). Each is
+// applied the same way to the scan's preview, the fresh preview of `apply`,
+// the render the deploy is held to, and the deploy. createNamespace is the
+// one that reaches only the deploy: the diff and the render work without the
+// namespace.
 const text = z.string().min(1);
 
 // Helm's own rule for a release name, which also keeps a name from reading as
@@ -42,19 +44,38 @@ export const helmOptionsSchema = z.strictObject({
       "Values files, relative to the directory of the stack, passed with --values in this order to every command.",
     )
     .default([]),
+  createNamespace: z
+    .boolean()
+    .describe(
+      "Create the namespace of the release when it is not there, with --create-namespace on the deploy. The preview works without it.",
+    )
+    .default(false),
 });
 
 export type HelmOptions = z.output<typeof helmOptionsSchema>;
 
 // What a Helm stack carries in its options bag. `tool` is how the other
 // adapters' neighbours tell it apart. Discovery adds where a local chart
-// lives and whether it has dependencies to build. Only the adapters read it
-// (record 0006).
+// lives and which charts need their dependencies built. Only the adapters
+// read it (record 0006).
 export interface HelmStackOptions extends HelmOptions {
   tool: "helm";
   // The directory of a local chart, relative to the repo root.
   chartDir?: string;
-  dependencies: boolean;
+  // The local charts to run `helm dependency build` in, the stack's own chart
+  // and the local charts it depends on, down the whole tree (record 0069).
+  builds: ChartBuild[];
+}
+
+// A chart that lists dependencies, and how far it sits from the bottom of the
+// tree of local charts: 0 for a chart that depends on no local chart, and one
+// more than the highest of the local charts it depends on. It depends on the
+// chart alone, never on the stack, so the builds of every stack go in one
+// order: lowest level first.
+export interface ChartBuild {
+  // Relative to the repo root.
+  chart: string;
+  level: number;
 }
 
 export const HELM = "helm";
@@ -97,6 +118,8 @@ export function parseHelmOptions(
       }
       const [name] = issue.path;
       const where = `${at}${issue.path.map((part) => (typeof part === "number" ? `[${part}]` : `.${String(part)}`)).join("")}`;
+      // It has a default, so it is never missing.
+      if (name === "createNamespace") return [`${where}: expected true or false.`];
       if (issue.code === "invalid_type" && issue.input === undefined) {
         return [`${where}: required for tool: helm.`];
       }

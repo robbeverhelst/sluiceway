@@ -37,7 +37,8 @@ export async function checkVersion(context: ToolContext, _stacks: Stack[]): Prom
       `Could not start helm. ${NEEDS} on PATH and does not install it. Add a workflow step that installs helm before the step that runs Sluiceway.`,
     );
   }
-  const found = helm.status === "exited" && helm.exitCode === 0 ? read(helm.stdout) : undefined;
+  const found =
+    helm.status === "exited" && helm.exitCode === 0 ? readVersion(helm.stdout) : undefined;
   if (found === undefined) {
     throw new ToolVersionError(
       `"${versionCommand().join(" ")}" did not print a version Sluiceway can read. ${NEEDS}. The job log holds what the tool printed.`,
@@ -53,7 +54,7 @@ export async function checkVersion(context: ToolContext, _stacks: Stack[]): Prom
 
   const plugin = await run(pluginVersionCommand());
   const diff =
-    plugin.status === "exited" && plugin.exitCode === 0 ? read(plugin.stdout) : undefined;
+    plugin.status === "exited" && plugin.exitCode === 0 ? readVersion(plugin.stdout) : undefined;
   if (diff === undefined) {
     throw new ToolVersionError(
       `The helm diff plugin did not say which version it is. ${NEEDS_DIFF} and does not install it. Add a workflow step that runs helm plugin install https://github.com/databus23/helm-diff before the step that runs Sluiceway.`,
@@ -67,7 +68,9 @@ export async function checkVersion(context: ToolContext, _stacks: Stack[]): Prom
   }
 }
 
-function read(stdout: string): { text: string; numbers: number[] } | undefined {
+// What `helm version --template={{.Version}}` or `helm diff version` printed,
+// as a version. The deploy reads the major version with it too (record 0069).
+export function readVersion(stdout: string): { text: string; numbers: number[] } | undefined {
   const trimmed = stdout.trim();
   const found = VERSION.exec(trimmed);
   if (found === null) return undefined;

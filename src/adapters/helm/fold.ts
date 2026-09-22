@@ -47,9 +47,7 @@ export function foldEntries(
     }
     const type = typeOf(entry);
     const where = entry.namespace ?? "";
-    // The plugin keys an object by its namespace, name, kind and API group,
-    // never the API version, so the address does too.
-    const address = `${type}/${where}/${entry.name}`;
+    const address = addressOf(entry);
     const earlier = firstAt.get(address);
     if (earlier !== undefined) {
       unreadable.push(
@@ -78,6 +76,12 @@ export function foldEntries(
   if (unknown.length > 0) return { ok: false, reason: "unknown-step", detail: unknown };
   changes.sort((a, b) => byCodeUnit(a.address, b.address));
   return { ok: true, changes };
+}
+
+// The plugin keys an object by its namespace, name, kind and API group, never
+// the API version, so the address does too.
+export function addressOf(entry: Entry): string {
+  return `${typeOf(entry)}/${entry.namespace ?? ""}/${entry.name}`;
 }
 
 // The kind, with the API group behind it the way kubectl writes a resource,

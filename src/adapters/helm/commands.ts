@@ -1,7 +1,7 @@
 import type { HelmStackOptions } from "./options.ts";
 
 // The command lines of the Helm adapter, checked against helm v3.18 and v4.3
-// and the diff plugin's source at v3.15.13 (record 0058). Nothing but these
+// and the diff plugin's source at v3.15.13 (records 0058 and 0069). Nothing but these
 // reaches the tool: there are no free-form arguments (record 0015), and the
 // named options are the only things that change a command line.
 //
@@ -15,10 +15,14 @@ import type { HelmStackOptions } from "./options.ts";
 // - `--output=structured` on the diff: the plugin's JSON with the path of
 //   every changed field (its README, "Structured JSON output"). Its plain
 //   `json` output names objects and no paths.
-// - `--atomic` on the deploy: a failed upgrade is rolled back, and it waits
-//   until the objects are ready. Helm 4 calls it `--rollback-on-failure` and
-//   keeps `--atomic` as a deprecated name for the same thing.
+// - `--rollback-on-failure` on the deploy with Helm 4, `--atomic` with Helm 3:
+//   a failed upgrade is rolled back, and it waits until the objects are
+//   ready. Helm 4 renamed the flag and keeps `--atomic` as a deprecated name
+//   that prints a warning. Helm 3, up to v3.22, knows only `--atomic`.
 // - `--hide-notes` on the deploy: a chart's NOTES.txt may print a value.
+// - `--three-way-merge --no-hooks` on the drift check: the plugin compares
+//   the chart with the live objects, and leaves out hooks, which every deploy
+//   makes anew and which a hook that deletes itself leaves no object of.
 
 export const HELM = "helm";
 
@@ -56,16 +60,61 @@ export function renderCommand(options: HelmStackOptions): string[] {
   return [HELM, "template", ...release(options), "--dry-run=server", ...values(options)];
 }
 
-export function deployCommand(options: HelmStackOptions): string[] {
+// The drift check's second diff (record 0069): the plugin merges the chart
+// into each live object the way a deploy does, and diffs the live object
+// against that.
+export function threeWayDiffCommand(options: HelmStackOptions): string[] {
+  return [
+    HELM,
+    "diff",
+    "upgrade",
+    ...release(options),
+    "--install",
+    "--reset-values",
+    "--dry-run=server",
+    "--three-way-merge",
+    "--no-hooks",
+    "--output=structured",
+    "--no-color",
+    ...values(options),
+  ];
+}
+
+// What a deploy's command line depends on besides the options (record 0069).
+export interface DeployFlags {
+  // The major version of helm.
+  major: number;
+  // Only when the deploy puts drift back on a release that Helm 4 applies
+  // server-side: a field another manager changed is then taken back.
+  forceConflicts: boolean;
+}
+
+export function deployCommand(options: HelmStackOptions, flags: DeployFlags): string[] {
   return [
     HELM,
     "upgrade",
     ...release(options),
     "--install",
     "--reset-values",
-    "--atomic",
+    flags.major >= 4 ? "--rollback-on-failure" : "--atomic",
+    ...(flags.forceConflicts ? ["--force-conflicts"] : []),
+    ...(options.createNamespace ? ["--create-namespace"] : []),
     "--hide-notes",
     ...values(options),
+  ];
+}
+
+// How the release is applied, client-side or server-side, which Helm 4 keeps
+// with the release. It prints the release's name, chart, versions and status,
+// and no value.
+export function metadataCommand(options: HelmStackOptions): string[] {
+  return [
+    HELM,
+    "get",
+    "metadata",
+    options.release,
+    `--namespace=${options.namespace}`,
+    "--output=json",
   ];
 }
 

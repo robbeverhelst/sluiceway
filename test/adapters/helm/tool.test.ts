@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { type SavedPlan, ToolVersionError } from "../../../src/adapters/adapter.ts";
 import { helm } from "../../../src/adapters/helm/index.ts";
 import type { Stack } from "../../../src/core/stack.ts";
-import { answering, ROOT, replay, VERSIONS } from "./replay.ts";
-import { WEB, WORKER } from "./stacks.ts";
+import { answering, ROOT, recorded, replay, VERSIONS } from "./replay.ts";
+import { WEB, WEB_NEW_NAMESPACE, WORKER, WORKER_NESTED } from "./stacks.ts";
 
-// Everything of the Helm adapter around the preview (record 0058): the
-// version check of helm and its diff plugin, the dependency build that runs
-// before the pool, the deploy held to the manifests the fresh preview
+// Everything of the Helm adapter around the preview (records 0058 and 0069):
+// the version check of helm and its diff plugin, the dependency builds that
+// run before the pool, the deploy held to the manifests the fresh preview
 // rendered, and the tool's own diff.
 
 const context = (run: Parameters<typeof helm.checkVersion>[0]["run"]) => ({
@@ -99,6 +99,29 @@ describe("dependencies before the pool", () => {
     expect(helm.prepare?.([WEB]) ?? []).toEqual([]);
   });
 
+  test("a subchart's dependencies are built before the chart that holds it, once for every stack that needs them", () => {
+    const deeper: Stack = {
+      ...WEB,
+      path: "shop",
+      options: {
+        ...WEB.options,
+        chartDir: "charts/shop",
+        builds: [
+          { chart: "charts/web", level: 1 },
+          { chart: "charts/shop", level: 3 },
+          { chart: "charts/zz-base", level: 0 },
+        ],
+      },
+    };
+    const preparations = helm.prepare?.([deeper, WORKER_NESTED]) ?? [];
+    expect(preparations.map((one) => [one.title, one.stacks.map((stack) => stack.path)])).toEqual([
+      ["charts/zz-base", ["shop"]],
+      ["charts/web", ["shop", "worker"]],
+      ["charts/worker", ["worker"]],
+      ["charts/shop", ["shop"]],
+    ]);
+  });
+
   for (const version of VERSIONS) {
     test(`${version}: the build runs in the chart's directory`, async () => {
       const { run, runs } = replay(version, "dependencies");
@@ -108,6 +131,18 @@ describe("dependencies before the pool", () => {
       expect(runs[0]?.argv).toEqual(["helm", "dependency", "build", "."]);
       expect(runs[0]?.cwd).toBe(`${ROOT}/charts/worker`);
       expect(runs[0]?.timeoutMs).toBe(240_000);
+    });
+
+    test(`${version}: a subchart of a subchart is built first, and the diff holds its objects`, async () => {
+      const { run, runs } = replay(version, "dependencies-nested");
+      for (const build of helm.prepare?.([WORKER_NESTED]) ?? []) {
+        expect((await build.run({ ...context(run), timeoutMinutes: 4 })).ok).toBe(true);
+      }
+      expect(runs.map((one) => one.cwd)).toEqual([`${ROOT}/charts/web`, `${ROOT}/charts/worker`]);
+      const result = await helm.preview(WORKER_NESTED, { ...context(run), timeoutMinutes: 4 });
+      expect(result.ok && result.diff.changes.map((change) => change.name)).toContain(
+        "worker-base",
+      );
     });
 
     test(`${version}: a failed build keeps the tool's words`, async () => {
@@ -141,8 +176,10 @@ describe("the deploy of what the fresh preview rendered", () => {
         "helm diff upgrade",
         "helm template web",
         "helm template web",
+        "helm version --template={{.Version}}",
         "helm upgrade web",
       ]);
+      // Helm 4 renamed --atomic, and Helm 3 knows only the old name.
       expect(runs.at(-1)?.argv).toEqual([
         "helm",
         "upgrade",
@@ -151,7 +188,7 @@ describe("the deploy of what the fresh preview rendered", () => {
         "--namespace=sluiceway-web",
         "--install",
         "--reset-values",
-        "--atomic",
+        version.startsWith("v4.") ? "--rollback-on-failure" : "--atomic",
         "--hide-notes",
         "--values=values.yaml",
       ]);
@@ -177,7 +214,108 @@ describe("the deploy of what the fresh preview rendered", () => {
       expect(result).toMatchObject({ ok: false, reason: { kind: "tool-error", exitCode: 1 } });
       expect(result.toolLog).toContain("rolled back");
     });
+
+    test(`${version}: a deploy that repairs drift puts it back, forcing conflicts only where Helm 4 applies server-side`, async () => {
+      const { run, runs, plan } = await freshPreview(version, "drift-repaired");
+      // apply checks the drift again after its fresh preview.
+      const drift = await helm.detectDrift?.(WEB, { ...context(run), timeoutMinutes: 10 });
+      expect(drift?.ok && drift.drift.length).toBe(2);
+      const result = await helm.apply(WEB, context(run), plan, { repairDrift: true });
+      expect(result.ok).toBe(true);
+      const helm4 = version.startsWith("v4.");
+      expect(runs.slice(4).map((one) => one.argv.slice(0, 3).join(" "))).toEqual([
+        "helm template web",
+        "helm version --template={{.Version}}",
+        ...(helm4 ? ["helm get metadata"] : []),
+        "helm upgrade web",
+      ]);
+      const deploy = runs.at(-1)?.argv ?? [];
+      expect(deploy.includes("--force-conflicts")).toBe(helm4);
+      if (helm4) {
+        expect(runs.at(-2)?.argv).toEqual([
+          "helm",
+          "get",
+          "metadata",
+          "web",
+          "--namespace=sluiceway-web",
+          "--output=json",
+        ]);
+      }
+      // The check after the deploy finds nothing.
+      const after = await helm.detectDrift?.(WEB, { ...context(run), timeoutMinutes: 10 });
+      expect(after).toMatchObject({ ok: true, drift: [] });
+    });
+
+    test(`${version}: createNamespace makes the namespace in the deploy, and the diff and the render work without it`, async () => {
+      const replayed = replay(version, "create-namespace");
+      const previewed = await helm.preview(WEB_NEW_NAMESPACE, {
+        ...context(replayed.run),
+        timeoutMinutes: 10,
+        savePlan: true,
+      });
+      if (!previewed.ok || previewed.plan === undefined) throw new Error("expected a render");
+      const result = await helm.apply(WEB_NEW_NAMESPACE, context(replayed.run), previewed.plan);
+      expect(result.ok).toBe(true);
+      const commands = replayed.runs.map((one) => one.argv);
+      expect(commands.at(-1)).toContain("--create-namespace");
+      expect(commands.slice(0, -1).some((argv) => argv.includes("--create-namespace"))).toBe(false);
+    });
   }
+
+  test("a release Helm 4 applies client-side gets no --force-conflicts, which it would refuse", async () => {
+    const [, version = ""] = VERSIONS;
+    const { plan } = await freshPreview(version, "deploy");
+    const rendered = recorded(version, "deploy", "render");
+    const { run, runs } = answering(
+      exited(rendered),
+      exited("v4.3.0"),
+      exited('{"name":"web","applyMethod":"csa"}'),
+      exited("STATUS: deployed"),
+    );
+    const result = await helm.apply(WEB, context(run), plan, { repairDrift: true });
+    expect(result.ok).toBe(true);
+    expect(runs.at(-1)?.argv).not.toContain("--force-conflicts");
+    expect(runs.at(-1)?.argv).toContain("--rollback-on-failure");
+  });
+
+  test("Helm 3 applies client-side with a three-way merge that puts drift back by itself", async () => {
+    const [version = ""] = VERSIONS;
+    const { plan } = await freshPreview(version, "deploy");
+    const rendered = recorded(version, "deploy", "render");
+    const { run, runs } = answering(exited(rendered), exited("v3.18.0"), exited("deployed"));
+    const result = await helm.apply(WEB, context(run), plan, { repairDrift: true });
+    expect(result.ok).toBe(true);
+    expect(runs.map((one) => one.argv[1])).toEqual(["template", "version", "upgrade"]);
+    expect(runs.at(-1)?.argv).toContain("--atomic");
+  });
+
+  test("a version the deploy cannot read deploys nothing", async () => {
+    const [version = ""] = VERSIONS;
+    const { plan } = await freshPreview(version, "deploy");
+    const rendered = recorded(version, "deploy", "render");
+    const { run, runs } = answering(exited(rendered), exited("", 1, "Error: boom"));
+    const result = await helm.apply(WEB, context(run), plan);
+    expect(result).toEqual({
+      ok: false,
+      reason: { kind: "tool-error", exitCode: 1 },
+      toolLog: "Error: boom",
+    });
+    expect(runs).toHaveLength(2);
+  });
+
+  test("metadata that fails deploys nothing", async () => {
+    const [, version = ""] = VERSIONS;
+    const { plan } = await freshPreview(version, "deploy");
+    const rendered = recorded(version, "deploy", "render");
+    const { run, runs } = answering(
+      exited(rendered),
+      exited("v4.3.0"),
+      exited("", 1, "Error: release: not found"),
+    );
+    const result = await helm.apply(WEB, context(run), plan, { repairDrift: true });
+    expect(result).toMatchObject({ ok: false, reason: { kind: "tool-error", exitCode: 1 } });
+    expect(runs.some((one) => one.argv[1] === "upgrade")).toBe(false);
+  });
 
   test("there is no deploy without the render of the fresh preview", async () => {
     const { run } = answering(exited(""));
@@ -242,8 +380,4 @@ describe("the tool's own diff", () => {
       toolLog: "Error: boom",
     });
   });
-});
-
-test("Helm stacks have no drift check", () => {
-  expect(helm.detectDrift).toBeUndefined();
 });

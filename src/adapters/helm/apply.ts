@@ -1,10 +1,13 @@
 import { join } from "node:path";
+import { z } from "zod";
 import { type Stack, stackId } from "../../core/stack.ts";
-import type { ApplyResult, SavedPlan, ToolContext } from "../adapter.ts";
+import type { ApplyOptions, ApplyResult, SavedPlan, ToolContext } from "../adapter.ts";
+import type { RunResult } from "../process.ts";
 import { stripAnsi } from "../pulumi/tool-log.ts";
-import { deployCommand, renderCommand } from "./commands.ts";
+import { deployCommand, metadataCommand, renderCommand, versionCommand } from "./commands.ts";
 import { helmEnvironment, optionsOf } from "./environment.ts";
 import { RenderedManifests } from "./rendered.ts";
+import { readVersion } from "./version.ts";
 
 // The deploy of exactly what the fresh preview rendered (record 0058). Helm
 // saves no plan, so the deploy renders the chart once more right before it
@@ -14,10 +17,19 @@ import { RenderedManifests } from "./rendered.ts";
 // moved change and nothing is deployed. The render and the deploy have no
 // time limit of their own, as for every tool: a deploy stopped half way
 // leaves a release half deployed.
+//
+// Then the deploy's flags (record 0069): the version of helm, because Helm 4
+// renamed --atomic, and for a deploy that puts drift back on Helm 4, how the
+// release is applied. Helm 3 and a release applied client-side merge the
+// chart into the live objects, which puts drift back by itself. A release
+// Helm 4 applies server-side refuses a field another manager changed unless
+// the deploy forces it, and Helm 4 refuses --force-conflicts on a release
+// applied client-side.
 export async function apply(
   stack: Stack,
   context: ToolContext,
   plan?: SavedPlan,
+  options?: ApplyOptions,
 ): Promise<ApplyResult> {
   if (!(plan instanceof RenderedManifests) || plan.stackId !== stackId(stack)) {
     throw new Error("A Helm stack deploys only what its fresh preview rendered.");
@@ -29,29 +41,59 @@ export async function apply(
       cwd: join(context.root, stack.path),
       env: helmEnvironment(context.env),
     });
+  const failed = (result: RunResult, toolLog: string): ApplyResult => ({
+    ok: false,
+    reason: {
+      kind: "tool-error",
+      exitCode: result.status === "exited" ? result.exitCode : null,
+    },
+    toolLog,
+  });
+  const done = (result: RunResult): result is Extract<RunResult, { status: "exited" }> =>
+    result.status === "exited" && result.exitCode === 0;
 
   const rendered = await run(renderCommand(helm));
-  if (rendered.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-  }
+  if (rendered.status === "not-started") return failed(rendered, "");
   // Never stdout: it is every manifest, values and all.
-  const renderWords = stripAnsi(rendered.stderr);
-  if (rendered.status !== "exited" || rendered.exitCode !== 0) {
-    const exitCode = rendered.status === "exited" ? rendered.exitCode : null;
-    return { ok: false, reason: { kind: "tool-error", exitCode }, toolLog: renderWords };
-  }
+  let toolLog = stripAnsi(rendered.stderr);
+  if (!done(rendered)) return failed(rendered, toolLog);
   if (!plan.matches(rendered.stdout)) {
-    return { ok: false, reason: { kind: "moved" }, toolLog: renderWords };
+    return { ok: false, reason: { kind: "moved" }, toolLog };
   }
 
-  const deployed = await run(deployCommand(helm));
-  if (deployed.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: renderWords };
+  const version = await run(versionCommand());
+  if (version.status !== "not-started") toolLog += stripAnsi(version.stderr);
+  const major = done(version) ? readVersion(version.stdout)?.numbers[0] : undefined;
+  if (major === undefined) {
+    return failed(version, toolLog + (done(version) ? stripAnsi(version.stdout) : ""));
   }
+
+  let forceConflicts = false;
+  if (options?.repairDrift === true && major >= 4) {
+    const metadata = await run(metadataCommand(helm));
+    if (metadata.status !== "not-started") toolLog += stripAnsi(metadata.stderr);
+    if (!done(metadata)) return failed(metadata, toolLog);
+    forceConflicts = appliedServerSide(metadata.stdout);
+  }
+
+  const deployed = await run(deployCommand(helm, { major, forceConflicts }));
+  if (deployed.status === "not-started") return failed(deployed, toolLog);
   // What `helm upgrade` prints is the release's name, namespace, status and
   // revision. The chart's notes are hidden, because they can print a value.
-  const toolLog = renderWords + stripAnsi(deployed.stdout + deployed.stderr);
-  if (deployed.status === "exited" && deployed.exitCode === 0) return { ok: true, toolLog };
-  const exitCode = deployed.status === "exited" ? deployed.exitCode : null;
-  return { ok: false, reason: { kind: "tool-error", exitCode }, toolLog };
+  toolLog += stripAnsi(deployed.stdout + deployed.stderr);
+  return done(deployed) ? { ok: true, toolLog } : failed(deployed, toolLog);
+}
+
+// Helm 4 writes "ssa" for a release it applies server-side, and "csa", or
+// nothing for a release Helm 3 made, for one it applies client-side. Anything
+// else is taken as client-side: the deploy then puts back what a client-side
+// merge puts back, and a conflict fails it with helm's own words.
+const metadataSchema = z.object({ applyMethod: z.string().optional() });
+
+function appliedServerSide(stdout: string): boolean {
+  try {
+    return metadataSchema.safeParse(JSON.parse(stdout)).data?.applyMethod === "ssa";
+  } catch {
+    return false;
+  }
 }
