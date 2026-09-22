@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.26.1](https://github.com/sluiceway/sluiceway/compare/v0.26.0...v0.26.1) (2026-09-22)
+
+
+### Bug Fixes
+
+* init names pages on the docs site, not files in docs/ ([45801dd](https://github.com/sluiceway/sluiceway/commit/45801ddf1edea478c7cf7201431277113e17769b))
+* the dashboard footer's docs link goes to the docs site ([15c2055](https://github.com/sluiceway/sluiceway/commit/15c2055464f5ba399f8cd73e67a735c56dd95161))
+
 ## [0.26.0](https://github.com/sluiceway/sluiceway/compare/v0.25.0...v0.26.0) (2026-09-22)
 
 
