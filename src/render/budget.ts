@@ -24,6 +24,10 @@ export interface FittedBody {
   size: number;
   // How many of the writer's own rows are shortened.
   shortened: number;
+  // Every row block in `body`, carried and own, as a reader of the body finds
+  // them. The facts of the row set are read from these, so nobody parses a
+  // body they just rendered.
+  rows: ParsedRow[];
   // False when the body is over the hard limit with every row of the writer
   // cut as far as it goes. Such a body is never written.
   fits: boolean;
@@ -101,10 +105,11 @@ export function fitBody(input: BudgetInput, options: BudgetOptions = {}): Fitted
   // deploy: its names become a count next, before any pending row gives way
   // (record 0072).
   let shortTrail = input.shortTrail ?? false;
+  const drawn = () => [...input.carried, ...entries.flatMap(blockOf)];
   const render = () =>
     renderBody({
       ...input,
-      rows: [...input.carried, ...entries.flatMap(blockOf)],
+      rows: drawn(),
       merges,
       shortTrail,
     });
@@ -158,6 +163,7 @@ export function fitBody(input: BudgetInput, options: BudgetOptions = {}): Fitted
     body,
     size: body.length,
     shortened,
+    rows: drawn(),
     fits: body.length <= limit,
     mergesLeftOut: allMerges.length - merges.length,
   };
