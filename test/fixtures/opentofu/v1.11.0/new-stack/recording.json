@@ -5,7 +5,12 @@
   "commands": [
     {
       "id": "init",
-      "argv": ["tofu", "init", "-input=false", "-no-color"],
+      "argv": [
+        "tofu",
+        "init",
+        "-input=false",
+        "-no-color"
+      ],
       "cwd": "network",
       "exitCode": 0,
       "stdout": "init.stdout",
@@ -35,7 +40,13 @@
     },
     {
       "id": "show",
-      "argv": ["tofu", "show", "-json", "-no-color", "{plan}"],
+      "argv": [
+        "tofu",
+        "show",
+        "-json",
+        "-no-color",
+        "{plan}"
+      ],
       "cwd": "network",
       "exitCode": 0,
       "stdout": "show.stdout",

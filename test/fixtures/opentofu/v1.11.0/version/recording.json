@@ -5,7 +5,11 @@
   "commands": [
     {
       "id": "version",
-      "argv": ["tofu", "version", "-json"],
+      "argv": [
+        "tofu",
+        "version",
+        "-json"
+      ],
       "cwd": ".",
       "exitCode": 0,
       "stdout": "version.stdout",

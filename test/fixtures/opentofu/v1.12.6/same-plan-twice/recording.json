@@ -26,7 +26,13 @@
     },
     {
       "id": "show",
-      "argv": ["tofu", "show", "-json", "-no-color", "{plan}"],
+      "argv": [
+        "tofu",
+        "show",
+        "-json",
+        "-no-color",
+        "{plan}"
+      ],
       "cwd": "network",
       "exitCode": 0,
       "stdout": "show.stdout",
@@ -59,7 +65,13 @@
     },
     {
       "id": "show-again",
-      "argv": ["tofu", "show", "-json", "-no-color", "{plan}"],
+      "argv": [
+        "tofu",
+        "show",
+        "-json",
+        "-no-color",
+        "{plan}"
+      ],
       "cwd": "network",
       "exitCode": 0,
       "stdout": "show-again.stdout",

@@ -8,7 +8,7 @@ OpenTofu will perform the following actions:
 
   # null_resource.trigger must be replaced
 -/+ resource "null_resource" "trigger" {
-      ~ id       = "6564494671401624147" -> (known after apply)
+      ~ id       = "4255501229258157779" -> (known after apply)
       ~ triggers = { # forces replacement
           ~ "secret" = (sensitive value)
         }
@@ -16,7 +16,7 @@ OpenTofu will perform the following actions:
 
   # terraform_data.config will be updated in-place
   ~ resource "terraform_data" "config" {
-        id     = "57051709-1280-4dc6-9dde-78f72e2a76b2"
+        id     = "b7d33889-65f1-3f0b-848f-85662312e7e3"
       ~ input  = {
           ~ secret   = (sensitive value)
             # (2 unchanged attributes hidden)

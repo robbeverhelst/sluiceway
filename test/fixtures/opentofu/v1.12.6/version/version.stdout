@@ -1,5 +1,5 @@
 {
   "terraform_version": "1.12.6",
-  "platform": "darwin_arm64",
+  "platform": "linux_amd64",
   "provider_selections": {}
 }

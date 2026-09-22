@@ -5,7 +5,12 @@
   "commands": [
     {
       "id": "init",
-      "argv": ["tofu", "init", "-input=false", "-no-color"],
+      "argv": [
+        "tofu",
+        "init",
+        "-input=false",
+        "-no-color"
+      ],
       "cwd": "network",
       "exitCode": 1,
       "stdout": "init.stdout",

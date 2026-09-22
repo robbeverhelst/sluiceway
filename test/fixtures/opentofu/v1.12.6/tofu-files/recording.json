@@ -22,7 +22,13 @@
     },
     {
       "id": "show",
-      "argv": ["tofu", "show", "-json", "-no-color", "{plan}"],
+      "argv": [
+        "tofu",
+        "show",
+        "-json",
+        "-no-color",
+        "{plan}"
+      ],
       "cwd": "dns",
       "exitCode": 0,
       "stdout": "show.stdout",
