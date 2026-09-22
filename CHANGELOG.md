@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.1](https://github.com/sluiceway/sluiceway/compare/v0.20.0...v0.20.1) (2026-09-22)
+
+
+### Bug Fixes
+
+* a Recently deployed line fits on one line ([fca5fa2](https://github.com/sluiceway/sluiceway/commit/fca5fa21cdbc80a8832e83f685ac7d0005b608d9))
+
 ## [0.20.0](https://github.com/sluiceway/sluiceway/compare/v0.19.0...v0.20.0) (2026-09-22)
 
 
