@@ -1,3 +1,4 @@
+import type { BulkSection } from "../render/marker.ts";
 import type { TickRule } from "./config.ts";
 
 // The test every tick passes (record 0018): the ticker is a person with write
@@ -28,7 +29,11 @@ export interface Editor {
 export type TickTarget =
   | { kind: "stack"; stackId: string; rule: TickRule }
   | { kind: "merge"; pr: number; stackIds: string[]; rule: TickRule }
-  | { kind: "rescan" };
+  | { kind: "rescan" }
+  // The bulk box of a section (record 0083). Like the rescan box it deploys
+  // nothing, so it needs only the first half of the test. The confirm box is
+  // judged as one tick per stack, each by that stack's rule.
+  | { kind: "bulk"; section: BulkSection };
 
 // Why a tick is refused. "unverified" is not one of these: a lookup that
 // failed gave no answer to judge.

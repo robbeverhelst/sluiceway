@@ -5,6 +5,7 @@
 // right after that edit.
 
 import { type ParsedDashboard, parseDashboard } from "../render/marker.ts";
+import { type BulkTick, holdsBulkTick } from "./bulk.ts";
 
 // Who made an edit, as the history names them. The type is "User" for a
 // person and "Bot" for the bot, whose login the history writes without
@@ -36,13 +37,16 @@ export interface HistoryPage {
 }
 
 // What a walk looks for: a row ticked at one diff hash, an update waiting to
-// merge ticked at one head commit (record 0054), or the ticked rescan box.
+// merge ticked at one head commit (record 0054), the ticked rescan box, or
+// the ticked bulk box of a section or its confirm box at exactly the stacks
+// and hashes it names (record 0083).
 // `drift` is the row's word that its hash covers drift (record 0055). It
 // changes nothing about who ticked, only what `apply` checks again.
 export type Tick =
   | { kind: "row"; stackId: string; hash: string; drift?: true }
   | { kind: "merge"; pr: number; stackIds: string[]; head: string }
-  | { kind: "rescan" };
+  | { kind: "rescan" }
+  | BulkTick;
 
 // Why the history names nobody for a tick.
 // - "entry-without-body": an entry inside the stretch has no body. It always
@@ -79,6 +83,12 @@ export const HISTORY_PAGE_SIZE = 10;
 // blocks for one stack the first counts, as it does for every writer.
 function holds(dashboard: ParsedDashboard, tick: Tick): boolean {
   if (tick.kind === "rescan") return dashboard.rescanTicked;
+  if (tick.kind === "bulk" || tick.kind === "confirm") {
+    return holdsBulkTick(
+      dashboard.bulk.find((line) => line.section === tick.section),
+      tick,
+    );
+  }
   if (tick.kind === "merge") {
     const merge = dashboard.merges.find((candidate) => candidate.pr === tick.pr);
     return (
@@ -92,7 +102,8 @@ function holds(dashboard: ParsedDashboard, tick: Tick): boolean {
 }
 
 // Every tick in a body, read the way the walk reads an entry: the ticked rows
-// in body order, then the ticked updates waiting to merge, then the rescan box. A row of a state this version does not
+// in body order, then the ticked updates waiting to merge, then the bulk and
+// confirm boxes, then the rescan box. A row of a state this version does not
 // know holds no tick, and neither does a row without a hash, which shows
 // nothing a tick could approve.
 export function ticksIn(body: string): Tick[] {
@@ -118,6 +129,18 @@ export function ticksIn(body: string): Tick[] {
     if (merged.has(pr)) continue;
     merged.add(pr);
     if (ticked) ticks.push({ kind: "merge", pr, stackIds, head });
+  }
+  // The first line of each section counts.
+  const sections = new Set<string>();
+  for (const line of dashboard.bulk) {
+    if (sections.has(line.section)) continue;
+    sections.add(line.section);
+    if (!line.ticked) continue;
+    ticks.push(
+      line.kind === "box"
+        ? { kind: "bulk", section: line.section }
+        : { kind: "confirm", section: line.section, stacks: line.stacks },
+    );
   }
   if (dashboard.rescanTicked) ticks.push({ kind: "rescan" });
   return ticks;

@@ -6,6 +6,7 @@ import {
   type RefusalReason,
   type TickTarget,
 } from "../core/tick-rule.ts";
+import type { BulkSection } from "../render/marker.ts";
 import { type RefusedTick, refusedTicksComment } from "../render/refused-ticks.ts";
 import type { GitHubPort } from "./port.ts";
 
@@ -18,6 +19,10 @@ import type { GitHubPort } from "./port.ts";
 export interface Tick {
   target: TickTarget;
   editor: Editor;
+  // The tick of a stack that a tick on the confirm box of this section made
+  // (record 0083). It is judged like a tick on the row, and the comment says
+  // where it came from.
+  via?: BulkSection | undefined;
 }
 
 export type TickOutcome = { tick: Tick } & (
@@ -88,8 +93,9 @@ export async function judgeTicks(
       outcomes.push({ tick, outcome: "refused", reason: "no-account" });
       continue;
     }
-    // The rescan box needs only the first half of the test.
-    const rule = tick.target.kind === "rescan" ? "write" : tick.target.rule;
+    // The rescan box and the bulk box need only the first half of the test.
+    const rule =
+      tick.target.kind === "rescan" || tick.target.kind === "bulk" ? "write" : tick.target.rule;
     const verdict = judgeTick(rule, login, lookup.permission);
     outcomes.push(
       verdict.allowed
@@ -132,6 +138,7 @@ export function refusedTicks(
         target: outcome.tick.target,
         login: outcome.tick.editor.login,
         reason: outcome.outcome === "refused" ? outcome.reason : "unverified",
+        ...(outcome.tick.via ? { via: outcome.tick.via } : {}),
       },
     ];
   });

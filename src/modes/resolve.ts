@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Adapter } from "../adapters/adapter.ts";
+import { type BulkAct, bulkRows, sectionChanges } from "../core/bulk.ts";
 import type { Config, ConfiguredStack, IgnoredStack } from "../core/config.ts";
 import { planDeploys, queueState, withReadDependencies } from "../core/dependencies.ts";
 import {
@@ -55,10 +56,12 @@ import {
 import type { WorkflowRef } from "../github/workflow-ref.ts";
 import type { Notifier } from "../notify/send.ts";
 import { BODY_LIMIT, type BudgetOptions } from "../render/budget.ts";
+import { bulkName } from "../render/bulk-box.ts";
 import { type ClearTickOptions, clearTick } from "../render/clear-tick.ts";
 import { runUrl as runUrlOf } from "../render/links.ts";
 import { logGroupTitle } from "../render/log-text.ts";
 import {
+  type BulkSection,
   MARKER_VERSION,
   type ParsedMerge,
   type ParsedRow,
@@ -173,6 +176,9 @@ const MAX_READS = 3;
 interface NamedTick {
   tick: BodyTick;
   ticker: Ticker;
+  // A stack's tick that a tick on the confirm box of this section made
+  // (record 0083).
+  via?: BulkSection | undefined;
 }
 
 // A deploy this run started: the record exists. With `behind` it is queued
@@ -192,6 +198,9 @@ interface Clear {
   // says deploys are turned off (record 0051). A refused tick gets a comment
   // instead (record 0018).
   note: ClearTickOptions["note"];
+  // The tick came from the confirm box, so the row itself is not ticked. Its
+  // note, when it has one, still goes on the row (record 0083).
+  unticked?: boolean | undefined;
 }
 
 function message(error: unknown): string {
@@ -265,7 +274,9 @@ async function resolveTicks(
     // the row.
     if (!stacks) ({ stacks, ignored } = byId(await repo.stacks()));
     const known = ticks.filter((tick) => {
-      if (tick.kind === "rescan") return true;
+      // The stacks of a confirm box are checked one by one when it is handed
+      // on (record 0083).
+      if (tick.kind !== "row" && tick.kind !== "merge") return true;
       const unknown = (tick.kind === "merge" ? tick.stackIds : [tick.stackId]).filter(
         (id) => !stacks?.has(id),
       );
@@ -293,6 +304,13 @@ async function resolveTicks(
 
   // What the rows say the previews read from stack references (record 0059).
   if (stacks) stacks = withRowDependencies(context, stacks, liveRows);
+
+  // A tick on a confirm box is one tick per stack it names, by its ticker
+  // (record 0083). What became of the bulk and confirm ticks is drawn by the
+  // body writer, from these acts.
+  const bulk = handOnConfirms(context, config, named, liveRows, stacks);
+  named = bulk.named;
+  const bulkActs: BulkAct[] = [...bulk.acts];
 
   // A stack with an open deployment is taken (record 0003): a second tick for
   // it is dropped, whoever made it.
@@ -329,14 +347,36 @@ async function resolveTicks(
   // The rescan box sits outside the row blocks, so it is cleared by writing
   // the body again.
   let rescanHandled = false;
-  for (const { tick, ticker } of named) {
+  for (const { tick, ticker, via } of named) {
     const name = tickName(tick);
     const fact =
-      tick.kind === "rescan"
-        ? undefined
+      tick.kind === "row"
+        ? open.get(tick.stackId)
         : tick.kind === "merge"
           ? tick.stackIds.map((id) => open.get(id)).find((one) => one !== undefined)
-          : open.get(tick.stackId);
+          : undefined;
+    if (tick.kind === "bulk" || tick.kind === "confirm") {
+      // The bulk box deploys nothing, so it needs a person with write access,
+      // as the rescan box does (record 0083). A confirm box never gets here:
+      // it was handed on above.
+      const section = tick.section;
+      if (!config.deploys) {
+        log.info(
+          `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). The box goes.`,
+        );
+        bulkActs.push({ tick, outcome: "clear" });
+      } else if (ticker.named) {
+        toJudge.push({ target: { kind: "bulk", section }, editor: ticker.editor });
+      } else if (ticker.reason === "not-in-newest-entry") {
+        log.info(`${name} is ticked in a body that kept moving. Left for the run that edit woke.`);
+      } else {
+        log.info(
+          `${name} is ticked and the edit history names nobody for it (${NOBODY[ticker.reason]}). The box is cleared.`,
+        );
+        bulkActs.push({ tick, outcome: "clear", note: { kind: "orphan" } });
+      }
+      continue;
+    }
     if (tick.kind === "merge" && (fact || !config.deploys)) {
       // Nothing is merged for a stack that is taken, or while deploys are off
       // (record 0054). Nobody gets a comment, so the row gets a note (record
@@ -377,6 +417,7 @@ async function resolveTicks(
           ? { kind: "rescan" }
           : { kind: "stack", stackId: stackId(stack.stack), rule: stack.tickers },
         editor: ticker.editor,
+        ...(via ? { via } : {}),
       });
     } else if (ticker.reason === "not-in-newest-entry") {
       log.info(`${name} is ticked in a body that kept moving. Left for the run that edit woke.`);
@@ -408,6 +449,24 @@ async function resolveTicks(
       );
       continue;
     }
+    if (outcome.outcome === "allowed" && target.kind === "bulk") {
+      // The confirm box in its place names the rows as they are (record
+      // 0083).
+      const rows = bulkRows(liveRows, target.section).map(({ stackId: id }) => id);
+      log.info(
+        rows.length < 2
+          ? `${name} was ticked by ${editor.login}, and the section has fewer than two rows now. Each has its own box, so the box goes.`
+          : `${name} was ticked by ${editor.login}. Its confirm box names ${plural(rows.length, "stack")}: ${listed(rows)}.`,
+      );
+      bulkActs.push({
+        tick: { kind: "bulk", section: target.section },
+        outcome: "confirm",
+        by: editor.login,
+        // The scan run of the body it is drawn into, set at the late read.
+        scanRun: "",
+      });
+      continue;
+    }
     if (outcome.outcome === "allowed") {
       log.info(`${name} was ticked by ${editor.login}.`);
       if (target.kind === "stack") allowed.push({ stackId: target.stackId, ticker: editor.login });
@@ -424,6 +483,9 @@ async function resolveTicks(
         clear.set(target.stackId, { hash, note: false });
       }
       if (target.kind === "merge") clearMerges.set(target.pr, undefined);
+      if (target.kind === "bulk") {
+        bulkActs.push({ tick: { kind: "bulk", section: target.section }, outcome: "clear" });
+      }
     }
     if (target.kind === "rescan") rescanHandled = true;
   }
@@ -491,6 +553,9 @@ async function resolveTicks(
         note: { dependsOn: named, ...(phases.length === 0 ? {} : { phases }) },
       });
   }
+  // A tick the confirm box made leaves no box on the row to clear, and its
+  // note still goes on the row (record 0083).
+  for (const [id, one] of clear) if (bulk.fromConfirm.has(id)) one.unticked = true;
   const tickers = new Map(start.map(({ stackId: id, ticker }) => [id, ticker]));
   const toCreate = [
     ...plan.start.map((id) => ({ id, behind: undefined })),
@@ -602,7 +667,9 @@ async function resolveTicks(
     clear.size > 0 ||
     rescanHandled ||
     clearMerges.size > 0 ||
-    merging.mergedPrs.size > 0
+    merging.mergedPrs.size > 0 ||
+    bulkActs.length > 0 ||
+    bulk.stale
   ) {
     try {
       const result = await swapRows(
@@ -616,6 +683,7 @@ async function resolveTicks(
           dropped,
           clear,
           merges: { merged: merging.mergedPrs, clear: clearMerges },
+          bulk: bulkActs,
         },
       );
       log.info(
@@ -675,7 +743,132 @@ function tickName(tick: BodyTick): string {
   if (tick.kind === "merge") {
     return `The merge of #${tick.pr} for ${tick.stackIds.map(logGroupTitle).join(" and ")}`;
   }
+  if (tick.kind === "bulk") return capitalized(bulkName("box", tick.section));
+  if (tick.kind === "confirm") return capitalized(bulkName("confirm", tick.section));
   return "The rescan box";
+}
+
+function capitalized(text: string): string {
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+
+// "a, b and c", for the job log.
+function listed(ids: readonly string[]): string {
+  const names = ids.map(logGroupTitle);
+  return names.length < 2
+    ? names.join("")
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+// What the confirm boxes of one run come to (record 0083).
+interface HandedOn {
+  // The ticks to act on: every tick but the confirm boxes, and one tick per
+  // stack of a confirm box that was handed on, by its ticker.
+  named: NamedTick[];
+  acts: BulkAct[];
+  // The stacks whose tick a confirm box made.
+  fromConfirm: Set<string>;
+  // A confirm box went stale under its tick, so the body is written again.
+  stale: boolean;
+}
+
+// A tick on a confirm box goes through the same path as a tick on each row it
+// names (record 0083). It is handed on only while the rows of its section are
+// still the stacks at the hashes it names: a stale box deploys nothing, and
+// the bulk box that takes its place says what changed. A stack whose row is
+// ticked on its own keeps that tick and its ticker. A stack discovery does not
+// know is left out, as a tick on its row would be.
+function handOnConfirms(
+  context: ResolveContext,
+  config: Config,
+  named: readonly NamedTick[],
+  liveRows: readonly ParsedRow[],
+  stacks: ReadonlyMap<string, ConfiguredStack> | undefined,
+): HandedOn {
+  const { log } = context;
+  const result: HandedOn = { named: [], acts: [], fromConfirm: new Set(), stale: false };
+  const rowTicks = new Set(
+    named.flatMap(({ tick }) => (tick.kind === "row" ? [tick.stackId] : [])),
+  );
+  for (const one of named) {
+    const { tick, ticker } = one;
+    if (tick.kind !== "confirm") {
+      result.named.push(one);
+      continue;
+    }
+    const name = tickName(tick);
+    if (!config.deploys) {
+      log.info(
+        `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). Nothing is deployed and the box goes.`,
+      );
+      result.acts.push({ tick, outcome: "clear" });
+      continue;
+    }
+    if (!ticker.named) {
+      if (ticker.reason === "not-in-newest-entry") {
+        log.info(`${name} is ticked in a body that kept moving. Left for the run that edit woke.`);
+      } else {
+        log.info(
+          `${name} is ticked and the edit history names nobody for it (${NOBODY[ticker.reason]}). The box is cleared.`,
+        );
+        result.acts.push({ tick, outcome: "clear", note: { kind: "orphan" } });
+      }
+      continue;
+    }
+    const changes = sectionChanges(tick.stacks, bulkRows(liveRows, tick.section));
+    if (changes) {
+      const what = [
+        ...(changes.added.length > 0
+          ? [`${listed(changes.added)} ${changes.added.length === 1 ? "is" : "are"} new`]
+          : []),
+        ...(changes.gone.length > 0
+          ? [
+              `${listed(changes.gone)} ${changes.gone.length === 1 ? "is" : "are"} not ${tick.section === "pending" ? "pending" : "drifted"} any more`,
+            ]
+          : []),
+        ...(changes.moved.length > 0
+          ? [`${listed(changes.moved)} ${changes.moved.length === 1 ? "has" : "have"} a new diff`]
+          : []),
+      ];
+      log.info(
+        `${name} was ticked, and its rows changed since it was drawn (${what.join(", ")}). Nothing is deployed and the bulk box asks for a fresh tick.`,
+      );
+      result.stale = true;
+      continue;
+    }
+    result.acts.push({ tick, outcome: "consumed" });
+    const handed: string[] = [];
+    for (const { stackId: id, hash } of tick.stacks) {
+      if (rowTicks.has(id)) {
+        log.info(
+          `${logGroupTitle(id)} is ticked on its own row too. That tick and its ticker count.`,
+        );
+        continue;
+      }
+      if (!stacks?.has(id)) {
+        log.info(
+          `${logGroupTitle(id)} is in ${bulkName("confirm", tick.section)}, and discovery knows no such stack. Left alone.`,
+        );
+        continue;
+      }
+      handed.push(id);
+      result.fromConfirm.add(id);
+      result.named.push({
+        tick: {
+          kind: "row",
+          stackId: id,
+          hash,
+          ...(tick.section === "drift" ? { drift: true as const } : {}),
+        },
+        ticker,
+        via: tick.section,
+      });
+    }
+    log.info(
+      `${name} was ticked by ${ticker.editor.login}. It stands for a tick on each of ${plural(handed.length, "stack")}: ${listed(handed)}.`,
+    );
+  }
+  return result;
 }
 
 function targetName(target: Tick["target"]): string {
@@ -683,6 +876,7 @@ function targetName(target: Tick["target"]): string {
   if (target.kind === "merge") {
     return `The merge of #${target.pr} for ${target.stackIds.map(logGroupTitle).join(" and ")}`;
   }
+  if (target.kind === "bulk") return capitalized(bulkName("box", target.section));
   return "The rescan box";
 }
 
@@ -1005,6 +1199,8 @@ interface Swap {
   merges?:
     | { merged: ReadonlySet<number>; clear: ReadonlyMap<number, MergeNote | undefined> }
     | undefined;
+  // What became of the ticks on the bulk and confirm boxes (record 0083).
+  bulk?: readonly BulkAct[] | undefined;
 }
 
 // Swaps this run's own row blocks into the dashboard (records 0004 and 0009).
@@ -1115,8 +1311,8 @@ async function swapRows(
             attribution: lines.get(id)?.lines,
             behind: fact.behind,
           });
-        } else if (wanted && row.ticked && row.hash === wanted.hash) {
-          carried.set(id, clearTick(row, { note: wanted.note }));
+        } else if (wanted && (row.ticked || wanted.unticked) && row.hash === wanted.hash) {
+          carried.set(id, clearTick(row, { note: wanted.note, unticked: wanted.unticked }));
         }
       }
 
@@ -1133,7 +1329,12 @@ async function swapRows(
             : merge,
         );
       }
-      return { facts, shipped, rows, carried, merges };
+      // A confirm box is drawn after the scan of the body it goes into
+      // (record 0083).
+      const acts = (swap.bulk ?? []).map((act) =>
+        act.outcome === "confirm" ? { ...act, scanRun: root.scanRun } : act,
+      );
+      return { facts, shipped, rows, carried, merges, bulk: { acts } };
     },
   );
   if (!result.fits) {

@@ -21,6 +21,9 @@ export interface ClearTickOptions {
     | "deploys-off"
     | { dependsOn: readonly string[]; phases?: readonly PhaseGroup[] }
     | undefined;
+  // The tick came from the confirm box of the row's section (record 0083), so
+  // the row has no tick of its own. It still gets the note.
+  unticked?: boolean | undefined;
 }
 
 const TICKED_BOX = /^- \[[xX]\] /;
@@ -28,7 +31,7 @@ const TICKED_BOX = /^- \[[xX]\] /;
 // A row that holds no tick comes back as it is: one without a box, one that is
 // not ticked, and one of a state this version does not know.
 export function clearTick(row: ParsedRow, options: ClearTickOptions = {}): ParsedRow {
-  if (!row.known || !row.ticked) return row;
+  if (!row.known || (!row.ticked && !(options.unticked && options.note))) return row;
   const [first = "", ...rest] = row.text.split("\n");
   const note =
     INDENT +

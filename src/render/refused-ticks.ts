@@ -1,5 +1,7 @@
 import type { RefusalReason, TickTarget } from "../core/tick-rule.ts";
+import { bulkName } from "./bulk-box.ts";
 import { escapeText } from "./escape.ts";
+import type { BulkSection } from "./marker.ts";
 
 // One of the two comments Sluiceway writes (record 0018, and 0051 for the
 // other): one comment on the
@@ -29,13 +31,20 @@ export interface RefusedTick {
     | "waits-on";
   detail?: string | undefined;
   waitsOn?: readonly string[] | undefined;
+  // A stack's tick that a tick on the confirm box of this section made
+  // (record 0083).
+  via?: BulkSection | undefined;
 }
 
 // The most names of a tick rule one refusal lists (slice 5.9).
 export const NAMES_IN_A_REFUSAL = 10;
 
-function what(target: TickTarget): string {
+function what(target: TickTarget, via?: BulkSection): string {
   if (target.kind === "rescan") return "the rescan box";
+  if (target.kind === "bulk") return bulkName("box", target.section);
+  if (target.kind === "stack" && via) {
+    return `**${escapeText(target.stackId)}** through ${bulkName("confirm", via)}`;
+  }
   if (target.kind === "stack") return `**${escapeText(target.stackId)}**`;
   const stacks = target.stackIds.map((id) => `**${escapeText(id)}**`).join(" and ");
   return `the merge of #${target.pr} for ${stacks}`;
@@ -66,7 +75,7 @@ function why({ target, reason, detail, waitsOn }: RefusedTick): string {
   if (reason === "unverified") {
     return "The tick could not be verified, because the permission lookup failed. Tick the box again for a fresh try.";
   }
-  if (reason === "no-write-access" || target.kind === "rescan") {
+  if (reason === "no-write-access" || target.kind === "rescan" || target.kind === "bulk") {
     return "The tick was refused: ticking needs write access to this repository.";
   }
   if (typeof target.rule === "string") {
@@ -81,7 +90,7 @@ function why({ target, reason, detail, waitsOn }: RefusedTick): string {
 }
 
 function line(refused: RefusedTick): string {
-  return `@${refused.login} ticked ${what(refused.target)}. ${why(refused)}`;
+  return `@${refused.login} ticked ${what(refused.target, refused.via)}. ${why(refused)}`;
 }
 
 export function refusedTicksComment(refused: RefusedTick[]): string {
