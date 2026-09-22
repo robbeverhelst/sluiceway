@@ -51436,6 +51436,12 @@ function mergeMarker(facts) {
     ["head", facts.head]
   ]);
 }
+function waitingMarker(facts) {
+  return marker("waiting", [
+    ["pr", String(facts.pr)],
+    ["stack", encodeIds(facts.stackIds)]
+  ]);
+}
 function outsideMarker(deploy) {
   const pairs = [
     ["stack", deploy.stackId],
@@ -51452,6 +51458,7 @@ var PAIRS = '((?: [^\\s="]+="[^"]*")*)';
 var ROOT_LINE = new RegExp(`^<!-- sluiceway:dashboard${PAIRS} -->[ \\t]*$`);
 var ROW_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:row${PAIRS} -->[ \\t]*$`);
 var MERGE_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:merge${PAIRS} -->[ \\t]*$`);
+var WAITING_LINE = new RegExp(`^- .*<!-- sluiceway:waiting${PAIRS} -->[ \\t]*$`);
 var OUTSIDE_LINE = new RegExp(`^- .*<!-- sluiceway:outside${PAIRS} -->[ \\t]*$`);
 var RESCAN_LINE = /^- \[[xX]\] .*<!-- sluiceway:rescan -->[ \t]*$/;
 function readPairs(payload) {
@@ -51485,6 +51492,7 @@ function parseDashboard(body) {
 `);
   const rows = [];
   const merges = [];
+  const waiting = [];
   const outside = [];
   let rescanTicked = false;
   for (let index = 0;index < lines.length; index++) {
@@ -51494,6 +51502,11 @@ function parseDashboard(body) {
     const deploy = readOutside(line);
     if (deploy) {
       outside.push(deploy);
+      continue;
+    }
+    const waits = readWaiting(line);
+    if (waits) {
+      waiting.push(waits);
       continue;
     }
     const merge3 = readMerge(line);
@@ -51551,7 +51564,7 @@ function parseDashboard(body) {
       text
     });
   }
-  return { root: readRoot(lines[0] ?? ""), rows, merges, outside, rescanTicked };
+  return { root: readRoot(lines[0] ?? ""), rows, merges, waiting, outside, rescanTicked };
 }
 function readMerge(line) {
   const match = MERGE_LINE.exec(line);
@@ -51571,6 +51584,17 @@ function readMerge(line) {
     ticked: match[1] === "x" || match[1] === "X",
     text: line
   };
+}
+function readWaiting(line) {
+  const match = WAITING_LINE.exec(line);
+  if (!match)
+    return;
+  const pairs = readPairs(match[1] ?? "");
+  const pr = pairs.get("pr") ?? "";
+  const stack = pairs.get("stack");
+  if (!/^[1-9]\d*$/.test(pr) || stack === undefined)
+    return;
+  return { pr: Number(pr), stackIds: decodeIds(stack), text: line };
 }
 function readOutside(line) {
   const match = OUTSIDE_LINE.exec(line);
@@ -57266,6 +57290,18 @@ var OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!, $after: String
             commit {
               statusCheckRollup {
                 state
+                contexts(first: 100) {
+                  nodes {
+                    __typename
+                    ... on CheckRun {
+                      status
+                      conclusion
+                    }
+                    ... on StatusContext {
+                      state
+                    }
+                  }
+                }
               }
             }
           }
@@ -57284,9 +57320,21 @@ var CHECKS = {
   FAILURE: "failure",
   ERROR: "failure"
 };
+var PASSED = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
+function failed(context3) {
+  return context3.__typename === "CheckRun" ? context3.status === "COMPLETED" && !PASSED.has(context3.conclusion ?? "") : context3.state === "FAILURE" || context3.state === "ERROR";
+}
+function checksOf(rollup) {
+  if (!rollup)
+    return "none";
+  const checks3 = CHECKS[rollup.state] ?? "failure";
+  if (checks3 === "pending" && present2(rollup.contexts?.nodes).some(failed))
+    return "failure";
+  return checks3;
+}
 function toPullRequest2(node2) {
   const files = present2(node2.files?.nodes);
-  const state = present2(node2.commits.nodes)[0]?.commit.statusCheckRollup?.state;
+  const rollup = present2(node2.commits.nodes)[0]?.commit.statusCheckRollup;
   const { author: author2 } = node2;
   return {
     number: node2.number,
@@ -57296,7 +57344,7 @@ function toPullRequest2(node2) {
     base: node2.baseRefName,
     head: node2.headRefOid,
     mergeable: node2.mergeable === "MERGEABLE" ? "mergeable" : node2.mergeable === "CONFLICTING" ? "conflicting" : "unknown",
-    checks: state === undefined ? "none" : CHECKS[state] ?? "failure",
+    checks: checksOf(rollup),
     files: files.map(({ path }) => path),
     filesComplete: files.length === node2.changedFiles && files.every(({ changeType }) => changeType !== "RENAMED"),
     fromFork: node2.isCrossRepository
@@ -57672,6 +57720,19 @@ function waitingUpdates(pullRequests, options) {
     return qualified.qualifies ? [{ pullRequest, stackIds: qualified.stackIds }] : [];
   });
 }
+function waitsOnChecks(pullRequest, options) {
+  if (pullRequest.checks !== "pending")
+    return;
+  const qualified = qualify({ ...pullRequest, checks: "success" }, options);
+  return qualified.qualifies ? qualified.stackIds : undefined;
+}
+var MAX_WAITING_ON_CHECKS = 10;
+function updatesWaitingOnChecks(pullRequests, options) {
+  return [...pullRequests].sort((a, b) => a.number - b.number).flatMap((pullRequest) => {
+    const stackIds = waitsOnChecks(pullRequest, options);
+    return stackIds ? [{ pullRequest, stackIds }] : [];
+  });
+}
 var RENOVATE_METHODS = {
   squash: "squash",
   rebase: "rebase",
@@ -57686,10 +57747,10 @@ function mergeMethod(allowed, strategy) {
 
 // src/render/dashboard-facts.ts
 var MAX_CRATES = 20;
-function headerStateOf(total, known, facts, failed) {
+function headerStateOf(total, known, facts, failed2) {
   if (total === 0)
     return "first-run";
-  if (facts.previewFailed.length > 0 || failed > 0)
+  if (facts.previewFailed.length > 0 || failed2 > 0)
     return "failing";
   if (known.some((row) => row.state === "deploying"))
     return "deploying";
@@ -57740,7 +57801,7 @@ function dashboardFacts(rows) {
   const drift = of("drift");
   const previewFailed = of("preview-failed");
   const inSync = of("in-sync");
-  const failed = known.filter((row) => row.failed).length;
+  const failed2 = known.filter((row) => row.failed).length;
   const destroying = pending.filter((row) => row.destroys > 0);
   const gone = drift.filter((row) => (row.gone ?? 0) > 0);
   const sections = { pending, deploying, drift, previewFailed, inSync };
@@ -57754,10 +57815,10 @@ function dashboardFacts(rows) {
       previewFailed: previewFailed.length,
       inSync: inSync.length,
       destroying: destroying.length,
-      failedDeploys: failed
+      failedDeploys: failed2
     },
     shortened: pending.filter((row) => row.shortened > 0).length,
-    headerState: headerStateOf(rows.length, known, sections, failed),
+    headerState: headerStateOf(rows.length, known, sections, failed2),
     crates: pending.length > MAX_CRATES ? "more" : pending.length,
     signs: signsOf([...pending, ...deploying]),
     alert: alertOf(destroying, gone)
@@ -57793,7 +57854,7 @@ var HEADER_DOT = {
 
 // src/render/merge-row.ts
 var TITLE_LENGTH = 80;
-function shorten(title) {
+function shortenTitle(title) {
   const chars = [...title];
   return chars.length <= TITLE_LENGTH ? title : `${chars.slice(0, TITLE_LENGTH - 3).join("")}...`;
 }
@@ -57801,7 +57862,7 @@ function renderMergeRow(row, options = {}) {
   const by2 = row.author === undefined ? "" : ` by ${escapeText(row.author)}`;
   const parts = [
     row.stackIds.map((id) => `**${escapeText(id)}**`).join(", "),
-    ...options.redact ? [] : [escapeText(shorten(row.title))],
+    ...options.redact ? [] : [escapeText(shortenTitle(row.title))],
     `#${row.pr}${by2}`,
     ...row.preview && row.preview.length > 0 ? [previewText(row.preview)] : []
   ];
@@ -57872,6 +57933,7 @@ var NOTHING_FROM_THE_CODE = "Nothing to deploy from the code.";
 var DRIFTED_LINE = "Real infrastructure changed outside the code. Deploying a stack puts it back as its code says.";
 var INSTRUCTION_LINE = "Tick a box to deploy that stack exactly as its row shows it.";
 var MERGE_LINE2 = "Tick a box to merge that pull request. Its stack is then previewed again and deployed as that preview shows it.";
+var WAITING_ON_CHECKS_LINE = "These wait on their own checks. Each gets a box here once its checks are green.";
 var READ_ONLY_LINE = "This dashboard is read only, so rows have no boxes and nothing deploys from here. Rows get their boxes when `dashboard.readOnly` comes out of `sluiceway.yaml`.";
 var PREVIEW_FAILED_LINE = "These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.";
 function shortenedNote(shortened, pending) {
@@ -57945,7 +58007,7 @@ function picture(state, crates, signs, actionRef2) {
 }
 function countsLine(counts2, dots) {
   const { pending, drifted, deploying, previewFailed, inSync, destroying } = counts2;
-  const failed = counts2.failedDeploys;
+  const failed2 = counts2.failedDeploys;
   const dot = (kind, count) => dots ? `${count === 0 ? DOT_AT_ZERO : COUNT_DOT[kind]}&nbsp;` : "";
   const parts = [
     `${dot("pending", pending)}**${pending} pending**`,
@@ -57958,8 +58020,8 @@ function countsLine(counts2, dots) {
     const words = destroying === 1 ? "stack destroys" : "stacks destroy";
     parts.push(`:warning: **${destroying} pending ${words} resources**`);
   }
-  if (failed > 0)
-    parts.push(`${dot("failed", failed)}${plural3(failed, "failed deploy")}`);
+  if (failed2 > 0)
+    parts.push(`${dot("failed", failed2)}${plural3(failed2, "failed deploy")}`);
   return parts.join(" · ");
 }
 function time3(iso) {
@@ -58041,8 +58103,11 @@ function renderBody(input2) {
   if (deploying.length > 0)
     out.push("## Deploying", blocks(deploying));
   const merges = [...input2.merges ?? []].filter((merge3, index, all) => all.findIndex((one) => one.pr === merge3.pr) === index).sort((a, b) => a.pr - b.pr);
+  const waiting = [...input2.waiting ?? []].filter((line, index, all) => all.findIndex((one) => one.pr === line.pr) === index && !merges.some((merge3) => merge3.pr === line.pr)).sort((a, b) => a.pr - b.pr);
+  if (merges.length > 0 || waiting.length > 0)
+    out.push("## Updates waiting to merge");
   if (merges.length > 0) {
-    out.push("## Updates waiting to merge", MERGE_LINE2);
+    out.push(MERGE_LINE2);
     out.push(merges.slice(0, MERGE_FOLD_AFTER).map((merge3) => merge3.text).join(`
 `));
     const folded = merges.slice(MERGE_FOLD_AFTER);
@@ -58050,6 +58115,10 @@ function renderBody(input2) {
       out.push(`<details><summary>${folded.length} more ${folded.length === 1 ? "update" : "updates"} waiting to merge</summary>`, folded.map((merge3) => merge3.text).join(`
 `), "</details>");
     }
+  }
+  if (waiting.length > 0) {
+    out.push(WAITING_ON_CHECKS_LINE, waiting.map((line) => line.text).join(`
+`));
   }
   out.push("## Pending", pendingLine(input2, facts));
   if (facts.alert)
@@ -58876,7 +58945,7 @@ function deployFailureText(reason) {
 var READS_PER_JOB = 100;
 function attributionSource(github, input2, onFailure) {
   let walk3;
-  let failed = false;
+  let failed2 = false;
   const pushFiles = new Map;
   const pullRequestFiles = new Map;
   const asked = new Set;
@@ -58884,7 +58953,7 @@ function attributionSource(github, input2, onFailure) {
   const { lookback, trailLength, ...rest } = input2;
   const read3 = async (ranges) => {
     try {
-      if (failed)
+      if (failed2)
         return false;
       if (!isCommitId(input2.scanSha))
         throw new Error("the scanned commit is no commit id");
@@ -58911,7 +58980,7 @@ function attributionSource(github, input2, onFailure) {
       }
       return true;
     } catch (error63) {
-      failed = true;
+      failed2 = true;
       const words = error63 instanceof Error ? error63.message : String(error63);
       onFailure(words.replace(/\.+$/, ""));
       return false;
@@ -59197,6 +59266,7 @@ async function swapRows(writer, issue3, rows) {
       facts: mine.facts,
       shipped: mine.shipped,
       merges: mine.merges ?? live.merges,
+      waiting: mine.waiting ?? live.waiting,
       outside: mine.outside ?? live.outside
     }, false));
     last = drawn;
@@ -59225,6 +59295,7 @@ function fitScan(writer, full, mine) {
     facts: mine.facts,
     shipped: mine.shipped,
     merges: mine.merges,
+    waiting: mine.waiting,
     outside: mine.outside
   }, full);
 }
@@ -59275,6 +59346,7 @@ function fit(writer, body, aimAtTarget) {
     readOnly: dashboard.readOnly,
     ignored: writer.ignored,
     merges: body.merges,
+    waiting: body.waiting,
     outsideDeploys: body.outside
   }, aimAtTarget ? writer.budget : { ...writer.budget, target: Number.POSITIVE_INFINITY });
 }
@@ -59636,9 +59708,9 @@ function previewOutcome(result) {
 
 // src/modes/prepare.ts
 async function prepareStacks(context3, stacks, defaultTimeoutMinutes) {
-  const failed = new Map;
+  const failed2 = new Map;
   if (stacks.length === 0 || context3.adapter.prepare === undefined)
-    return failed;
+    return failed2;
   const timeouts = new Map(stacks.map((one) => [stackId(one.stack), one.previewTimeout ?? defaultTimeoutMinutes]));
   const tool = { root: context3.root, env: context3.env, run: context3.run };
   for (const preparation of context3.adapter.prepare(stacks.map(({ stack }) => stack))) {
@@ -59660,7 +59732,7 @@ async function prepareStacks(context3, stacks, defaultTimeoutMinutes) {
       ...told
     ]);
     for (const id of ids2) {
-      failed.set(id, {
+      failed2.set(id, {
         ok: false,
         reason: result.reason,
         detail: [
@@ -59670,7 +59742,7 @@ async function prepareStacks(context3, stacks, defaultTimeoutMinutes) {
       });
     }
   }
-  return failed;
+  return failed2;
 }
 function lines(text6) {
   const all = text6.split(/\r?\n/);
@@ -63011,14 +63083,14 @@ async function runPool(items, size, work) {
   }
   const results = new Array(items.length);
   let next = 0;
-  let failed = false;
+  let failed2 = false;
   const slot = async () => {
-    while (!failed && next < items.length) {
+    while (!failed2 && next < items.length) {
       const index = next++;
       try {
         results[index] = await work(items[index]);
       } catch (error63) {
-        failed = true;
+        failed2 = true;
         throw error63;
       }
     }
@@ -63028,8 +63100,8 @@ async function runPool(items, size, work) {
 }
 
 // src/core/scan-result.ts
-function everyPreviewFailed(attempted, failed) {
-  return attempted > 1 && failed === attempted;
+function everyPreviewFailed(attempted, failed2) {
+  return attempted > 1 && failed2 === attempted;
 }
 
 // src/render/preview-page.ts
@@ -63332,11 +63404,11 @@ function renderSummary(stacks, options = {}) {
   const hasDrift = (stack) => (stack.diff.drift ?? []).length > 0;
   const drifted = diffs.filter((stack) => stack.diff.changes.length === 0 && hasDrift(stack));
   const inSync = diffs.filter((stack) => stack.diff.changes.length === 0 && !hasDrift(stack));
-  const failed = sorted.filter((stack) => stack.kind === "preview-failed");
+  const failed2 = sorted.filter((stack) => stack.kind === "preview-failed");
   const counted2 = stacks.length === 0 ? "No stacks previewed." : `${plural2(stacks.length, "stack")} previewed: ${[
     pending.length && `${pending.length} pending`,
     drifted.length && `${drifted.length} drifted`,
-    failed.length && `${failed.length} preview failed`,
+    failed2.length && `${failed2.length} preview failed`,
     inSync.length && `${inSync.length} in sync`
   ].filter(Boolean).join(", ")}.`;
   const tail = [];
@@ -63348,8 +63420,8 @@ function renderSummary(stacks, options = {}) {
 `));
     }
   }
-  if (failed.length > 0) {
-    tail.push("### Preview failed", failed.map((stack) => failedLine(stack, options)).join(`
+  if (failed2.length > 0) {
+    tail.push("### Preview failed", failed2.map((stack) => failedLine(stack, options)).join(`
 `));
   }
   if (inSync.length > 0) {
@@ -63362,7 +63434,7 @@ function renderSummary(stacks, options = {}) {
   const index = [
     pending.length > 0 && `- Pending: ${pending.map((stack) => indexLink(stack.diff.stackId)).join(" · ")}`,
     drifted.length > 0 && `- Drifted: ${drifted.map((stack) => indexLink(stack.diff.stackId)).join(" · ")}`,
-    failed.length > 0 && `- Preview failed: ${failed.map((stack) => indexLink(stack.stackId)).join(" · ")}`
+    failed2.length > 0 && `- Preview failed: ${failed2.map((stack) => indexLink(stack.stackId)).join(" · ")}`
   ].filter((line3) => line3 !== false);
   const frame = (shortened2) => [
     "## Sluiceway scan",
@@ -63390,6 +63462,24 @@ function renderSummary(stacks, options = {}) {
 `;
   const bytes = byteLength3(text7);
   return { text: text7, bytes, shortened, fits: bytes <= (options.budget ?? SUMMARY_BUDGET) };
+}
+
+// src/render/waiting-line.ts
+function renderWaitingLine(line3, options = {}) {
+  const by2 = line3.author === undefined ? "" : ` by ${escapeText(line3.author)}`;
+  const parts = [
+    line3.stackIds.map((id) => `**${escapeText(id)}**`).join(", "),
+    ...options.redact ? [] : [escapeText(shortenTitle(line3.title))],
+    `#${line3.pr}${by2}`,
+    "waits on its checks"
+  ];
+  return `- ${parts.join(" · ")} ${waitingMarker(line3)}`;
+}
+function waitingBlock(line3, options = {}) {
+  const [block] = parseDashboard(renderWaitingLine(line3, options)).waiting;
+  if (!block)
+    throw new Error("A rendered waiting line did not read back as one.");
+  return block;
 }
 
 // src/modes/branch-preview.ts
@@ -63443,12 +63533,12 @@ async function previewOne(context3, number4, head, files, stacks) {
         await writeFile4(target2, text7);
     }
     const tool = { root: copy, env: context3.env, run: context3.run };
-    const failed = await prepareStacks({ ...tool, log, adapter: context3.adapter }, stacks, context3.previewTimeoutMinutes);
+    const failed2 = await prepareStacks({ ...tool, log, adapter: context3.adapter }, stacks, context3.previewTimeoutMinutes);
     const previews = [];
     for (const configured of stacks) {
       const id = stackId(configured.stack);
       const started = now().getTime();
-      const result = failed.get(id) ?? await context3.adapter.preview(configured.stack, {
+      const result = failed2.get(id) ?? await context3.adapter.preview(configured.stack, {
         ...tool,
         timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
         showValues: []
@@ -63676,6 +63766,7 @@ async function scanning(context3, report) {
           liveTicks.set(id, row2.hash);
       }
       const { merges, mergeTicks } = mergeRows(listing, branchPreviews, live.current ? live.merges : [], waits, config2.dashboard.redact);
+      const waiting = waitingLines(listing, live.current ? live.waiting : [], config2.dashboard.redact);
       const outside = trailOutside(ids2, new Map([...histories ?? []].map(([id, history]) => [
         id,
         outsideDeploys(id, history, deploys.runs.get(id))
@@ -63771,6 +63862,7 @@ async function scanning(context3, report) {
           rows,
           carried,
           merges,
+          waiting,
           outside
         },
         composed: {
@@ -63863,17 +63955,17 @@ async function scanning(context3, report) {
     const all = [...previewed.values()].sort((a, b) => byCodeUnit(a.id, b.id));
     await writeSummary2(context3, all, { logDiff, unclaimed }, attributed);
   }
-  const failed = [...previewed.values()].filter(({ result }) => !result.ok);
-  const faults = failed.filter(({ result }) => !result.ok && result.reason.kind === "internal-error").map(({ id }) => id).sort(byCodeUnit);
+  const failed2 = [...previewed.values()].filter(({ result }) => !result.ok);
+  const faults = failed2.filter(({ result }) => !result.ok && result.reason.kind === "internal-error").map(({ id }) => id).sort(byCodeUnit);
   if (faults.length > 0) {
     throw new ScanFailedError(`The preview of ${faults.join(", ")} failed inside Sluiceway, which is a bug. The dashboard was written first and shows ${faults.length === 1 ? "it" : "them"} as a preview failure. The job log holds the error in the group of the stack. Please report it at https://github.com/sluiceway/sluiceway/issues.`);
   }
-  if (everyPreviewFailed(previewed.size, failed.length)) {
-    throw new ScanFailedError(`Every preview failed (${failed.length} of ${previewed.size}). That nearly always means the environment is broken, such as missing credentials or a backend that cannot be reached. The dashboard was written first and shows a preview failure on every row of a previewed stack, which is true: nothing can be deployed either. The job log holds what the tool printed, in the group of each stack.`);
+  if (everyPreviewFailed(previewed.size, failed2.length)) {
+    throw new ScanFailedError(`Every preview failed (${failed2.length} of ${previewed.size}). That nearly always means the environment is broken, such as missing credentials or a backend that cannot be reached. The dashboard was written first and shows a preview failure on every row of a previewed stack, which is true: nothing can be deployed either. The job log holds what the tool printed, in the group of each stack.`);
   }
-  if (context3.strict && failed.length > 0) {
-    const ids3 = failed.map(({ id }) => id).sort(byCodeUnit);
-    throw new ScanFailedError(`${plural2(failed.length, "preview")} failed (${ids3.join(", ")}), and the strict input turns the job red on any preview failure. The dashboard was written first and shows ${failed.length === 1 ? "it" : "them"}.`);
+  if (context3.strict && failed2.length > 0) {
+    const ids3 = failed2.map(({ id }) => id).sort(byCodeUnit);
+    throw new ScanFailedError(`${plural2(failed2.length, "preview")} failed (${ids3.join(", ")}), and the strict input turns the job red on any preview failure. The dashboard was written first and shows ${failed2.length === 1 ? "it" : "them"}.`);
   }
 }
 var PREVIEW_FIRST = {
@@ -64081,16 +64173,16 @@ async function previewAll(context3, stacks, logDiff, showValues, prepared, check
     return [];
   const tool = { root: context3.root, env: context3.env, run: context3.run };
   const unprepared = stacks.filter(({ stack }) => !prepared.has(stackId(stack)));
-  const failed = await prepareStacks({ ...tool, log, adapter }, unprepared, context3.previewTimeoutMinutes);
+  const failed2 = await prepareStacks({ ...tool, log, adapter }, unprepared, context3.previewTimeoutMinutes);
   for (const { stack } of unprepared) {
-    if (!failed.has(stackId(stack)))
+    if (!failed2.has(stackId(stack)))
       prepared.add(stackId(stack));
   }
   const unpreparedFailures = stacks.flatMap(({ stack }) => {
-    const result = failed.get(stackId(stack));
+    const result = failed2.get(stackId(stack));
     return result === undefined ? [] : [{ id: stackId(stack), result, startedAt: now(), milliseconds: 0 }];
   });
-  stacks = stacks.filter(({ stack }) => !failed.has(stackId(stack)));
+  stacks = stacks.filter(({ stack }) => !failed2.has(stackId(stack)));
   if (stacks.length === 0)
     return unpreparedFailures;
   log.info(`Previewing ${plural2(stacks.length, "stack")} with a pool of ${context3.concurrency} and a time limit of ${minutes(context3.previewTimeoutMinutes)} for each preview.`);
@@ -64343,14 +64435,25 @@ async function listUpdates(context3, config2, stacks) {
     dependsOn: new Map(stacks.map((one) => [stackId(one.stack), one.dependsOn ?? []]))
   };
   for (const pullRequest of open2.pullRequests) {
-    const qualified = qualify(pullRequest, options);
-    if (!qualified.qualifies && qualified.why !== "author") {
-      log.info(`#${pullRequest.number} is not listed to merge: ${NOT_QUALIFIED[qualified.why]}.`);
-    }
+    const qualified = qualify(pullRequest.checks === "pending" ? { ...pullRequest, checks: "success" } : pullRequest, options);
+    const pending = pullRequest.checks === "pending";
+    if (qualified.qualifies ? !pending : qualified.why === "author")
+      continue;
+    log.info(qualified.qualifies ? `#${pullRequest.number} is not listed to merge yet: its checks have not all finished. Its line has no box until they are green.` : `#${pullRequest.number} is not listed to merge: ${NOT_QUALIFIED[qualified.why]}.`);
   }
   const updates = waitingUpdates(open2.pullRequests, options);
   log.info(updates.length === 0 ? "No pull request waits to merge." : `${plural2(updates.length, "pull request")} ${updates.length === 1 ? "waits" : "wait"} to merge: ${updates.map(({ pullRequest }) => `#${pullRequest.number}`).join(", ")}.`);
-  return { kind: "listed", updates };
+  const onChecks = updatesWaitingOnChecks(open2.pullRequests, options);
+  const shown3 = onChecks.slice(0, MAX_WAITING_ON_CHECKS);
+  const numbers = (list) => list.map(({ pullRequest }) => `#${pullRequest.number}`).join(", ");
+  if (shown3.length > 0) {
+    log.info(`${plural2(shown3.length, "pull request")} ${shown3.length === 1 ? "waits on its checks" : "wait on their checks"}: ${numbers(shown3)}.`);
+  }
+  const rest = onChecks.slice(MAX_WAITING_ON_CHECKS);
+  if (rest.length > 0) {
+    log.info(`${plural2(rest.length, "more pull request")} ${rest.length === 1 ? "waits on its checks and is" : "wait on their checks and are"} not listed: ${numbers(rest)}.`);
+  }
+  return { kind: "listed", updates, onChecks: shown3 };
 }
 function mergeRows(listing, previews, live, waits, redact) {
   if (listing.kind === "off")
@@ -64376,6 +64479,18 @@ function mergeRows(listing, previews, live, waits, redact) {
     return carry ? tickedMergeBlock(block) : clearMergeTick(tickedMergeBlock(block), { note: "orphan" });
   });
   return { merges, mergeTicks };
+}
+function waitingLines(listing, live, redact) {
+  if (listing.kind === "off")
+    return [];
+  if (listing.kind === "failed")
+    return [...live];
+  return listing.onChecks.map(({ pullRequest, stackIds }) => waitingBlock({
+    pr: pullRequest.number,
+    stackIds,
+    title: pullRequest.title,
+    author: pullRequest.author
+  }, { redact }));
 }
 function mergesWaiting(facts) {
   const waiting = [];
