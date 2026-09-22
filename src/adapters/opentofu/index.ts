@@ -1,6 +1,8 @@
 import { ConfigError } from "../../core/config.ts";
 import type { Adapter } from "../adapter.ts";
 import { discoverOpenTofu } from "./discover.ts";
+import { preview } from "./preview.ts";
+import { checkVersion } from "./version.ts";
 
 const notYet = (): never => {
   throw new Error("Not built yet.");
@@ -12,8 +14,8 @@ export const opentofu: Adapter = {
     if (optionProblems.length > 0) throw new ConfigError(optionProblems);
     return stacks;
   },
-  checkVersion: notYet,
-  preview: notYet,
+  checkVersion,
+  preview,
   toolDiff: notYet,
   apply: notYet,
 };
