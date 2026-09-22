@@ -27418,6 +27418,67 @@ function readActionRef(env, directory, readFile) {
   });
 }
 
+// src/core/auto-mode.ts
+var MODES = ["auto", "scan", "resolve", "apply", "settle", "check", "init"];
+function isMode(value) {
+  return MODES.includes(value);
+}
+var STARTS = {
+  push: ["scan"],
+  schedule: ["scan"],
+  workflow_dispatch: ["resolve", "scan"],
+  issues: ["resolve"],
+  pull_request: ["check"],
+  merge_group: ["check"]
+};
+function startedBy(event, config) {
+  if (!Object.hasOwn(STARTS, event))
+    return;
+  const modes = STARTS[event] ?? [];
+  return config.readOnly ? modes.filter((mode) => mode !== "resolve") : [...modes];
+}
+var NOTHING = "Nothing to do.";
+function autoModes(event, config) {
+  const modes = startedBy(event.name, config);
+  if (modes === undefined) {
+    return {
+      notice: `Sluiceway has nothing to do on a ${event.name} event. It scans on push, schedule and workflow_dispatch, acts on an edit of its dashboard, and checks a pull request. ${NOTHING}`
+    };
+  }
+  if (event.name === "push" && event.defaultBranch !== undefined && event.ref !== `refs/heads/${event.defaultBranch}`) {
+    return {
+      notice: `A push to ${event.ref ?? "an unknown ref"} is not a push to the default branch, ${event.defaultBranch}. Sluiceway scans only the default branch. ${NOTHING}`
+    };
+  }
+  if (event.name === "issues") {
+    if (event.action !== "edited") {
+      return {
+        notice: `An issue was ${event.action ?? "changed"}. Sluiceway acts only on an edit of its dashboard. ${NOTHING}`
+      };
+    }
+    if (modes.length === 0) {
+      return {
+        notice: `The dashboard is read only (dashboard.readOnly), so an issue edit asks nothing of Sluiceway. ${NOTHING}`
+      };
+    }
+  }
+  return { modes };
+}
+function autoModesOn(triggers, config) {
+  const events = triggers.called ? [
+    ...triggers.events,
+    ...Object.entries(STARTS).filter(([, modes]) => modes.some((mode) => mode !== "check")).map(([event]) => event)
+  ] : triggers.events;
+  const runs = new Set(events.flatMap((event) => startedBy(event, config) ?? []));
+  if (!events.includes("issues"))
+    runs.delete("resolve");
+  if (runs.has("resolve")) {
+    runs.add("apply");
+    runs.add("settle");
+  }
+  return MODES.filter((mode) => runs.has(mode));
+}
+
 // src/github/inputs.ts
 function wholeNumber(getInput2, name, hint = "") {
   const text = getInput2(name).trim();
@@ -59906,43 +59967,6 @@ async function runApply(directory, handed) {
 // src/modes/auto-job.ts
 import { readFileSync as readFileSync12 } from "node:fs";
 
-// src/core/auto-mode.ts
-var NOTHING = "Nothing to do.";
-function autoModes(event, config2) {
-  switch (event.name) {
-    case "push":
-      if (event.defaultBranch !== undefined && event.ref !== `refs/heads/${event.defaultBranch}`) {
-        return {
-          notice: `A push to ${event.ref ?? "an unknown ref"} is not a push to the default branch, ${event.defaultBranch}. Sluiceway scans only the default branch. ${NOTHING}`
-        };
-      }
-      return { modes: ["scan"] };
-    case "schedule":
-      return { modes: ["scan"] };
-    case "workflow_dispatch":
-      return { modes: config2.readOnly ? ["scan"] : ["resolve", "scan"] };
-    case "issues":
-      if (event.action !== "edited") {
-        return {
-          notice: `An issue was ${event.action ?? "changed"}. Sluiceway acts only on an edit of its dashboard. ${NOTHING}`
-        };
-      }
-      if (config2.readOnly) {
-        return {
-          notice: `The dashboard is read only (dashboard.readOnly), so an issue edit asks nothing of Sluiceway. ${NOTHING}`
-        };
-      }
-      return { modes: ["resolve"] };
-    case "pull_request":
-    case "merge_group":
-      return { modes: ["check"] };
-    default:
-      return {
-        notice: `Sluiceway has nothing to do on a ${event.name} event. It scans on push, schedule and workflow_dispatch, acts on an edit of its dashboard, and checks a pull request. ${NOTHING}`
-      };
-  }
-}
-
 // src/core/resolve.ts
 function matrixOutput(entries) {
   return JSON.stringify(entries.map(({ stack, environment, deployment }) => ({ stack, environment, deployment })));
@@ -60394,8 +60418,7 @@ function readWorkflowFiles(root) {
     text: readFileSync7(join30(root, WORKFLOW_DIRECTORY, name), "utf8")
   }));
 }
-var MODES = ["auto", "scan", "resolve", "apply", "settle", "check", "init"];
-function needs(mode, config2) {
+function tokenNeeds(mode, config2) {
   switch (mode) {
     case "scan":
       return {
@@ -60503,27 +60526,20 @@ function sluicewayJob(job, steps, auto) {
       continue;
     const written = isRecord2(step3.with) ? String(step3.with.mode ?? "").trim() : "";
     const named = written === "" ? "auto" : written;
-    const mode = MODES.includes(named) ? named : undefined;
+    const mode = isMode(named) ? named : undefined;
     const runs = mode === undefined ? [] : mode === "auto" ? auto : [mode];
     return { job, mode, runs, ref, refKind: refKind(ref), named };
   }
   return;
 }
 function autoRuns(on, config2) {
-  const called = "workflow_call" in on;
-  const scans = called || "push" in on || "schedule" in on || "workflow_dispatch" in on;
-  const resolves = !config2.dashboard.readOnly && (called || listensToEdits(on.issues, "issues" in on));
-  const checks3 = "pull_request" in on || "merge_group" in on;
-  return [
-    ...scans ? ["scan"] : [],
-    ...resolves ? ["resolve", "apply", "settle"] : [],
-    ...checks3 ? ["check"] : []
-  ];
+  const events = Object.keys(on).filter((event) => event !== "issues" || listensToEdits(on.issues, true));
+  return autoModesOn({ events, called: "workflow_call" in on }, { readOnly: config2.dashboard.readOnly });
 }
 function needsAll(modes, config2) {
   const all = {};
   for (const mode of modes) {
-    for (const [scope, level] of Object.entries(needs(mode, config2))) {
+    for (const [scope, level] of Object.entries(tokenNeeds(mode, config2))) {
       if (all[scope] !== "write")
         all[scope] = level;
     }
@@ -60678,9 +60694,9 @@ function checkJobs(path, workflow, found, config2, warnings) {
   }
   const applies = withMode("apply");
   for (const settle2 of withMode("settle")) {
-    const { needs: needs2 } = jobOf(settle2);
+    const { needs } = jobOf(settle2);
     for (const apply6 of applies) {
-      if (!needs2.includes(apply6)) {
+      if (!needs.includes(apply6)) {
         warnings.push({ kind: "settle-skips-apply", path, job: settle2, apply: apply6 });
       }
     }
@@ -61492,7 +61508,7 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
   ];
   const lines3 = await source.attribute(new Map(deployingIds.map((id) => [id, lastDeployedCommit(facts, id)])));
   const shipped = await source.ship(facts.trail);
-  const startedBy = new Map(swap.started.map((one) => [one.stackId, one]));
+  const startedBy2 = new Map(swap.started.map((one) => [one.stackId, one]));
   const mine = (one, destroys, deletes) => ({
     state: "deploying",
     stackId: one.stackId,
@@ -61510,7 +61526,7 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
   for (const row of live.rows) {
     const first = !seen.has(row.stackId);
     seen.add(row.stackId);
-    const one = startedBy.get(row.stackId);
+    const one = startedBy2.get(row.stackId);
     const fact = facts.byStack.get(row.stackId);
     const wanted = swap.clear.get(row.stackId);
     const destroys = row.known ? row.destroys : 0;
@@ -62226,26 +62242,6 @@ function backendCell(check2) {
       return "Not checked";
   }
 }
-function backendParts(checks3, ignore) {
-  const parts = [
-    "### The backend",
-    [
-      "| Stack | In the backend |",
-      "|---|---|",
-      ...checks3.map((check2) => row([check2.stackId, backendCell(check2)]))
-    ].join(`
-`)
-  ];
-  const missing2 = checks3.filter((check2) => check2.found === false).map((check2) => check2.stackId);
-  if (missing2.length === 0) {
-    if (checks3.some((check2) => check2.found === true))
-      parts.push(ALL_IN_BACKEND);
-  } else {
-    parts.push(BACKEND_PASTE_NOTE, ["```yaml", ...ignoreBlock(ignore, missing2), "```"].join(`
-`));
-  }
-  return parts;
-}
 function refText({ ref, refKind: refKind2 }) {
   switch (refKind2) {
     case "moving":
@@ -62265,7 +62261,7 @@ function workflowJobText(path, job) {
 function needsWho(mode) {
   return mode === "auto" ? "the modes it runs need" : `${mode} needs`;
 }
-var MODE_LIST = "auto, scan, resolve, apply, settle, check";
+var MODE_LIST = MODES.filter((mode) => mode !== "init").join(", ");
 function workflowWarningText(warning2) {
   const { path } = warning2;
   switch (warning2.kind) {
@@ -62337,86 +62333,237 @@ function workflowNoteText(note) {
 function scansSomewhere(workflows) {
   return workflows.workflows.some(({ jobs }) => jobs.some((job) => job.runs.includes("scan")));
 }
-function renderCheckSummary({
-  report,
-  workflows,
-  unrelated,
-  hasConfigFile: hasConfigFile2,
-  backend
-}) {
-  const parts = ["## Sluiceway check", VALID];
-  if (!hasConfigFile2)
-    parts.push(NO_CONFIG_FILE);
-  parts.push("### Stacks", foundText(report.stacks.length));
-  if (report.stacks.length > 0) {
-    const waits = report.stacks.some((configured) => configured.dependsOn !== undefined || configured.dependsOnAuto);
-    const phased = report.stacks.some((configured) => configured.phase !== undefined);
-    parts.push([
-      `| Stack | Environment | Tickers | Inputs |${phased ? " Phase |" : ""}${waits ? " Depends on |" : ""}`,
-      `|---|---|---|---|${phased ? "---|" : ""}${waits ? "---|" : ""}`,
-      ...report.stacks.map((configured) => {
-        const { environment, tickers: tickers2, inputs } = configured;
-        return row([
-          stackId(configured.stack),
-          environment,
-          typeof tickers2 === "string" ? tickers2 : tickers2.join(", "),
-          inputs.length === 0 ? "none" : inputs.join(", "),
-          ...phased ? [configured.phase === undefined ? "none" : phaseWords(configured, ", from ", "")] : [],
-          ...waits ? [dependsOnCell(configured, report.phases)] : []
-        ]);
-      })
-    ].join(`
-`));
-  }
-  if (report.phases.length > 0) {
-    parts.push("### Phases", [
-      "| Phase | Stacks | Waits on |",
-      "|---|---|---|",
-      ...report.phases.map(({ phase, stackIds }, index) => {
-        const earlier = report.phases.slice(0, index).map((one) => one.phase);
-        return row([
-          phase,
-          stackIds.length === 0 ? "none" : stackIds.join(", "),
-          earlier.length === 0 ? "nothing" : earlier.join(", ")
-        ]);
-      })
-    ].join(`
-`));
-  }
-  if (report.ignore.length > 0) {
-    parts.push("### Ignore", [
-      "| Glob | Leaves out |",
-      "|---|---|",
-      ...report.ignore.map((entry3) => row([
-        entry3.glob,
-        entry3.stacks.length > 0 ? entry3.stacks.join(", ") : `No stack. ${unmatchedWhy(entry3)}`
-      ]))
-    ].join(`
-`));
-  }
-  parts.push("### Files that no stack claims");
-  const count3 = report.unclaimed.reduce((sum, group) => sum + group.files.length, 0);
-  if (count3 === 0) {
+function checkParts(facts) {
+  const { report } = facts;
+  return [
+    headerPart(facts.hasConfigFile),
+    stacksPart(report),
+    phasesPart(report.phases),
+    ignorePart(report.ignore),
+    unclaimedPart(report, facts.unrelated),
+    readsPart(report),
+    workflowsPart(facts.workflows)
+  ];
+}
+function headerPart(hasConfigFile2) {
+  const noFile = hasConfigFile2 ? [] : [NO_CONFIG_FILE];
+  return {
+    log: noFile.map((text7) => ({ info: text7 })),
+    summary: ["## Sluiceway check", VALID, ...noFile]
+  };
+}
+function stacksPart({ stacks, phases }) {
+  const found = foundText(stacks.length);
+  if (stacks.length === 0)
+    return { log: [{ info: found }], summary: ["### Stacks", found] };
+  const waits = stacks.some((configured) => configured.dependsOn !== undefined || configured.dependsOnAuto);
+  const phased = stacks.some((configured) => configured.phase !== undefined);
+  return {
+    log: [
+      { info: found },
+      {
+        group: "Stacks",
+        lines: stacks.map((configured) => line2(`${stackId(configured.stack)}: ${settingsText(configured, phases)}`))
+      }
+    ],
+    summary: [
+      "### Stacks",
+      found,
+      [
+        `| Stack | Environment | Tickers | Inputs |${phased ? " Phase |" : ""}${waits ? " Depends on |" : ""}`,
+        `|---|---|---|---|${phased ? "---|" : ""}${waits ? "---|" : ""}`,
+        ...stacks.map((configured) => {
+          const { environment, tickers: tickers2, inputs } = configured;
+          return row([
+            stackId(configured.stack),
+            environment,
+            typeof tickers2 === "string" ? tickers2 : tickers2.join(", "),
+            inputs.length === 0 ? "none" : inputs.join(", "),
+            ...phased ? [configured.phase === undefined ? "none" : phaseWords(configured, ", from ", "")] : [],
+            ...waits ? [dependsOnCell(configured, phases)] : []
+          ]);
+        })
+      ].join(`
+`)
+    ]
+  };
+}
+function phasesPart(phases) {
+  if (phases.length === 0)
+    return { log: [], summary: [] };
+  return {
+    log: [{ group: "Phases", lines: phaseLines(phases).map(line2) }],
+    summary: [
+      "### Phases",
+      [
+        "| Phase | Stacks | Waits on |",
+        "|---|---|---|",
+        ...phases.map(({ phase, stackIds }, index) => {
+          const earlier = phases.slice(0, index).map((one) => one.phase);
+          return row([
+            phase,
+            stackIds.length === 0 ? "none" : stackIds.join(", "),
+            earlier.length === 0 ? "nothing" : earlier.join(", ")
+          ]);
+        })
+      ].join(`
+`)
+    ]
+  };
+}
+function ignorePart(ignore) {
+  if (ignore.length === 0)
+    return { log: [], summary: [] };
+  return {
+    log: ignore.map((entry3) => entry3.stacks.length > 0 ? { info: line2(ignoreText(entry3)) } : { warning: line2(unmatchedText(entry3)), title: "An ignore glob matches no stack" }),
+    summary: [
+      "### Ignore",
+      [
+        "| Glob | Leaves out |",
+        "|---|---|",
+        ...ignore.map((entry3) => row([
+          entry3.glob,
+          entry3.stacks.length > 0 ? entry3.stacks.join(", ") : `No stack. ${unmatchedWhy(entry3)}`
+        ]))
+      ].join(`
+`)
+    ]
+  };
+}
+function unclaimedPart(report, unrelated) {
+  const heading = "### Files that no stack claims";
+  const files = report.unclaimed.flatMap((group) => group.files);
+  if (files.length === 0) {
     const configFile = report.configFile === undefined ? "" : ` ${escapeText(report.configFile)} is not listed: no stack claims it, and a change to it previews every stack.`;
-    parts.push(`Every file is claimed by a stack, covered by scan.unrelated, or one of the docs and tooling files that force nothing by default.${configFile}`);
-  } else {
-    parts.push(unclaimedText(count3), report.unclaimed.map(groupLine).join(`
-`), whereFilesBelong(report.shared, escapeText));
-    if (report.suggested.length > 0) {
-      parts.push(PASTE_NOTE, ["```yaml", ...unrelatedBlock(unrelated, report.suggested), "```"].join(`
-`));
-    }
+    return {
+      log: [],
+      summary: [
+        heading,
+        `Every file is claimed by a stack, covered by scan.unrelated, or one of the docs and tooling files that force nothing by default.${configFile}`
+      ]
+    };
   }
-  if (report.reads.length > 0) {
-    parts.push(`### ${READS_TITLE}`, report.reads.map((read3) => `- ${escapeText(read3.missed ? readWarningText(read3) : readText(read3))}`).join(`
-`), READS_NOTE, ["```yaml", ...inputsBlock(report.inputs), "```"].join(`
-`));
-  }
-  parts.push("### Workflows", ...workflowParts(workflows));
-  if (backend !== undefined)
-    parts.push(...backendParts(backend.checks, backend.ignore));
-  parts.push("### What a check cannot tell", ...backend === undefined ? [CANNOT_TELL, BACKEND_OFF] : [CANNOT_TELL_WITH_BACKEND]);
-  return `${parts.join(`
+  const count3 = unclaimedText(files.length);
+  const block = report.suggested.length === 0 ? [] : unrelatedBlock(unrelated, report.suggested);
+  return {
+    log: [
+      { info: count3 },
+      { group: "Files that no stack claims", lines: files.map(line2) },
+      { info: whereFilesBelong(report.shared) },
+      ...block.length === 0 ? [] : [{ group: "Ready to paste into sluiceway.yaml", lines: block.map(line2) }]
+    ],
+    summary: [
+      heading,
+      count3,
+      report.unclaimed.map(groupLine).join(`
+`),
+      whereFilesBelong(report.shared, escapeText),
+      ...block.length === 0 ? [] : [PASTE_NOTE, yaml(block)]
+    ]
+  };
+}
+function readsPart({ reads, inputs }) {
+  if (reads.length === 0)
+    return { log: [], summary: [] };
+  const block = inputsBlock(inputs);
+  return {
+    log: [
+      { group: READS_TITLE, lines: reads.map((read3) => line2(readText(read3))) },
+      ...reads.filter((read3) => read3.missed).map((read3) => ({ warning: line2(readWarningText(read3)), title: READ_WARNING_TITLE })),
+      { info: READS_NOTE },
+      { group: READS_PASTE_TITLE, lines: block.map(line2) }
+    ],
+    summary: [
+      `### ${READS_TITLE}`,
+      reads.map((read3) => `- ${escapeText(read3.missed ? readWarningText(read3) : readText(read3))}`).join(`
+`),
+      READS_NOTE,
+      yaml(block)
+    ]
+  };
+}
+function workflowsPart(workflows) {
+  const listed5 = workflows.workflows.length > 0;
+  const noScan = scansSomewhere(workflows) ? [] : [NO_SCAN_WORKFLOW];
+  const warnings = workflows.warnings.map(workflowWarningText);
+  const notes = workflows.notes.map(workflowNoteText);
+  const nothingMissing = listed5 && warnings.length === 0 ? [NOTHING_MISSING] : [];
+  const bullets = (texts) => texts.length === 0 ? [] : [texts.map((text7) => `- ${escapeText(text7)}`).join(`
+`)];
+  return {
+    log: [
+      ...listed5 ? [
+        {
+          group: "Workflows",
+          lines: workflows.workflows.flatMap(({ path, jobs }) => jobs.map((job) => line2(workflowJobText(path, job))))
+        }
+      ] : [],
+      ...noScan.map((text7) => ({ info: text7 })),
+      ...warnings.map((text7) => ({ warning: line2(text7), title: WORKFLOW_WARNING_TITLE })),
+      ...notes.map((text7) => ({ info: line2(text7) })),
+      ...nothingMissing.map((text7) => ({ info: text7 }))
+    ],
+    summary: [
+      "### Workflows",
+      ...listed5 ? [
+        [
+          "| Workflow | Job | Mode | Action ref |",
+          "|---|---|---|---|",
+          ...workflows.workflows.flatMap(({ path, jobs }) => jobs.map((job) => row([path, job.job, job.mode ?? "none", refText(job)])))
+        ].join(`
+`)
+      ] : [],
+      ...noScan,
+      ...bullets(warnings),
+      ...bullets(notes),
+      ...nothingMissing,
+      WORKFLOWS_AS_TEXT
+    ]
+  };
+}
+function backendPart(checks3, ignore, toolLog2) {
+  const missing2 = checks3.filter((check2) => check2.found === false).map((check2) => check2.stackId);
+  const block = missing2.length === 0 ? [] : ignoreBlock(ignore, missing2);
+  const allIn = missing2.length === 0 && checks3.some((check2) => check2.found === true);
+  return {
+    log: [
+      ...toolLog2 === "" ? [] : [{ group: "The tool's own words", lines: toolLog2.replace(/\n$/, "").split(`
+`) }],
+      { group: BACKEND_TITLE, lines: checks3.map((check2) => line2(backendText(check2))) },
+      ...checks3.flatMap((check2) => {
+        if (check2.found === "unknown") {
+          return [{ warning: line2(couldNotAskText(check2)), title: COULD_NOT_ASK_TITLE }];
+        }
+        if (check2.found === false) {
+          return [{ warning: line2(notInBackendText(check2.stackId)), title: NOT_IN_BACKEND_TITLE }];
+        }
+        return [];
+      }),
+      ...block.length === 0 ? [] : [{ info: BACKEND_PASTE_NOTE }, { group: BACKEND_PASTE_TITLE, lines: block.map(line2) }],
+      ...allIn ? [{ info: ALL_IN_BACKEND }] : []
+    ],
+    summary: [
+      "### The backend",
+      [
+        "| Stack | In the backend |",
+        "|---|---|",
+        ...checks3.map((check2) => row([check2.stackId, backendCell(check2)]))
+      ].join(`
+`),
+      ...block.length === 0 ? [] : [BACKEND_PASTE_NOTE, yaml(block)],
+      ...allIn ? [ALL_IN_BACKEND] : []
+    ]
+  };
+}
+function closingPart(askedBackend) {
+  const cannot = askedBackend ? [CANNOT_TELL_WITH_BACKEND] : [CANNOT_TELL, BACKEND_OFF];
+  return {
+    log: [VALID, ...cannot].map((text7) => ({ info: text7 })),
+    summary: ["### What a check cannot tell", ...cannot]
+  };
+}
+function renderCheckSummary(parts) {
+  return `${parts.flatMap((part) => part.summary).join(`
 
 `)}
 `;
@@ -62434,32 +62581,6 @@ function renderCheckFailure(kind, problems) {
 `)}
 `;
 }
-function workflowParts(workflows) {
-  const parts = [];
-  if (workflows.workflows.length > 0) {
-    parts.push([
-      "| Workflow | Job | Mode | Action ref |",
-      "|---|---|---|---|",
-      ...workflows.workflows.flatMap(({ path, jobs }) => jobs.map((job) => row([path, job.job, job.mode ?? "none", refText(job)])))
-    ].join(`
-`));
-  }
-  if (!scansSomewhere(workflows))
-    parts.push(NO_SCAN_WORKFLOW);
-  if (workflows.warnings.length > 0) {
-    parts.push(workflows.warnings.map((warning2) => `- ${escapeText(workflowWarningText(warning2))}`).join(`
-`));
-  }
-  if (workflows.notes.length > 0) {
-    parts.push(workflows.notes.map((note) => `- ${escapeText(workflowNoteText(note))}`).join(`
-`));
-  }
-  if (workflows.workflows.length > 0 && workflows.warnings.length === 0) {
-    parts.push(NOTHING_MISSING);
-  }
-  parts.push(WORKFLOWS_AS_TEXT);
-  return parts;
-}
 function groupLine({ directory, files }) {
   const where2 = directory === "." ? "The repo root" : escapeText(`${directory}/`);
   const shown3 = files.slice(0, FILES_PER_DIRECTORY).map(escapeText).join(", ");
@@ -62470,9 +62591,13 @@ function groupLine({ directory, files }) {
 function row(cells) {
   return `| ${cells.map(escapeText).join(" | ")} |`;
 }
+function yaml(lines3) {
+  return ["```yaml", ...lines3, "```"].join(`
+`);
+}
+var line2 = logGroupTitle;
 
 // src/modes/check.ts
-var line2 = logGroupTitle;
 async function check2(context3) {
   const { log, root } = context3;
   let config2;
@@ -62493,57 +62618,27 @@ async function check2(context3) {
     }
     throw error63;
   }
-  const configFile = hasConfigFile(root);
-  if (!configFile)
-    log.info(NO_CONFIG_FILE);
-  log.info(foundText(report.stacks.length));
-  if (report.stacks.length > 0) {
-    log.group("Stacks", report.stacks.map((configured) => line2(`${stackId(configured.stack)}: ${settingsText(configured, report.phases)}`)));
-  }
-  if (report.phases.length > 0)
-    log.group("Phases", phaseLines(report.phases).map(line2));
-  for (const entry3 of report.ignore) {
-    if (entry3.stacks.length > 0)
-      log.info(line2(ignoreText(entry3)));
-    else
-      log.warning(line2(unmatchedText(entry3)), "An ignore glob matches no stack");
-  }
-  const unclaimed = report.unclaimed.flatMap((group) => group.files);
-  if (unclaimed.length > 0) {
-    log.info(unclaimedText(unclaimed.length));
-    log.group("Files that no stack claims", unclaimed.map(line2));
-    log.info(whereFilesBelong(report.shared));
-    if (report.suggested.length > 0) {
-      log.group("Ready to paste into sluiceway.yaml", unrelatedBlock(config2.scan.unrelated, report.suggested).map(line2));
-    }
-  }
-  if (report.reads.length > 0) {
-    log.group(READS_TITLE, report.reads.map((read3) => line2(readText(read3))));
-    for (const read3 of report.reads.filter((one) => one.missed)) {
-      log.warning(line2(readWarningText(read3)), READ_WARNING_TITLE);
-    }
-    log.info(READS_NOTE);
-    log.group(READS_PASTE_TITLE, inputsBlock(report.inputs).map(line2));
-  }
   const workflows = checkWorkflows(readWorkflowFiles(root), config2);
-  logWorkflows(log, workflows);
-  const backend = context3.backend === undefined ? undefined : await askBackend(context3.backend, root, report.stacks.map(({ stack }) => stack), config2.ignore, log);
-  await summary2(context3, renderCheckSummary({
+  const parts = checkParts({
     report,
     workflows,
     unrelated: config2.scan.unrelated,
-    hasConfigFile: configFile,
-    backend: backend === undefined ? undefined : { checks: backend, ignore: config2.ignore }
-  }));
-  log.info(VALID);
-  if (backend === undefined) {
-    log.info(CANNOT_TELL);
-    log.info(BACKEND_OFF);
-  } else {
-    log.info(CANNOT_TELL_WITH_BACKEND);
+    hasConfigFile: hasConfigFile(root)
+  });
+  for (const part of parts)
+    write(log, part);
+  if (context3.backend !== undefined) {
+    const stacks = report.stacks.map(({ stack }) => stack);
+    const { checks: checks3, toolLog: toolLog2 } = await askBackend(context3.backend, root, stacks);
+    const backend = backendPart(checks3, config2.ignore, toolLog2);
+    write(log, backend);
+    parts.push(backend);
   }
+  const closing = closingPart(context3.backend !== undefined);
+  await summary2(context3, renderCheckSummary([...parts, closing]));
+  write(log, closing);
 }
-async function askBackend(backend, root, stacks, ignore, log) {
+async function askBackend(backend, root, stacks) {
   const result = await backend.adapter.findInBackend?.(stacks, {
     root,
     env: backend.env,
@@ -62557,39 +62652,16 @@ async function askBackend(backend, root, stacks, ignore, log) {
       return { stackId: id, found: "unchecked" };
     return answer.found === "unknown" ? { stackId: id, found: "unknown", reason: answer.reason } : { stackId: id, found: answer.found };
   });
-  if (result !== undefined && result.toolLog !== "") {
-    log.group("The tool's own words", result.toolLog.replace(/\n$/, "").split(`
-`));
-  }
-  log.group(BACKEND_TITLE, checks3.map((check3) => line2(backendText(check3))));
-  for (const check3 of checks3) {
-    if (check3.found === "unknown")
-      log.warning(line2(couldNotAskText(check3)), COULD_NOT_ASK_TITLE);
-    if (check3.found === false)
-      log.warning(line2(notInBackendText(check3.stackId)), NOT_IN_BACKEND_TITLE);
-  }
-  const missing2 = checks3.filter((check3) => check3.found === false).map((check3) => check3.stackId);
-  if (missing2.length > 0) {
-    log.info(BACKEND_PASTE_NOTE);
-    log.group(BACKEND_PASTE_TITLE, ignoreBlock(ignore, missing2).map(line2));
-  } else if (checks3.some((check3) => check3.found === true)) {
-    log.info(ALL_IN_BACKEND);
-  }
-  return checks3;
+  return { checks: checks3, toolLog: result?.toolLog ?? "" };
 }
-function logWorkflows(log, workflows) {
-  if (workflows.workflows.length > 0) {
-    log.group("Workflows", workflows.workflows.flatMap(({ path, jobs }) => jobs.map((job) => line2(workflowJobText(path, job)))));
-  }
-  if (!scansSomewhere(workflows))
-    log.info(NO_SCAN_WORKFLOW);
-  for (const warning2 of workflows.warnings) {
-    log.warning(line2(workflowWarningText(warning2)), WORKFLOW_WARNING_TITLE);
-  }
-  for (const note of workflows.notes)
-    log.info(line2(workflowNoteText(note)));
-  if (workflows.workflows.length > 0 && workflows.warnings.length === 0) {
-    log.info(NOTHING_MISSING);
+function write(log, { log: entries }) {
+  for (const entry3 of entries) {
+    if ("info" in entry3)
+      log.info(entry3.info);
+    else if ("warning" in entry3)
+      log.warning(entry3.warning, entry3.title);
+    else
+      log.group(entry3.group, entry3.lines);
   }
 }
 async function summary2(context3, text7) {
@@ -64846,47 +64918,47 @@ function wroteText(file2) {
 var KEPT_CONFIG = "Kept sluiceway.yaml as it is, and set the workflow up from it.";
 var NEEDS_A_PERSON = "Still to do by a person:";
 function needsText({ findings, declarable, branchGuessed }) {
-  const needs2 = [];
+  const needs = [];
   const { envFiles: envFiles2, node: node2 } = findings;
   if (envFiles2 === undefined) {
-    needs2.push("Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.");
+    needs.push("Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.");
   } else {
-    needs2.push(`Create the secret ${TOKEN_SECRET}, a 1Password service account token that resolves ${envFiles2.deploy}.`);
+    needs.push(`Create the secret ${TOKEN_SECRET}, a 1Password service account token that resolves ${envFiles2.deploy}.`);
     const unused = [
       ...envFiles2.preview === envFiles2.deploy ? [] : [envFiles2.preview],
       ...envFiles2.others
     ];
     if (unused.length > 0) {
-      needs2.push(`init did not use ${unused.join(", ")}: one job previews and deploys, with the credentials of ${envFiles2.deploy}. For credentials that only read in scans, use the split workflow (docs/split-workflow.md).`);
+      needs.push(`init did not use ${unused.join(", ")}: one job previews and deploys, with the credentials of ${envFiles2.deploy}. For credentials that only read in scans, use the split workflow (docs/split-workflow.md).`);
     }
   }
   if (findings.helm || findings.kubectl) {
-    needs2.push("The job needs a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).");
+    needs.push("The job needs a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).");
   }
   if (declarable.helm.length > 0) {
-    needs2.push(`sluiceway.yaml names each Helm release and its namespace after the chart: ${declarable.helm.map(({ path }) => path).join(", ")}. Set both to where the release runs, and add its values files. The namespace must exist.`);
+    needs.push(`sluiceway.yaml names each Helm release and its namespace after the chart: ${declarable.helm.map(({ path }) => path).join(", ")}. Set both to where the release runs, and add its values files. The namespace must exist.`);
   }
   if (findings.helmRepositories.length > 0) {
-    needs2.push("The workflow adds the chart repositories the local charts depend on. Log in to any that is private before that step.");
+    needs.push("The workflow adds the chart repositories the local charts depend on. Log in to any that is private before that step.");
   }
   const workspaces = declarable.opentofu.filter(({ varFiles }) => varFiles.length > 1);
   if (workspaces.length > 0) {
-    needs2.push(`${workspaces.map(({ path }) => path).join(", ")}: one stack per var file, each in a workspace of the same name. Change workspace where yours is named otherwise.`);
+    needs.push(`${workspaces.map(({ path }) => path).join(", ")}: one stack per var file, each in a workspace of the same name. Change workspace where yours is named otherwise.`);
   }
   if (node2 !== undefined && node2.withoutLockfile.length > 0) {
-    needs2.push(`No lockfile for the Node programs in ${node2.withoutLockfile.join(", ")}: add one, or install their packages in the workflow yourself.`);
+    needs.push(`No lockfile for the Node programs in ${node2.withoutLockfile.join(", ")}: add one, or install their packages in the workflow yourself.`);
   }
   if (node2?.pnpmWithoutVersion) {
-    needs2.push("pnpm/action-setup reads the pnpm version from packageManager in package.json, which names none. Add it there, or set version on the step.");
+    needs.push("pnpm/action-setup reads the pnpm version from packageManager in package.json, which names none. Add it there, or set version on the step.");
   }
   for (const { runtime } of findings.otherRuntimes) {
-    needs2.push(`The ${runtime} programs run on the ${runtime} the runner has. Add its setup action before pulumi install to pin a version.`);
+    needs.push(`The ${runtime} programs run on the ${runtime} the runner has. Add its setup action before pulumi install to pin a version.`);
   }
   if (branchGuessed) {
-    needs2.push(`The workflow scans after a push to ${DEFAULT_BRANCH}: init could not read the default branch. Change it if yours is another.`);
+    needs.push(`The workflow scans after a push to ${DEFAULT_BRANCH}: init could not read the default branch. Change it if yours is another.`);
   }
-  needs2.push(`The job runs on ${RUNS_ON} with timeout-minutes: 60. Raise it when a scan or a deploy of yours takes longer, since one run can hold both. For a self-hosted runner change runs-on, with runner 2.328.0 or newer.`, "Review the files, run the check in a pull request, and commit them. init commits nothing.");
-  return needs2;
+  needs.push(`The job runs on ${RUNS_ON} with timeout-minutes: 60. Raise it when a scan or a deploy of yours takes longer, since one run can hold both. For a self-hosted runner change runs-on, with runner 2.328.0 or newer.`, "Review the files, run the check in a pull request, and commit them. init commits nothing.");
+  return needs;
 }
 function quoted(text7) {
   return `'${text7.replaceAll("'", "''")}'`;
@@ -64957,11 +65029,11 @@ async function init(context3) {
     branch,
     merges: config2.mergeAndDeploy.authors.length > 0
   });
-  write(root, WORKFLOW_FILE, workflow);
+  write2(root, WORKFLOW_FILE, workflow);
   if (configText2 !== undefined)
-    write(root, CONFIG_FILE, configText2);
+    write2(root, CONFIG_FILE, configText2);
   if (written.includes(EXPORT_ENV_FILE))
-    write(root, EXPORT_ENV_FILE, EXPORT_ENV);
+    write2(root, EXPORT_ENV_FILE, EXPORT_ENV);
   log.info(foundText(stacks.length));
   log.group("Stacks", stacks.map((stack) => stackId(stack)));
   for (const file2 of written)
@@ -64984,7 +65056,7 @@ function nearest(directory, paths2) {
 function exists2(root, file2) {
   return existsSync4(join34(root, file2));
 }
-function write(root, file2, text7) {
+function write2(root, file2, text7) {
   mkdirSync(dirname3(join34(root, file2)), { recursive: true });
   writeFileSync2(join34(root, file2), text7, { flag: "wx" });
 }
@@ -65016,31 +65088,27 @@ function refuseOldNode(version3) {
     throw new Error(`init needs Node 22 or newer, and this is Node ${version3}.`);
   }
 }
-function terminalLog(write2 = console.log) {
+function terminalLog(write3 = console.log) {
   return {
-    info: write2,
+    info: write3,
     group(title, lines5) {
-      write2(title);
+      write3(title);
       for (const line3 of lines5)
-        write2(`  ${line3}`);
+        write3(`  ${line3}`);
     },
-    warning: (message5, title) => write2(`${title}: ${message5}`),
+    warning: (message5, title) => write3(`${title}: ${message5}`),
     writeSummary: async () => {}
   };
 }
 
 // src/mode.ts
-var MODES2 = ["auto", "scan", "resolve", "apply", "settle", "check", "init"];
 function parseMode(input2) {
   const mode = input2.trim();
   if (isMode(mode))
     return mode;
   if (mode === "")
     return "auto";
-  throw new Error(`Unknown mode "${mode}". Use one of: ${MODES2.join(", ")}.`);
-}
-function isMode(value) {
-  return MODES2.includes(value);
+  throw new Error(`Unknown mode "${mode}". Use one of: ${MODES.join(", ")}.`);
 }
 var handlers = {
   auto: runAuto,
