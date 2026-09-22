@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/sluiceway/sluiceway/compare/v0.6.0...v0.7.0) (2026-09-22)
+
+
+### Features
+
+* a tick on an update waiting to merge merges it and opens a record that deploys after the merge (slice 4.2) ([f554990](https://github.com/sluiceway/sluiceway/commit/f55499017e353204f196c534171591304be4a016))
+* merge and deploy in the e2e, the docs, record 0054, and dist (slice 4.2) ([d2cc931](https://github.com/sluiceway/sluiceway/commit/d2cc931e4cb6d60523a9cf10b01465197a8a508b))
+* merge and deploy next to stack dependencies: no merge while a dependency waits, and an apply job for the scan's matrix (slice 4.2) ([aeacf17](https://github.com/sluiceway/sluiceway/commit/aeacf17a756ff61fe1ff6a965e13c5fb3a180434))
+* mergeAndDeploy.authors, the qualification rule and the merge row (slice 4.2) ([3e704e8](https://github.com/sluiceway/sluiceway/commit/3e704e86deb10af4a4d1d71d028d071b0ae70cbf))
+* the merge record, merge ticks in the edit history, and the pull request calls of the port (slice 4.2) ([ed01f0d](https://github.com/sluiceway/sluiceway/commit/ed01f0daa2ff71e13246fe6bf4beb754d1210b85))
+* the scan lists updates waiting to merge and hands a merged change to apply (slice 4.2) ([cacf7aa](https://github.com/sluiceway/sluiceway/commit/cacf7aa0e45bb76fd010e75d03b74fad94e659cb))
+
 ## [0.6.0](https://github.com/sluiceway/sluiceway/compare/v0.5.0...v0.6.0) (2026-09-22)
 
 
