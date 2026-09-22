@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.0](https://github.com/sluiceway/sluiceway/compare/v0.14.0...v0.15.0) (2026-09-22)
+
+
+### Features
+
+* phases in sluiceway.yaml, a phase per stack or read from its project file (slice 4.16) ([0109546](https://github.com/sluiceway/sluiceway/commit/010954675aa9ef40477200748e3b25b37bb085d1))
+* resolve names the phase in a refusal, and the check lists phases and their edges (slice 4.16) ([ab6ba96](https://github.com/sluiceway/sluiceway/commit/ab6ba96ba3fb4bcdb3ce48845dcb55bbaf6276d6))
+
 ## [0.14.0](https://github.com/sluiceway/sluiceway/compare/v0.13.0...v0.14.0) (2026-09-22)
 
 

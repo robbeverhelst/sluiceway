@@ -1,6 +1,6 @@
 {
   "name": "sluiceway",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "One GitHub issue that shows which infrastructure stacks have changes waiting, and deploys a stack when someone ticks its box.",
   "private": true,
   "type": "module",
