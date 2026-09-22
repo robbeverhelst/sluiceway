@@ -15,7 +15,9 @@ export const CONFIG_FILES = [CONFIG_FILE, CONFIG_FILE_YML] as const;
 export function configFileName(root: string): string | undefined {
   const present = CONFIG_FILES.filter((name) => existsSync(join(root, name)));
   if (present.length > 1) {
-    throw new ConfigError([`found both ${CONFIG_FILE} and ${CONFIG_FILE_YML}. Keep one of them.`]);
+    throw new ConfigError([
+      { kind: "two-config-files", files: [CONFIG_FILE, CONFIG_FILE_YML], path: [] },
+    ]);
   }
   return present[0];
 }
@@ -29,7 +31,7 @@ export function loadConfig(root: string): Config {
     return parseConfig(read(join(root, name)));
   } catch (error) {
     if (error instanceof ConfigError && name !== CONFIG_FILE) {
-      throw new ConfigError(error.problems, name);
+      throw new ConfigError(error.issues, name);
     }
     throw error;
   }
@@ -47,7 +49,7 @@ function read(file: string): string | undefined {
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT") return undefined;
-    if (code === "EISDIR") throw new ConfigError(["it is not a file."]);
+    if (code === "EISDIR") throw new ConfigError([{ kind: "not-a-file", path: [] }]);
     throw error;
   }
 }

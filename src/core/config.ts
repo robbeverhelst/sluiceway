@@ -1,5 +1,6 @@
 import { LineCounter, parseDocument } from "yaml";
 import { z } from "zod";
+import { configErrorText, configProblemText } from "../render/config-problems.ts";
 import { LOOKBACK, NAMED_ON_A_ROW } from "./attribution.ts";
 import { knownStacks } from "./discovery.ts";
 import { globMatcher } from "./glob.ts";
@@ -59,11 +60,10 @@ const STACK_ID = /^[A-Za-z0-9][A-Za-z0-9._/:@+-]*$/;
 // itself is ".".
 const stackPath = text
   .superRefine((path, context) => {
-    const refuse = (message: string) => context.addIssue({ code: "custom", message });
-    if (path.includes("\\")) refuse(`${show(path)} must use forward slashes.`);
-    else if (path.startsWith("/")) refuse(`${show(path)} must be relative to the repo root.`);
+    if (path.includes("\\")) refuse(context, { kind: "backslash-in-path", value: path });
+    else if (path.startsWith("/")) refuse(context, { kind: "absolute-path", value: path });
     else if (path.split("/").includes(".."))
-      refuse(`${show(path)} must stay inside the repo, so ".." is not allowed.`);
+      refuse(context, { kind: "path-leaves-repo", value: path });
   })
   .transform((path) => {
     const segments = path.split("/").filter((segment) => segment !== "" && segment !== ".");
@@ -157,11 +157,7 @@ const stackEntry = z
   .superRefine((entry, context) => {
     if (entry.tool !== undefined) return;
     for (const name of Object.keys(entry.options ?? {})) {
-      context.addIssue({
-        code: "custom",
-        path: ["options"],
-        message: `unknown option ${show(name)}. A stack that discovery finds from its files takes no options. Only an entry with tool takes them.`,
-      });
+      refuse(context, { kind: "option-without-tool", option: name }, ["options"]);
     }
   });
 
@@ -175,12 +171,7 @@ const stackEntries = z.array(stackEntry).superRefine((entries, context) => {
     });
     const first = seen.get(id);
     if (first === undefined) seen.set(id, index);
-    else
-      context.addIssue({
-        code: "custom",
-        path: [index],
-        message: `says the same path and name as stacks[${first}] (${show(id)}). Put the settings in one entry.`,
-      });
+    else refuse(context, { kind: "same-entry", first, stackId: id }, [index]);
   });
 });
 
@@ -234,7 +225,7 @@ export const configSchema = z
           .array(
             text.superRefine((entry, context) => {
               const problem = showValuesEntryProblem(entry);
-              if (problem !== undefined) context.addIssue({ code: "custom", message: problem });
+              if (problem !== undefined) refuse(context, { kind: "worded", text: problem });
             }),
           )
           .describe(
@@ -366,39 +357,113 @@ export const configSchema = z
       .prefault({}),
   })
   .superRefine((config, context) => {
-    const refuse = (path: PropertyKey[], message: string) =>
-      context.addIssue({ code: "custom", path, message });
     config.phases.forEach((phase, index) => {
       const first = config.phases.indexOf(phase);
       if (first !== index)
-        refuse(
-          ["phases", index],
-          `${show(phase)} is already phases[${first}]. Each phase is named once.`,
-        );
+        refuse(context, { kind: "phase-named-twice", phase, first }, ["phases", index]);
     });
     config.stacks.forEach((entry, index) => {
       if (typeof entry.phase !== "string" || config.phases.includes(entry.phase)) return;
-      refuse(
-        ["stacks", index, "phase"],
-        config.phases.length === 0
-          ? `${show(entry.phase)} is not one of the phases, and sluiceway.yaml has no phases. List them in order at the top: phases: [first, second].`
-          : `${show(entry.phase)} is not one of the phases. The phases are: ${config.phases.join(", ")}.`,
-      );
+      refuse(context, { kind: "unknown-phase", phase: entry.phase, phases: config.phases }, [
+        "stacks",
+        index,
+        "phase",
+      ]);
     });
   });
 
 export type Config = z.output<typeof configSchema>;
 
-// A sluiceway.yaml that cannot be used. It holds every problem found, not only
-// the first, so a person fixes the file in one go.
+// What is wrong with a config file, as facts and never as words. The words a
+// person reads are render/config-problems.ts's, so a rule and its wording
+// change apart. `path` is where in the file, down to the key it is about. The
+// file as a whole is [].
+export type ConfigIssue = WhatIsWrong & { path: PropertyKey[] };
+
+export type WhatIsWrong =
+  // The file itself.
+  | { kind: "not-yaml"; line: number; column: number; detail: string }
+  | { kind: "two-config-files"; files: readonly string[] }
+  | { kind: "not-a-file" }
+  // Its shape, as the schema checks it. Where a key was not found, `path`
+  // is the mapping it is in.
+  | { kind: "unknown-key"; key: string; known: string[] }
+  | { kind: "drift-schedule" }
+  | { kind: "notify-unknown-key"; key: string; known: string[] }
+  | { kind: "reserved-key"; key: string }
+  | { kind: "required-stack-path" }
+  | { kind: "required-ignore-reason"; glob: unknown }
+  | { kind: "required-ignore-glob" }
+  | { kind: "not-a-count"; counts: string; min: number; max?: number; value: unknown }
+  | { kind: "not-an-ignore-entry"; value: unknown }
+  | { kind: "not-a-depends-on"; value: unknown; auto: string }
+  | { kind: "not-a-phase"; value: unknown }
+  | { kind: "stack-drift-not-a-mapping"; value: unknown }
+  | { kind: "not-a-tick-rule"; value: unknown }
+  | { kind: "not-an-event"; value: unknown; events: readonly string[] }
+  | { kind: "not-a-phase-name"; value: unknown }
+  | { kind: "not-a-login"; value: unknown }
+  | { kind: "a-team"; value: unknown }
+  | { kind: "not-a-username"; value: unknown }
+  | { kind: "no-tickers" }
+  | { kind: "empty-stack-path" }
+  | { kind: "empty" }
+  | { kind: "wrong-type"; expected: string; value: unknown }
+  | { kind: "backslash-in-path"; value: string }
+  | { kind: "absolute-path"; value: string }
+  | { kind: "path-leaves-repo"; value: string }
+  | { kind: "option-without-tool"; option: string }
+  | { kind: "same-entry"; first: number; stackId: string }
+  | { kind: "phase-named-twice"; phase: string; first: number }
+  | { kind: "unknown-phase"; phase: string; phases: readonly string[] }
+  // Against the stacks discovery found.
+  | { kind: "id-covers-no-stack"; id: string }
+  | { kind: "id-covers-stacks"; stackIds: string[] }
+  | { kind: "id-given-twice"; stackId: string; id: string }
+  | { kind: "id-taken"; id: string }
+  | { kind: "entry-only-ignored"; stackIds: string[] }
+  | { kind: "entry-no-stack"; stackPath: string }
+  | { kind: "entry-no-named-stack"; name: string; stackPath: string; names: string[] }
+  | { kind: "no-phase-key"; stackId: string; key: string }
+  | { kind: "phase-key-unknown"; stackId: string; key: string; phases: readonly string[] }
+  | { kind: "depends-on-ignored"; stackId: string; reason?: string }
+  | { kind: "depends-on-unknown"; stackId: string; example?: string }
+  | { kind: "depends-on-itself"; stackId: string }
+  | {
+      kind: "depends-on-earlier-phase";
+      stackId: string;
+      phase: string;
+      stack: string;
+      stackPhase: string;
+    }
+  | { kind: "depends-on-circle"; circle: CircleStep[] }
+  // Words another module chose: an adapter's, show-values', or the schema
+  // library's for an issue no rule here foresees.
+  | { kind: "worded"; text: string };
+
+// One stop on a dependsOn circle. A phase is a stop of its own, so a circle
+// through one names the phase and not every stack in it (record 0067).
+export type CircleStep = { stack: string } | { phase: string };
+
+// A config file that cannot be used. It holds every problem found, not only
+// the first, so a person fixes the file in one go. `problems` are the issues
+// in words, in the same order.
 export class ConfigError extends Error {
+  readonly issues: ConfigIssue[];
   readonly problems: string[];
 
-  // `file` is the name of the config file, sluiceway.yaml unless the repo
-  // uses the second spelling (slice 5.9).
-  constructor(problems: string[], file = "sluiceway.yaml") {
-    super([`${file} is not valid:`, ...problems.map((problem) => `- ${problem}`)].join("\n"));
+  // A string is a problem already in words, such as an adapter's. `file` is
+  // the name of the config file, sluiceway.yaml unless the repo uses the
+  // second spelling (slice 5.9).
+  constructor(issues: readonly (ConfigIssue | string)[], file = "sluiceway.yaml") {
+    const all = issues.map(
+      (issue): ConfigIssue =>
+        typeof issue === "string" ? { kind: "worded", text: issue, path: [] } : issue,
+    );
+    const problems = all.map(configProblemText);
+    super(configErrorText(file, problems));
     this.name = "ConfigError";
+    this.issues = all;
     this.problems = problems;
   }
 }
@@ -409,8 +474,8 @@ export function parseConfig(text: string | undefined): Config {
   const raw = text === undefined ? null : readYaml(text);
   const result = configSchema.safeParse(raw ?? {});
   if (!result.success) {
-    const problems = result.error.issues.flatMap((issue) => describe(issue, raw));
-    throw new ConfigError(inFileOrder(problems, raw).map((problem) => problem.text));
+    const found = result.error.issues.flatMap((issue) => classify(issue, raw));
+    throw new ConfigError(inFileOrder(found, raw).map((one) => one.issue));
   }
   return result.data;
 }
@@ -422,159 +487,130 @@ function readYaml(text: string): unknown {
     throw new ConfigError(
       document.errors.map((error) => {
         const { line, col } = lineCounter.linePos(error.pos[0]);
-        return `line ${line}, column ${col}: not valid YAML. ${error.message}`;
+        return { kind: "not-yaml", line, column: col, detail: error.message, path: [] };
       }),
     );
   }
   return document.toJS();
 }
 
-type Issue = z.core.$ZodIssue;
-
-interface Problem {
-  // Where in the file the problem is, down to the key it is about.
-  path: PropertyKey[];
-  text: string;
+// A check written in this file refuses with the facts, and classify hands
+// them on as they are.
+function refuse(context: z.RefinementCtx, wrong: WhatIsWrong, path?: PropertyKey[]): void {
+  context.addIssue({
+    code: "custom",
+    ...(path === undefined ? {} : { path }),
+    params: { wrong },
+  });
 }
 
-// The wording is ours, not the schema library's, so an upgrade of the library
-// cannot change what a person reads.
-function describe(issue: Issue, raw: unknown): Problem[] {
-  const at = where(issue.path);
-  const value = valueAt(raw, issue.path);
-  const problem = (text: string): Problem[] => [{ path: issue.path, text: `${at}${text}` }];
-  const key = issue.path.at(-1);
+type Issue = z.core.$ZodIssue;
+
+interface Found {
+  issue: ConfigIssue;
+  // Where it sorts in the file: an unknown key sorts as the key itself.
+  at: PropertyKey[];
+}
+
+// What a schema library issue means for sluiceway.yaml. The library's own
+// words never reach a person, except for an issue no rule here foresees.
+function classify(issue: Issue, raw: unknown): Found[] {
+  const path = issue.path;
+  const value = valueAt(raw, path);
+  const one = (wrong: WhatIsWrong): Found[] => [{ issue: { ...wrong, path }, at: path }];
+  const inner = (branch: number): Found[] =>
+    issue.code === "invalid_union"
+      ? (issue.errors[branch] ?? []).flatMap((error) =>
+          classify({ ...error, path: [...path, ...error.path] }, raw),
+        )
+      : [];
+  const key = path.at(-1);
   if (issue.code === "unrecognized_keys") {
-    const known = knownKeys(issue.path);
-    const unknown = (name: string): string => {
-      if (issue.path.length === 1 && issue.path[0] === "drift" && name === "schedule")
-        return `"schedule" is not a key of sluiceway.yaml. A drift check runs in every scan that a schedule starts, so the cron goes in the workflow, under \`on: schedule\`.`;
-      if (issue.path.length === 1 && issue.path[0] === "notify")
-        return `unknown key "${name}". Known keys here: ${known.join(", ")}. A channel is an input of the step, from a secret, never a key of sluiceway.yaml.`;
-      if (issue.path.length > 0 && RESERVED_KEYS.includes(name))
-        return `"${name}" is not in this version of Sluiceway yet. Remove it.`;
-      return `unknown key "${name}". Known keys here: ${known.join(", ")}.`;
+    const known = knownKeys(path);
+    const unknown = (name: string): WhatIsWrong => {
+      if (path.length === 1 && path[0] === "drift" && name === "schedule")
+        return { kind: "drift-schedule" };
+      if (path.length === 1 && path[0] === "notify")
+        return { kind: "notify-unknown-key", key: name, known };
+      if (path.length > 0 && RESERVED_KEYS.includes(name))
+        return { kind: "reserved-key", key: name };
+      return { kind: "unknown-key", key: name, known };
     };
     return issue.keys.map((name) => ({
-      path: [...issue.path, name],
-      text: `${at}${unknown(name)}`,
+      issue: { ...unknown(name), path },
+      at: [...path, name],
     }));
   }
-  if (value === undefined && key === "path") {
-    return problem("is required. It is the directory of the stack, relative to the repo root.");
+  if (value === undefined && key === "path") return one({ kind: "required-stack-path" });
+  if (path[0] === "ignore" && path.length === 3) {
+    const glob = valueAt(raw, [...path.slice(0, -1), "glob"]);
+    if (value === undefined && key === "reason")
+      return one({ kind: "required-ignore-reason", glob });
+    if (value === undefined && key === "glob") return one({ kind: "required-ignore-glob" });
   }
-  if (issue.path[0] === "ignore" && issue.path.length === 3) {
-    const glob = valueAt(raw, [...issue.path.slice(0, -1), "glob"]);
-    if (value === undefined && key === "reason") {
-      return problem(
-        `is required. Say why the stack is left out, or write the glob as text: ${show(glob)}.`,
-      );
-    }
-    if (value === undefined && key === "glob") {
-      return problem("is required. It is matched against the stack id.");
-    }
+  if (key === "recentlyDeployed" && path[0] === "dashboard") {
+    return one({ kind: "not-a-count", counts: "lines", min: 0, max: RECENTLY_DEPLOYED_MAX, value });
   }
-  if (key === "recentlyDeployed" && issue.path[0] === "dashboard") {
-    return problem(
-      `expected a whole number of lines from 0 to ${RECENTLY_DEPLOYED_MAX}, got ${show(value)}.`,
-    );
+  if (key === "lookback" && path[0] === "attribution") {
+    return one({ kind: "not-a-count", counts: "commits", min: 1, max: LOOKBACK_MAX, value });
   }
-  if (key === "lookback" && issue.path[0] === "attribution") {
-    return problem(
-      `expected a whole number of commits from 1 to ${LOOKBACK_MAX}, got ${show(value)}.`,
-    );
-  }
-  if (key === "names" && issue.path[0] === "attribution") {
-    return problem(`expected a whole number of names from 0 to ${NAMES_MAX}, got ${show(value)}.`);
+  if (key === "names" && path[0] === "attribution") {
+    return one({ kind: "not-a-count", counts: "names", min: 0, max: NAMES_MAX, value });
   }
   if (key === "previewTimeout" && issue.code !== "custom") {
-    return problem(`expected a whole number of minutes, 1 or more, got ${show(value)}.`);
+    return one({ kind: "not-a-count", counts: "minutes", min: 1, value });
   }
-  // An `ignore` entry is text or a mapping, and each kind has its own words.
-  if (issue.code === "invalid_union" && issue.path[0] === "ignore") {
+  // An `ignore` entry is text or a mapping, and each kind has its own issues.
+  if (issue.code === "invalid_union" && path[0] === "ignore") {
     const branch = typeof value === "string" ? 0 : isMapping(value) ? 1 : undefined;
-    if (branch === undefined) {
-      return problem(
-        `expected a glob as text, or a mapping with glob and reason, got ${show(value)}.`,
-      );
-    }
-    return (issue.errors[branch] ?? []).flatMap((inner) =>
-      describe({ ...inner, path: [...issue.path, ...inner.path] }, raw),
-    );
+    return branch === undefined ? one({ kind: "not-an-ignore-entry", value }) : inner(branch);
   }
   if (issue.code === "invalid_union" && key === "dependsOn") {
-    if (!Array.isArray(value)) {
-      return problem(`expected a list of stack ids, or ${DEPENDS_ON_AUTO}, got ${show(value)}.`);
-    }
-    return (issue.errors[1] ?? []).flatMap((inner) =>
-      describe({ ...inner, path: [...issue.path, ...inner.path] }, raw),
-    );
+    return Array.isArray(value)
+      ? inner(1)
+      : one({ kind: "not-a-depends-on", value, auto: DEPENDS_ON_AUTO });
   }
   if (issue.code === "invalid_union" && key === "phase") {
-    if (!isMapping(value)) {
-      return problem(`expected a phase name, or a mapping with from, got ${show(value)}.`);
-    }
-    return (issue.errors[1] ?? []).flatMap((inner) =>
-      describe({ ...inner, path: [...issue.path, ...inner.path] }, raw),
-    );
+    return isMapping(value) ? inner(1) : one({ kind: "not-a-phase", value });
   }
-  if (issue.code === "invalid_type" && key === "drift" && issue.path[0] === "stacks") {
-    return problem(
-      `expected a mapping, got ${show(value)}. Write it as the top level has it: drift: { enabled: ${typeof value === "boolean" ? value : true} }.`,
-    );
+  if (issue.code === "invalid_type" && key === "drift" && path[0] === "stacks") {
+    return one({ kind: "stack-drift-not-a-mapping", value });
   }
   // The other union in the schema is the tick rule.
   if (issue.code === "invalid_union") {
-    if (!Array.isArray(value)) {
-      return problem(
-        `expected "write", "maintain", "admin" or a list of usernames, got ${show(value)}.`,
-      );
-    }
-    return (issue.errors[1] ?? []).flatMap((inner) =>
-      describe({ ...inner, path: [...issue.path, ...inner.path] }, raw),
-    );
+    return Array.isArray(value) ? inner(1) : one({ kind: "not-a-tick-rule", value });
   }
-  if (issue.code === "invalid_value" && issue.path[0] === "notify") {
-    return problem(`${show(value)} is not an event. The events are: ${NOTIFY_EVENTS.join(", ")}.`);
+  if (issue.code === "invalid_value" && path[0] === "notify") {
+    return one({ kind: "not-an-event", value, events: NOTIFY_EVENTS });
   }
-  if (issue.code === "invalid_format" && (issue.path[0] === "phases" || key === "phase")) {
-    return problem(`${show(value)} is not a phase name. Use letters, digits, ".", "_" and "-".`);
+  if (issue.code === "invalid_format" && (path[0] === "phases" || key === "phase")) {
+    return one({ kind: "not-a-phase-name", value });
   }
-  if (issue.code === "invalid_format" && issue.path[0] === "mergeAndDeploy") {
-    return problem(
-      `${show(value)} is not a GitHub login. Write the login alone, without "@". An app is written with [bot], such as renovate[bot].`,
-    );
+  if (issue.code === "invalid_format" && path[0] === "mergeAndDeploy") {
+    return one({ kind: "not-a-login", value });
   }
   // The other pattern in the schema is the username.
   if (issue.code === "invalid_format") {
-    return problem(
-      String(value).includes("/")
-        ? `${show(value)} looks like a team. Teams are not supported yet. Use a level ("write", "maintain", "admin") or usernames.`
-        : `${show(value)} is not a GitHub username. Write the login alone, without "@".`,
+    return one(
+      String(value).includes("/") ? { kind: "a-team", value } : { kind: "not-a-username", value },
     );
   }
   if (issue.code === "too_small") {
-    return problem(
+    return one(
       issue.origin === "array"
-        ? "the list is empty, so nobody could tick. Name at least one username or use a level."
+        ? { kind: "no-tickers" }
         : key === "path"
-          ? 'must not be empty. Use "." for the repo root.'
-          : "must not be empty.",
+          ? { kind: "empty-stack-path" }
+          : { kind: "empty" },
     );
   }
   if (issue.code === "invalid_type") {
-    return problem(`expected ${EXPECTED[issue.expected] ?? issue.expected}, got ${show(value)}.`);
+    return one({ kind: "wrong-type", expected: issue.expected, value });
   }
-  // What is left are the checks written in this file, in their own words.
-  return problem(issue.message);
+  // What is left are the checks written in this file, with their facts.
+  const wrong = issue.code === "custom" ? issue.params?.wrong : undefined;
+  return one(wrong === undefined ? { kind: "worded", text: issue.message } : wrong);
 }
-
-const EXPECTED: Record<string, string> = {
-  string: "text",
-  boolean: "true or false",
-  array: "a list",
-  object: "a mapping",
-};
 
 function isMapping(value: unknown): boolean {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -589,18 +625,9 @@ function valueAt(raw: unknown, path: PropertyKey[]): unknown {
   return value;
 }
 
-// A value from the file, as a person would recognise it. Config holds no
-// secrets, so quoting it back is fine.
-function show(value: unknown): string {
-  if (value === null || value === undefined) return "nothing";
-  if (Array.isArray(value)) return "a list";
-  if (typeof value === "object") return "a mapping";
-  return JSON.stringify(value);
-}
-
-// Problems are listed top to bottom as the file has them, whatever order the
+// Issues are listed top to bottom as the file has them, whatever order the
 // schema library found them in.
-function inFileOrder(problems: Problem[], raw: unknown): Problem[] {
+function inFileOrder(found: Found[], raw: unknown): Found[] {
   const position = (path: PropertyKey[]): number[] => {
     let value = raw;
     return path.map((segment) => {
@@ -618,25 +645,16 @@ function inFileOrder(problems: Problem[], raw: unknown): Problem[] {
     }
     return a.length - b.length;
   };
-  return problems
-    .map((problem) => ({ problem, at: position(problem.path) }))
-    .sort((a, b) => compare(a.at, b.at))
-    .map(({ problem }) => problem);
+  return found
+    .map((one) => ({ one, position: position(one.at) }))
+    .sort((a, b) => compare(a.position, b.position))
+    .map(({ one }) => one);
 }
 
 // Keys of features that are planned and not in v1. They fail with their own
 // message and are never ignored (build-plan.md, section 3). None is reserved
 // now: `drift` on a stack arrived with record 0059.
 const RESERVED_KEYS: string[] = [];
-
-// "stacks[0].path: ", or nothing for the top level.
-function where(path: PropertyKey[]): string {
-  const text = path
-    .map((segment) => (typeof segment === "number" ? `[${segment}]` : `.${String(segment)}`))
-    .join("")
-    .replace(/^\./, "");
-  return text === "" ? "" : `${text}: `;
-}
 
 // The keys the schema allows at a path, in the order the schema lists them.
 function knownKeys(path: PropertyKey[]): string[] {
@@ -658,7 +676,7 @@ function unwrap(schema: z.core.$ZodType): z.core.$ZodType {
     inner instanceof z.ZodPrefault ||
     inner instanceof z.ZodExactOptional
   ) {
-    inner = inner.def.innerType;
+    inner = inner.unwrap();
   }
   if (inner instanceof z.ZodUnion) {
     return inner.options.find((option) => option instanceof z.ZodObject) ?? inner;
@@ -701,20 +719,23 @@ export function ignoredStacks(config: Config, found: Stack[]): IgnoredStack[] {
 // dependsOn, the rows and the deployment records all see the id it gives.
 export function withIds(config: Config, found: Stack[]): Stack[] {
   const given = new Map<Stack, string>();
-  const problems: string[] = [];
+  const issues: ConfigIssue[] = [];
   config.stacks.forEach((entry, index) => {
     if (entry.id === undefined) return;
-    const at = `stacks[${index}].id`;
+    const path = ["stacks", index, "id"];
     const covered = found.filter((stack) => covers(entry, stack));
     const [only] = covered;
     if (only === undefined) {
-      problems.push(`${at}: the entry covers no stack, so there is nothing to name ${entry.id}.`);
+      issues.push({ kind: "id-covers-no-stack", id: entry.id, path });
     } else if (covered.length > 1) {
-      problems.push(
-        `${at}: the entry covers ${covered.length} stacks (${covered.map(stackId).join(", ")}), and an id names one. Give the entry a name.`,
-      );
+      issues.push({ kind: "id-covers-stacks", stackIds: covered.map(stackId), path });
     } else if (given.has(only)) {
-      problems.push(`${at}: ${stackId(only)} already has the id ${given.get(only)}.`);
+      issues.push({
+        kind: "id-given-twice",
+        stackId: stackId(only),
+        id: given.get(only) ?? "",
+        path,
+      });
     } else {
       given.set(only, entry.id);
     }
@@ -723,16 +744,25 @@ export function withIds(config: Config, found: Stack[]): Stack[] {
   config.stacks.forEach((entry, index) => {
     if (entry.id === undefined || ![...given.values()].includes(entry.id)) return;
     if (taken.has(entry.id)) {
-      problems.push(
-        `stacks[${index}].id: ${JSON.stringify(entry.id)} is the id of another stack already. Every stack id is unique.`,
-      );
+      issues.push({ kind: "id-taken", id: entry.id, path: ["stacks", index, "id"] });
     }
     taken.add(entry.id);
   });
-  if (problems.length > 0) throw new ConfigError([...new Set(problems)]);
+  if (issues.length > 0) throw new ConfigError(once(issues));
   return found.map((stack) => {
     const id = given.get(stack);
     return id === undefined ? stack : { ...stack, id };
+  });
+}
+
+// Each issue once, in the order first found.
+function once(issues: ConfigIssue[]): ConfigIssue[] {
+  const seen = new Set<string>();
+  return issues.filter((issue) => {
+    const key = JSON.stringify(issue);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
 }
 
@@ -769,17 +799,17 @@ const DEFAULT_ENVIRONMENT = "sluiceway";
 // that exists for Sluiceway, so no caller can forget ignore.
 export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
   const stacks = knownStacks(found, config.ignore.map(ignoreGlob));
-  const problems = config.stacks.flatMap((entry, index) => {
+  const misses = config.stacks.flatMap((entry, index): ConfigIssue[] => {
     const inPath = stacks.filter((stack) => stack.path === entry.path);
     if (inPath.some((stack) => covers(entry, stack))) return [];
     const ignored = found.filter((stack) => covers(entry, stack));
-    return [`stacks[${index}]: ${describeMiss(entry, inPath, ignored)}`];
+    return [{ ...miss(entry, inPath, ignored), path: ["stacks", index] }];
   });
-  if (problems.length > 0) throw new ConfigError(problems);
+  if (misses.length > 0) throw new ConfigError(misses);
   const phases = phasesOf(config, stacks);
-  if (phases.problems.length > 0) throw new ConfigError(phases.problems);
-  const dependencyProblems = checkDependsOn(config, found, stacks, phases.phaseOf);
-  if (dependencyProblems.length > 0) throw new ConfigError(dependencyProblems);
+  if (phases.issues.length > 0) throw new ConfigError(phases.issues);
+  const dependencyIssues = checkDependsOn(config, found, stacks, phases.phaseOf);
+  if (dependencyIssues.length > 0) throw new ConfigError(dependencyIssues);
   const derived = phaseDependencies(config.phases, phases.phaseOf);
 
   return stacks.map((stack) => {
@@ -834,11 +864,10 @@ function dependsOnOf(
 function phasesOf(
   config: Config,
   stacks: Stack[],
-): { phaseOf: Map<string, string>; from: Map<string, string>; problems: string[] } {
+): { phaseOf: Map<string, string>; from: Map<string, string>; issues: ConfigIssue[] } {
   const phaseOf = new Map<string, string>();
   const from = new Map<string, string>();
-  const problems: string[] = [];
-  const known = config.phases.join(", ");
+  const issues: ConfigIssue[] = [];
   for (const stack of stacks) {
     const entry = entriesOf(config, stack).findLast((one) => one.phase !== undefined);
     if (entry?.phase === undefined) continue;
@@ -847,23 +876,19 @@ function phasesOf(
       phaseOf.set(id, entry.phase);
       continue;
     }
-    const at = `stacks[${config.stacks.indexOf(entry)}].phase`;
+    const path = ["stacks", config.stacks.indexOf(entry), "phase"];
     const key = entry.phase.from;
     const read = stack.phaseKeys?.[key];
     if (read === undefined) {
-      problems.push(
-        `${at}: ${id} has no text under ${key} in its project file, under config or at the top level. Add it there, or name the phase here.`,
-      );
+      issues.push({ kind: "no-phase-key", stackId: id, key, path });
     } else if (!config.phases.includes(read)) {
-      problems.push(
-        `${at}: the text under ${key} in the project file of ${id} is not one of the phases. The phases are: ${known === "" ? "none, sluiceway.yaml has no phases" : known}.`,
-      );
+      issues.push({ kind: "phase-key-unknown", stackId: id, key, phases: config.phases, path });
     } else {
       phaseOf.set(id, read);
       from.set(id, key);
     }
   }
-  return { phaseOf, from, problems: [...new Set(problems)] };
+  return { phaseOf, from, issues: once(issues) };
 }
 
 // The stack ids an entry names. `auto` names none in the file.
@@ -883,27 +908,37 @@ function checkDependsOn(
   found: Stack[],
   stacks: Stack[],
   phaseOf: ReadonlyMap<string, string>,
-): string[] {
+): ConfigIssue[] {
   const known = new Set(stacks.map(stackId));
   const all = new Set(found.map(stackId));
-  const problems = config.stacks.flatMap((entry, index) =>
-    listed(entry.dependsOn).flatMap((id, at) => {
-      const where = `stacks[${index}].dependsOn[${at}]: ${show(id)}`;
+  const issues = config.stacks.flatMap((entry, index) =>
+    listed(entry.dependsOn).flatMap((id, at): ConfigIssue[] => {
+      const path = ["stacks", index, "dependsOn", at];
       if (all.has(id) && !known.has(id)) {
         // The reason the ignore entry gives, when it gives one (record 0059).
         const reason = ignoredStacks(config, found).find((one) => one.stackId === id)?.reason;
-        const why = reason === undefined ? "" : ` (${show(reason)})`;
         return [
-          `${where} is left out by ignore${why}, so it never has a change to wait for. Remove it here, or change ignore.`,
+          {
+            kind: "depends-on-ignored",
+            stackId: id,
+            ...(reason === undefined ? {} : { reason }),
+            path,
+          },
         ];
       }
-      if (!known.has(id))
+      if (!known.has(id)) {
+        const example = stacks[0] ? stackId(stacks[0]) : undefined;
         return [
-          `${where} is not a stack that discovery found. Write the stack id as a row shows it, such as ${show(stacks[0] ? stackId(stacks[0]) : "network:dev")}.`,
+          {
+            kind: "depends-on-unknown",
+            stackId: id,
+            ...(example === undefined ? {} : { example }),
+            path,
+          },
         ];
+      }
       const self = stacks.find((stack) => stackId(stack) === id);
-      if (self && covers(entry, self))
-        return [`${where} is the stack itself. A stack cannot depend on itself.`];
+      if (self && covers(entry, self)) return [{ kind: "depends-on-itself", stackId: id, path }];
       // A stack of a later phase already waits on this one (record 0067).
       const earlier = stacks
         .filter((stack) => covers(entry, stack))
@@ -912,12 +947,19 @@ function checkDependsOn(
         .find((one) => throughPhase(config.phases, phaseOf, id, one));
       if (earlier !== undefined)
         return [
-          `${where} is in the ${phaseOf.get(id)} phase, which comes after the ${phaseOf.get(earlier)} phase of ${earlier}. ${id} already waits on every stack of the ${phaseOf.get(earlier)} phase, so take this out, or move one of them to another phase.`,
+          {
+            kind: "depends-on-earlier-phase",
+            stackId: id,
+            phase: phaseOf.get(id) ?? "",
+            stack: earlier,
+            stackPhase: phaseOf.get(earlier) ?? "",
+            path,
+          },
         ];
       return [];
     }),
   );
-  if (problems.length > 0) return problems;
+  if (issues.length > 0) return issues;
 
   // A phase is a node of its own, so a circle through one names the phase
   // and not every stack in it (record 0067).
@@ -934,17 +976,13 @@ function checkDependsOn(
       [...phaseOf].flatMap(([id, one]) => (one === phase ? [id] : [])),
     );
   }
-  return dependencyCircles(edges).map((circle) => {
-    const [first = "", ...rest] = circle;
-    const links = rest.map((to, index) => {
-      const from = circle[index] ?? "";
-      if (isPhaseNode(to))
-        return `${index === 0 ? "" : "which "}waits on the ${phaseOfNode(to)} phase`;
-      if (isPhaseNode(from)) return `which holds ${to}`;
-      return `${index === 0 ? "depends on" : "which depends on"} ${to}`;
-    });
-    return `dependsOn goes round in a circle: ${first} ${links.join(", ")}. Nothing in a circle could ever deploy first, so take one of these out.`;
-  });
+  return dependencyCircles(edges).map((circle) => ({
+    kind: "depends-on-circle",
+    circle: circle.map((node) =>
+      isPhaseNode(node) ? { phase: phaseOfNode(node) } : { stack: node },
+    ),
+    path: [],
+  }));
 }
 
 // A phase in the graph of the circle check. The prefix sorts after every
@@ -982,17 +1020,16 @@ function covers(entry: StackEntry, stack: Stack): boolean {
   return entry.path === stack.path && (entry.name === undefined || entry.name === stack.name);
 }
 
-function describeMiss(entry: StackEntry, inPath: Stack[], ignored: Stack[]): string {
-  if (ignored.length > 0) {
-    const ids = ignored.map((stack) => show(stackId(stack))).join(", ");
-    const subject = ignored.length === 1 ? `the stack ${ids} is` : `the stacks ${ids} are`;
-    return `${subject} left out by ignore, so these settings would do nothing. Remove the entry, or change ignore.`;
-  }
+// Why an entry covers no stack that exists for Sluiceway.
+function miss(entry: StackEntry, inPath: Stack[], ignored: Stack[]): WhatIsWrong {
+  if (ignored.length > 0) return { kind: "entry-only-ignored", stackIds: ignored.map(stackId) };
   if (entry.name === undefined || inPath.length === 0) {
-    return `no stack was found in ${show(entry.path)}. An entry adds settings to a stack that exists, it never creates one.`;
+    return { kind: "entry-no-stack", stackPath: entry.path };
   }
-  const names = inPath.flatMap((stack) => (stack.name === undefined ? [] : [stack.name]));
-  const found =
-    names.length === 0 ? "The stack found there has no name." : `Found there: ${names.join(", ")}.`;
-  return `no stack named ${show(entry.name)} was found in ${show(entry.path)}. ${found}`;
+  return {
+    kind: "entry-no-named-stack",
+    name: entry.name,
+    stackPath: entry.path,
+    names: inPath.flatMap((stack) => (stack.name === undefined ? [] : [stack.name])),
+  };
 }
