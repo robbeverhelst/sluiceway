@@ -656,6 +656,27 @@ async function afterFreshPreview(
       setup,
     };
   }
+  if (result.reason.kind === "moved") {
+    // The adapter found, before its tool deployed anything, that what would
+    // go out is no longer what the fresh preview saw (record 0058). That is a
+    // moved change like any other: nothing went out, and the row is pending.
+    return {
+      state: "error",
+      reason: result.reason,
+      failed: notDeployed(
+        result.reason,
+        " What the deploy would install changed after the fresh preview, so nothing was deployed. The job log says what.",
+      ),
+      row: fresh,
+      toolDiffInLog: toolDiff !== undefined,
+      summary: {
+        kind: "not-deployed",
+        reason: deployFailureText(result.reason),
+        checked: applied(fresh),
+      },
+      setup,
+    };
+  }
 
   // The stack may be half deployed, so the row comes from a preview of what
   // is left. A second tick then deploys the rest.

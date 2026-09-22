@@ -76,7 +76,10 @@ export type PreviewResult = (
 
 export type ApplyResult = (
   | { ok: true }
-  | { ok: false; reason: Extract<DeployFailureReason, { kind: "tool-error" }> }
+  // `moved`: the deploy did not start, because what it would deploy is no
+  // longer what the fresh preview saw, and the tool cannot hold it to that
+  // by itself. Only the Helm adapter gives it (record 0058).
+  | { ok: false; reason: Extract<DeployFailureReason, { kind: "tool-error" } | { kind: "moved" }> }
 ) & {
   // The tool's own words, with ANSI escapes stripped. They go to the job log
   // and nowhere else (record 0022).
