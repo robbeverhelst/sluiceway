@@ -48,8 +48,8 @@ import {
   unmatchedText,
   unrelatedBlock,
   VALID,
-  WHERE_FILES_BELONG,
   WORKFLOW_WARNING_TITLE,
+  whereFilesBelong,
   workflowJobText,
   workflowNoteText,
   workflowWarningText,
@@ -125,7 +125,7 @@ export async function check(context: CheckContext): Promise<void> {
   if (unclaimed.length > 0) {
     log.info(unclaimedText(unclaimed.length));
     log.group("Files that no stack claims", unclaimed.map(line));
-    log.info(WHERE_FILES_BELONG);
+    log.info(whereFilesBelong(report.shared));
     if (report.suggested.length > 0) {
       log.group(
         "Ready to paste into sluiceway.yaml",

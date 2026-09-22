@@ -81,7 +81,7 @@ describe("the files no stack claims", () => {
   test("are grouped by the directory at the top of the repo, the root first, in code unit order", () => {
     const report = checkSetup(parseConfig(undefined), FOUND, FILES);
     expect(report.unclaimed).toEqual([
-      { directory: ".", files: ["package.json", "sluiceway.yaml"] },
+      { directory: ".", files: ["package.json"] },
       { directory: "docs", files: ["docs/diagram.png"] },
       {
         directory: "packages",
@@ -103,9 +103,54 @@ describe("the files no stack claims", () => {
     const report = checkSetup(config, FOUND, FILES);
     expect(report.unclaimed.flatMap((group) => group.files)).toEqual([
       "package.json",
-      "sluiceway.yaml",
       "docs/diagram.png",
     ]);
+  });
+
+  // Issue 164: no stack is meant to claim the config file, and it must stay
+  // off scan.unrelated, so the list leaves it out as a scan's summary does.
+  test("leave out the config file, in either spelling", () => {
+    const report = checkSetup(parseConfig(undefined), FOUND, [
+      "sluiceway.yaml",
+      "sluiceway.yml",
+      "tools/sluiceway.yaml",
+    ]);
+    expect(report.unclaimed).toEqual([{ directory: "tools", files: ["tools/sluiceway.yaml"] }]);
+    expect(report.configFile).toBe("sluiceway.yaml");
+  });
+
+  test("a stack at the repo root claims the config file, so the report names none", () => {
+    const report = checkSetup(parseConfig(undefined), [stack(".:prod")], ["sluiceway.yaml"]);
+    expect(report.configFile).toBeUndefined();
+  });
+
+  test("name the lockfiles and package manifests among them, which must stay off scan.unrelated", () => {
+    const report = checkSetup(parseConfig(undefined), FOUND, [
+      "bun.lock",
+      "docs/diagram.png",
+      "package.json",
+      "packages/shared/package.json",
+      "packages/shared/src/index.ts",
+      "pnpm-lock.yaml",
+      "tools/go.mod",
+      "tools/go.sum",
+    ]);
+    expect(report.shared).toEqual([
+      "bun.lock",
+      "package.json",
+      "packages/shared/package.json",
+      "pnpm-lock.yaml",
+      "tools/go.mod",
+      "tools/go.sum",
+    ]);
+  });
+
+  test("name no shared file when none is unclaimed", () => {
+    const report = checkSetup(parseConfig(undefined), FOUND, [
+      "docs/diagram.png",
+      "network/package.json",
+    ]);
+    expect(report.shared).toEqual([]);
   });
 
   test("a stack at the repo root claims every file", () => {

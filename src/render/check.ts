@@ -23,6 +23,7 @@ import type {
   WorkflowWarning,
 } from "../core/workflow-check.ts";
 import { escapeText } from "./escape.ts";
+import { logGroupTitle } from "./log-text.ts";
 import { plural } from "./row.ts";
 
 export const VALID = "The setup is valid.";
@@ -43,8 +44,38 @@ export const COULD_NOT_ASK_TITLE = "Could not ask the backend";
 export const ALL_IN_BACKEND = "Every stack the backend was asked about is in it.";
 export const BACKEND_PASTE_NOTE =
   "The block below keeps what ignore has and adds the stacks the backend does not hold. Leave out any stack you are about to create.";
-export const WHERE_FILES_BELONG =
-  "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.";
+// The hint under the files that no stack claims, in the check and in a scan.
+// It says which files are worth listing under scan.unrelated and names the
+// lockfiles and package manifests among them, which must stay off it
+// (issue 164). `shared` comes from sharedFiles in the core, and `show` makes
+// a name safe for where it is printed: one line for the log, escaped for a
+// summary.
+export function whereFilesBelong(
+  shared: string[],
+  show: (name: string) => string = logGroupTitle,
+): string {
+  const start =
+    "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no program reads, such as docs, can be listed under scan.unrelated.";
+  if (shared.length === 0) {
+    return `${start} Keep lockfiles and package manifests off that list: a change to one should preview every stack.`;
+  }
+  const names = shared.slice(0, SHARED_NAMED).map(show);
+  const rest = shared.length - names.length;
+  const listed =
+    rest > 0
+      ? `${names.join(", ")} and ${rest} more`
+      : names.length === 1
+        ? (names[0] ?? "")
+        : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  const why =
+    shared.length === 1
+      ? "it is a lockfile or a package manifest, and a change to it should preview every stack"
+      : "they are lockfiles and package manifests, and a change to one should preview every stack";
+  return `${start} Keep ${listed} off that list: ${why}.`;
+}
+
+// The hint names this many shared files and counts the rest.
+const SHARED_NAMED = 5;
 export const PASTE_NOTE =
   "The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.";
 
@@ -485,14 +516,18 @@ export function renderCheckSummary({
   parts.push("### Files that no stack claims");
   const count = report.unclaimed.reduce((sum, group) => sum + group.files.length, 0);
   if (count === 0) {
+    const configFile =
+      report.configFile === undefined
+        ? ""
+        : ` ${escapeText(report.configFile)} is not listed: no stack claims it, and a change to it previews every stack.`;
     parts.push(
-      "Every file is claimed by a stack, covered by scan.unrelated, or one of the docs and tooling files that force nothing by default.",
+      `Every file is claimed by a stack, covered by scan.unrelated, or one of the docs and tooling files that force nothing by default.${configFile}`,
     );
   } else {
     parts.push(
       unclaimedText(count),
       report.unclaimed.map(groupLine).join("\n"),
-      WHERE_FILES_BELONG,
+      whereFilesBelong(report.shared, escapeText),
     );
     if (report.suggested.length > 0) {
       parts.push(

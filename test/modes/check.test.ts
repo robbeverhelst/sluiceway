@@ -262,13 +262,13 @@ describe("a valid setup", () => {
   test("lists the files that no stack claims, against the fixture repo", async () => {
     const { log } = await run(FIXTURE);
     expect(log.lines).toContain(
-      "6 files are claimed by no stack. A push that changes one of them gives a full scan.",
+      "5 files are claimed by no stack. A push that changes one of them gives a full scan.",
     );
     expect(log.groups.find((group) => group.title === "Files that no stack claims")?.lines).toEqual(
-      // The docs and tooling files of the defaults are not listed (slice 5.9).
+      // The docs and tooling files of the defaults are not listed (slice 5.9),
+      // and neither is the config file (issue 164).
       [
         "package.json",
-        "sluiceway.yaml",
         "docs/diagram.png",
         "packages/lib/index.ts",
         // playground:dev is ignored, so it claims nothing.
@@ -276,6 +276,17 @@ describe("a valid setup", () => {
         "playground/Pulumi.yaml",
       ],
     );
+  });
+
+  // Issue 164: the hint names the manifest among the listed files as one to
+  // keep off scan.unrelated, in the job log and in the summary.
+  test("the hint under the list names the package manifest as one to keep off scan.unrelated", async () => {
+    const { log, summary } = await run(FIXTURE);
+    const hint =
+      "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no program reads, such as docs, can be listed under scan.unrelated. Keep package.json off that list: it is a lockfile or a package manifest, and a change to it should preview every stack.";
+    expect(log.lines).toContain(hint);
+    expect(summary).toContain(`\n\n${hint}\n\n`);
+    expect(summary).toContain("- The repo root, 1 file: package.json\n");
   });
 
   test("prints the ready-to-paste block, and keeps the globs scan.unrelated already has", async () => {
@@ -297,6 +308,33 @@ describe("a valid setup", () => {
       // Slice 5.7, record 0074.
       "With backend: true the check also asks the backend which stacks it holds, with the credentials of its job.",
     ]);
+  });
+
+  // Issue 164: the config file is never listed, and the words for an empty
+  // list say where it went.
+  test("a repo whose only unclaimed file is sluiceway.yaml lists nothing and says why", async () => {
+    const { log, summary } = await run({
+      "sluiceway.yaml": "tickers: write\n",
+      "app/Pulumi.yaml": "name: app\nruntime: yaml\n",
+      "app/Pulumi.prod.yaml": "",
+    });
+    expect(
+      log.groups.find((group) => group.title === "Files that no stack claims"),
+    ).toBeUndefined();
+    expect(summary).toContain(
+      "Every file is claimed by a stack, covered by scan.unrelated, or one of the docs and tooling files that force nothing by default. sluiceway.yaml is not listed: no stack claims it, and a change to it previews every stack.",
+    );
+  });
+
+  test("a stack at the repo root claims sluiceway.yaml, so the words do not mention it", async () => {
+    const { summary } = await run({
+      "sluiceway.yaml": "tickers: write\n",
+      "Pulumi.yaml": "name: app\nruntime: yaml\n",
+      "Pulumi.prod.yaml": "",
+    });
+    expect(summary).toContain(
+      "Every file is claimed by a stack, covered by scan.unrelated, or one of the docs and tooling files that force nothing by default.\n",
+    );
   });
 
   test("a repo with no sluiceway.yaml and no stacks is valid", async () => {

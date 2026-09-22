@@ -17,7 +17,7 @@ import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import { stripAnsi } from "../adapters/pulumi/tool-log.ts";
 import type { Attribution } from "../core/attribution.ts";
-import { suggestedUnrelated } from "../core/check.ts";
+import { sharedFiles, suggestedUnrelated } from "../core/check.ts";
 import { applyConfig, type Config, type ConfiguredStack, ignoredStacks } from "../core/config.ts";
 import { loadConfig } from "../core/config-file.ts";
 import {
@@ -88,6 +88,7 @@ import {
   bodyDoesNotFitMessage,
   fitBody,
 } from "../render/budget.ts";
+import { whereFilesBelong } from "../render/check.ts";
 import { COUNT_DOT, HEADER_DOT } from "../render/dots.ts";
 import { headerState } from "../render/header-state.ts";
 import { dashboardSearchUrl, type RunLinks, runLinks, runUrl } from "../render/links.ts";
@@ -1075,6 +1076,7 @@ function unclaimedFiles(plan: ScanPlan, config: Config): UnclaimedFiles | undefi
     files: files.map(fileName),
     unrelated: config.scan.unrelated,
     suggested: suggestedUnrelated(files),
+    shared: sharedFiles(files),
   };
 }
 
@@ -1097,7 +1099,7 @@ function logPlan(context: ScanContext, plan: ScanPlan, stackCount: number): void
     if (toPlace.length > 0) {
       log.group("Changed files that no stack claims", [
         ...toPlace.map((file) => `unclaimed: ${fileName(file)}`),
-        "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.",
+        whereFilesBelong(sharedFiles(toPlace)),
       ]);
     }
     return;

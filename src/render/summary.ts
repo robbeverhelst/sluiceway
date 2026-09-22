@@ -5,7 +5,7 @@
 
 import type { Diff } from "../core/diff.ts";
 import { orderChanges } from "./changes.ts";
-import { PASTE_NOTE, unrelatedBlock, WHERE_FILES_BELONG } from "./check.ts";
+import { PASTE_NOTE, unrelatedBlock, whereFilesBelong } from "./check.ts";
 import { escapeText } from "./escape.ts";
 import {
   byCodeUnit,
@@ -86,6 +86,9 @@ export interface UnclaimedFiles {
   unrelated: string[];
   // The globs offered for the files, from the check's fixed list.
   suggested: string[];
+  // The lockfiles and package manifests among the files, which the hint names
+  // as ones to keep off scan.unrelated (issue 164).
+  shared: string[];
 }
 
 // The anchor of a stack's entry (record 0044). GitHub keeps the id of an
@@ -268,14 +271,14 @@ function fitToBudget(entries: Entry[], frameCost: (shortened: number) => number,
 // A summary names this many unclaimed files. The job log names them all.
 const UNCLAIMED_FILES_SHOWN = 20;
 
-function unclaimedParts({ files, unrelated, suggested }: UnclaimedFiles): string[] {
+function unclaimedParts({ files, unrelated, suggested, shared }: UnclaimedFiles): string[] {
   const shown = files.slice(0, UNCLAIMED_FILES_SHOWN).map(escapeText).join(", ");
   const rest = files.length - UNCLAIMED_FILES_SHOWN;
   const more = rest > 0 ? `, and ${plural(rest, "more file")}. The job log lists them all` : "";
   const parts = [
     "### Why this was a full scan",
     `This push fell back to a full scan, because no stack claims ${files.length} of the changed files: ${shown}${more}. A push that changes one of them previews every stack.`,
-    WHERE_FILES_BELONG,
+    whereFilesBelong(shared, escapeText),
   ];
   if (suggested.length > 0) {
     parts.push(PASTE_NOTE, ["```yaml", ...unrelatedBlock(unrelated, suggested), "```"].join("\n"));

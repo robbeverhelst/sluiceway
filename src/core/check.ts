@@ -7,6 +7,7 @@ import { applyConfig, type Config, type ConfiguredStack, ignoreGlob } from "./co
 import type { PreviewFailureReason } from "./failure-reason.ts";
 import { globMatcher, globOf } from "./glob.ts";
 import { type PhaseGroup, phaseGroups } from "./phases.ts";
+import { unclaimedToPlace } from "./scan-plan.ts";
 import { type Stack, stackId } from "./stack.ts";
 
 // One `ignore` glob and the stacks it leaves out.
@@ -38,6 +39,12 @@ export interface CheckReport {
   // offered for scan.unrelated and never applied: whether a program reads a
   // file is the user's to say (record 0042).
   suggested: string[];
+  // The unclaimed files that are lockfiles or package manifests, in code unit
+  // order. They must stay off scan.unrelated (issue 164).
+  shared: string[];
+  // The config file, when it is there and no stack claims it. It is left out
+  // of unclaimed, and the check says so (issue 164).
+  configFile?: string;
   // Every phase in order with its stacks (record 0067). Empty without phases.
   phases: PhaseGroup[];
   // Files and directories that a stack's own files name as read, and that
@@ -89,6 +96,53 @@ export type BackendCheck = { stackId: string } & (
 // never unclaimed since slice 5.9, so only what lies beyond them is here.
 const SUGGESTIONS = ["docs/**"];
 
+// Lockfiles and package manifests by file name, in any directory. A change to
+// one can change what every program runs, so the docs say to keep them off
+// scan.unrelated, and the hint under the unclaimed files names the ones it
+// lists (issue 164). A fixed list of the common package managers; a file
+// missing here is only not named, and the hint still says the rule.
+const SHARED_FILES = new Set([
+  "package.json",
+  "package-lock.json",
+  "npm-shrinkwrap.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "bun.lock",
+  "bun.lockb",
+  "deno.json",
+  "deno.lock",
+  "go.mod",
+  "go.sum",
+  "go.work",
+  "go.work.sum",
+  "Cargo.toml",
+  "Cargo.lock",
+  "pyproject.toml",
+  "poetry.lock",
+  "uv.lock",
+  "Pipfile",
+  "Pipfile.lock",
+  "requirements.txt",
+  "Gemfile",
+  "Gemfile.lock",
+  "composer.json",
+  "composer.lock",
+  "pom.xml",
+  "build.gradle",
+  "build.gradle.kts",
+  "gradle.lockfile",
+  "packages.lock.json",
+  "Directory.Packages.props",
+]);
+
+// The lockfiles and package manifests among these files, in code unit order.
+export function sharedFiles(files: string[]): string[] {
+  return files
+    .filter((file) => SHARED_FILES.has(file.slice(file.lastIndexOf("/") + 1)))
+    .sort(byCodeUnit);
+}
+
 // Throws what a scan throws for the same repo: a ConfigError or a
 // DiscoveryError, with the same messages, because it is the same code.
 // `files` are the files of the repo, relative to its root, forward slashes.
@@ -106,13 +160,19 @@ export function checkSetup(
     path: stack.path,
     inputs,
   }));
-  const { unclaimed } = claim(claimants, files, config.scan.unrelated);
-  const reads = readsOf(claimants, files, new Set(unclaimed), references);
+  const claimed = claim(claimants, files, config.scan.unrelated);
+  // No stack is meant to claim the config file, and it must stay off
+  // scan.unrelated, so it is not listed, as in a scan's summary (issue 164).
+  const unclaimed = unclaimedToPlace(claimed.unclaimed);
+  const configFile = claimed.unclaimed.find((file) => !unclaimed.includes(file));
+  const reads = readsOf(claimants, files, new Set(claimed.unclaimed), references);
   return {
     stacks,
     ignore: config.ignore.map((entry) => ignoreReport(ignoreGlob(entry), found)),
     unclaimed: groups(unclaimed),
     suggested: suggestedUnrelated(unclaimed),
+    shared: sharedFiles(unclaimed),
+    ...(configFile === undefined ? {} : { configFile }),
     phases: phaseGroups(
       config.phases,
       new Map(

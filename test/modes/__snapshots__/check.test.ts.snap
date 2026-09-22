@@ -23,14 +23,14 @@ Found 2 stacks.
 
 ### Files that no stack claims
 
-6 files are claimed by no stack. A push that changes one of them gives a full scan.
+5 files are claimed by no stack. A push that changes one of them gives a full scan.
 
-- The repo root, 2 files: package.json, sluiceway.yaml
+- The repo root, 1 file: package.json
 - docs/, 1 file: docs/diagram.png
 - packages/, 1 file: packages/lib/index.ts
 - playground/, 2 files: playground/Pulumi.dev.yaml, playground/Pulumi.yaml
 
-A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.
+A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no program reads, such as docs, can be listed under scan.unrelated. Keep package.json off that list: it is a lockfile or a package manifest, and a change to it should preview every stack.
 
 The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.
 
