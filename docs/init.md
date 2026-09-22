@@ -16,7 +16,7 @@ Like the [check](workflow.md#check-your-setup), `init` reads the files of your c
 
 ## What it looks at
 
-- **The stacks.** Pulumi projects, found the way a scan finds them. OpenTofu root modules: directories of `.tf` or `.tofu` files that no other directory calls as a module and that are not under a `modules` directory. Helm charts: every `Chart.yaml` that is not a library chart or a subchart.
+- **The stacks.** Pulumi projects, found the way a scan finds them. OpenTofu root modules: directories of `.tf` or `.tofu` files that no other directory calls as a module and that are not under a `modules` directory. Helm charts: every `Chart.yaml` that is not a library chart or a subchart. Kubernetes manifests stacks only when a `sluiceway.yaml` that is there declares them: a directory of YAML says nothing about its cluster ([configuration](configuration.md#stacks-and-stack-ids)).
 - **The programs' language and lockfile.** For Pulumi programs in JavaScript or TypeScript, the nearest `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock` or `bun.lock`, and `.nvmrc` or `.node-version`. Programs in another language get their packages with `pulumi install`.
 - **An env file of secret references.** A file named `.env`, `.env.<something>` or `<something>.env` with at least one 1Password reference (`op://`), loaded the way [the secret manager example](example-workflows.md#the-secret-manager) does it.
 - **The workflows that are there.** A workflow that already runs Sluiceway's scan, resolve, apply or settle, or a file at `.github/workflows/deploy-dashboard.yml`, stops `init` before it writes anything. A check workflow does not.
@@ -24,7 +24,7 @@ Like the [check](workflow.md#check-your-setup), `init` reads the files of your c
 
 ## What it writes
 
-- **`.github/workflows/deploy-dashboard.yml`**, the [whole workflow](workflow.md#the-workflow) with all four jobs, and in `scan` and `apply` the steps that install what your stacks need: the language and your packages, Pulumi with its plugin cache, OpenTofu, Helm with the diff plugin. The versions and pins are the ones of the [example workflows](example-workflows.md) and of [credentials](credentials.md).
+- **`.github/workflows/deploy-dashboard.yml`**, the [whole workflow](workflow.md#the-workflow) with all four jobs, and in `scan` and `apply` the steps that install what your stacks need: the language and your packages, Pulumi with its plugin cache, OpenTofu, Helm with the diff plugin, kubectl. The versions and pins are the ones of the [example workflows](example-workflows.md) and of [credentials](credentials.md).
 - **`sluiceway.yaml`**, only when there is none. It declares every OpenTofu root module and Helm chart it found, because files alone cannot name those stacks ([configuration](configuration.md#stacks-and-stack-ids)). It lists under `scan.unrelated` the globs of the check's fixed list that cover a file of your repo, and names in a comment the directories whose files no stack claims, with how to give them to a stack as `inputs`.
 - **`.github/scripts/export-env.sh`**, only when it loads an env file of secret references and that file is not there yet. It is the script [credentials](credentials.md#an-env-file-of-secret-references) explains.
 
