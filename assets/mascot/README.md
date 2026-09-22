@@ -1,4 +1,4 @@
-# Header images
+# Header images and the row spinner
 
 Penny, the gate, standing mid-channel on a quay: upstream on the left, downstream on the right. Eighteen pictures, each light and dark, and fourteen of them once more with the destroy sign: 64 files. The dashboard header points at these files at the exact release tag.
 
@@ -36,3 +36,13 @@ Final art may redraw every shape. It keeps the character and colours (record 003
 The wordmark is drawn as paths, so it looks the same on every system. Its outlines come from Inter ExtraBold, which is under the SIL Open Font License 1.1. The font itself is not in this repo.
 
 The files are generated. The generator lives with the prototype, on the `prototype/header-fish` branch of the private lab repo, and the drift picture's on `prototype/header-drift` (record 0055).
+
+## The row spinner
+
+`spinner-light.svg` and `spinner-dark.svg` are not a header. A deploying or queued row starts with one, through the same `<picture>` trick and from the same release tag, so the stack a person just ticked is visibly moving (record 0063). It is one of the header's crates, bobbing in the water on its way through the gate. Only with a header: `dashboard.personality: false` has no spinner.
+
+- `viewBox="0 0 24 24"`, shown at width 16
+- the file rules above, and at most 1 KB per file
+- the bob and the water turn off under `prefers-reduced-motion`
+
+Its generator is `spinner.mjs` on the `prototype/row-spinner` branch of the private lab repo, which draws a second take too, a teal ring.

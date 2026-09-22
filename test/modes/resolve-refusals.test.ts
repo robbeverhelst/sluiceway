@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { change, inSync, pending, REPO_URL } from "./harness.ts";
+import { change, inSync, pending, REPO_URL, SPINNER } from "./harness.ts";
 import {
   ADMIN,
   ALICE,
@@ -50,7 +50,7 @@ describe("a second tick on a stack that is deploying", () => {
     expect(h.github.comments(h.number)).toEqual([]);
     expect(rowsOf(h)["a:prod"]).toBe(
       [
-        `- **a:prod** · deploying · ticked by carol · [run](${REPO_URL}/actions/runs/77) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" -->`,
+        `- ${SPINNER}**a:prod** · deploying · ticked by carol · [run](${REPO_URL}/actions/runs/77) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" -->`,
         // No success of this stack is on record (record 0026).
         "  not deployed from this dashboard yet",
         "  <!-- /sluiceway:row -->",

@@ -18,6 +18,11 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 </div>
 
+## Deploying
+
+- **c:deploying** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="c:deploying" state="deploying" -->
+  <!-- /sluiceway:row -->
+
 ## Pending
 
 Tick a box to deploy that stack exactly as its row shows it.
@@ -26,11 +31,6 @@ Tick a box to deploy that stack exactly as its row shows it.
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
-  <!-- /sluiceway:row -->
-
-## Deploying
-
-- **c:deploying** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="c:deploying" state="deploying" -->
   <!-- /sluiceway:row -->
 
 ## Preview failed
@@ -85,6 +85,11 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 </div>
 
+## Deploying
+
+- **c:deploying** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="c:deploying" state="deploying" -->
+  <!-- /sluiceway:row -->
+
 ## Pending
 
 Tick a box to deploy that stack exactly as its row shows it.
@@ -93,11 +98,6 @@ Tick a box to deploy that stack exactly as its row shows it.
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
-  <!-- /sluiceway:row -->
-
-## Deploying
-
-- **c:deploying** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="c:deploying" state="deploying" -->
   <!-- /sluiceway:row -->
 
 ## In sync
@@ -1050,6 +1050,11 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 </div>
 
+## Deploying
+
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/spinner-light.svg"></picture> **c:deploying** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="c:deploying" state="deploying" destroys="2" -->
+  <!-- /sluiceway:row -->
+
 ## Pending
 
 Tick a box to deploy that stack exactly as its row shows it.
@@ -1058,11 +1063,6 @@ Tick a box to deploy that stack exactly as its row shows it.
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
-  <!-- /sluiceway:row -->
-
-## Deploying
-
-- **c:deploying** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="c:deploying" state="deploying" destroys="2" -->
   <!-- /sluiceway:row -->
 
 ## In sync
@@ -1106,6 +1106,11 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 </div>
 
+## Deploying
+
+- **c:deploying** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="c:deploying" state="deploying" -->
+  <!-- /sluiceway:row -->
+
 ## Pending
 
 This dashboard is read only, so rows have no boxes and nothing deploys from here. Rows get their boxes when \`dashboard.readOnly\` comes out of \`sluiceway.yaml\`.
@@ -1114,11 +1119,6 @@ This dashboard is read only, so rows have no boxes and nothing deploys from here
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
-  <!-- /sluiceway:row -->
-
-## Deploying
-
-- **c:deploying** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="c:deploying" state="deploying" -->
   <!-- /sluiceway:row -->
 
 ## Preview failed
@@ -1263,6 +1263,11 @@ exports[`snapshots personality off, failing 1`] = `
 
 Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 
+## Deploying
+
+- **c:deploying** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="c:deploying" state="deploying" -->
+  <!-- /sluiceway:row -->
+
 ## Pending
 
 Tick a box to deploy that stack exactly as its row shows it.
@@ -1271,11 +1276,6 @@ Tick a box to deploy that stack exactly as its row shows it.
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
-  <!-- /sluiceway:row -->
-
-## Deploying
-
-- **c:deploying** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="c:deploying" state="deploying" -->
   <!-- /sluiceway:row -->
 
 ## Preview failed
@@ -1329,6 +1329,15 @@ exports[`snapshots the 58 stack body 1`] = `
 Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 
 </div>
+
+## Deploying
+
+- **apps/web:staging** · waiting to start · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034502113) <!-- sluiceway:row stack="apps/web:staging" state="deploying" -->
+  from #418 by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/596eea8...8c41f0e)
+  <!-- /sluiceway:row -->
+- **platform/cert-manager:prod** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034501999) <!-- sluiceway:row stack="platform/cert-manager:prod" state="deploying" -->
+  from #437 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/876b5b7...8c41f0e)
+  <!-- /sluiceway:row -->
 
 ## Pending
 
@@ -1593,15 +1602,6 @@ Tick a box to deploy that stack exactly as its row shows it.
   </details>
   <!-- /sluiceway:row -->
 
-## Deploying
-
-- **apps/web:staging** · waiting to start · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034502113) <!-- sluiceway:row stack="apps/web:staging" state="deploying" -->
-  from #418 by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/596eea8...8c41f0e)
-  <!-- /sluiceway:row -->
-- **platform/cert-manager:prod** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034501999) <!-- sluiceway:row stack="platform/cert-manager:prod" state="deploying" -->
-  from #437 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/876b5b7...8c41f0e)
-  <!-- /sluiceway:row -->
-
 ## Preview failed
 
 These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.
@@ -1738,6 +1738,15 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 </div>
 
+## Deploying
+
+- **apps/web:staging** · waiting to start · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034502113) <!-- sluiceway:row stack="apps/web:staging" state="deploying" -->
+  from #418 by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/596eea8...8c41f0e)
+  <!-- /sluiceway:row -->
+- **platform/cert-manager:prod** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034501999) <!-- sluiceway:row stack="platform/cert-manager:prod" state="deploying" -->
+  from #437 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/876b5b7...8c41f0e)
+  <!-- /sluiceway:row -->
+
 ## Pending
 
 Tick a box to deploy that stack exactly as its row shows it.
@@ -1790,15 +1799,6 @@ Tick a box to deploy that stack exactly as its row shows it.
 - [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="ac75cd9db439bb8e" destroys="2" -->
   from #433 by alice, #429 by alice, [3fa9c1e](https://github.com/example-org/infra/commit/3fa9c1e) by bob, and 1 change outside this stack · [compare](https://github.com/example-org/infra/compare/7008dda...8c41f0e)
   :warning: **deletes 1, replaces 1.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
-  <!-- /sluiceway:row -->
-
-## Deploying
-
-- **apps/web:staging** · waiting to start · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034502113) <!-- sluiceway:row stack="apps/web:staging" state="deploying" -->
-  from #418 by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/596eea8...8c41f0e)
-  <!-- /sluiceway:row -->
-- **platform/cert-manager:prod** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034501999) <!-- sluiceway:row stack="platform/cert-manager:prod" state="deploying" -->
-  from #437 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/876b5b7...8c41f0e)
   <!-- /sluiceway:row -->
 
 ## Preview failed

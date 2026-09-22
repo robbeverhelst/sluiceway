@@ -10,6 +10,7 @@ import {
   pending,
   REPO_URL,
   SHA,
+  SPINNER,
   tableAdapter,
 } from "./harness.ts";
 
@@ -58,7 +59,7 @@ describe("a stack with an open deployment", () => {
     // because the header and the counts line need it.
     expect(rows(body)["a:prod"]?.text).toBe(
       [
-        `- **a:prod** · waiting to start · ticked by carol · [run](${REPO_URL}/actions/runs/77) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" -->`,
+        `- ${SPINNER}**a:prod** · waiting to start · ticked by carol · [run](${REPO_URL}/actions/runs/77) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" -->`,
         // No success of this stack is on record, so attribution has no commit
         // to start from (record 0026).
         "  not deployed from this dashboard yet",
@@ -78,7 +79,7 @@ describe("a stack with an open deployment", () => {
 
     await scan(context);
     expect(rows(dashboardBody(github))["a:prod"]?.text).toContain(
-      "- **a:prod** · deploying · ticked by alice · ",
+      `- ${SPINNER}**a:prod** · deploying · ticked by alice · `,
     );
   });
 
@@ -89,7 +90,7 @@ describe("a stack with an open deployment", () => {
     await scan(context);
     // What `resolve` writes holds a line a scan cannot make: attribution.
     const resolved = [
-      `- **a:prod** · waiting to start · ticked by alice · [run](${REPO_URL}/actions/runs/77) <!-- sluiceway:row stack="a:prod" state="deploying" -->`,
+      `- ${SPINNER}**a:prod** · waiting to start · ticked by alice · [run](${REPO_URL}/actions/runs/77) <!-- sluiceway:row stack="a:prod" state="deploying" -->`,
       "  from #433 by alice",
       "  <!-- /sluiceway:row -->",
     ].join("\n");

@@ -5,8 +5,8 @@ import { HEADER_STATES } from "../../src/render/header-state.ts";
 import { MAX_CRATES } from "../../src/render/pending-crates.ts";
 
 // The file rules of records 0033, 0039, 0043, 0047 and 0055, checked in CI on every header
-// image. The cap forces clean, hand-made SVG and keeps the header instant on a
-// phone.
+// image, and of record 0063 on the row spinner. The cap forces clean,
+// hand-made SVG and keeps the header instant on a phone.
 
 const DIR = resolve(import.meta.dir, "../../assets/mascot");
 const MAX_BYTES = 10 * 1024;
@@ -25,12 +25,18 @@ const SIGNED = STATE_PICTURES.filter(
 ).map((picture) => `${picture}-destroys`);
 const PICTURES = [...STATE_PICTURES, ...SIGNED];
 const FILES = PICTURES.flatMap((picture) => [`${picture}-light.svg`, `${picture}-dark.svg`]);
+// The small picture at the start of a deploying or queued row (record 0063):
+// square, and under 1 KB, because a dashboard can show several at once.
+const SPINNER_FILES = ["spinner-light.svg", "spinner-dark.svg"];
+const HEADER = { maxBytes: MAX_BYTES, viewBox: "0 0 880 160", cap: "10 KB" };
+const SPINNER = { maxBytes: 1024, viewBox: "0 0 24 24", cap: "1 KB" };
 
-function violations(svg: string): string[] {
+function violations(svg: string, rules = HEADER): string[] {
   const found: string[] = [];
   const bytes = new TextEncoder().encode(svg).length;
-  if (bytes > MAX_BYTES) found.push(`${bytes} bytes, over 10 KB`);
-  if (!/^<svg[^>]*\sviewBox="0 0 880 160"/.test(svg)) found.push("view box is not 0 0 880 160");
+  if (bytes > rules.maxBytes) found.push(`${bytes} bytes, over ${rules.cap}`);
+  if (!new RegExp(`^<svg[^>]*\\sviewBox="${rules.viewBox}"`).test(svg))
+    found.push(`view box is not ${rules.viewBox}`);
   if (/<script|\son[a-z]+\s*=/i.test(svg)) found.push("script");
   if (/@font-face|@import/i.test(svg)) found.push("font or import");
   // Text is drawn with whatever font the reader's system has. The wordmark
@@ -106,9 +112,9 @@ describe("the check itself", () => {
   });
 });
 
-test("there is one light and one dark file for every picture, and no other image", () => {
+test("there is one light and one dark file for every picture and for the spinner, and no other image", () => {
   const images = readdirSync(DIR).filter((name) => !name.endsWith(".md"));
-  expect(images.sort()).toEqual([...FILES].sort());
+  expect(images.sort()).toEqual([...FILES, ...SPINNER_FILES].sort());
   // 17 pictures of 0047, the 14 with the destroy sign, and drift: 32 pairs.
   expect(FILES).toHaveLength(64);
   expect(FILES).toContain("drift-light.svg");
@@ -117,4 +123,28 @@ test("there is one light and one dark file for every picture, and no other image
 
 test.each(FILES)("%s keeps the file rules", (name) => {
   expect(violations(readFileSync(join(DIR, name), "utf8"))).toEqual([]);
+});
+
+describe("the spinner", () => {
+  test("the check holds it to 1 KB and a square view box", () => {
+    const small = (inside: string) =>
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">${inside}</svg>`;
+    expect(violations(small(""), SPINNER)).toEqual([]);
+    expect(violations(small(" ".repeat(1_025 - small("").length)), SPINNER)).toEqual([
+      "1025 bytes, over 1 KB",
+    ]);
+    expect(violations(small(""))).toEqual(["view box is not 0 0 880 160"]);
+  });
+
+  test.each(SPINNER_FILES)("%s keeps the file rules", (name) => {
+    expect(violations(readFileSync(join(DIR, name), "utf8"), SPINNER)).toEqual([]);
+  });
+
+  test.each(SPINNER_FILES)("%s moves, and stands still under reduced motion", (name) => {
+    const svg = readFileSync(join(DIR, name), "utf8");
+    expect(svg).toMatch(/animation:/);
+    expect(svg).toMatch(
+      /@media \(prefers-reduced-motion:reduce\)\{\*\{animation:none!important\}\}/,
+    );
+  });
 });

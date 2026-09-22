@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { change, inSync, pending, SHA } from "./harness.ts";
+import { change, inSync, pending, SHA, SPINNER } from "./harness.ts";
 import {
   ALICE,
   BOB,
@@ -73,7 +73,7 @@ describe("a tick by a person who may tick", () => {
     const after = rowsOf(h);
     expect(after["a:prod"]).toBe(
       [
-        `- **a:prod** · waiting to start · ticked by alice · [run](${RESOLVE_RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="2" -->`,
+        `- ${SPINNER}**a:prod** · waiting to start · ticked by alice · [run](${RESOLVE_RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="2" -->`,
         // No success of this stack is on record (record 0026).
         "  not deployed from this dashboard yet",
         "  <!-- /sluiceway:row -->",
@@ -94,7 +94,8 @@ describe("a tick by a person who may tick", () => {
     expect(body).toContain(
       "🟡&nbsp;**1 pending** · 🔵&nbsp;1 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync",
     );
-    expect(body.indexOf("## Deploying")).toBeGreaterThan(body.indexOf("## Pending"));
+    // Deploying sits at the top while it has rows (record 0063).
+    expect(body.indexOf("## Deploying")).toBeLessThan(body.indexOf("## Pending"));
     // A deploying row that destroys something shows the deploying picture
     // with the destroy sign (0043).
     expect(body).toContain('alt="Sluiceway: deploying, some changes delete or replace resources"');

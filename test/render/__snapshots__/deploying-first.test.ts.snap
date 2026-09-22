@@ -1,0 +1,108 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`snapshots deploying and queued rows at the top, with the spinner 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" -->
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/deploying-destroys-dark.svg">
+    <img alt="Sluiceway: deploying, some changes delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/deploying-destroys-light.svg">
+  </picture>
+</p>
+
+<div align="center">
+
+🟡&nbsp;**1 pending** · 🔵&nbsp;2 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack destroys resources**
+
+Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121)
+
+</div>
+
+## Deploying
+
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/spinner-light.svg"></picture> **network:prod** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="network:prod" state="deploying" -->
+  <!-- /sluiceway:row -->
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/spinner-light.svg"></picture> **site:prod** · queued behind **network:prod** · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="site:prod" state="queued" -->
+  <!-- /sluiceway:row -->
+
+## Pending
+
+Tick a box to deploy that stack exactly as its row shows it.
+
+> [!CAUTION]
+> 1 pending stack deletes or replaces resources: **apps/api:prod**
+
+- [ ] **apps/api:prod** · **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" -->
+  :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b>
+  <!-- /sluiceway:row -->
+
+## In sync
+
+<details><summary>1 stack in sync</summary>
+
+- apps/web:prod <!-- sluiceway:row stack="apps/web:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+
+</details>
+
+## Recently deployed
+
+- 🟢&nbsp;apps/web:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121)
+
+---
+
+- [ ] Rescan all stacks <!-- sluiceway:rescan -->
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.11.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
+"
+`;
+
+exports[`snapshots nothing deploying, pending first 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" -->
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/pending-1-destroys-dark.svg">
+    <img alt="Sluiceway: 1 stack is pending, some delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/pending-1-destroys-light.svg">
+  </picture>
+</p>
+
+<div align="center">
+
+🟡&nbsp;**1 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack destroys resources**
+
+Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121)
+
+</div>
+
+## Pending
+
+Tick a box to deploy that stack exactly as its row shows it.
+
+> [!CAUTION]
+> 1 pending stack deletes or replaces resources: **apps/api:prod**
+
+- [ ] **apps/api:prod** · **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" -->
+  :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b>
+  <!-- /sluiceway:row -->
+
+## In sync
+
+<details><summary>1 stack in sync</summary>
+
+- apps/web:prod <!-- sluiceway:row stack="apps/web:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+
+</details>
+
+## Recently deployed
+
+- 🟢&nbsp;apps/web:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121)
+
+---
+
+- [ ] Rescan all stacks <!-- sluiceway:rescan -->
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.11.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
+"
+`;

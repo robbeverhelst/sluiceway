@@ -21,6 +21,15 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 > [!NOTE]
 > This dashboard is too large for one issue, so 40 of 53 pending rows are shortened. The summary that a shortened row links to shows every change. Deletes and replaces are the last thing to be cut.
 
+## Deploying
+
+- **apps/web:staging** · waiting to start · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034502113) <!-- sluiceway:row stack="apps/web:staging" state="deploying" -->
+  from #418 by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/e0b211b...8c41f0e)
+  <!-- /sluiceway:row -->
+- **platform/cert-manager:prod** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034501999) <!-- sluiceway:row stack="platform/cert-manager:prod" state="deploying" -->
+  from #437 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/80ff68e...8c41f0e)
+  <!-- /sluiceway:row -->
+
 ## Pending
 
 Tick a box to deploy that stack exactly as its row shows it.
@@ -418,15 +427,6 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>update</kbd> <code>aws:s3/bucketLifecycleConfiguration:BucketLifecycleConfiguration</code> <b>logs</b> · <code>rules</code><br>
   <kbd>create</kbd> <code>aws:s3/bucketVersioning:BucketVersioning</code> <b>uploads</b><br>
   </details>
-  <!-- /sluiceway:row -->
-
-## Deploying
-
-- **apps/web:staging** · waiting to start · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034502113) <!-- sluiceway:row stack="apps/web:staging" state="deploying" -->
-  from #418 by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/e0b211b...8c41f0e)
-  <!-- /sluiceway:row -->
-- **platform/cert-manager:prod** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034501999) <!-- sluiceway:row stack="platform/cert-manager:prod" state="deploying" -->
-  from #437 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/80ff68e...8c41f0e)
   <!-- /sluiceway:row -->
 
 ## Preview failed

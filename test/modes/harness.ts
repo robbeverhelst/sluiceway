@@ -28,6 +28,9 @@ export const JOB_ID = "106502264185";
 export const JOB_URL = `${RUN_URL}/job/${JOB_ID}`;
 export const SHA = "0123456789abcdef0123456789abcdef01234567";
 export const ACTION_REF = "v0.1.0";
+// What a deploying or queued row starts with under a header (record 0063).
+const SPINNERS = `https://raw.githubusercontent.com/sluiceway/sluiceway/${ACTION_REF}/assets/mascot`;
+export const SPINNER = `<picture><source media="(prefers-color-scheme: dark)" srcset="${SPINNERS}/spinner-dark.svg"><img alt="" width="16" height="16" src="${SPINNERS}/spinner-light.svg"></picture> `;
 
 // A repo root on disk, because config is a file. Discovery is the adapter's,
 // so no stack needs a file here.

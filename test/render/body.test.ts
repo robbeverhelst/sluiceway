@@ -442,7 +442,10 @@ describe("the centered block", () => {
       expect(all[3]).toContain(" pending** · ");
       expect(all[4]).toStartWith("Scanned [`8c41f0e`](");
       expect(all[5]).toBe("</div>");
-      expect(all[6]).toBe("## Pending");
+      // Deploying comes first while it has rows (record 0063).
+      expect(all[6]).toBe(
+        rows.some((row) => row.state === "deploying") ? "## Deploying" : "## Pending",
+      );
       expect(body.match(/<div align="center">/g)).toHaveLength(1);
       expect(body.match(/<\/div>/g)).toHaveLength(1);
     },
@@ -666,10 +669,10 @@ describe("the sections", () => {
       "## Pending",
       "## In sync",
     ]);
-    expect(headings(renderBody(input([deploying("a")])))).toEqual(["## Pending", "## Deploying"]);
+    expect(headings(renderBody(input([deploying("a")])))).toEqual(["## Deploying", "## Pending"]);
     expect(headings(renderBody(input(DASHBOARDS.failing, { recentlyDeployed: RECENT })))).toEqual([
-      "## Pending",
       "## Deploying",
+      "## Pending",
       "## Preview failed",
       "## In sync",
       "## Recently deployed",
@@ -1202,9 +1205,14 @@ describe("snapshots", () => {
       expect(`${pictures.join("\n\n")}\n`).toMatchSnapshot();
     });
 
+  // Its deploying rows are rendered as a writer renders them under a header,
+  // with the spinner (record 0063), so the snapshots name those files too.
   test("deploying with the destroy sign", () => {
     expect(
-      `${renderBody(input(SIGNED.deploying, { recentlyDeployed: RECENT }))}\n`,
+      `${renderBody({
+        ...input([], { recentlyDeployed: RECENT }),
+        rows: SIGNED.deploying.map((row) => rowBlock(row, { actionRef: "v0.1.0" })),
+      })}\n`,
     ).toMatchSnapshot();
   });
 
@@ -1290,7 +1298,8 @@ describe("the image urls in the snapshots", () => {
       readFileSync(join(import.meta.dir, "__snapshots__/body.test.ts.snap"), "utf8"),
     );
     const files = readdirSync(MASCOT).filter((name) => name.endsWith(".svg"));
-    expect(files).toHaveLength(64);
+    // The 64 header files and the row spinner in both themes (record 0063).
+    expect(files).toHaveLength(66);
     expect([...new Set(own.map((url) => url.split("/").at(-1) ?? ""))].sort()).toEqual(
       files.sort(),
     );

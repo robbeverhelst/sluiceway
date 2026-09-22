@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { handedOn, rows, runApply, states } from "./apply-harness.ts";
-import { change, pending } from "./harness.ts";
+import { change, pending, SPINNER } from "./harness.ts";
 import { RESOLVE_RUN_URL } from "./resolve-harness.ts";
 
 // The apply mode (records 0008, 0019, 0021 and 0035): the job that deploys one
@@ -46,7 +46,7 @@ describe("while the deploy runs", () => {
     await runApply(h);
 
     expect(during).toBe(
-      `- **a:prod** · deploying · ticked by alice · [run](${RESOLVE_RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" -->\n  not deployed from this dashboard yet\n  <!-- /sluiceway:row -->`,
+      `- ${SPINNER}**a:prod** · deploying · ticked by alice · [run](${RESOLVE_RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" -->\n  not deployed from this dashboard yet\n  <!-- /sluiceway:row -->`,
     );
   });
 

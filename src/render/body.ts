@@ -9,6 +9,7 @@ import { destroySign } from "./destroy-sign.ts";
 import { COUNT_DOT, DOT_AT_ZERO, RESULT_DOT } from "./dots.ts";
 import { escapeText } from "./escape.ts";
 import { type HeaderState, headerState } from "./header-state.ts";
+import { mascotUrl, urlPart } from "./images.ts";
 import {
   type ParsedMerge,
   type ParsedRow,
@@ -123,15 +124,6 @@ function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
-// One piece of a url inside a Markdown link. `encodeURIComponent` leaves
-// `( ) * ! ' ~` alone, and a closing bracket would end the link early.
-function urlPart(text: string): string {
-  return encodeURIComponent(text).replace(
-    /[()*!'~]/g,
-    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-}
-
 // A freshly rendered row as a row block. Its facts are read back from its own
 // marker, so they are the ones every later writer will read.
 export function rowBlock(row: Row, options: RowOptions = {}): ParsedRow {
@@ -158,8 +150,7 @@ function picture(
   const name = signed ? `${base}-destroys` : base;
   const plainAlt = state === "pending" ? pendingAlt(crates ?? 1) : ALT[state];
   const alt = signed ? `${plainAlt}${SIGNED_FACT[state]}` : plainAlt;
-  const file = (theme: string) =>
-    `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef)}/assets/mascot/${name}-${theme}.svg`;
+  const file = (theme: string) => mascotUrl(actionRef, `${name}-${theme}.svg`);
   return [
     '<p align="center">',
     "  <picture>",
@@ -300,6 +291,14 @@ export function renderBody(input: BodyInput): string {
   const shortened = pending.filter((row) => row.shortened > 0).length;
   if (shortened > 0) out.push(shortenedNote(shortened, pending.length));
 
+  // Deploying comes first while it has rows: what is going out is what the
+  // person is watching, and the section is gone when it is empty, so pending
+  // loses nothing (record 0063).
+  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) =>
+    byCodeUnit(a.stackId, b.stackId),
+  );
+  if (deploying.length > 0) out.push("## Deploying", blocks(deploying));
+
   // Above Pending, because a tick there also ends in a deploy (record 0054).
   // Of two lines for one pull request the first stays.
   const merges = [...(input.merges ?? [])]
@@ -323,11 +322,6 @@ export function renderBody(input: BodyInput): string {
   // Drift sits right under Pending: its rows have boxes too (record 0055).
   const drifted = of("drift");
   if (drifted.length > 0) out.push("## Drifted", DRIFTED_LINE, blocks(drifted));
-
-  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) =>
-    byCodeUnit(a.stackId, b.stackId),
-  );
-  if (deploying.length > 0) out.push("## Deploying", blocks(deploying));
 
   const previewFailed = of("preview-failed");
   if (previewFailed.length > 0)

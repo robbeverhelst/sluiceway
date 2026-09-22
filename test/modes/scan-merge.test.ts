@@ -15,6 +15,7 @@ import {
   RUN_ID,
   RUN_URL,
   SHA,
+  SPINNER,
   tableAdapter,
 } from "./harness.ts";
 import { rememberingOutputs } from "./outputs-harness.ts";
@@ -204,7 +205,7 @@ describe("the scan after a merge", () => {
       { stack: "a:prod", environment: "sluiceway", deployment: handedOn.id },
     ]);
     expect(rows(dashboardBody(github))["a:prod"]?.text.split("\n")[0]).toBe(
-      `- **a:prod** · waiting to start · ticked by alice · [run](${RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" -->`,
+      `- ${SPINNER}**a:prod** · waiting to start · ticked by alice · [run](${RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" -->`,
     );
   });
 

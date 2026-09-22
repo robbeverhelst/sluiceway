@@ -37,7 +37,13 @@ describe("the 58 stack fixture", () => {
 
   test("fits with every row in full", () => {
     expect(fitted).toMatchObject({ fits: true, shortened: 0 });
-    expect(fitted.body).toBe(renderBody({ ...FRAME, rows: rows58().map((row) => rowBlock(row)) }));
+    // Its two deploying rows keep their spinner (record 0063).
+    expect(fitted.body).toBe(
+      renderBody({
+        ...FRAME,
+        rows: rows58().map((row) => rowBlock(row, { actionRef: FRAME.actionRef })),
+      }),
+    );
   });
 
   test("uses between half and two thirds of the hard limit", () => {

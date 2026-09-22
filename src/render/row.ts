@@ -3,6 +3,7 @@
 
 import type { Change, Diff } from "../core/diff.ts";
 import { escapeText } from "./escape.ts";
+import { mascotUrl } from "./images.ts";
 import { ROW_CLOSE_MARKER, rowMarker } from "./marker.ts";
 import { utcMinute } from "./time.ts";
 
@@ -127,6 +128,11 @@ export interface RowOptions {
   // `dashboard.readOnly` (slice 2.17): a pending row has no box, so it holds
   // no tick and asks for none. The marker and the hash stay the same.
   readOnly?: boolean | undefined;
+  // The action ref to serve the spinner from (record 0063). A deploying or
+  // queued row then starts with it. Absent, as without personality, it has
+  // none. The row is written by one version and carried by the next as it
+  // is, so it keeps the spinner of the version that wrote it.
+  actionRef?: string | undefined;
 }
 
 export const INDENT = "  ";
@@ -419,7 +425,19 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
   return lines;
 }
 
-function deployingRow(row: DeployingRow): string[] {
+// A small animated picture at the start of a deploying or queued row (record
+// 0063): the thing a person just ticked is visibly moving. A light and a dark
+// file through `<picture>`, which follows the reader's GitHub theme, as the
+// header does (record 0033). The alt text is empty because the words right
+// after it say deploying.
+export const SPINNER_WIDTH = 16;
+
+function spinner(actionRef: string): string {
+  const file = (theme: string) => mascotUrl(actionRef, `spinner-${theme}.svg`);
+  return `<picture><source media="(prefers-color-scheme: dark)" srcset="${file("dark")}"><img alt="" width="${SPINNER_WIDTH}" height="${SPINNER_WIDTH}" src="${file("light")}"></picture> `;
+}
+
+function deployingRow(row: DeployingRow, options: RowOptions): string[] {
   const behind = row.behind ?? [];
   const word =
     behind.length > 0
@@ -429,7 +447,7 @@ function deployingRow(row: DeployingRow): string[] {
         : "deploying";
   const state = behind.length > 0 ? "queued" : "deploying";
   const lines = [
-    `- **${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${
+    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef)}**${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${
       row.runUrl
     }) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys })}`,
   ];
@@ -471,7 +489,7 @@ function rowLines(row: Row, options: RowOptions): string[] {
     case "drift":
       return driftRow(row, options);
     case "deploying":
-      return deployingRow(row);
+      return deployingRow(row, options);
     case "preview-failed":
       return previewFailedRow(row);
     case "in-sync":

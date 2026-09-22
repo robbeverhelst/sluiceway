@@ -55276,6 +55276,15 @@ function headerState(rows) {
   return "in-sync";
 }
 
+// src/render/images.ts
+var ACTION_REPO = "sluiceway/sluiceway";
+function urlPart(text6) {
+  return encodeURIComponent(text6).replace(/[()*!'~]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+function mascotUrl(actionRef2, file2) {
+  return `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef2)}/assets/mascot/${file2}`;
+}
+
 // src/render/pending-crates.ts
 var MAX_CRATES = 12;
 function pendingCrates(rows) {
@@ -55500,12 +55509,17 @@ function pendingRow(row, options) {
   lines.push(...driftLines(drift, summary2, options));
   return lines;
 }
-function deployingRow(row) {
+var SPINNER_WIDTH = 16;
+function spinner(actionRef2) {
+  const file2 = (theme) => mascotUrl(actionRef2, `spinner-${theme}.svg`);
+  return `<picture><source media="(prefers-color-scheme: dark)" srcset="${file2("dark")}"><img alt="" width="${SPINNER_WIDTH}" height="${SPINNER_WIDTH}" src="${file2("light")}"></picture> `;
+}
+function deployingRow(row, options) {
   const behind = row.behind ?? [];
   const word = behind.length > 0 ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}` : row.waiting ? "waiting to start" : "deploying";
   const state = behind.length > 0 ? "queued" : "deploying";
   const lines = [
-    `- **${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys })}`
+    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef)}**${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys })}`
   ];
   if (row.attribution)
     lines.push(row.attribution.full);
@@ -55543,7 +55557,7 @@ function rowLines(row, options) {
     case "drift":
       return driftRow(row, options);
     case "deploying":
-      return deployingRow(row);
+      return deployingRow(row, options);
     case "preview-failed":
       return previewFailedRow(row);
     case "in-sync":
@@ -55580,8 +55594,8 @@ function shortenedNote(shortened, pending) {
 
 // src/render/body.ts
 var RECENTLY_DEPLOYED = 10;
-var ACTION_REPO = "sluiceway/sluiceway";
-var ACTION_URL = `https://github.com/${ACTION_REPO}`;
+var ACTION_REPO2 = "sluiceway/sluiceway";
+var ACTION_URL = `https://github.com/${ACTION_REPO2}`;
 var ALT = {
   failing: "Sluiceway: something failed",
   deploying: "Sluiceway: deploying",
@@ -55607,9 +55621,6 @@ function byCodeUnit9(a, b) {
 function plural3(count, word) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
-function urlPart(text6) {
-  return encodeURIComponent(text6).replace(/[()*!'~]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
-}
 function rowBlock(row, options = {}) {
   const [block] = parseDashboard(renderRow(row, options)).rows;
   if (!block)
@@ -55622,7 +55633,7 @@ function picture(state, crates, sign, actionRef2) {
   const name = signed ? `${base}-destroys` : base;
   const plainAlt = state === "pending" ? pendingAlt(crates ?? 1) : ALT[state];
   const alt = signed ? `${plainAlt}${SIGNED_FACT[state]}` : plainAlt;
-  const file2 = (theme) => `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef2)}/assets/mascot/${name}-${theme}.svg`;
+  const file2 = (theme) => mascotUrl(actionRef2, `${name}-${theme}.svg`);
   return [
     '<p align="center">',
     "  <picture>",
@@ -55717,6 +55728,9 @@ function renderBody(input2) {
   const shortened = pending.filter((row) => row.shortened > 0).length;
   if (shortened > 0)
     out.push(shortenedNote(shortened, pending.length));
+  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) => byCodeUnit9(a.stackId, b.stackId));
+  if (deploying.length > 0)
+    out.push("## Deploying", blocks(deploying));
   const merges = [...input2.merges ?? []].filter((merge3, index, all) => all.findIndex((one) => one.pr === merge3.pr) === index).sort((a, b) => a.pr - b.pr);
   if (merges.length > 0) {
     out.push("## Updates waiting to merge", MERGE_LINE2, merges.map((merge3) => merge3.text).join(`
@@ -55731,9 +55745,6 @@ function renderBody(input2) {
   const drifted = of("drift");
   if (drifted.length > 0)
     out.push("## Drifted", DRIFTED_LINE, blocks(drifted));
-  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) => byCodeUnit9(a.stackId, b.stackId));
-  if (deploying.length > 0)
-    out.push("## Deploying", blocks(deploying));
   const previewFailed = of("preview-failed");
   if (previewFailed.length > 0)
     out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
@@ -55784,16 +55795,22 @@ function sizeOf(entry2, level = entry2.level) {
 function fitBody(input2, options = {}) {
   const limit = options.limit ?? BODY_LIMIT;
   const target2 = Math.min(options.target ?? BODY_TARGET, limit);
+  let spinning = input2.personality;
   const entries = input2.rows.map((row) => {
     const levels = row.state === "pending" || row.state === "drift" ? LEVELS : LEVELS.slice(0, 1);
-    const blocks2 = levels.map((level) => rowBlock(row, { level, redact: input2.redact, readOnly: input2.readOnly }));
-    return { stackId: blocks2[0]?.stackId ?? "", blocks: blocks2, level: 0 };
+    const plain = { redact: input2.redact, readOnly: input2.readOnly };
+    const blocks2 = levels.map((level) => rowBlock(row, { ...plain, level, actionRef: spinning ? input2.actionRef : undefined }));
+    const still = row.state === "deploying" && spinning ? rowBlock(row, plain) : undefined;
+    return { stackId: blocks2[0]?.stackId ?? "", blocks: blocks2, still, level: 0 };
   });
+  const blockOf = (entry2) => !spinning && entry2.still || entry2.blocks[entry2.level] || [];
   const render = () => renderBody({
     ...input2,
-    rows: [...input2.carried, ...entries.flatMap((entry2) => entry2.blocks[entry2.level] ?? [])]
+    rows: [...input2.carried, ...entries.flatMap(blockOf)]
   });
   const fits = () => render().length <= target2;
+  if (spinning && !fits())
+    spinning = false;
   for (const level of LEVELS.slice(1)) {
     const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit8(a.stackId, b.stackId));
     for (const entry2 of biggestFirst) {

@@ -59,6 +59,8 @@ const LEVELS: RowLevel[] = [0, 1, 2, 3];
 interface Entry {
   stackId: string;
   blocks: ParsedRow[];
+  // A deploying or queued row without its spinner, when it has one.
+  still?: ParsedRow | undefined;
   level: number;
 }
 
@@ -69,21 +71,29 @@ function sizeOf(entry: Entry, level = entry.level): number {
 export function fitBody(input: BudgetInput, options: BudgetOptions = {}): FittedBody {
   const limit = options.limit ?? BODY_LIMIT;
   const target = Math.min(options.target ?? BODY_TARGET, limit);
+  // The spinner of a deploying or queued row is an image, like the header, so
+  // it goes with it (record 0063). It is the first thing to go when the body
+  // does not fit: every one of them, before any pending row is shortened.
+  let spinning = input.personality;
   const entries = input.rows.map((row): Entry => {
     // A drifted row shortens too (record 0055). Its levels 1 and 3 look like
     // 0 and 2, and the budget never picks a level that saves nothing.
     const levels = row.state === "pending" || row.state === "drift" ? LEVELS : LEVELS.slice(0, 1);
+    const plain = { redact: input.redact, readOnly: input.readOnly };
     const blocks = levels.map((level) =>
-      rowBlock(row, { level, redact: input.redact, readOnly: input.readOnly }),
+      rowBlock(row, { ...plain, level, actionRef: spinning ? input.actionRef : undefined }),
     );
-    return { stackId: blocks[0]?.stackId ?? "", blocks, level: 0 };
+    const still = row.state === "deploying" && spinning ? rowBlock(row, plain) : undefined;
+    return { stackId: blocks[0]?.stackId ?? "", blocks, still, level: 0 };
   });
+  const blockOf = (entry: Entry) => (!spinning && entry.still) || entry.blocks[entry.level] || [];
   const render = () =>
     renderBody({
       ...input,
-      rows: [...input.carried, ...entries.flatMap((entry) => entry.blocks[entry.level] ?? [])],
+      rows: [...input.carried, ...entries.flatMap(blockOf)],
     });
   const fits = () => render().length <= target;
+  if (spinning && !fits()) spinning = false;
 
   for (const level of LEVELS.slice(1)) {
     const biggestFirst = [...entries].sort(

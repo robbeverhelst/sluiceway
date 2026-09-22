@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { parseDashboard } from "../../src/render/marker.ts";
 import { renderMergeRow } from "../../src/render/merge-row.ts";
 import { BOT } from "../fake-github/fake-github.ts";
-import { change, inSync, pending } from "./harness.ts";
+import { change, inSync, pending, SPINNER } from "./harness.ts";
 import {
   ALICE,
   BOB,
@@ -108,7 +108,7 @@ describe("a tick on an update waiting to merge", () => {
     expect(merges(h)).toEqual([]);
     expect(h.github.issue(h.number).body).not.toContain("Updates waiting to merge");
     expect(rowsOf(h)["a:prod"]?.split("\n")[0]).toBe(
-      `- **a:prod** · waiting to start · ticked by alice · [run](${RESOLVE_RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" -->`,
+      `- ${SPINNER}**a:prod** · waiting to start · ticked by alice · [run](${RESOLVE_RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" -->`,
     );
     expect(h.github.comments(h.number)).toEqual([]);
   });
