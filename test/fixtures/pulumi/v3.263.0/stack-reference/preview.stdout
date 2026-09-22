@@ -11,46 +11,46 @@
                 "urn": "urn:pulumi:prod::app::pulumi:pulumi:Stack::app-prod",
                 "custom": false,
                 "type": "pulumi:pulumi:Stack",
-                "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316",
+                "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316",
                 "stackTrace": [
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#588"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#588"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#320"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#320"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/grpc-ecosystem/grpc-opentracing@v0.0.0-20180507213350-8e809c8a8645/go/otgrpc/server.go#57"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/grpc-ecosystem/grpc-opentracing@v0.0.0-20180507213350-8e809c8a8645/go/otgrpc/server.go#57"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#235"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#235"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1247"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1247"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#590"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#590"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1443"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1443"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1858"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1858"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1078"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1078"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../opt/hostedtoolcache/go/1.26.6/x64/src/runtime/asm_arm64.s#1447"
+                        "sourcePosition": "project:///../../../../../../opt/hostedtoolcache/go/1.26.6/x64/src/runtime/asm_amd64.s#1771"
                     }
                 ]
             },
@@ -71,64 +71,64 @@
                 "parent": "urn:pulumi:prod::app::pulumi:pulumi:Stack::app-prod",
                 "external": true,
                 "provider": "urn:pulumi:prod::app::pulumi:providers:pulumi::default::04da6b54-80e4-46f7-96ec-b56ff0331ba9",
-                "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1026",
+                "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1026",
                 "stackTrace": [
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1026"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1026"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1282"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1282"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1135"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1135"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#526"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#526"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#318"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#318"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/pulumi/run.go#144"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/pulumi/run.go#144"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#588"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#588"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#320"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#320"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/grpc-ecosystem/grpc-opentracing@v0.0.0-20180507213350-8e809c8a8645/go/otgrpc/server.go#57"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/grpc-ecosystem/grpc-opentracing@v0.0.0-20180507213350-8e809c8a8645/go/otgrpc/server.go#57"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#235"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#235"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1247"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1247"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#590"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#590"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1443"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1443"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1858"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1858"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1078"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1078"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../opt/hostedtoolcache/go/1.26.6/x64/src/runtime/asm_arm64.s#1447"
+                        "sourcePosition": "project:///../../../../../../opt/hostedtoolcache/go/1.26.6/x64/src/runtime/asm_amd64.s#1771"
                     }
                 ]
             },
@@ -152,64 +152,64 @@
                     "length": [],
                     "prefix": []
                 },
-                "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1026",
+                "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1026",
                 "stackTrace": [
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1026"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1026"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1282"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1282"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1135"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1135"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#526"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#526"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#318"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#318"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/pulumi/run.go#144"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/pulumi/run.go#144"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#588"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#588"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#320"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#320"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/grpc-ecosystem/grpc-opentracing@v0.0.0-20180507213350-8e809c8a8645/go/otgrpc/server.go#57"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/grpc-ecosystem/grpc-opentracing@v0.0.0-20180507213350-8e809c8a8645/go/otgrpc/server.go#57"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#235"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#235"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1247"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1247"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#590"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#590"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1443"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1443"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1858"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1858"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1078"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1078"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../opt/hostedtoolcache/go/1.26.6/x64/src/runtime/asm_arm64.s#1447"
+                        "sourcePosition": "project:///../../../../../../opt/hostedtoolcache/go/1.26.6/x64/src/runtime/asm_amd64.s#1771"
                     }
                 ]
             },
@@ -227,7 +227,7 @@
                     "create": "echo app started",
                     "environment": {
                         "MOTD": "Hello from the shared directory.\n",
-                        "NETWORK": "net-moral-jay",
+                        "NETWORK": "net-humble-serval",
                         "NOTE": "CANARY-VALUE",
                         "TIER": "standard",
                         "TOKEN": "[secret]"
@@ -244,64 +244,64 @@
                         "urn:pulumi:prod::app::pulumi:pulumi:StackReference::network"
                     ]
                 },
-                "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1026",
+                "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1026",
                 "stackTrace": [
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1026"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1026"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1282"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1282"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1135"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#1135"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#526"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/pulumiyaml/run.go#526"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#318"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#318"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/pulumi/run.go#144"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/pulumi/run.go#144"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316"
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#316"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#588"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#588"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#320"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#320"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/grpc-ecosystem/grpc-opentracing@v0.0.0-20180507213350-8e809c8a8645/go/otgrpc/server.go#57"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/grpc-ecosystem/grpc-opentracing@v0.0.0-20180507213350-8e809c8a8645/go/otgrpc/server.go#57"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1256"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#235"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/go/common/util/rpcutil/interceptor.go#235"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1247"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1247"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#590"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.262.0/proto/go/language_grpc.pb.go#590"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1443"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1443"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1858"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1858"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1078"
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.83.2/server.go#1078"
                     },
                     {
-                        "sourcePosition": "project:///../../../../../../../../../../../opt/hostedtoolcache/go/1.26.6/x64/src/runtime/asm_arm64.s#1447"
+                        "sourcePosition": "project:///../../../../../../opt/hostedtoolcache/go/1.26.6/x64/src/runtime/asm_amd64.s#1771"
                     }
                 ],
                 "replaceOnChanges": [
@@ -311,7 +311,7 @@
             "detailedDiff": null
         }
     ],
-    "duration": 261871875,
+    "duration": 268154152,
     "changeSummary": {
         "create": 3
     }
