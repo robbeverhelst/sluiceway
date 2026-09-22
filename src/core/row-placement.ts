@@ -10,6 +10,7 @@
 import type { PreviewResult, ToolDeploy } from "../adapters/adapter.ts";
 import { type RunLinks, runUrl } from "../render/links.ts";
 import type {
+  ParsedBulk,
   ParsedDashboard,
   ParsedMerge,
   ParsedRow,
@@ -32,6 +33,7 @@ import {
 } from "../render/row.ts";
 import { waitingBlock } from "../render/waiting-line.ts";
 import type { Attribution } from "./attribution.ts";
+import type { BulkState } from "./bulk.ts";
 import {
   type DeployFact,
   type DeployFacts,
@@ -111,7 +113,7 @@ export interface LateRead {
   // The live body. Its rows and merges are ones this version can carry only
   // when `current` (record 0009). `first` is the first block of every stack,
   // whatever its version or state (record 0025).
-  live: Pick<ParsedDashboard, "root" | "merges" | "waiting" | "outside"> & {
+  live: Pick<ParsedDashboard, "root" | "merges" | "waiting" | "outside" | "bulk"> & {
     current: boolean;
     first: ReadonlyMap<string, ParsedRow>;
   };
@@ -151,6 +153,8 @@ export interface PlacedRows {
   merges: ParsedMerge[];
   waiting: ParsedWaiting[];
   outside: OutsideDeploy[];
+  // The live bulk lines and the facts the scan sweeps them by (record 0083).
+  bulk: Omit<BulkState, "on">;
 }
 
 // What the late read placed, besides the rows, for the job log.
@@ -175,6 +179,9 @@ export interface Placed {
   resolveWaits: boolean;
   // Deployment records with a payload this version cannot read.
   unread: number;
+  // The bulk lines of the live body, for what the scan did with them (record
+  // 0083).
+  bulk: readonly ParsedBulk[];
 }
 
 export type RowsAtLateRead = { kind: "placed"; rows: PlacedRows; placed: Placed } | PreviewFirst;
@@ -334,6 +341,12 @@ export function placeRows(so: ScanSoFar, late: LateRead): RowsAtLateRead {
       merges,
       waiting,
       outside,
+      // The live lines of a body this version wrote, swept by this scan's
+      // facts (record 0083).
+      bulk: {
+        live: live.current ? live.bulk : [],
+        scan: { liveScanRun: live.root?.scanRun, resolveOnItsWay: waits },
+      },
     },
     placed: {
       carried: [...carried.keys()].filter((id) => !previewed.has(id)),
@@ -345,6 +358,7 @@ export function placeRows(so: ScanSoFar, late: LateRead): RowsAtLateRead {
       mergeTicks,
       resolveWaits: waits,
       unread: deploys.facts.unread,
+      bulk: live.current ? live.bulk : [],
     },
   };
 }

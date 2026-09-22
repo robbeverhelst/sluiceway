@@ -43,6 +43,8 @@ Tick a box to deploy that stack exactly as its row shows it.
   </details>
   <!-- /sluiceway:row -->
 
+- [ ] Deploy all 2 pending stacks <!-- sluiceway:bulk section="pending" -->
+
 ## Preview failed
 
 These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.

@@ -99,6 +99,7 @@ import {
 } from "../github/preview-pages.ts";
 import type { Notifier } from "../notify/send.ts";
 import { BODY_LIMIT, type BudgetOptions, bodyDoesNotFitMessage } from "../render/budget.ts";
+import { bulkSweepText } from "../render/bulk-box.ts";
 import { whereFilesBelong } from "../render/check.ts";
 import { COUNT_DOT, HEADER_DOT } from "../render/dots.ts";
 import { dashboardSearchUrl, type RunLinks, runLinks, runUrl } from "../render/links.ts";
@@ -434,6 +435,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       repoUrl: context.repoUrl,
       actionRef: context.actionRef,
       dashboard: config.dashboard,
+      deploys: config.deploys,
       ignored,
       budget: context.limits?.body,
     };
@@ -676,7 +678,9 @@ async function resolveWaits(
   const met =
     live.rows.some(
       (row) => row.known && row.ticked && deploys.facts.byStack.get(row.stackId)?.kind !== "open",
-    ) || live.merges.some((merge) => merge.ticked);
+    ) ||
+    live.merges.some((merge) => merge.ticked) ||
+    live.bulk.some((line) => line.ticked);
   if (!met) return false;
   try {
     return resolveOnItsWay(await context.github.listIssuesRuns(context.workflow), context.runId);
@@ -1251,6 +1255,9 @@ function reportDashboard(
         ? `Left the tick on the merge of #${pr} alone: a run that an issue edit started is queued or in progress, and its \`resolve\` job handles every tick.`
         : `Cleared an orphan tick on the merge of #${pr}: no run that an issue edit started is queued or in progress. Tick it again to merge.`,
     );
+  }
+  for (const line of bulkSweepText(lastPlaced?.bulk ?? [], parseDashboard(written.body).bulk)) {
+    log.info(line);
   }
   const unread = lastPlaced?.unread ?? 0;
   if (unread > 0) {

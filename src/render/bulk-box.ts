@@ -4,7 +4,13 @@
 // both. Plain words: the voice has no place here (record 0032).
 
 import { escapeText } from "./escape.ts";
-import { type BulkFacts, type BulkNote, type BulkSection, bulkMarker } from "./marker.ts";
+import {
+  type BulkFacts,
+  type BulkNote,
+  type BulkSection,
+  bulkMarker,
+  type ParsedBulk,
+} from "./marker.ts";
 
 // A bulk line as a writer draws it: its facts, the tick, and for a bulk box
 // how many stacks its section holds.
@@ -70,4 +76,58 @@ export function renderBulkLine(line: BulkLine): string {
     `${box}**Confirm:** ${words.verb} all ${count}: ${named(ids)} · asked by ${escapeText(line.by)} ${bulkMarker(line)}`,
     `  ${CONFIRM_HINT}`,
   ].join("\n");
+}
+
+// How the job log names a bulk line.
+export function bulkName(kind: "box" | "confirm", section: BulkSection): string {
+  if (kind === "confirm") return `the confirm box of the ${WORDS[section].rows} stacks`;
+  return `the box that ${WORDS[section].verb}s all ${WORDS[section].rows} stacks`;
+}
+
+function changedText(note: Extract<BulkNote, { kind: "changed" }>, section: BulkSection): string {
+  const say = (ids: readonly string[], one: string) =>
+    ids.length === 0
+      ? []
+      : [
+          `${ids.join(", ")} ${ids.length === 1 ? one : one.replace(/^is|^has/, (w) => (w === "is" ? "are" : "have"))}`,
+        ];
+  return [
+    ...say(note.added, "is new"),
+    ...say(note.gone, WORDS[section].left),
+    ...say(note.moved, "has a new diff"),
+  ].join(", ");
+}
+
+// What a scan did with the bulk line of each section, for the job log
+// (records 0025 and 0083): a tick it swept or left alone, and a confirm box
+// it took back. Nothing when the line only got a new count.
+export function bulkSweepText(
+  live: readonly ParsedBulk[],
+  written: readonly ParsedBulk[],
+): string[] {
+  const lines: string[] = [];
+  for (const section of ["pending", "drift"] as const) {
+    const before = live.find((line) => line.section === section);
+    if (!before) continue;
+    const after = written.find((line) => line.section === section);
+    const name = bulkName(before.kind, section);
+    if (before.ticked && after?.ticked) {
+      lines.push(
+        `Left the tick on ${name} alone: a run that an issue edit started is queued or in progress, and its \`resolve\` job handles every tick.`,
+      );
+    } else if (after?.kind === "box" && after.note?.kind === "orphan" && before.ticked) {
+      lines.push(
+        `Cleared an orphan tick on ${name}: no run that an issue edit started is queued or in progress. Tick it again to ask once more.`,
+      );
+    } else if (before.kind === "confirm" && after?.kind !== "confirm") {
+      const why =
+        after?.kind === "box" && after.note?.kind === "changed"
+          ? `its rows changed (${changedText(after.note, section)})`
+          : after?.kind === "box" && after.note?.kind === "expired"
+            ? "nobody ticked it before this scan"
+            : "the section has fewer than two rows now, and each has its own box";
+      lines.push(`Took back ${name}: ${why}.`);
+    }
+  }
+  return lines;
 }

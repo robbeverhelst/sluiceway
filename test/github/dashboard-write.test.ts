@@ -34,6 +34,7 @@ function writerFor(github: FakeGitHub, lines: string[] = []): DashboardWriter {
     repoUrl: REPO,
     actionRef: "v1.0.0",
     dashboard: parseConfig(undefined).dashboard,
+    deploys: true,
     ignored: [],
   };
 }

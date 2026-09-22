@@ -161,6 +161,7 @@ function lateRead(live: Live = {}, more: Partial<Omit<LateRead, "live">> = {}): 
       merges: live.merges ?? [],
       waiting: [],
       outside: [],
+      bulk: [],
       current: live.current ?? true,
       first,
     },
@@ -431,6 +432,7 @@ describe("what the late read reports it did", () => {
       mergeTicks: [],
       resolveWaits: false,
       unread: 0,
+      bulk: [],
     });
   });
 

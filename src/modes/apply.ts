@@ -812,6 +812,7 @@ async function swapRow(
       repoUrl: context.repoUrl,
       actionRef: context.actionRef,
       dashboard: setup.config.dashboard,
+      deploys: setup.config.deploys,
       ignored: setup.ignored,
       budget: context.limits?.body,
     },

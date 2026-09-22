@@ -5,6 +5,7 @@
 // the counts and the header state of that body, so nobody parses a body they
 // just rendered.
 
+import type { BulkState } from "../core/bulk.ts";
 import type { Config, IgnoredStack } from "../core/config.ts";
 import type { DeployFacts, TrailEntry } from "../core/deployment.ts";
 import type { OutsideDeploy } from "../core/outside-deploy.ts";
@@ -35,6 +36,9 @@ export interface DashboardWriter {
   repoUrl: string;
   actionRef: string;
   dashboard: Config["dashboard"];
+  // `deploys` of the config: the bulk boxes are drawn only while it is on
+  // (record 0083).
+  deploys: boolean;
   // Stacks an `ignore` entry with a reason leaves out (record 0051).
   ignored: readonly IgnoredStack[];
   // Only a test has a reason to set this.
@@ -73,6 +77,10 @@ export interface Rows {
   // The outside deploys of the trail. A swap that leaves them out carries
   // the live ones: only a full scan reads the tool's history (record 0073).
   outside?: readonly OutsideDeploy[] | undefined;
+  // What the writer did with a bulk box or a confirm box, and for a scan the
+  // facts it sweeps them by (record 0083). A swap draws them from the live
+  // lines; a scan hands over the live lines it read.
+  bulk?: Partial<Omit<BulkState, "on">> | undefined;
 }
 
 // A scan writes the root marker, and a row for every stack it knows and
@@ -149,6 +157,7 @@ export async function swapRows(
             merges: mine.merges ?? live.merges,
             waiting: mine.waiting ?? live.waiting,
             outside: mine.outside ?? live.outside,
+            bulk: { live: live.bulk, ...mine.bulk },
           },
           // A writer that swaps rows aims at the hard limit (record 0028).
           false,
@@ -198,6 +207,7 @@ export function fitScan(writer: DashboardWriter, full: boolean, mine: ScanRows):
       merges: mine.merges,
       waiting: mine.waiting,
       outside: mine.outside,
+      bulk: { live: [], ...mine.bulk },
     },
     full,
   );
@@ -243,6 +253,7 @@ interface Body {
   merges: readonly ParsedMerge[];
   waiting: readonly ParsedWaiting[];
   outside: readonly OutsideDeploy[];
+  bulk: Omit<BulkState, "on">;
 }
 
 function fit(writer: DashboardWriter, body: Body, aimAtTarget: boolean): FittedBody {
@@ -271,6 +282,7 @@ function fit(writer: DashboardWriter, body: Body, aimAtTarget: boolean): FittedB
       merges: body.merges,
       waiting: body.waiting,
       outsideDeploys: body.outside,
+      bulk: { ...body.bulk, on: writer.deploys && !dashboard.readOnly },
     },
     // The room between the target and the limit exists for a writer that
     // carries rows (record 0028).
