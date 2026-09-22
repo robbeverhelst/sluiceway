@@ -462,8 +462,9 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
             rows.push(row);
             continue;
           }
-          // Only a pending row has a box, for a tick or for the note.
-          const box = row.state === "pending";
+          // Only a pending or a drifted row has a box, for a tick or for the
+          // note (record 0055).
+          const box = row.state === "pending" || row.state === "drift";
           const carry =
             tickAtLateRead({
               liveHash: liveTicks.get(id),

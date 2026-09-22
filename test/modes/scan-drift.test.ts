@@ -193,3 +193,26 @@ describe("when no drift is checked", () => {
     expect(rows["app:prod"]).toMatchObject({ state: "pending", drift: true });
   });
 });
+
+// The orphan tick sweep of record 0025 treats a drifted row's box like a
+// pending row's: a tick nothing picked up is cleared with the note.
+describe("a tick on a drifted row that nothing picked up", () => {
+  test("is cleared by the next scan with the note, and deploys nothing", async () => {
+    const adapter = tableAdapter(TABLE, {}, {}, DRIFTS);
+    const { context, github } = harness(adapter, { config: ON, event: "schedule" });
+    await scan(context);
+    const body = dashboardBody(github);
+    github.editBody(1, body.replace("- [ ] **network:dev**", "- [x] **network:dev**"), {
+      login: "alice",
+      type: "User",
+    });
+    expect(rowsOf(dashboardBody(github))["network:dev"]).toMatchObject({ ticked: true });
+
+    await scan(context);
+
+    const swept = rowsOf(dashboardBody(github))["network:dev"];
+    expect(swept).toMatchObject({ state: "drift", ticked: false });
+    expect(swept?.text).toContain("a tick on this row was not picked up");
+    expect(adapter.applied).toEqual([]);
+  });
+});

@@ -57823,7 +57823,7 @@ async function scanning(context3, report) {
             rows.push(row2);
             continue;
           }
-          const box = row2.state === "pending";
+          const box = row2.state === "pending" || row2.state === "drift";
           const carry = tickAtLateRead({
             liveHash: liveTicks.get(id),
             writes: { row: "fresh", hash: box ? row2.hash : undefined },
