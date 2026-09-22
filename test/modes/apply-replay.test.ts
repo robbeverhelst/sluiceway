@@ -214,6 +214,35 @@ for (const version of VERSIONS) {
       expect(github.issue(1).body).not.toContain("update failed");
     });
 
+    // Slice 2.20 (record 0051): the row showed a change, and before `apply`
+    // started the stack was deployed from somewhere else (record 0016). The
+    // fresh preview is the recorded no-changes one: nothing to deploy, which
+    // is not a moved change and not a failure.
+    test("an empty fresh preview ends as success with nothing to deploy, and the job is green", async () => {
+      const { outcome, github, deployment, outputs, log } = await deployed(
+        version,
+        "update",
+        (root) => replay(version, "no-changes", root).run,
+      );
+      await outcome;
+
+      expect(github.deploymentStatuses(deployment).map(({ state }) => state)).toEqual([
+        "queued",
+        "in_progress",
+        "success",
+      ]);
+      expect(github.deploymentStatuses(deployment).at(-1)?.description).toBe(
+        "nothing to deploy, already in sync",
+      );
+      const body = github.issue(1).body;
+      const row = parseDashboard(body).rows[0];
+      expect(row).toMatchObject({ stackId: ID, state: "in-sync", failed: false });
+      expect(body).toContain(`- ${ID} · ticked by alice · nothing to deploy, already in sync · `);
+      expect(github.comments(1)).toEqual([]);
+      expect(outputs.resultFile("apply")).toMatchObject({ outcome: "in-sync", reason: null });
+      expect(log.summaries.at(-1)).toContain(`**${ID}** · nothing to deploy, already in sync`);
+    });
+
     // Record 0046: keys became paths, so the same change has a new hash. A
     // row written before that, by a scan that named top-level properties, is
     // refused as moved when it is ticked, and the row comes back with the

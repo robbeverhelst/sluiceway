@@ -163,7 +163,7 @@ To give an open deployment a result when its workflow run ended without reportin
 _Avoid_: Clean up, time out, expire
 
 **Outside deploy**:
-A deploy of a stack that did not go through a tick: from a laptop, a script or another pipeline. It is allowed, leaves no deployment record, and the next full scan brings the row back in line.
+A deploy of a stack that did not go through a tick: from a laptop, a script or another pipeline. It is allowed, leaves no deployment record, and the next full scan brings the row back in line. A tick on the stale row finds nothing to deploy, and its record ends as a success that says so.
 _Avoid_: Manual deploy, rogue deploy, out-of-band deploy
 
 ### Credentials

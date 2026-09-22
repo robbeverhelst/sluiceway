@@ -30,6 +30,27 @@ const DIFF: Diff = {
 };
 
 describe("the summary of an apply", () => {
+  // Slice 2.20 (record 0051).
+  test("an empty fresh preview says there was nothing to deploy", () => {
+    expect(
+      renderApplySummary({
+        stackId: "storage/buckets:prod",
+        ticker: "alice",
+        runUrl: RUN,
+        outcome: { kind: "in-sync" },
+      }),
+    ).toBe(
+      [
+        "## Sluiceway apply",
+        "",
+        `**storage/buckets:prod** · nothing to deploy, already in sync · ticked by alice · [run](${RUN})`,
+        "",
+        "The fresh preview shows no change, so nothing was deployed. The stack is already as its code says, most likely from a deploy outside the dashboard.",
+        "",
+      ].join("\n"),
+    );
+  });
+
   test("a deploy that went out says so and lists what went out", () => {
     expect(
       renderApplySummary({

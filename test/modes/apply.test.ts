@@ -129,16 +129,19 @@ describe("the change moved since the tick (record 0008)", () => {
     expect(h.log.summaries.at(-1)).toContain("<b>queue</b>");
   });
 
+  // Record 0051 changed this: an empty fresh preview is the outside deploy
+  // that record 0016 calls legal, not a moved change. Nothing to deploy, a
+  // success, a green job and no failure line.
   test("a stack that was deployed outside Sluiceway comes back in sync, and nothing goes out", async () => {
     const h = await handedOn({ "a:prod": pending("a:prod", change("bucket")) }, ["a:prod"]);
     h.table["a:prod"] = pending("a:prod");
 
-    await expect(runApply(h)).rejects.toThrow("the change moved since the tick");
+    await runApply(h);
 
     expect(h.adapter.applied).toEqual([]);
-    expect(states(h)).toEqual(["queued", "in_progress", "error"]);
+    expect(states(h)).toEqual(["queued", "in_progress", "success"]);
     expect(rows(h)["a:prod"]).toStartWith(
-      '- a:prod <!-- sluiceway:row stack="a:prod" state="in-sync" failed="true" -->',
+      '- a:prod <!-- sluiceway:row stack="a:prod" state="in-sync" -->',
     );
   });
 

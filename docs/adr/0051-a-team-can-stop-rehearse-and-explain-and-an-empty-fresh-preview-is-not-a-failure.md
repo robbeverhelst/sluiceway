@@ -35,3 +35,19 @@ This amends 0010, where an ignored stack has no row and nothing else. It still h
 - `apply` writes no row in that case, as for every other way out before the fresh preview: the next scan previews the deploying row whose record ended (slice 2.1).
 - The switch is a config key and not an input, for the reason of 0045: a change of `sluiceway.yaml` is reviewed, and `resolve` and `apply` read the file of the default branch.
 - A scan does not show the switch on the dashboard. Boxes are still drawn, and a tick is cleared with the note. A line under the Pending heading was left out of this slice.
+
+## 3. An empty fresh preview is nothing to deploy, not a failure
+
+When the fresh preview of `apply` has no change at all, the stack is already as its code says. The usual cause is the outside deploy that 0016 calls legal: someone deployed the stack from a laptop or another pipeline between the scan and the tick. Until now the hash of the empty diff differed from the approved one, so the record ended as `error`, "the change moved since the tick", the job went red and the row got a failure line, for a stack that was exactly where the person wanted it.
+
+Now `apply` checks for an empty fresh preview after the preview and before the hash check:
+
+- The record ends as `success`, with the status description "nothing to deploy, already in sync". The tool is not asked to deploy.
+- The job is green and the `outcome` output is `in-sync`, a new value next to `deployed`, `refused` and `failed` (0041). `deployed` would say that something went out, which a notify step would announce. The result file's `outcome` takes the same value, its `reason` and `preview` are null.
+- The row is made from the empty fresh preview, so it is in sync. The newest record of the stack is a success, so the row has no failure line.
+- The trail says it. The recently deployed list (0029) is where a person sees what went out and who ticked it. A success with that description is listed as `- <stack id> · ticked by alice · nothing to deploy, already in sync · <time> · [run](...)`, so it cannot be read as a deploy.
+- The summary of the `apply` says the same in one line and why it most likely happened.
+- The description is the one status description a reader decides something from: the trail's words. 0022 says nothing is decided from a failure reason. This is not a failure reason, it is a fixed word of Sluiceway's own on a success, compared as a whole string. A person cannot write a deployment status with the workflow token of another repo, and one who can write statuses here can do far more than change a line on the dashboard.
+- Attribution counts from this record like from any success (0026): the stack was in sync at that commit.
+- A diff with only tracking changes (an import, a forget, a move) is not empty. It still goes through the hash check and deploys.
+- With `scan.logDiff` on, no tool diff is run for an empty preview, as before.

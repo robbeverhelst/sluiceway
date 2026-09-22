@@ -109,6 +109,9 @@ export interface SucceededDeploy {
   at: Date;
   // The commit that went out. Attribution starts there (record 0026).
   sha: string;
+  // Absent for a deploy that went out. "in-sync": the fresh preview had
+  // nothing to deploy (record 0051).
+  result?: "in-sync";
 }
 
 export interface DeployFacts {
@@ -127,6 +130,11 @@ const SUCCEEDED = new Set(["success", "inactive"]);
 const FAILED = new Set(["failure", "error"]);
 
 export const NO_REASON_RECORDED = "no reason was recorded";
+
+// The description `apply` gives a success whose fresh preview was empty
+// (record 0051). Sluiceway's own words, and the one description a reader
+// tells a result by, so the trail can say that nothing went out.
+export const IN_SYNC_DESCRIPTION = "nothing to deploy, already in sync";
 
 // A record with no status, or with a state that is no result, is an open
 // deployment (record 0003). `apply` deploys only on one (record 0019).
@@ -172,12 +180,15 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
     // Newest last, so the newest record of a stack is the one that stays.
     facts.byStack.set(stackId, fact);
     if (fact.kind === "succeeded") {
+      const inSync =
+        record.status?.state === "success" && record.status.description === IN_SYNC_DESCRIPTION;
       facts.succeeded.push({
         stackId,
         ticker: fact.ticker,
         run: fact.run,
         at: fact.at,
         sha: record.sha,
+        ...(inSync ? { result: "in-sync" as const } : {}),
       });
     }
   }

@@ -4,6 +4,7 @@
 // the result is a reason from the fixed list (record 0022). It needs no
 // budget: it is about one stack.
 
+import { IN_SYNC_DESCRIPTION } from "../core/deployment.ts";
 import type { Diff } from "../core/diff.ts";
 import { orderChanges } from "./changes.ts";
 import { escapeText } from "./escape.ts";
@@ -17,6 +18,8 @@ export type AppliedPreview =
 export type ApplyOutcome =
   // `diff` is the fresh preview whose hash the tick approved.
   | { kind: "deployed"; diff: Diff }
+  // The fresh preview was empty: nothing to deploy (record 0051).
+  | { kind: "in-sync" }
   | {
       kind: "not-deployed";
       // A deploy failure reason from the fixed list, as display text.
@@ -39,6 +42,9 @@ export interface ApplySummaryInput {
 // name.
 export const ALREADY_ENDED =
   "This deploy already ended. Tick the box on the dashboard to try again.";
+
+const IN_SYNC_LINE =
+  "The fresh preview shows no change, so nothing was deployed. The stack is already as its code says, most likely from a deploy outside the dashboard.";
 
 const NOT_DEPLOYED =
   "Nothing was deployed from this deployment record, and nothing will be. The job log of this run holds the tool's own words. A fresh tick on the dashboard tries again.";
@@ -72,13 +78,19 @@ function previewParts(preview: AppliedPreview, empty: string): string[] {
 export function renderApplySummary(input: ApplySummaryInput): string {
   const { outcome } = input;
   const result =
-    outcome.kind === "deployed" ? "deployed" : `not deployed: ${escapeText(outcome.reason)}`;
+    outcome.kind === "deployed"
+      ? "deployed"
+      : outcome.kind === "in-sync"
+        ? IN_SYNC_DESCRIPTION
+        : `not deployed: ${escapeText(outcome.reason)}`;
   const parts = [
     "## Sluiceway apply",
     `**${escapeText(input.stackId)}** · ${result} · ticked by ${escapeText(input.ticker)} · [run](${input.runUrl})`,
   ];
   if (outcome.kind === "deployed") {
     parts.push("### What went out", ...diffParts(outcome.diff, "No changes."));
+  } else if (outcome.kind === "in-sync") {
+    parts.push(IN_SYNC_LINE);
   } else {
     parts.push(NOT_DEPLOYED);
     if (outcome.checked) {

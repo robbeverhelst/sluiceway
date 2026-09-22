@@ -196,6 +196,7 @@ describe("the checks of resolve", () => {
 describe("the checks of apply", () => {
   const deployed = stepped({
     summary: "## Sluiceway apply",
+    outputs: { outcome: "deployed" },
     records: [record(["queued", "in_progress", "success"])],
     body: dashboard(row("network:dev", "in-sync")),
   });
@@ -232,6 +233,7 @@ describe("the checks of apply", () => {
     exitCode: 1,
     log: "::error::site:prod was not deployed: the change moved since the tick. The fresh preview gives diff hash 1830f0765b6562de and the tick approved 33038f69fca3a7e4.",
     summary: "## Sluiceway apply",
+    outputs: { outcome: "refused" },
     records: [
       record(["queued", "in_progress", "error"], {
         task: "sluiceway:site:prod",
@@ -267,6 +269,37 @@ describe("the checks of apply", () => {
       "Deployment record 1 has the statuses queued, in_progress, success, expected queued, in_progress, error.",
       'Deployment record 1 has the description "", expected "the change moved since the tick".',
       "The row of site:prod has no failure line.",
+    ]);
+  });
+
+  // Record 0051: a stack deployed by hand before its apply job started.
+  const inSync = stepped({
+    summary: "## Sluiceway apply",
+    outputs: { outcome: "in-sync" },
+    records: [
+      record(["queued", "in_progress", "success"], {
+        task: "sluiceway:site:prod",
+        description: "nothing to deploy, already in sync",
+      }),
+    ],
+    body: dashboard(row("site:prod", "in-sync")),
+  });
+  const expectedInSync = { stack: "site:prod", deployment: 1, outcome: "in-sync" as const };
+
+  test("nothing to deploy that ended as success with its words and a green job has no problems", () => {
+    expect(checkApply(inSync, expectedInSync)).toEqual([]);
+  });
+
+  test("nothing to deploy read as moved, or as deployed, is a problem", () => {
+    expect(checkApply({ ...moved, outputs: { outcome: "refused" } }, expectedInSync)).toEqual([
+      "The step ended with exit code 1, expected 0.",
+      "Deployment record 1 has the statuses queued, in_progress, error, expected queued, in_progress, success.",
+      'Deployment record 1 has the description "the change moved since the tick", expected "nothing to deploy, already in sync".',
+      "The outcome output is refused, expected in-sync.",
+      "The row of site:prod has a failure line, expected none.",
+    ]);
+    expect(checkApply({ ...inSync, outputs: { outcome: "deployed" } }, expectedInSync)).toEqual([
+      "The outcome output is deployed, expected in-sync.",
     ]);
   });
 });

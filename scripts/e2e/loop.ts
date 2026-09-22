@@ -218,33 +218,47 @@ export function matrixEntries(text: string): MatrixEntry[] {
   }
 }
 
-// `apply` of one record (records 0008, 0019 and 0035). A deploy that went out
-// ends as success, is a green job and leaves the row in sync. A change that
-// moved since the tick deploys nothing, ends as error, is a red job, and the
-// row shows the fresh preview with a failure line.
+// `apply` of one record (records 0008, 0019, 0035 and 0051). A deploy that
+// went out ends as success, is a green job and leaves the row in sync. A fresh
+// preview with nothing to deploy ends as success that says so, is a green job
+// and leaves the row in sync with no failure line. A change that moved since
+// the tick deploys nothing, ends as error, is a red job, and the row shows the
+// fresh preview with a failure line.
 export function checkApply(
   step: LoopStep,
   expected: {
     stack: string;
     deployment: number;
-    outcome: "deployed" | "moved";
+    outcome: "deployed" | "in-sync" | "moved";
     rowState?: string;
   },
 ): string[] {
   const { stack, deployment, outcome } = expected;
-  const deployed = outcome === "deployed";
-  const problems = exitCode(step, deployed);
+  const green = outcome !== "moved";
+  const problems = exitCode(step, green);
   const record = step.records.find(({ id }) => id === deployment);
   if (!record) problems.push(`Deployment record ${deployment} does not exist.`);
-  else if (deployed) problems.push(...statuses(record, ["queued", "in_progress", "success"]));
-  else {
+  else if (outcome === "deployed") {
+    problems.push(...statuses(record, ["queued", "in_progress", "success"]));
+  } else if (outcome === "in-sync") {
+    problems.push(
+      ...statuses(
+        record,
+        ["queued", "in_progress", "success"],
+        "nothing to deploy, already in sync",
+      ),
+    );
+  } else {
     problems.push(
       ...statuses(record, ["queued", "in_progress", "error"], "the change moved since the tick"),
     );
   }
+  if (step.outputs.outcome !== (outcome === "moved" ? "refused" : outcome)) {
+    problems.push(`The outcome output is ${step.outputs.outcome}, expected ${outcome}.`);
+  }
   problems.push(
     ...rowState(step.body, stack, expected.rowState ?? "in-sync"),
-    ...failureLine(step.body, stack, !deployed),
+    ...failureLine(step.body, stack, !green),
   );
   if (step.summary.trim() === "") problems.push("The summary is empty.");
   return problems;

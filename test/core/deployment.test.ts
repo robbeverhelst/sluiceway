@@ -5,6 +5,7 @@ import {
   deployFacts,
   deploymentPayload,
   deploymentTask,
+  IN_SYNC_DESCRIPTION,
   isOpenStatus,
   lastDeployedCommit,
   readDeploymentPayload,
@@ -177,6 +178,30 @@ describe("the deploy facts of a stack", () => {
     const facts = deployFacts([other, record({ id: 2, task: "sluiceway:b", state: "success" })]);
     expect([...facts.byStack.keys()]).toEqual(["b"]);
     expect(facts.unread).toBe(1);
+  });
+
+  // Slice 2.20 (record 0051): an empty fresh preview ends as success with a
+  // fixed description, and the trail says so.
+  test("a success with nothing to deploy is one, and says so for recently deployed", () => {
+    const quiet = record({ state: "success", at: "2026-09-21T09:41:30Z" });
+    quiet.status = { ...quiet.status, description: IN_SYNC_DESCRIPTION } as never;
+    const facts = deployFacts([quiet]);
+    expect(IN_SYNC_DESCRIPTION).toBe("nothing to deploy, already in sync");
+    expect(facts.byStack.get("apps/grafana:prod")).toMatchObject({ kind: "succeeded" });
+    expect(facts.succeeded).toEqual([
+      {
+        stackId: "apps/grafana:prod",
+        ticker: "alice",
+        run: "4242",
+        at: new Date("2026-09-21T09:41:30Z"),
+        sha: "0123456789abcdef0123456789abcdef01234567",
+        result: "in-sync",
+      },
+    ]);
+    // It is where the stack was in sync, so attribution starts there.
+    expect(lastDeployedCommit(facts, "apps/grafana:prod")).toBe(
+      "0123456789abcdef0123456789abcdef01234567",
+    );
   });
 
   test("every success is handed over for recently deployed, older ones of a stack too", () => {

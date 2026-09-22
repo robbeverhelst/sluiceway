@@ -20,6 +20,7 @@ import {
   type DeployFacts,
   type DeploymentPayload,
   deployFacts,
+  IN_SYNC_DESCRIPTION,
   isOpenStatus,
   lastDeployedCommit,
   readDeploymentPayload,
@@ -260,11 +261,13 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
   // A deploy that went out is deployed, also when its record could not be
   // given the result. The job is red then, and says why.
   report.outcome =
-    attempt.state === "success"
-      ? "deployed"
-      : attempt.reason?.kind === "moved" || attempt.reason?.kind === "deploys-off"
-        ? "refused"
-        : "failed";
+    attempt.summary?.kind === "in-sync"
+      ? "in-sync"
+      : attempt.state === "success"
+        ? "deployed"
+        : attempt.reason?.kind === "moved" || attempt.reason?.kind === "deploys-off"
+          ? "refused"
+          : "failed";
   report.reason = attempt.reason && deployFailureText(attempt.reason);
   report.applied = attempt.summary;
   const failures: string[] = [];
@@ -272,7 +275,7 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
   try {
     await github.createDeploymentStatus(id, {
       state: attempt.state,
-      description: attempt.reason && deployFailureText(attempt.reason),
+      description: attempt.description ?? (attempt.reason && deployFailureText(attempt.reason)),
       logUrl: runUrl,
     });
     ended = true;
@@ -338,6 +341,8 @@ interface Setup {
 interface Attempt {
   state: "success" | "failure" | "error";
   reason?: DeployFailureReason | undefined;
+  // The status description of a result that is no failure (record 0051).
+  description?: string | undefined;
   // Why the job goes red. Nothing when the stack deployed.
   failed?: string | undefined;
   // The preview result the stack's row is made from. Without one the row is
@@ -461,6 +466,24 @@ async function deploy(
       failed: notDeployed(reason),
       row: fresh,
       summary: { kind: "not-deployed", reason: deployFailureText(reason), checked: applied(fresh) },
+      setup,
+    };
+  }
+
+  // Nothing to deploy: the stack is already as its code says, most likely
+  // from a deploy outside the dashboard, which is legal (record 0016). That is
+  // no moved change and no failure (record 0051). The record ends as success
+  // with fixed words, the row is in sync, and the tool deploys nothing.
+  if (fresh.diff.changes.length === 0) {
+    log.info(
+      `The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`,
+    );
+    return {
+      state: "success",
+      description: IN_SYNC_DESCRIPTION,
+      row: fresh,
+      toolDiffInLog: toolDiff !== undefined,
+      summary: { kind: "in-sync" },
       setup,
     };
   }
@@ -640,8 +663,9 @@ async function swapRow(
         rows,
         carried,
         redact: setup.config.dashboard.redact,
-        recentlyDeployed: facts.succeeded.map(({ stackId: stack, ticker, run, at }) => ({
+        recentlyDeployed: facts.succeeded.map(({ stackId: stack, ticker, run, at, result }) => ({
           stackId: stack,
+          result,
           ticker,
           at,
           runUrl: `${context.repoUrl}/actions/runs/${run}`,

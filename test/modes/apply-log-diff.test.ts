@@ -119,7 +119,8 @@ describe("apply with scan.logDiff on", () => {
       config: ON,
     });
     empty.table["a:prod"] = pending("a:prod");
-    await expect(runApply(empty)).rejects.toThrow("the change moved since the tick");
+    // Nothing to deploy (record 0051).
+    await runApply(empty);
     expect(empty.adapter.toolDiffs).toEqual([]);
   });
 

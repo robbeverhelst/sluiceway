@@ -621,8 +621,9 @@ async function swapRows(
       rows,
       carried,
       redact: config.dashboard.redact,
-      recentlyDeployed: facts.succeeded.map(({ stackId: id, ticker, run, at }) => ({
+      recentlyDeployed: facts.succeeded.map(({ stackId: id, ticker, run, at, result }) => ({
         stackId: id,
+        result,
         ticker,
         at,
         runUrl: `${context.repoUrl}/actions/runs/${run}`,

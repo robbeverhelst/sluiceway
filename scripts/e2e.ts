@@ -21,8 +21,9 @@
 //      cancelled. settle ends the record and starts a full scan, which shows
 //      network:dev in sync and site:prod with a failure line.
 //   6. site:prod is ticked again and deployed by hand before its apply job
-//      starts. The change moved: nothing goes out and the record ends as error.
-//   7. A last full scan: every stack in sync.
+//      starts. The fresh preview has nothing to deploy: nothing goes out, the
+//      record ends as success that says so, and the job is green.
+//   7. A last full scan: every stack in sync, and no failure line left.
 //   8. The same scan once more, started the way a runner starts
 //      `uses: sluiceway/sluiceway@v0`: from a copy of the action in a
 //      directory of its own, with the moving tag as its ref and no
@@ -603,50 +604,56 @@ good =
   ]) && good;
 
 // 6. alice ticks site:prod again, and before its apply job starts someone
-// deploys the stack by hand (record 0016). The change moved since the tick:
-// nothing goes out, and the row shows the fresh preview, which is in sync.
-const moved = await tick("site:prod", ALICE);
-const [movedEntry] = moved.matrix;
-if (!movedEntry) throw new Error("resolve handed on no deploy of site:prod.");
+// deploys the stack by hand (record 0016). The fresh preview has nothing to
+// deploy: nothing goes out, the record ends as success with the words of
+// record 0051, and the row is in sync with no failure line.
+const outside = await tick("site:prod", ALICE);
+const [outsideEntry] = outside.matrix;
+if (!outsideEntry) throw new Error("resolve handed on no deploy of site:prod.");
 console.log("::group::Deploying site:prod by hand before its apply job starts");
 await deploy("site", "prod");
 console.log("::endgroup::");
-const movedApply = await applyStep(moved, movedEntry.deployment);
+const outsideApply = await applyStep(outside, outsideEntry.deployment);
 good =
-  reportStep("The moved change", movedApply, [
-    ...checkResolve(moved.resolved, {
+  reportStep("Nothing to deploy", outsideApply, [
+    ...checkResolve(outside.resolved, {
       stack: "site:prod",
       environment: "sluiceway",
       ticker: ALICE.login,
-      runId: moved.runId,
+      runId: outside.runId,
     }),
-    ...checkApply(movedApply, {
+    ...checkApply(outsideApply, {
       stack: "site:prod",
-      deployment: movedEntry.deployment,
-      outcome: "moved",
-      rowState: "in-sync",
+      deployment: outsideEntry.deployment,
+      outcome: "in-sync",
     }),
     // Only the deploy by hand.
     ...checkDeploys("site:prod", await deploysOf("site", "prod"), 1),
   ]) && good;
-const settledMoved = await settleStep(moved);
+const settledOutside = await settleStep(outside);
 good =
   reportStep(
-    "The moved change: settle",
-    settledMoved,
-    checkSettle(settledMoved, { ended: undefined, before: movedApply.records }),
+    "Nothing to deploy: settle",
+    settledOutside,
+    checkSettle(settledOutside, { ended: undefined, before: outsideApply.records }),
   ) && good;
 
-// 7. The next full scan. Every stack is in sync, and site:prod keeps the
-// failure line of its last deploy from the dashboard (record 0029).
+// 7. The next full scan. Every stack is in sync. The last record of site:prod
+// is the success with nothing to deploy, so its failure line is gone, and the
+// trail says that nothing went out (record 0051).
 const last = await scanStep(SECOND_SHA, "schedule");
 good =
   report("The scan after the loop", [
     ...checkFullScan(last, { ...afterLoop, rows: { ...afterLoop.rows, "site:prod": "in-sync" } }),
     ...checkRowFacts(dashboardBody(last), {
-      failed: ["site:prod"],
-      recentlyDeployed: ["network:dev"],
+      failed: [],
+      recentlyDeployed: ["network:dev", "site:prod"],
     }),
+    ...(dashboardBody(last).includes(
+      "- site:prod · ticked by alice · nothing to deploy, already in sync · ",
+    )
+      ? []
+      : ["Recently deployed does not say that site:prod had nothing to deploy."]),
   ]) && good;
 
 // 8. The scan of 7 once more, from the moving tag v0, the way the first user's

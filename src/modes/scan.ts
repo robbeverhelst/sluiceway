@@ -445,8 +445,9 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           carried,
           redact: config.dashboard.redact,
           recentlyDeployed: deploys.facts.succeeded.map(
-            ({ stackId: id, ticker, run, at: when }) => ({
+            ({ stackId: id, ticker, run, at: when, result }) => ({
               stackId: id,
+              result,
               ticker,
               at: when,
               runUrl: runUrlOf(context, run),

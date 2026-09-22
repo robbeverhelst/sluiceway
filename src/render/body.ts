@@ -3,6 +3,7 @@
 // regenerates it, and nothing in it is ever patched or carried through.
 
 import type { IgnoredStack } from "../core/config.ts";
+import { IN_SYNC_DESCRIPTION } from "../core/deployment.ts";
 import { destroySign } from "./destroy-sign.ts";
 import { escapeText } from "./escape.ts";
 import { type HeaderState, headerState } from "./header-state.ts";
@@ -33,6 +34,8 @@ export interface RecentDeploy {
   ticker: string;
   at: Date;
   runUrl: string;
+  // Absent for a deploy that went out (record 0051).
+  result?: "in-sync" | undefined;
 }
 
 export interface BodyInput {
@@ -215,8 +218,12 @@ function blocks(rows: readonly ParsedRow[]): string {
   return rows.map((row) => row.text).join("\n");
 }
 
+// The trail of record 0051: a line whose record found nothing to deploy says so.
+const RESULT_WORDS = { "in-sync": IN_SYNC_DESCRIPTION } as const;
+
 function recentLine(deploy: RecentDeploy): string {
-  return `- ${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)} · ${utcMinute(
+  const result = deploy.result === undefined ? "" : ` · ${RESULT_WORDS[deploy.result]}`;
+  return `- ${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)}${result} · ${utcMinute(
     deploy.at,
   )} · [run](${deploy.runUrl})`;
 }

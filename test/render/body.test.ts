@@ -722,6 +722,20 @@ describe("recently deployed", () => {
       "- a&#42;b · ticked by &lt;x&gt; · 1970-01-01 00:00 UTC · [run](u)",
     );
   });
+
+  // Slice 2.20 (record 0051): the trail says when nothing went out.
+  test("a deploy that found nothing to deploy says so", () => {
+    const all = paragraphs(
+      renderBody(
+        input(DASHBOARDS["in-sync"], {
+          recentlyDeployed: [{ ...(RECENT[0] as RecentDeploy), result: "in-sync" }],
+        }),
+      ),
+    );
+    expect(all[all.indexOf("## Recently deployed") + 1]).toBe(
+      "- apps/auth:prod · ticked by alice · nothing to deploy, already in sync · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
+    );
+  });
 });
 
 // Records 0032 and 0034: which words stand under the Pending heading.

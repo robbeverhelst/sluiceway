@@ -61,7 +61,7 @@ Collected here so nobody has to search the records. The record in the last colum
 | `preview-failed` | output | `scan` | `0` | Number of stacks whose preview failed | 0041 |
 | `in-sync` | output | `scan` | `0` | Number of stacks in sync | 0041 |
 | `dashboard-changed` | output | `scan` | `false` | `true` when this scan wrote a different body, so a notify step can stay quiet otherwise | 0041 |
-| `outcome` | output | `apply` | none | `deployed`, `refused` (the change moved or the record was not open) or `failed` | 0041 |
+| `outcome` | output | `apply` | none | `deployed`, `in-sync` (nothing to deploy), `refused` (the change moved, the record was not open, or `deploys: false`) or `failed` | 0041, 0051 |
 | `stack` | output | `apply` | none | The stack id this job handled | 0041 |
 | `result-file` | output | `scan`, `apply` | none | Path under `RUNNER_TEMP` of a JSON file with what the summary holds: no values, none of the tool's words | 0041 |
 

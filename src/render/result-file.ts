@@ -103,10 +103,11 @@ export const applyResultSchema = z.strictObject({
   // The deployment record this job was handed.
   deployment: count(),
   dashboard: z.strictObject({ url: z.string() }).nullable(),
-  // `refused`: the change moved since the tick, or the record was not one
-  // this job may deploy. `failed`: the deploy was tried, or meant to be, and
-  // did not go out.
-  outcome: z.enum(["deployed", "refused", "failed"]),
+  // `refused`: the change moved since the tick, the record was not one this
+  // job may deploy, or deploys are turned off. `failed`: the deploy was
+  // tried, or meant to be, and did not go out. `in-sync`: the fresh preview
+  // had nothing to deploy (record 0051).
+  outcome: z.enum(["deployed", "in-sync", "refused", "failed"]),
   // Null when the job never learned which stack the record is for.
   stack: z.string().nullable(),
   ticker: z.string().nullable(),
