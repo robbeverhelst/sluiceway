@@ -102,14 +102,19 @@ describe("listing the open pull requests", () => {
     ]);
   });
 
-  test("reads at most ten pages, the oldest 1,000 open pull requests", async () => {
-    const answers = Array.from({ length: 11 }, (_, index) =>
-      listed([node({ number: index + 1 })], { hasNextPage: true, endCursor: `c${index}` }),
+  // Slice 5.9: past the oldest 1,000 too, one request per page of 100, to
+  // the last page.
+  test("reads every page, past the oldest 1,000 open pull requests", async () => {
+    const answers = Array.from({ length: 12 }, (_, index) =>
+      listed([node({ number: index + 1 })], {
+        hasNextPage: index < 11,
+        endCursor: `c${index}`,
+      }),
     );
     const { port, sent } = portThatAnswers(answers);
     const { pullRequests } = await port.listOpenPullRequests();
-    expect(pullRequests).toHaveLength(10);
-    expect(sent).toHaveLength(10);
+    expect(pullRequests).toHaveLength(12);
+    expect(sent).toHaveLength(12);
   });
 
   test("reads the checks, the merge state and a person as GitHub gives them", async () => {

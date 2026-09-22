@@ -49,7 +49,6 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A branch preview of updates past the oldest 30, and a branch preview carried over by a scan that did not preview its stack
 - Reading Renovate presets from npm, a web address or another platform, presets with parameters, and `packageRules`, for the merge method
 - Waiting, in the scan after a merge, for a dependency that became pending after the merge
-- Reading past the oldest 1,000 open pull requests
 - A warning from the check when `mergeAndDeploy` is on and the workflow does not declare the `sluiceway-merged` input
 - Drift detection, part 3
 - Stack dependencies, part 3

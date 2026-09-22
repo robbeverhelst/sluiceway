@@ -250,8 +250,9 @@ export interface GitHubPort {
     inputs?: Record<string, string>,
   ): Promise<string | undefined>;
 
-  // The oldest 100 open pull requests, each with its files and the combined
-  // checks of its head commit, in one GraphQL query (record 0054). Needs
+  // Every open pull request, oldest first, each with its files and the
+  // combined checks of its head commit, one GraphQL query per page of 100
+  // (record 0054, slice 5.9). Needs
   // `pull-requests: read`. Only a scan with `mergeAndDeploy.authors` makes it,
   // and `resolve` before it merges.
   listOpenPullRequests(): Promise<OpenPullRequests>;

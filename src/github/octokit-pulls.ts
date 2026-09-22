@@ -83,9 +83,6 @@ interface OpenPullRequestsData {
   } | null;
 }
 
-// How many pages of 100 open pull requests one list reads.
-export const MAX_PAGES = 10;
-
 function present<T>(nodes: readonly (T | null)[] | null | undefined): T[] {
   return (nodes ?? []).filter((node): node is T => node !== null);
 }
@@ -152,13 +149,13 @@ function messageOf(error: unknown): string {
 export function pullCalls(octokit: Octokit, repo: { owner: string; repo: string }): PullCalls {
   return {
     async listOpenPullRequests() {
-      // Page by page, oldest first (record 0064). Past the tenth page the rest
-      // are left out: a repo with more than 1,000 open pull requests pays ten
-      // requests of its hourly budget for each list (record 0017).
+      // Page by page, oldest first (record 0064), to the last page (slice
+      // 5.9): one request of the hourly budget per 100 open pull requests
+      // (record 0017), and only a repo with `mergeAndDeploy.authors` pays it.
       let defaultBranch: string | undefined;
       const pullRequests: OpenPullRequest[] = [];
       let after: string | null = null;
-      for (let page = 0; page < MAX_PAGES; page++) {
+      for (;;) {
         const data: OpenPullRequestsData = await octokit.graphql<OpenPullRequestsData>(
           OPEN_PULL_REQUESTS,
           { ...repo, after },

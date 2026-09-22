@@ -47,3 +47,7 @@ These facts come from Renovate's source on 2026-09-22 (`lib/config/app-strings.t
 - The fake GitHub counts one request per page of 100 open pull requests, records the inputs of a dispatch, and its HTTP server pages with a cursor.
 - Still on `docs/later.md`: presets outside this repo and `packageRules`, more than 30 updates or 1,000 open pull requests, and a warning from the check when `mergeAndDeploy` is on and the workflow does not declare the input.
 - This amends 0054 (the scan after a merge, the config files, the method order and `fast-forward`, the one-line row, the 10 updates and the 100 pull requests) and 0010 (a dispatch that names a merge narrows).
+
+## Settled while building (slice 5.9)
+
+- The open pull requests are read to the last page, where slice 4.13 stopped at the oldest 1,000. The cost is one request of the hourly budget per 100 open pull requests on every scan, and only a repo with `mergeAndDeploy.authors` pays it: a repo with 2,000 open pull requests pays 20. A pull request older than the first 1,000 was never listed before, so an update that waited behind them could not be merged from the dashboard at all. The `docs/later.md` line keeps its other half, more than 30 updates waiting to merge, which slice 5.4 builds.
