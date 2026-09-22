@@ -1,5 +1,7 @@
 # A change that touches only a stack's outputs is not shown in v1
 
+> Amended by 0079: the root stack step is dropped as `same` and as `update`, and as `create` unless it is the only change. A `delete` or `replace` of it stays.
+
 Records 0007 and 0021 left one question open: how to show a change that touches a stack's outputs and no resource. In v1 it is not shown. A stack whose preview holds no resource change and no tracking change is in sync, whatever happened to its outputs.
 
 The reason is what the tool gives us. A test with a file backend (Pulumi CLI 3.198.0, one resource, then one output added) gave this from `pulumi preview --json`: `changeSummary` was `{ "same": 2 }`, the root stack step was `same`, and its `newState` had no outputs at all. The document that record 0001 builds on cannot tell that an output changed. The human text does say `+ added`, and so does the event stream behind `PULUMI_ENABLE_STREAMING_JSON_PREVIEW`, where the last outputs event of the root stack lists the new output names.
