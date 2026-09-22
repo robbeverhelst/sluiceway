@@ -134,13 +134,23 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
     [
       "POST",
       new RegExp(`^${REPO}/actions/workflows/([^/]+)/dispatches$`),
-      async ({ body }, workflow) => {
+      async ({ body, path }, workflow) => {
         const inputs =
           typeof body.inputs === "object" && body.inputs !== null
             ? (body.inputs as Record<string, string>)
             : undefined;
-        await fake.dispatchWorkflow(workflow, text(body.ref), inputs);
-        return { status: 204 };
+        const page = await fake.dispatchWorkflow(workflow, text(body.ref), inputs);
+        // GitHub names the run only when it is asked to (slice 5.9).
+        if (body.return_run_details !== true || page === undefined) return { status: 204 };
+        const id = page.slice(page.lastIndexOf("/") + 1);
+        return {
+          status: 200,
+          json: {
+            workflow_run_id: Number(id),
+            run_url: `${baseUrl()}${path.slice(0, path.indexOf("/actions/"))}/actions/runs/${id}`,
+            html_url: page,
+          },
+        };
       },
     ],
     [

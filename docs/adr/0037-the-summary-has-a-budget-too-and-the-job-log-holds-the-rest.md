@@ -18,3 +18,7 @@ Uploading the full diffs as an artifact was rejected. It is a file to download a
 - The diff hash covers the whole diff whatever the summary shows, the same safe direction as 0023 and 0028.
 - The summary of an `apply` (0021) is a few lines and needs no budget.
 - If writing the summary fails, the scan goes on. The dashboard is the product and the summary is its annex.
+
+## Settled while building (slice 5.9)
+
+- `resolve` writes a job summary too: what its job log says about every tick of the run, one line each, in Sluiceway's own words and escaped as a row is, and a link to the scan it started. `resolve` runs no tool, so none of a tool's words can reach it (0022). It is written only when the run acted on the dashboard or on queued records, so an edit of any other issue leaves no summary, and a summary that cannot be written is a line of the log, never a red job. It is small, so it needs no budget of its own.

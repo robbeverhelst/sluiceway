@@ -30,6 +30,15 @@ describe("a workflow dispatch over HTTP", () => {
     expect(fake.requests).toEqual(["dispatchWorkflow"]);
   });
 
+  // Slice 5.9: asked for it, GitHub names the run it started.
+  test("answers with the page of the run it started", async () => {
+    const { port } = await served();
+
+    expect(await port.dispatchWorkflow("sluiceway.yml", "main")).toBe(
+      "https://github.com/acme/infra/actions/runs/9000",
+    );
+  });
+
   test("carries the inputs of the scan after a merge (slice 4.13)", async () => {
     const { fake, port } = await served();
 

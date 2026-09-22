@@ -22,6 +22,31 @@ describe("the rescan box", () => {
     expect(h.github.comments(h.number)).toEqual([]);
   });
 
+  // Slice 5.9: GitHub names the run the dispatch started, and the job log and
+  // the job summary of `resolve` link to it.
+  test("links to the scan it started, in the job log and in the job summary", async () => {
+    const h = await scanned(TABLE);
+    const summaries = h.log.summaries.length;
+    tick(h, ALICE, [], { rescan: true });
+
+    await wake(h);
+
+    const scan = "https://github.com/acme/infra/actions/runs/9000";
+    expect(h.log.lines).toContain(`Started a full scan for the rescan box: ${scan}`);
+    expect(h.log.summaries.slice(summaries)).toEqual([
+      [
+        "### Sluiceway resolve",
+        "",
+        "- The rescan box was ticked by alice.",
+        `- Started a full scan for the rescan box: ${scan}`,
+        "- Wrote the dashboard (#1).",
+        "",
+        `It started [a scan](${scan}).`,
+        "",
+      ].join("\n"),
+    ]);
+  });
+
   test("the dispatch needs `actions: write`: without it the job goes red and says so", async () => {
     const h = await scanned(TABLE);
     h.github.withoutActionsWrite();

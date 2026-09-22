@@ -242,7 +242,13 @@ export interface GitHubPort {
   // needs `actions: write`: without it GitHub answers 403.
   // With `inputs` only for a workflow that declares them: GitHub refuses a
   // dispatch with an input the workflow does not declare (record 0064).
-  dispatchWorkflow(workflow: string, ref: string, inputs?: Record<string, string>): Promise<void>;
+  // Asks GitHub for the run it started (`return_run_details`, slice 5.9) and
+  // gives back the page of that run, or nothing when GitHub did not say.
+  dispatchWorkflow(
+    workflow: string,
+    ref: string,
+    inputs?: Record<string, string>,
+  ): Promise<string | undefined>;
 
   // The oldest 100 open pull requests, each with its files and the combined
   // checks of its head commit, in one GraphQL query (record 0054). Needs

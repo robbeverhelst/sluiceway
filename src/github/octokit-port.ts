@@ -249,12 +249,20 @@ export function createOctokitPort(octokit: Octokit, repo: Repo): GitHubPort {
     },
 
     async dispatchWorkflow(workflow, ref, inputs) {
-      await octokit.rest.actions.createWorkflowDispatch({
-        ...repo,
-        workflow_id: workflow,
-        ref,
-        ...(inputs ? { inputs } : {}),
-      });
+      const { data } = await octokit.request(
+        "POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches",
+        {
+          ...repo,
+          workflow_id: workflow,
+          ref,
+          ...(inputs ? { inputs } : {}),
+          // GitHub answers 200 with the run it started, where it used to
+          // answer 204 with nothing (slice 5.9).
+          return_run_details: true,
+        },
+      );
+      const page = (data as { html_url?: unknown } | undefined)?.html_url;
+      return typeof page === "string" ? page : undefined;
     },
   };
 }

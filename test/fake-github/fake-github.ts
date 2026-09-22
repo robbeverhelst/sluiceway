@@ -601,16 +601,19 @@ export class FakeGitHub implements GitHubPort {
     return { id: run.id, name: run.name, htmlUrl: run.htmlUrl };
   }
 
+  // Gives back the page of the run it started, as GitHub does when it is
+  // asked to (slice 5.9). The runs count up from 9000.
   async dispatchWorkflow(
     workflow: string,
     ref: string,
     inputs?: Record<string, string>,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     this.#count("dispatchWorkflow");
     if (!this.#actionsWrite) {
       throw new FakeGitHubError(403, "Resource not accessible by integration");
     }
     this.#dispatches.push({ workflow, ref, ...(inputs ? { inputs: { ...inputs } } : {}) });
+    return `${this.#repoUrl}/actions/runs/${9000 + this.#dispatches.length - 1}`;
   }
 
   // One request per page of 100, as GitHub's GraphQL gives them (record 0064).

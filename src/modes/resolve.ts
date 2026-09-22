@@ -63,6 +63,7 @@ import {
 } from "../render/marker.ts";
 import { clearMergeTick, type MergeNote } from "../render/merge-row.ts";
 import type { RefusedTick } from "../render/refused-ticks.ts";
+import { resolveSummary } from "../render/resolve-summary.ts";
 import { type DeployingRow, plural, type Row } from "../render/row.ts";
 
 export interface ResolveContext {
@@ -100,10 +101,50 @@ export async function resolve(context: ResolveContext): Promise<void> {
     context.setOutput("matrix", matrixOutput(entries));
     handedOn = true;
   };
+  // What the job log says once the run acts on the dashboard, for the job
+  // summary (slice 5.9). An edit of any other issue writes none.
+  const report: RunReport = { acting: false, lines: [], scanStarted: false };
+  const recording: ResolveContext = {
+    ...context,
+    log: {
+      ...context.log,
+      info: (line) => {
+        if (report.acting) report.lines.push(line);
+        context.log.info(line);
+      },
+    },
+  };
   try {
-    await resolveTicks(context, handOn);
+    await resolveTicks(recording, handOn, report);
   } finally {
     if (!handedOn) handOn([]);
+    if (report.acting) await writeRunSummary(context, report);
+  }
+}
+
+// What goes on the job summary of `resolve` (slice 5.9).
+interface RunReport {
+  // The run got as far as a dashboard, or as the records it may start.
+  acting: boolean;
+  lines: string[];
+  scanStarted: boolean;
+  // The page of the scan it started, when GitHub named it.
+  scanUrl?: string | undefined;
+}
+
+// A summary that cannot be written never turns the job red: the job log
+// holds all of it.
+async function writeRunSummary(context: ResolveContext, report: RunReport): Promise<void> {
+  try {
+    await context.log.writeSummary(
+      resolveSummary({
+        lines: report.lines,
+        scanUrl: report.scanUrl,
+        scanStarted: report.scanStarted,
+      }),
+    );
+  } catch (error) {
+    context.log.info(`The job summary could not be written: ${message(error)}`);
   }
 }
 
@@ -143,6 +184,7 @@ function message(error: unknown): string {
 async function resolveTicks(
   context: ResolveContext,
   handOn: (entries: readonly MatrixEntry[]) => void,
+  report: RunReport,
 ): Promise<void> {
   const { log, github } = context;
 
@@ -152,6 +194,7 @@ async function resolveTicks(
   // broken `sluiceway.yaml` never turns an edit of an ordinary issue red.
   const issue = editedIssue(context.event);
   if (!issue) {
+    report.acting = true;
     await startQueued(context, handOn);
     return;
   }
@@ -165,6 +208,7 @@ async function resolveTicks(
     log.info(notTheDashboard);
     return;
   }
+  report.acting = true;
 
   // Nothing else is taken from the payload (record 0025). The body and the
   // history come from one query, so they describe one moment, and the run acts
@@ -190,7 +234,9 @@ async function resolveTicks(
       log.info(
         `The dashboard is written in marker version ${root.version} and this is version ${MARKER_VERSION}. Its body is left alone, and a full scan is started to write it again.`,
       );
-      await dispatchScan(context);
+      report.scanUrl = await dispatchScan(context);
+      report.scanStarted = true;
+      if (report.scanUrl) log.info(`Started a full scan: ${report.scanUrl}`);
       return;
     }
     const ticks = ticksIn(first.body);
@@ -517,10 +563,14 @@ async function resolveTicks(
     const prs = [...merging.mergedPrs].sort((a, b) => a - b);
     const narrow = !rescan && declaresMergeScanInput(workflowText(context));
     try {
-      await dispatchScan(context, narrow ? mergeScanInputs(prs) : undefined);
+      const scanUrl = await dispatchScan(context, narrow ? mergeScanInputs(prs) : undefined);
+      report.scanUrl = scanUrl;
+      report.scanStarted = true;
+      // The page of the scan, when GitHub named it (slice 5.9).
+      const at = scanUrl === undefined ? "." : `: ${scanUrl}`;
       log.info(
         rescan
-          ? "Started a full scan for the rescan box."
+          ? `Started a full scan for the rescan box${at}`
           : narrow
             ? `Started the scan after the merge of ${prs.map((pr) => `#${pr}`).join(", ")}. It previews what changed since the last scan and hands the merged change to apply.`
             : `Started a full scan, which previews the merged change and hands it to apply. It is narrowed to the merged change when ${logGroupTitle(context.workflow?.file ?? "the workflow")} declares the workflow_dispatch input ${MERGE_SCAN_INPUT} (record 0064).`,
@@ -857,14 +907,18 @@ function workflowText(context: ResolveContext): string {
 async function dispatchScan(
   context: ResolveContext,
   inputs?: Record<string, string>,
-): Promise<void> {
+): Promise<string | undefined> {
   if (!context.workflow) {
     throw new Error(
       "A full scan could not be started: GITHUB_WORKFLOW_REF is not set, so this job does not know which workflow it belongs to.",
     );
   }
   try {
-    await context.github.dispatchWorkflow(context.workflow.file, context.workflow.ref, inputs);
+    return await context.github.dispatchWorkflow(
+      context.workflow.file,
+      context.workflow.ref,
+      inputs,
+    );
   } catch (error) {
     throw new Error(
       `A full scan could not be started: ${message(error)}. The resolve job needs the permission \`actions: write\`, and the workflow (${context.workflow.file}) needs a \`workflow_dispatch\` trigger that runs the scan (record 0017).`,
