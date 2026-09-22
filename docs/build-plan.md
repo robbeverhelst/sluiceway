@@ -37,7 +37,7 @@ Everything else is yours to decide. Decide, write down why in the pull request, 
 
 The core loop and nothing else: a scan previews stacks and writes the dashboard, a person ticks a box, exactly that stack deploys, and the row returns to in sync or shows why it failed.
 
-Not in v1: drift detection, stack dependencies, a second adapter, teams in the tick rule, property values. `docs/later.md` has the full list. The marker format, the row states and the diff shape already leave room for them, so nothing in v1 needs a placeholder for them. Do not add empty drift or dependency code.
+Not in v1: drift detection, stack dependencies, a second adapter, teams in the tick rule, property values. (The second adapter, OpenTofu, came after the first releases, in slice 4.1 and record 0053.) `docs/later.md` has the full list. The marker format, the row states and the diff shape already leave room for them, so nothing in v1 needs a placeholder for them. Do not add empty drift or dependency code.
 
 The brief's milestone numbers change with that. M0 is merged. M1 is the scan, M2 is the tick and the deploy, M3 is proof and the first release. The brief's M3 (drift and dependencies) and M4 (launch) are not part of this plan.
 
@@ -86,15 +86,16 @@ The file is optional and sits at the repo root. Unknown keys are an error, becau
 | `scan.logDiff` | `false` | Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else | 0048 |
 | `stacks[].path` | required per entry | Directory of the stack, relative to the repo root | 0006 |
 | `stacks[].name` | none | Name of the stack. Without it the entry covers every stack in `path` | 0006 |
+| `stacks[].tool` | none | `opentofu`: the entry declares a stack of that tool at `path`, because files alone cannot name one | 0053 |
 | `stacks[].environment` | `sluiceway` | Label on the deployment record, and the GitHub Environment where one is used | 0003 |
 | `stacks[].tickers` | the top level value | Tick rule for this stack | 0018 |
 | `stacks[].inputs` | `[]` | Extra globs this stack claims | 0010 |
 | `stacks[].previewTimeout` | the input | Time limit for this stack, whole minutes | 0012, 0035 |
-| `stacks[].options` | `{}` | Named adapter options. None exist in v1 | 0006, 0015 |
+| `stacks[].options` | `{}` | Named adapter options, only with `tool`. OpenTofu: `workspace` and `varFiles` | 0006, 0015, 0053 |
 
 Rules for config loading:
 
-- A `stacks[]` entry adds settings to stacks that discovery found. It never creates a stack. An entry that matches no discovered stack is a config error.
+- A `stacks[]` entry adds settings to stacks that discovery found. It never creates a stack, except an entry with `tool`, which declares one (0053). An entry that matches no discovered stack is a config error.
 - A `tickers` entry with a slash fails with the message that teams are not supported yet (0018).
 - `dependsOn` and `drift` fail with a message that says they are not in this version yet. They are never ignored.
 - The JSON schema is generated from the Zod schema into `schema/sluiceway.schema.json`, committed, and checked in CI the way `dist/` is.
@@ -117,6 +118,7 @@ Rules for config loading:
 | Write loop | at most 3 tries | 0004 |
 | Lookback, names on a row, recently deployed | 100 commits, 5, 10 | 0026, 0029 |
 | Minimum Pulumi CLI | v3.229.0 | 0001 |
+| Minimum OpenTofu CLI | v1.11.0 | 0053 |
 | Minimum self-hosted runner | v2.328.0, no ARM32 | Actions research |
 | API budget | 1,000 requests per hour per repo | 0017 |
 
@@ -183,6 +185,7 @@ The bootstrap made the directories. This is what goes in them. File names are a 
 | `src/core/` | Types (`Stack`, `Change`, `Diff`), config, the diff hash, the claim rule, the tick rule, the walk through the edit history, attribution, the scan plan (which stacks to preview) | Yes |
 | `src/adapters/adapter.ts` | The interface: `discover`, `preview`, `apply`, and a version check | Yes |
 | `src/adapters/pulumi/` | Discovery, the command lines, the process runner, the schema that parses tool output, folding steps into changes | Yes |
+| `src/adapters/opentofu/` | The same for OpenTofu, plus init and the saved plan (0053). `src/adapters/tools.ts` sends each stack to its tool | Yes |
 | `src/render/` | Markers, rows, the body, the header state, the voice strings, the size budget, the summary, the log text of a diff | Yes |
 | `src/github/` | The port (one interface with every GitHub call Sluiceway makes), its Octokit implementation, the write loop, reading the event, the action ref, inputs and outputs, annotations | No |
 | `src/modes/` | One file per mode. A mode wires core, adapter, render and the port together and holds no rules of its own | No |
@@ -207,7 +210,7 @@ Four seams keep everything testable without a network or a tool:
 |---|---|---|
 | Unit | Hash, config, claim rule, tick rule, history walk, attribution, header state, budget steps, marker encode and decode | next to the code's area under `test/` |
 | Snapshot | Every kind of row, the body in every header state, redact on and off, personality on and off, a 58 stack body, a 100 stack body over budget, the summary | `test/render/` |
-| Adapter | The schema and the folding, against recorded tool output only | `test/adapters/pulumi/` |
+| Adapter | The schema and the folding, against recorded tool output only | `test/adapters/pulumi/`, `test/adapters/opentofu/` |
 | Mode | Each mode against the fake GitHub and a replayed tool | `test/modes/` |
 | E2E | The committed bundle on a real runner, with the real CLI, the example project and the fake GitHub server. `scripts/e2e.ts` starts the bundle itself, with the inputs and the `GITHUB_*` variables a runner would build from `action.yml`, because a runner lets no step replace `GITHUB_API_URL`. The smoke job of `ci.yml` keeps a real `uses:` step, which stops at a config error before it reaches GitHub | `.github/workflows/e2e.yml`, `bun run e2e` |
 | Live | A short manual pass in a scratch repo on real GitHub before a release | `docs/acceptance.md`, part 1 |

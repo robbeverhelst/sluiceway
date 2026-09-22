@@ -102,7 +102,7 @@ A sluiceway is a channel with a gate. Changes queue up behind the gate, and you 
 4. Sluiceway checks that you may tick that stack, and previews it again. It deploys only if the fresh preview still matches the row.
 5. The row goes back to in sync, or says why the deploy failed, with a link to the run.
 
-The issue is a view and never the source of truth. What is pending is always worked out again from a fresh preview. Pulumi is the first supported tool, and the adapter interface is built so that OpenTofu and Terraform can follow. [CONTEXT.md](CONTEXT.md) defines the words used here and in the code.
+The issue is a view and never the source of truth. What is pending is always worked out again from a fresh preview. It works with Pulumi and OpenTofu, side by side in one repo if you like. For OpenTofu, a tick deploys the very plan file whose diff was approved. [CONTEXT.md](CONTEXT.md) defines the words used here and in the code.
 
 ## Get started
 
@@ -137,7 +137,7 @@ The [releases](https://github.com/sluiceway/sluiceway/releases) page lists every
 
 ## What it does not do yet
 
-- **Pulumi only.** OpenTofu and Terraform can follow.
+- **Pulumi and OpenTofu only.** OpenTofu stacks are declared in `sluiceway.yaml`, there is no zero config for them ([configuration](docs/configuration.md#stacks-and-stack-ids)). The Terraform binary, Helm and others can follow.
 - **Only preview and deploy.** Destroying a stack, a refresh and repairing state stay with your own tooling.
 - **A change to outputs alone is not shown**, and deploys from somewhere else are not detected. [Limits](#limits) says what that means for you.
 
@@ -179,7 +179,8 @@ One action, five modes, chosen with the `mode` input.
 
 - **A GitHub repo with issues turned on.** The dashboard is an issue.
 - **GitHub Actions runners with runner version 2.328.0 or newer.** Hosted runners qualify. Self-hosted runners need that version at least, and ARM32 is not supported.
-- **Pulumi CLI 3.229.0 or newer** on the runners that preview and deploy. `pulumi/actions` installs it. With an older one every preview fails, and the job log says which version is needed.
+- **Pulumi CLI 3.229.0 or newer** on the runners that preview and deploy, for Pulumi stacks. `pulumi/actions` installs it. With an older one every preview fails, and the job log says which version is needed.
+- **OpenTofu 1.11.0 or newer**, for OpenTofu stacks, installed without a wrapper ([credentials](docs/credentials.md#opentofu)). A repo with only Pulumi stacks never needs it.
 - **Your programs' own needs:** a language runtime, dependencies, credentials. The workflow installs and loads them, the same way your own CI or laptop does.
 
 ## Setup
@@ -489,7 +490,7 @@ To see the values a tick would deploy, turn on `scan.logDiff` in `sluiceway.yaml
 - **Deploys from somewhere else are allowed and not detected.** They do not show under recently deployed, and a row they made stale stays pending until the next full scan or the rescan box. A tick on a stale row deploys nothing.
 - **Sluiceway only previews and deploys.** Destroying a stack, a refresh and repairing state stay with your own tooling.
 - **No values on the dashboard unless you list their paths.** Rows show resource types, resource names and property names. `dashboard.showValues` lets the old and new value of the paths you list appear, such as a chart's `version`, and a tick then approves that value. `dashboard.redact: true` keeps names and values out of the issue. The job log holds the tool's own values only when you turn on `scan.logDiff`.
-- **One tool so far.** Pulumi is the first. The adapter interface is built so that OpenTofu and Terraform can follow.
+- **Two tools so far.** Pulumi and OpenTofu. An OpenTofu preview runs with `-refresh=false`: like Pulumi's, it compares the code with the state and never reads every real resource.
 
 [docs/later.md](docs/later.md) lists everything that was left out of this version, and why.
 

@@ -4,3 +4,4 @@ schema/** linguist-generated=true
 test/fixtures/pulumi/** linguist-generated=true -text
 examples/pulumi-basic/site/package-lock.json linguist-generated=true
 test/**/__snapshots__/** linguist-generated=true
+test/fixtures/opentofu/** linguist-generated=true -text

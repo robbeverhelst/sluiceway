@@ -27,11 +27,12 @@ bun install
 | `bun run test` | Unit tests with `bun test`. |
 | `bun run build:schema` | Writes `schema/sluiceway.schema.json` from the Zod schema in `src/core/config.ts`. |
 | `bun run check:schema` | Generates, then fails if `schema/` differs from what is committed. |
-| `bun run record:fixtures` | Records `test/fixtures/pulumi/` with the `pulumi` CLI on your PATH. See below before you commit its output. |
+| `bun run record:fixtures` | Records `test/fixtures/pulumi/` with the `pulumi` CLI on your PATH. With `--tool opentofu` it records `test/fixtures/opentofu/` with `tofu`. See below before you commit its output. |
 | `bun run build` | Bundles `src/main.ts` into `dist/index.js` for the Node runtime of GitHub Actions. |
 | `bun run check:dist` | Builds, then fails if `dist/` differs from what is committed. |
 | `bun run check` | All of the above, as CI runs them. |
 | `bun run e2e` | Scans a copy of `examples/pulumi-basic` with the committed bundle, the `pulumi` CLI on your PATH and the fake GitHub server: a full scan and a narrowed one, then the whole loop of ticks, `resolve`, `apply` with the real tool and `settle`, with a refused tick, a cancelled deploy, a moved change and a re-run. `node` on your PATH has to be Node 24, because it stands in for the runner's own. The `e2e` workflow runs it on every pull request. |
+| `bun run e2e:mixed` | One repo with `examples/pulumi-basic` and `examples/opentofu-basic` in `infra/`, scanned and deployed with the committed bundle, `pulumi` and `tofu` on your PATH and the fake GitHub server: a full scan, an OpenTofu deploy of its saved plan, a change that moved, a Pulumi deploy and a last scan. The `mixed` job of the `e2e` workflow runs it with both tofu versions of the fixtures. |
 
 ## dist/ is committed
 
@@ -66,13 +67,23 @@ The tool prints absolute paths, so the fixtures in the repo come from that CI jo
 
 ```sh
 rm -rf test/fixtures/pulumi
-gh run download <run id> --pattern 'fixtures-*' --dir test/fixtures/pulumi
-mv test/fixtures/pulumi/fixtures-*/* test/fixtures/pulumi/ && rmdir test/fixtures/pulumi/fixtures-*
+gh run download <run id> --pattern 'fixtures-v*' --dir test/fixtures/pulumi
+mv test/fixtures/pulumi/fixtures-v*/* test/fixtures/pulumi/ && rmdir test/fixtures/pulumi/fixtures-v*
 ```
 
 You can run the recorder yourself to try a scenario: `bun run record:fixtures --out /tmp/try --only replace`. It needs `pulumi` on your PATH, and Node.js for the TypeScript program. It runs the tool only in copies inside a temp directory, against a file backend it makes there, with an environment built from nothing. It cannot reach a stack, a backend or an account of yours, and it leaves `examples/` as it was.
 
 Never edit a file under `test/fixtures/pulumi/` by hand.
+
+OpenTofu works the same way (record 0053): `scripts/fixtures/opentofu-scenarios.ts` drives `examples/opentofu-basic`, `FIXTURE_TOFU_VERSIONS` in `scripts/fixtures/versions.ts` names the two versions, and the `fixtures-opentofu` job of CI records them. A recording writes the plan file as `{plan}`, so it holds no path of the machine that made it. To take them from CI:
+
+```sh
+rm -rf test/fixtures/opentofu
+gh run download <run id> --pattern 'fixtures-opentofu-*' --dir test/fixtures/opentofu
+mv test/fixtures/opentofu/fixtures-opentofu-*/* test/fixtures/opentofu/ && rmdir test/fixtures/opentofu/fixtures-opentofu-*
+```
+
+The Pulumi download pattern `fixtures-*` also matches these artifacts, so download the Pulumi ones with `--pattern 'fixtures-v*'`.
 
 ## Rules for code
 

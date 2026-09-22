@@ -12,6 +12,7 @@ So a tick means "change these properties on these resources, at whatever value t
 
 - **What went out is traceable.** The deployment record of every deploy names the commit that was deployed.
 - **Anything else that moved stops the deploy.** A new resource, a delete, a replace or a different property gives a different hash. The deploy stops, nothing changes, and the row comes back with the fresh diff and a line that says the change moved since the tick.
+- **For OpenTofu, the deploy is the plan that was checked.** `apply` saves the plan of its fresh preview, checks that plan's hash, and deploys that plan file and nothing else. Nothing can slip in between the check and the deploy, and the tool itself refuses the plan when the state changed since (record 0053). The gap above, between the tick and that fresh preview, stays.
 
 Hashing values or their digests was rejected: a digest would sit in an issue that may be public, where a short value that nobody marked secret can be guessed offline. Hashing the commit was rejected too: on a busy repo every merge would void every tick.
 

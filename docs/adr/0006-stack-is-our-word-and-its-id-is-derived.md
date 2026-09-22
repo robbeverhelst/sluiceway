@@ -1,5 +1,7 @@
 # "Stack" is Sluiceway's own word, and a stack's id is derived, never chosen
 
+> Amended by 0053: a `stacks` entry with `tool: opentofu` declares an OpenTofu stack, because files alone cannot name one. The tool rides in the options bag, which only adapters read.
+
 The brief uses Pulumi's words, and the OpenTofu research asked whether the core needs a tool-neutral one such as "unit". We keep "stack" and define it ourselves: the smallest thing Sluiceway can preview and deploy on its own, with its own state, one row and one checkbox. A Pulumi stack is a stack. So is an OpenTofu root module with a chosen workspace and var files. A neutral word would have to be explained to every user, while "stack" already means this in Terragrunt, Spacelift, Terramate and Pulumi, and it is already in the config, the rows and the deployment record tag.
 
 The risk was never the word. It is `core/` quietly assuming Pulumi semantics, so the rule is on the code: in `core/` a stack is a path, an optional name and an options bag that only its adapter reads. No tool words (`urn`, `workspace`, `tfvars`, `Pulumi.yaml`) appear outside `adapters/`.

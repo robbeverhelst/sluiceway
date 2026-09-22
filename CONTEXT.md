@@ -18,6 +18,10 @@ _Avoid_: Stack name, slug, key
 Finding the stacks of a repo from its files alone. It never asks a backend and never starts the tool, so it can run in a job that holds no credentials. A stack that no file names does not exist for Sluiceway.
 _Avoid_: Detection, lookup, stack listing
 
+**Declared stack**:
+A stack that a `stacks` entry names with `tool`, because files alone cannot say what it is: an OpenTofu root module, with the workspace and var files the entry gives. Discovery still checks from the files that it can exist, and never starts the tool.
+_Avoid_: Configured stack, manual stack, custom stack
+
 **Ignored stack**:
 A discovered stack whose stack id matches an `ignore` glob. It has no row, is never previewed and claims nothing, and config cannot give it settings. When the `ignore` entry gives a reason, the stack is listed with it in a fold under In sync, and that is all the dashboard says about it.
 _Avoid_: Excluded stack, hidden stack, skipped stack
@@ -48,6 +52,10 @@ _Avoid_: Affects, owns, touches, depends on
 What a scan decides before it previews anything: a full scan with the reason for it, or a narrowed scan with the stacks to preview and why each one. A narrowed scan that cannot trust its comparison falls back to a full scan.
 _Avoid_: Strategy, scan mode, selection
 
+**Preparation**:
+A step a tool needs before it can preview a stack, such as OpenTofu's init of a directory. A scan runs every preparation one at a time and before the pool, and a failed one is a preview failure of each stack that needs it.
+_Avoid_: Setup, init step, pre-hook
+
 **Check**:
 A pass over the repo's files and nothing else that says whether Sluiceway understands the setup: the config, the stacks discovery finds, what `ignore` leaves out and which files no stack claims. It holds no credentials and never starts the tool, so it can never say that a preview will work.
 _Avoid_: Validate, lint, dry run, preflight
@@ -73,6 +81,10 @@ _Avoid_: Key path, nested key, JSON path
 **Tool diff**:
 What a deploy of a stack would change as the tool itself displays it, values included, except the ones the tool marks secret. A second run of the tool, only for a pending stack and only when a repo turns on `scan.logDiff`. It goes to that stack's group of the job log and nowhere else, and nothing is decided from it: the row and the diff hash come from the preview.
 _Avoid_: Full diff, native diff, raw diff, plan output
+
+**Saved plan**:
+The plan file that the fresh preview of `apply` keeps, for a tool that can save one. When its diff hash is the one the tick approved, the deploy applies that file and nothing else. It lives inside one `apply` job and is removed on every way out.
+_Avoid_: Plan handle, plan artifact, cached plan
 
 **Pending**:
 Deploying the stack now would change something, because the code moved.

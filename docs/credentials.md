@@ -147,6 +147,23 @@ What to know about it:
 
 The tool's backend is configured the same way, in the environment: for Pulumi, `PULUMI_ACCESS_TOKEN` for Pulumi Cloud, or `PULUMI_BACKEND_URL` for a bucket or another self-managed backend, and `PULUMI_CONFIG_PASSPHRASE` when stack secrets use a passphrase. Sluiceway never sets or defaults any of them. When one is missing, the tool's own error becomes that stack's preview failure, and the job log shows it.
 
+### OpenTofu
+
+The same pattern holds for OpenTofu (record 0053). Install `tofu` v1.11.0 or newer in a step before Sluiceway, without a wrapper around the binary, because Sluiceway reads what `tofu` itself prints:
+
+```yaml
+- uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+  with:
+    tofu_version: 1.12.6
+    tofu_wrapper: false
+```
+
+Then load the backend's and the providers' credentials into the environment as for any tool. Every `TF_*` variable of the job reaches `tofu`: `TF_VAR_*` for variables, `TF_CLI_CONFIG_FILE` or a credentials file for a private registry, `TF_ENCRYPTION` for state and plan encryption, `TF_PLUGIN_CACHE_DIR` to download providers once per job. Sluiceway sets `TF_IN_AUTOMATION`, and `TF_WORKSPACE` for a stack whose options name a workspace, and nothing else.
+
+- **Do not set `TF_DATA_DIR`** for the job. Sluiceway runs `tofu init` in every directory of the stacks it previews, one after the other, and one shared data directory would make those inits overwrite each other.
+- **`TF_CLI_ARGS` reaches the tool too.** Whatever it adds to a plan is in the plan file, and a tick deploys exactly that file, so the deploy never differs from the row. Prefer the named options.
+- **The plan file holds every value in plain text.** Sluiceway keeps it in a temporary directory of its own and removes it when the preview or the deploy ends. It is never uploaded.
+
 ## What your programs fetch, the runner has to fetch
 
 A preview runs your programs, and your programs fetch things: packages, provider plugins, container images, Helm charts, modules. On a laptop that works because the person is logged in. On a runner nothing is logged in until a step does it. When one stack fails in CI and works on your machine, look here first.

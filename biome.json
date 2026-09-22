@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!dist", "!schema", "!test/fixtures/pulumi"]
+    "includes": ["**", "!dist", "!schema", "!test/fixtures/pulumi", "!test/fixtures/opentofu"]
   },
   "formatter": {
     "enabled": true,
