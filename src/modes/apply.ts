@@ -14,14 +14,7 @@ import type {
 } from "../adapters/adapter.ts";
 import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
-import {
-  applyConfig,
-  type Config,
-  type ConfiguredStack,
-  type IgnoredStack,
-  ignoredStacks,
-} from "../core/config.ts";
-import { loadConfig } from "../core/config-file.ts";
+import type { Config, ConfiguredStack, IgnoredStack } from "../core/config.ts";
 import {
   type DeployFacts,
   type DeploymentPayload,
@@ -44,6 +37,7 @@ import {
   repositoryOf,
 } from "../core/notify.ts";
 import type { OutsideDeploy } from "../core/outside-deploy.ts";
+import { openRepo, type Repo } from "../core/repo.ts";
 import { shownValues } from "../core/show-values.ts";
 import { stackId } from "../core/stack.ts";
 import { type AttributionSource, attributionSource } from "../github/attribution.ts";
@@ -164,11 +158,13 @@ interface ApplyReport {
 
 export async function apply(context: ApplyContext): Promise<void> {
   const report: ApplyReport = { startedAt: context.now() };
+  // Read once, for the deploy and for the notification.
+  const repo = openRepo(context.root, context.adapter);
   try {
-    await applying(context, report);
+    await applying(context, repo, report);
   } finally {
     reportOutputs(context, report);
-    await notifyOutcome(context, report);
+    await notifyOutcome(context, repo, report);
   }
 }
 
@@ -176,7 +172,11 @@ export async function apply(context: ApplyContext): Promise<void> {
 // as the outputs are. It never throws, so it never changes the job's result.
 // A sluiceway.yaml that cannot be read, which already failed the deploy, sends
 // the default events.
-async function notifyOutcome(context: ApplyContext, report: ApplyReport): Promise<void> {
+async function notifyOutcome(
+  context: ApplyContext,
+  repo: Repo,
+  report: ApplyReport,
+): Promise<void> {
   if (!context.notifier) return;
   const notification = applyNotification(report.outcome ?? "failed", report.stack, {
     repository: repositoryOf(context.repoUrl),
@@ -186,7 +186,7 @@ async function notifyOutcome(context: ApplyContext, report: ApplyReport): Promis
   if (!notification) return;
   let events: readonly NotifyEvent[] = DEFAULT_NOTIFY_EVENTS;
   try {
-    events = loadConfig(context.root).notify.events;
+    events = repo.config().notify.events;
   } catch {
     // The job log already says why the file cannot be read.
   }
@@ -221,7 +221,7 @@ function reportOutputs(context: ApplyContext, report: ApplyReport): void {
   writeResultFile(outputs, context.log, "apply", text);
 }
 
-async function applying(context: ApplyContext, report: ApplyReport): Promise<void> {
+async function applying(context: ApplyContext, repo: Repo, report: ApplyReport): Promise<void> {
   const { github, log } = context;
   const id = context.deploymentId;
 
@@ -295,7 +295,7 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
   const progress: Progress = { deploying: false };
   let attempt: Attempt;
   try {
-    attempt = await deploy(context, id_, payload, runUrl, progress);
+    attempt = await deploy(context, repo, id_, payload, runUrl, progress);
   } catch (error) {
     const reason: DeployFailureReason = progress.deploying
       ? { kind: "tool-error", exitCode: null }
@@ -435,6 +435,7 @@ function applied(result: PreviewResult): AppliedPreview {
 
 async function deploy(
   context: ApplyContext,
+  repo: Repo,
   id: string,
   payload: DeploymentPayload,
   runUrl: string,
@@ -447,15 +448,14 @@ async function deploy(
 
   let setup: Setup;
   try {
-    const config = loadConfig(context.root);
+    const config = repo.config();
     if (!config.deploys) {
       // One reviewed line stops every deploy, also one ticked before it was
       // merged (record 0051). The tool never runs.
       const reason: DeployFailureReason = { kind: "deploys-off" };
       return { end: { kind: "failed", reason }, failed: notDeployed(reason) };
     }
-    const found = await adapter.discover(context.root, config);
-    const stacks = applyConfig(config, found);
+    const { stacks, ignored } = await repo.stacks();
     const stack = stacks.find((one) => stackId(one.stack) === id);
     if (!stack) {
       const reason: DeployFailureReason = { kind: "unknown-stack" };
@@ -471,7 +471,7 @@ async function deploy(
       config,
       stacks,
       stack,
-      ignored: ignoredStacks(config, found),
+      ignored,
       attribution: attributionSource(
         context.github,
         {
