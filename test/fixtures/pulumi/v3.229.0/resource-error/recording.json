@@ -1,0 +1,25 @@
+{
+  "scenario": "resource-error",
+  "description": "The provider refuses the inputs of one resource, a random string of negative length. The preview fails with stderr empty, and the diagnostics on stdout name the resource.",
+  "cliVersion": "v3.229.0",
+  "commands": [
+    {
+      "id": "preview",
+      "argv": [
+        "pulumi",
+        "preview",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "exitCode": 1,
+      "stdout": "preview.stdout",
+      "stderr": "preview.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

@@ -156,6 +156,13 @@ describe("a workflow that deploys", () => {
     expect(workflow.on).toHaveProperty("schedule");
   });
 
+  // Record 0025: the event is only a wake-up. A filter on what the payload says
+  // changed (such as `changes.body.from`) could let a tick go by without a
+  // run, which is the trap slice 2.21 checks for.
+  test.each(deploying)("never filters on what the event says changed: $where", ({ workflow }) => {
+    expect(JSON.stringify(workflow)).not.toContain("event.changes");
+  });
+
   test.each(deploying)("has the permissions of the README's block: $where", ({ workflow }) => {
     expect(workflow.permissions).toEqual({
       contents: "read",

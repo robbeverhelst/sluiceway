@@ -1,0 +1,76 @@
+{
+    "config": {
+        "network:token": "[secret]",
+        "network:zone": "dev-a"
+    },
+    "steps": [
+        {
+            "op": "create",
+            "urn": "urn:pulumi:dev::network::pulumi:pulumi:Stack::network-dev",
+            "newState": {
+                "urn": "urn:pulumi:dev::network::pulumi:pulumi:Stack::network-dev",
+                "custom": false,
+                "type": "pulumi:pulumi:Stack",
+                "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#322",
+                "stackTrace": [
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/work/pulumi-yaml/pulumi-yaml/pkg/server/server.go#322"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.228.0/proto/go/language_grpc.pb.go#586"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.228.0/go/common/util/rpcutil/interceptor.go#301"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.79.3/server.go#1242"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/grpc-ecosystem/grpc-opentracing@v0.0.0-20180507213350-8e809c8a8645/go/otgrpc/server.go#57"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.79.3/server.go#1242"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.228.0/go/common/util/rpcutil/interceptor.go#228"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.79.3/server.go#1233"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/github.com/pulumi/pulumi/sdk/v3@v3.228.0/proto/go/language_grpc.pb.go#588"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.79.3/server.go#1429"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.79.3/server.go#1855"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../home/runner/go/pkg/mod/google.golang.org/grpc@v1.79.3/server.go#1064"
+                    },
+                    {
+                        "sourcePosition": "project:///../../../../../../opt/hostedtoolcache/go/1.25.8/x64/src/runtime/asm_amd64.s#1693"
+                    }
+                ]
+            },
+            "detailedDiff": null
+        }
+    ],
+    "diagnostics": [
+        {
+            "urn": "urn:pulumi:dev::network::random:index/randomString:RandomString::subnet",
+            "message": "error: random:index/randomString:RandomString resource 'subnet' has a problem: Invalid Attribute Value. Attribute length value must be at least 1, got: -3. Examine values at 'subnet.length'.\n",
+            "severity": "error"
+        },
+        {
+            "urn": "urn:pulumi:dev::network::random:index/randomString:RandomString::subnet",
+            "message": "error: random:index/randomString:RandomString resource 'subnet' has a problem: Invalid Attribute Value. Attribute length value must be at least sum of min_upper + min_lower + min_numeric + min_special, got: -3. Examine values at 'subnet.length'.\n",
+            "severity": "error"
+        }
+    ],
+    "duration": 56244148,
+    "changeSummary": {
+        "create": 1
+    }
+}

@@ -379,6 +379,31 @@ ${OUTPUTS}`,
     ],
   },
   {
+    name: "program-exception",
+    description:
+      "The TypeScript program of site/ throws. The preview fails with stderr empty, and the stack trace is a diagnostic in the document on stdout.",
+    steps: [
+      { kind: "setup", cwd: "site", argv: ["npm", "ci", "--no-audit", "--no-fund"] },
+      init("site", "prod"),
+      edit(
+        "export const published = publish.stdout;\n",
+        'export const published = publish.stdout;\n\nthrow new Error("the site program stops here");\n',
+        "site/index.ts",
+      ),
+      preview("site", "prod", { exit: "nonzero" }),
+    ],
+  },
+  {
+    name: "resource-error",
+    description:
+      "The provider refuses the inputs of one resource, a random string of negative length. The preview fails with stderr empty, and the diagnostics on stdout name the resource.",
+    steps: [
+      init("network", "dev"),
+      edit("      length: 8\n      special: false\n", "      length: -3\n      special: false\n"),
+      preview("network", "dev", { exit: "nonzero" }),
+    ],
+  },
+  {
     name: "missing-stack",
     description: "A stack that the backend does not hold.",
     steps: [

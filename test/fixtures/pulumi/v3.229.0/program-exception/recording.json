@@ -1,0 +1,25 @@
+{
+  "scenario": "program-exception",
+  "description": "The TypeScript program of site/ throws. The preview fails with stderr empty, and the stack trace is a diagnostic in the document on stdout.",
+  "cliVersion": "v3.229.0",
+  "commands": [
+    {
+      "id": "preview",
+      "argv": [
+        "pulumi",
+        "preview",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "prod"
+      ],
+      "cwd": "site",
+      "exitCode": 1,
+      "stdout": "preview.stdout",
+      "stderr": "preview.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

@@ -35,6 +35,34 @@ for (const version of VERSIONS) {
       });
     });
 
+    // Slice 2.21: two more ways a preview fails with stderr empty. What went
+    // wrong is only in the diagnostics on stdout, and they reach toolLog.
+    test("a TypeScript program that throws gives the exit code, and the stack trace from stdout", async () => {
+      const site: Stack = { path: "site", name: "prod", options: {} };
+      const result = await previewWith(site, replay(version, "program-exception"));
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.reason).toEqual({ kind: "tool-error", exitCode: 1 });
+      expect(result.detail).toEqual([]);
+      expect(result.toolLog).toMatch(
+        /^error: Running program '[^']*site\/index\.ts' failed with an unhandled exception:\nError: the site program stops here\n/,
+      );
+      expect(result.toolLog).not.toContain("\u001b");
+    });
+
+    test("a resource the provider refuses gives the exit code, and the diagnostics that name it", async () => {
+      const result = await previewWith(NETWORK_DEV, replay(version, "resource-error"));
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.reason).toEqual({ kind: "tool-error", exitCode: 1 });
+      expect(result.detail).toEqual([]);
+      expect(result.toolLog).toStartWith(
+        "error: random:index/randomString:RandomString resource 'subnet' has a problem: ",
+      );
+    });
+
     // Record 0022 as amended. The tool's words still go to the job log, and
     // the reason holds none of them, not even the stack's name.
     test("a stack the backend does not hold is a reason of its own, with the tool's stderr", async () => {

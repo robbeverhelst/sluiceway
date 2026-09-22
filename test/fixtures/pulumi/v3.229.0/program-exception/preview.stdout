@@ -1,0 +1,242 @@
+{
+    "config": {
+        "site:pages": "[\"home\",\"about\",\"contact\"]",
+        "site:token": "[secret]"
+    },
+    "steps": [
+        {
+            "op": "create",
+            "urn": "urn:pulumi:prod::site::pulumi:pulumi:Stack::site-prod",
+            "newState": {
+                "urn": "urn:pulumi:prod::site::pulumi:pulumi:Stack::site-prod",
+                "custom": false,
+                "type": "pulumi:pulumi:Stack",
+                "sourcePosition": "project:///node_modules/@pulumi/runtime/stack.ts#37,19",
+                "stackTrace": [
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/runtime/stack.ts#37,19"
+                    },
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/cmd/run/run.ts#601,38"
+                    }
+                ]
+            },
+            "detailedDiff": null
+        },
+        {
+            "op": "create",
+            "urn": "urn:pulumi:prod::site::command:local:Command::publish",
+            "provider": "urn:pulumi:prod::site::pulumi:providers:command::default_1_2_1::04da6b54-80e4-46f7-96ec-b56ff0331ba9",
+            "newState": {
+                "urn": "urn:pulumi:prod::site::command:local:Command::publish",
+                "custom": true,
+                "type": "command:local:Command",
+                "inputs": {
+                    "create": "echo site published",
+                    "environment": {
+                        "NOTE": "CANARY-VALUE",
+                        "TOKEN": "[secret]"
+                    }
+                },
+                "parent": "urn:pulumi:prod::site::pulumi:pulumi:Stack::site-prod",
+                "provider": "urn:pulumi:prod::site::pulumi:providers:command::default_1_2_1::04da6b54-80e4-46f7-96ec-b56ff0331ba9",
+                "propertyDependencies": {
+                    "create": [],
+                    "environment": []
+                },
+                "sourcePosition": "project:///index.ts#15,17",
+                "stackTrace": [
+                    {
+                        "sourcePosition": "project:///index.ts#15,17"
+                    },
+                    {},
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/pulumi/vendor/ts-node@7.0.1/index.js#3009,23"
+                    },
+                    {},
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/pulumi/vendor/ts-node@7.0.1/index.js#3011,12"
+                    },
+                    {},
+                    {},
+                    {},
+                    {},
+                    {},
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/cmd/run/run.ts#541,33"
+                    },
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/runtime/stack.ts#78,28"
+                    },
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/resource.ts#1600,22"
+                    }
+                ],
+                "replaceOnChanges": [
+                    "triggers[*]"
+                ]
+            },
+            "detailedDiff": null
+        },
+        {
+            "op": "create",
+            "urn": "urn:pulumi:prod::site::random:index/randomPet:RandomPet::page-about",
+            "provider": "urn:pulumi:prod::site::pulumi:providers:random::default_4_21_2::04da6b54-80e4-46f7-96ec-b56ff0331ba9",
+            "newState": {
+                "urn": "urn:pulumi:prod::site::random:index/randomPet:RandomPet::page-about",
+                "custom": true,
+                "type": "random:index/randomPet:RandomPet",
+                "inputs": {
+                    "length": 2,
+                    "prefix": "about"
+                },
+                "parent": "urn:pulumi:prod::site::pulumi:pulumi:Stack::site-prod",
+                "provider": "urn:pulumi:prod::site::pulumi:providers:random::default_4_21_2::04da6b54-80e4-46f7-96ec-b56ff0331ba9",
+                "propertyDependencies": {
+                    "length": [],
+                    "prefix": []
+                },
+                "stackTrace": [
+                    {},
+                    {},
+                    {
+                        "sourcePosition": "project:///index.ts#11,21"
+                    },
+                    {},
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/pulumi/vendor/ts-node@7.0.1/index.js#3009,23"
+                    },
+                    {},
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/pulumi/vendor/ts-node@7.0.1/index.js#3011,12"
+                    },
+                    {},
+                    {},
+                    {},
+                    {},
+                    {},
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/cmd/run/run.ts#541,33"
+                    },
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/runtime/stack.ts#78,28"
+                    },
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/resource.ts#1600,22"
+                    }
+                ]
+            },
+            "detailedDiff": null
+        },
+        {
+            "op": "create",
+            "urn": "urn:pulumi:prod::site::random:index/randomPet:RandomPet::page-home",
+            "provider": "urn:pulumi:prod::site::pulumi:providers:random::default_4_21_2::04da6b54-80e4-46f7-96ec-b56ff0331ba9",
+            "newState": {
+                "urn": "urn:pulumi:prod::site::random:index/randomPet:RandomPet::page-home",
+                "custom": true,
+                "type": "random:index/randomPet:RandomPet",
+                "inputs": {
+                    "length": 2,
+                    "prefix": "home"
+                },
+                "parent": "urn:pulumi:prod::site::pulumi:pulumi:Stack::site-prod",
+                "provider": "urn:pulumi:prod::site::pulumi:providers:random::default_4_21_2::04da6b54-80e4-46f7-96ec-b56ff0331ba9",
+                "propertyDependencies": {
+                    "length": [],
+                    "prefix": []
+                },
+                "stackTrace": [
+                    {},
+                    {},
+                    {
+                        "sourcePosition": "project:///index.ts#11,21"
+                    },
+                    {},
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/pulumi/vendor/ts-node@7.0.1/index.js#3009,23"
+                    },
+                    {},
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/pulumi/vendor/ts-node@7.0.1/index.js#3011,12"
+                    },
+                    {},
+                    {},
+                    {},
+                    {},
+                    {},
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/cmd/run/run.ts#541,33"
+                    },
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/runtime/stack.ts#78,28"
+                    },
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/resource.ts#1600,22"
+                    }
+                ]
+            },
+            "detailedDiff": null
+        },
+        {
+            "op": "create",
+            "urn": "urn:pulumi:prod::site::random:index/randomPet:RandomPet::page-contact",
+            "provider": "urn:pulumi:prod::site::pulumi:providers:random::default_4_21_2::04da6b54-80e4-46f7-96ec-b56ff0331ba9",
+            "newState": {
+                "urn": "urn:pulumi:prod::site::random:index/randomPet:RandomPet::page-contact",
+                "custom": true,
+                "type": "random:index/randomPet:RandomPet",
+                "inputs": {
+                    "length": 2,
+                    "prefix": "contact"
+                },
+                "parent": "urn:pulumi:prod::site::pulumi:pulumi:Stack::site-prod",
+                "provider": "urn:pulumi:prod::site::pulumi:providers:random::default_4_21_2::04da6b54-80e4-46f7-96ec-b56ff0331ba9",
+                "propertyDependencies": {
+                    "length": [],
+                    "prefix": []
+                },
+                "stackTrace": [
+                    {},
+                    {},
+                    {
+                        "sourcePosition": "project:///index.ts#11,21"
+                    },
+                    {},
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/pulumi/vendor/ts-node@7.0.1/index.js#3009,23"
+                    },
+                    {},
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/pulumi/vendor/ts-node@7.0.1/index.js#3011,12"
+                    },
+                    {},
+                    {},
+                    {},
+                    {},
+                    {},
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/cmd/run/run.ts#541,33"
+                    },
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/runtime/stack.ts#78,28"
+                    },
+                    {
+                        "sourcePosition": "project:///node_modules/@pulumi/resource.ts#1600,22"
+                    }
+                ]
+            },
+            "detailedDiff": null
+        }
+    ],
+    "diagnostics": [
+        {
+            "message": "error: Running program '/tmp/sluiceway-fixtures/scenarios/program-exception/project/site/index.ts' failed with an unhandled exception:\nError: the site program stops here\n    at Object.\u003canonymous\u003e \u001b[90m(/tmp/sluiceway-fixtures/scenarios/program-exception/project/site/\u001b[39mindex.ts:26:7\u001b[90m)\u001b[39m\n\u001b[90m    at Module._compile (node:internal/modules/cjs/loader:1929:14)\u001b[39m\n    at Module.m._compile \u001b[90m(/tmp/sluiceway-fixtures/scenarios/program-exception/project/site/\u001b[39mnode_modules/\u001b[4m@pulumi/pulumi\u001b[24m/vendor/ts-node@7.0.1/index.js:3009:23\u001b[90m)\u001b[39m\n\u001b[90m    at node:internal/modules/cjs/loader:2060:10\u001b[39m\n    at Object.require.extensions.\u003ccomputed\u003e [as .ts] \u001b[90m(/tmp/sluiceway-fixtures/scenarios/program-exception/project/site/\u001b[39mnode_modules/\u001b[4m@pulumi/pulumi\u001b[24m/vendor/ts-node@7.0.1/index.js:3011:12\u001b[90m)\u001b[39m\n\u001b[90m    at Module.load (node:internal/modules/cjs/loader:1651:32)\u001b[39m\n\u001b[90m    at Module._load (node:internal/modules/cjs/loader:1443:12)\u001b[39m\n\u001b[90m    at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)\u001b[39m\n\u001b[90m    at Module.require (node:internal/modules/cjs/loader:1674:12)\u001b[39m\n\u001b[90m    at require (node:internal/modules/helpers:157:16)\u001b[39m\n",
+            "severity": "error"
+        }
+    ],
+    "duration": 2299038011,
+    "changeSummary": {
+        "create": 5
+    }
+}

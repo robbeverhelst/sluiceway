@@ -129,6 +129,54 @@ describe("a stack of the example project that does not exist in the backend", ()
   );
 });
 
+// Slice 2.21 (b): when a preview fails, the tool can leave stderr empty and
+// put what went wrong in the diagnostics of the document it prints on stdout.
+// Each of these recordings does that, and each diagnostic reaches the stack's
+// group of the job log, without ANSI escapes (record 0022).
+describe.each(VERSIONS)(
+  "a failed preview whose diagnostics sit in stdout, replayed from %s",
+  (version) => {
+    const DIAGNOSTICS: Record<string, string[]> = {
+      // YAML runtime: a resource type that does not exist.
+      "program-error": [
+        'Error: error resolving type of resource subnet: unable to find resource type "random:NoSuchThing" in resource provider "random"',
+        "  on Pulumi.yaml line 19:",
+        "  19:     type: random:NoSuchThing",
+      ],
+      // TypeScript runtime: the program throws.
+      "program-exception": [
+        "failed with an unhandled exception:",
+        "Error: the site program stops here",
+      ],
+      // A provider refuses one resource's inputs. The diagnostic names the resource.
+      "resource-error": [
+        "error: random:index/randomString:RandomString resource 'subnet' has a problem",
+      ],
+    };
+
+    test.each(Object.keys(DIAGNOSTICS))(
+      "%s: the diagnostics are in the group of site:prod",
+      async (scenario) => {
+        const [command] = readRecording(version, scenario).commands;
+        expect(readFileSync(join(FIXTURES, version, scenario, command?.stderr ?? ""), "utf8")).toBe(
+          "",
+        );
+
+        const { context, log } = harness(pulumi, {
+          root: ROOT,
+          run: replayedTool(version, { ...SCENARIO_OF, "site prod": scenario }),
+        });
+        await scan(context);
+        const group = log.groups.find((candidate) => candidate.title === "site:prod");
+        const text = group?.lines.join("\n") ?? "";
+        expect(group?.lines).toContain("The tool's own words:");
+        for (const diagnostic of DIAGNOSTICS[scenario] ?? []) expect(text).toContain(diagnostic);
+        expect(text).not.toContain("\u001b");
+      },
+    );
+  },
+);
+
 describe.each(VERSIONS)("a full scan of the example project, replayed from %s", (version) => {
   test("leaves the ignored playground stack out and keeps the job green for one broken stack", async () => {
     const { context, log } = harness(pulumi, { root: ROOT, run: replayedTool(version) });
