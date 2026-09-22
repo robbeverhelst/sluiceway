@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.24.1](https://github.com/sluiceway/sluiceway/compare/v0.24.0...v0.24.1) (2026-09-22)
+
+
+### Bug Fixes
+
+* a stack that was never deployed does not count its root stack resource ([0bf23ac](https://github.com/sluiceway/sluiceway/commit/0bf23ac6e0696443ddb55274f21b39926f02bbb9)), closes [#165](https://github.com/sluiceway/sluiceway/issues/165)
+* the unclaimed files leave the config file out and the hint names the shared files to keep off scan.unrelated ([929613a](https://github.com/sluiceway/sluiceway/commit/929613abb77657e0518de28beae5edd9f168f6ef))
+* two stacks with one id name the tool of each side ([fd09948](https://github.com/sluiceway/sluiceway/commit/fd099481bc8e6cd6a99c20dde7913648d4f789b2))
+
 ## [0.24.0](https://github.com/sluiceway/sluiceway/compare/v0.23.0...v0.24.0) (2026-09-22)
 
 
