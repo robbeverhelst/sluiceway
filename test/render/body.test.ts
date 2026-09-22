@@ -137,7 +137,7 @@ describe("a body with drift (record 0055)", () => {
         "",
         "- [ ] Rescan all stacks <!-- sluiceway:rescan -->",
         "",
-        "<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>",
+        "<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://docs.sluiceway.dev/)</sub>",
       ].join("\n"),
     );
   });
@@ -208,7 +208,7 @@ describe("the body of record 0029", () => {
         "",
         "- [ ] Rescan all stacks <!-- sluiceway:rescan -->",
         "",
-        "<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>",
+        "<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://docs.sluiceway.dev/)</sub>",
       ].join("\n"),
     );
   });
@@ -568,7 +568,7 @@ describe("the picture", () => {
       `src="https://raw.githubusercontent.com/sluiceway/sluiceway/${sha}/assets/mascot/pending-1-light.svg"`,
     );
     expect(body).toEndWith(
-      "<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) `0123456` · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>",
+      "<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) `0123456` · [docs](https://docs.sluiceway.dev/)</sub>",
     );
   });
 

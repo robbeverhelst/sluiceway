@@ -33,5 +33,5 @@ The channel is dry. Add a stack to \`sluiceway.yaml\` and the next scan fills it
 
 - [ ] Rescan all stacks <!-- sluiceway:rescan -->
 
-<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.4.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>"
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.4.0 · [docs](https://docs.sluiceway.dev/)</sub>"
 `;

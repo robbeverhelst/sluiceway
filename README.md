@@ -95,7 +95,7 @@ Times are in UTC.
 
 - [ ] Rescan all stacks
 
-<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.1 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.1 · [docs](https://docs.sluiceway.dev/)</sub>
 
 </details>
 

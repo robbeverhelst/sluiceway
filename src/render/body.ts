@@ -15,6 +15,7 @@ import {
   type HeaderState,
   MAX_CRATES,
 } from "./dashboard-facts.ts";
+import { DOCS } from "./docs-site.ts";
 import { COUNT_DOT, DOT_AT_ZERO, RESULT_DOT } from "./dots.ts";
 import { escapeText } from "./escape.ts";
 import { mascotUrl, urlPart } from "./images.ts";
@@ -513,7 +514,7 @@ export function renderBody(input: BodyInput): string {
   out.push("---");
   if (!input.readOnly) out.push(`- [ ] Rescan all stacks ${RESCAN_MARKER}`);
   out.push(
-    `<sub>[Sluiceway](${ACTION_URL}) ${version(input.actionRef)} · [docs](${ACTION_URL}#readme)</sub>`,
+    `<sub>[Sluiceway](${ACTION_URL}) ${version(input.actionRef)} · [docs](${DOCS.home})</sub>`,
   );
 
   // Rows of a state this version does not know: a plain list at the end of
