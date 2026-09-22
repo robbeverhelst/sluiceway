@@ -51104,6 +51104,7 @@ var tickers = exports_external.union([
   exports_external.enum(["write", "maintain", "admin"]),
   exports_external.array(username).min(1).transform((names) => [...new Set(names.map((name) => name.toLowerCase()))])
 ]);
+var author = exports_external.string().regex(/^[A-Za-z0-9_-]+(\[bot\])?$/).transform((login) => login.toLowerCase());
 var text = exports_external.string().min(1);
 var globs = exports_external.array(text);
 var ignoreEntry = exports_external.union([
@@ -51182,7 +51183,10 @@ var configSchema = exports_external.strictObject({
     unrelated: globs.describe("Globs for files that claim nothing and force nothing, such as **/*.md.").default([]),
     logDiff: exports_external.boolean().describe("Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else. Anyone who can read the repo can read its job logs. Costs one more tool run per pending stack.").default(false)
   }).prefault({}),
-  stacks: stackEntries.describe("Settings for stacks that discovery found. An entry never creates a stack.").default([])
+  stacks: stackEntries.describe("Settings for stacks that discovery found. An entry never creates a stack.").default([]),
+  mergeAndDeploy: exports_external.strictObject({
+    authors: exports_external.array(author).transform((logins) => [...new Set(logins)]).describe("Logins whose open pull requests may be merged and deployed with one tick, such as renovate[bot]. Empty turns it off.").default([])
+  }).prefault({})
 });
 
 class ConfigError extends Error {
@@ -51258,6 +51262,9 @@ function describe4(issue3, raw) {
       return problem(`expected "write", "maintain", "admin" or a list of usernames, got ${show(value)}.`);
     }
     return (issue3.errors[1] ?? []).flatMap((inner) => describe4({ ...inner, path: [...issue3.path, ...inner.path] }, raw));
+  }
+  if (issue3.code === "invalid_format" && issue3.path[0] === "mergeAndDeploy") {
+    return problem(`${show(value)} is not a GitHub login. Write the login alone, without "@". An app is written with [bot], such as renovate[bot].`);
   }
   if (issue3.code === "invalid_format") {
     return problem(String(value).includes("/") ? `${show(value)} looks like a team. Teams are not supported yet. Use a level ("write", "maintain", "admin") or usernames.` : `${show(value)} is not a GitHub username. Write the login alone, without "@".`);
@@ -52859,11 +52866,11 @@ function present(nodes) {
   return (nodes ?? []).filter((node2) => node2 !== null);
 }
 function toPullRequest(node2) {
-  const { author } = node2;
+  const { author: author2 } = node2;
   return {
     number: node2.number,
     title: node2.title,
-    author: author === null ? undefined : author.__typename === "Bot" && !author.login.endsWith("[bot]") ? `${author.login}[bot]` : author.login,
+    author: author2 === null ? undefined : author2.__typename === "Bot" && !author2.login.endsWith("[bot]") ? `${author2.login}[bot]` : author2.login,
     base: node2.baseRefName,
     merged: node2.merged,
     changedFiles: node2.changedFiles,
@@ -53065,6 +53072,122 @@ function deploymentCalls(octokit, repo) {
   };
 }
 
+// src/github/octokit-pulls.ts
+var OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!) {
+  repository(owner: $owner, name: $repo) {
+    defaultBranchRef {
+      name
+    }
+    pullRequests(states: OPEN, first: 100, orderBy: {field: CREATED_AT, direction: ASC}) {
+      nodes {
+        number
+        title
+        isDraft
+        baseRefName
+        headRefOid
+        mergeable
+        author {
+          __typename
+          login
+        }
+        changedFiles
+        files(first: 100) {
+          nodes {
+            path
+            changeType
+          }
+        }
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                state
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
+function present2(nodes) {
+  return (nodes ?? []).filter((node2) => node2 !== null);
+}
+var CHECKS = {
+  SUCCESS: "success",
+  PENDING: "pending",
+  EXPECTED: "pending",
+  FAILURE: "failure",
+  ERROR: "failure"
+};
+function toPullRequest2(node2) {
+  const files = present2(node2.files?.nodes);
+  const state = present2(node2.commits.nodes)[0]?.commit.statusCheckRollup?.state;
+  const { author: author2 } = node2;
+  return {
+    number: node2.number,
+    title: node2.title,
+    author: author2 === null ? undefined : author2.__typename === "Bot" && !author2.login.endsWith("[bot]") ? `${author2.login}[bot]` : author2.login,
+    draft: node2.isDraft,
+    base: node2.baseRefName,
+    head: node2.headRefOid,
+    mergeable: node2.mergeable === "MERGEABLE" ? "mergeable" : node2.mergeable === "CONFLICTING" ? "conflicting" : "unknown",
+    checks: state === undefined ? "none" : CHECKS[state] ?? "failure",
+    files: files.map(({ path }) => path),
+    filesComplete: files.length === node2.changedFiles && files.every(({ changeType }) => changeType !== "RENAMED")
+  };
+}
+var REFUSALS = new Set([405, 409, 422]);
+function statusOf(error63) {
+  const status = error63?.status;
+  return typeof status === "number" ? status : undefined;
+}
+function messageOf(error63) {
+  const response = error63?.response;
+  const message = response?.data?.message;
+  if (typeof message === "string")
+    return message;
+  return error63 instanceof Error ? error63.message : String(error63);
+}
+function pullCalls(octokit, repo) {
+  return {
+    async listOpenPullRequests() {
+      const data = await octokit.graphql(OPEN_PULL_REQUESTS, repo);
+      const defaultBranch = data.repository?.defaultBranchRef?.name;
+      if (defaultBranch === undefined)
+        throw new Error("GitHub named no default branch.");
+      return {
+        defaultBranch,
+        pullRequests: present2(data.repository?.pullRequests.nodes).map(toPullRequest2)
+      };
+    },
+    async allowedMergeMethods() {
+      const { data } = await octokit.rest.repos.get(repo);
+      return {
+        squash: data.allow_squash_merge,
+        rebase: data.allow_rebase_merge,
+        merge: data.allow_merge_commit
+      };
+    },
+    async mergePullRequest(number4, { head, method }) {
+      try {
+        const { data } = await octokit.rest.pulls.merge({
+          ...repo,
+          pull_number: number4,
+          sha: head,
+          merge_method: method
+        });
+        return { merged: true, sha: data.sha };
+      } catch (error63) {
+        const status = statusOf(error63);
+        if (status === undefined || !REFUSALS.has(status))
+          throw error63;
+        return { merged: false, status, message: messageOf(error63) };
+      }
+    }
+  };
+}
+
 // src/github/octokit-runs.ts
 function runCalls(octokit, repo) {
   return {
@@ -53200,6 +53323,7 @@ function createOctokitPort(octokit, repo) {
     ...runCalls(octokit, repo),
     ...attributionCalls(octokit, repo),
     ...checkCalls(octokit, repo),
+    ...pullCalls(octokit, repo),
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     },
@@ -53252,13 +53376,21 @@ function deploymentPayload(payload) {
     ...payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {}
   };
 }
+function mergePayload(payload) {
+  return { v: PAYLOAD_VERSION, ticker: payload.ticker, run: payload.run, merge: payload.merge };
+}
 var RUN_ID = /^[1-9]\d*$/;
 function readDeploymentPayload(payload) {
   if (typeof payload !== "object" || payload === null)
     return;
-  const { v, hash: hash2, ticker, run, behind } = payload;
+  const { v, hash: hash2, ticker, run, behind, merge: merge3 } = payload;
   if (v !== PAYLOAD_VERSION)
     return;
+  if (merge3 !== undefined) {
+    const number4 = typeof merge3 === "number" && Number.isInteger(merge3) && merge3 > 0;
+    const plain = hash2 === undefined && behind === undefined;
+    return number4 && plain && typeof ticker === "string" && typeof run === "string" && RUN_ID.test(run) ? { hash: "", ticker, run, merge: merge3 } : undefined;
+  }
   if (typeof hash2 !== "string" || typeof ticker !== "string" || typeof run !== "string") {
     return;
   }
@@ -53281,8 +53413,9 @@ function isRehearsal(status) {
   return status?.state === "inactive" && status.description === REHEARSED_DESCRIPTION;
 }
 var HANDED_ON_DESCRIPTION = "started in a later run";
+var MERGED_DESCRIPTION = "merged, the deploy follows in a record of its own";
 function isHandedOn(status) {
-  return status?.state === "inactive" && status.description === HANDED_ON_DESCRIPTION;
+  return status?.state === "inactive" && (status.description === HANDED_ON_DESCRIPTION || status.description === MERGED_DESCRIPTION);
 }
 function isOpenStatus(status) {
   const state = status?.state ?? "";
@@ -53321,7 +53454,8 @@ function factOf(record3, payload) {
     waiting: state !== "in_progress",
     ticker,
     run,
-    ...payload.behind ? { behind: payload.behind } : {}
+    ...payload.behind ? { behind: payload.behind } : {},
+    ...payload.merge === undefined ? {} : { merge: payload.merge }
   };
 }
 function deployFacts(records) {
@@ -53439,9 +53573,17 @@ function rowMarker(facts) {
     pairs.push(["shortened", String(facts.shortened)]);
   return marker("row", pairs);
 }
+function mergeMarker(facts) {
+  return marker("merge", [
+    ["pr", String(facts.pr)],
+    ["stack", facts.stackId],
+    ["head", facts.head]
+  ]);
+}
 var PAIRS = '((?: [^\\s="]+="[^"]*")*)';
 var ROOT_LINE = new RegExp(`^<!-- sluiceway:dashboard${PAIRS} -->[ \\t]*$`);
 var ROW_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:row${PAIRS} -->[ \\t]*$`);
+var MERGE_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:merge${PAIRS} -->[ \\t]*$`);
 var RESCAN_LINE = /^- \[[xX]\] .*<!-- sluiceway:rescan -->[ \t]*$/;
 function readPairs(payload) {
   const pairs = new Map;
@@ -53473,11 +53615,15 @@ function parseDashboard(body) {
 `).split(`
 `);
   const rows = [];
+  const merges = [];
   let rescanTicked = false;
   for (let index = 0;index < lines.length; index++) {
     const line = lines[index] ?? "";
     if (RESCAN_LINE.test(line))
       rescanTicked = true;
+    const merge3 = readMerge(line);
+    if (merge3)
+      merges.push(merge3);
     const match = ROW_LINE.exec(line);
     if (!match)
       continue;
@@ -53517,7 +53663,26 @@ function parseDashboard(body) {
       text: text4
     });
   }
-  return { root: readRoot(lines[0] ?? ""), rows, rescanTicked };
+  return { root: readRoot(lines[0] ?? ""), rows, merges, rescanTicked };
+}
+function readMerge(line) {
+  const match = MERGE_LINE.exec(line);
+  if (!match)
+    return;
+  const pairs = readPairs(match[2] ?? "");
+  const pr = pairs.get("pr") ?? "";
+  const stackId2 = pairs.get("stack");
+  const head = pairs.get("head") ?? "";
+  if (!/^[1-9]\d*$/.test(pr) || stackId2 === undefined || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(head)) {
+    return;
+  }
+  return {
+    pr: Number(pr),
+    stackId: stackId2,
+    head,
+    ticked: match[1] === "x" || match[1] === "X",
+    text: line
+  };
 }
 
 // src/render/destroy-sign.ts
@@ -53770,6 +53935,7 @@ var DRY = {
 };
 var NOTHING_TO_DEPLOY = "Nothing to deploy.";
 var INSTRUCTION_LINE = "Tick a box to deploy that stack exactly as its row shows it.";
+var MERGE_LINE2 = "Tick a box to merge that pull request. Its stack is then previewed again and deployed as that preview shows it.";
 var READ_ONLY_LINE = "This dashboard is read only, so rows have no boxes and nothing deploys from here. Rows get their boxes when `dashboard.readOnly` comes out of `sluiceway.yaml`.";
 var PREVIEW_FAILED_LINE = "These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.";
 function shortenedNote(shortened, pending) {
@@ -53916,6 +54082,11 @@ function renderBody(input2) {
   const shortened = pending.filter((row) => row.shortened > 0).length;
   if (shortened > 0)
     out.push(shortenedNote(shortened, pending.length));
+  const merges = [...input2.merges ?? []].filter((merge3, index, all) => all.findIndex((one) => one.pr === merge3.pr) === index).sort((a, b) => a.pr - b.pr);
+  if (merges.length > 0) {
+    out.push("## Updates waiting to merge", MERGE_LINE2, merges.map((merge3) => merge3.text).join(`
+`));
+  }
   out.push("## Pending", pendingLine(input2, state, pending.length));
   if (pending.length > 0)
     out.push(blocks(pending));
@@ -54333,8 +54504,8 @@ function directPushesToRead(walk, from) {
   }
   return walk.commits.filter(({ sha }) => wanted.has(sha)).map(({ sha }) => sha);
 }
-function by(author) {
-  return author === undefined ? "" : ` by ${escapeText(author)}`;
+function by(author2) {
+  return author2 === undefined ? "" : ` by ${escapeText(author2)}`;
 }
 function nameOf(merge3) {
   return merge3.kind === "pull-request" ? `#${merge3.number}${by(merge3.author)}` : `[${merge3.sha.slice(0, 7)}](${merge3.url})${by(merge3.author)}`;
@@ -54549,7 +54720,7 @@ async function settleEndedRuns(github, records, repoUrl) {
     settled.stackIds.push(stackId2);
   };
   for (const [stackId2, fact] of deployFacts(records).byStack) {
-    if (fact.kind !== "open" || fact.behind)
+    if (fact.kind !== "open" || fact.behind || fact.merge !== undefined)
       continue;
     const run = await github.getWorkflowRun(fact.run);
     if (run && !run.completed)
@@ -55358,7 +55529,8 @@ async function swapRow(context3, setup, id, make) {
       actionRef: context3.actionRef,
       personality: setup.config.dashboard.personality,
       readOnly: setup.config.dashboard.readOnly,
-      ignored: setup.ignored
+      ignored: setup.ignored,
+      merges: live.merges
     }, { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
     if (!fitted.fits) {
       throw new Error(`With this row swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment record holds the result, and the next scan brings the row in line.`);
@@ -55633,7 +55805,7 @@ async function runCheck() {
 }
 
 // src/modes/resolve-job.ts
-import { readFileSync as readFileSync4 } from "node:fs";
+import { readFileSync as readFileSync5 } from "node:fs";
 
 // src/github/workflow-ref.ts
 function readWorkflowRef(env) {
@@ -55646,12 +55818,20 @@ function readWorkflowRef(env) {
   return file2 === "" || ref === "" ? undefined : { file: file2, ref };
 }
 
+// src/modes/resolve.ts
+import { readFileSync as readFileSync4 } from "node:fs";
+import { join as join15 } from "node:path";
+
 // src/core/edit-history.ts
 var HISTORY_CAP = 100;
 var HISTORY_PAGE_SIZE = 10;
 function holds(dashboard, tick) {
   if (tick.kind === "rescan")
     return dashboard.rescanTicked;
+  if (tick.kind === "merge") {
+    const merge3 = dashboard.merges.find((candidate) => candidate.pr === tick.pr);
+    return merge3?.ticked === true && merge3.head === tick.head && merge3.stackId === tick.stackId;
+  }
   const row2 = dashboard.rows.find((candidate) => candidate.stackId === tick.stackId);
   return row2?.known === true && row2.ticked && row2.hash === tick.hash;
 }
@@ -55666,6 +55846,14 @@ function ticksIn(body) {
     if (row2.known && row2.ticked && row2.hash !== undefined && row2.state !== "queued") {
       ticks.push({ kind: "row", stackId: row2.stackId, hash: row2.hash });
     }
+  }
+  const merged = new Set;
+  for (const { pr, stackId: stackId2, head, ticked } of dashboard.merges) {
+    if (merged.has(pr))
+      continue;
+    merged.add(pr);
+    if (ticked)
+      ticks.push({ kind: "merge", pr, stackId: stackId2, head });
   }
   if (dashboard.rescanTicked)
     ticks.push({ kind: "rescan" });
@@ -55710,6 +55898,82 @@ async function nameTickers(ticks, readPage) {
   });
 }
 
+// src/core/merge-and-deploy.ts
+function qualify(pullRequest, options) {
+  const author2 = pullRequest.author?.toLowerCase();
+  if (author2 === undefined || !options.authors.includes(author2)) {
+    return { qualifies: false, why: "author" };
+  }
+  if (pullRequest.draft)
+    return { qualifies: false, why: "draft" };
+  if (pullRequest.base !== options.defaultBranch)
+    return { qualifies: false, why: "base" };
+  if (pullRequest.checks !== "success")
+    return { qualifies: false, why: "checks" };
+  if (pullRequest.mergeable === "conflicting")
+    return { qualifies: false, why: "conflicting" };
+  if (!pullRequest.filesComplete)
+    return { qualifies: false, why: "files-unknown" };
+  const { claims, unclaimed } = claim2(options.stacks, pullRequest.files, options.unrelated);
+  if (unclaimed.length > 0)
+    return { qualifies: false, why: "unclaimed" };
+  const [stackId2, ...others] = claims.keys();
+  if (others.length > 0)
+    return { qualifies: false, why: "two-stacks" };
+  if (stackId2 === undefined)
+    return { qualifies: false, why: "no-stack" };
+  return { qualifies: true, stackId: stackId2 };
+}
+var NOT_QUALIFIED = {
+  author: "its author is not in mergeAndDeploy.authors",
+  draft: "it is a draft",
+  base: "it does not merge into the default branch",
+  checks: "its checks are not all green",
+  conflicting: "it conflicts with its base branch",
+  "files-unknown": "not every file it changes is known",
+  unclaimed: "no stack claims some of its files",
+  "two-stacks": "more than one stack claims its files",
+  "no-stack": "no stack claims any of its files"
+};
+var MAX_UPDATES = 10;
+function waitingUpdates(pullRequests, options) {
+  return [...pullRequests].sort((a, b) => a.number - b.number).flatMap((pullRequest) => {
+    const qualified = qualify(pullRequest, options);
+    return qualified.qualifies ? [{ pullRequest, stackId: qualified.stackId }] : [];
+  }).slice(0, MAX_UPDATES);
+}
+var RENOVATE_METHODS = {
+  squash: "squash",
+  rebase: "rebase",
+  "fast-forward": "rebase",
+  "merge-commit": "merge"
+};
+var FALLBACK = ["squash", "rebase", "merge"];
+function mergeMethod(allowed, strategy) {
+  const renovate = strategy === undefined ? undefined : RENOVATE_METHODS[strategy];
+  const candidates = renovate === undefined ? FALLBACK : [renovate, ...FALLBACK];
+  return candidates.find((method) => allowed[method] !== false);
+}
+var RENOVATE_CONFIG_FILES = [
+  "renovate.json",
+  ".github/renovate.json",
+  ".gitlab/renovate.json",
+  ".renovaterc",
+  ".renovaterc.json"
+];
+function renovateStrategy(text4) {
+  let config2;
+  try {
+    config2 = JSON.parse(text4);
+  } catch {
+    return;
+  }
+  if (typeof config2 !== "object" || config2 === null || Array.isArray(config2))
+    return;
+  const strategy = config2.automergeStrategy;
+  return typeof strategy === "string" ? strategy : undefined;
+}
+
 // src/core/resolve.ts
 function matrixOutput(entries) {
   return JSON.stringify(entries.map(({ stack, environment, deployment }) => ({ stack, environment, deployment })));
@@ -55737,9 +56001,29 @@ function judgeTick(rule, login, permission) {
 
 // src/render/refused-ticks.ts
 function what(target) {
-  return target.kind === "rescan" ? "the rescan box" : `**${escapeText(target.stackId)}**`;
+  if (target.kind === "rescan")
+    return "the rescan box";
+  const stack = `**${escapeText(target.stackId)}**`;
+  return target.kind === "merge" ? `the merge of #${target.pr} for ${stack}` : stack;
 }
-function why({ target, reason }) {
+function sentence(text4) {
+  const trimmed = escapeText(text4).trim();
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+function why({ target, reason, detail, waitsOn }) {
+  if (reason === "merge-refused")
+    return `GitHub refused the merge: ${sentence(detail ?? "")}`;
+  if (reason === "waits-on") {
+    const ids = (waitsOn ?? []).map((id) => `**${escapeText(id)}**`);
+    const has = ids.length === 1 ? "has a change" : "have changes";
+    return `It was not merged: the stack depends on ${ids.join(" and ")}, which ${has} waiting. Deploy that first, then tick this again.`;
+  }
+  if (reason === "head-moved") {
+    return "The pull request changed since the tick, so it was not merged.";
+  }
+  if (reason === "not-qualified") {
+    return `The pull request no longer qualifies: ${sentence(detail ?? "")}`;
+  }
   if (reason === "unverified") {
     return "The tick could not be verified, because the permission lookup failed. Tick the box again for a fresh try.";
   }
@@ -55795,8 +56079,8 @@ async function judgeTicks(github, ticks) {
   }
   return outcomes;
 }
-async function commentOnRefusedTicks(github, dashboard, outcomes) {
-  const refused = outcomes.flatMap((outcome) => {
+async function commentOnRefusedTicks(github, dashboard, outcomes, merges = []) {
+  const judged = outcomes.flatMap((outcome) => {
     if (outcome.outcome !== "refused" && outcome.outcome !== "unverified")
       return [];
     return [
@@ -55807,6 +56091,7 @@ async function commentOnRefusedTicks(github, dashboard, outcomes) {
       }
     ];
   });
+  const refused = [...judged, ...merges];
   if (refused.length === 0)
     return false;
   await github.createComment(dashboard, refusedTicksComment(refused));
@@ -55827,6 +56112,42 @@ function clearTick(row2, options = {}) {
   if (!cleared)
     throw new Error("A row block did not read back as a row block.");
   return cleared;
+}
+
+// src/render/merge-row.ts
+var TITLE_LENGTH = 80;
+function shorten(title) {
+  const chars = [...title];
+  return chars.length <= TITLE_LENGTH ? title : `${chars.slice(0, TITLE_LENGTH - 3).join("")}...`;
+}
+function renderMergeRow(row2, options = {}) {
+  const by2 = row2.author === undefined ? "" : ` by ${escapeText(row2.author)}`;
+  const parts = [
+    `**${escapeText(row2.stackId)}**`,
+    ...options.redact ? [] : [escapeText(shorten(row2.title))],
+    `#${row2.pr}${by2}`
+  ];
+  return `- [ ] ${parts.join(" · ")} ${mergeMarker(row2)}`;
+}
+function mergeBlock(row2, options = {}) {
+  const [block] = parseDashboard(renderMergeRow(row2, options)).merges;
+  if (!block)
+    throw new Error("A rendered merge row did not read back as one.");
+  return block;
+}
+function clearMergeTick(row2) {
+  if (!row2.ticked)
+    return row2;
+  const [cleared] = parseDashboard(row2.text.replace(/^- \[[xX]\] /, "- [ ] ")).merges;
+  if (!cleared)
+    throw new Error("A merge row did not read back as one.");
+  return cleared;
+}
+function tickedMergeBlock(row2) {
+  const [ticked] = parseDashboard(row2.text.replace(/^- \[ \] /, "- [x] ")).merges;
+  if (!ticked)
+    throw new Error("A merge row did not read back as one.");
+  return ticked;
 }
 
 // src/modes/resolve.ts
@@ -55911,26 +56232,38 @@ async function resolveTicks(context3, handOn) {
   for (const { tick } of named)
     if (tick.kind === "row")
       hashes.set(tick.stackId, tick.hash);
-  const ticked = [...hashes.keys()].flatMap((id) => stacks?.get(id) ?? []);
+  const mergeTicks = new Map;
+  for (const { tick } of named)
+    if (tick.kind === "merge")
+      mergeTicks.set(tick.pr, tick);
+  const tickedIds = new Set([
+    ...hashes.keys(),
+    ...[...mergeTicks.values()].map((one) => one.stackId)
+  ]);
+  const ticked = [...tickedIds].flatMap((id) => stacks?.get(id) ?? []);
   const dependencies = ticked.flatMap(({ dependsOn }) => (dependsOn ?? []).flatMap((id) => stacks?.get(id) ?? []));
   const open2 = await openDeployments(context3, [...ticked, ...dependencies]);
   const dropped = [];
   const clear = new Map;
+  const clearMerges = new Set;
   const toJudge = [];
   let rescanHandled = false;
   for (const { tick, ticker } of named) {
-    const name = tick.kind === "row" ? logGroupTitle(tick.stackId) : "The rescan box";
-    const fact = tick.kind === "row" ? open2.get(tick.stackId) : undefined;
-    if (tick.kind === "row" && fact) {
+    const name = tickName(tick);
+    const fact = tick.kind === "rescan" ? undefined : open2.get(tick.stackId);
+    if (tick.kind === "merge" && (fact || !config2.deploys)) {
+      log.info(fact ? `${name} is ticked, and the stack already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. Nothing is merged and the box is cleared. Tick it again once that deploy is over.` : `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). Nothing is merged and the box is cleared.`);
+      clearMerges.add(tick.pr);
+    } else if (tick.kind === "row" && fact) {
       dropped.push(tick.stackId);
       log.info(`${name} is ticked and already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. The tick is dropped.`);
     } else if (tick.kind === "row" && !config2.deploys) {
       log.info(`${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). The box is cleared.`);
       clear.set(tick.stackId, { hash: tick.hash, note: "deploys-off" });
     } else if (ticker.named) {
-      const stack = tick.kind === "row" ? stacks?.get(tick.stackId) : undefined;
+      const stack = tick.kind === "rescan" ? undefined : stacks?.get(tick.stackId);
       toJudge.push({
-        target: stack ? { kind: "stack", stackId: stackId(stack.stack), rule: stack.tickers } : { kind: "rescan" },
+        target: !stack ? { kind: "rescan" } : tick.kind === "merge" ? { kind: "merge", pr: tick.pr, stackId: stackId(stack.stack), rule: stack.tickers } : { kind: "stack", stackId: stackId(stack.stack), rule: stack.tickers },
         editor: ticker.editor
       });
     } else if (ticker.reason === "not-in-newest-entry") {
@@ -55939,16 +56272,19 @@ async function resolveTicks(context3, handOn) {
       log.info(`${name} is ticked and the edit history names nobody for it (${NOBODY[ticker.reason]}). The box is cleared.`);
       if (tick.kind === "row")
         clear.set(tick.stackId, { hash: tick.hash, note: true });
+      else if (tick.kind === "merge")
+        clearMerges.add(tick.pr);
       else
         rescanHandled = true;
     }
   }
   const outcomes = await judgeTicks(github, toJudge);
   const allowed = [];
+  const allowedMerges = [];
   let rescan = false;
   for (const outcome of outcomes) {
     const { target, editor } = outcome.tick;
-    const name = target.kind === "stack" ? logGroupTitle(target.stackId) : "The rescan box";
+    const name = targetName(target);
     if (outcome.outcome === "not-a-person") {
       log.info(`${name} was ticked by ${editor.login || "nobody"}, who is not a person. Left alone.`);
       continue;
@@ -55957,7 +56293,11 @@ async function resolveTicks(context3, handOn) {
       log.info(`${name} was ticked by ${editor.login}.`);
       if (target.kind === "stack")
         allowed.push({ stackId: target.stackId, ticker: editor.login });
-      else
+      else if (target.kind === "merge") {
+        const tick = mergeTicks.get(target.pr);
+        if (tick)
+          allowedMerges.push({ tick, ticker: editor.login });
+      } else
         rescan = true;
     } else {
       log.info(outcome.outcome === "refused" ? `${name} was ticked by ${editor.login}, who may not tick it (${outcome.reason}). The box is cleared.` : `${name} was ticked by ${editor.login}, and GitHub gave no answer about their access: ${message2(outcome.error)}. The box is cleared.`);
@@ -55965,6 +56305,8 @@ async function resolveTicks(context3, handOn) {
       if (target.kind === "stack" && hash2 !== undefined) {
         clear.set(target.stackId, { hash: hash2, note: false });
       }
+      if (target.kind === "merge")
+        clearMerges.add(target.pr);
     }
     if (target.kind === "rescan")
       rescanHandled = true;
@@ -55984,12 +56326,12 @@ async function resolveTicks(context3, handOn) {
     pending: new Set(liveRows.flatMap((row2) => row2.known && row2.state === "pending" ? [row2.stackId] : [])),
     open: new Set(open2.keys())
   });
-  for (const { stackId: id, waitingOn } of plan.refused) {
-    const one = waitingOn.length === 1;
-    log.info(`${logGroupTitle(id)} is ticked, and it depends on ${waitingOn.map(logGroupTitle).join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`);
+  for (const { stackId: id, waitingOn: waitingOn2 } of plan.refused) {
+    const one = waitingOn2.length === 1;
+    log.info(`${logGroupTitle(id)} is ticked, and it depends on ${waitingOn2.map(logGroupTitle).join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`);
     const hash2 = hashes.get(id);
     if (hash2 !== undefined)
-      clear.set(id, { hash: hash2, note: { dependsOn: waitingOn } });
+      clear.set(id, { hash: hash2, note: { dependsOn: waitingOn2 } });
   }
   const tickers2 = new Map(start.map(({ stackId: id, ticker }) => [id, ticker]));
   const toCreate = [
@@ -56026,19 +56368,32 @@ async function resolveTicks(context3, handOn) {
     }
   }
   handOn(started.flatMap(({ stackId: stack, environment, deployment, behind }) => behind ? [] : [{ stack, environment, deployment }]));
-  if (rescan) {
+  const pendingIds = new Set(liveRows.flatMap((row2) => row2.known && row2.state === "pending" ? [row2.stackId] : []));
+  const waitingOn = (id) => (stacks?.get(id)?.dependsOn ?? []).filter((one) => pendingIds.has(one) || open2.has(one));
+  const merging = await mergeAll(context3, config2, stacks, allowedMerges, waitingOn);
+  if (merging.failure !== undefined)
+    failures.push(merging.failure);
+  for (const pr of merging.cleared)
+    clearMerges.add(pr);
+  const merged = merging.merged;
+  if (rescan || merging.mergedPrs.size > 0) {
     try {
       await dispatchScan(context3);
-      log.info("Started a full scan for the rescan box.");
+      log.info(rescan ? "Started a full scan for the rescan box." : "Started a full scan, which previews the merged change and hands it to apply.");
     } catch (error63) {
       failures.push(message2(error63));
     }
   }
   let written = true;
-  if (started.length > 0 || dropped.length > 0 || clear.size > 0 || rescanHandled) {
+  if (started.length > 0 || dropped.length > 0 || clear.size > 0 || rescanHandled || clearMerges.size > 0 || merging.mergedPrs.size > 0) {
     try {
       const attribution = new Map;
-      const result = await writeBody(github, issue3.number, (liveBody) => swapRows(context3, config2, [...stacks?.values() ?? []], ignored, liveBody, { started, dropped, clear }, attribution));
+      const result = await writeBody(github, issue3.number, (liveBody) => swapRows(context3, config2, [...stacks?.values() ?? []], ignored, liveBody, {
+        started: [...started, ...merged],
+        dropped,
+        clear,
+        merges: { merged: merging.mergedPrs, clear: clearMerges }
+      }, attribution));
       log.info(result.written ? `Wrote the dashboard (#${issue3.number}).` : `The dashboard (#${issue3.number}) already says all of this. Nothing was written.`);
     } catch (error63) {
       written = false;
@@ -56047,7 +56402,7 @@ async function resolveTicks(context3, handOn) {
   }
   if (written) {
     try {
-      await commentOnRefusedTicks(github, issue3.number, outcomes);
+      await commentOnRefusedTicks(github, issue3.number, outcomes, merging.problems);
     } catch (error63) {
       failures.push(`The comment about the refused ticks could not be written: ${message2(error63)}.`);
     }
@@ -56058,6 +56413,146 @@ async function resolveTicks(context3, handOn) {
   if (failures.length > 0)
     throw new Error(failures.join(`
 `));
+}
+function tickName(tick) {
+  if (tick.kind === "row")
+    return logGroupTitle(tick.stackId);
+  if (tick.kind === "merge")
+    return `The merge of #${tick.pr} for ${logGroupTitle(tick.stackId)}`;
+  return "The rescan box";
+}
+function targetName(target) {
+  if (target.kind === "stack")
+    return logGroupTitle(target.stackId);
+  if (target.kind === "merge") {
+    return `The merge of #${target.pr} for ${logGroupTitle(target.stackId)}`;
+  }
+  return "The rescan box";
+}
+function renovateStrategyOf(root) {
+  for (const file2 of RENOVATE_CONFIG_FILES) {
+    let text4;
+    try {
+      text4 = readFileSync4(join15(root, file2), "utf8");
+    } catch {
+      continue;
+    }
+    return renovateStrategy(text4);
+  }
+  return;
+}
+async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
+  const { github, log } = context3;
+  const result = { merged: [], mergedPrs: new Set, cleared: [], problems: [] };
+  if (ticks.length === 0 || !stacks)
+    return result;
+  let open2;
+  let method;
+  try {
+    open2 = await github.listOpenPullRequests();
+  } catch (error63) {
+    result.failure = `The open pull requests could not be read: ${message2(error63)}. The resolve job needs the permission \`pull-requests: read\` (record 0054). Nothing was merged, and the boxes stay ticked for the next run.`;
+    return result;
+  }
+  try {
+    method = mergeMethod(await github.allowedMergeMethods(), renovateStrategyOf(context3.root));
+  } catch (error63) {
+    result.failure = `The merge settings of the repo could not be read: ${message2(error63)}. The resolve job needs the permission \`contents: write\` to merge (record 0054). Nothing was merged, and the boxes stay ticked for the next run.`;
+    return result;
+  }
+  const claimants = [...stacks.values()].map(({ stack, inputs }) => ({
+    id: stackId(stack),
+    path: stack.path,
+    inputs
+  }));
+  const sorted = [...ticks].sort((a, b) => a.tick.pr - b.tick.pr);
+  for (const { tick, ticker } of sorted) {
+    const name = tickName(tick);
+    const target = {
+      kind: "merge",
+      pr: tick.pr,
+      stackId: tick.stackId,
+      rule: "write"
+    };
+    const refuse = (reason, detail, waitsOn) => {
+      result.cleared.push(tick.pr);
+      result.problems.push({ target, login: ticker, reason, detail, waitsOn });
+    };
+    const waits = waitingOn(tick.stackId);
+    if (waits.length > 0) {
+      log.info(`${name} was ticked by ${ticker}, and the stack depends on ${waits.map(logGroupTitle).join(" and ")}, which ${waits.length === 1 ? "has a change" : "have changes"} waiting. Nothing is merged.`);
+      refuse("waits-on", undefined, waits);
+      continue;
+    }
+    const pullRequest = open2.pullRequests.find(({ number: number4 }) => number4 === tick.pr);
+    if (!pullRequest) {
+      log.info(`${name} was ticked by ${ticker}, and the pull request is not open any more.`);
+      refuse("not-qualified", "it is not open any more");
+      continue;
+    }
+    if (pullRequest.head !== tick.head) {
+      log.info(`${name} was ticked by ${ticker}, and the pull request has a new head commit since.`);
+      refuse("head-moved");
+      continue;
+    }
+    const qualified = qualify(pullRequest, {
+      authors: config2.mergeAndDeploy.authors,
+      defaultBranch: open2.defaultBranch,
+      stacks: claimants,
+      unrelated: config2.scan.unrelated
+    });
+    const why2 = !qualified.qualifies ? NOT_QUALIFIED[qualified.why] : qualified.stackId !== tick.stackId ? "its files belong to another stack" : undefined;
+    if (why2 !== undefined) {
+      log.info(`${name} was ticked by ${ticker}, and the pull request no longer qualifies: ${why2}.`);
+      refuse("not-qualified", why2);
+      continue;
+    }
+    if (method === undefined) {
+      log.info(`${name} was ticked by ${ticker}, and the repo allows no merge method.`);
+      refuse("merge-refused", "the repository allows no merge method");
+      continue;
+    }
+    let answer;
+    try {
+      answer = await github.mergePullRequest(tick.pr, { head: tick.head, method });
+    } catch (error63) {
+      result.failure = `#${tick.pr} could not be merged: ${message2(error63)}. The resolve job needs the permission \`contents: write\` to merge (record 0054). Nothing more was merged, and the boxes that are left stay ticked for the next run.`;
+      return result;
+    }
+    if (!answer.merged) {
+      log.info(`${name} was ticked by ${ticker}, and GitHub refused the merge (${answer.status}): ${answer.message}`);
+      if (answer.status === 409)
+        refuse("head-moved");
+      else
+        refuse("merge-refused", answer.message);
+      continue;
+    }
+    log.info(`${name} was ticked by ${ticker} and is merged (${method}) as ${answer.sha.slice(0, 7)}.`);
+    result.mergedPrs.add(tick.pr);
+    const stack = stacks.get(tick.stackId);
+    if (!stack)
+      continue;
+    try {
+      const record3 = await github.createDeployment({
+        sha: answer.sha,
+        task: deploymentTask(tick.stackId),
+        environment: stack.environment,
+        payload: mergePayload({ ticker, run: context3.runId, merge: tick.pr })
+      });
+      result.merged.push({
+        stackId: tick.stackId,
+        environment: stack.environment,
+        deployment: record3.id,
+        ticker
+      });
+      await github.createDeploymentStatus(record3.id, { state: "queued", logUrl: runUrl(context3) });
+      log.info(`${logGroupTitle(tick.stackId)}: deployment record ${record3.id} is queued and deploys after the scan of the merge.`);
+    } catch (error63) {
+      result.failure = `#${tick.pr} is merged, and the deployment record of ${logGroupTitle(tick.stackId)} could not be written: ${message2(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). Nothing deploys for it: the scan shows the stack as pending, and a tick on its row deploys it. Nothing more was merged.`;
+      return result;
+    }
+  }
+  return result;
 }
 var NOBODY = {
   "entry-without-body": "an entry of the edit history has no body",
@@ -56182,6 +56677,12 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
   for (const one of swap.started)
     if (!seen.has(one.stackId))
       rows.push(mine(one, 0));
+  const merges = [];
+  for (const merge3 of live.merges) {
+    if (swap.merges?.merged.has(merge3.pr) || merges.some((one) => one.pr === merge3.pr))
+      continue;
+    merges.push(swap.merges?.clear.has(merge3.pr) ? clearMergeTick(merge3) : merge3);
+  }
   const fitted = fitBody({
     root: {
       scanSha: root.scanSha,
@@ -56204,7 +56705,8 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
     actionRef: context3.actionRef,
     personality: config2.dashboard.personality,
     readOnly: config2.dashboard.readOnly,
-    ignored
+    ignored,
+    merges
   }, { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
   if (!fitted.fits) {
     throw new Error(`With these rows swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment records hold what was started, and the next scan brings the rows in line.`);
@@ -56289,7 +56791,7 @@ async function startQueued(context3, handOn) {
 // src/modes/resolve-job.ts
 async function runResolve(directory) {
   const env = process.env;
-  const read2 = (path) => readFileSync4(path, "utf8");
+  const read2 = (path) => readFileSync5(path, "utf8");
   const token = readToken(getInput);
   const job = readJob(env);
   await resolve({
@@ -56308,7 +56810,7 @@ async function runResolve(directory) {
 }
 
 // src/modes/scan-job.ts
-import { readFileSync as readFileSync5 } from "node:fs";
+import { readFileSync as readFileSync6 } from "node:fs";
 
 // src/github/request-count.ts
 function countRequests(octokit) {
@@ -56521,17 +57023,17 @@ ${pointer(unlisted, id, links)}
 }
 
 // src/github/preview-pages.ts
-function statusOf(error63) {
+function statusOf2(error63) {
   return error63?.status;
 }
-function messageOf(error63) {
+function messageOf2(error63) {
   return error63 instanceof Error ? error63.message : String(error63);
 }
 function refusal(error63) {
-  const status = statusOf(error63);
+  const status = statusOf2(error63);
   if (status !== 403 && status !== 429)
     return;
-  const message3 = messageOf(error63);
+  const message3 = messageOf2(error63);
   return { message: message3, permission: /not accessible by integration/i.test(message3) };
 }
 function previewPages(github, sha) {
@@ -56563,7 +57065,7 @@ function previewPages(github, sha) {
         try {
           known = new Map((await github.listCheckRuns(sha)).map((run) => [run.name, run]));
         } catch (error63) {
-          refused = refusal(error63) ?? { message: messageOf(error63), permission: false };
+          refused = refusal(error63) ?? { message: messageOf2(error63), permission: false };
           written.refused = refused;
           return skipRest(0);
         }
@@ -56578,7 +57080,7 @@ function previewPages(github, sha) {
               run = await github.updateCheckRun(found.id, output2);
               written.updated++;
             } catch (error63) {
-              if (statusOf(error63) !== 404)
+              if (statusOf2(error63) !== 404)
                 throw error63;
             }
           }
@@ -56592,7 +57094,7 @@ function previewPages(github, sha) {
           const stopped = refuse(error63, index);
           if (stopped)
             return stopped;
-          written.failed.push({ stackId: stackId2, message: messageOf(error63) });
+          written.failed.push({ stackId: stackId2, message: messageOf2(error63) });
         }
       }
       return written;
@@ -56831,6 +57333,7 @@ async function scan(context3) {
   context3.outputs?.set("preview-failed", "0");
   context3.outputs?.set("in-sync", "0");
   context3.outputs?.set("dashboard-changed", "false");
+  context3.outputs?.set("matrix", "[]");
   const report = {};
   try {
     await scanning(context3, report);
@@ -56891,6 +57394,8 @@ async function scanning(context3, report) {
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
   const unclaimed = unclaimedFiles(plan, config2);
   let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
+  const listing = await listUpdates(context3, config2, stacks);
+  const handedOn = [];
   const attribution = attributionSource(context3.github, {
     stacks: stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
     unrelated: config2.scan.unrelated,
@@ -56945,6 +57450,7 @@ async function scanning(context3, report) {
         if (row2.known && row2.ticked)
           liveTicks.set(row2.stackId, row2.hash);
       }
+      const { merges, mergeTicks } = mergeRows(listing, live?.root?.version === MARKER_VERSION ? live.merges : [], waits, config2.dashboard.redact);
       const rows = [];
       const carried = [];
       const first = [];
@@ -57044,7 +57550,8 @@ async function scanning(context3, report) {
         actionRef: context3.actionRef,
         personality: config2.dashboard.personality,
         readOnly: config2.dashboard.readOnly,
-        ignored
+        ignored,
+        merges
       }, full ? context3.limits?.body : { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
       if (!fitted.fits) {
         if (full)
@@ -57060,6 +57567,7 @@ async function scanning(context3, report) {
         deploying,
         deferred,
         ticks,
+        mergeTicks,
         resolveWaits: waits,
         unread: deploys.facts.unread
       };
@@ -57068,7 +57576,18 @@ async function scanning(context3, report) {
       if (previewed.size === ids.length)
         compose(undefined, NO_DEPLOYS, false, new Map);
       written = await writeDashboard(context3.github, config2.dashboard, async (liveBody) => {
-        const deploys = await lateDeploys(context3, stacks, previewed, liveBody);
+        let deploys = await lateDeploys(context3, stacks, previewed, liveBody);
+        const waiting = mergesWaiting(deploys.facts);
+        const toPreview = waiting.filter(({ id }) => ids.includes(id) && !previewed.has(id));
+        if (toPreview.length > 0) {
+          throw new PreviewFirst(toPreview.map(({ id }) => ({ id, why: "merged" })));
+        }
+        if (waiting.length > 0) {
+          const ended = await handOffMerges(context3, config2, stacks, previewed, waiting, handedOn);
+          context3.outputs?.set("matrix", matrixOutput(handedOn));
+          if (ended)
+            deploys = await lateDeploys(context3, stacks, previewed, liveBody);
+        }
         attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
         composed = compose(liveBody, deploys, !config2.dashboard.readOnly && await resolveWaits(context3, liveBody, deploys), attributed);
         return composed.body;
@@ -57109,7 +57628,8 @@ var PREVIEW_FIRST = {
   "no-row": "is previewed now: the dashboard has no row for it any more.",
   "no-open-deployment": "is previewed now: its row says deploying and no deployment is open.",
   "deploy-ended": "is previewed again: a deploy of it ended after its preview started.",
-  "orphan-tick": "is previewed now: its row holds an orphan tick, and only a fresh row can ask for a fresh tick."
+  "orphan-tick": "is previewed now: its row holds an orphan tick, and only a fresh row can ask for a fresh tick.",
+  merged: "is previewed now: a pull request for it was merged, and its deploy waits for this preview."
 };
 var NO_DEPLOYS = {
   facts: { byStack: new Map, succeeded: [], unread: 0 },
@@ -57165,7 +57685,8 @@ async function lateDeploys(context3, stacks, previewed, liveBody) {
   }
 }
 async function resolveWaits(context3, liveBody, deploys) {
-  const met = parseDashboard(liveBody).rows.some((row2) => row2.known && row2.ticked && deploys.facts.byStack.get(row2.stackId)?.kind !== "open");
+  const live = parseDashboard(liveBody);
+  const met = live.rows.some((row2) => row2.known && row2.ticked && deploys.facts.byStack.get(row2.stackId)?.kind !== "open") || live.merges.some((merge3) => merge3.ticked);
   if (!met)
     return false;
   try {
@@ -57421,6 +57942,9 @@ function reportDashboard(context3, written, composed) {
   for (const { id, tick, box } of composed?.ticks ?? []) {
     log.info(tickText(logGroupTitle(id), tick, box, composed?.resolveWaits ?? false));
   }
+  for (const { pr, tick } of composed?.mergeTicks ?? []) {
+    log.info(tick === "carry" ? `Left the tick on the merge of #${pr} alone: a run that an issue edit started is queued or in progress, and its \`resolve\` job handles every tick.` : `Cleared an orphan tick on the merge of #${pr}: no run that an issue edit started is queued or in progress. Tick it again to merge.`);
+  }
   const unread = composed?.unread ?? 0;
   if (unread > 0) {
     log.info(unread === 1 ? "1 deployment record carries a payload this version of Sluiceway cannot read. It was left alone." : `${unread} deployment records carry a payload this version of Sluiceway cannot read. They were left alone.`);
@@ -57431,6 +57955,141 @@ function reportDashboard(context3, written, composed) {
   if (written.pin === "failed") {
     log.warning(`The new dashboard (#${written.number}) could not be pinned. A repo holds at most three pinned issues. Pin it by hand if you want it at the top of the issue list.`, "Dashboard not pinned");
   }
+}
+async function listUpdates(context3, config2, stacks) {
+  const { authors } = config2.mergeAndDeploy;
+  if (authors.length === 0 || !config2.deploys || config2.dashboard.readOnly)
+    return { kind: "off" };
+  const { log } = context3;
+  let open2;
+  try {
+    open2 = await context3.github.listOpenPullRequests();
+  } catch (error63) {
+    log.info(`The open pull requests could not be read: ${error63 instanceof Error ? error63.message : error63}. The updates waiting to merge are kept as they were. The scan job needs the permission \`pull-requests: read\` (record 0054).`);
+    return { kind: "failed" };
+  }
+  const options = {
+    authors,
+    defaultBranch: open2.defaultBranch,
+    stacks: stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
+    unrelated: config2.scan.unrelated
+  };
+  for (const pullRequest of open2.pullRequests) {
+    const qualified = qualify(pullRequest, options);
+    if (!qualified.qualifies && qualified.why !== "author") {
+      log.info(`#${pullRequest.number} is not listed to merge: ${NOT_QUALIFIED[qualified.why]}.`);
+    }
+  }
+  const updates = waitingUpdates(open2.pullRequests, options);
+  log.info(updates.length === 0 ? "No pull request waits to merge." : `${plural2(updates.length, "pull request")} ${updates.length === 1 ? "waits" : "wait"} to merge: ${updates.map(({ pullRequest }) => `#${pullRequest.number}`).join(", ")}.`);
+  return { kind: "listed", updates };
+}
+function mergeRows(listing, live, waits, redact) {
+  if (listing.kind === "off")
+    return { merges: [], mergeTicks: [] };
+  if (listing.kind === "failed")
+    return { merges: [...live], mergeTicks: [] };
+  const mergeTicks = [];
+  const merges = listing.updates.map(({ pullRequest, stackId: id }) => {
+    const block = mergeBlock({
+      pr: pullRequest.number,
+      stackId: id,
+      head: pullRequest.head,
+      title: pullRequest.title,
+      author: pullRequest.author
+    }, { redact });
+    const ticked = live.find((one) => one.pr === block.pr);
+    if (!ticked?.ticked)
+      return block;
+    const same = ticked.head === block.head && ticked.stackId === block.stackId;
+    const carry = same && waits;
+    mergeTicks.push({ pr: block.pr, tick: carry ? "carry" : "sweep" });
+    return carry ? tickedMergeBlock(block) : block;
+  });
+  return { merges, mergeTicks };
+}
+function mergesWaiting(facts) {
+  const waiting = [];
+  for (const [id, fact] of facts.byStack) {
+    if (fact.kind === "open" && fact.merge !== undefined) {
+      waiting.push({ id, fact: { ...fact, merge: fact.merge } });
+    }
+  }
+  return waiting.sort((a, b) => byCodeUnit4(a.id, b.id));
+}
+async function handOffMerges(context3, config2, stacks, previewed, waiting, handedOn) {
+  const { github, log } = context3;
+  const logUrl = runUrlOf(context3, context3.runId);
+  let ended = false;
+  for (const { id, fact } of waiting) {
+    const name = logGroupTitle(id);
+    const merge3 = await holdsMerge(context3, fact.deployment);
+    if (!merge3.holds) {
+      if (merge3.sha !== undefined) {
+        log.info(`${name} waits for the scan of #${fact.merge}: this scan checked out ${short(context3.sha)}, which does not hold the merge ${short(merge3.sha)} yet.`);
+      }
+      continue;
+    }
+    const stack = stacks.find(({ stack: one }) => stackId(one) === id);
+    const result = previewed.get(id)?.result;
+    const end = async (state, description) => {
+      try {
+        await github.createDeploymentStatus(fact.deployment, { state, description, logUrl });
+      } catch (error63) {
+        throw new Error(`The deployment record ${fact.deployment} of ${name} could not be ended: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permission \`deployments: write\` (record 0054).`);
+      }
+      ended = true;
+    };
+    if (!stack || !result) {
+      await end("failure", deployFailureText({ kind: "unknown-stack" }));
+      log.info(`${name} is not in the repo any more, so the merge of #${fact.merge} deploys nothing.`);
+    } else if (!config2.deploys) {
+      await end("failure", deployFailureText({ kind: "deploys-off" }));
+      log.info(`#${fact.merge} is merged, and deploys are turned off in sluiceway.yaml (deploys: false). ${name} is not deployed.`);
+    } else if (!result.ok) {
+      await end("failure", deployFailureText({ kind: "preview-failed", reason: result.reason }));
+      log.info(`#${fact.merge} is merged, and the preview of ${name} failed, so nothing is deployed.`);
+    } else if (result.diff.changes.length === 0) {
+      await end("success", IN_SYNC_DESCRIPTION);
+      log.info(`#${fact.merge} is merged, and ${name} has nothing to deploy.`);
+    } else {
+      await end("inactive", MERGED_DESCRIPTION);
+      const hash2 = diffHash(result.diff);
+      try {
+        const record3 = await github.createDeployment({
+          sha: context3.sha,
+          task: deploymentTask(id),
+          environment: stack.environment,
+          payload: deploymentPayload({ hash: hash2, ticker: fact.ticker, run: context3.runId })
+        });
+        handedOn.push({ stack: id, environment: stack.environment, deployment: record3.id });
+        await github.createDeploymentStatus(record3.id, { state: "queued", logUrl });
+        log.info(`#${fact.merge} is merged: deployment record ${record3.id} of ${name} is queued with diff hash ${hash2}, ticked by ${fact.ticker}, and handed to apply.`);
+      } catch (error63) {
+        throw new Error(`#${fact.merge} is merged, and the deployment record that deploys ${name} could not be written: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permission \`deployments: write\` (record 0054). Nothing deploys: the row shows the stack as pending, and a tick deploys it.`);
+      }
+    }
+  }
+  return ended;
+}
+async function holdsMerge(context3, deployment) {
+  const { github, log } = context3;
+  let sha;
+  try {
+    ({ sha } = await github.getDeployment(deployment));
+  } catch (error63) {
+    log.info(`Deployment record ${deployment} could not be read: ${error63 instanceof Error ? error63.message : error63}. It waits for a later scan.`);
+    return { holds: false };
+  }
+  if (sha === context3.sha)
+    return { holds: true, sha };
+  let status;
+  try {
+    ({ status } = await github.compareCommits(sha, context3.sha));
+  } catch {
+    status = "failed";
+  }
+  return { holds: status === "ahead" || status === "identical", sha };
 }
 
 // src/modes/scan-job.ts
@@ -57457,14 +58116,14 @@ async function runScan(directory) {
     sha: job.sha,
     event: job.event,
     workflow: job.workflow,
-    actionRef: readActionRef(env, directory, (path) => readFileSync5(path, "utf8")),
+    actionRef: readActionRef(env, directory, (path) => readFileSync6(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),
-    publicRepo: publicRepo(readEventPayload(env, (path) => readFileSync5(path, "utf8")))
+    publicRepo: publicRepo(readEventPayload(env, (path) => readFileSync6(path, "utf8")))
   });
 }
 
 // src/modes/settle-job.ts
-import { readFileSync as readFileSync6 } from "node:fs";
+import { readFileSync as readFileSync7 } from "node:fs";
 
 // src/core/settle.ts
 function openRecordsOfRun(records, runId) {
@@ -57474,7 +58133,7 @@ function openRecordsOfRun(records, runId) {
     if (stackId2 === undefined)
       continue;
     const fact = deployFacts([record3]).byStack.get(stackId2);
-    if (fact?.kind !== "open" || fact.run !== runId)
+    if (fact?.kind !== "open" || fact.run !== runId || fact.merge !== undefined)
       continue;
     found.set(record3.id, {
       id: record3.id,
@@ -57583,7 +58242,7 @@ async function runSettle() {
     log: actionsLog(),
     repoUrl: job.repoUrl,
     runId: job.runId,
-    event: readEventPayload(env, (path) => readFileSync6(path, "utf8")),
+    event: readEventPayload(env, (path) => readFileSync7(path, "utf8")),
     workflow: readWorkflowRef(env),
     outputs: actionsOutputs(env.RUNNER_TEMP)
   });

@@ -430,7 +430,15 @@ async function resolveTicks(
 
   // The merges come after the hand-off, so a merge that fails never costs a
   // deploy that was already started (record 0054).
-  const merging = await mergeAll(context, config, stacks, allowedMerges);
+  // A merged change deploys on its own, so it waits for nothing: a stack whose
+  // dependency has a change waiting or deploying is not merged for (record
+  // 0056).
+  const pendingIds = new Set(
+    liveRows.flatMap((row) => (row.known && row.state === "pending" ? [row.stackId] : [])),
+  );
+  const waitingOn = (id: string): string[] =>
+    (stacks?.get(id)?.dependsOn ?? []).filter((one) => pendingIds.has(one) || open.has(one));
+  const merging = await mergeAll(context, config, stacks, allowedMerges, waitingOn);
   if (merging.failure !== undefined) failures.push(merging.failure);
   for (const pr of merging.cleared) clearMerges.add(pr);
   const merged = merging.merged;
@@ -563,6 +571,7 @@ async function mergeAll(
   config: Config,
   stacks: Map<string, ConfiguredStack> | undefined,
   ticks: readonly { tick: MergeTick; ticker: string }[],
+  waitingOn: (stackId: string) => string[],
 ): Promise<Merging> {
   const { github, log } = context;
   const result: Merging = { merged: [], mergedPrs: new Set(), cleared: [], problems: [] };
@@ -597,10 +606,18 @@ async function mergeAll(
       stackId: tick.stackId,
       rule: "write" as const,
     };
-    const refuse = (reason: RefusedTick["reason"], detail?: string) => {
+    const refuse = (reason: RefusedTick["reason"], detail?: string, waitsOn?: string[]) => {
       result.cleared.push(tick.pr);
-      result.problems.push({ target, login: ticker, reason, detail });
+      result.problems.push({ target, login: ticker, reason, detail, waitsOn });
     };
+    const waits = waitingOn(tick.stackId);
+    if (waits.length > 0) {
+      log.info(
+        `${name} was ticked by ${ticker}, and the stack depends on ${waits.map(logGroupTitle).join(" and ")}, which ${waits.length === 1 ? "has a change" : "have changes"} waiting. Nothing is merged.`,
+      );
+      refuse("waits-on", undefined, waits);
+      continue;
+    }
     const pullRequest = open.pullRequests.find(({ number }) => number === tick.pr);
     if (!pullRequest) {
       log.info(`${name} was ticked by ${ticker}, and the pull request is not open any more.`);
@@ -788,7 +805,7 @@ interface Swap {
   clear: ReadonlyMap<string, Clear>;
   // The merge rows of pull requests this run merged go, and the ones whose
   // box it clears stay without their tick (record 0054).
-  merges: { merged: ReadonlySet<number>; clear: ReadonlySet<number> };
+  merges?: { merged: ReadonlySet<number>; clear: ReadonlySet<number> } | undefined;
 }
 
 // The builder of the write loop (record 0004): swap this run's own row blocks,
@@ -920,8 +937,8 @@ async function swapRows(
   // request the first counts.
   const merges: ParsedMerge[] = [];
   for (const merge of live.merges) {
-    if (swap.merges.merged.has(merge.pr) || merges.some((one) => one.pr === merge.pr)) continue;
-    merges.push(swap.merges.clear.has(merge.pr) ? clearMergeTick(merge) : merge);
+    if (swap.merges?.merged.has(merge.pr) || merges.some((one) => one.pr === merge.pr)) continue;
+    merges.push(swap.merges?.clear.has(merge.pr) ? clearMergeTick(merge) : merge);
   }
 
   const fitted = fitBody(

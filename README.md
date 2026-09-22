@@ -378,7 +378,7 @@ The merge. `resolve` merges with the workflow token, which needs `contents: writ
       checks: write
 ```
 
-The deploy. A merge made with the workflow token starts no run of its push, so `resolve` starts a full scan instead, and that scan hands the merged change to `apply` through its own `matrix` output. Give the scan step an `id`, and let `apply` and `settle` take the matrix of whichever job ran:
+The deploy. A merge made with the workflow token starts no run of its push, so `resolve` starts the workflow again instead, and the scan of that run hands the merged change on through its own `matrix` output. `resolve` runs in that run too, so the scan's matrix gets an apply job of its own. Give the scan step an `id`, add a copy of the `apply` job that takes the scan's matrix, and let `settle` wait for both:
 
 ```yaml
   scan:
@@ -386,17 +386,19 @@ The deploy. A merge made with the workflow token starts no run of its push, so `
       matrix: ${{ steps.scan.outputs.matrix }}
     # ... the steps as above, with `id: scan` on the Sluiceway step
 
-  apply:
-    needs: [scan, resolve]
-    if: ${{ !cancelled() && (needs.resolve.outputs.matrix || needs.scan.outputs.matrix || '[]') != '[]' }}
+  # A copy of the apply job. Only these three keys differ: runs-on,
+  # concurrency and the steps are the ones of apply.
+  apply-merged:
+    needs: scan
+    if: ${{ !cancelled() && needs.scan.outputs.matrix != '' && needs.scan.outputs.matrix != '[]' }}
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(needs.resolve.outputs.matrix || needs.scan.outputs.matrix) }}
+        include: ${{ fromJson(needs.scan.outputs.matrix) }}
 
   settle:
-    needs: [scan, resolve, apply]
-    if: always() && (needs.resolve.outputs.matrix || needs.scan.outputs.matrix || '[]') != '[]'
+    needs: [scan, resolve, apply, apply-merged]
+    if: always() && ((needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]') || (needs.scan.outputs.matrix != '' && needs.scan.outputs.matrix != '[]'))
 ```
 
 The pull requests. The scan reads them with `pull-requests: read`, which the block above already gives.

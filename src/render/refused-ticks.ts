@@ -15,8 +15,17 @@ export interface RefusedTick {
   // other three are about the pull request of a merge tick (record 0054):
   // GitHub refused the merge, with its own words in `detail`; its head moved
   // since the tick; or it no longer qualifies, with why in `detail`.
-  reason: RefusalReason | "unverified" | "merge-refused" | "head-moved" | "not-qualified";
+  // "waits-on": a stack the pull request's stack depends on has a change
+  // waiting or deploying (record 0056), with their ids in `waitsOn`.
+  reason:
+    | RefusalReason
+    | "unverified"
+    | "merge-refused"
+    | "head-moved"
+    | "not-qualified"
+    | "waits-on";
   detail?: string | undefined;
+  waitsOn?: readonly string[] | undefined;
 }
 
 function what(target: TickTarget): string {
@@ -31,8 +40,13 @@ function sentence(text: string): string {
   return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
-function why({ target, reason, detail }: RefusedTick): string {
+function why({ target, reason, detail, waitsOn }: RefusedTick): string {
   if (reason === "merge-refused") return `GitHub refused the merge: ${sentence(detail ?? "")}`;
+  if (reason === "waits-on") {
+    const ids = (waitsOn ?? []).map((id) => `**${escapeText(id)}**`);
+    const has = ids.length === 1 ? "has a change" : "have changes";
+    return `It was not merged: the stack depends on ${ids.join(" and ")}, which ${has} waiting. Deploy that first, then tick this again.`;
+  }
   if (reason === "head-moved") {
     return "The pull request changed since the tick, so it was not merged.";
   }

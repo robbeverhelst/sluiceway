@@ -245,6 +245,36 @@ describe("a merge that does not happen", () => {
   });
 });
 
+// Slice 4.2 next to record 0056: the merged change deploys on its own, so a
+// stack whose dependency has a change waiting is not merged for.
+describe("a merge for a stack with dependencies", () => {
+  test("is not merged while a stack it depends on has a change waiting, and the ticker is told", async () => {
+    const h = await ready(`${CONFIG}stacks:\n  - path: a\n    dependsOn:\n      - b:prod\n`);
+    tickMerge(h);
+
+    await wake(h);
+
+    expect(h.github.merges).toEqual([]);
+    expect(merges(h).map(({ ticked }) => ticked)).toEqual([false]);
+    expect(h.github.comments(h.number)).toEqual([
+      "@alice ticked the merge of #418 for **a:prod**. It was not merged: the stack depends on **b:prod**, which has a change waiting. Deploy that first, then tick this again. Nothing was started and the box is cleared.",
+    ]);
+  });
+
+  test("is merged when what it depends on is in sync", async () => {
+    const h = await scanned(
+      { "a:prod": inSync("a:prod"), "b:prod": inSync("b:prod") },
+      { config: `${CONFIG}stacks:\n  - path: a\n    dependsOn:\n      - b:prod\n` },
+    );
+    h.github.seedOpenPullRequest({ number: 418, head: HEAD, files: ["a/values.yaml"] });
+    tickMerge(h);
+
+    await wake(h);
+
+    expect(h.github.merges).toHaveLength(1);
+  });
+});
+
 describe("merge ticks next to row ticks", () => {
   test("a row tick is handed to apply and a merge tick in the same edit merges", async () => {
     const h = await ready();
