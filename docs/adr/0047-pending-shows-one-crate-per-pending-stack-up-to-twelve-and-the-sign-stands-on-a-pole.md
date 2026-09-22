@@ -1,5 +1,7 @@
 # Pending shows one crate per pending stack up to twelve, and the destroy sign stands on a pole
 
+> Amended, 2026-09-22: small fish swim upstream of Penny, one per water step up to four, and two in the deploying picture.
+
 Record 0039 gave pending three pictures, picked from the pending count, with 1, 3 and 6 crates. The owner looked at the header on a real dashboard with 14 pending stacks on 2026-09-21 and asked for three things: as many crates as there are pending stacks, a maximum beyond which the crates run on off the picture, and the warning sign further right. Record 0039 had rejected one crate per stack because it needs a file pair per count and says nothing above the cap. The files turned out small, only one is fetched per view, and the picture past the cap does say something: more than the cap.
 
 The pictures were drawn from the header generator and judged on rendered issues in the private lab repo, in light and dark and at phone width (lab issues 50 to 52).
@@ -29,4 +31,22 @@ This supersedes the three pending levels of 0039 and amends 0043 and 0038. The f
 - The destroy sign is a triangle on a grey pole that stands in the water downstream, right of the wordmark and left of the reeds. It still does not move, and a file with it still differs from the file without it by the sign and the alt text alone. The space low on the downstream side right of the gate stays free for the drift state.
 - The crate is drawn once per file and placed with `<use href="#k">`, which points inside the file, so twelve crates fit under the cap. The fullest file is `deploying-destroys-dark.svg` at 9,787 of 10,240 bytes, the fullest pending file `pending-more-destroys-dark.svg` at 9,553.
 - Every header file changes once, for the five gauge marks and the moved sign. Their URLs change with every release anyway (0033).
-- The generator and the lab issue bodies are on the `prototype/exact-crates` branch of the private lab repo. Its `crates.mjs` writes the 62 shipped files.
+- The generator and the lab issue bodies are on the `prototype/exact-crates` branch of the private lab repo. Its `crates.mjs` writes the 62 shipped files as they were before the fish (see the amendment).
+
+## Amended, 2026-09-22
+
+The owner asked for "a couple small fish on the left side when the level increases." Small fish now swim in the water upstream of Penny, and there are more of them as the water rises. They were drawn from the header generator and judged on a rendered issue in the private lab repo, in light and dark and at phone width (lab issue 59).
+
+| Question | Answer |
+|---|---|
+| How many fish? | One per water step, up to four: 1 at the first step, then 2, 3, 4, and 4 at the fifth. The fish follow the water step, not the crate count, so a reader does not need to count them. |
+| From the first step? | Yes. No fish at the lowest water was the other option. |
+| Which colour? | Light teal, the foam colour, in both themes. Copper blended into the row of crates. |
+| In the deploying picture too? | Yes, two fish upstream while the gate is open. Deploying is still one picture. |
+| Do they move? | Each fish drifts slowly back and forth, 14 pixels over 7 seconds, and stands still under `prefers-reduced-motion`. |
+
+- A fish is an oval and a tail, about 17 by 8 pixels at 880 wide. It faces upstream, holding against the current, and sits at least 13 pixels under the surface, below the crates. The same count always gives the same picture.
+- The fish is drawn once per file and placed with `<use href="#f">`, like the crate. The fullest file is now `deploying-destroys-dark.svg` at 10,142 of 10,240 bytes, the fullest pending file `pending-more-destroys-dark.svg` at 10,046. There is little room left, so final art that adds more asks the owner for a higher cap (0039).
+- The alt texts stay as they are. The fish add no fact: the number of stacks is in the alt text already.
+- A file with the destroy sign still differs from the file without it by the sign and the alt text alone. `failing`, `first-run` and `in-sync` have no fish and are unchanged.
+- The generator and the lab issue body are on the `prototype/header-fish` branch of the private lab repo. Its `fish.mjs` writes the 62 shipped files, and without fish it writes the files of `crates.mjs` byte for byte.

@@ -13,6 +13,8 @@ Penny, the gate, standing mid-channel on a quay: upstream on the left, downstrea
 
 The header always shows the real state. The water behind Penny rises in five steps, one amber mark each on the gauge: 1 or 2, 3 or 4, 5 to 7, 8 to 10, and 11 or more pending.
 
+Small light teal fish swim in the water upstream of Penny, one per water step up to four, and two in `deploying`. They drift slowly back and forth.
+
 When a pending or deploying row has a delete or replace, the same picture carries the destroy sign: an amber warning triangle on a pole in the water, right of the wordmark. It does not move. Water, crates and Penny are exactly as in the picture without it.
 
 | Picture with the sign | Shown when |
@@ -22,7 +24,7 @@ When a pending or deploying row has a delete or replace, the same picture carrie
 
 `failing`, `in-sync` and `first-run` have no file with the sign (record 0043).
 
-Final art may redraw every shape. It keeps the character and colours (record 0030), the composition (0038), the states (0031), the crates and water steps (0047), the destroy sign (0043, 0047) and the file rules (0033, 0039):
+Final art may redraw every shape. It keeps the character and colours (record 0030), the composition (0038), the states (0031), the crates, water steps and fish (0047), the destroy sign (0043, 0047) and the file rules (0033, 0039):
 
 - `<picture>-<theme>.svg` and `<picture>-destroys-<theme>.svg`, `viewBox="0 0 880 160"`, shown at width 880 and centered
 - one self-contained SVG: no script, no font, no text element, no raster image, no external reference
@@ -32,4 +34,4 @@ Final art may redraw every shape. It keeps the character and colours (record 003
 
 The wordmark is drawn as paths, so it looks the same on every system. Its outlines come from Inter ExtraBold, which is under the SIL Open Font License 1.1. The font itself is not in this repo.
 
-The files are generated. The generator lives with the prototype, on the `prototype/exact-crates` branch of the private lab repo.
+The files are generated. The generator lives with the prototype, on the `prototype/header-fish` branch of the private lab repo.
