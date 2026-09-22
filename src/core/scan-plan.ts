@@ -4,7 +4,7 @@
 // wrong, so every doubt ends in a full scan.
 
 import { type Claimant, claim } from "./claim.ts";
-import { CONFIG_FILE } from "./config-file.ts";
+import { CONFIG_FILES } from "./config-file.ts";
 
 // GitHub's compare call lists at most this many files. A list this long may
 // be missing files (record 0010).
@@ -154,7 +154,11 @@ export function oneRowPerStack(
 // but the config file, which no stack is meant to claim (onboarding log,
 // hurdle 14).
 export function unclaimedToPlace(files: string[]): string[] {
-  return files.filter((file) => file !== CONFIG_FILE);
+  return files.filter((file) => !isConfigFile(file));
+}
+
+function isConfigFile(file: string): boolean {
+  return (CONFIG_FILES as readonly string[]).includes(file);
 }
 
 function noClaimant(files: string[]): string {
@@ -190,7 +194,8 @@ export function fullScanReasonText(reason: FullScanReason): string {
       // stack is meant to claim it (onboarding log, hurdle 14).
       const others = unclaimedToPlace(reason.files);
       if (others.length === reason.files.length) return noClaimant(others);
-      const changed = `${CONFIG_FILE} changed, so every stack is previewed`;
+      const file = reason.files.find(isConfigFile);
+      const changed = `${file} changed, so every stack is previewed`;
       return others.length === 0 ? changed : `${changed}, and ${noClaimant(others)}`;
     }
     case "does-not-fit":

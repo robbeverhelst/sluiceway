@@ -1,6 +1,6 @@
 # Configuration
 
-Sluiceway reads one optional file, `sluiceway.yaml`, at the root of the repo. Without it every stack that discovery finds gets a row, anyone with write access can tick, and every setting below has its default. Add the file when a default does not fit.
+Sluiceway reads one optional file, `sluiceway.yaml`, at the root of the repo. `sluiceway.yml` is read the same way, and both at once is an error. Without it every stack that discovery finds gets a row, anyone with write access can tick, and every setting below has its default. Add the file when a default does not fit.
 
 `sluiceway.yaml` is about your stacks: who may tick them, which ones to leave out, what files they read. When and on what runner Sluiceway runs is GitHub's business and lives in the workflow file under `.github/workflows/`. [What goes where](workflow.md#what-goes-where) has the table.
 

@@ -19,3 +19,7 @@ The risk was never the word. It is `core/` quietly assuming Pulumi semantics, so
 - In the config, the brief's required `stack:` key becomes an optional `name:` plus an optional block of adapter options. Pulumi zero config is unchanged.
 
 Research: https://github.com/sluiceway/sluiceway/blob/research/opentofu-adapter-fit/docs/research/opentofu-adapter-fit.md
+
+## Settled while building (slice 5.9)
+
+- `sluiceway.yml` is read as a second spelling of `sluiceway.yaml` (slice 1.2 had refused it). Both at once is still refused, not skipped, for the reason slice 1.2 gave: one of them would be dropped with its tick rule and no word. A problem in the file is reported under the name the repo uses, and a change to either name is the config file changing, a full scan with the words of hurdle 14. `init` still writes `sluiceway.yaml`, and counts a `sluiceway.yml` as a config that is there. This record is where the config file's entries are defined, so the note sits here.

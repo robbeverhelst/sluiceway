@@ -251,6 +251,11 @@ describe("the words for why a scan is a full scan", () => {
       { kind: "unclaimed", files: ["package.json", "sluiceway.yaml", "bun.lock", "a.json"] },
       "sluiceway.yaml changed, so every stack is previewed, and no stack claims package.json and 2 more changed files",
     ],
+    // Slice 5.9: the second spelling is the config file too.
+    [
+      { kind: "unclaimed", files: ["package.json", "sluiceway.yml"] },
+      "sluiceway.yml changed, so every stack is previewed, and no stack claims package.json",
+    ],
     // Only the file at the repo root is the config file.
     [{ kind: "unclaimed", files: ["docs/sluiceway.yaml"] }, "no stack claims docs/sluiceway.yaml"],
     [

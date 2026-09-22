@@ -357,10 +357,10 @@ export type Config = z.output<typeof configSchema>;
 export class ConfigError extends Error {
   readonly problems: string[];
 
-  constructor(problems: string[]) {
-    super(
-      ["sluiceway.yaml is not valid:", ...problems.map((problem) => `- ${problem}`)].join("\n"),
-    );
+  // `file` is the name of the config file, sluiceway.yaml unless the repo
+  // uses the second spelling (slice 5.9).
+  constructor(problems: string[], file = "sluiceway.yaml") {
+    super([`${file} is not valid:`, ...problems.map((problem) => `- ${problem}`)].join("\n"));
     this.name = "ConfigError";
     this.problems = problems;
   }

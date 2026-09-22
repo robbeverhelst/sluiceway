@@ -399,12 +399,14 @@ describe("a setup that is not valid", () => {
     expect(summary).toContain(escapeText(message));
   });
 
-  test("a sluiceway.yml is refused with the loader's own message", async () => {
-    const { error, summary } = await run({ ...FIXTURE, "sluiceway.yml": "tickers: write\n" });
+  test("a sluiceway.yml next to a sluiceway.yaml is refused with the loader's own message", async () => {
+    const { error, summary } = await run({
+      ...FIXTURE,
+      "sluiceway.yaml": "tickers: write\n",
+      "sluiceway.yml": "tickers: write\n",
+    });
     expect(error).toBeInstanceOf(ConfigError);
-    expect(summary).toContain(
-      "found sluiceway.yml. The file must be named sluiceway.yaml. Rename it.",
-    );
+    expect(summary).toContain("found both sluiceway.yaml and sluiceway.yml. Keep one of them.");
   });
 
   test("the summary of a config that is not valid", async () => {

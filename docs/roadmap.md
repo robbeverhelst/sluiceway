@@ -69,7 +69,6 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A scan that works out by itself that its workflow has no `resolve` job, so that `dashboard.readOnly` is not needed
 - `dashboard.readOnly` as a lock: `resolve` refusing a tick while it is on
 - The stacks a narrowed scan carried, in the result file of a scan
-- `sluiceway.yml` as a second spelling of the config file
 - Who made a deploy outside the dashboard, from Pulumi Cloud's `requestedBy`
 - Deploys made outside the dashboard for OpenTofu, Helm and kubectl stacks
 - Reading the tool's history in a narrowed scan, gated by `pulumi stack ls` and its `lastUpdate`

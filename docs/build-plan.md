@@ -80,7 +80,7 @@ Collected here so nobody has to search the records. The record in the last colum
 
 ### `sluiceway.yaml`
 
-The file is optional and sits at the repo root. Unknown keys are an error, because a typo in `tickers` would change who can deploy.
+The file is optional and sits at the repo root. Since slice 5.9 `sluiceway.yml` is read the same way, and both at once is an error. Unknown keys are an error, because a typo in `tickers` would change who can deploy.
 
 | Key | Default | Meaning | Record |
 |---|---|---|---|
