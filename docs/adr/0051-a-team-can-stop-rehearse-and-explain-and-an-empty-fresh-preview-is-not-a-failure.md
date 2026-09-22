@@ -51,3 +51,15 @@ Now `apply` checks for an empty fresh preview after the preview and before the h
 - Attribution counts from this record like from any success (0026): the stack was in sync at that commit.
 - A diff with only tracking changes (an import, a forget, a move) is not empty. It still goes through the hash check and deploys.
 - With `scan.logDiff` on, no tool diff is run for an empty preview, as before.
+
+## 4. A moved change is told to the person who ticked
+
+When the fresh preview gives another diff hash than the tick approved (0008), `apply` deploys nothing, the record ends as `error`, the job is red and the row gets the fresh diff with a failure line. None of that reaches the person who ticked: a red job in a run they did not start sends them nothing, and a failure line is only seen by someone who opens the dashboard. So `apply` writes one comment on the dashboard, the way 0018 does for a refused tick:
+
+> @alice ticked **apps/web:prod**, and the change moved since the tick, so nothing was deployed. The row on the dashboard shows the change as it is now. Tick it again to deploy that.
+
+- The ticker is mentioned once, from the payload of the record (0003), which is the person the edit history named (0025). The stack is named in bold and escaped, as on a row. Nothing of the diff is in it: no type, no name, no property path and never a value (0021). The words are plain (0032).
+- It is written after the row swap, because it says the row shows the fresh diff, as 0018 writes the refused tick's comment after the body. With no dashboard, or a body that could not be written, no comment is written. The job is red already.
+- A comment that cannot be written is one more line in the red job's message, naming `issues: write`. It changes nothing about the record or the row.
+- Only a moved change gets one. A deploy that failed does not: that is about the stack or the tool, the failure line says it, and later.md keeps that comment out. A refused re-run (0019), a record of another run and `deploys: false` do not either: the first two are about the workflow, and the switch is a decision the team made in review. An empty fresh preview is not a moved change any more (part 3), so it gets none.
+- This amends 0018, whose comment for a refused tick was the only one Sluiceway wrote.

@@ -459,6 +459,7 @@ To turn it into the whole workflow later, replace the file with the one of step 
 - **Tick the box to deploy that stack.** Sluiceway checks that you may tick it, previews the stack again, and deploys only if the fresh preview still matches what the row showed. The row says deploying, then goes back to in sync, or shows a failure line with a link to the run.
 - **A tick approves the change as shown.** The row shows which properties change, never their values, so a tick means "change these properties on these resources, at whatever value the code has when the deploy runs". A new resource, a delete or a different property stops the deploy and brings the row back with the fresh diff. [docs/security.md](docs/security.md#what-a-tick-promises) has the whole promise.
 - **A refused tick deploys nothing.** The box is cleared and one comment on the dashboard says why.
+- **A change that moved since the tick deploys nothing.** The row shows the change as it is now, and one comment on the dashboard tells the person who ticked. When the fresh preview has nothing to deploy at all, because the stack was deployed from somewhere else, the deploy ends as a success that says so.
 - **The rescan box**, `Rescan all stacks` at the bottom, starts a full scan, for example after you deployed a stack from somewhere else. It deploys nothing.
 - **To try a failed deploy again, tick the box again.** Re-running the job deploys nothing.
 

@@ -159,7 +159,7 @@ Not planned. Bringing one of these back means reopening the decision named here,
 | A retry through "Re-run failed jobs", checked against the person who pressed it | Two ways to start a deploy, and a record that names the wrong ticker. A fresh tick is the only retry. | 0019 |
 | A tick level below `write` | People with read or triage access cannot edit a bot's issue, so the level would promise something it cannot do. | 0018 |
 | A list in the tick rule that grants access on its own | A typo or a removed collaborator would keep deploy rights that the repo no longer gives. A list only narrows. | 0018 |
-| A comment on the dashboard for a failed deploy | The failure line on the row says it, and a comment is a notification in every subscriber's inbox. The one comment Sluiceway writes is for a refused tick. | 0004, 0018, 0032 |
+| A comment on the dashboard for a failed deploy | The failure line on the row says it, and a comment is a notification in every subscriber's inbox. Sluiceway writes a comment for a refused tick and for a change that moved since the tick, both about what a person did, and none for a deploy that failed. | 0004, 0018, 0032, 0051 |
 | A global write lock on the dashboard | Actions concurrency works per job, so a lock would hold ticks hostage for the length of a scan. Late read, write, verify instead. | 0004 |
 | The last scan's results kept as a workflow artifact | A second store with its own expiry. The live body already is the cache. | 0004, 0011 |
 | One job per stack (a matrix) for scans | Every job pays the setup again, and a small runner pool starves. One job with a bounded pool. | 0012 |

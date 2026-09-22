@@ -291,6 +291,12 @@ for (const version of VERSIONS) {
         ticked: false,
         hash: fresh.ok ? diffHash(fresh.diff) : "",
       });
+      // Record 0051: the ticker hears about it, and never a value.
+      const comments = github.comments(1).join("\n");
+      expect(comments).toContain("@alice ticked **network:dev**");
+      expect(comments).not.toContain(CANARY_VALUE);
+      expect(comments).not.toContain(CANARY_SECRET);
+      expect(comments).not.toContain("STAGE");
     });
   });
 }

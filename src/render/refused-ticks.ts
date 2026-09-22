@@ -1,7 +1,8 @@
 import type { RefusalReason, TickTarget } from "../core/tick-rule.ts";
 import { escapeText } from "./escape.ts";
 
-// The only comment Sluiceway writes (record 0018): one comment on the
+// One of the two comments Sluiceway writes (record 0018, and 0051 for the
+// other): one comment on the
 // dashboard for the ticks of one `resolve` run that started nothing. It
 // mentions each ticker, names the stack and states the rule, in plain words.
 // The voice has no place here (record 0032).

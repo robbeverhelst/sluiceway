@@ -156,7 +156,7 @@ Each line is something in `docs/brief.md` that must not be built as written.
 | `resolve` step 6, re-render as deploying | Yes, and before that `resolve` creates the deployment record as `queued` | 0003 |
 | `apply` inputs `stack` and `expected-hash` | One input, `deployment-id`. `apply` runs only on an open record | 0019, 0035 |
 | `apply` step 3, records a deployment | `resolve` creates it, `apply` moves it on | 0003 |
-| `apply` step 3, "comment on the dashboard only on failure" | No comment. A failure is a failure line on the row. The only comment Sluiceway writes is for a refused tick | 0004, 0018 |
+| `apply` step 3, "comment on the dashboard only on failure" | No comment. A failure is a failure line on the row. Sluiceway writes a comment for a refused tick, and for a change that moved since the tick | 0004, 0018, 0051 |
 | The example consumer workflow | Replaced. The one in the README is the only valid example | README, 0035 |
 | "Environments are the real approval gate. The checkbox is the trigger" | The tick is always a gate, and Environments make it a stronger one | 0020 |
 | Section 5, config keys `stack`, `approvers`, `dependsOn`, `drift` | `name`, `tickers`. `dependsOn` and `drift` are not in v1. New keys: `inputs`, `scan.unrelated`, `previewTimeout`, `dashboard.redact`, `dashboard.personality` | section 3 |

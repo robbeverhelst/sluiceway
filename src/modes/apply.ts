@@ -56,6 +56,7 @@ import {
   toolDiffLogLines,
 } from "../render/log-text.ts";
 import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
+import { movedComment } from "../render/moved-comment.ts";
 import { previewRow } from "../render/preview-result.ts";
 import { type ApplyResultOutcome, applyResultFile } from "../render/result-file.ts";
 import { type AttributionLines, type FailureLine, isDestroy, type Row } from "../render/row.ts";
@@ -302,8 +303,9 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
   // and a failure to write it changes nothing about the deploy (record 0004).
   if (ended && attempt.row && attempt.setup) {
     const made = attempt.row;
+    let written: number | undefined;
     try {
-      await swapRow(context, attempt.setup, id_, (facts, attribution) => {
+      written = await swapRow(context, attempt.setup, id_, (facts, attribution) => {
         const fact = facts.byStack.get(id_);
         const failure: FailureLine | undefined =
           fact?.kind === "failed"
@@ -321,6 +323,18 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
       });
     } catch (error) {
       failures.push(`The dashboard could not be written: ${message(error)}`);
+    }
+    // A moved change is told to the ticker in one comment (record 0051). It
+    // says that the row shows the fresh diff, so it is written only once
+    // that is true.
+    if (written !== undefined && attempt.reason?.kind === "moved") {
+      try {
+        await github.createComment(written, movedComment({ login: payload.ticker, stackId: id_ }));
+      } catch (error) {
+        failures.push(
+          `The comment to ${payload.ticker} about the moved change could not be written: ${message(error)}. The job needs the permission \`issues: write\`.`,
+        );
+      }
     }
   }
 
@@ -599,17 +613,18 @@ async function writeSummary(context: ApplyContext, text: string): Promise<void> 
 // every other block is carried byte for byte and everything around the blocks
 // is regenerated with the renderer the scan uses (record 0009). The row is made
 // at the late read of every try, from the deployment records as they are then.
+// Gives the number of the dashboard, or nothing when there is none.
 async function swapRow(
   context: ApplyContext,
   setup: Setup,
   id: string,
   make: (facts: DeployFacts, attribution: AttributionLines | undefined) => Row,
-): Promise<void> {
+): Promise<number | undefined> {
   const { github, log } = context;
   const dashboard = await findDashboard(github, setup.config.dashboard.label);
   if (!dashboard) {
     log.info("There is no open dashboard to write. The next scan makes one.");
-    return;
+    return undefined;
   }
   const result = await writeBody(github, dashboard.number, async (liveBody) => {
     const live = parseDashboard(liveBody);
@@ -691,4 +706,5 @@ async function swapRow(
       ? `Wrote the dashboard (#${dashboard.number}).`
       : `The dashboard (#${dashboard.number}) already says this. Nothing was written.`,
   );
+  return dashboard.number;
 }
