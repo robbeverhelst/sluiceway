@@ -7,6 +7,7 @@
 
 import type {
   Adapter,
+  DriftResult,
   PreviewOptions,
   PreviewResult,
   ToolDiffResult,
@@ -503,7 +504,7 @@ async function afterFreshPreview(
   runUrl: string,
   progress: { deploying: boolean },
   setup: Setup,
-  fresh: PreviewResult,
+  previewed: PreviewResult,
   options: PreviewOptions,
 ): Promise<Attempt> {
   const { log, adapter } = context;
@@ -520,9 +521,35 @@ async function afterFreshPreview(
     log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
   }
   const toolDiff =
-    logDiff && fresh.ok && fresh.diff.changes.length > 0
+    logDiff && previewed.ok && previewed.diff.changes.length > 0
       ? await adapter.toolDiff(setup.stack.stack, options)
       : undefined;
+  // A hash that covers drift is compared with fresh drift too (records 0009
+  // and 0055), so drift that moved after the tick stops the deploy.
+  const drift =
+    payload.drift && previewed.ok ? await checkDriftAgain(context, setup, options, id) : undefined;
+  if (drift !== undefined && !drift.ok) {
+    logPreview(context, id, "The fresh preview", previewed, toolDiff);
+    const reason: DeployFailureReason = { kind: "preview-failed", reason: drift.reason };
+    return {
+      state: "failure",
+      reason,
+      failed: notDeployed(
+        reason,
+        " The drift check failed, and the diff hash the tick approved covers drift.",
+      ),
+      summary: {
+        kind: "not-deployed",
+        reason: deployFailureText(reason),
+        checked: applied(previewed),
+      },
+      setup,
+    };
+  }
+  const fresh: PreviewResult =
+    previewed.ok && drift?.ok && drift.drift.length > 0
+      ? { ...previewed, diff: { ...previewed.diff, drift: drift.drift } }
+      : previewed;
   logPreview(context, id, "The fresh preview", fresh, toolDiff);
   if (!fresh.ok) {
     const reason: DeployFailureReason = { kind: "preview-failed", reason: fresh.reason };
@@ -540,7 +567,7 @@ async function afterFreshPreview(
   // from a deploy outside the dashboard, which is legal (record 0016). That is
   // no moved change and no failure (record 0051). The record ends as success
   // with fixed words, the row is in sync, and the tool deploys nothing.
-  if (fresh.diff.changes.length === 0) {
+  if (fresh.diff.changes.length === 0 && (fresh.diff.drift ?? []).length === 0) {
     log.info(
       `The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`,
     );
@@ -607,7 +634,15 @@ async function afterFreshPreview(
   }
 
   progress.deploying = true;
-  const result = await adapter.apply(setup.stack.stack, tool, fresh.plan);
+  // The deploy reads what is real first when the hash covers drift, which
+  // puts the drift back as the code says (record 0055).
+  const repairDrift = (fresh.diff.drift ?? []).length > 0;
+  const result = await adapter.apply(
+    setup.stack.stack,
+    tool,
+    previewed.ok ? previewed.plan : undefined,
+    repairDrift ? { repairDrift } : undefined,
+  );
   const words = lines(result.toolLog);
   context.log.group(`${name}: the deploy`, [
     result.ok ? "deployed" : `deploy failed: ${deployFailureText(result.reason)}`,
@@ -639,6 +674,38 @@ async function afterFreshPreview(
     },
     setup,
   };
+}
+
+// The drift check that `apply` runs again for a tick whose hash covers drift
+// (record 0055). A tool that cannot check drift fails it: the tick approved
+// drift that nothing can check now.
+async function checkDriftAgain(
+  context: ApplyContext,
+  setup: Setup,
+  options: PreviewOptions,
+  id: string,
+): Promise<DriftResult> {
+  const name = logGroupTitle(id);
+  context.log.info(
+    `Checked ${name} for drift again, because the diff hash the tick approved covers drift.`,
+  );
+  const found = (await context.adapter.detectDrift?.(setup.stack.stack, options)) ?? {
+    ok: false,
+    reason: { kind: "tool-error", exitCode: null },
+    detail: ["The tool of this stack has no drift check."],
+    toolLog: "",
+  };
+  const words = lines(found.toolLog);
+  const own = found.ok
+    ? []
+    : [`drift check failed: ${previewFailureText(found.reason)}`, ...found.detail];
+  if (own.length + words.length > 0) {
+    context.log.group(`${name}: the drift check`, [
+      ...own,
+      ...(words.length > 0 ? ["The tool's own words:", ...words] : []),
+    ]);
+  }
+  return found;
 }
 
 // Every diff in full and the tool's own words go to the job log (records 0022

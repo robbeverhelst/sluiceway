@@ -2,7 +2,7 @@
 // person ticks, a real `resolve` creates the deployment record as `queued`,
 // and `apply` is handed its id the way the matrix hands it over. Nothing about
 // the record or the rows is made up.
-import type { ApplyResult, PreviewResult } from "../../src/adapters/adapter.ts";
+import type { PreviewResult } from "../../src/adapters/adapter.ts";
 import type { MatrixEntry } from "../../src/core/resolve.ts";
 import { type ApplyContext, apply } from "../../src/modes/apply.ts";
 import type { FakeGitHub } from "../fake-github/fake-github.ts";
@@ -31,7 +31,7 @@ export interface ApplyHarness {
 export async function handedOn(
   table: Record<string, PreviewResult>,
   stackIds: string[],
-  options: { config?: string; deploys?: Record<string, ApplyResult> } = {},
+  options: Parameters<typeof scanned>[1] = {},
 ): Promise<ApplyHarness> {
   const h = await scanned(table, options);
   tick(h, ALICE, stackIds);

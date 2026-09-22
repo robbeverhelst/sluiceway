@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { editedIssue, publicRepo, readEventPayload } from "../../src/github/event.ts";
+import {
+  editedIssue,
+  publicRepo,
+  readEventPayload,
+  startedByPerson,
+} from "../../src/github/event.ts";
 
 // The payload of the event that woke `resolve`. It is only a wake-up (record
 // 0025): all that is read from it is what the cheap check of record 0017 needs.
@@ -88,5 +93,23 @@ describe("whether the repo is public", () => {
     expect(publicRepo(undefined)).toBeUndefined();
     expect(publicRepo({ schedule: "0 * * * *" })).toBeUndefined();
     expect(publicRepo({ repository: { private: "no" } })).toBeUndefined();
+  });
+});
+
+// Record 0055: a dispatch that a person started (Run workflow) checks drift.
+// One that the workflow token started, `settle` after a deploy or the rescan
+// box, does not.
+describe("who started the run", () => {
+  test("a person is a sender of type User", () => {
+    expect(startedByPerson({ sender: { login: "alice", type: "User" } })).toBe(true);
+  });
+
+  test("the workflow token is a bot", () => {
+    expect(startedByPerson({ sender: { login: "github-actions[bot]", type: "Bot" } })).toBe(false);
+  });
+
+  test("a payload that does not say is nobody", () => {
+    expect(startedByPerson(undefined)).toBe(false);
+    expect(startedByPerson({ sender: null })).toBe(false);
   });
 });

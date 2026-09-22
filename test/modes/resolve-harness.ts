@@ -50,10 +50,19 @@ export interface ResolveHarness {
 // asked.
 export async function scanned(
   table: Record<string, PreviewResult>,
-  options: { config?: string; repoUrl?: string; deploys?: Record<string, ApplyResult> } = {},
+  options: {
+    config?: string;
+    repoUrl?: string;
+    // What started the scan that writes the dashboard. A dispatch by default.
+    event?: string;
+    deploys?: Record<string, ApplyResult>;
+    // What the drift check finds (record 0055). The table is read on every
+    // check, so a test can change it after the tick.
+    drifts?: Parameters<typeof tableAdapter>[3];
+  } = {},
 ): Promise<ResolveHarness> {
-  const { deploys, ...scanOptions } = options;
-  const adapter = tableAdapter(table, deploys);
+  const { deploys, drifts, ...scanOptions } = options;
+  const adapter = tableAdapter(table, deploys, {}, drifts);
   const { context: scanContext, github, log } = harness(adapter, scanOptions);
   await scan(scanContext);
   github.requests.length = 0;

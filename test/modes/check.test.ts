@@ -234,13 +234,17 @@ describe("a valid setup", () => {
 const CONFIG_MESSAGES: [string, string][] = [
   [
     "tickerz: write",
-    'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, stacks, mergeAndDeploy.',
+    'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, stacks, mergeAndDeploy.',
   ],
   [
     "stacks:\n  - path: network\n    dependsOn: [app]",
     'stacks[0].dependsOn[0]: "app" is not a stack that discovery found. Write the stack id as a row shows it, such as "app:prod".',
   ],
-  ["drift: true", '"drift" is not in this version of Sluiceway yet. Remove it.'],
+  ["drift: true", "drift: expected a mapping, got true."],
+  [
+    "stacks:\n  - path: network\n    drift: true",
+    'stacks[0]: "drift" is not in this version of Sluiceway yet. Remove it.',
+  ],
   [
     "tickers: [alice, acme/platform]",
     'tickers[1]: "acme/platform" looks like a team. Teams are not supported yet. Use a level ("write", "maintain", "admin") or usernames.',

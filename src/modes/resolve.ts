@@ -228,7 +228,13 @@ async function resolveTicks(
   // A stack with an open deployment is taken (record 0003): a second tick for
   // it is dropped, whoever made it.
   const hashes = new Map<string, string>();
-  for (const { tick } of named) if (tick.kind === "row") hashes.set(tick.stackId, tick.hash);
+  // The ticked rows whose hash covers drift (record 0055).
+  const drifted = new Set<string>();
+  for (const { tick } of named) {
+    if (tick.kind !== "row") continue;
+    hashes.set(tick.stackId, tick.hash);
+    if (tick.drift) drifted.add(tick.stackId);
+  }
   // A merge tick ends in a deploy of its stack, so it is taken the same way
   // (record 0054).
   const mergeTicks = new Map<number, MergeTick>();
@@ -397,7 +403,13 @@ async function resolveTicks(
         sha: context.sha,
         task: deploymentTask(id),
         environment: stack.environment,
-        payload: deploymentPayload({ hash, ticker, run: context.runId, behind }),
+        payload: deploymentPayload({
+          hash,
+          ticker,
+          run: context.runId,
+          behind,
+          ...(drifted.has(id) ? { drift: true } : {}),
+        }),
       });
       started.push({
         stackId: id,

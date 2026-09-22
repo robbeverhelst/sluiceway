@@ -5,7 +5,7 @@
 // Every other scan, and every narrowed scan that cannot trust its comparison,
 // is a full scan.
 
-import type { Adapter, PreviewResult, ToolDiffResult } from "../adapters/adapter.ts";
+import type { Adapter, DriftResult, PreviewResult, ToolDiffResult } from "../adapters/adapter.ts";
 import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import type { Attribution } from "../core/attribution.ts";
@@ -86,7 +86,14 @@ import { mergeBlock, tickedMergeBlock } from "../render/merge-row.ts";
 import { renderPreviewPage } from "../render/preview-page.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, dashboardCounts, scanResultFile } from "../render/result-file.ts";
-import { byCodeUnit, type FailureLine, isDestroy, plural, type Row } from "../render/row.ts";
+import {
+  byCodeUnit,
+  driftCounts,
+  type FailureLine,
+  isDestroy,
+  plural,
+  type Row,
+} from "../render/row.ts";
 import { renderSummary, type UnclaimedFiles } from "../render/summary.ts";
 import { prepareStacks } from "./prepare.ts";
 
@@ -133,6 +140,10 @@ export interface ScanContext {
   // Whether the repo is public, from the payload of the event. Absent when
   // the payload does not say (record 0048).
   publicRepo?: boolean | undefined;
+  // Whether a person started the run, from the sender of the event. A
+  // dispatch by the workflow token (`settle`, the rescan box) is not one
+  // (record 0055).
+  startedByPerson?: boolean | undefined;
   // Only a test has a reason to set these.
   limits?: { body?: BudgetOptions; summaryBudget?: number } | undefined;
 }
@@ -157,6 +168,9 @@ interface Previewed {
   // else (record 0048). Only a pending stack of a scan with `scan.logDiff` on
   // has one.
   toolDiff?: ToolDiffResult | undefined;
+  // The drift check of the stack, when this scan ran one (record 0055). What
+  // it found is in `result` already. A failed one is only for the job log.
+  drift?: DriftResult | undefined;
 }
 
 // Thrown by the builder of the body, at the late read: these stacks have to be
@@ -285,8 +299,11 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
     log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
   }
 
-  const plan = await makePlan(context, config, stacks);
+  // The stacks whose row showed drift at the first read (record 0055).
+  const knownDrift = new Set<string>();
+  const plan = await makePlan(context, config, stacks, knownDrift);
   logPlan(context, plan, stacks.length);
+  const checkDrift = driftCheckRule(config, context, knownDrift);
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
   const unclaimed = unclaimedFiles(plan, config);
   let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
@@ -337,7 +354,14 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       );
       versionChecked = true;
     }
-    const round = await previewAll(context, next, logDiff, shownValues(config.dashboard), prepared);
+    const round = await previewAll(
+      context,
+      next,
+      logDiff,
+      shownValues(config.dashboard),
+      prepared,
+      checkDrift,
+    );
     for (const one of round) previewed.set(one.id, one);
     logResults(context, round);
 
@@ -784,6 +808,9 @@ async function makePlan(
   context: ScanContext,
   config: ReturnType<typeof loadConfig>,
   stacks: ConfiguredStack[],
+  // Filled with the stacks whose row at the first read says its hash covers
+  // drift (record 0055).
+  knownDrift: Set<string>,
 ): Promise<ScanPlan> {
   const { log } = context;
   const full = (why: FullScanReason): ScanPlan => ({ kind: "full", why });
@@ -793,6 +820,7 @@ async function makePlan(
     ? await findDashboard(context.github, config.dashboard.label)
     : undefined;
   const live = dashboard && parseDashboard(dashboard.body);
+  for (const row of live?.rows ?? []) if (row.known && row.drift) knownDrift.add(row.stackId);
   const base = comparisonBase(context.event, live, MARKER_VERSION);
   if (base.kind !== "compare") return full(base);
 
@@ -910,12 +938,31 @@ async function checkVersion(context: ScanContext, stacks: Stack[]): Promise<void
 // Previews through the pool, in stack id order (record 0012). How long each
 // preview took and the total go to the job log, because the right pool size
 // and time limit for a runner are read from those numbers.
+// Which stacks a scan checks for drift (record 0055). With `drift.enabled`,
+// a scan that a schedule starts, or a dispatch that a person started, checks
+// every stack it previews. A dispatch by the workflow token is `settle` after
+// a deploy or the rescan box, and checking there would read every real
+// resource after every deploy. Any other scan checks only the stacks whose
+// row showed drift at its first read, so drift that is known is not dropped
+// when a push previews the stack.
+function driftCheckRule(
+  config: ReturnType<typeof loadConfig>,
+  context: ScanContext,
+  knownDrift: ReadonlySet<string>,
+): (id: string) => boolean {
+  if (!config.drift.enabled) return () => false;
+  if (context.event === "schedule") return () => true;
+  if (context.event === "workflow_dispatch" && context.startedByPerson) return () => true;
+  return (id) => knownDrift.has(id);
+}
+
 async function previewAll(
   context: ScanContext,
   stacks: ConfiguredStack[],
   logDiff: boolean,
   showValues: readonly string[],
   prepared: Set<string>,
+  checkDrift: (id: string) => boolean,
 ): Promise<Previewed[]> {
   const { log, now, adapter } = context;
   // Nothing to preview, so a repo without stacks needs no tool, and neither
@@ -956,22 +1003,47 @@ async function previewAll(
       timeoutMinutes: configured.previewTimeout ?? context.previewTimeoutMinutes,
       showValues,
     };
-    const result = await adapter.preview(configured.stack, options);
-    const milliseconds = now().getTime() - started;
+    const previewedOnly = await adapter.preview(configured.stack, options);
+    let milliseconds = now().getTime() - started;
     log.info(
-      `Previewed ${logGroupTitle(id)} in ${seconds(milliseconds)}: ${previewOutcome(result)}`,
+      `Previewed ${logGroupTitle(id)} in ${seconds(milliseconds)}: ${previewOutcome(previewedOnly)}`,
     );
+    // The drift check takes the same slot of the pool and the same time limit,
+    // right after the preview, so one stack never runs the tool twice at once
+    // (record 0055). A stack whose preview failed has no row to show drift on.
+    let result = previewedOnly;
+    let drift: DriftResult | undefined;
+    if (previewedOnly.ok && checkDrift(id) && adapter.detectDrift) {
+      const driftStarted = now().getTime();
+      drift = await adapter.detectDrift(configured.stack, options);
+      const took = seconds(now().getTime() - driftStarted);
+      if (drift === undefined) {
+        log.info(`${logGroupTitle(id)} was not checked for drift: its tool has no drift check.`);
+      } else if (!drift.ok) {
+        log.info(
+          `Checked ${logGroupTitle(id)} for drift in ${took}: the check failed, ${previewFailureText(drift.reason)}.`,
+        );
+      } else {
+        log.info(
+          `Checked ${logGroupTitle(id)} for drift in ${took}: ${drift.drift.length === 0 ? "no drift" : driftCounts(drift.drift)}.`,
+        );
+        if (drift.drift.length > 0) {
+          result = { ...previewedOnly, diff: { ...previewedOnly.diff, drift: drift.drift } };
+        }
+      }
+      milliseconds = now().getTime() - started;
+    }
     // The second run of the tool takes the same slot of the pool and the same
     // time limit, and only a pending stack gets one (record 0048).
     if (!logDiff || !result.ok || result.diff.changes.length === 0) {
-      return { id, result, startedAt, milliseconds };
+      return { id, result, startedAt, milliseconds, drift };
     }
     const toolDiffStarted = now().getTime();
     const toolDiff = await adapter.toolDiff(configured.stack, options);
     log.info(
       `Ran the tool's own diff of ${logGroupTitle(id)} in ${seconds(now().getTime() - toolDiffStarted)}${toolDiff.ok ? "" : `: ${previewFailureText(toolDiff.reason)}`}.`,
     );
-    return { id, result, startedAt, milliseconds, toolDiff };
+    return { id, result, startedAt, milliseconds, toolDiff, drift };
   });
   const total = now().getTime() - poolStarted;
 
@@ -988,23 +1060,35 @@ async function previewAll(
 // on the run as well (record 0012).
 function logResults(context: ScanContext, previewed: Previewed[]): void {
   const { log } = context;
-  for (const { id, result, toolDiff } of previewed) {
-    const words = lines(result.toolLog + (toolDiff?.toolLog ?? ""));
+  for (const { id, result, toolDiff, drift } of previewed) {
+    const words = lines(result.toolLog + (toolDiff?.toolLog ?? "") + (drift?.toolLog ?? ""));
     const own = [
       ...(result.ok
         ? diffLogLines(result.diff)
         : [`preview failed: ${previewFailureText(result.reason)}`, ...result.detail]),
+      // A failed drift check says why. What it found is in the diff above.
+      ...(drift !== undefined && !drift.ok
+        ? [`drift check failed: ${previewFailureText(drift.reason)}`, ...drift.detail]
+        : []),
       ...toolDiffLogLines(toolDiff),
       ...(words.length > 0 ? ["The tool's own words:", ...words] : []),
     ];
     if (toolDiff?.ok) log.group(logGroupTitle(id), own, lines(toolDiff.text));
     else log.group(logGroupTitle(id), own);
   }
-  for (const { id, result } of previewed) {
+  for (const { id, result, drift } of previewed) {
     if (!result.ok) {
       log.warning(
         `The preview of ${logGroupTitle(id)} failed: ${previewFailureText(result.reason)}.`,
         "Preview failed",
+      );
+    }
+    // Never silent: the row shows the preview alone, and the run says why
+    // (record 0055).
+    if (drift !== undefined && !drift.ok) {
+      log.warning(
+        `The drift check of ${logGroupTitle(id)} failed: ${previewFailureText(drift.reason)}. Its row shows the preview alone.`,
+        "Drift check failed",
       );
     }
   }

@@ -64,3 +64,10 @@ export function publicRepo(payload: unknown): boolean | undefined {
   const isPrivate = record(record(payload)?.repository)?.private;
   return typeof isPrivate === "boolean" ? !isPrivate : undefined;
 }
+
+// Whether a person started the run, from the sender of the event (record
+// 0055). A dispatch by the workflow token, as `settle` and the rescan box
+// send, names the bot. Nothing that does not say is a person.
+export function startedByPerson(payload: unknown): boolean {
+  return record(record(payload)?.sender)?.type === "User";
+}

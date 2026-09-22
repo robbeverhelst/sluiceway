@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type {
   Adapter,
   ApplyResult,
+  DriftResult,
   PreviewOptions,
   PreviewResult,
   ToolDiffResult,
@@ -66,6 +67,14 @@ export function failing(toolLog = "error: no credentials\n"): PreviewResult {
 
 type Answer = PreviewResult | ((options: PreviewOptions) => Promise<PreviewResult>);
 
+// A drift check's answer (record 0055). `undefined` is a stack whose tool
+// cannot check drift.
+type DriftAnswer = DriftResult | undefined | ((options: PreviewOptions) => Promise<DriftResult>);
+
+export function drifted(_stackId: string, ...drift: Change[]): DriftResult {
+  return { ok: true, drift, toolLog: "" };
+}
+
 type ToolDiffAnswer = ToolDiffResult | ((options: PreviewOptions) => Promise<ToolDiffResult>);
 
 // What the tool's own diff of a stack says when a test does not care: a line
@@ -86,6 +95,10 @@ export interface TableAdapter extends Adapter {
   // started, and the time limit of each (record 0048).
   toolDiffs: string[];
   toolDiffTimeouts: Record<string, number>;
+  // The stack id of every drift check, in order, and of every deploy that was
+  // asked to repair drift (record 0055).
+  driftChecked: string[];
+  repaired: string[];
 }
 
 // An adapter that discovers the stacks named in the table, in the order of
@@ -96,8 +109,19 @@ export function tableAdapter(
   table: Record<string, Answer>,
   deploys: Record<string, ApplyResult> = {},
   toolDiffs: Record<string, ToolDiffAnswer> = {},
+  // A stack not in here has no drift.
+  drifts: Record<string, DriftAnswer> = {},
 ): TableAdapter {
   const adapter: TableAdapter = {
+    driftChecked: [],
+    repaired: [],
+    detectDrift: async (asked, options) => {
+      const id = stackId(asked);
+      adapter.driftChecked.push(id);
+      if (!Object.hasOwn(drifts, id)) return { ok: true, drift: [], toolLog: "" };
+      const answer = drifts[id];
+      return typeof answer === "function" ? answer(options) : answer;
+    },
     previewed: [],
     timeouts: {},
     versionChecks: 0,
@@ -111,9 +135,10 @@ export function tableAdapter(
       const answer = toolDiffs[id] ?? { ok: true, text: toolDiffText(id), toolLog: "" };
       return typeof answer === "function" ? answer(options) : answer;
     },
-    apply: async (applied) => {
+    apply: async (applied, _context, _plan, options) => {
       const id = stackId(applied);
       adapter.applied.push(id);
+      if (options?.repairDrift) adapter.repaired.push(id);
       return deploys[id] ?? { ok: true, toolLog: "" };
     },
     discover: async () => Object.keys(table).map(stack),

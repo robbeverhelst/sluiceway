@@ -7,7 +7,7 @@ import { getOctokit } from "@actions/github";
 import { runProcess } from "../adapters/process.ts";
 import { tools } from "../adapters/tools.ts";
 import { readActionRef } from "../github/action-ref.ts";
-import { publicRepo, readEventPayload } from "../github/event.ts";
+import { publicRepo, readEventPayload, startedByPerson } from "../github/event.ts";
 import { readJobId, readScanInputs } from "../github/inputs.ts";
 import { readJob } from "../github/job.ts";
 import { actionsLog } from "../github/job-log.ts";
@@ -22,6 +22,7 @@ export async function runScan(directory: string): Promise<void> {
   const inputs = readScanInputs(core.getInput);
   const job = readJob(env);
   const octokit = getOctokit(inputs.token);
+  const payload = readEventPayload(env, (path) => readFileSync(path, "utf8"));
   await scan({
     root: job.root,
     env,
@@ -46,6 +47,7 @@ export async function runScan(directory: string): Promise<void> {
     // and a dashboard without its version line would hide that.
     actionRef: readActionRef(env, directory, (path) => readFileSync(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),
-    publicRepo: publicRepo(readEventPayload(env, (path) => readFileSync(path, "utf8"))),
+    publicRepo: publicRepo(payload),
+    startedByPerson: startedByPerson(payload),
   });
 }
