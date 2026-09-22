@@ -19,7 +19,7 @@ Two things work with nothing from Sluiceway at all, because every deploy is a Gi
 | `outcome` | `apply` | `deployed`, `in-sync` (the fresh preview had nothing to deploy, so nothing went out and the job is green), `rehearsed` (`dry-run: true`, nothing went out and the job is green), `refused` (the change moved since the tick, the deployment record was not one this job may deploy, or `deploys: false`) or `failed` |
 | `stack` | `apply` | The stack id the job handled. Empty when it never learned it |
 | `result-file` | `scan`, `apply` | The path of the result file |
-| `matrix` | `resolve` | The hand-off to the `apply` job. Not for notifications |
+| `matrix` | `resolve`, `scan` | The hand-off to the `apply` job. A scan sets it only after a merge from the dashboard. Not for notifications |
 
 The three counts are the counts line of the dashboard as this scan left it, so they include the rows of stacks a narrowed scan did not preview. A scan that fails before it writes the dashboard, for example on a broken `sluiceway.yaml`, sets them to `0` and `dashboard-changed` to `false`, so check the outcome of the step too.
 

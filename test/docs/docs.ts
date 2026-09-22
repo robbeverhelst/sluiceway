@@ -38,6 +38,44 @@ export function fences(markdown: string): Fence[] {
   }));
 }
 
+// The rows of the first table under a heading, each as its cells, without the
+// header row and the line under it. Nothing when the heading has no table
+// before the next heading.
+export function tableUnder(markdown: string, heading: string): string[][] {
+  const lines = markdown.split("\n");
+  const start = lines.indexOf(heading);
+  if (start === -1) return [];
+  const rows: string[][] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (line.startsWith("#")) break;
+    if (line.startsWith("|")) rows.push(cells(line));
+    else if (rows.length > 0) break;
+  }
+  return rows.slice(2);
+}
+
+// The cells of one table line. A `|` inside backticks does not split.
+function cells(line: string): string[] {
+  const found: string[] = [];
+  let cell = "";
+  let code = false;
+  for (const char of line.trim().slice(1, -1)) {
+    if (char === "`") code = !code;
+    if (char === "|" && !code) {
+      found.push(cell.trim());
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+  return [...found, cell.trim()];
+}
+
+// The words written in backticks in a cell, in order.
+export function codeIn(cell: string): string[] {
+  return [...cell.matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? "");
+}
+
 export interface Step {
   id?: string;
   uses?: string;
