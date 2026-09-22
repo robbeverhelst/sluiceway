@@ -66,7 +66,7 @@ Resource names, types and property paths are in the file, as they are on the das
 
 ## Recipes
 
-Every recipe is one more step in a job of the workflow in the [README](../README.md). Give the Sluiceway step an `id` so the next step can read its outputs:
+Every recipe is one more step in a job of [the workflow](workflow.md#the-workflow). Give the Sluiceway step an `id` so the next step can read its outputs:
 
 ```yaml
       - id: sluiceway

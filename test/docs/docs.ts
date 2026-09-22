@@ -14,6 +14,10 @@ export function read(path: string): string {
 // history and are not held to this.
 export const USER_DOCS = [
   "README.md",
+  "docs/workflow.md",
+  "docs/read-only-trial.md",
+  "docs/using-the-dashboard.md",
+  "docs/reference.md",
   "docs/configuration.md",
   "docs/credentials.md",
   "docs/security.md",
@@ -24,6 +28,28 @@ export const USER_DOCS = [
 export const EXAMPLE_WORKFLOWS = readdirSync(resolve(ROOT, "examples/workflows"))
   .filter((name) => name.endsWith(".yml"))
   .map((name) => `examples/workflows/${name}`);
+
+// A section of a Markdown file: its heading line and everything up to the
+// next heading of the same level or higher. Nothing when the heading is not
+// there. A `#` inside a code fence is not a heading.
+export function section(markdown: string, heading: string): string {
+  const level = heading.match(/^#+/)?.[0].length ?? 0;
+  const lines = markdown.split("\n");
+  const start = lines.indexOf(heading);
+  if (start === -1) return "";
+  let fenced = false;
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index++) {
+    const line = lines[index] ?? "";
+    if (line.startsWith("```")) fenced = !fenced;
+    const depth = line.match(/^(#+) /)?.[1]?.length;
+    if (!fenced && depth !== undefined && depth <= level) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n");
+}
 
 export interface Fence {
   language: string;

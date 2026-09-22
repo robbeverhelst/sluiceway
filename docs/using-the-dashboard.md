@@ -1,0 +1,45 @@
+# Using the dashboard
+
+What a row means, what a tick does, what the job log of a scan says, and the limits to know about. The dashboard itself is shown in the [README](../README.md#what-it-looks-like).
+
+## Rows and ticks
+
+- **A row with a box has changes waiting.** Its details show the resources that would change and the paths of the properties that change, down to the key inside a map or a list. A delete or a replace is always shown open under the row, never folded away, and a caution block above the pending list names every pending stack that has one. When the dashboard grows past what an issue holds, the biggest rows are shortened first and link to the full diff in the run's summary.
+- **`preview` opens that stack's preview page.** It is a check run on the scanned commit, named `sluiceway / <stack id>`, with the stack's whole diff: every resource that changes and every property path, and a value only where `dashboard.showValues` lists the path. It links back to the dashboard, the run's summary and the job log. The scan updates the page in place when it scans the same commit again. GitHub files the page as a job of whichever workflow run came first on that commit, which may be another workflow of yours, and lists it in a pull request's checks as neutral. It never fails a check. Without `checks: write` in the workflow's permissions there is no page, and `preview` opens the run's summary.
+- **Tick the box to deploy that stack.** Sluiceway checks that you may tick it, previews the stack again, and deploys only if the fresh preview still matches what the row showed. The row says deploying, then goes back to in sync, or shows a failure line with a link to the run.
+- **A tick approves the change as shown.** The row shows which properties change, not their values, so a tick means "change these properties on these resources, at whatever value the code has when the deploy runs". A value the row does show, through `dashboard.showValues`, is approved as shown. A new resource, a delete or a different property stops the deploy and brings the row back with the fresh diff. [docs/security.md](security.md#what-a-tick-promises) has the whole promise.
+- **A refused tick deploys nothing.** The box is cleared and one comment on the dashboard says why.
+- **A change that moved since the tick deploys nothing.** The row shows the change as it is now, and one comment on the dashboard tells the person who ticked. When the fresh preview has nothing to deploy at all, because the stack was deployed from somewhere else, the deploy ends as a success that says so.
+- **A row under Drifted changed outside the code.** With [`drift.enabled`](configuration.md#driftenabled), the daily scan also checks every stack against its real infrastructure. A stack whose code has nothing to deploy and whose real resources changed gets a row there, with a box: what changed, and what is gone. A tick deploys the code as it is, which puts it back, after the drift is checked again. A pending stack that also drifted shows its drift on its own row. The row's `preview` link opens a page that lists the drift, and a stack entry can turn the check on or off for its own stacks.
+- **The rescan box**, `Rescan all stacks` at the bottom, starts a full scan, for example after you deployed a stack from somewhere else. It deploys nothing.
+- **To try a failed deploy again, tick the box again.** Re-running the job deploys nothing.
+- **Recently deployed, at the bottom, is the trail.** Every deploy from the dashboard that ended, newest first: what went out, what found nothing to deploy, a rehearsal, and a failed deploy with its failure reason. Ten lines unless [`dashboard.recentlyDeployed`](configuration.md#dashboardrecentlydeployed) says otherwise.
+
+## Reading the job log
+
+The job log of a scan says what it did, in fixed lines:
+
+| Line | What it tells you |
+|---|---|
+| `This is a full scan: ...` | Every stack is previewed, and why. After a push it reads `This is a full scan. A push gives a narrowed scan, and this one fell back to a full scan: ...` with the reason. When the reason is a changed file that no stack claims, the group `Changed files that no stack claims` lists them. |
+| `This is a narrowed scan: it previews 2 of 58 stacks and keeps the rows of the other 56 as they are.` | Only those stacks are previewed. One line per stack follows: `<stack id> is previewed: it claims <file>.` |
+| `Previewing 58 stacks with a pool of 4 and a time limit of 10 minutes for each preview.` | The `concurrency` and `preview-timeout` this scan ran with. |
+| `Previewed <stack id> in 8.3 s: pending` | How long one preview took, and how it ended. One line per preview, in the order they finish. |
+| `Previewed 58 stacks in 412.6 s with a pool of 4. Added up, the previews took 1530.2 s. The slowest was <stack id> with 45.1 s.` | The total. The total against the sum shows what the pool gains. The slowest preview is what `preview-timeout` has to clear. |
+| `Wrote the preview pages of 12 pending stacks on 0123456: 2 created, 10 updated.` | One page per pending stack this scan previewed. Without `checks: write` it reads `No preview page was written: ...` and says what to add. |
+| `Wrote the dashboard: <url> (41,210 of 65,536 characters).` | Where the dashboard is, and how full the issue body is. `Carried 56 rows through as they were` follows on a narrowed scan. |
+| `Cleared an orphan tick on <stack id>: ...` | A box was ticked and nothing picked the tick up, so the scan cleared it and the row asks for a fresh one. A scan never deploys. While a run that an issue edit started is queued or in progress the line reads `Left the tick on <stack id> alone: ...` and the box stays ticked. |
+
+Under those lines there is one group per previewed stack, titled with the stack id. It holds the whole diff and everything the tool printed. The tool's own words never leave the job log.
+
+To see the values a tick would deploy, turn on `scan.logDiff` in `sluiceway.yaml`. Every pending stack's group then also holds the tool's own diff, values included, and the stack's preview page says it is there. The page itself never shows a value. It costs one more tool run per pending stack, and anyone who can read the repo can read its job logs: in a public repo, anyone. [docs/configuration.md](configuration.md#scanlogdiff) and [docs/security.md](security.md#the-tools-own-diff-in-the-job-log) say what to weigh first.
+
+## Limits
+
+- **A change that touches only a stack's outputs is not shown.** The tool's preview does not report it, so a stack whose only change is an added, removed or changed output is in sync and has no box. Deploy it from outside Sluiceway. Another stack that reads that output keeps failing its preview until then. An output nearly always changes together with a resource, and then the row is pending anyway.
+- **Deploys from somewhere else are allowed and not detected.** They do not show under recently deployed, and a row they made stale stays pending until the next full scan or the rescan box. A tick on a stale row deploys nothing.
+- **Sluiceway only previews, checks for drift and deploys.** Destroying a stack, a refresh that writes the state and repairing state stay with your own tooling. The drift check is opt-in, Pulumi only for now, and never changes the state ([`drift.enabled`](configuration.md#driftenabled)).
+- **No values on the dashboard unless you list their paths.** Rows show resource types, resource names and property names. `dashboard.showValues` lets the old and new value of the paths you list appear, such as a chart's `version`, and a tick then approves that value. `dashboard.redact: true` keeps names and values out of the issue. The job log holds the tool's own values only when you turn on `scan.logDiff`.
+- **Four tools so far.** Pulumi, OpenTofu, Helm and Kubernetes manifests. OpenTofu stacks, Helm releases and Kubernetes manifests are declared in `sluiceway.yaml`, there is no zero config for them ([configuration](configuration.md#stacks-and-stack-ids)). The Terraform binary and others can follow. Kubernetes manifests are not pruned: an object taken out of them stays in the cluster. An OpenTofu preview runs with `-refresh=false`: like Pulumi's, it compares the code with the state and never reads every real resource. A Helm preview compares the chart with the release helm stored, not with what runs in the cluster, and a chart that renders differently every time cannot be deployed from the dashboard. A Kubernetes manifests preview is a server-side dry run against the live objects, so a change made in the cluster by hand shows as pending too.
+
+[later.md](later.md) lists everything that was left out of this version, and why.

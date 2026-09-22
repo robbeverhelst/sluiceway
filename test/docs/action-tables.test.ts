@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { MODES } from "../../src/mode.ts";
 import { codeIn, read, tableUnder } from "./docs.ts";
 
-// Slice 4.8: the README's tables of modes, inputs and outputs, and the table
-// of outputs in docs/notifications.md, say what action.yml says. A reader
-// copies an input name or a default from the README, never from action.yml.
+// Slice 4.8: the tables of modes, inputs and outputs, and the table of outputs
+// in docs/notifications.md, say what action.yml says. A reader copies an input
+// name or a default from the docs, never from action.yml. Since the README
+// rewrite the tables live in docs/reference.md.
 
 interface ActionMetadata {
   inputs: Record<string, { description: string; required?: boolean; default?: string }>;
@@ -12,7 +13,7 @@ interface ActionMetadata {
 }
 
 const action = Bun.YAML.parse(read("action.yml")) as ActionMetadata;
-const readme = read("README.md");
+const reference = read("docs/reference.md");
 const notifications = read("docs/notifications.md");
 
 // The modes that set an output, as the first sentence of its description in
@@ -22,8 +23,8 @@ function setBy(output: string): string[] {
   return MODES.filter((mode) => new RegExp(`\\b${mode}\\b`).test(first));
 }
 
-describe("the README's table of modes", () => {
-  const rows = tableUnder(readme, "## Modes");
+describe("the reference's table of modes", () => {
+  const rows = tableUnder(reference, "## Modes");
 
   test("names every mode once, in the order of the mode input", () => {
     expect(rows.map((row) => codeIn(row[0] ?? "")[0])).toEqual([...MODES]);
@@ -31,7 +32,7 @@ describe("the README's table of modes", () => {
 
   test("says how many modes there are", () => {
     const words = ["one", "two", "three", "four", "five", "six", "seven"];
-    expect(readme).toContain(`One action, ${words[MODES.length - 1]} modes`);
+    expect(reference).toContain(`One action, ${words[MODES.length - 1]} modes`);
   });
 
   test("names the same modes as the description of the mode input", () => {
@@ -40,8 +41,8 @@ describe("the README's table of modes", () => {
   });
 });
 
-describe("the README's table of inputs", () => {
-  const rows = tableUnder(readme, "## Inputs");
+describe("the reference's table of inputs", () => {
+  const rows = tableUnder(reference, "## Inputs");
   const byName = new Map(rows.map((row) => [codeIn(row[0] ?? "")[0] ?? "", row]));
 
   test("names every input of action.yml, in its order, and no other", () => {
@@ -66,9 +67,9 @@ describe("the README's table of inputs", () => {
 });
 
 describe("the tables of outputs", () => {
-  // The README lists the outputs that are not for notifications, and
+  // The reference lists the outputs that are not for notifications, and
   // docs/notifications.md every output with what it holds.
-  const inReadme = tableUnder(readme, "## Outputs");
+  const inReference = tableUnder(reference, "## Outputs");
   const inNotifications = tableUnder(notifications, "## What Sluiceway hands over");
 
   // In its own order: the one output that is not for notifications comes last.
@@ -78,15 +79,15 @@ describe("the tables of outputs", () => {
     );
   });
 
-  test("every output the README names is one of action.yml", () => {
-    const names = inReadme.map((row) => codeIn(row[0] ?? "")[0] ?? "");
+  test("every output the reference names is one of action.yml", () => {
+    const names = inReference.map((row) => codeIn(row[0] ?? "")[0] ?? "");
     expect(names.length).toBeGreaterThan(0);
     for (const name of names) expect(Object.keys(action.outputs)).toContain(name);
   });
 
   test("both tables name the modes that set each output, as action.yml does", () => {
     const wrong = [
-      ...inReadme.map((row) => ({ where: "README.md", row })),
+      ...inReference.map((row) => ({ where: "docs/reference.md", row })),
       ...inNotifications.map((row) => ({ where: "docs/notifications.md", row })),
     ].filter(({ row }) => {
       const name = codeIn(row[0] ?? "")[0] ?? "";

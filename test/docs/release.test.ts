@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { EXAMPLE_WORKFLOWS, read, USER_DOCS } from "./docs.ts";
+import { EXAMPLE_WORKFLOWS, read, section, USER_DOCS } from "./docs.ts";
 
 // After releases 0.1.0 and 0.1.1 (build plan, section 8): the docs stop saying there is
 // no release, and every example says @v0 until a deliberate 1.0.0.
@@ -10,21 +10,13 @@ const PAGES = [...USER_DOCS, "docs/notifications.md", "SECURITY.md", ...EXAMPLE_
 
 const readme = read("README.md");
 
-// The README's own words on pinning a commit, the one place a full SHA is
-// shown on purpose.
-function section(markdown: string, heading: string): string {
-  const start = markdown.indexOf(heading);
-  if (start === -1) return "";
-  const end = markdown.indexOf("\n## ", start + heading.length);
-  const nextSub = markdown.indexOf("\n### ", start + heading.length);
-  const stops = [end, nextSub].filter((index) => index !== -1);
-  return markdown.slice(start, stops.length > 0 ? Math.min(...stops) : undefined);
-}
-const PIN = section(readme, "### Pin a commit");
+// The words on pinning a commit, the one place a full SHA is shown on purpose.
+// In docs/workflow.md since the README rewrite.
+const PIN = section(read("docs/workflow.md"), "## Pin a commit");
 
 describe("the version the docs name", () => {
   test.each(PAGES)("every use of the action is @v0: %s", (path) => {
-    const text = path === "README.md" ? read(path).replace(PIN, "") : read(path);
+    const text = path === "docs/workflow.md" ? read(path).replace(PIN, "") : read(path);
     const refs = [...text.matchAll(/sluiceway\/sluiceway@([^\s`"')]+)/g)].map((match) => match[1]);
     expect(refs.filter((ref) => ref !== "v0")).toEqual([]);
   });
@@ -61,10 +53,10 @@ describe("the README", () => {
     expect(notice).not.toMatch(/releases\/tag\//);
     expect(notice).toContain("(docs/roadmap.md)");
     expect(notice).toContain("`sluiceway/sluiceway@v0`");
-    expect(notice).toContain("(#pin-a-commit)");
+    expect(notice).toContain("(docs/workflow.md#pin-a-commit)");
   });
 
-  test("Pin a commit still shows how to pin a release by its full commit SHA", () => {
+  test("Pin a commit, in docs/workflow.md, still shows how to pin a release by its full commit SHA", () => {
     expect(PIN).not.toBe("");
     expect(PIN).toMatch(/uses: sluiceway\/sluiceway@[0-9a-f]{40} # v\d+\.\d+\.\d+\n/);
     expect(PIN).toContain("(https://github.com/sluiceway/sluiceway/releases)");

@@ -11,8 +11,9 @@ import {
   workflows,
 } from "./docs.ts";
 
-// Slice 2.10: a stranger sets Sluiceway up from the README alone, so every
-// workflow the docs show has to work as written. These tests hold each one to
+// Slice 2.10: a stranger sets Sluiceway up from the docs alone, so every
+// workflow the docs show has to work as written. Since the README rewrite the
+// README shows the whole loop and docs/workflow.md explains it. These tests hold each one to
 // action.yml and to the wiring the records need.
 
 type ActionMetadata = {
@@ -31,10 +32,11 @@ const steps = all.flatMap(({ where, workflow }) =>
 );
 
 describe("the workflows in the docs", () => {
-  test("there are some to check: the README's, and one example per setup", () => {
-    expect(all.filter(({ where }) => where.startsWith("README.md")).length).toBeGreaterThanOrEqual(
-      3,
-    );
+  test("there are some to check: the README's, the manual's, and one example per setup", () => {
+    const at = (path: string) => all.filter(({ where }) => where.startsWith(path)).length;
+    expect(at("README.md")).toBe(1);
+    expect(at("docs/workflow.md")).toBeGreaterThanOrEqual(2);
+    expect(at("docs/read-only-trial.md")).toBe(1);
     expect(EXAMPLE_WORKFLOWS.length).toBeGreaterThanOrEqual(3);
   });
 
@@ -164,7 +166,7 @@ describe("a workflow that deploys", () => {
     expect(JSON.stringify(workflow)).not.toContain("event.changes");
   });
 
-  test.each(deploying)("has the permissions of the README's block: $where", ({ workflow }) => {
+  test.each(deploying)("has the permissions of the workflow's block: $where", ({ workflow }) => {
     expect(workflow.permissions).toEqual({
       contents: "read",
       issues: "write",
@@ -224,43 +226,50 @@ describe("a workflow that deploys", () => {
   });
 });
 
-describe("the README", () => {
-  const readme = read("README.md");
+describe("the setup in docs/workflow.md", () => {
+  const page = read("docs/workflow.md");
+  const shown = all.filter(({ where }) => where.startsWith("docs/workflow.md"));
 
-  test("has no warning box any more", () => {
-    expect(readme.includes("[!WARNING]")).toBe(false);
+  test("has no warning box", () => {
+    expect(page.includes("[!WARNING]")).toBe(false);
+    expect(read("README.md").includes("[!WARNING]")).toBe(false);
   });
 
   // Record 0042: the setup starts with the check.
   test("shows the check before any workflow that previews or deploys", () => {
-    const modes = all
-      .filter(({ where }) => where.startsWith("README.md"))
-      .flatMap(({ workflow }) => Object.values(workflow.jobs).map(modeOf));
+    const modes = shown.flatMap(({ workflow }) => Object.values(workflow.jobs).map(modeOf));
     expect(modes[0]).toBe("check");
+    expect(modes).toContain("settle");
   });
 
   // Onboarding log, hurdle 8.
   test("has the table of what goes where", () => {
-    expect(readme.includes("| `sluiceway.yaml` |")).toBe(true);
+    expect(page.includes("| `sluiceway.yaml` |")).toBe(true);
   });
 
   test("says not to add merge_group to the workflow", () => {
-    expect(readme.includes("merge_group")).toBe(true);
+    expect(page.includes("merge_group")).toBe(true);
+  });
+});
+
+describe("the read-only trial", () => {
+  const page = read("docs/read-only-trial.md");
+
+  test("is a workflow that only scans", () => {
+    const shown = all.filter(({ where }) => where.startsWith("docs/read-only-trial.md"));
+    expect(shown.length).toBe(1);
+    expect(Object.values(shown[0]?.workflow.jobs ?? {}).map(modeOf)).toEqual(["scan"]);
   });
 
   // Slice 2.17 (onboarding log, hurdle 16): in the read-only trial a box
   // would do nothing, so the trial turns the boxes off.
-  test("the read-only trial turns on dashboard.readOnly, and no longer promises a note", () => {
-    const section = readme.slice(
-      readme.indexOf("### Start read only"),
-      readme.indexOf("\n## ", readme.indexOf("### Start read only")),
-    );
-    const configs = fences(section)
+  test("turns on dashboard.readOnly, and no longer promises a note", () => {
+    const configs = fences(page)
       .filter(({ language, text }) => language === "yaml" && !text.includes("jobs:"))
       .map(({ text }) => parseConfig(text));
     expect(configs.map((config) => config.dashboard.readOnly)).toEqual([true]);
-    expect(section).not.toContain("leaves a note");
-    expect(readme).not.toContain("the next scan clears it and leaves a note");
+    expect(page).not.toContain("leaves a note");
+    expect(page).not.toContain("the next scan clears it and leaves a note");
   });
 });
 
@@ -272,10 +281,12 @@ describe("every user doc", () => {
   });
 
   // @v0 moves with every release (build plan, section 8). A page that shows it
-  // leads a reader who wants to review every update to the pinned commit.
+  // leads a reader who wants to review every update to the pinned commit, in
+  // docs/workflow.md since the README rewrite.
   test.each(USER_DOCS)("that shows @v0 links to Pin a commit: %s", (path) => {
     const text = read(path);
-    if (text.includes("sluiceway/sluiceway@v0")) expect(text.includes("#pin-a-commit")).toBe(true);
+    if (text.includes("sluiceway/sluiceway@v0"))
+      expect(text).toMatch(/workflow\.md#pin-a-commit|\(#pin-a-commit\)/);
   });
 
   test.each(USER_DOCS)("has no em-dash: %s", (path) => {

@@ -29,23 +29,34 @@ function anchors(path: string): string[] {
   return [...outsideFences.matchAll(/^#{1,6} (.+)$/gm)].map((match) => slug(match[1] ?? ""));
 }
 
-const links = PAGES.flatMap((path) =>
-  [
-    ...read(path)
-      .replace(/^```[\s\S]*?^```$/gm, "")
-      // A link inside inline code is an example of a format, such as
-      // `[preview](url)`, and not a link.
-      .replace(/`[^`\n]*`/g, "")
-      .matchAll(/\]\(([^)\s]+)\)/g),
+// The README rewrite: the pictures on top are HTML, `src` and `srcset`, and
+// an HTML link is a link too.
+const links = PAGES.flatMap((path) => {
+  const text = read(path)
+    .replace(/^```[\s\S]*?^```$/gm, "")
+    // A link inside inline code is an example of a format, such as
+    // `[preview](url)`, and not a link.
+    .replace(/`[^`\n]*`/g, "");
+  return [
+    ...[...text.matchAll(/\]\(([^)\s]+)\)/g)].map((match) => match[1] ?? ""),
+    ...[...text.matchAll(/\b(?:src|srcset|href)="([^"\s]+)"/g)].map((match) => match[1] ?? ""),
   ]
-    .map((match) => match[1] ?? "")
     .filter((target) => !/^[a-z]+:/.test(target))
-    .map((target) => ({ path, target })),
-);
+    .map((target) => ({ path, target }));
+});
 
 describe("the links of every page", () => {
   test("there are some to check, on every page of docs/ and the records too", () => {
     expect(links.length).toBeGreaterThan(20);
+    expect(links).toContainEqual({ path: "README.md", target: "assets/mascot/in-sync-light.svg" });
+    for (const page of [
+      "docs/workflow.md",
+      "docs/read-only-trial.md",
+      "docs/using-the-dashboard.md",
+      "docs/reference.md",
+    ]) {
+      expect(links.some(({ path }) => path === page)).toBe(true);
+    }
     expect(PAGES).toContain("docs/build-plan.md");
     expect(PAGES.filter((path) => path.startsWith("docs/adr/")).length).toBeGreaterThan(50);
   });

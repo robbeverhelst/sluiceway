@@ -92,12 +92,17 @@ describe("the README", () => {
   test("links to the config reference", () => {
     expect(read("README.md").includes("(docs/configuration.md)")).toBe(true);
   });
+});
 
+describe("the setup pages", () => {
   // The YAML blocks that are not a workflow or a part of one are sluiceway.yaml.
-  // The setup's file and, since slice 2.17, the read-only trial's. A list is a
-  // workflow step, such as the pinned step of "Pin a commit".
-  test("shows sluiceway.yaml files that all load", () => {
-    const configs = fences(read("README.md"))
+  // Since the README rewrite the README shows only the workflow, and the
+  // read-only trial shows its file. A list is a workflow step, such as the
+  // pinned step of "Pin a commit".
+  const PAGES = ["README.md", "docs/workflow.md", "docs/read-only-trial.md"];
+
+  test("show sluiceway.yaml files that all load", () => {
+    const configs = PAGES.flatMap((path) => fences(read(path)))
       .filter((fence) => fence.language === "yaml")
       .filter((fence) => {
         const parsed = Bun.YAML.parse(fence.text) as Record<string, unknown>;
@@ -112,7 +117,7 @@ describe("the README", () => {
         );
         return !job && !["jobs", "on", "environment"].some((key) => key in parsed);
       });
-    expect(configs.length).toBe(2);
+    expect(configs.length).toBeGreaterThanOrEqual(1);
     for (const config of configs) expect(() => parseConfig(config.text)).not.toThrow();
   });
 });

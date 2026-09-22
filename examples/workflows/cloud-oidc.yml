@@ -4,7 +4,7 @@
 # .github/workflows/deploy-dashboard.yml on the default branch.
 #
 # `@v0` follows every release until 1.0.0. To review every update yourself,
-# pin a full commit SHA instead, as the README's "Pin a commit" says.
+# pin a full commit SHA instead, as "Pin a commit" in docs/workflow.md says.
 name: deploy-dashboard
 
 on:

@@ -2,7 +2,7 @@
 
 Sluiceway reads one optional file, `sluiceway.yaml`, at the root of the repo. Without it every stack that discovery finds gets a row, anyone with write access can tick, and every setting below has its default. Add the file when a default does not fit.
 
-`sluiceway.yaml` is about your stacks: who may tick them, which ones to leave out, what files they read. When and on what runner Sluiceway runs is GitHub's business and lives in the workflow file under `.github/workflows/`. The [README](../README.md#what-goes-where) has the table.
+`sluiceway.yaml` is about your stacks: who may tick them, which ones to leave out, what files they read. When and on what runner Sluiceway runs is GitHub's business and lives in the workflow file under `.github/workflows/`. [What goes where](workflow.md#what-goes-where) has the table.
 
 The file is read from the checkout of the job, so the rules in force are the ones on the default branch. With a protected default branch, a change to `tickers` is itself a reviewed change ([security](security.md)).
 
@@ -13,7 +13,7 @@ The file is read from the checkout of the job, so the rules in force are the one
 - **Every mode stops on a file that is not valid.** The job goes red with the messages, and the dashboard is not written.
 - **`drift` on a stack is not in this version.** It fails with a message that says so, and is never ignored. `drift` at the top level is valid.
 - **Editors can check the file as you type.** Put this line at the top and an editor with YAML support finds the schema: `# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json`.
-- **The `check` mode tells you in a pull request** whether the file is valid, which stacks it covers and what `ignore` leaves out ([README](../README.md#1-check-your-setup)).
+- **The `check` mode tells you in a pull request** whether the file is valid, which stacks it covers and what `ignore` leaves out ([check your setup](workflow.md#check-your-setup)).
 
 ## Stacks and stack ids
 
@@ -118,7 +118,7 @@ Default: `false`
 
 Draw a dashboard that nothing can be deployed from: pending rows have no box, there is no rescan box, and the line under the Pending heading says that the dashboard is read only. Everything else is the same: the rows, the diffs, the counts, the links and the summary.
 
-Turn it on for a workflow that only scans, such as the read-only trial in the README. Such a workflow has no `resolve` job, so a box would look live and do nothing. Sluiceway cannot see that from inside a scan, which is why it is a setting.
+Turn it on for a workflow that only scans, such as the [read-only trial](read-only-trial.md). Such a workflow has no `resolve` job, so a box would look live and do nothing. Sluiceway cannot see that from inside a scan, which is why it is a setting.
 
 ```yaml
 dashboard:
@@ -426,7 +426,7 @@ The stack ids of the stacks this stack depends on, such as a network stack that 
 - **A tick waits for a change upstream.** A tick on this stack is refused while a stack it depends on has a pending row that nobody ticked: the box is cleared, and a note on the row names that stack. The job stays green. Only a pending row holds a tick back, because only a change that has not gone out can change what this stack reads. A stack that is in sync, or whose preview failed, holds nothing back.
 - **Ticks in one chain go out in order.** Tick both and the one it depends on deploys first. The other gets the row `queued behind <stack>` and a deployment record of its own, and deploys once that stack went out. If that deploy fails, the queued stack does not deploy and its row gets a failure line. The same happens when you tick this stack while a stack it depends on is deploying.
 
-Each layer of a chain runs in a workflow run of its own. The `settle` job starts the workflow again when a layer went out, and the `resolve` job of that run starts the next layer, so the `resolve` job has to run on `workflow_dispatch` as well as on `issues`. The workflow in the [README](../README.md#2-add-the-workflow) does.
+Each layer of a chain runs in a workflow run of its own. The `settle` job starts the workflow again when a layer went out, and the `resolve` job of that run starts the next layer, so the `resolve` job has to run on `workflow_dispatch` as well as on `issues`. [The workflow](workflow.md#stack-dependencies) does.
 
 A stack waits only on the stacks it names, not on theirs. Entries add up, like `inputs`: an entry without a name gives its list to every stack in its path.
 
@@ -575,7 +575,7 @@ At most 10 are listed, oldest first. The row shows the stack, the title of the p
 
 A tick merges the pull request at the commit the row showed, with the merge method Renovate would use: `automergeStrategy` from `renovate.json`, `.github/renovate.json`, `.gitlab/renovate.json`, `.renovaterc` or `.renovaterc.json` when the repo allows it, else squash, rebase or a merge commit, the first one the repo allows. Branch protection and required reviews stay in force: when GitHub refuses the merge, the ticker gets a comment with GitHub's words. The merge starts a full scan, which previews the stack on the merged code and hands exactly that diff to `apply`, which previews again and deploys only if nothing moved. The tick rule of the stack is the tick rule of its pull requests.
 
-Nothing is listed on a read-only dashboard or while `deploys` is `false`. The workflow needs more than the default: [Merge and deploy](../README.md#merge-and-deploy) in the README has what to add.
+Nothing is listed on a read-only dashboard or while `deploys` is `false`. The workflow needs more than the default: [Merge and deploy](workflow.md#merge-and-deploy) has what to add.
 
 ```yaml
 mergeAndDeploy:

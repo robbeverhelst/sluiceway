@@ -31,7 +31,7 @@ The credentials are in the same job as Sluiceway's own process, so the promise i
 
 ## Recipes
 
-Each recipe is the loading part of a job. [example-workflows.md](example-workflows.md) has them in complete workflows. The snippets use the action at `@v0`, which follows every release until 1.0.0. To review every update yourself, pin a full commit SHA instead, as the README's [Pin a commit](../README.md#pin-a-commit) says.
+Each recipe is the loading part of a job. [example-workflows.md](example-workflows.md) has them in complete workflows. The snippets use the action at `@v0`, which follows every release until 1.0.0. To review every update yourself, pin a full commit SHA instead, as [Pin a commit](workflow.md#pin-a-commit) says.
 
 ### GitHub secrets
 

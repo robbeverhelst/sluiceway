@@ -47,7 +47,7 @@ It fits a single owner, or a small team that trusts its members. The credentials
 Needs GitHub Environments with a branch limit, and a protected default branch.
 
 - Store the credentials that change things as secrets of an environment that only the default branch may use. With OIDC, trust the role for that environment only.
-- Give the stacks that environment in `sluiceway.yaml` and name it on the `apply` job, with `deployment: false` ([README](../README.md#with-github-environments)).
+- Give the stacks that environment in `sluiceway.yaml` and name it on the `apply` job, with `deployment: false` ([with GitHub Environments](workflow.md#with-github-environments)).
 - Protect the default branch so that changes need a review.
 - Give `scan` credentials that can only read.
 

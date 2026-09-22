@@ -1,6 +1,6 @@
 # Example workflows
 
-Most of a Sluiceway workflow is not about Sluiceway: checking out, installing a language and your dependencies, installing the tool, loading credentials. These are complete workflows for common setups, ready to copy. Each one is the workflow of the [README](../README.md#2-add-the-workflow) with those steps filled in, and each one is checked in this repo's tests against the action's inputs and the wiring Sluiceway needs.
+Most of a Sluiceway workflow is not about Sluiceway: checking out, installing a language and your dependencies, installing the tool, loading credentials. These are complete workflows for common setups, ready to copy. Each one is [the workflow](workflow.md#the-workflow) with those steps filled in, and each one is checked in this repo's tests against the action's inputs and the wiring Sluiceway needs.
 
 | Setup | File | Credentials from |
 |---|---|---|
@@ -12,7 +12,7 @@ Copy the file to `.github/workflows/deploy-dashboard.yml` on your default branch
 
 ## What to change
 
-- **The version of the action.** The examples use `sluiceway/sluiceway@v0`, which follows every release from 0.1.0 until 1.0.0. To review every update yourself, pin a full commit SHA instead, as the README's [Pin a commit](../README.md#pin-a-commit) says.
+- **The version of the action.** The examples use `sluiceway/sluiceway@v0`, which follows every release from 0.1.0 until 1.0.0. To review every update yourself, pin a full commit SHA instead, as [Pin a commit](workflow.md#pin-a-commit) says.
 - **The branch.** The examples scan after a push to `main`. Use your default branch.
 - **The secret and variable names.** `PULUMI_READ_TOKEN`, `OP_PREVIEW_TOKEN`, `AWS_PREVIEW_ROLE` and the others are names the examples made up. Create them under the repo's settings, or rename them in the file.
 - **The environments.** The `apply` job of every example names the stack's environment, so that the credentials that change things can be secrets of a GitHub Environment ([security](security.md)). The environment of a stack is `sluiceway` unless [`sluiceway.yaml`](configuration.md#stacksenvironment) gives it another. Where your plan has no environments, remove the `environment:` block and keep those credentials as repository secrets.
@@ -35,4 +35,4 @@ The scan assumes a role that can only read, and `apply` a role that can change t
 
 ## Before you merge one
 
-Run the [check](../README.md#1-check-your-setup) in a pull request first. It tells you whether Sluiceway finds your stacks and understands `sluiceway.yaml`, with no credentials and no tool. What it cannot tell you is whether a preview works: whether the runner can fetch what your programs fetch ([credentials](credentials.md#what-your-programs-fetch-the-runner-has-to-fetch)), and whether every stack exists in the backend. The first scan shows that, one row per stack.
+Run the [check](workflow.md#check-your-setup) in a pull request first. It tells you whether Sluiceway finds your stacks and understands `sluiceway.yaml`, with no credentials and no tool. What it cannot tell you is whether a preview works: whether the runner can fetch what your programs fetch ([credentials](credentials.md#what-your-programs-fetch-the-runner-has-to-fetch)), and whether every stack exists in the backend. The first scan shows that, one row per stack.
