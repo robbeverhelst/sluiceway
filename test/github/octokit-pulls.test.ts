@@ -144,6 +144,88 @@ describe("listing the open pull requests", () => {
     ]);
   });
 
+  // Slice 5.17: a pull request whose checks have not all finished waits on
+  // them, and one whose checks have failed anywhere does not, whatever the
+  // rollup puts first.
+  test("reads a check run or a commit status that has not finished as pending", async () => {
+    const rollup = (contexts: unknown[]) => ({
+      commits: {
+        nodes: [
+          { commit: { statusCheckRollup: { state: "PENDING", contexts: { nodes: contexts } } } },
+        ],
+      },
+    });
+    const { port } = portThatAnswers([
+      listed([
+        node(rollup([{ __typename: "CheckRun", status: "IN_PROGRESS", conclusion: null }])),
+        node(
+          rollup([
+            { __typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS" },
+            { __typename: "StatusContext", state: "PENDING" },
+          ]),
+        ),
+        node(rollup([{ __typename: "CheckRun", status: "QUEUED", conclusion: null }])),
+      ]),
+    ]);
+    const { pullRequests } = await port.listOpenPullRequests();
+    expect(pullRequests.map(({ checks }) => checks)).toEqual(["pending", "pending", "pending"]);
+  });
+
+  test("reads a failed check next to one that has not finished as a failure", async () => {
+    const rollup = (contexts: unknown[]) => ({
+      commits: {
+        nodes: [
+          { commit: { statusCheckRollup: { state: "PENDING", contexts: { nodes: contexts } } } },
+        ],
+      },
+    });
+    const { port } = portThatAnswers([
+      listed([
+        node(
+          rollup([
+            { __typename: "CheckRun", status: "COMPLETED", conclusion: "FAILURE" },
+            { __typename: "StatusContext", state: "PENDING" },
+          ]),
+        ),
+        node(
+          rollup([
+            { __typename: "StatusContext", state: "ERROR" },
+            { __typename: "CheckRun", status: "IN_PROGRESS", conclusion: null },
+          ]),
+        ),
+        node(
+          rollup([
+            { __typename: "CheckRun", status: "COMPLETED", conclusion: "TIMED_OUT" },
+            { __typename: "CheckRun", status: "IN_PROGRESS", conclusion: null },
+          ]),
+        ),
+        node({
+          commits: {
+            nodes: [
+              { commit: { statusCheckRollup: { state: "FAILURE", contexts: { nodes: [] } } } },
+            ],
+          },
+        }),
+      ]),
+    ]);
+    const { pullRequests } = await port.listOpenPullRequests();
+    expect(pullRequests.map(({ checks }) => checks)).toEqual([
+      "failure",
+      "failure",
+      "failure",
+      "failure",
+    ]);
+  });
+
+  test("asks for the checks of the head commit in the same query", async () => {
+    const { port, sent } = portThatAnswers([listed([node()])]);
+    await port.listOpenPullRequests();
+    const { query } = (sent[0]?.body ?? { query: "" }) as { query: string };
+    expect(query).toContain("contexts(first: 100)");
+    expect(query).toContain("... on CheckRun");
+    expect(query).toContain("... on StatusContext");
+  });
+
   test("says when the branch lives in a fork (slice 5.4)", async () => {
     const { port } = portThatAnswers([listed([node({ isCrossRepository: true })])]);
     const { pullRequests } = await port.listOpenPullRequests();

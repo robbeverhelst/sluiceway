@@ -48,6 +48,18 @@ const OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!, $after: Stri
             commit {
               statusCheckRollup {
                 state
+                contexts(first: 100) {
+                  nodes {
+                    __typename
+                    ... on CheckRun {
+                      status
+                      conclusion
+                    }
+                    ... on StatusContext {
+                      state
+                    }
+                  }
+                }
               }
             }
           }
@@ -69,9 +81,18 @@ interface PullRequestNode {
   changedFiles: number;
   files: { nodes: ({ path: string; changeType: string } | null)[] | null } | null;
   commits: {
-    nodes: ({ commit: { statusCheckRollup: { state: string } | null } } | null)[] | null;
+    nodes: ({ commit: { statusCheckRollup: Rollup | null } } | null)[] | null;
   };
 }
+
+interface Rollup {
+  state: string;
+  contexts?: { nodes: (RollupContext | null)[] | null } | null;
+}
+
+type RollupContext =
+  | { __typename: "CheckRun"; status: string; conclusion: string | null }
+  | { __typename: "StatusContext"; state: string };
 
 interface OpenPullRequestsData {
   repository: {
@@ -95,9 +116,28 @@ const CHECKS: Record<string, OpenPullRequest["checks"]> = {
   ERROR: "failure",
 };
 
+// A check run that ended in any other way than these failed.
+const PASSED = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
+
+function failed(context: RollupContext): boolean {
+  return context.__typename === "CheckRun"
+    ? context.status === "COMPLETED" && !PASSED.has(context.conclusion ?? "")
+    : context.state === "FAILURE" || context.state === "ERROR";
+}
+
+// The rollup is GitHub's combined result. A rollup that still waits is read
+// as a failure when one of its checks has failed already, so a pull request
+// whose checks failed never shows as waiting on them (record 0081).
+function checksOf(rollup: Rollup | null | undefined): OpenPullRequest["checks"] {
+  if (!rollup) return "none";
+  const checks = CHECKS[rollup.state] ?? "failure";
+  if (checks === "pending" && present(rollup.contexts?.nodes).some(failed)) return "failure";
+  return checks;
+}
+
 function toPullRequest(node: PullRequestNode): OpenPullRequest {
   const files = present(node.files?.nodes);
-  const state = present(node.commits.nodes)[0]?.commit.statusCheckRollup?.state;
+  const rollup = present(node.commits.nodes)[0]?.commit.statusCheckRollup;
   const { author } = node;
   return {
     number: node.number,
@@ -118,7 +158,7 @@ function toPullRequest(node: PullRequestNode): OpenPullRequest {
         : node.mergeable === "CONFLICTING"
           ? "conflicting"
           : "unknown",
-    checks: state === undefined ? "none" : (CHECKS[state] ?? "failure"),
+    checks: checksOf(rollup),
     files: files.map(({ path }) => path),
     // A renamed file comes with its new path only, and the claim rule needs
     // both (record 0010).
