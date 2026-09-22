@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.0](https://github.com/sluiceway/sluiceway/compare/v0.9.0...v0.10.0) (2026-09-22)
+
+
+### Features
+
+* the check reads the workflow, and the result file gets a schema (slice 4.10) ([63e8d92](https://github.com/sluiceway/sluiceway/commit/63e8d923d4fd9c20ddfe7132c47db307ac9364ae))
+* the trail lists failed deploys at the time each really ended, its length is a setting, and a destroy alert names pending destroys ([7a3f06c](https://github.com/sluiceway/sluiceway/commit/7a3f06c02e99f2a04424e754c15725dfa686c93f))
+
 ## [0.9.0](https://github.com/sluiceway/sluiceway/compare/v0.8.0...v0.9.0) (2026-09-22)
 
 
