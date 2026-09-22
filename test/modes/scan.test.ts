@@ -208,6 +208,37 @@ describe("the job result (record 0012)", () => {
     await scan(context);
   });
 
+  // Slice 5.9: an error thrown past the adapter is a bug of Sluiceway's. It
+  // no longer stops the pool: the stack gets a preview failure row that says
+  // so, the others are previewed, and the job goes red after the write.
+  test("a fault inside Sluiceway is a preview failure of that stack, and the job goes red after the dashboard was written", async () => {
+    const adapter = tableAdapter({
+      "a:prod": async () => {
+        throw new TypeError("Cannot read properties of undefined (reading 'steps')");
+      },
+      "b:prod": pending("b:prod", change("x")),
+    });
+    const { context, github, log } = harness(adapter);
+
+    const result = scan(context);
+
+    await expect(result).rejects.toBeInstanceOf(ScanFailedError);
+    await expect(result).rejects.toThrow(
+      "The preview of a:prod failed inside Sluiceway, which is a bug. The dashboard was written first and shows it as a preview failure. The job log holds the error in the group of the stack. Please report it at https://github.com/sluiceway/sluiceway/issues.",
+    );
+    expect(rowStates(dashboardBody(github))).toEqual({
+      "a:prod": "preview-failed",
+      "b:prod": "pending",
+    });
+    expect(dashboardBody(github)).toContain(
+      "**a:prod** · preview failed: Sluiceway failed inside itself, which is a bug",
+    );
+    const group = log.groups.find(({ title }) => title.startsWith("a:prod"));
+    expect(group?.lines).toContain(
+      "TypeError: Cannot read properties of undefined (reading 'steps')",
+    );
+  });
+
   test("the only stack of a repo failing leaves the job green", async () => {
     const { context, github } = harness(tableAdapter({ "a:prod": failing() }));
     await scan(context);

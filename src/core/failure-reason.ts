@@ -16,7 +16,10 @@ export type PreviewFailureReason =
   | { kind: "tool-timed-out" }
   | { kind: "timed-out"; minutes: number }
   | { kind: "unreadable-output" }
-  | { kind: "unknown-step" };
+  | { kind: "unknown-step" }
+  // An error thrown past the adapter: a bug of Sluiceway's own (slice 5.9).
+  // The row says so, and the job still goes red.
+  | { kind: "internal-error" };
 
 // The reason as a row, the summary, an annotation or a deployment status shows
 // it. One form for all of them: lower case and no full stop, the wording of
@@ -45,6 +48,8 @@ export function previewFailureText(reason: PreviewFailureReason): string {
       return "the tool's output could not be read";
     case "unknown-step":
       return "the tool reported a step Sluiceway does not know";
+    case "internal-error":
+      return "Sluiceway failed inside itself, which is a bug";
   }
 }
 

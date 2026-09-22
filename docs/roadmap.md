@@ -139,7 +139,6 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A bound on how many closed issues are read when looking for a closed dashboard
 - The tool's output in the job log while a preview is still running
 - Links on a row to the attempt of a run that was run again
-- A preview failure row for a fault inside Sluiceway itself
 - A time limit of Sluiceway's on the deploy itself
 - A preview after a deploy that went out, to check the row
 - A row of its own for a deploy that ended before any preview (the tool missing, the stack gone, a broken `sluiceway.yaml`)

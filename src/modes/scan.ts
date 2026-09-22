@@ -708,6 +708,15 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   }
 
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
+  const faults = failed
+    .filter(({ result }) => !result.ok && result.reason.kind === "internal-error")
+    .map(({ id }) => id)
+    .sort(byCodeUnit);
+  if (faults.length > 0) {
+    throw new ScanFailedError(
+      `The preview of ${faults.join(", ")} failed inside Sluiceway, which is a bug. The dashboard was written first and shows ${faults.length === 1 ? "it" : "them"} as a preview failure. The job log holds the error in the group of the stack. Please report it at https://github.com/sluiceway/sluiceway/issues.`,
+    );
+  }
   if (everyPreviewFailed(previewed.size, failed.length)) {
     throw new ScanFailedError(
       `Every preview failed (${failed.length} of ${previewed.size}). That nearly always means the environment is broken, such as missing credentials or a backend that cannot be reached. The dashboard was written first and shows a preview failure on every row of a previewed stack, which is true: nothing can be deployed either. The job log holds what the tool printed, in the group of each stack.`,
@@ -1108,10 +1117,30 @@ async function previewAll(
       timeoutMinutes: configured.previewTimeout ?? context.previewTimeoutMinutes,
       showValues,
     };
-    const previewedOnly = await adapter.preview(configured.stack, {
-      ...options,
-      ...(configured.dependsOnAuto ? { dependencies: repoStacks } : {}),
-    });
+    let previewedOnly: PreviewResult;
+    try {
+      previewedOnly = await adapter.preview(configured.stack, {
+        ...options,
+        ...(configured.dependsOnAuto ? { dependencies: repoStacks } : {}),
+      });
+    } catch (error) {
+      // The adapter turns everything the tool can do wrong into a preview
+      // failure, so an error here is a bug of Sluiceway's own. It is the
+      // stack's preview failure, the other stacks go on, and the job goes red
+      // after the write (slice 5.9). The error stays in the job log.
+      const milliseconds = now().getTime() - started;
+      const detail = lines(error instanceof Error ? (error.stack ?? String(error)) : String(error));
+      const result: PreviewResult = {
+        ok: false,
+        reason: { kind: "internal-error" },
+        detail,
+        toolLog: "",
+      };
+      log.info(
+        `Previewed ${logGroupTitle(id)} in ${seconds(milliseconds)}: ${previewOutcome(result)}`,
+      );
+      return { id, result, startedAt, milliseconds };
+    }
     let milliseconds = now().getTime() - started;
     log.info(
       `Previewed ${logGroupTitle(id)} in ${seconds(milliseconds)}: ${previewOutcome(previewedOnly)}`,
