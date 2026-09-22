@@ -1,0 +1,24 @@
+{
+  "scenario": "stack-list-empty",
+  "description": "The stacks the backend holds for a project that has none yet.",
+  "cliVersion": "v3.229.0",
+  "commands": [
+    {
+      "id": "stack-ls",
+      "argv": [
+        "pulumi",
+        "stack",
+        "ls",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "stack-ls.stdout",
+      "stderr": "stack-ls.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

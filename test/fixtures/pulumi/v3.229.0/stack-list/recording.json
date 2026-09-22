@@ -1,0 +1,24 @@
+{
+  "scenario": "stack-list",
+  "description": "The stacks the backend holds for network/, as the check with backend: true asks for them (record 0074): network:dev was made, network:prod was not, and a stack of app/ in the same backend is not listed.",
+  "cliVersion": "v3.229.0",
+  "commands": [
+    {
+      "id": "stack-ls",
+      "argv": [
+        "pulumi",
+        "stack",
+        "ls",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "stack-ls.stdout",
+      "stderr": "stack-ls.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}
