@@ -1,6 +1,6 @@
-diff -u -N /tmp/LIVE-818201683/v1.ConfigMap.sluiceway-example.web-settings /tmp/MERGED-1936653818/v1.ConfigMap.sluiceway-example.web-settings
---- /tmp/LIVE-818201683/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 10:42:04.951627314 +0000
-+++ /tmp/MERGED-1936653818/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 10:42:04.952627318 +0000
+diff -u -N /tmp/LIVE-3008759167/v1.ConfigMap.sluiceway-example.web-settings /tmp/MERGED-4045198229/v1.ConfigMap.sluiceway-example.web-settings
+--- /tmp/LIVE-3008759167/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 14:13:16.118291986 +0000
++++ /tmp/MERGED-4045198229/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 14:13:16.118291986 +0000
 @@ -1,6 +1,6 @@
  apiVersion: v1
  data:
@@ -9,9 +9,9 @@ diff -u -N /tmp/LIVE-818201683/v1.ConfigMap.sluiceway-example.web-settings /tmp/
    log-level: info
  kind: ConfigMap
  metadata:
-diff -u -N /tmp/LIVE-818201683/v1.Secret.sluiceway-example.web-credentials /tmp/MERGED-1936653818/v1.Secret.sluiceway-example.web-credentials
---- /tmp/LIVE-818201683/v1.Secret.sluiceway-example.web-credentials	2026-09-22 10:42:04.963627361 +0000
-+++ /tmp/MERGED-1936653818/v1.Secret.sluiceway-example.web-credentials	2026-09-22 10:42:04.964627365 +0000
+diff -u -N /tmp/LIVE-3008759167/v1.Secret.sluiceway-example.web-credentials /tmp/MERGED-4045198229/v1.Secret.sluiceway-example.web-credentials
+--- /tmp/LIVE-3008759167/v1.Secret.sluiceway-example.web-credentials	2026-09-22 14:13:16.126291889 +0000
++++ /tmp/MERGED-4045198229/v1.Secret.sluiceway-example.web-credentials	2026-09-22 14:13:16.126291889 +0000
 @@ -1,6 +1,6 @@
  apiVersion: v1
  data:
@@ -19,4 +19,4 @@ diff -u -N /tmp/LIVE-818201683/v1.Secret.sluiceway-example.web-credentials /tmp/
 +  password: '*** (after)'
  kind: Secret
  metadata:
-   creationTimestamp: "2026-09-22T10:42:04Z"
+   creationTimestamp: "2026-09-22T14:13:16Z"

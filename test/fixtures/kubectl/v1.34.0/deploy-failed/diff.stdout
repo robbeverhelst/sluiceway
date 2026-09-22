@@ -1,17 +1,17 @@
-diff -N -U1000000 /tmp/LIVE-2409270324/apps.v1.Deployment.sluiceway-example.web /tmp/MERGED-4172502076/apps.v1.Deployment.sluiceway-example.web
---- /tmp/LIVE-2409270324/apps.v1.Deployment.sluiceway-example.web	2026-09-22 10:42:07.742973992 +0000
-+++ /tmp/MERGED-4172502076/apps.v1.Deployment.sluiceway-example.web	2026-09-22 10:42:07.742973992 +0000
+diff -N -U1000000 /tmp/LIVE-3537201275/apps.v1.Deployment.sluiceway-example.web /tmp/MERGED-600168004/apps.v1.Deployment.sluiceway-example.web
+--- /tmp/LIVE-3537201275/apps.v1.Deployment.sluiceway-example.web	2026-09-22 14:13:06.380100161 +0000
++++ /tmp/MERGED-600168004/apps.v1.Deployment.sluiceway-example.web	2026-09-22 14:13:06.380100161 +0000
 @@ -0,0 +1,45 @@
 +apiVersion: apps/v1
 +kind: Deployment
 +metadata:
-+  creationTimestamp: "2026-09-22T10:42:07Z"
++  creationTimestamp: "2026-09-22T14:13:06Z"
 +  generation: 1
 +  labels:
 +    app.kubernetes.io/name: web
 +  name: web
 +  namespace: sluiceway-example
-+  uid: e9530848-c923-44b8-ac35-a8aa56b3f908
++  uid: 8bc0eb74-de3a-4c09-aba7-a5e9daa6e241
 +spec:
 +  progressDeadlineSeconds: 600
 +  replicas: 1
@@ -47,9 +47,9 @@ diff -N -U1000000 /tmp/LIVE-2409270324/apps.v1.Deployment.sluiceway-example.web 
 +      securityContext: {}
 +      terminationGracePeriodSeconds: 30
 +status: {}
-diff -N -U1000000 /tmp/LIVE-2409270324/v1.ConfigMap.sluiceway-example.web-settings /tmp/MERGED-4172502076/v1.ConfigMap.sluiceway-example.web-settings
---- /tmp/LIVE-2409270324/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 10:42:07.737974011 +0000
-+++ /tmp/MERGED-4172502076/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 10:42:07.737974011 +0000
+diff -N -U1000000 /tmp/LIVE-3537201275/v1.ConfigMap.sluiceway-example.web-settings /tmp/MERGED-600168004/v1.ConfigMap.sluiceway-example.web-settings
+--- /tmp/LIVE-3537201275/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 14:13:06.373100032 +0000
++++ /tmp/MERGED-600168004/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 14:13:06.373100032 +0000
 @@ -0,0 +1,12 @@
 +apiVersion: v1
 +data:
@@ -57,15 +57,15 @@ diff -N -U1000000 /tmp/LIVE-2409270324/v1.ConfigMap.sluiceway-example.web-settin
 +  log-level: info
 +kind: ConfigMap
 +metadata:
-+  creationTimestamp: "2026-09-22T10:42:07Z"
++  creationTimestamp: "2026-09-22T14:13:06Z"
 +  labels:
 +    app.kubernetes.io/name: web
 +  name: web-settings
 +  namespace: sluiceway-example
-+  uid: e6fd5ee0-9445-44ce-8998-e0256530ea1e
-diff -N -U1000000 /tmp/LIVE-2409270324/v1.Secret.sluiceway-example.web-credentials /tmp/MERGED-4172502076/v1.Secret.sluiceway-example.web-credentials
---- /tmp/LIVE-2409270324/v1.Secret.sluiceway-example.web-credentials	2026-09-22 10:42:07.747973973 +0000
-+++ /tmp/MERGED-4172502076/v1.Secret.sluiceway-example.web-credentials	2026-09-22 10:42:07.747973973 +0000
++  uid: 5a051963-b41d-4423-b2a9-e5cd54216ee8
+diff -N -U1000000 /tmp/LIVE-3537201275/v1.Secret.sluiceway-example.web-credentials /tmp/MERGED-600168004/v1.Secret.sluiceway-example.web-credentials
+--- /tmp/LIVE-3537201275/v1.Secret.sluiceway-example.web-credentials	2026-09-22 14:13:06.386100271 +0000
++++ /tmp/MERGED-600168004/v1.Secret.sluiceway-example.web-credentials	2026-09-22 14:13:06.386100271 +0000
 @@ -1 +1,12 @@
 -null
 +apiVersion: v1
@@ -73,26 +73,26 @@ diff -N -U1000000 /tmp/LIVE-2409270324/v1.Secret.sluiceway-example.web-credentia
 +  password: '***'
 +kind: Secret
 +metadata:
-+  creationTimestamp: "2026-09-22T10:42:07Z"
++  creationTimestamp: "2026-09-22T14:13:06Z"
 +  labels:
 +    app.kubernetes.io/name: web
 +  name: web-credentials
 +  namespace: sluiceway-example
-+  uid: c8290aed-ed3e-4b6c-862d-a58bf1625c5e
++  uid: 45e28313-0ad5-4b2f-a7f0-48ee54855087
 +type: Opaque
-diff -N -U1000000 /tmp/LIVE-2409270324/v1.Service.sluiceway-example.web /tmp/MERGED-4172502076/v1.Service.sluiceway-example.web
---- /tmp/LIVE-2409270324/v1.Service.sluiceway-example.web	2026-09-22 10:42:07.751973958 +0000
-+++ /tmp/MERGED-4172502076/v1.Service.sluiceway-example.web	2026-09-22 10:42:07.751973958 +0000
+diff -N -U1000000 /tmp/LIVE-3537201275/v1.Service.sluiceway-example.web /tmp/MERGED-600168004/v1.Service.sluiceway-example.web
+--- /tmp/LIVE-3537201275/v1.Service.sluiceway-example.web	2026-09-22 14:13:06.391100363 +0000
++++ /tmp/MERGED-600168004/v1.Service.sluiceway-example.web	2026-09-22 14:13:06.392100382 +0000
 @@ -0,0 +1,28 @@
 +apiVersion: v1
 +kind: Service
 +metadata:
-+  creationTimestamp: "2026-09-22T10:42:07Z"
++  creationTimestamp: "2026-09-22T14:13:06Z"
 +  labels:
 +    app.kubernetes.io/name: web
 +  name: web
 +  namespace: sluiceway-example
-+  uid: 6ecf4d3e-2b58-486e-9652-f78a26a654bb
++  uid: cf97d780-793f-4a97-98c1-cee409be70bb
 +spec:
 +  clusterIP: 10.96.0.0
 +  clusterIPs:

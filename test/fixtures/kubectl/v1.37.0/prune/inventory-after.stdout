@@ -8,13 +8,13 @@
         "annotations": {
             "sluiceway.dev/stack": "web"
         },
-        "creationTimestamp": "2026-09-22T13:40:58Z",
+        "creationTimestamp": "2026-09-22T14:13:31Z",
         "labels": {
             "app.kubernetes.io/managed-by": "sluiceway"
         },
         "name": "sluiceway-fe2582ff40821a0e",
         "namespace": "sluiceway-example",
-        "resourceVersion": "2742",
-        "uid": "51e3a149-154c-4f79-90b7-edd871f786ce"
+        "resourceVersion": "1314",
+        "uid": "eb33a870-3748-48ce-b9d0-75bf830397a2"
     }
 }

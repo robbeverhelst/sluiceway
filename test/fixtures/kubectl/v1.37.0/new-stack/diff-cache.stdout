@@ -1,17 +1,17 @@
-diff -N -U1000000 /tmp/LIVE-226175512/apps.v1.Deployment.sluiceway-example.cache /tmp/MERGED-1740522387/apps.v1.Deployment.sluiceway-example.cache
---- /tmp/LIVE-226175512/apps.v1.Deployment.sluiceway-example.cache	2026-09-22 10:39:57.488181688 +0000
-+++ /tmp/MERGED-1740522387/apps.v1.Deployment.sluiceway-example.cache	2026-09-22 10:39:57.489181691 +0000
+diff -N -U1000000 /tmp/LIVE-3001043545/apps.v1.Deployment.sluiceway-example.cache /tmp/MERGED-2860032939/apps.v1.Deployment.sluiceway-example.cache
+--- /tmp/LIVE-3001043545/apps.v1.Deployment.sluiceway-example.cache	2026-09-22 14:11:09.589696785 +0000
++++ /tmp/MERGED-2860032939/apps.v1.Deployment.sluiceway-example.cache	2026-09-22 14:11:09.589696785 +0000
 @@ -0,0 +1,42 @@
 +apiVersion: apps/v1
 +kind: Deployment
 +metadata:
-+  creationTimestamp: "2026-09-22T10:39:57Z"
++  creationTimestamp: "2026-09-22T14:11:09Z"
 +  generation: 1
 +  labels:
 +    app.kubernetes.io/name: cache
 +  name: cache
 +  namespace: sluiceway-example
-+  uid: a778ebe3-9ec3-4188-ac6b-0fbb9f77a724
++  uid: 7e0091bc-f592-4689-aa50-c8bd52a13390
 +spec:
 +  progressDeadlineSeconds: 600
 +  replicas: 1
@@ -44,19 +44,19 @@ diff -N -U1000000 /tmp/LIVE-226175512/apps.v1.Deployment.sluiceway-example.cache
 +      securityContext: {}
 +      terminationGracePeriodSeconds: 30
 +status: {}
-diff -N -U1000000 /tmp/LIVE-226175512/v1.Service.sluiceway-example.cache /tmp/MERGED-1740522387/v1.Service.sluiceway-example.cache
---- /tmp/LIVE-226175512/v1.Service.sluiceway-example.cache	2026-09-22 10:39:57.484181674 +0000
-+++ /tmp/MERGED-1740522387/v1.Service.sluiceway-example.cache	2026-09-22 10:39:57.484181674 +0000
+diff -N -U1000000 /tmp/LIVE-3001043545/v1.Service.sluiceway-example.cache /tmp/MERGED-2860032939/v1.Service.sluiceway-example.cache
+--- /tmp/LIVE-3001043545/v1.Service.sluiceway-example.cache	2026-09-22 14:11:09.581696858 +0000
++++ /tmp/MERGED-2860032939/v1.Service.sluiceway-example.cache	2026-09-22 14:11:09.582696849 +0000
 @@ -0,0 +1,28 @@
 +apiVersion: v1
 +kind: Service
 +metadata:
-+  creationTimestamp: "2026-09-22T10:39:57Z"
++  creationTimestamp: "2026-09-22T14:11:09Z"
 +  labels:
 +    app.kubernetes.io/name: cache
 +  name: cache
 +  namespace: sluiceway-example
-+  uid: f91b90b7-5f1d-4baa-8e46-75851851dc5e
++  uid: e1d0e410-1b19-42ec-8049-90b54c95d015
 +spec:
 +  clusterIP: 10.96.0.0
 +  clusterIPs:

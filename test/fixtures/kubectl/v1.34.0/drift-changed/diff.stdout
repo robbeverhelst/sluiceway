@@ -1,21 +1,21 @@
-diff -N - /tmp/LIVE-3529636809/apps.v1.Deployment.sluiceway-example.web /tmp/MERGED-3719109372/apps.v1.Deployment.sluiceway-example.web
---- /tmp/LIVE-3529636809/apps.v1.Deployment.sluiceway-example.web	2026-09-22 15:46:55
-+++ /tmp/MERGED-3719109372/apps.v1.Deployment.sluiceway-example.web	2026-09-22 15:46:55
+diff -N -U1000000 /tmp/LIVE-2933733085/apps.v1.Deployment.sluiceway-example.web /tmp/MERGED-3585153513/apps.v1.Deployment.sluiceway-example.web
+--- /tmp/LIVE-2933733085/apps.v1.Deployment.sluiceway-example.web	2026-09-22 14:13:48.807892814 +0000
++++ /tmp/MERGED-3585153513/apps.v1.Deployment.sluiceway-example.web	2026-09-22 14:13:48.807892814 +0000
 @@ -1,65 +1,65 @@
  apiVersion: apps/v1
  kind: Deployment
  metadata:
    annotations:
      deployment.kubernetes.io/revision: "1"
-   creationTimestamp: "2026-09-22T13:46:54Z"
+   creationTimestamp: "2026-09-22T14:13:48Z"
 -  generation: 2
 +  generation: 3
    labels:
      app.kubernetes.io/name: web
    name: web
    namespace: sluiceway-example
-   resourceVersion: "840"
-   uid: 2ce4aade-10da-48f1-9b5b-307b1dcca545
+   resourceVersion: "1434"
+   uid: e60b8273-7359-4437-b585-aeb3292bf944
  spec:
    progressDeadlineSeconds: 600
 -  replicas: 3
@@ -53,14 +53,14 @@ diff -N - /tmp/LIVE-3529636809/apps.v1.Deployment.sluiceway-example.web /tmp/MER
        terminationGracePeriodSeconds: 30
  status:
    conditions:
-   - lastTransitionTime: "2026-09-22T13:46:54Z"
-     lastUpdateTime: "2026-09-22T13:46:54Z"
+   - lastTransitionTime: "2026-09-22T14:13:48Z"
+     lastUpdateTime: "2026-09-22T14:13:48Z"
      message: Deployment does not have minimum availability.
      reason: MinimumReplicasUnavailable
      status: "False"
      type: Available
-   - lastTransitionTime: "2026-09-22T13:46:54Z"
-     lastUpdateTime: "2026-09-22T13:46:55Z"
+   - lastTransitionTime: "2026-09-22T14:13:48Z"
+     lastUpdateTime: "2026-09-22T14:13:48Z"
      message: ReplicaSet "web-6dd6dd44d4" is progressing.
      reason: ReplicaSetUpdated
      status: "True"
@@ -69,9 +69,9 @@ diff -N - /tmp/LIVE-3529636809/apps.v1.Deployment.sluiceway-example.web /tmp/MER
    replicas: 3
    unavailableReplicas: 3
    updatedReplicas: 3
-diff -N - /tmp/LIVE-3529636809/v1.ConfigMap.sluiceway-example.web-settings /tmp/MERGED-3719109372/v1.ConfigMap.sluiceway-example.web-settings
---- /tmp/LIVE-3529636809/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 15:46:55
-+++ /tmp/MERGED-3719109372/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 15:46:55
+diff -N -U1000000 /tmp/LIVE-2933733085/v1.ConfigMap.sluiceway-example.web-settings /tmp/MERGED-3585153513/v1.ConfigMap.sluiceway-example.web-settings
+--- /tmp/LIVE-2933733085/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 14:13:48.800892684 +0000
++++ /tmp/MERGED-3585153513/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 14:13:48.801892703 +0000
 @@ -1,13 +1,13 @@
  apiVersion: v1
  data:
@@ -80,10 +80,10 @@ diff -N - /tmp/LIVE-3529636809/v1.ConfigMap.sluiceway-example.web-settings /tmp/
 +  log-level: info
  kind: ConfigMap
  metadata:
-   creationTimestamp: "2026-09-22T13:46:54Z"
+   creationTimestamp: "2026-09-22T14:13:48Z"
    labels:
      app.kubernetes.io/name: web
    name: web-settings
    namespace: sluiceway-example
-   resourceVersion: "832"
-   uid: f21fbd43-fdf7-415a-88cc-7ae7b3b0cfd1
+   resourceVersion: "1436"
+   uid: 883384e3-bff5-4ca9-b480-b046000ae346

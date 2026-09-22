@@ -1,13 +1,13 @@
-diff -N - /tmp/LIVE-1330314959/apps.v1.Deployment.sluiceway-example.web /tmp/MERGED-3433689260/apps.v1.Deployment.sluiceway-example.web
---- /tmp/LIVE-1330314959/apps.v1.Deployment.sluiceway-example.web	2026-09-22 15:46:56
-+++ /tmp/MERGED-3433689260/apps.v1.Deployment.sluiceway-example.web	2026-09-22 15:46:56
+diff -N -U1000000 /tmp/LIVE-144613138/apps.v1.Deployment.sluiceway-example.web /tmp/MERGED-1498871139/apps.v1.Deployment.sluiceway-example.web
+--- /tmp/LIVE-144613138/apps.v1.Deployment.sluiceway-example.web	2026-09-22 14:13:48.891894372 +0000
++++ /tmp/MERGED-1498871139/apps.v1.Deployment.sluiceway-example.web	2026-09-22 14:13:48.893894409 +0000
 @@ -1,130 +1,123 @@
  apiVersion: apps/v1
  kind: Deployment
  metadata:
    annotations:
      deployment.kubernetes.io/revision: "1"
-   creationTimestamp: "2026-09-22T13:46:54Z"
+   creationTimestamp: "2026-09-22T14:13:48Z"
 -  generation: 2
 +  generation: 3
    labels:
@@ -35,8 +35,7 @@ diff -N - /tmp/LIVE-1330314959/apps.v1.Deployment.sluiceway-example.web /tmp/MER
                  f:name: {}
      manager: sluiceway-web
      operation: Apply
--    time: "2026-09-22T13:46:54Z"
-+    time: "2026-09-22T13:46:56Z"
+     time: "2026-09-22T14:13:48Z"
    - apiVersion: apps/v1
      fieldsType: FieldsV1
      fieldsV1:
@@ -78,11 +77,11 @@ diff -N - /tmp/LIVE-1330314959/apps.v1.Deployment.sluiceway-example.web /tmp/MER
      manager: kube-controller-manager
      operation: Update
      subresource: status
-     time: "2026-09-22T13:46:55Z"
+     time: "2026-09-22T14:13:48Z"
    name: web
    namespace: sluiceway-example
-   resourceVersion: "840"
-   uid: 2ce4aade-10da-48f1-9b5b-307b1dcca545
+   resourceVersion: "1434"
+   uid: e60b8273-7359-4437-b585-aeb3292bf944
  spec:
    progressDeadlineSeconds: 600
 -  replicas: 3
@@ -120,14 +119,14 @@ diff -N - /tmp/LIVE-1330314959/apps.v1.Deployment.sluiceway-example.web /tmp/MER
        terminationGracePeriodSeconds: 30
  status:
    conditions:
-   - lastTransitionTime: "2026-09-22T13:46:54Z"
-     lastUpdateTime: "2026-09-22T13:46:54Z"
+   - lastTransitionTime: "2026-09-22T14:13:48Z"
+     lastUpdateTime: "2026-09-22T14:13:48Z"
      message: Deployment does not have minimum availability.
      reason: MinimumReplicasUnavailable
      status: "False"
      type: Available
-   - lastTransitionTime: "2026-09-22T13:46:54Z"
-     lastUpdateTime: "2026-09-22T13:46:55Z"
+   - lastTransitionTime: "2026-09-22T14:13:48Z"
+     lastUpdateTime: "2026-09-22T14:13:48Z"
      message: ReplicaSet "web-6dd6dd44d4" is progressing.
      reason: ReplicaSetUpdated
      status: "True"
@@ -136,9 +135,9 @@ diff -N - /tmp/LIVE-1330314959/apps.v1.Deployment.sluiceway-example.web /tmp/MER
    replicas: 3
    unavailableReplicas: 3
    updatedReplicas: 3
-diff -N - /tmp/LIVE-1330314959/v1.ConfigMap.sluiceway-example.web-settings /tmp/MERGED-3433689260/v1.ConfigMap.sluiceway-example.web-settings
---- /tmp/LIVE-1330314959/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 15:46:55
-+++ /tmp/MERGED-3433689260/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 15:46:55
+diff -N -U1000000 /tmp/LIVE-144613138/v1.ConfigMap.sluiceway-example.web-settings /tmp/MERGED-1498871139/v1.ConfigMap.sluiceway-example.web-settings
+--- /tmp/LIVE-144613138/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 14:13:48.878894131 +0000
++++ /tmp/MERGED-1498871139/v1.ConfigMap.sluiceway-example.web-settings	2026-09-22 14:13:48.879894149 +0000
 @@ -1,33 +1,26 @@
  apiVersion: v1
  data:
@@ -147,7 +146,7 @@ diff -N - /tmp/LIVE-1330314959/v1.ConfigMap.sluiceway-example.web-settings /tmp/
 +  log-level: info
  kind: ConfigMap
  metadata:
-   creationTimestamp: "2026-09-22T13:46:54Z"
+   creationTimestamp: "2026-09-22T14:13:48Z"
    labels:
      app.kubernetes.io/name: web
    managedFields:
@@ -162,7 +161,7 @@ diff -N - /tmp/LIVE-1330314959/v1.ConfigMap.sluiceway-example.web-settings /tmp/
            f:app.kubernetes.io/name: {}
      manager: sluiceway-web
      operation: Apply
--    time: "2026-09-22T13:46:54Z"
+     time: "2026-09-22T14:13:48Z"
 -  - apiVersion: v1
 -    fieldsType: FieldsV1
 -    fieldsV1:
@@ -170,8 +169,8 @@ diff -N - /tmp/LIVE-1330314959/v1.ConfigMap.sluiceway-example.web-settings /tmp/
 -        f:log-level: {}
 -    manager: kubectl-patch
 -    operation: Update
-     time: "2026-09-22T13:46:55Z"
+-    time: "2026-09-22T14:13:48Z"
    name: web-settings
    namespace: sluiceway-example
-   resourceVersion: "832"
-   uid: f21fbd43-fdf7-415a-88cc-7ae7b3b0cfd1
+   resourceVersion: "1436"
+   uid: 883384e3-bff5-4ca9-b480-b046000ae346

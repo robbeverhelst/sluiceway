@@ -6,7 +6,7 @@
     },
     "kind": "ConfigMap",
     "metadata": {
-        "creationTimestamp": "2026-09-22T13:45:37Z",
+        "creationTimestamp": "2026-09-22T14:13:27Z",
         "labels": {
             "app.kubernetes.io/name": "web"
         },
@@ -27,12 +27,12 @@
                 },
                 "manager": "kubectl",
                 "operation": "Apply",
-                "time": "2026-09-22T13:45:37Z"
+                "time": "2026-09-22T14:13:27Z"
             }
         ],
         "name": "web-settings",
         "namespace": "sluiceway-example",
-        "resourceVersion": "597",
-        "uid": "557f2bb2-32b1-4e19-a393-87ee3df77d60"
+        "resourceVersion": "1250",
+        "uid": "8693c74e-d2cd-4512-9d55-9f0b6d303d66"
     }
 }

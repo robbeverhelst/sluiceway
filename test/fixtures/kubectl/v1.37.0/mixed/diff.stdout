@@ -1,21 +1,21 @@
-diff -N -U1000000 /tmp/LIVE-3663132208/apps.v1.Deployment.sluiceway-example.web /tmp/MERGED-3239964894/apps.v1.Deployment.sluiceway-example.web
---- /tmp/LIVE-3663132208/apps.v1.Deployment.sluiceway-example.web	2026-09-22 10:40:45.114345547 +0000
-+++ /tmp/MERGED-3239964894/apps.v1.Deployment.sluiceway-example.web	2026-09-22 10:40:45.114345547 +0000
+diff -N -U1000000 /tmp/LIVE-4287980037/apps.v1.Deployment.sluiceway-example.web /tmp/MERGED-1812844337/apps.v1.Deployment.sluiceway-example.web
+--- /tmp/LIVE-4287980037/apps.v1.Deployment.sluiceway-example.web	2026-09-22 14:11:56.997245269 +0000
++++ /tmp/MERGED-1812844337/apps.v1.Deployment.sluiceway-example.web	2026-09-22 14:11:56.998245256 +0000
 @@ -1,66 +1,66 @@
  apiVersion: apps/v1
  kind: Deployment
  metadata:
    annotations:
      deployment.kubernetes.io/revision: "1"
-   creationTimestamp: "2026-09-22T10:40:45Z"
+   creationTimestamp: "2026-09-22T14:11:56Z"
 -  generation: 1
 +  generation: 2
    labels:
      app.kubernetes.io/name: web
    name: web
    namespace: sluiceway-example
-   resourceVersion: "781"
-   uid: 14c50b20-62ce-4fcd-8940-099003a4a501
+   resourceVersion: "782"
+   uid: 6d79ad40-d752-4cf2-8cc2-250acb336c75
  spec:
    progressDeadlineSeconds: 600
 -  replicas: 1
@@ -53,14 +53,14 @@ diff -N -U1000000 /tmp/LIVE-3663132208/apps.v1.Deployment.sluiceway-example.web 
        terminationGracePeriodSeconds: 30
  status:
    conditions:
-   - lastTransitionTime: "2026-09-22T10:40:45Z"
-     lastUpdateTime: "2026-09-22T10:40:45Z"
+   - lastTransitionTime: "2026-09-22T14:11:56Z"
+     lastUpdateTime: "2026-09-22T14:11:56Z"
      message: Deployment does not have minimum availability.
      reason: MinimumReplicasUnavailable
      status: "False"
      type: Available
-   - lastTransitionTime: "2026-09-22T10:40:45Z"
-     lastUpdateTime: "2026-09-22T10:40:45Z"
+   - lastTransitionTime: "2026-09-22T14:11:56Z"
+     lastUpdateTime: "2026-09-22T14:11:56Z"
      message: ReplicaSet "web-975b64b54" is progressing.
      reason: ReplicaSetUpdated
      status: "True"
@@ -70,16 +70,16 @@ diff -N -U1000000 /tmp/LIVE-3663132208/apps.v1.Deployment.sluiceway-example.web 
    terminatingReplicas: 0
    unavailableReplicas: 1
    updatedReplicas: 1
-diff -N -U1000000 /tmp/LIVE-3663132208/v1.ConfigMap.sluiceway-example.web-extra /tmp/MERGED-3239964894/v1.ConfigMap.sluiceway-example.web-extra
---- /tmp/LIVE-3663132208/v1.ConfigMap.sluiceway-example.web-extra	2026-09-22 10:40:45.120345568 +0000
-+++ /tmp/MERGED-3239964894/v1.ConfigMap.sluiceway-example.web-extra	2026-09-22 10:40:45.120345568 +0000
+diff -N -U1000000 /tmp/LIVE-4287980037/v1.ConfigMap.sluiceway-example.web-extra /tmp/MERGED-1812844337/v1.ConfigMap.sluiceway-example.web-extra
+--- /tmp/LIVE-4287980037/v1.ConfigMap.sluiceway-example.web-extra	2026-09-22 14:11:57.002245209 +0000
++++ /tmp/MERGED-1812844337/v1.ConfigMap.sluiceway-example.web-extra	2026-09-22 14:11:57.003245197 +0000
 @@ -0,0 +1,9 @@
 +apiVersion: v1
 +data:
 +  motd: CANARY-VALUE
 +kind: ConfigMap
 +metadata:
-+  creationTimestamp: "2026-09-22T10:40:45Z"
++  creationTimestamp: "2026-09-22T14:11:57Z"
 +  name: web-extra
 +  namespace: sluiceway-example
-+  uid: 527b3599-db3c-438e-869c-5ab73dfb34bf
++  uid: ec10d06d-d9c8-4ad6-9ddd-4269d8ae7758
