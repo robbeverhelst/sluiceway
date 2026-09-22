@@ -57,10 +57,19 @@ export interface DeploymentPayload {
   // The id of the workflow run that deploys. The record lives as long as that
   // run does (record 0003).
   run: string;
+  // A queued record: the stacks it waits behind, which have to go out first
+  // (records 0009 and 0056). Absent on every other record.
+  behind?: string[] | undefined;
 }
 
 export function deploymentPayload(payload: DeploymentPayload): Record<string, unknown> {
-  return { v: PAYLOAD_VERSION, hash: payload.hash, ticker: payload.ticker, run: payload.run };
+  return {
+    v: PAYLOAD_VERSION,
+    hash: payload.hash,
+    ticker: payload.ticker,
+    run: payload.run,
+    ...(payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {}),
+  };
 }
 
 const RUN_ID = /^[1-9]\d*$/;
@@ -70,12 +79,18 @@ const RUN_ID = /^[1-9]\d*$/;
 // built from text that came from outside.
 export function readDeploymentPayload(payload: unknown): DeploymentPayload | undefined {
   if (typeof payload !== "object" || payload === null) return undefined;
-  const { v, hash, ticker, run } = payload as Record<string, unknown>;
+  const { v, hash, ticker, run, behind } = payload as Record<string, unknown>;
   if (v !== PAYLOAD_VERSION) return undefined;
   if (typeof hash !== "string" || typeof ticker !== "string" || typeof run !== "string") {
     return undefined;
   }
-  return RUN_ID.test(run) ? { hash, ticker, run } : undefined;
+  if (!RUN_ID.test(run)) return undefined;
+  if (behind === undefined) return { hash, ticker, run };
+  const ids = Array.isArray(behind) ? behind : [];
+  if (ids.length === 0 || !ids.every((id) => typeof id === "string" && id !== "")) {
+    return undefined;
+  }
+  return { hash, ticker, run, behind: ids as string[] };
 }
 
 // What the newest record of a stack says about it (record 0003). A preview
@@ -90,6 +105,9 @@ export type DeployFact =
       waiting: boolean;
       ticker: string;
       run: string;
+      // Queued behind these stacks (record 0056): it starts only after they
+      // went out, in a later run.
+      behind?: string[] | undefined;
     }
   | {
       kind: "succeeded";
@@ -158,6 +176,15 @@ function isRehearsal(status: DeploymentStatus | undefined): boolean {
   return status?.state === "inactive" && status.description === REHEARSED_DESCRIPTION;
 }
 
+// The description of the `inactive` status that ends a queued record when the
+// stack starts in a later run, under a record of that run (record 0056). The
+// record says nothing about the stack: the new one does.
+export const HANDED_ON_DESCRIPTION = "started in a later run";
+
+export function isHandedOn(status: DeploymentStatus | undefined): boolean {
+  return status?.state === "inactive" && status.description === HANDED_ON_DESCRIPTION;
+}
+
 // A record with no status, or with a state that is no result, is an open
 // deployment (record 0003). `apply` deploys only on one (record 0019).
 export function isOpenStatus(status: DeploymentStatus | undefined): boolean {
@@ -165,7 +192,7 @@ export function isOpenStatus(status: DeploymentStatus | undefined): boolean {
   return !SUCCEEDED.has(state) && !FAILED.has(state);
 }
 
-function newestLast(a: DeploymentRecord, b: DeploymentRecord): number {
+export function newestLast(a: DeploymentRecord, b: DeploymentRecord): number {
   return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id;
 }
 
@@ -195,7 +222,14 @@ function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFac
       at,
     };
   }
-  return { kind: "open", deployment: record.id, waiting: state !== "in_progress", ticker, run };
+  return {
+    kind: "open",
+    deployment: record.id,
+    waiting: state !== "in_progress",
+    ticker,
+    run,
+    ...(payload.behind ? { behind: payload.behind } : {}),
+  };
 }
 
 export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
@@ -208,6 +242,7 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
       facts.unread++;
       continue;
     }
+    if (isHandedOn(record.status)) continue;
     const fact = factOf(record, payload);
     // A rehearsal changed nothing about the stack: it is only a line of the
     // trail, and the fact before it stands.
