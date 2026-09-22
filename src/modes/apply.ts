@@ -51,12 +51,12 @@ import { shownValues } from "../core/show-values.ts";
 import { stackId } from "../core/stack.ts";
 import { type AttributionSource, attributionSource } from "../github/attribution.ts";
 import { findDashboard } from "../github/dashboard.ts";
+import { swapRows } from "../github/dashboard-write.ts";
 import { readDeploymentRecords } from "../github/deployments.ts";
 import { publicRepo } from "../github/event.ts";
 import type { JobLog } from "../github/job-log.ts";
 import { eventDashboardUrl, type StepOutputs, writeResultFile } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
-import { writeBody } from "../github/write-loop.ts";
 import type { Notifier } from "../notify/send.ts";
 import {
   ALREADY_ENDED,
@@ -64,7 +64,7 @@ import {
   type ApplyOutcome,
   renderApplySummary,
 } from "../render/apply-summary.ts";
-import { BODY_LIMIT, type BudgetOptions, fitBody } from "../render/budget.ts";
+import { BODY_LIMIT, type BudgetOptions } from "../render/budget.ts";
 import { RESULT_DOT } from "../render/dots.ts";
 import { runLinks, runUrl as runUrlOf } from "../render/links.ts";
 import {
@@ -73,7 +73,6 @@ import {
   PUBLIC_LOG_DIFF,
   toolDiffLogLines,
 } from "../render/log-text.ts";
-import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
 import { movedComment } from "../render/moved-comment.ts";
 import { previewRow } from "../render/preview-result.ts";
 import { type ApplyResultOutcome, applyResultFile } from "../render/result-file.ts";
@@ -843,10 +842,9 @@ async function writeSummary(context: ApplyContext, text: string): Promise<void> 
   }
 }
 
-// Swaps the row block of this one stack through the write loop (record 0004):
-// every other block is carried byte for byte and everything around the blocks
-// is regenerated with the renderer the scan uses (record 0009). The row is made
-// at the late read of every try, from the deployment records as they are then.
+// Swaps the row block of this one stack into the dashboard (records 0004 and
+// 0009). The row is made at the late read of every try, from the deployment
+// records as they are then.
 // Gives the number of the dashboard, or nothing when there is none.
 async function swapRow(
   context: ApplyContext,
@@ -865,89 +863,38 @@ async function swapRow(
     log.info("There is no open dashboard to write. The next scan makes one.");
     return undefined;
   }
-  const result = await writeBody(github, dashboard.number, async (liveBody) => {
-    const live = parseDashboard(liveBody);
-    const root = live.root;
-    if (
-      root?.version !== MARKER_VERSION ||
-      root.scanSha === undefined ||
-      root.scanRun === undefined ||
-      root.scanAt === undefined
-    ) {
-      // Not a body this version wrote, so it is not touched (record 0009).
-      log.info("The live body is not one this version can write again. It is left alone.");
-      return liveBody;
-    }
-    const facts = deployFacts(
-      await readDeploymentRecords(
-        github,
-        setup.stacks.map(({ environment }) => environment),
-        [{ stackId: id, environment: setup.stack.environment }],
-      ),
-    );
-    const attributed = await setup.attribution.attribute(
-      new Map([[id, lastDeployedCommit(facts, id)]]),
-    );
-    const mine = make(facts, attributed.get(id)?.lines, live.outside);
-    const shipped = await setup.attribution.ship(facts.trail);
-
-    const rows: Row[] = [];
-    const carried: ParsedRow[] = [];
-    let placed = false;
-    for (const row of live.rows) {
-      // Of two blocks for one stack the first counts.
-      if (!placed && row.known && row.stackId === id) {
-        rows.push(mine);
-        placed = true;
-      } else {
-        carried.push(row);
-      }
-    }
-    // A row deleted by hand comes back: every stack has one.
-    if (!placed) rows.push(mine);
-
-    const fitted = fitBody(
-      {
-        root: {
-          scanSha: root.scanSha,
-          scanRun: root.scanRun,
-          scanAt: root.scanAt,
-          fullScanAt: root.fullScanAt,
-          fullScanRun: root.fullScanRun,
-        },
-        rows,
-        carried,
-        redact: setup.config.dashboard.redact,
-        recentlyDeployed: facts.trail.map((entry) => ({
-          stackId: entry.stackId,
-          result: entry.result,
-          reason: entry.reason,
-          ticker: entry.ticker,
-          at: entry.at,
-          runUrl: runUrlOf(context.repoUrl, entry.run, entry.attempt),
-          shipped: shipped.get(entry),
-        })),
-        repoUrl: context.repoUrl,
-        actionRef: context.actionRef,
-        recentLength: setup.config.dashboard.recentlyDeployed,
-        personality: setup.config.dashboard.personality,
-        readOnly: setup.config.dashboard.readOnly,
-        ignored: setup.ignored,
-        // Carried as they stand: only a scan lists them (record 0054).
-        merges: live.merges,
-        // Only a full scan reads the tool's history (record 0073).
-        outsideDeploys: live.outside,
-      },
-      // A writer that swaps rows aims at the hard limit (record 0028).
-      { ...context.limits?.body, target: Number.POSITIVE_INFINITY },
-    );
-    if (!fitted.fits) {
-      throw new Error(
-        `With this row swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment record holds the result, and the next scan brings the row in line.`,
+  const result = await swapRows(
+    {
+      github,
+      log,
+      repoUrl: context.repoUrl,
+      actionRef: context.actionRef,
+      dashboard: setup.config.dashboard,
+      ignored: setup.ignored,
+      budget: context.limits?.body,
+    },
+    dashboard.number,
+    async (live) => {
+      const facts = deployFacts(
+        await readDeploymentRecords(
+          github,
+          setup.stacks.map(({ environment }) => environment),
+          [{ stackId: id, environment: setup.stack.environment }],
+        ),
       );
-    }
-    return fitted.body;
-  });
+      const attributed = await setup.attribution.attribute(
+        new Map([[id, lastDeployedCommit(facts, id)]]),
+      );
+      const mine = make(facts, attributed.get(id)?.lines, live.outside);
+      const shipped = await setup.attribution.ship(facts.trail);
+      return { facts, shipped, rows: new Map([[id, mine]]) };
+    },
+  );
+  if (!result.fits) {
+    throw new Error(
+      `With this row swapped the dashboard body is ${result.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment record holds the result, and the next scan brings the row in line.`,
+    );
+  }
   log.info(
     result.written
       ? `Wrote the dashboard (#${dashboard.number}).`
