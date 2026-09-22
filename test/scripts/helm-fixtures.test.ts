@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parse } from "yaml";
-import { HELM_SCENARIOS, helmOps } from "../../scripts/fixtures/helm-scenarios.ts";
+import { helmOps, helmScenarios } from "../../scripts/fixtures/helm-scenarios.ts";
 import { checkRecording, RECORDING_FILE, type Recording } from "../../scripts/fixtures/recorder.ts";
 import { FIXTURE_HELM_VERSIONS } from "../../scripts/fixtures/versions.ts";
 import { MINIMUM_DIFF_VERSION, MINIMUM_VERSION } from "../../src/adapters/helm/version.ts";
@@ -64,14 +64,16 @@ describe("the helm versions of the fixtures", () => {
 });
 
 for (const version of VERSIONS) {
+  // The deploy's command line differs between Helm 3 and Helm 4 (record 0069).
+  const scenarios = helmScenarios(version);
   describe(`the fixtures of helm ${version}`, () => {
     test("hold every scenario and nothing else", () => {
       expect(directories(join(FIXTURES, version))).toEqual(
-        HELM_SCENARIOS.map((scenario) => scenario.name).sort(),
+        scenarios.map((scenario) => scenario.name).sort(),
       );
     });
 
-    for (const scenario of HELM_SCENARIOS) {
+    for (const scenario of scenarios) {
       test(`${scenario.name}: fits the scenario, and parses as JSON where it should`, () => {
         expect(checkRecording(join(FIXTURES, version, scenario.name), scenario, helmOps)).toEqual(
           [],

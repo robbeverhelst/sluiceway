@@ -29,9 +29,9 @@ import { CDKTF_SCENARIOS, cdktfEnvironment } from "./fixtures/cdktf-scenarios.ts
 import {
   HELM,
   HELM_NAMESPACES,
-  HELM_SCENARIOS,
   helmEnvironment,
   helmOps,
+  helmScenarios,
 } from "./fixtures/helm-scenarios.ts";
 import {
   KUBECTL,
@@ -96,7 +96,9 @@ interface Tool {
   fixtures: string;
   versionArgv: string[];
   version: (stdout: string) => string;
-  scenarios: typeof SCENARIOS;
+  // The scenarios, or how to make them for the version found, when a
+  // command line differs between versions (record 0069).
+  scenarios: typeof SCENARIOS | ((cliVersion: string) => typeof SCENARIOS);
   environment?: RecordOptions["environment"];
   ops?: (document: unknown) => string[];
   // What the recorder needs for a tool whose plan file it writes itself.
@@ -165,7 +167,7 @@ const TOOLS: Record<string, Tool> = {
     fixtures: "helm",
     versionArgv: HELM.version,
     version: (stdout) => stdout.trim(),
-    scenarios: HELM_SCENARIOS,
+    scenarios: helmScenarios,
     environment: helmEnvironment,
     ops: helmOps,
   },
@@ -197,9 +199,10 @@ if (tool.environment !== undefined) {
   mkdirSync(join(workDir, "home"), { recursive: true });
 }
 
-// The kubectl scenarios delete and make a namespace. They never run against
-// a cluster that is not a kind cluster made for them.
-if (tool.fixtures === "kubectl") {
+// The kubectl scenarios delete and make a namespace, and the Helm scenarios
+// change and delete objects behind helm's back (record 0069). They never run
+// against a cluster that is not a kind cluster made for them.
+if (tool.fixtures === "kubectl" || tool.fixtures === "helm") {
   const context = await run({
     argv: ["kubectl", "config", "current-context"],
     cwd: workDir,
@@ -207,7 +210,7 @@ if (tool.fixtures === "kubectl") {
   });
   if (context.exitCode !== 0 || !context.stdout.trim().startsWith("kind-")) {
     throw new Error(
-      "The current context of KUBECONFIG is not a kind cluster. The kubectl scenarios only run against one.",
+      `The current context of KUBECONFIG is not a kind cluster. The ${tool.fixtures} scenarios only run against one.`,
     );
   }
 }
@@ -225,7 +228,8 @@ if (values["expect-version"] !== undefined && values["expect-version"] !== cliVe
   throw new Error(`Expected ${toolName} ${values["expect-version"]} on PATH, found ${cliVersion}.`);
 }
 
-const scenarios = tool.scenarios.filter(
+const all = typeof tool.scenarios === "function" ? tool.scenarios(cliVersion) : tool.scenarios;
+const scenarios = all.filter(
   (scenario) => values.only === undefined || scenario.name === values.only,
 );
 if (scenarios.length === 0) throw new Error(`No scenario is named "${values.only}".`);
