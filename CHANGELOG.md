@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.24.0](https://github.com/sluiceway/sluiceway/compare/v0.23.0...v0.24.0) (2026-09-22)
+
+
+### Features
+
+* auto mode, a step with no mode picks what to run from the event ([947769d](https://github.com/sluiceway/sluiceway/commit/947769d560625f40177ad888dfb8f4e78217575d))
+* init writes the one-step workflow ([c165dc9](https://github.com/sluiceway/sluiceway/commit/c165dc9f2351f59cdc610356afefd9025634a2a9))
+* the check reads a step with no mode as auto, from its file's triggers ([14299d5](https://github.com/sluiceway/sluiceway/commit/14299d5e7f6d4e33f8aa2965103af58b81c6e27a))
+
+
+### Bug Fixes
+
+* the summary is written to the file the runner names at every write ([c846537](https://github.com/sluiceway/sluiceway/commit/c84653734e0053e6f0efe62b30cc7147aefe9175))
+
 ## [0.23.0](https://github.com/sluiceway/sluiceway/compare/v0.22.0...v0.23.0) (2026-09-22)
 
 
