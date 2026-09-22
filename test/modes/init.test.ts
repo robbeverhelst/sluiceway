@@ -205,23 +205,24 @@ describe("a sluiceway.yaml that is there", () => {
     expect(config).toBe(own);
     expect(text).toContain("Kept sluiceway.yaml as it is, and set the workflow up from it.");
     expect(text).not.toContain("Wrote sluiceway.yaml.");
-    expect(workflow).toContain("contains(github.event.issue.labels.*.name, 'infra-dashboard')");
+    // Auto mode reads the label from sluiceway.yaml, so the workflow names
+    // none (record 0077).
+    expect(workflow).not.toContain("infra-dashboard");
+    expect(workflow).not.toContain("if:");
     expect((await checked(root)).warnings).toEqual([]);
   });
 
-  // docs/workflow.md, "Merge and deploy": resolve merges with its own
-  // contents: write, the scan hands the merged change to apply-merged, settle
-  // waits for both, and the dispatch declares the input of record 0064.
+  // docs/workflow.md, "Merge and deploy": the one job merges with
+  // contents: write, deploys what the scan after the merge hands on in the
+  // same step, and the dispatch declares the input of record 0064.
   test("with merge and deploy gets the workflow of docs/workflow.md", async () => {
     const own = "mergeAndDeploy:\n  authors: [renovate]\n";
     const root = example("pulumi-basic", { [CONFIG]: own });
     const { workflow: text } = await run(root);
     const workflow = Bun.YAML.parse(text ?? "") as Workflow & {
       on: { workflow_dispatch: { inputs: Record<string, unknown> } };
-      jobs: Record<string, { needs?: unknown; outputs?: Record<string, string> }>;
     };
-    expect(workflow.permissions?.contents).toBe("read");
-    expect(workflow.jobs.resolve?.permissions).toEqual({
+    expect(workflow.permissions).toEqual({
       contents: "write",
       issues: "write",
       deployments: "write",
@@ -230,15 +231,7 @@ describe("a sluiceway.yaml that is there", () => {
       checks: "write",
     });
     expect(Object.keys(workflow.on.workflow_dispatch.inputs)).toEqual(["sluiceway-merged"]);
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: a GitHub expression, not a template.
-    expect(workflow.jobs.scan?.outputs).toEqual({ matrix: "${{ steps.scan.outputs.matrix }}" });
-    expect(workflow.jobs.scan?.steps.find(isSluiceway)?.id).toBe("scan");
-    const { apply, "apply-merged": merged } = workflow.jobs;
-    expect(merged?.needs).toBe("scan");
-    expect(merged?.if).toContain("needs.scan.outputs.matrix");
-    expect(merged?.steps).toEqual(apply?.steps ?? []);
-    expect(workflow.jobs.settle?.needs).toEqual(["scan", "resolve", "apply", "apply-merged"]);
-    expect(workflow.jobs.settle?.if).toContain("needs.scan.outputs.matrix");
+    expect(Object.keys(workflow.jobs)).toEqual(["sluiceway"]);
     expect((await checked(root)).warnings).toEqual([]);
   });
 
@@ -271,33 +264,33 @@ describe("an env file of secret references", () => {
   const PREVIEW = "PULUMI_ACCESS_TOKEN=op://ci/pulumi-read/token\nREGION=eu-west-1\n";
   const DEPLOY = "PULUMI_ACCESS_TOKEN=op://ci/pulumi-deploy/token\n";
 
+  // One job previews and deploys, so it loads the file that can deploy
+  // (record 0077).
   test("is loaded the way the secret manager example does it, with its script", async () => {
     const root = example("pulumi-basic", { "ci/preview.env": PREVIEW, "ci/deploy.env": DEPLOY });
     const { error, workflow, log, text } = await run(root);
     expect(error).toBeUndefined();
     expect(workflow).toContain(
-      "        run: op run --env-file=ci/preview.env --no-masking -- bash .github/scripts/export-env.sh ci/preview.env\n",
-    );
-    expect(workflow).toContain(
       "        run: op run --env-file=ci/deploy.env --no-masking -- bash .github/scripts/export-env.sh ci/deploy.env\n",
     );
-    expect(workflow).toContain("OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_PREVIEW_TOKEN }}");
-    expect(workflow).toContain("OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_DEPLOY_TOKEN }}");
+    expect(workflow).not.toContain("ci/preview.env");
+    expect(workflow).toContain("OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}");
     expect(readFileSync(join(root, ".github/scripts/export-env.sh"), "utf8")).toBe(
       readFileSync(join(ROOT, "examples/workflows/export-env.sh"), "utf8"),
     );
     expect(text).toContain("Wrote .github/scripts/export-env.sh.");
-    expect(log.groups[1]?.lines[0]).toContain("Create the secret OP_PREVIEW_TOKEN");
+    expect(log.groups[1]?.lines[0]).toContain("Create the secret OP_SERVICE_ACCOUNT_TOKEN");
+    expect(log.groups[1]?.lines.join("\n")).toContain(
+      "init did not use ci/preview.env: one job previews and deploys",
+    );
     expect((await checked(root)).warnings).toEqual([]);
   });
 
-  test("serves both jobs when it is the only one, and init says so", async () => {
+  test("is loaded when it is the only one", async () => {
     const root = example("pulumi-basic", { ".env": PREVIEW });
     const { workflow, log } = await run(root);
     expect(workflow).toContain("--env-file=.env ");
-    expect(log.groups[1]?.lines.join("\n")).toContain(
-      "Both jobs load .env. The scan needs credentials that read and nothing more",
-    );
+    expect(log.groups[1]?.lines.join("\n")).not.toContain("did not use");
   });
 
   test("with plain values only is not one, and no credential step is written", async () => {
@@ -440,29 +433,20 @@ describe("the workflow init writes", () => {
     for (const dir of ["pulumi", "tofu", "helm"]) rmSync(join(root, dir, CONFIG));
     const { workflow: text } = await run(root);
     const workflow = Bun.YAML.parse(text ?? "") as Workflow;
-    const byMode = (mode: string) =>
-      Object.values(workflow.jobs).find((job) => modeOf(job) === mode);
-    expect(Object.values(workflow.jobs).map(modeOf)).toEqual([
-      "scan",
-      "resolve",
-      "apply",
-      "settle",
-    ]);
-    expect(byMode("scan")?.concurrency).toBe("sluiceway-scan");
-    expect(byMode("resolve")?.concurrency).toBe("sluiceway-resolve");
-    expect(byMode("apply")?.if).toContain("!cancelled()");
-    expect(byMode("apply")?.concurrency).toEqual({
+    // Record 0077: one job, one Sluiceway step with no mode, no if: and no
+    // needs:, one queue for every run.
+    expect(Object.keys(workflow.jobs)).toEqual(["sluiceway"]);
+    const job = workflow.jobs.sluiceway;
+    expect(job?.steps.filter(isSluiceway).length).toBe(1);
+    expect(job === undefined ? undefined : modeOf(job)).toBe("auto");
+    expect(job?.concurrency).toEqual({
       // biome-ignore lint/suspicious/noTemplateCurlyInString: a GitHub expression, not a template.
-      group: "sluiceway-apply-${{ matrix.stack }}",
+      group: "sluiceway-${{ github.event.issue.number }}",
       queue: "max",
     });
-    // Record 0014, promise 4: the job an issue edit starts holds no credentials.
-    for (const mode of ["resolve", "settle"]) {
-      expect(byMode(mode)?.steps.map((step) => step.uses?.split("@")[0])).toEqual([
-        "actions/checkout",
-        "sluiceway/sluiceway",
-      ]);
-    }
+    expect(text).not.toContain("if:");
+    expect(text).not.toContain("needs:");
+    expect(text).not.toContain("mode:");
     const steps = Object.values(workflow.jobs).flatMap((job) => job.steps.filter(isSluiceway));
     expect(new Set(steps.map((step) => step.uses))).toEqual(new Set(["sluiceway/sluiceway@v0"]));
     expect(text).not.toContain("event.changes");
@@ -481,7 +465,7 @@ describe("Kubernetes manifests stacks that sluiceway.yaml declares", () => {
     expect(workflow).toContain(KUBECTL_STEPS.join("\n"));
     expect(read("docs/credentials.md")).toContain(KUBECTL_STEPS.map((l) => l.slice(6)).join("\n"));
     expect(log.groups[1]?.lines.join("\n")).toContain(
-      "The scan and apply jobs need a kubeconfig for the cluster",
+      "The job needs a kubeconfig for the cluster",
     );
     expect((await checked(root)).warnings).toEqual([]);
   });

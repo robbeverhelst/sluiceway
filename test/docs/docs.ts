@@ -155,5 +155,8 @@ export function isSluiceway(step: Step): boolean {
 // The mode of a job's Sluiceway step, or nothing when the job has none.
 export function modeOf(job: Job): string | undefined {
   const step = job.steps.find(isSluiceway);
-  return step === undefined ? undefined : String(step.with?.mode ?? "");
+  if (step === undefined) return undefined;
+  // No mode is auto, action.yml's default (record 0077).
+  const mode = String(step.with?.mode ?? "").trim();
+  return mode === "" ? "auto" : mode;
 }

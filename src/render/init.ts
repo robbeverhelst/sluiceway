@@ -26,19 +26,21 @@ export interface WorkflowOptions {
   findings: WorkflowFindings;
   // The branch a push to scans. Undefined when init could not tell.
   branch: string | undefined;
-  // dashboard.label, which the `if:` of resolve names.
-  label: string;
-  // mergeAndDeploy.authors is set, so resolve merges and the scan after the
-  // merge hands the change to a job of its own (record 0054).
+  // mergeAndDeploy.authors is set, so the job merges with contents: write
+  // and the scan after the merge is narrowed through the dispatch input
+  // (records 0054, 0064).
   merges: boolean;
 }
 
 const RUNS_ON = "ubuntu-latest";
 
-// The workflow of the README's step 2, with the steps that install what the
-// stacks need filled in the way examples/workflows does it.
+// The one-step workflow of the README (record 0077), with the steps that
+// install what the stacks need filled in the way examples/workflows does it.
+// One job, one Sluiceway step with no mode: it picks what to run from the
+// event, so there is no if:, no needs: and no label to keep in step with
+// sluiceway.yaml.
 export function starterWorkflow(options: WorkflowOptions): string {
-  const { findings, label, merges } = options;
+  const { findings, merges } = options;
   const branch = options.branch ?? DEFAULT_BRANCH;
   const lines = [
     "# Written by sluiceway init from the files of this repo. Review every step",
@@ -68,69 +70,26 @@ export function starterWorkflow(options: WorkflowOptions): string {
     "    types: [edited]",
     "",
     "permissions:",
-    ...PERMISSIONS.map((line) => `  ${line}`),
+    // The job merges with the workflow token (record 0054).
+    ...PERMISSIONS.map((line) =>
+      merges && line.startsWith("contents:") ? "  contents: write" : `  ${line}`,
+    ),
     "",
     "jobs:",
-    "  scan:",
-    "    if: github.event_name != 'issues'",
+    "  sluiceway:",
     `    runs-on: ${RUNS_ON}`,
-    "    concurrency: sluiceway-scan",
-    ...(merges ? ["    outputs:", "      matrix: ${{ steps.scan.outputs.matrix }}"] : []),
+    "    timeout-minutes: 60",
+    "    # One run at a time and none dropped. An edit of any other issue gets a",
+    "    # group of its own, so it never waits for a scan or a deploy.",
+    "    concurrency:",
+    "      group: sluiceway-${{ github.event.issue.number }}",
+    "      queue: max",
     "    steps:",
     "      - uses: actions/checkout@v7",
-    ...toolSteps(findings, "scan"),
-    ...credentialSteps(findings.envFiles, "scan"),
-    ...(merges
-      ? ["      - id: scan", "        uses: sluiceway/sluiceway@v0"]
-      : ["      - uses: sluiceway/sluiceway@v0"]),
-    "        with:",
-    "          mode: scan",
-    "",
-    "  resolve:",
-    `    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, ${quoted(label)}))`,
-    `    runs-on: ${RUNS_ON}`,
-    "    concurrency: sluiceway-resolve",
-    // It merges with the workflow token (record 0054). A job's block replaces
-    // the workflow's, so it repeats the rest.
-    ...(merges
-      ? [
-          "    permissions:",
-          ...PERMISSIONS.map((line) =>
-            line.startsWith("contents:") ? "      contents: write" : `      ${line}`,
-          ),
-        ]
-      : []),
-    "    outputs:",
-    "      matrix: ${{ steps.resolve.outputs.matrix }}",
-    "    steps:",
-    "      - uses: actions/checkout@v7",
-    "      # No tool and no credentials in this job. It never runs the tool.",
-    "      - id: resolve",
-    "        uses: sluiceway/sluiceway@v0",
-    "        with:",
-    "          mode: resolve",
-    "",
-    ...applyJob("apply", "resolve", findings),
-    // The scan after a merge hands the merged change on through its own
-    // matrix (record 0054).
-    ...(merges ? ["", ...applyJob("apply-merged", "scan", findings)] : []),
-    "",
-    "  settle:",
-    ...(merges
-      ? [
-          "    needs: [scan, resolve, apply, apply-merged]",
-          "    if: always() && ((needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]') || (needs.scan.outputs.matrix != '' && needs.scan.outputs.matrix != '[]'))",
-        ]
-      : [
-          "    needs: [resolve, apply]",
-          "    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'",
-        ]),
-    `    runs-on: ${RUNS_ON}`,
-    "    steps:",
-    "      - uses: actions/checkout@v7",
+    ...toolSteps(findings),
+    ...credentialSteps(findings.envFiles),
+    "      # It reads the event of the run: it scans, or deploys what a tick asks for.",
     "      - uses: sluiceway/sluiceway@v0",
-    "        with:",
-    "          mode: settle",
   ];
   return `${lines.join("\n")}\n`;
 }
@@ -144,42 +103,11 @@ const PERMISSIONS = [
   "checks: write",
 ];
 
-// An apply job that deploys the matrix of the job it needs.
-function applyJob(name: string, source: string, findings: WorkflowFindings): string[] {
-  return [
-    `  ${name}:`,
-    `    needs: ${source}`,
-    `    if: \${{ !cancelled() && needs.${source}.outputs.matrix != '' && needs.${source}.outputs.matrix != '[]' }}`,
-    "    strategy:",
-    "      fail-fast: false",
-    "      matrix:",
-    `        include: \${{ fromJson(needs.${source}.outputs.matrix) }}`,
-    `    runs-on: ${RUNS_ON}`,
-    "    timeout-minutes: 60",
-    "    concurrency:",
-    "      group: sluiceway-apply-${{ matrix.stack }}",
-    "      queue: max",
-    "    environment:",
-    "      name: ${{ matrix.environment }}",
-    "      deployment: false",
-    "    steps:",
-    "      - uses: actions/checkout@v7",
-    ...toolSteps(findings, "apply"),
-    ...credentialSteps(findings.envFiles, "apply"),
-    "      - uses: sluiceway/sluiceway@v0",
-    "        with:",
-    "          mode: apply",
-    "          deployment-id: ${{ matrix.deployment }}",
-  ];
-}
-
-type Job = "scan" | "apply";
-
 // Installs the language, the programs' packages and the tools, in that order.
-function toolSteps(findings: WorkflowFindings, job: Job): string[] {
+function toolSteps(findings: WorkflowFindings): string[] {
   return [
-    ...(findings.node === undefined ? [] : nodeSteps(findings.node, job)),
-    ...(findings.pulumi ? pulumiSteps(findings, job) : []),
+    ...(findings.node === undefined ? [] : nodeSteps(findings.node)),
+    ...(findings.pulumi ? pulumiSteps(findings) : []),
     ...(findings.opentofu ? OPENTOFU_STEPS : []),
     ...(findings.helm ? helmSteps(findings.helmRepositories) : []),
     ...(findings.kubectl ? KUBECTL_STEPS : []),
@@ -193,7 +121,7 @@ const LOCKFILE: Record<PackageManager, string> = {
   bun: "bun.lock",
 };
 
-function nodeSteps(node: NodeFindings, job: Job): string[] {
+function nodeSteps(node: NodeFindings): string[] {
   const managers = [...new Set(node.installs.map(({ manager }) => manager))];
   const [only] = managers;
   // setup-node caches one package manager's downloads, and not bun's.
@@ -218,9 +146,7 @@ function nodeSteps(node: NodeFindings, job: Job): string[] {
     ...(directory === "." ? [] : [`        working-directory: ${directory}`]),
   ]);
   if (installs.length === 0) return steps;
-  const comment =
-    job === "scan" ? ["      # Once for every program in the repo, not once per stack."] : [];
-  return [...steps, ...comment, ...installs];
+  return [...steps, "      # Once for every program in the repo, not once per stack.", ...installs];
 }
 
 function installCommand(manager: PackageManager, yarnBerry: boolean): string {
@@ -236,7 +162,7 @@ function installCommand(manager: PackageManager, yarnBerry: boolean): string {
   }
 }
 
-function pulumiSteps(findings: WorkflowFindings, job: Job): string[] {
+function pulumiSteps(findings: WorkflowFindings): string[] {
   const managers = [...new Set(findings.node?.installs.map(({ manager }) => manager) ?? [])];
   const keyFiles =
     managers.length > 0
@@ -253,12 +179,8 @@ function pulumiSteps(findings: WorkflowFindings, job: Job): string[] {
     "      - uses: pulumi/actions@v7 # without a command this only installs the CLI",
     "        with:",
     "          pulumi-version: ^3.229.0",
-    ...(job === "scan"
-      ? [
-          "      # The providers the programs use. The first run fills the cache.",
-          "      - uses: actions/cache@v6",
-        ]
-      : ["      - uses: actions/cache/restore@v6"]),
+    "      # The providers the programs use. The first run fills the cache.",
+    "      - uses: actions/cache@v6",
     "        with:",
     "          path: ~/.pulumi/plugins",
     `          key: pulumi-plugins-\${{ runner.os }}-\${{ hashFiles(${keyFiles.join(", ")}) }}`,
@@ -301,43 +223,30 @@ function helmSteps(repositories: string[]): string[] {
   ];
 }
 
-// The secret names the steps read. The person creates them.
-export const PREVIEW_TOKEN = "OP_PREVIEW_TOKEN";
-export const DEPLOY_TOKEN = "OP_DEPLOY_TOKEN";
+// The secret the loading step reads. The person creates it.
+export const TOKEN_SECRET = "OP_SERVICE_ACCOUNT_TOKEN";
 
 // Only a step init found the makings of in the repo: an env file of secret
 // references, loaded as examples/workflows/secret-manager.yml does. Anything
-// else is a comment where the person's own step goes.
-function credentialSteps(envFiles: EnvFiles | undefined, job: Job): string[] {
+// else is a comment where the person's own step goes. One job previews and
+// deploys, so it loads the file that deploys (record 0077).
+function credentialSteps(envFiles: EnvFiles | undefined): string[] {
   if (envFiles === undefined) {
-    return job === "scan"
-      ? [
-          "      # Load your credentials and your state backend settings into the job",
-          "      # environment here. Sluiceway passes the environment to the tool and",
-          "      # never looks inside. Whatever loads a secret must also mask it.",
-        ]
-      : [
-          "      # Same credential steps as in the scan job. These credentials must be",
-          "      # able to change things.",
-        ];
+    return [
+      "      # Load your credentials and your state backend settings into the job",
+      "      # environment here. Sluiceway passes the environment to the tool and",
+      "      # never looks inside. Whatever loads a secret must also mask it.",
+    ];
   }
-  const file = job === "scan" ? envFiles.preview : envFiles.deploy;
-  const token = job === "scan" ? PREVIEW_TOKEN : DEPLOY_TOKEN;
+  const file = envFiles.deploy;
   return [
     "      # Leave this out when op is part of your runner image.",
     "      - uses: 1password/install-cli-action@v4",
-    ...(job === "scan"
-      ? [
-          "      # One `op run` resolves the whole file. The service account of this job",
-          "      # should see only the credentials that read.",
-        ]
-      : [
-          "      # The token that reaches the credentials that change things is a secret",
-          "      # of the environment above.",
-        ]),
+    "      # One `op run` resolves the whole file. These credentials preview and",
+    "      # deploy, so they must be able to change things.",
     "      - name: Load the environment",
     "        env:",
-    `          OP_SERVICE_ACCOUNT_TOKEN: \${{ secrets.${token} }}`,
+    `          OP_SERVICE_ACCOUNT_TOKEN: \${{ secrets.${TOKEN_SECRET} }}`,
     `        run: op run --env-file=${file} --no-masking -- bash ${EXPORT_ENV_FILE} ${file}`,
   ];
 }
@@ -459,26 +368,25 @@ export function needsText({ findings, declarable, branchGuessed }: NeedsInput): 
   const { envFiles, node } = findings;
   if (envFiles === undefined) {
     needs.push(
-      "Load the credentials and the state backend settings of your stacks in the scan and apply jobs, where the comments in the workflow say. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.",
+      "Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.",
     );
   } else {
     needs.push(
-      `Create the secret ${PREVIEW_TOKEN}, a 1Password service account token that resolves ${envFiles.preview} and reads only, and ${DEPLOY_TOKEN}, one that resolves ${envFiles.deploy}, as a secret of the environment of each stack.`,
+      `Create the secret ${TOKEN_SECRET}, a 1Password service account token that resolves ${envFiles.deploy}.`,
     );
-    if (envFiles.preview === envFiles.deploy) {
+    const unused = [
+      ...(envFiles.preview === envFiles.deploy ? [] : [envFiles.preview]),
+      ...envFiles.others,
+    ];
+    if (unused.length > 0) {
       needs.push(
-        `Both jobs load ${envFiles.preview}. The scan needs credentials that read and nothing more: give it an env file of its own.`,
-      );
-    }
-    if (envFiles.others.length > 0) {
-      needs.push(
-        `init did not use these env files of secret references: ${envFiles.others.join(", ")}.`,
+        `init did not use ${unused.join(", ")}: one job previews and deploys, with the credentials of ${envFiles.deploy}. For credentials that only read in scans, use the split workflow (docs/split-workflow.md).`,
       );
     }
   }
   if (findings.helm || findings.kubectl) {
     needs.push(
-      "The scan and apply jobs need a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).",
+      "The job needs a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).",
     );
   }
   if (declarable.helm.length > 0) {
@@ -518,9 +426,8 @@ export function needsText({ findings, declarable, branchGuessed }: NeedsInput): 
     );
   }
   needs.push(
-    `Every job runs on ${RUNS_ON}. For self-hosted runners change runs-on of scan and apply, with runner 2.328.0 or newer. resolve and settle hold no credentials and can stay on hosted runners.`,
-    "apply deploys in the GitHub Environment of each stack, sluiceway unless sluiceway.yaml names another. Put the credentials that change things there, or remove the environment block where your plan has no environments.",
-    "Review the files, run the check (mode: check) in a pull request, and commit them. init commits nothing.",
+    `The job runs on ${RUNS_ON} with timeout-minutes: 60. Raise it when a scan or a deploy of yours takes longer, since one run can hold both. For a self-hosted runner change runs-on, with runner 2.328.0 or newer.`,
+    "Review the files, run the check in a pull request, and commit them. init commits nothing.",
   );
   return needs;
 }
