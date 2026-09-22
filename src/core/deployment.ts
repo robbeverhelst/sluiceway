@@ -3,6 +3,8 @@
 // record. It is declared here and not on the port because `core/` may not
 // import `github/`.
 
+import type { OutsideDeploy } from "./outside-deploy.ts";
+
 // A record as GitHub holds it, in the port's words.
 export interface Deployment {
   id: number;
@@ -424,6 +426,25 @@ export function lastDeployedCommit(facts: DeployFacts, stackId: string): string 
 // as they always do.
 export function pendingAgain(fact: DeployFact | undefined, hash: string): boolean {
   return fact?.kind === "succeeded" && !fact.inSync && fact.hash === hash;
+}
+
+// The failed deploy a stack's row shows its failure line for, or nothing
+// (record 0076). The line stands while no deploy of the stack ended after the
+// failure. A later deploy from the dashboard is already the newest record, so
+// the fact is no longer the failure. A deploy outside the dashboard is only in
+// the tool's history, so it is checked here: a deploy or a destroy of the
+// stack that ended after the failure took the failure's place. The trail
+// keeps the failed deploy either way.
+export function standingFailure(
+  stackId: string,
+  fact: DeployFact | undefined,
+  outside: readonly OutsideDeploy[],
+): Extract<DeployFact, { kind: "failed" }> | undefined {
+  if (fact?.kind !== "failed") return undefined;
+  const after = outside.some(
+    (deploy) => deploy.stackId === stackId && deploy.at.getTime() > fact.at.getTime(),
+  );
+  return after ? undefined : fact;
 }
 
 // One stack as a scan sees it at its late read (record 0004).
