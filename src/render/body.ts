@@ -5,6 +5,7 @@
 import type { IgnoredStack } from "../core/config.ts";
 import { IN_SYNC_DESCRIPTION, REHEARSED_DESCRIPTION } from "../core/deployment.ts";
 import { destroySign } from "./destroy-sign.ts";
+import { COUNT_DOT, DOT_AT_ZERO, RESULT_DOT } from "./dots.ts";
 import { escapeText } from "./escape.ts";
 import { type HeaderState, headerState } from "./header-state.ts";
 import {
@@ -162,27 +163,15 @@ function picture(
   ];
 }
 
-// The count dots of record 0040. They are signals, like the signal colours in
-// the picture, so they are shown whenever there is a header, also when the
-// picture carries the destroy sign (record 0043). A count of 0 gets the white
-// dot, so a red dot always means there is something to look at.
-const DOT = {
-  pending: "🟡",
-  drift: "🟠",
-  deploying: "🔵",
-  "preview-failed": "🔴",
-  "in-sync": "🟢",
-  failed: "🔴",
-} as const;
-const DOT_AT_ZERO = "⚪";
-
+// The count dots of record 0040 are shown whenever there is a header, also
+// when the picture carries the destroy sign (record 0043).
 // The four state counts always, so the line keeps its shape. Two more facts
 // only when they are not 0. The non-breaking space keeps a dot and its count
 // on one line in a narrow column.
 function countsLine(rows: KnownRow[], dots: boolean): string {
   const of = (state: KnownRow["state"]) => rows.filter((row) => placed(row) === state).length;
-  const dot = (kind: keyof typeof DOT, count: number) =>
-    dots ? `${count === 0 ? DOT_AT_ZERO : DOT[kind]}&nbsp;` : "";
+  const dot = (kind: keyof typeof COUNT_DOT, count: number) =>
+    dots ? `${count === 0 ? DOT_AT_ZERO : COUNT_DOT[kind]}&nbsp;` : "";
   const destroying = rows.filter((row) => row.state === "pending" && row.destroys > 0).length;
   const failed = rows.filter((row) => row.failed).length;
   const parts = [
@@ -249,9 +238,16 @@ const RESULT_WORDS = {
   "drift-repaired": DRIFT_REPAIRED_WORDS,
 } as const;
 
-function recentLine(deploy: RecentDeploy): string {
+// Under a header each line starts with the dot of its result (slice 4.5), as
+// every count does (record 0040). A failed deploy is never listed (record
+// 0029), so a line is green, white or purple.
+function recentLine(deploy: RecentDeploy, dots: boolean): string {
   const result = deploy.result === undefined ? "" : ` · ${RESULT_WORDS[deploy.result]}`;
-  return `- ${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)}${result} · ${utcMinute(
+  // A drift repair went out, so it is green like any deploy (record 0059).
+  const outcome =
+    deploy.result === undefined || deploy.result === "drift-repaired" ? "deployed" : deploy.result;
+  const dot = dots ? `${RESULT_DOT[outcome]}&nbsp;` : "";
+  return `- ${dot}${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)}${result} · ${utcMinute(
     deploy.at,
   )} · [run](${deploy.runUrl})`;
 }
@@ -352,7 +348,11 @@ export function renderBody(input: BodyInput): string {
   const recent = [...input.recentlyDeployed]
     .sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit(a.stackId, b.stackId))
     .slice(0, RECENTLY_DEPLOYED);
-  if (recent.length > 0) out.push("## Recently deployed", recent.map(recentLine).join("\n"));
+  if (recent.length > 0)
+    out.push(
+      "## Recently deployed",
+      recent.map((deploy) => recentLine(deploy, input.personality)).join("\n"),
+    );
 
   // The rescan box needs a `resolve` job as much as a row's box does.
   out.push("---");

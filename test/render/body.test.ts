@@ -560,11 +560,14 @@ describe("the count dots", () => {
     }
   });
 
-  test("the dots are nowhere but on the counts line", () => {
+  // Slice 4.5 adds the recently deployed list. Never a row, and never the
+  // voice (record 0032).
+  test("the dots are nowhere but on the counts line and the recently deployed list", () => {
     for (const [, rows] of NAMED_DASHBOARDS) {
       const all = paragraphs(renderBody(input(rows, { recentlyDeployed: RECENT })));
-      const rest = all.filter((_, index) => index !== 3).join("\n");
-      expect(rest).not.toMatch(/🟡|🔵|🔴|🟢|⚪|&nbsp;/u);
+      const trail = all.indexOf("## Recently deployed") + 1;
+      const rest = all.filter((_, index) => index !== 3 && index !== trail).join("\n");
+      expect(rest).not.toMatch(/🟡|🔵|🔴|🟢|⚪|🟠|🟣|&nbsp;/u);
     }
   });
 });
@@ -779,17 +782,37 @@ describe("the ignored fold", () => {
 });
 
 describe("recently deployed", () => {
-  test("a plain list, newest first", () => {
+  test("a plain list, newest first, each line with the green dot of a deploy", () => {
     const all = paragraphs(
       renderBody(input(DASHBOARDS["in-sync"], { recentlyDeployed: [...RECENT].reverse() })),
     );
     expect(all[all.indexOf("## Recently deployed") + 1]).toBe(
       [
-        `- apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](${REPO_URL}/actions/runs/17034388102)`,
-        `- apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](${REPO_URL}/actions/runs/17034120455)`,
-        `- platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](${REPO_URL}/actions/runs/17029910331)`,
+        `- 🟢&nbsp;apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](${REPO_URL}/actions/runs/17034388102)`,
+        `- 🟢&nbsp;apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](${REPO_URL}/actions/runs/17034120455)`,
+        `- 🟢&nbsp;platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](${REPO_URL}/actions/runs/17029910331)`,
       ].join("\n"),
     );
+  });
+
+  // Slice 4.5: the dots belong to the header, as the count dots do (record
+  // 0040), so a dashboard without personality keeps the plain list.
+  test("without personality the list has no dots", () => {
+    const all = paragraphs(
+      renderBody(
+        input(DASHBOARDS["in-sync"], {
+          recentlyDeployed: [
+            ...RECENT,
+            { ...(RECENT[0] as RecentDeploy), result: "rehearsed" },
+            { ...(RECENT[0] as RecentDeploy), result: "in-sync" },
+          ],
+          personality: false,
+        }),
+      ),
+    );
+    const lines = all[all.indexOf("## Recently deployed") + 1]?.split("\n") ?? [];
+    expect(lines).toHaveLength(5);
+    for (const line of lines) expect(line).toMatch(/^- [a-z]/);
   });
 
   test("the newest 10 and no more", () => {
@@ -802,27 +825,27 @@ describe("recently deployed", () => {
     const all = paragraphs(renderBody(input([], { recentlyDeployed: many })));
     const lines = all[all.indexOf("## Recently deployed") + 1]?.split("\n") ?? [];
     expect(lines).toHaveLength(10);
-    expect(lines[0]).toStartWith("- stack-11 ·");
-    expect(lines[9]).toStartWith("- stack-2 ·");
+    expect(lines[0]).toStartWith("- 🟢&nbsp;stack-11 ·");
+    expect(lines[9]).toStartWith("- 🟢&nbsp;stack-2 ·");
   });
 
   test("two deploys in the same millisecond are ordered by stack id", () => {
     const at = new Date("2026-09-21T09:41:07Z");
     const twins = ["b", "a"].map((stackId) => ({ stackId, ticker: "x", at, runUrl: "u" }));
     const body = renderBody(input([], { recentlyDeployed: twins }));
-    expect(body.indexOf("- a ·")).toBeLessThan(body.indexOf("- b ·"));
+    expect(body.indexOf("- 🟢&nbsp;a ·")).toBeLessThan(body.indexOf("- 🟢&nbsp;b ·"));
     expect(body).toBe(renderBody(input([], { recentlyDeployed: [...twins].reverse() })));
   });
 
   test("a stack id and a login are never trusted as markup", () => {
     const hostile = [{ stackId: "a*b", ticker: "<x>", at: new Date(0), runUrl: "u" }];
     expect(renderBody(input([], { recentlyDeployed: hostile }))).toContain(
-      "- a&#42;b · ticked by &lt;x&gt; · 1970-01-01 00:00 UTC · [run](u)",
+      "- 🟢&nbsp;a&#42;b · ticked by &lt;x&gt; · 1970-01-01 00:00 UTC · [run](u)",
     );
   });
 
   // Slice 2.20 (record 0051): the trail says when nothing went out.
-  test("a rehearsal says so", () => {
+  test("a rehearsal says so, with the purple dot", () => {
     const all = paragraphs(
       renderBody(
         input(DASHBOARDS["in-sync"], {
@@ -831,12 +854,12 @@ describe("recently deployed", () => {
       ),
     );
     expect(all[all.indexOf("## Recently deployed") + 1]).toBe(
-      "- apps/auth:prod · ticked by alice · rehearsed, nothing was deployed · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
+      "- 🟣&nbsp;apps/auth:prod · ticked by alice · rehearsed, nothing was deployed · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
     );
   });
 
   // Slice 4.7 (record 0059): a deploy that put drift back says so.
-  test("a drift repair says so", () => {
+  test("a drift repair says so, with the green dot of a deploy", () => {
     const all = paragraphs(
       renderBody(
         input(DASHBOARDS["in-sync"], {
@@ -845,11 +868,11 @@ describe("recently deployed", () => {
       ),
     );
     expect(all[all.indexOf("## Recently deployed") + 1]).toBe(
-      "- apps/auth:prod · ticked by alice · put back what changed outside the code · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
+      "- 🟢&nbsp;apps/auth:prod · ticked by alice · put back what changed outside the code · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
     );
   });
 
-  test("a deploy that found nothing to deploy says so", () => {
+  test("a deploy that found nothing to deploy says so, with the white dot", () => {
     const all = paragraphs(
       renderBody(
         input(DASHBOARDS["in-sync"], {
@@ -858,7 +881,7 @@ describe("recently deployed", () => {
       ),
     );
     expect(all[all.indexOf("## Recently deployed") + 1]).toBe(
-      "- apps/auth:prod · ticked by alice · nothing to deploy, already in sync · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
+      "- ⚪&nbsp;apps/auth:prod · ticked by alice · nothing to deploy, already in sync · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
     );
   });
 });
@@ -934,8 +957,10 @@ describe("dashboard.personality: false", () => {
         renderBody(input(rows, { recentlyDeployed: RECENT, personality: false })),
       );
       const voiced = on.indexOf("## Pending") + 1;
+      const trail = on.indexOf("## Recently deployed") + 1;
       expect(on[1]).toStartWith('<p align="center">\n  <picture>');
       const undotted = on
+        .map((text, index) => (index === trail ? text.replaceAll(/^- 🟢&nbsp;/gmu, "- ") : text))
         .filter((_, index) => ![1, 2, 5, voiced].includes(index))
         .map((text, index) =>
           index === 1 ? text.replace(/(?:🟡|🟠|🔵|🔴|🟢|⚪)&nbsp;/gu, "") : text,
