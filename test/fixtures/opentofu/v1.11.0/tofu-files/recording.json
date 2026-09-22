@@ -1,0 +1,33 @@
+{
+  "scenario": "tofu-files",
+  "description": "dns, a root module of .tofu files in the default workspace, before its first deploy.",
+  "cliVersion": "v1.11.0",
+  "commands": [
+    {
+      "id": "plan",
+      "argv": [
+        "tofu",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-json",
+        "-out={plan}"
+      ],
+      "cwd": "dns",
+      "exitCode": 0,
+      "stdout": "plan.stdout",
+      "stderr": "plan.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "show",
+      "argv": ["tofu", "show", "-json", "-no-color", "{plan}"],
+      "cwd": "dns",
+      "exitCode": 0,
+      "stdout": "show.stdout",
+      "stderr": "show.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

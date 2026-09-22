@@ -1,0 +1,49 @@
+{
+  "scenario": "new-stack",
+  "description": "network:dev before its first deploy: init, then a plan of all creates in the workspace dev.",
+  "cliVersion": "v1.11.0",
+  "commands": [
+    {
+      "id": "init",
+      "argv": ["tofu", "init", "-input=false", "-no-color"],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "init.stdout",
+      "stderr": "init.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "plan",
+      "argv": [
+        "tofu",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-json",
+        "-out={plan}",
+        "-var-file=dev.tfvars"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "plan.stdout",
+      "stderr": "plan.stderr",
+      "stdoutFormat": "text",
+      "env": {
+        "TF_WORKSPACE": "dev"
+      }
+    },
+    {
+      "id": "show",
+      "argv": ["tofu", "show", "-json", "-no-color", "{plan}"],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "show.stdout",
+      "stderr": "show.stderr",
+      "stdoutFormat": "json",
+      "env": {
+        "TF_WORKSPACE": "dev"
+      }
+    }
+  ]
+}

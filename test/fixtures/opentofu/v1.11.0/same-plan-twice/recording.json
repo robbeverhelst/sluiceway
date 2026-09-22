@@ -1,0 +1,73 @@
+{
+  "scenario": "same-plan-twice",
+  "description": "The same plan of network:dev twice, to see that the order of resource_changes holds.",
+  "cliVersion": "v1.11.0",
+  "commands": [
+    {
+      "id": "plan",
+      "argv": [
+        "tofu",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-json",
+        "-out={plan}",
+        "-var-file=dev.tfvars"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "plan.stdout",
+      "stderr": "plan.stderr",
+      "stdoutFormat": "text",
+      "env": {
+        "TF_WORKSPACE": "dev"
+      }
+    },
+    {
+      "id": "show",
+      "argv": ["tofu", "show", "-json", "-no-color", "{plan}"],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "show.stdout",
+      "stderr": "show.stderr",
+      "stdoutFormat": "json",
+      "env": {
+        "TF_WORKSPACE": "dev"
+      }
+    },
+    {
+      "id": "plan-again",
+      "argv": [
+        "tofu",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-json",
+        "-out={plan}",
+        "-var-file=dev.tfvars"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "plan-again.stdout",
+      "stderr": "plan-again.stderr",
+      "stdoutFormat": "text",
+      "env": {
+        "TF_WORKSPACE": "dev"
+      }
+    },
+    {
+      "id": "show-again",
+      "argv": ["tofu", "show", "-json", "-no-color", "{plan}"],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "show-again.stdout",
+      "stderr": "show-again.stderr",
+      "stdoutFormat": "json",
+      "env": {
+        "TF_WORKSPACE": "dev"
+      }
+    }
+  ]
+}

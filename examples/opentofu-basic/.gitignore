@@ -1,0 +1,7 @@
+# What tofu writes into a copy of the example.
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+terraform.tfstate.d/
+out/

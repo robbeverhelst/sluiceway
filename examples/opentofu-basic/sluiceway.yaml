@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=../../schema/sluiceway.schema.json
+#
+# OpenTofu has no zero config: files alone cannot say which directory is a
+# root module or which workspaces it has. Each entry with tool: opentofu
+# declares one stack.
+
+stacks:
+  # One root module in two workspaces, each with its own var file. Their
+  # stack ids are network:dev and network:prod.
+  - path: network
+    name: dev
+    tool: opentofu
+    options:
+      workspace: dev
+      varFiles: [dev.tfvars]
+  - path: network
+    name: prod
+    tool: opentofu
+    options:
+      workspace: prod
+      varFiles: [prod.tfvars]
+
+  # A root module written in .tofu files, in the default workspace. Its stack
+  # id is dns.
+  - path: dns
+    tool: opentofu

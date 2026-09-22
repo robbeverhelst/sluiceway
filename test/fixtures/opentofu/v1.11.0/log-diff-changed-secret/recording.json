@@ -1,0 +1,26 @@
+{
+  "scenario": "log-diff-changed-secret",
+  "description": "The tool's own diff of a rotated sensitive variable, for the job log (record 0048).",
+  "cliVersion": "v1.11.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "tofu",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-var-file=dev.tfvars"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "text",
+      "env": {
+        "TF_WORKSPACE": "dev"
+      }
+    }
+  ]
+}

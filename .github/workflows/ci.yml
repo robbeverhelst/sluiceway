@@ -98,6 +98,49 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  fixtures-opentofu:
+    # The same for OpenTofu (record 0053): the recorder with the real tofu,
+    # the minimum version the adapter supports and the newest one the
+    # fixtures were recorded with. tofu only ever runs against a copy of
+    # examples/opentofu-basic, with its state in the local backend inside a
+    # temp directory. Providers come from the OpenTofu registry.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        tofu: ["1.11.0", "1.12.6"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      # No wrapper: the recorder needs what tofu itself prints.
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ matrix.tofu }}
+          tofu_wrapper: false
+
+      - run: bun install --frozen-lockfile
+
+      - name: Record the fixtures
+        env:
+          TOFU_VERSION: ${{ matrix.tofu }}
+        run: bun run record:fixtures --tool opentofu --out "$RUNNER_TEMP/fixtures" --expect-version "v$TOFU_VERSION"
+
+      # The fixtures in the repo come from here. See CONTRIBUTING.md.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: fixtures-opentofu-v${{ matrix.tofu }}
+          path: ${{ runner.temp }}/fixtures
+          retention-days: 7
+          if-no-files-found: error
+
   smoke:
     # Runs the committed bundle the way a consumer would: a `uses:` step, read
     # through action.yml, on the runner's own node24. The e2e workflow proves

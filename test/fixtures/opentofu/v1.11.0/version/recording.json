@@ -1,0 +1,16 @@
+{
+  "scenario": "version",
+  "description": "tofu version -json, which the version check reads.",
+  "cliVersion": "v1.11.0",
+  "commands": [
+    {
+      "id": "version",
+      "argv": ["tofu", "version", "-json"],
+      "cwd": ".",
+      "exitCode": 0,
+      "stdout": "version.stdout",
+      "stderr": "version.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

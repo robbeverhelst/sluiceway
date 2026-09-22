@@ -1,7 +1,7 @@
 // Records what the tool prints for one scenario. The tool only ever runs in a
 // fresh copy of the example project, against a fresh file backend inside the
 // work directory. Nothing here knows Pulumi beyond the names of the variables
-// that keep it there.
+// that keep it there, and OpenTofu gets its own through RecordOptions.
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { EXAMPLE_PASSPHRASE } from "./example.ts";
@@ -27,7 +27,7 @@ export type Step =
   | { kind: "edit"; file: string; find: string; replace: string }
   | { kind: "write"; file: string; content: string }
   // Runs a command to get the stack where the scenario needs it. Not saved.
-  | { kind: "setup"; cwd: string; argv: string[] }
+  | { kind: "setup"; cwd: string; argv: string[]; env?: Record<string, string> }
   // Runs a command and saves what it printed.
   | {
       kind: "record";
@@ -36,7 +36,15 @@ export type Step =
       argv: string[];
       stdout: StdoutFormat;
       expect?: Expectation;
+      // Variables this one command gets on top of the scenario's environment,
+      // such as the workspace an OpenTofu stack selects.
+      env?: Record<string, string>;
     };
+
+// Stands for the path of the plan file in an argument, so that a recording
+// holds no path of the machine that made it. The recorder puts a real path in
+// its place when it runs the command, and a replay puts the adapter's.
+export const PLAN_FILE = "{plan}";
 
 // What a recorded command has to show for the scenario to be worth keeping. A
 // scenario named "replace" whose preview holds no replace is a lie in waiting.
@@ -61,6 +69,8 @@ export interface RecordedCommand {
   stdout: string;
   stderr: string;
   stdoutFormat: StdoutFormat;
+  // Only when the step sets any.
+  env?: Record<string, string>;
 }
 
 export interface Recording {
@@ -78,6 +88,8 @@ export interface RecordOptions {
   cliVersion: string;
   parentEnv: Record<string, string | undefined>;
   runner: Runner;
+  // The environment of the tool, built from nothing. Pulumi's when absent.
+  environment?: (options: RecordOptions, backend: string) => Record<string, string>;
 }
 
 export const RECORDING_FILE = "recording.json";
@@ -97,8 +109,11 @@ export async function recordScenario(
   rmSync(target, { recursive: true, force: true });
   mkdirSync(target, { recursive: true });
 
-  const env = toolEnvironment(options, backend);
+  const env = (options.environment ?? toolEnvironment)(options, backend);
   const commands: RecordedCommand[] = [];
+  const planFile = join(scenarioWork, "plan", "tfplan");
+  mkdirSync(join(planFile, ".."), { recursive: true });
+  const argvOf = (argv: string[]) => argv.map((arg) => arg.replace(PLAN_FILE, planFile));
 
   for (const step of scenario.steps) {
     if (step.kind === "edit") {
@@ -109,14 +124,22 @@ export async function recordScenario(
       mkdirSync(join(file, ".."), { recursive: true });
       writeFileSync(file, step.content);
     } else if (step.kind === "setup") {
-      const result = await options.runner({ argv: step.argv, cwd: join(project, step.cwd), env });
+      const result = await options.runner({
+        argv: argvOf(step.argv),
+        cwd: join(project, step.cwd),
+        env: { ...env, ...step.env },
+      });
       if (result.exitCode !== 0) {
         throw new Error(
           `Scenario "${scenario.name}": setup command "${step.argv.join(" ")}" ended with exit code ${result.exitCode}.\n${result.stderr}`,
         );
       }
     } else {
-      const result = await options.runner({ argv: step.argv, cwd: join(project, step.cwd), env });
+      const result = await options.runner({
+        argv: argvOf(step.argv),
+        cwd: join(project, step.cwd),
+        env: { ...env, ...step.env },
+      });
       const command: RecordedCommand = {
         id: step.id,
         argv: step.argv,
@@ -125,6 +148,7 @@ export async function recordScenario(
         stdout: `${step.id}.stdout`,
         stderr: `${step.id}.stderr`,
         stdoutFormat: step.stdout,
+        ...(step.env === undefined ? {} : { env: step.env }),
       };
       writeFileSync(join(target, command.stdout), result.stdout);
       writeFileSync(join(target, command.stderr), result.stderr);
@@ -145,7 +169,11 @@ export async function recordScenario(
 // Says what is wrong with the recording in one scenario directory. An empty
 // list means it is good. It reads the saved files only, so it works the same on
 // a fresh recording and on the fixtures in the repo.
-export function checkRecording(dir: string, scenario: Scenario): string[] {
+export function checkRecording(
+  dir: string,
+  scenario: Scenario,
+  ops: (document: unknown) => string[] = opsOf,
+): string[] {
   const name = basename(dir);
   const manifest = join(dir, RECORDING_FILE);
   if (!existsSync(manifest)) return [`${name}: no ${RECORDING_FILE}. Record the fixtures again.`];
@@ -162,7 +190,8 @@ export function checkRecording(dir: string, scenario: Scenario): string[] {
       command === undefined ||
       command.cwd !== step.cwd ||
       command.stdoutFormat !== step.stdout ||
-      JSON.stringify(command.argv) !== JSON.stringify(step.argv)
+      JSON.stringify(command.argv) !== JSON.stringify(step.argv) ||
+      JSON.stringify(command.env) !== JSON.stringify(step.env)
     ) {
       problems.push(
         `${where}: the scenario now runs a different command. Record the fixtures again.`,
@@ -189,7 +218,7 @@ export function checkRecording(dir: string, scenario: Scenario): string[] {
       problems.push(`${name}/${command.stdout}: expected JSON, and it does not parse.`);
       continue;
     }
-    const found = opsOf(document);
+    const found = ops(document);
     for (const op of step.expect?.ops ?? []) {
       if (found.includes(op)) continue;
       const seen = found.length > 0 ? [...new Set(found)].sort().join(", ") : "none";

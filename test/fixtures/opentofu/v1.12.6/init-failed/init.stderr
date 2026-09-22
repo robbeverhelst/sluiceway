@@ -1,0 +1,6 @@
+
+Error: Failed to resolve provider packages
+
+Could not resolve provider hashicorp/null: no available releases match the
+given constraints 99.0.0
+
