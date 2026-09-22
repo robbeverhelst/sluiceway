@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.0](https://github.com/sluiceway/sluiceway/compare/v0.7.0...v0.8.0) (2026-09-22)
+
+
+### Features
+
+* a tick on a drifted row that nothing picked up is swept like any other ([6d0d3b3](https://github.com/sluiceway/sluiceway/commit/6d0d3b349d16641ba1453fa661a99e1ed783f8fe))
+* drift in the diff, the hash, config and the Pulumi adapter (record 0055) ([8904add](https://github.com/sluiceway/sluiceway/commit/8904addc77b9bdabc33817ae489e9acb40bdef1c))
+* fixture scenarios with real drift, recorded through a streamed preview-only refresh ([8d99135](https://github.com/sluiceway/sluiceway/commit/8d99135c631039865a32f558ca6c261c2c8c9240))
+* rebuild dist for drift ([61f8d2c](https://github.com/sluiceway/sluiceway/commit/61f8d2cfbc9e0ebfa33a6cf199c905cc0617a0d1))
+* record 0055 and the docs for drift ([03ac9e6](https://github.com/sluiceway/sluiceway/commit/03ac9e6f62e22fd6cf1b8fd1e37388fd42507ac8))
+* scans check drift, resolve carries it, apply checks it again and repairs it ([af58921](https://github.com/sluiceway/sluiceway/commit/af58921519d2c531207d0c8a1745b314cc4adcaa))
+* the check summary lists drift among the known keys ([d27e459](https://github.com/sluiceway/sluiceway/commit/d27e4598b7484a3754fb2a81eda1353209c6179f))
+* the deploy a merge hands to apply carries drift when its hash covers it ([037d93a](https://github.com/sluiceway/sluiceway/commit/037d93a02b243152ccb32327c43382b08039c822))
+* the drift row, the Drifted section and the drift header picture ([5d103f5](https://github.com/sluiceway/sluiceway/commit/5d103f5ab27a634db2fb267ff213a8741b5269b8))
+
 ## [0.7.0](https://github.com/sluiceway/sluiceway/compare/v0.6.0...v0.7.0) (2026-09-22)
 
 
