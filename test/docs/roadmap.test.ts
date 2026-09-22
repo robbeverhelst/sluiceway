@@ -17,7 +17,7 @@ Left out on purpose.
 | What | Why not in v1 | Decided in |
 |---|---|---|
 | Teams in the tick rule | The token cannot read teams. | 0018 |
-| A Helm adapter (a release as the stack) | First after OpenTofu. | 0006 |
+| Detecting dependencies from Pulumi stack references | Opt-in. | 0056 |
 | \`sluiceway.yml\` as a second spelling | One name. | Slice 1.2 |
 
 ## Rejected on principle
@@ -43,7 +43,7 @@ describe("the generated part of the roadmap", () => {
   });
 
   test("leaves out the rows that come before 1.0, which the page names by hand", () => {
-    expect(list).not.toContain("Helm");
+    expect(list).not.toContain("Pulumi stack references");
     expect(list).not.toContain("Docs site");
   });
 
@@ -95,7 +95,6 @@ describe("docs/roadmap.md", () => {
   test("names every row that comes before 1.0 by hand, above the generated part", () => {
     const byHand = roadmap.slice(0, roadmap.indexOf(START));
     const words: Record<(typeof BEFORE_1_0)[number], string> = {
-      "A Helm adapter": "Helm adapter",
       "Detecting dependencies from Pulumi stack references": "Pulumi stack references",
       "Docs site and Marketplace launch": "Marketplace",
       "Launch material": "`v1` moving tag",

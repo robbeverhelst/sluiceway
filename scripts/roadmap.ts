@@ -12,7 +12,6 @@ export const END = "<!-- End of the generated part. -->";
 // The page names them by hand, with the slice that builds them. A start that
 // matches no row belongs to a row that shipped and left later.md.
 export const BEFORE_1_0 = [
-  "A Helm adapter",
   "Detecting dependencies from Pulumi stack references",
   "Docs site and Marketplace launch",
   "Launch material",

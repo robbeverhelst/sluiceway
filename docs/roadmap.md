@@ -8,7 +8,7 @@ The part after 1.0 is generated from [docs/later.md](later.md), which says for e
 
 The core loop: a scan previews every stack and writes the dashboard, a person ticks a box, exactly that stack deploys, and its row returns to in sync or says why it failed. Around it:
 
-- Pulumi stacks, found from their files, and OpenTofu root modules, declared in `sluiceway.yaml`.
+- Pulumi stacks, found from their files, and OpenTofu root modules and Helm releases, declared in `sluiceway.yaml`.
 - Five modes: `scan`, `resolve`, `apply`, `settle`, and `check`, which validates a setup on a pull request with no credentials.
 - A push previews only the stacks it touches. Every row says which pull requests made it pending, and links to a page with that stack's diff.
 - Rows name the property paths that change, never a value. A repo can list paths whose values may show, and can print the tool's own diff in the job log.
@@ -20,7 +20,6 @@ The [build plan](build-plan.md) says how each of these was built and proven, and
 
 ## Before 1.0
 
-- **The Helm adapter.** A Helm release in a namespace becomes a stack, previewed with `helm diff` and deployed with `helm upgrade --install`, so a Kubernetes team can use the dashboard without wrapping Helm in another tool. Slice 4.6 of the build plan.
 - **Stack dependencies and drift, part 2.** The check lists what each stack depends on, dependencies can be read from Pulumi stack references on request, drift can be turned on per stack, and a drifted row lists what drifted the way a pending row lists its changes. Slice 4.7.
 - **The launch.** A listing on the GitHub Marketplace, a docs site, screenshots, a note on merge queues and the config schema in SchemaStore. Then the 1.0.0 tag and the `v1` moving tag.
 
@@ -39,6 +38,8 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Zero-config discovery for OpenTofu (a directory with a backend block or a lock file as a stack)
 - A `backendConfig` option for OpenTofu (`tofu init -backend-config`)
 - A hint in the check for a directory of `.tf` files that no entry declares
+- Helm, part 2: a drift check (the diff plugin's `--three-way-merge` compares with the live objects), a `createNamespace` option, a `kubeContext` option, zero-config discovery from `Chart.yaml`, and `--take-ownership` for objects made outside the release
+- `--rollback-on-failure` in place of `--atomic` for the Helm deploy
 - A Kubernetes manifests adapter (kustomize or plain YAML, `kubectl diff` for the preview, `kubectl apply` for the deploy)
 - The Terraform family beyond OpenTofu (Terragrunt, CDK for Terraform)
 - An AWS CDK and CloudFormation adapter (change sets as the preview)
@@ -49,8 +50,8 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A note on the row of an update waiting to merge whose tick was cleared without a comment
 - Waiting, in the scan after a merge, for a dependency that became pending after the merge
 - Listing more than 10 updates waiting to merge, or pull requests beyond the oldest 100 open ones
-- Drift detection, part 2
-- Stack dependencies, part 2
+- Drift detection, part 3
+- Stack dependencies, part 3
 - A named `refresh` option (preview, re-preview and deploy with refresh on every run of a stack)
 - Showing property values on the dashboard or in the summary without a list
 - A finer `dashboard.redact` (per stack, or a middle level such as types without names)

@@ -40,13 +40,13 @@ v1 is the core loop and what real use asked for around it. The core loop: a scan
 The plan began with the core loop alone and left out drift, stack dependencies and a second adapter. The first real user and the owner brought parts of each back after the first release, one slice at a time. Built and released:
 
 - **The core loop** in five modes, `scan`, `resolve`, `apply`, `settle` and `check`, with narrowed scans, attribution, the size budget, the summary and a preview page per pending stack (M1, M2, 0003, 0010, 0026, 0028, 0037, 0042, 0050).
-- **Two adapters.** Pulumi, found from its files alone, and OpenTofu, declared in `sluiceway.yaml` (0001, 0053, slice 4.1).
+- **Three adapters.** Pulumi, found from its files alone, and OpenTofu and Helm, declared in `sluiceway.yaml` (0001, 0053, 0058, slices 4.1 and 4.6).
 - **What a row may show.** Property paths and never values, the tool diff in the job log on request, and values for the paths a repo lists (0046, 0048, 0052).
 - **Stop, rehearse, explain.** `deploys: false`, `dry-run`, an `ignore` entry with a reason, and a comment to the ticker when a change moved (0051).
 - **Merge and deploy, part 1** (0054, slice 4.2), **drift, part 1** (0055, slice 4.3) and **stack dependencies, part 1** (0056, slice 4.4).
 - **Outputs and the result file**, so a workflow can tell people. Sluiceway sends nothing (0041).
 
-Slices 4.6 and 4.7 add the Helm adapter and part 2 of drift and dependencies. Everything else that was considered is in `docs/later.md`: teams in the tick rule, a bot identity of its own, more adapters, values without a list, a hosted version, and more. [docs/roadmap.md](roadmap.md) says which of it comes before 1.0 and which after.
+Slice 4.7 adds part 2 of drift and dependencies. Everything else that was considered is in `docs/later.md`: teams in the tick rule, a bot identity of its own, more adapters, values without a list, a hosted version, and more. [docs/roadmap.md](roadmap.md) says which of it comes before 1.0 and which after.
 
 The marker format, the row states and the diff shape leave room for what `docs/later.md` lists, so nothing needs a placeholder for it. Do not add empty code for anything that no slice builds.
 
