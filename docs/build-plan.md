@@ -91,13 +91,14 @@ The file is optional and sits at the repo root. Unknown keys are an error, becau
 | `stacks[].tickers` | the top level value | Tick rule for this stack | 0018 |
 | `stacks[].inputs` | `[]` | Extra globs this stack claims | 0010 |
 | `stacks[].previewTimeout` | the input | Time limit for this stack, whole minutes | 0012, 0035 |
+| `stacks[].dependsOn` | none | Stack ids this stack depends on. A tick waits while one of them is pending and not ticked, ticks in one chain deploy one layer per run (slice 4.4) | 0056 |
 | `stacks[].options` | `{}` | Named adapter options, only with `tool`. OpenTofu: `workspace` and `varFiles` | 0006, 0015, 0053 |
 
 Rules for config loading:
 
 - A `stacks[]` entry adds settings to stacks that discovery found. It never creates a stack, except an entry with `tool`, which declares one (0053). An entry that matches no discovered stack is a config error.
 - A `tickers` entry with a slash fails with the message that teams are not supported yet (0018).
-- `dependsOn` and `drift` fail with a message that says they are not in this version yet. They are never ignored.
+- `drift` fails with a message that says it is not in this version yet. It is never ignored. (`dependsOn` did too until slice 4.4, 0056.)
 - The JSON schema is generated from the Zod schema into `schema/sluiceway.schema.json`, committed, and checked in CI the way `dist/` is.
 
 ### Fixed strings and numbers
@@ -110,7 +111,7 @@ Rules for config loading:
 | Default environment label | `sluiceway` | 0003 |
 | Concurrency groups | `sluiceway-scan`, `sluiceway-resolve`, `sluiceway-apply-<stack id>` | 0004, 0025, 0035 |
 | Marker version | `1` | 0009 |
-| Row states | `pending`, `deploying`, `in-sync`, `preview-failed` | 0009 |
+| Row states | `pending`, `deploying`, `in-sync`, `preview-failed`, and `queued` since slice 4.4 | 0009, 0056 |
 | Diff hash | SHA-256 of the canonical document, first 16 hex characters | 0008 |
 | Body target, hard limits | 58,000 characters, 65,536 characters, 262,144 bytes | 0028 |
 | Summary budget | 1,000,000 bytes | 0037 |

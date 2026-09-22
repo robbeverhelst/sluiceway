@@ -48,10 +48,10 @@ export function planDeploys(input: DeployPlanInput): DeployPlan {
     for (const id of ids) {
       if (refused.has(id)) continue;
       const waitingOn = (input.dependsOn.get(id) ?? []).filter(
-        (upstream) =>
-          !input.open.has(upstream) &&
-          !going.has(upstream) &&
-          (input.pending.has(upstream) || refused.has(upstream)),
+        (dependency) =>
+          !input.open.has(dependency) &&
+          !going.has(dependency) &&
+          (input.pending.has(dependency) || refused.has(dependency)),
       );
       if (waitingOn.length === 0) continue;
       refused.set(id, [...waitingOn].sort(byCodeUnit));
@@ -65,7 +65,7 @@ export function planDeploys(input: DeployPlanInput): DeployPlan {
   for (const id of ids) {
     if (refused.has(id)) continue;
     const behind = (input.dependsOn.get(id) ?? [])
-      .filter((upstream) => going.has(upstream) || input.open.has(upstream))
+      .filter((dependency) => going.has(dependency) || input.open.has(dependency))
       .sort(byCodeUnit);
     if (behind.length === 0) start.push(id);
     else queued.push({ stackId: id, behind });

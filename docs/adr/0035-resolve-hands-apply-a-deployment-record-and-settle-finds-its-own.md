@@ -1,5 +1,7 @@
 # `resolve` hands `apply` a deployment record, and `settle` finds its own
 
+> Amended by 0056: `resolve` also runs on a dispatch of the workflow, where it starts the queued stacks that are ready, and `settle` starts the workflow again when one is. `apply` never deploys a queued record.
+
 Records 0003 and 0019 say that `resolve` creates the deployment record and passes it on, and that `apply` deploys only on an open record. No record named the inputs and outputs that carry this through a workflow. The brief's names (`stack`, `expected-hash`, a matrix of `{ stack, environment, expectedHash }`) no longer fit: the approved hash lives on the record (0003), so handing it over a second time would give two sources for one fact. This record fixes the names.
 
 `resolve` has one output, `matrix`: a JSON array with one entry per deploy it started.

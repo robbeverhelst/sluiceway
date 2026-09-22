@@ -184,9 +184,8 @@ describe("a resolve that a dispatch started", () => {
       );
     expect(old?.status).toMatchObject({ state: "inactive", description: HANDED_ON_DESCRIPTION });
     // The hash the tick approved goes on.
-    expect((entry?.record.payload as { hash: string }).hash).toBe(
-      (old?.payload as { hash: string }).hash,
-    );
+    const hashOf = (payload: unknown) => (payload as { hash?: string } | undefined)?.hash;
+    expect(hashOf(entry?.record.payload)).toBe(hashOf(old?.payload) as string);
     const rows = rowsOf(h);
     expect(rows["app:prod"]?.split("\n")[0]).toContain(
       `· waiting to start · ticked by alice · [run](${REPO_URL}/actions/runs/${NEXT_RUN})`,

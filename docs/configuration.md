@@ -351,6 +351,47 @@ sluiceway.yaml is not valid:
 - stacks[0].previewTimeout: expected a whole number of minutes, 1 or more, got 2.5.
 ```
 
+### `stacks[].dependsOn`
+
+Default: none.
+
+The stack ids of the stacks this stack depends on, such as a network stack that an app stack reads outputs from. Write each id as its row shows it. Two things follow:
+
+- **A tick waits for a change upstream.** A tick on this stack is refused while a stack it depends on has a pending row that nobody ticked: the box is cleared, and a note on the row names that stack. The job stays green. Only a pending row holds a tick back, because only a change that has not gone out can change what this stack reads. A stack that is in sync, or whose preview failed, holds nothing back.
+- **Ticks in one chain go out in order.** Tick both and the one it depends on deploys first. The other gets the row `queued behind <stack>` and a deployment record of its own, and deploys once that stack went out. If that deploy fails, the queued stack does not deploy and its row gets a failure line. The same happens when you tick this stack while a stack it depends on is deploying.
+
+Each layer of a chain runs in a workflow run of its own. The `settle` job starts the workflow again when a layer went out, and the `resolve` job of that run starts the next layer, so the `resolve` job has to run on `workflow_dispatch` as well as on `issues`. The workflow in the [README](../README.md#2-add-the-workflow) does.
+
+A stack waits only on the stacks it names, not on theirs. Entries add up, like `inputs`: an entry without a name gives its list to every stack in its path.
+
+```yaml
+stacks:
+  - path: app
+    dependsOn:
+      - network:prod
+  - path: site
+    name: prod
+    dependsOn:
+      - app:prod
+```
+
+Every id is checked against discovery, because a dependency that could never hold anything back would be a gate that never says so. A stack that was not found, one that `ignore` leaves out, the stack itself and a circle are errors, such as:
+
+- `stacks[0].dependsOn[0]: "network:staging" is not a stack that discovery found. Write the stack id as a row shows it, such as "network:dev".`
+- `dependsOn goes round in a circle: app:prod depends on network:prod, which depends on site:prod, which depends on app:prod. Nothing in a circle could ever deploy first, so take one of these out.`
+
+```yaml
+# Not valid: a list of stack ids
+stacks:
+  - path: app
+    dependsOn: network:prod
+```
+
+```text
+sluiceway.yaml is not valid:
+- stacks[0].dependsOn: expected a list, got "network:prod".
+```
+
 ### `stacks[].options.workspace`
 
 Default: the workspace the job's environment selects, which is `default`.
@@ -370,19 +411,16 @@ Only with `tool: opentofu`. Var files, relative to the directory of the stack, h
 - **No credentials and no environment variables.** Your workflow puts them into the job environment before Sluiceway runs ([credentials](credentials.md)).
 - **No `concurrency` or `preview-timeout`.** They belong to the runner, so they are inputs of the action.
 - **No stack ids.** They are derived.
-- **No teams, no `dependsOn` and no `drift`.** Not in this version:
+- **No teams and no `drift`.** Not in this version:
 
 ```yaml
 # Not valid: not in this version
-stacks:
-  - path: apps/web
-    dependsOn:
-      - network
+drift: true
 ```
 
 ```text
 sluiceway.yaml is not valid:
-- stacks[0]: "dependsOn" is not in this version of Sluiceway yet. Remove it.
+- "drift" is not in this version of Sluiceway yet. Remove it.
 ```
 
 A typo gets the list of keys that are allowed:

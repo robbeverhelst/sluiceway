@@ -57,7 +57,7 @@ jobs:
           mode: scan
 
   resolve:
-    if: github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'sluiceway')
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'sluiceway'))
     runs-on: ubuntu-latest
     concurrency: sluiceway-resolve
     outputs:

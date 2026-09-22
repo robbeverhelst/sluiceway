@@ -7,6 +7,8 @@ Record 0004 made the body a cache of row blocks and said each block's marker car
 > Amended by 0028 (settled while building slice 1.8): a third optional display cache key follows them, `shortened`, the level of a shortened row.
 >
 > Amended by 0035 (settled while building slice 2.6): `settle` does not write the body. It starts a full scan, which writes the rows of the stacks whose records it ended.
+>
+> Amended by 0056: the `queued` state is used, placed and counted with deploying rows. `resolve` reads a dependency's row state to refuse a tick while it is pending, the one exception to "no mode decides anything from it", and it can only hold a deploy back.
 
 Markers are HTML comments in one namespace, `sluiceway:<kind>`, with `key="value"` pairs. There are three kinds in v1:
 

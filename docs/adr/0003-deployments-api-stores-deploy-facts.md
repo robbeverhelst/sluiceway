@@ -3,6 +3,8 @@
 > Named in 0035: the matrix that `resolve` emits is the `matrix` output with `{ stack, environment, deployment }` entries, `apply` takes the record as `deployment-id`, and `settle` finds the open records of its own run.
 >
 > Amended by 0051: an `inactive` status with the words "rehearsed, nothing was deployed" ends a rehearsal. It is no deploy fact of the stack and is listed in recently deployed as rehearsed. A `success` with the words "nothing to deploy, already in sync" is listed with them.
+>
+> Amended by 0056: a queued record carries `behind` in its payload and is not ended because its run is over, only when a stack it waits behind did not go out. It starts under a new record of a later run, and the queued one ends as `inactive` with "started in a later run", which is no deploy fact.
 
 A preview can recompute what is pending, but not that a deploy is running, how the last one ended, or who ticked it. Those deploy facts are stored as GitHub deployment records that Sluiceway creates and reads back, and nowhere else. Markers in the issue body were rejected because any writer or hand edit can clobber them and the issue must stay a rendered view. Workflow run queries were rejected because a run is not tied to a stack and records neither the ticker nor the approved hash. GitHub is the database, so "zero backend" still holds.
 

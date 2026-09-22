@@ -66,7 +66,7 @@ export async function settle(context: SettleContext): Promise<void> {
     try {
       const status = await github.createDeploymentStatus(id, {
         state: dead ? "failure" : "error",
-        description: deployFailureText({ kind: dead ? "upstream-failed" : "run-ended" }),
+        description: deployFailureText({ kind: dead ? "dependency-failed" : "run-ended" }),
         logUrl: `${context.repoUrl}/actions/runs/${context.runId}`,
       });
       records = records.map((record) => (record.id === id ? { ...record, status } : record));

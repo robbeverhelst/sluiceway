@@ -182,6 +182,18 @@ _Avoid_: Dry run (that is the input's name, not the thing), test deploy, simulat
 To give an open deployment a result when its workflow run ended without reporting one.
 _Avoid_: Clean up, time out, expire
 
+**Dependency**:
+A stack that another stack names in `dependsOn`, because it reads something the dependency makes. A tick waits on a dependency only while its row is pending and nobody ticked it: the box is cleared with a note that names the dependency. A stack waits only on the stacks it names, not on theirs.
+_Avoid_: Upstream (that is a side of Penny in the header), parent, prerequisite, blocker
+
+**Queued stack**:
+A ticked stack whose deployment record waits behind its dependencies, because they were ticked in the same run or are deploying. Its row says "queued behind" them, has no box and counts as deploying. It deploys in a later run once they went out, and never deploys when one of them did not.
+_Avoid_: Blocked stack, waiting stack, pending stack (pending is a row state)
+
+**Layer**:
+The stacks of a dependency chain that deploy in one workflow run, because nothing they wait behind is still to go out. `settle` starts the workflow again after a layer, and that run's `resolve` starts the next one.
+_Avoid_: Wave, stage, batch, level
+
 **Outside deploy**:
 A deploy of a stack that did not go through a tick: from a laptop, a script or another pipeline. It is allowed, leaves no deployment record, and the next full scan brings the row back in line. A tick on the stale row finds nothing to deploy, and its record ends as a success that says so.
 _Avoid_: Manual deploy, rogue deploy, out-of-band deploy
@@ -223,7 +235,7 @@ The line under the counts line that says which commit the last scan checked out,
 _Avoid_: Status line, timestamp, last updated
 
 **Row state**:
-Which group a stack's row belongs to: pending, deploying, in sync or preview failed. It is a label for placing and counting rows. Nothing about a deploy is ever decided from it. A scan may read it for one thing only: to pick stacks worth previewing again.
+Which group a stack's row belongs to: pending, deploying, in sync, preview failed or queued. A queued row is placed and counted with the deploying ones. It is a label for placing and counting rows. Nothing about a deploy is ever decided from it, with one exception that only holds a deploy back and never starts one: `resolve` refuses a tick while a dependency's row is pending. A scan may read it for one thing only: to pick stacks worth previewing again.
 _Avoid_: Status, stack state, phase
 
 **Preview failure**:

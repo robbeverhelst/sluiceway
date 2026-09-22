@@ -78,7 +78,7 @@ export async function settleEndedRuns(
   const end = async (stackId: string, deployment: number, run: string, dead: boolean) => {
     const status = await github.createDeploymentStatus(deployment, {
       state: dead ? "failure" : "error",
-      description: deployFailureText({ kind: dead ? "upstream-failed" : "run-ended" }),
+      description: deployFailureText({ kind: dead ? "dependency-failed" : "run-ended" }),
       logUrl: `${repoUrl}/actions/runs/${run}`,
     });
     settled.records = settled.records.map((record) =>
