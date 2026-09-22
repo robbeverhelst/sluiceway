@@ -392,10 +392,11 @@ describe("the ticks in a body", () => {
     expect(ticksIn(live)).toEqual([A, C, { kind: "rescan" }]);
   });
 
-  test("a row of a state this version does not know, and a row without a hash, hold no tick", () => {
+  test("a row of a state this version does not know, a queued row and a row without a hash hold no tick", () => {
     const live = body(
-      '- [x] **stack-a** <!-- sluiceway:row stack="stack-a" state="queued" hash="aaaaaaaaaaaaaaaa" -->',
+      '- [x] **stack-a** <!-- sluiceway:row stack="stack-a" state="later" hash="aaaaaaaaaaaaaaaa" -->',
       '- [x] **stack-b** <!-- sluiceway:row stack="stack-b" state="pending" -->',
+      '- [x] **stack-c** <!-- sluiceway:row stack="stack-c" state="queued" hash="aaaaaaaaaaaaaaaa" -->',
     );
 
     expect(ticksIn(live)).toEqual([]);

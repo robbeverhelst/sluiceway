@@ -32,8 +32,16 @@ export const MARKER_VERSION = 1;
 
 // The v1 row states. A row whose state is not one of these is carried through
 // byte for byte and never acted on.
-export const ROW_STATES = ["pending", "deploying", "in-sync", "preview-failed"] as const;
+// `queued` is a deploying row whose record waits behind the stacks it depends
+// on (records 0009 and 0056).
+export const ROW_STATES = ["pending", "deploying", "in-sync", "preview-failed", "queued"] as const;
 export type RowState = (typeof ROW_STATES)[number];
+
+// A queued stack is taken like a deploying one (record 0003), so it is placed
+// and counted with them.
+export function isDeployingState(state: string): boolean {
+  return state === "deploying" || state === "queued";
+}
 
 // The scan facts the header shows. Writers other than `scan` have no scan of
 // their own to take them from, so they ride on the root marker.

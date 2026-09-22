@@ -92,6 +92,11 @@ const SIGNED_FACT = {
 
 type KnownRow = Extract<ParsedRow, { known: true }>;
 
+// A queued row is counted as deploying (record 0056).
+function placed(row: KnownRow): KnownRow["state"] {
+  return row.state === "queued" ? "deploying" : row.state;
+}
+
 function byCodeUnit(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -164,7 +169,7 @@ const DOT_AT_ZERO = "⚪";
 // only when they are not 0. The non-breaking space keeps a dot and its count
 // on one line in a narrow column.
 function countsLine(rows: KnownRow[], dots: boolean): string {
-  const of = (state: KnownRow["state"]) => rows.filter((row) => row.state === state).length;
+  const of = (state: KnownRow["state"]) => rows.filter((row) => placed(row) === state).length;
   const dot = (kind: keyof typeof DOT, count: number) =>
     dots ? `${count === 0 ? DOT_AT_ZERO : DOT[kind]}&nbsp;` : "";
   const destroying = rows.filter((row) => row.state === "pending" && row.destroys > 0).length;
@@ -271,7 +276,9 @@ export function renderBody(input: BodyInput): string {
   out.push("## Pending", pendingLine(input, state, pending.length));
   if (pending.length > 0) out.push(blocks(pending));
 
-  const deploying = of("deploying");
+  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) =>
+    byCodeUnit(a.stackId, b.stackId),
+  );
   if (deploying.length > 0) out.push("## Deploying", blocks(deploying));
 
   const previewFailed = of("preview-failed");

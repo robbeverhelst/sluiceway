@@ -89,7 +89,9 @@ export function ticksIn(body: string): Tick[] {
   for (const row of dashboard.rows) {
     if (seen.has(row.stackId)) continue;
     seen.add(row.stackId);
-    if (row.known && row.ticked && row.hash !== undefined) {
+    // A queued row is taken like a deploying one and never holds a tick
+    // (record 0056).
+    if (row.known && row.ticked && row.hash !== undefined && row.state !== "queued") {
       ticks.push({ kind: "row", stackId: row.stackId, hash: row.hash });
     }
   }

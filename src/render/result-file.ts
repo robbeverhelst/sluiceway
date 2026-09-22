@@ -153,7 +153,8 @@ export function dashboardCounts(rows: readonly ParsedRow[]): DashboardCounts {
   const of = (state: string) => known.filter((row) => row.state === state).length;
   return {
     pending: of("pending"),
-    deploying: of("deploying"),
+    // A queued stack counts as deploying, as on the counts line (record 0056).
+    deploying: of("deploying") + of("queued"),
     previewFailed: of("preview-failed"),
     inSync: of("in-sync"),
     failedDeploys: known.filter((row) => row.failed).length,

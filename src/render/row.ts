@@ -64,6 +64,9 @@ export interface DeployingRow {
   // Copied from the marker of the row this one replaces.
   destroys?: number | undefined;
   attribution?: AttributionLines | undefined;
+  // The record is queued behind these stacks (record 0056). The row then says
+  // so, and its marker state is `queued`.
+  behind?: readonly string[] | undefined;
 }
 
 export interface PreviewFailedRow {
@@ -212,6 +215,17 @@ export const ORPHAN_TICK_NOTE =
 export const DEPLOYS_OFF_NOTE =
   ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick started nothing.";
 
+// The note on a row whose tick `resolve` cleared because a stack it depends on
+// has a change waiting that nobody ticked (record 0056). It names them, so a
+// refusal never stays silent.
+export function dependencyNote(ids: readonly string[]): string {
+  const names = ids.map((id) => `**${escapeText(id)}**`).join(" and ");
+  const one = ids.length === 1;
+  return `:information_source: this tick started nothing: it depends on ${names}, which ${
+    one ? "has a change" : "have changes"
+  } waiting. Tick ${one ? "both" : "them all"} to deploy them in order, or deploy ${names} first.`;
+}
+
 // The note on a row that a deploy of this same change did not bring in sync
 // (onboarding log, hurdle 21). Fixed words of Sluiceway's own: it guesses at
 // the cause and names no value.
@@ -298,11 +312,18 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
 }
 
 function deployingRow(row: DeployingRow): string[] {
-  const word = row.waiting ? "waiting to start" : "deploying";
+  const behind = row.behind ?? [];
+  const word =
+    behind.length > 0
+      ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}`
+      : row.waiting
+        ? "waiting to start"
+        : "deploying";
+  const state = behind.length > 0 ? "queued" : "deploying";
   const lines = [
     `- **${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${
       row.runUrl
-    }) ${rowMarker({ stackId: row.stackId, state: "deploying", destroys: row.destroys })}`,
+    }) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys })}`,
   ];
   if (row.attribution) lines.push(row.attribution.full);
   return lines;

@@ -2,7 +2,7 @@
 // pure function of the row markers, so every writer can compute it for rows
 // it only carries through. It decides nothing.
 
-import type { ParsedRow } from "./marker.ts";
+import { isDeployingState, type ParsedRow } from "./marker.ts";
 
 // In the order in which they win: bad news first. A destroy is not a state of
 // its own: it adds the destroy sign to the picture (record 0043).
@@ -18,7 +18,7 @@ export function headerState(rows: readonly ParsedRow[]): HeaderState {
   const is = (state: string) => known.some((row) => row.state === state);
 
   if (is("preview-failed") || known.some((row) => row.failed)) return "failing";
-  if (is("deploying")) return "deploying";
+  if (known.some((row) => isDeployingState(row.state))) return "deploying";
   if (is("pending")) return "pending";
   return "in-sync";
 }

@@ -3,7 +3,7 @@
 // level, so every writer can compute it for rows it only carries through. It
 // decides nothing.
 
-import type { ParsedRow } from "./marker.ts";
+import { isDeployingState, type ParsedRow } from "./marker.ts";
 
 // On when any known row that is pending or deploying deletes or replaces
 // something. This is the rule the plain header state had (record 0031), moved.
@@ -11,6 +11,6 @@ import type { ParsedRow } from "./marker.ts";
 export function destroySign(rows: readonly ParsedRow[]): boolean {
   return rows.some(
     (row) =>
-      row.known && (row.state === "pending" || row.state === "deploying") && row.destroys > 0,
+      row.known && (row.state === "pending" || isDeployingState(row.state)) && row.destroys > 0,
   );
 }
