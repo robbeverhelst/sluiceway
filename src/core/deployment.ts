@@ -199,6 +199,10 @@ export interface TrailEntry {
   result?: "in-sync" | "rehearsed" | "drift-repaired" | "failed";
   // The failure reason of a failed deploy, as the failure line shows it.
   reason?: string;
+  // For a deploy that went out: the commit of the stack's success before it
+  // and its own, the range attribution says it shipped (record 0072). Absent
+  // when the records read hold no success before it: there is no guess.
+  shipped?: { from: string; to: string };
 }
 
 export interface DeployFacts {
@@ -337,6 +341,8 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
     // Newest last, so the newest record of a stack is the one that stays.
     facts.byStack.set(stackId, fact);
     if (fact.kind === "succeeded") {
+      const before = lastDeployedCommit(facts, stackId);
+      const wentOut = !fact.inSync;
       const succeeded = {
         stackId,
         ticker: fact.ticker,
@@ -349,7 +355,10 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
             : {}),
       };
       facts.succeeded.push({ ...succeeded, sha: record.sha });
-      facts.trail.push(succeeded);
+      facts.trail.push({
+        ...succeeded,
+        ...(wentOut && before !== undefined ? { shipped: { from: before, to: record.sha } } : {}),
+      });
     }
     // A failure keeps its failure line on the row and is a line of the trail
     // too, so the trail is every deploy that ended (record 0062).

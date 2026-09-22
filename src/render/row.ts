@@ -14,6 +14,9 @@ import { utcMinute } from "./time.ts";
 export interface AttributionLines {
   full: string;
   counted: string;
+  // The fold under the line that names the changes outside the stack (record
+  // 0072), at level 0 only. Absent when there are none.
+  outside?: readonly string[] | undefined;
 }
 
 // The note that a stack's last deploy from the dashboard failed. A deploy fact
@@ -444,7 +447,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
         `Changes ${options.redact ? "are listed in the" : "not listed here, see the"} ${summary}`,
       );
     }
-    lines.push(...driftLines(drift, summary, options));
+    lines.push(...driftLines(drift, summary, options), ...outsideFold(row.attribution, level));
     return lines;
   }
 
@@ -460,8 +463,15 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
       lines.push("</details>");
     }
   }
-  lines.push(...driftLines(drift, summary, options));
+  lines.push(...driftLines(drift, summary, options), ...outsideFold(row.attribution, level));
   return lines;
+}
+
+// The fold that names the changes outside the stack (record 0072). It comes
+// last: an HTML block runs to the next blank line, so a Markdown line after it
+// would not render. From level 1 on it goes with the names.
+function outsideFold(attribution: AttributionLines | undefined, level: RowLevel): string[] {
+  return level === 0 ? [...(attribution?.outside ?? [])] : [];
 }
 
 // A small animated picture at the start of a deploying or queued row (record
@@ -490,7 +500,7 @@ function deployingRow(row: DeployingRow, options: RowOptions): string[] {
       row.runUrl
     }) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys })}`,
   ];
-  if (row.attribution) lines.push(row.attribution.full);
+  if (row.attribution) lines.push(row.attribution.full, ...outsideFold(row.attribution, 0));
   return lines;
 }
 

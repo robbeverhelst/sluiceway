@@ -97,11 +97,16 @@ export function fitBody(input: BudgetInput, options: BudgetOptions = {}): Fitted
     return { stackId: blocks[0]?.stackId ?? "", blocks, still, level: 0 };
   });
   const blockOf = (entry: Entry) => (!spinning && entry.still) || entry.blocks[entry.level] || [];
+  // What each deploy of the trail shipped is history, and a row decides a
+  // deploy: its names become a count next, before any pending row gives way
+  // (record 0072).
+  let shortTrail = input.shortTrail ?? false;
   const render = () =>
     renderBody({
       ...input,
       rows: [...input.carried, ...entries.flatMap(blockOf)],
       merges,
+      shortTrail,
     });
   const fits = () => render().length <= target;
   if (allMerges.length > MAX_UPDATES && !fits()) {
@@ -117,6 +122,8 @@ export function fitBody(input: BudgetInput, options: BudgetOptions = {}): Fitted
     merges = allMerges.slice(0, MAX_UPDATES + low);
   }
   if (spinning && !fits()) spinning = false;
+  if (!shortTrail && input.recentlyDeployed.some(({ shipped }) => shipped) && !fits())
+    shortTrail = true;
 
   for (const level of LEVELS.slice(1)) {
     const biggestFirst = [...entries].sort(

@@ -114,3 +114,64 @@ describe("the time of a superseded deploy", () => {
     expect(facts.trail).toMatchObject([{ at: new Date("2026-09-21T12:00:00Z") }]);
   });
 });
+
+// Slice 5.5 (record 0072): a deploy that went out says what it shipped, from
+// the commit of the stack's success before it to its own commit.
+describe("what a deploy shipped", () => {
+  const at = (minute: number) => `2026-09-21T09:${String(minute).padStart(2, "0")}:00Z`;
+  const one = (
+    id: number,
+    sha: string,
+    state: string,
+    rest: Parameters<typeof record>[0] | object = {},
+  ) => record({ id, sha, state, at: at(id), createdAt: at(id), ...rest });
+  const A = "a".repeat(40);
+  const B = "b".repeat(40);
+  const C = "c".repeat(40);
+  const D = "d".repeat(40);
+
+  test("runs from the success before it, an empty one included, to its own commit", () => {
+    const facts = deployFacts([
+      one(1, A, "success"),
+      one(2, B, "success", { description: "nothing to deploy, already in sync" }),
+      one(3, C, "failure"),
+      one(4, D, "success"),
+    ]);
+    expect(facts.trail.map((entry) => entry.shipped)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      { from: B, to: D },
+    ]);
+  });
+
+  test("a stack's first success in the records read says nothing: there is no guess", () => {
+    expect(deployFacts([one(1, A, "success")]).trail[0]?.shipped).toBeUndefined();
+  });
+
+  test("a rehearsal ships nothing and is not where the next one starts", () => {
+    const facts = deployFacts([
+      one(1, A, "success"),
+      one(2, B, "inactive", { description: REHEARSED_DESCRIPTION }),
+      one(3, C, "success"),
+    ]);
+    expect(facts.trail.map((entry) => entry.shipped)).toEqual([
+      undefined,
+      undefined,
+      { from: A, to: C },
+    ]);
+  });
+
+  test("each stack has its own", () => {
+    const facts = deployFacts([
+      one(1, A, "success"),
+      one(2, B, "success", { task: "sluiceway:apps/loki:prod" }),
+      one(3, C, "success", { task: "sluiceway:apps/loki:prod" }),
+    ]);
+    expect(facts.trail.map((entry) => entry.shipped)).toEqual([
+      undefined,
+      undefined,
+      { from: B, to: C },
+    ]);
+  });
+});

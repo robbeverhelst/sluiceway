@@ -181,6 +181,61 @@ describe("a pending row", () => {
   });
 });
 
+// Record 0072: the changes outside the stack, named behind a fold.
+describe("the fold of changes outside the stack", () => {
+  const OUTSIDE = [
+    "<details><summary>changes outside this stack</summary>",
+    '<a href="pr-url">#431</a> by renovate&#91;bot&#93;<br>',
+    "</details>",
+  ];
+  const WITH_FOLD: PendingRow = {
+    ...BUCKETS,
+    attribution: { ...(BUCKETS.attribution ?? { full: "", counted: "" }), outside: OUTSIDE },
+  };
+
+  test("comes last on a pending row, after the fold of changes", () => {
+    const lines = renderRow(WITH_FOLD).split("\n");
+    expect(lines[1]).toBe(`  ${BUCKETS.attribution?.full}`);
+    expect(lines.slice(-4)).toEqual([
+      ...OUTSIDE.map((line) => `  ${line}`),
+      "  <!-- /sluiceway:row -->",
+    ]);
+    expect(renderRow(WITH_FOLD)).toBe(
+      renderRow(BUCKETS).replace(
+        "  <!-- /sluiceway:row -->",
+        `${OUTSIDE.map((line) => `  ${line}\n`).join("")}  <!-- /sluiceway:row -->`,
+      ),
+    );
+  });
+
+  test("goes with the names from level 1 on", () => {
+    expect(renderRow(WITH_FOLD, { level: 1 })).toBe(renderRow(BUCKETS, { level: 1 }));
+  });
+
+  test("stays with redact on, where the attribution line stays too", () => {
+    expect(renderRow(WITH_FOLD, { redact: true })).toContain(OUTSIDE[1] ?? "no line");
+  });
+
+  test("comes after the line on a deploying row", () => {
+    const block = renderRow({
+      state: "deploying",
+      stackId: "apps/web:prod",
+      ticker: "carol",
+      runUrl: RUN_URL,
+      attribution: {
+        full: "from 1 change outside this stack · [compare](compare-url)",
+        counted: "",
+        outside: OUTSIDE,
+      },
+    }).split("\n");
+    expect(block.slice(1)).toEqual([
+      "  from 1 change outside this stack · [compare](compare-url)",
+      ...OUTSIDE.map((line) => `  ${line}`),
+      "  <!-- /sluiceway:row -->",
+    ]);
+  });
+});
+
 const FAILURE: FailureLine = {
   reason: "the change moved since the tick",
   ticker: "alice",

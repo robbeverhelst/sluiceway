@@ -22,7 +22,7 @@ import {
 } from "./marker.ts";
 import { MERGE_FOLD_AFTER } from "./merge-row.ts";
 import { type Crates, MAX_CRATES, pendingCrates } from "./pending-crates.ts";
-import { type Row, type RowOptions, renderRow } from "./row.ts";
+import { type AttributionLines, INDENT, type Row, type RowOptions, renderRow } from "./row.ts";
 import { utcMinute } from "./time.ts";
 import {
   DRIFTED_LINE,
@@ -50,6 +50,9 @@ export interface RecentDeploy {
   result?: "in-sync" | "rehearsed" | "drift-repaired" | "failed" | undefined;
   // The failure reason of a failed deploy, as its failure line shows it.
   reason?: string | undefined;
+  // What a deploy that went out shipped (record 0072), worked out by the
+  // core as a row's attribution is. Absent when there is nothing to say.
+  shipped?: AttributionLines | undefined;
 }
 
 export interface BodyInput {
@@ -87,6 +90,9 @@ export interface BodyInput {
   // every other writer carries them as `parseDashboard` read them, less the
   // ones it merged.
   merges?: readonly ParsedMerge[] | undefined;
+  // The size budget's first cut after the spinners (record 0072): what each
+  // deploy of the trail shipped becomes a count, as a row's names do.
+  shortTrail?: boolean | undefined;
 }
 
 export const RECENTLY_DEPLOYED = 10;
@@ -256,7 +262,7 @@ const RESULT_WORDS = {
 // Under a header each line starts with the dot of its result (slice 4.5), as
 // every count does (record 0040): green went out, white nothing to deploy,
 // purple rehearsed, and red for a failed deploy (record 0062).
-function recentLine(deploy: RecentDeploy, dots: boolean): string {
+function recentLine(deploy: RecentDeploy, dots: boolean, short?: boolean): string {
   // A failed deploy says so with its reason, as its failure line does (record
   // 0062). The reason is display text from the record, never trusted.
   const words =
@@ -268,9 +274,23 @@ function recentLine(deploy: RecentDeploy, dots: boolean): string {
   const outcome =
     deploy.result === undefined || deploy.result === "drift-repaired" ? "deployed" : deploy.result;
   const dot = dots ? `${RESULT_DOT[outcome]}&nbsp;` : "";
+  const shipped = deploy.shipped
+    ? `\n${INDENT}${short ? deploy.shipped.counted : deploy.shipped.full}`
+    : "";
   return `- ${dot}${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)}${result} · ${utcMinute(
     deploy.at,
-  )} · [run](${deploy.runUrl})`;
+  )} · [run](${deploy.runUrl})${shipped}`;
+}
+
+// The lines of the trail that are shown, newest first. Attribution works out
+// what these shipped and no others (record 0072).
+export function newestTrail<T extends { at: Date; stackId: string }>(
+  deploys: readonly T[],
+  length: number | undefined,
+): T[] {
+  return [...deploys]
+    .sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit(a.stackId, b.stackId))
+    .slice(0, length ?? RECENTLY_DEPLOYED);
 }
 
 // A deploy made outside the dashboard (record 0073): when and from which
@@ -413,20 +433,19 @@ export function renderBody(input: BodyInput): string {
           one.at.getTime() === deploy.at.getTime(),
       ) === index,
   );
-  const recent = [
+  const entries = [
     ...input.recentlyDeployed.map((deploy) => ({
       at: deploy.at,
       stackId: deploy.stackId,
-      line: () => recentLine(deploy, input.personality),
+      line: () => recentLine(deploy, input.personality, input.shortTrail),
     })),
     ...outside.map((deploy) => ({
       at: deploy.at,
       stackId: deploy.stackId,
       line: () => outsideLine(deploy, input.repoUrl, input.personality),
     })),
-  ]
-    .sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit(a.stackId, b.stackId))
-    .slice(0, input.recentLength ?? RECENTLY_DEPLOYED);
+  ];
+  const recent = newestTrail(entries, input.recentLength);
   if (recent.length > 0)
     out.push("## Recently deployed", recent.map((entry) => entry.line()).join("\n"));
 

@@ -1,5 +1,6 @@
 import { LineCounter, parseDocument } from "yaml";
 import { z } from "zod";
+import { LOOKBACK, NAMED_ON_A_ROW } from "./attribution.ts";
 import { knownStacks } from "./discovery.ts";
 import { globMatcher } from "./glob.ts";
 import { PHASE_NAME, phaseDependencies, throughPhase } from "./phases.ts";
@@ -174,6 +175,11 @@ const stackEntries = z.array(stackEntry).superRefine((entries, context) => {
 // (record 0062).
 export const RECENTLY_DEPLOYED_MAX = 50;
 
+// The longest lookback and the most names `attribution` allows (record 0072).
+// Ten pages of the walk, and a line that still fits the size budget.
+export const LOOKBACK_MAX = 1000;
+export const NAMES_MAX = 20;
+
 export const configSchema = z
   .strictObject({
     dashboard: z
@@ -267,6 +273,28 @@ export const configSchema = z
             "Check every stack for drift in each scan that a schedule starts, or that a person starts with Run workflow: changes made to real infrastructure outside the code. A stack with drift gets a row with a box, and a tick deploys the code as it is, which puts it back. Costs one more tool run per stack in those scans.",
           )
           .default(false),
+      })
+      .prefault({}),
+    // Slice 5.5 (record 0072): how far attribution looks back, and how many
+    // pull requests and direct pushes a row names before the rest is a count.
+    attribution: z
+      .strictObject({
+        lookback: z
+          .int()
+          .min(1)
+          .max(LOOKBACK_MAX)
+          .describe(
+            "How many of the newest commits a job walks to say which pull requests made a row pending. A stack whose last deploy lies further back gets a line that says earlier changes exist. Each 100 commits cost one more GraphQL request.",
+          )
+          .default(LOOKBACK),
+        names: z
+          .int()
+          .min(0)
+          .max(NAMES_MAX)
+          .describe(
+            "How many pull requests and direct pushes a row and a line of Recently deployed name, newest first. The rest is a count. 0 names none and always counts.",
+          )
+          .default(NAMED_ON_A_ROW),
       })
       .prefault({}),
     // Slice 4.16 (record 0067): deploys in phases, in the order listed.
@@ -411,6 +439,14 @@ function describe(issue: Issue, raw: unknown): Problem[] {
     return problem(
       `expected a whole number of lines from 0 to ${RECENTLY_DEPLOYED_MAX}, got ${show(value)}.`,
     );
+  }
+  if (key === "lookback" && issue.path[0] === "attribution") {
+    return problem(
+      `expected a whole number of commits from 1 to ${LOOKBACK_MAX}, got ${show(value)}.`,
+    );
+  }
+  if (key === "names" && issue.path[0] === "attribution") {
+    return problem(`expected a whole number of names from 0 to ${NAMES_MAX}, got ${show(value)}.`);
   }
   if (key === "previewTimeout" && issue.code !== "custom") {
     return problem(`expected a whole number of minutes, 1 or more, got ${show(value)}.`);

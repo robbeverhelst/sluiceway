@@ -118,3 +118,32 @@ test("under a header a failed deploy gets the red dot", () => {
     `- 🔴&nbsp;a · ticked by alice · failed: the deploy failed · 2026-09-02 09:41 UTC · [run](${REPO_URL}/actions/runs/2)`,
   ]);
 });
+
+// Slice 5.5 (record 0072): a deploy that went out says what it shipped, on
+// its own line under it, as a row says where its change came from.
+describe("what a deploy shipped", () => {
+  const shipped = {
+    full: "shipped #102 by dave, #101 by carol · [compare](compare-url)",
+    counted: "shipped 2 pull requests · [compare](compare-url)",
+  };
+
+  test("sits on the line under the deploy, inside its list item", () => {
+    const body = renderBody(
+      input({
+        recentlyDeployed: [deploy("apps/auth:prod", 21, { shipped }), deploy("apps/web:prod", 20)],
+      }),
+    );
+    expect(trail(body)).toEqual([
+      `- apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](${REPO_URL}/actions/runs/21)`,
+      "  shipped #102 by dave, #101 by carol · [compare](compare-url)",
+      `- apps/web:prod · ticked by alice · 2026-09-20 09:41 UTC · [run](${REPO_URL}/actions/runs/20)`,
+    ]);
+  });
+
+  test("is a count when the budget asks for a shorter trail", () => {
+    const body = renderBody(
+      input({ recentlyDeployed: [deploy("apps/auth:prod", 21, { shipped })], shortTrail: true }),
+    );
+    expect(trail(body)[1]).toBe("  shipped 2 pull requests · [compare](compare-url)");
+  });
+});

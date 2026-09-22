@@ -151,6 +151,27 @@
       },
       "additionalProperties": false
     },
+    "attribution": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "lookback": {
+          "default": 100,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "How many of the newest commits a job walks to say which pull requests made a row pending. A stack whose last deploy lies further back gets a line that says earlier changes exist. Each 100 commits cost one more GraphQL request."
+        },
+        "names": {
+          "default": 5,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "description": "How many pull requests and direct pushes a row and a line of Recently deployed name, newest first. The rest is a count. 0 names none and always counts."
+        }
+      },
+      "additionalProperties": false
+    },
     "phases": {
       "default": [],
       "type": "array",

@@ -28,6 +28,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "ignore",
       "scan",
       "drift",
+      "attribution",
       "phases",
       "stacks",
       "mergeAndDeploy",
@@ -41,6 +42,10 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "readOnly",
       "showValues",
       "recentlyDeployed",
+    ]);
+    expect(Object.keys(schema.properties?.attribution?.properties ?? {})).toEqual([
+      "lookback",
+      "names",
     ]);
     expect(Object.keys(schema.properties?.scan?.properties ?? {})).toEqual([
       "unrelated",
@@ -69,6 +74,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "root.properties.ignore.items.anyOf.1",
       "root.properties.scan",
       "root.properties.drift",
+      "root.properties.attribution",
       "root.properties.stacks.items",
       "root.properties.stacks.items.properties.phase.anyOf.1",
       "root.properties.stacks.items.properties.drift",

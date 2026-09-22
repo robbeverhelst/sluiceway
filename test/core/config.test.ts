@@ -18,6 +18,7 @@ const DEFAULTS: Config = {
   ignore: [],
   scan: { unrelated: [], logDiff: false },
   drift: { enabled: false },
+  attribution: { lookback: 100, names: 5 },
   phases: [],
   stacks: [],
   mergeAndDeploy: { authors: [], preview: false },
@@ -77,6 +78,7 @@ phases: [infrastructure, applications]
       ignore: ["**/*:dev"],
       scan: { unrelated: ["**/*.md"], logDiff: false },
       drift: { enabled: true },
+      attribution: { lookback: 100, names: 5 },
       phases: ["infrastructure", "applications"],
       stacks: [],
       mergeAndDeploy: { authors: [], preview: false },
@@ -98,7 +100,7 @@ function problems(text: string): string[] {
 describe("unknown keys", () => {
   test("a typo at the top level is an error that lists the known keys", () => {
     expect(problems("tickerz: admin\n")).toEqual([
-      'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, phases, stacks, mergeAndDeploy.',
+      'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, attribution, phases, stacks, mergeAndDeploy.',
     ]);
   });
 });
@@ -373,6 +375,31 @@ describe("wrong types", () => {
     }
   });
 
+  // Slice 5.5 (record 0072): how far attribution looks back, and how many
+  // pull requests and direct pushes a row names.
+  test("attribution.lookback is a whole number of commits from 1 to 1000", () => {
+    expect(parseConfig("attribution:\n  lookback: 1\n").attribution.lookback).toBe(1);
+    expect(parseConfig("attribution:\n  lookback: 1000\n").attribution).toEqual({
+      lookback: 1000,
+      names: 5,
+    });
+    for (const value of ["0", "1001", "2.5", '"all"']) {
+      expect(problems(`attribution:\n  lookback: ${value}\n`)).toEqual([
+        `attribution.lookback: expected a whole number of commits from 1 to 1000, got ${value}.`,
+      ]);
+    }
+  });
+
+  test("attribution.names is a whole number from 0 to 20", () => {
+    expect(parseConfig("attribution:\n  names: 0\n").attribution.names).toBe(0);
+    expect(parseConfig("attribution:\n  names: 20\n").attribution.names).toBe(20);
+    for (const value of ["-1", "21", "2.5", '"five"']) {
+      expect(problems(`attribution:\n  names: ${value}\n`)).toEqual([
+        `attribution.names: expected a whole number of names from 0 to 20, got ${value}.`,
+      ]);
+    }
+  });
+
   test("a glob must be text that is not empty", () => {
     expect(problems('ignore: [""]\nscan:\n  unrelated: [3]\n')).toEqual([
       "ignore[0]: must not be empty.",
@@ -409,7 +436,7 @@ describe("a file that is not a mapping", () => {
 describe("the error", () => {
   test("names the file and lists every problem", () => {
     expect(() => parseConfig("tickerz: admin\ndashboard:\n  pin: 1\n")).toThrow(
-      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, phases, stacks, mergeAndDeploy.\n- dashboard.pin: expected true or false, got 1.',
+      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, attribution, phases, stacks, mergeAndDeploy.\n- dashboard.pin: expected true or false, got 1.',
     );
   });
 });

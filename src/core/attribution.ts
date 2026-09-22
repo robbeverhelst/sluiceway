@@ -10,11 +10,17 @@ import { type AttributionLines, plural } from "../render/row.ts";
 import type { SummaryMerge } from "../render/summary.ts";
 import { type Claimant, claim } from "./claim.ts";
 
-// The lookback: how many of the newest commits a job walks. Fixed in v1.
+// The lookback: how many of the newest commits a job walks, when
+// `attribution.lookback` does not say (record 0072).
 export const LOOKBACK = 100;
 
-// How many pull requests and direct pushes a row names. Fixed in v1.
+// How many pull requests and direct pushes a row names, when
+// `attribution.names` does not say (record 0072).
 export const NAMED_ON_A_ROW = 5;
+
+// How many changes outside a stack its fold names (record 0072). The rest is
+// a count, and the compare link shows them all.
+export const OUTSIDE_NAMED = 20;
 
 // GitHub lists at most this many files of one commit on a page. A direct push
 // with a list this long may be missing files, and is treated the same way.
@@ -43,6 +49,9 @@ export interface WalkedPullRequest {
   // that it counts as a change outside every stack, which never hides it.
   changedFiles: number;
   files: string[];
+  // It renamed at least one file. GraphQL gives only the new path, so the
+  // glue reads its files over REST, which gives the old one too (record 0072).
+  renamed?: boolean | undefined;
 }
 
 export interface WalkedCommit {
@@ -73,6 +82,12 @@ export interface AttributionInput {
   stacks: Claimant[];
   // `scan.unrelated`.
   unrelated: string[];
+  // The changed files of the pull requests that renamed a file, by number,
+  // read over REST with each renamed file under both paths (record 0072). A
+  // pull request that is not in it counts under its new paths alone.
+  pullRequestFiles?: ReadonlyMap<number, readonly string[]> | undefined;
+  // `attribution.names`: how many a row names before the rest is a count.
+  names?: number | undefined;
   // `https://github.com/<owner>/<repo>`.
   repoUrl: string;
   // The `scan-sha` of the root marker. The row's diff was previewed there, so
@@ -105,34 +120,93 @@ function pullRequestOf(commit: WalkedCommit, walk: CommitWalk): WalkedPullReques
   );
 }
 
-// A commit is in range when it cannot be reached from the starting commit by
+// A range of commits: what a row explains, from the stack's last successful
+// deploy to the scanned commit, or what one deploy on the trail shipped, from
+// the success before it to its own commit (record 0072).
+export interface Range {
+  from: string;
+  // The scanned commit when not given.
+  to?: string | undefined;
+}
+
+// A commit is in range when it can be reached from `to` and not from `from` by
 // following parents inside the lookback. The walk lists children before
-// parents, so every path from the starting commit to an older commit in the
-// lookback lies inside it. A starting commit outside the lookback leaves every
-// walked commit in range, and `earlier` says that more exist.
-function inRange(walk: CommitWalk, from: string): { commits: WalkedCommit[]; earlier: boolean } {
+// parents, so every path from either commit to an older commit in the
+// lookback lies inside it. A `from` outside the lookback leaves every walked
+// commit under `to` in range, and `earlier` says that more exist. A `to`
+// outside the lookback leaves nothing to say: `commits` is absent.
+function inRange(
+  walk: CommitWalk,
+  from: string,
+  to?: string,
+): { commits?: WalkedCommit[]; earlier: boolean } {
   const bySha = new Map(walk.commits.map((commit) => [commit.sha, commit]));
-  if (!bySha.has(from)) return { commits: walk.commits, earlier: true };
-  const reached = new Set<string>();
-  const queue = [from];
-  for (let sha = queue.pop(); sha !== undefined; sha = queue.pop()) {
-    if (reached.has(sha)) continue;
-    reached.add(sha);
-    queue.push(...(bySha.get(sha)?.parents.filter((parent) => bySha.has(parent)) ?? []));
+  const reach = (start: string): Set<string> => {
+    const reached = new Set<string>();
+    const queue = bySha.has(start) ? [start] : [];
+    for (let sha = queue.pop(); sha !== undefined; sha = queue.pop()) {
+      if (reached.has(sha)) continue;
+      reached.add(sha);
+      queue.push(...(bySha.get(sha)?.parents.filter((parent) => bySha.has(parent)) ?? []));
+    }
+    return reached;
+  };
+  if (to !== undefined && !bySha.has(to)) return { earlier: false };
+  const under = to === undefined ? undefined : reach(to);
+  const reached = reach(from);
+  return {
+    commits: walk.commits.filter(({ sha }) => !reached.has(sha) && (under?.has(sha) ?? true)),
+    earlier: !bySha.has(from),
+  };
+}
+
+function rangesOf(from: readonly (string | Range)[]): Range[] {
+  const seen = new Set<string>();
+  return from
+    .map((one) => (typeof one === "string" ? { from: one } : one))
+    .filter(({ from: start, to }) => {
+      const key = `${start} ${to ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function commitsInRanges(walk: CommitWalk, from: readonly (string | Range)[]): Set<string> {
+  const wanted = new Set<string>();
+  for (const { from: start, to } of rangesOf(from)) {
+    for (const commit of inRange(walk, start, to).commits ?? []) wanted.add(commit.sha);
   }
-  return { commits: walk.commits.filter(({ sha }) => !reached.has(sha)), earlier: false };
+  return wanted;
 }
 
 // The direct pushes whose files the glue has to read, one request each: the
-// ones in the range of at least one of the starting commits.
-export function directPushesToRead(walk: CommitWalk, from: readonly string[]): string[] {
-  const wanted = new Set<string>();
-  for (const start of new Set(from)) {
-    for (const commit of inRange(walk, start).commits) {
-      if (!pullRequestOf(commit, walk)) wanted.add(commit.sha);
-    }
+// ones in at least one of the ranges, newest first. A bare commit is the range
+// from it to the scanned commit.
+export function directPushesToRead(walk: CommitWalk, from: readonly (string | Range)[]): string[] {
+  const wanted = commitsInRanges(walk, from);
+  return walk.commits
+    .filter((commit) => wanted.has(commit.sha) && !pullRequestOf(commit, walk))
+    .map(({ sha }) => sha);
+}
+
+// The pull requests whose files the glue has to read over REST, one request
+// each, newest first: the ones in at least one of the ranges that renamed a
+// file (record 0072). One over the file cap already counts as a change
+// outside every stack, so it is not read.
+export function pullRequestsToRead(walk: CommitWalk, from: readonly (string | Range)[]): number[] {
+  const wanted = commitsInRanges(walk, from);
+  const numbers: number[] = [];
+  for (const commit of walk.commits) {
+    const pullRequest = wanted.has(commit.sha) ? pullRequestOf(commit, walk) : undefined;
+    if (
+      pullRequest?.renamed &&
+      pullRequest.changedFiles <= pullRequest.files.length &&
+      !numbers.includes(pullRequest.number)
+    )
+      numbers.push(pullRequest.number);
   }
-  return walk.commits.filter(({ sha }) => wanted.has(sha)).map(({ sha }) => sha);
+  return numbers;
 }
 
 function by(author: string | undefined): string {
@@ -143,6 +217,13 @@ function nameOf(merge: SummaryMerge): string {
   return merge.kind === "pull-request"
     ? `#${merge.number}${by(merge.author)}`
     : `[${merge.sha.slice(0, 7)}](${merge.url})${by(merge.author)}`;
+}
+
+// Inside a fold the text is an HTML block, where a Markdown link is not one.
+function htmlNameOf(merge: SummaryMerge): string {
+  return merge.kind === "pull-request"
+    ? `<a href="${merge.url}">#${merge.number}</a>${by(merge.author)}`
+    : `<a href="${merge.url}">${merge.sha.slice(0, 7)}</a>${by(merge.author)}`;
 }
 
 function countOf(merges: SummaryMerge[]): string {
@@ -161,13 +242,36 @@ function inLink(sha: string): string {
   return sha.slice(0, 12);
 }
 
+// The fold under the line that names the changes outside the stack (record
+// 0072), newest first, the first twenty of them.
+function outsideFold(outside: SummaryMerge[]): string[] {
+  const named = outside.slice(0, OUTSIDE_NAMED).map((merge) => `${htmlNameOf(merge)}<br>`);
+  const more = outside.length - named.length;
+  return [
+    "<details><summary>changes outside this stack</summary>",
+    ...named,
+    ...(more > 0 ? [`and ${more} more<br>`] : []),
+    "</details>",
+  ];
+}
+
+export interface Attributor {
+  // The attribution of one stack's row. `from` is the commit on the stack's
+  // last successful deployment record, or nothing when the bounded reads found
+  // none.
+  (stackId: string, from: string | undefined): Attribution;
+  // What one deploy of the stack shipped, for its line of the trail (record
+  // 0072): from `from`, the commit of the success before it, to `to`, its own
+  // commit. Nothing when `to` is outside the lookback, or when nothing went
+  // out that the stack claims or that counts as outside it.
+  shipped(stackId: string, from: string, to: string): AttributionLines | undefined;
+}
+
 // Works the claims of every merge out once, and gives the function that
-// attributes one stack. `from` is the commit on the stack's last successful
-// deployment record, or nothing when the bounded reads found none.
-export function attributor(
-  input: AttributionInput,
-): (stackId: string, from: string | undefined) => Attribution {
+// attributes one stack.
+export function attributor(input: AttributionInput): Attributor {
   const { walk, repoUrl } = input;
+  const names = input.names ?? NAMED_ON_A_ROW;
   const mergedBy = new Map<string, Merged>();
   const mergeOf = new Map<string, Merged>();
 
@@ -193,7 +297,7 @@ export function attributor(
           url: `${repoUrl}/pull/${pullRequest.number}`,
           ...(pullRequest.author === undefined ? {} : { author: pullRequest.author }),
         },
-        known ? pullRequest.files : undefined,
+        known ? (input.pullRequestFiles?.get(pullRequest.number) ?? pullRequest.files) : undefined,
       );
     } else if (!merged) {
       const files = input.pushFiles.get(commit.sha);
@@ -213,39 +317,73 @@ export function attributor(
   }
 
   const ranges = new Map<string, ReturnType<typeof inRange>>();
+  const rangeOf = (from: string, to?: string) => {
+    const key = `${from} ${to ?? ""}`;
+    const range = ranges.get(key) ?? inRange(walk, from, to);
+    ranges.set(key, range);
+    return range;
+  };
 
-  return (stackId, from) => {
+  // What a range holds for one stack, and the line that says it: `from` on a
+  // row, `shipped` on the trail.
+  const explain = (stackId: string, from: string, to: string | undefined) => {
+    const range = rangeOf(from, to);
+    // Each merge once, at its newest commit, so the order is newest first.
+    const merged = [...new Set((range.commits ?? []).flatMap(({ sha }) => mergeOf.get(sha) ?? []))];
+    const claimed = merged.filter(({ claimedBy }) => claimedBy.has(stackId)).map((m) => m.merge);
+    const outside = merged
+      .filter((m) => !m.claimedBy.has(stackId) && m.outside)
+      .map((m) => m.merge);
+    const link = `[compare](${repoUrl}/compare/${inLink(from)}...${inLink(to ?? input.scanSha)})`;
+
+    const line = (word: string, nothing: string, listed: string[]): string => {
+      const parts = [...listed];
+      const and = () => (parts.length > 0 ? "and " : "");
+      if (outside.length > 0)
+        parts.push(`${and()}${plural(outside.length, "change")} outside this stack`);
+      if (range.earlier) parts.push(`${and()}earlier changes`);
+      return `${parts.length > 0 ? `${word} ${parts.join(", ")}` : nothing} · ${link}`;
+    };
+    const named = claimed.slice(0, names).map(nameOf);
+    const more = claimed.length - named.length;
+    const full = [named.join(", "), more > 0 && named.length > 0 ? `and ${more} more` : ""].filter(
+      Boolean,
+    );
+    return {
+      range,
+      claimed,
+      outside,
+      // With nothing named, the names are a count.
+      lines: (word: string, nothing: string): AttributionLines => {
+        const counted = line(word, nothing, claimed.length > 0 ? [countOf(claimed)] : []);
+        return {
+          full: named.length > 0 ? line(word, nothing, full) : counted,
+          counted,
+        };
+      },
+    };
+  };
+
+  const one = (stackId: string, from: string | undefined): Attribution => {
     if (from === undefined) {
       return { lines: { full: NEVER_DEPLOYED, counted: NEVER_DEPLOYED }, merges: [] };
     }
-    const range = ranges.get(from) ?? inRange(walk, from);
-    ranges.set(from, range);
-
-    // Each merge once, at its newest commit, so the order is newest first.
-    const merged = [...new Set(range.commits.flatMap(({ sha }) => mergeOf.get(sha) ?? []))];
-    const claimed = merged.filter(({ claimedBy }) => claimedBy.has(stackId)).map((m) => m.merge);
-    const outside = merged.filter((m) => !m.claimedBy.has(stackId) && m.outside).length;
-
-    const line = (names: string[]): string => {
-      const parts = [...names];
-      const and = () => (parts.length > 0 ? "and " : "");
-      if (outside > 0) parts.push(`${and()}${plural(outside, "change")} outside this stack`);
-      if (range.earlier) parts.push(`${and()}earlier changes`);
-      const text =
-        parts.length > 0
-          ? `from ${parts.join(", ")}`
-          : "nothing this stack claims has changed since its last deploy";
-      return `${text} · [compare](${repoUrl}/compare/${inLink(from)}...${inLink(input.scanSha)})`;
-    };
-
-    const named = claimed.slice(0, NAMED_ON_A_ROW).map(nameOf);
-    const more = claimed.length - named.length;
+    const { claimed, outside, lines } = explain(stackId, from, undefined);
     return {
       lines: {
-        full: line([named.join(", "), more > 0 ? `and ${more} more` : ""].filter(Boolean)),
-        counted: line(claimed.length > 0 ? [countOf(claimed)] : []),
+        ...lines("from", "nothing this stack claims has changed since its last deploy"),
+        ...(outside.length > 0 ? { outside: outsideFold(outside) } : {}),
       },
       merges: claimed,
     };
   };
+
+  return Object.assign(one, {
+    shipped(stackId: string, from: string, to: string): AttributionLines | undefined {
+      const { range, claimed, outside, lines } = explain(stackId, from, to);
+      if (range.commits === undefined) return undefined;
+      if (claimed.length === 0 && outside.length === 0 && !range.earlier) return undefined;
+      return lines("shipped", "");
+    },
+  });
 }

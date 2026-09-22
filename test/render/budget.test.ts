@@ -477,3 +477,38 @@ describe("updates waiting to merge past thirty", () => {
     expect(fitted.shortened).toBeGreaterThan(0);
   });
 });
+
+// Record 0072: what each deploy of the trail shipped is the first thing to
+// shorten after the spinners, before any pending row, and it becomes a count.
+describe("the trail's shipped lines", () => {
+  const names = Array.from({ length: 20 }, (_, index) => `#${500 + index} by carol`).join(", ");
+  const trail = Array.from({ length: 5 }, (_, index) => ({
+    stackId: `t${index}`,
+    ticker: "alice",
+    at: new Date(Date.UTC(2026, 8, 20, 9, index)),
+    runUrl: RUN_URL,
+    shipped: {
+      full: `shipped ${names} · [compare](c)`,
+      counted: "shipped 20 pull requests · [compare](c)",
+    },
+  }));
+  const rows = [pending("a"), pending("b")];
+  const at = (shortTrail: boolean, levels: Record<string, RowLevel>) =>
+    renderBody({
+      ...FRAME,
+      recentlyDeployed: trail,
+      shortTrail,
+      rows: rows.map((row) => rowBlock(row, { level: levels[row.diff.stackId] ?? 0 })),
+    });
+
+  test("become counts before a pending row gives way", () => {
+    const expected = at(true, {});
+    const fitted = fitBody(input(rows, { recentlyDeployed: trail }), { target: expected.length });
+    expect(fitted.body).toBe(expected);
+    expect(fitted.shortened).toBe(0);
+  });
+
+  test("stay in full in a body that fits", () => {
+    expect(fitBody(input(rows, { recentlyDeployed: trail })).body).toBe(at(false, {}));
+  });
+});
