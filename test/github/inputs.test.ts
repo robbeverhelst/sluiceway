@@ -49,7 +49,7 @@ describe("the inputs of a scan", () => {
     expect(inputs({ ...GOOD, concurrency: " 8\n" }).concurrency).toBe(8);
   });
 
-  test.each(["0", "-2", "1.5", "four", "", "4 stacks", "1e2", "0x10"])(
+  test.each(["0", "-2", "1.5", "four", "4 stacks", "1e2", "0x10"])(
     "refuses a concurrency of %p",
     (value) => {
       expect(() => inputs({ ...GOOD, concurrency: value })).toThrow(
@@ -195,6 +195,76 @@ describe("the id of the running job", () => {
   test("anything but a whole number is refused", () => {
     expect(() => readJobId(() => "abc")).toThrow(
       'The "job-id" input must be the id of the running job, a whole number, and it is "abc". Leave it out of the workflow, so it takes the id GitHub gives the job.',
+    );
+  });
+});
+
+// Record 0084 (issue 184): GitHub applies an action's default only when the
+// input is absent. A workflow that passes one through, `concurrency: ${{
+// inputs.concurrency }}`, sends "" on every trigger that has no such input,
+// so an empty optional input means its default. A value that is set and
+// wrong still fails.
+describe("an empty optional input", () => {
+  const scan = (values: Record<string, string>) =>
+    readScanInputs((name) => ({ "github-token": "t", ...values })[name] ?? "");
+  const apply = (values: Record<string, string>) =>
+    readApplyInputs((name) => ({ "github-token": "t", "deployment-id": "12", ...values })[name] ?? "");
+
+  test.each(["", "  ", "\n"])("concurrency %p is the default, 4", (value) => {
+    expect(scan({ concurrency: value }).concurrency).toBe(4);
+  });
+
+  test.each(["", " \t"])("preview-timeout %p is the default, 10 minutes, in scan and apply", (value) => {
+    expect(scan({ "preview-timeout": value }).previewTimeoutMinutes).toBe(10);
+    expect(apply({ "preview-timeout": value }).previewTimeoutMinutes).toBe(10);
+  });
+
+  test.each(["", "  "])("deploy-timeout %p is no limit", (value) => {
+    expect(apply({ "deploy-timeout": value }).deployTimeoutMinutes).toBeUndefined();
+  });
+
+  test.each(["", "  "])("strict, dry-run and backend %p are false", (value) => {
+    expect(scan({ strict: value }).strict).toBe(false);
+    expect(apply({ "dry-run": value }).dryRun).toBe(false);
+    expect(readBackend(() => value)).toBe(false);
+  });
+
+  test("a good value is read as before", () => {
+    expect(scan({ concurrency: "8", "preview-timeout": " 20 " })).toEqual({
+      concurrency: 8,
+      previewTimeoutMinutes: 20,
+      token: "t",
+      strict: false,
+    });
+    expect(apply({ "preview-timeout": "5", "deploy-timeout": "30", "dry-run": "true" })).toEqual({
+      deploymentId: 12,
+      previewTimeoutMinutes: 5,
+      token: "t",
+      dryRun: true,
+      deployTimeoutMinutes: 30,
+    });
+  });
+
+  test("a value that is set and wrong still fails", () => {
+    expect(() => scan({ concurrency: "four" })).toThrow(
+      'The "concurrency" input must be a whole number of 1 or more, and it is "four".',
+    );
+    expect(() => apply({ "preview-timeout": "0" })).toThrow(
+      'The "preview-timeout" input must be a whole number of 1 or more, and it is "0". It is a number of whole minutes.',
+    );
+    expect(() => apply({ "deploy-timeout": "soon" })).toThrow(
+      'The "deploy-timeout" input must be a whole number of 1 or more, and it is "soon". It is a number of whole minutes.',
+    );
+    expect(() => scan({ strict: "yes" })).toThrow('The "strict" input is true or false, and it is "yes".');
+    expect(() => apply({ "dry-run": "1" })).toThrow('The "dry-run" input is true or false, and it is "1".');
+    expect(() => readBackend(() => "on")).toThrow('The "backend" input is true or false, and it is "on".');
+  });
+
+  // The two inputs that have no default to fall back to still fail when empty.
+  test("github-token and, in apply, deployment-id still fail when empty", () => {
+    expect(() => scan({ "github-token": " " })).toThrow('The "github-token" input is empty.');
+    expect(() => apply({ "deployment-id": " " })).toThrow(
+      'The "deployment-id" input is required in apply mode.',
     );
   });
 });

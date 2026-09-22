@@ -19,8 +19,23 @@ export interface ScanInputs {
   strict: boolean;
 }
 
-function wholeNumber(getInput: GetInput, name: string, hint = ""): number {
+// The defaults of action.yml, which GitHub applies only when a workflow leaves
+// an input out. A workflow that passes one through from its own inputs sends
+// "" instead, and that means the default too (record 0084). A test holds
+// these to action.yml.
+const DEFAULT_CONCURRENCY = 4;
+const DEFAULT_PREVIEW_TIMEOUT_MINUTES = 10;
+
+// An empty input, or one of white space only, is `fallback`. Anything else
+// must be a whole number of 1 or more.
+function wholeNumber<Fallback extends number | undefined>(
+  getInput: GetInput,
+  name: string,
+  fallback: Fallback,
+  hint = "",
+): number | Fallback {
   const text = getInput(name).trim();
+  if (text === "") return fallback;
   if (!/^[1-9]\d*$/.test(text)) {
     throw new Error(
       `The "${name}" input must be a whole number of 1 or more, and it is ${JSON.stringify(text)}.${hint}`,
@@ -32,7 +47,9 @@ function wholeNumber(getInput: GetInput, name: string, hint = ""): number {
 // The one input every mode reads: the workflow's own token (record 0017).
 export function readToken(getInput: GetInput): string {
   const token = getInput("github-token");
-  if (token === "") {
+  // It has no default to fall back to: action.yml's is the run's own token,
+  // and an empty one can only be a workflow that set it so (record 0084).
+  if (token.trim() === "") {
     throw new Error(
       'The "github-token" input is empty. Leave it out of the workflow, so it takes the GITHUB_TOKEN of the run.',
     );
@@ -40,12 +57,15 @@ export function readToken(getInput: GetInput): string {
   return token;
 }
 
+const MINUTES = " It is a number of whole minutes.";
+
 export function readScanInputs(getInput: GetInput): ScanInputs {
-  const concurrency = wholeNumber(getInput, "concurrency");
+  const concurrency = wholeNumber(getInput, "concurrency", DEFAULT_CONCURRENCY);
   const previewTimeoutMinutes = wholeNumber(
     getInput,
     "preview-timeout",
-    " It is a number of whole minutes.",
+    DEFAULT_PREVIEW_TIMEOUT_MINUTES,
+    MINUTES,
   );
   return {
     concurrency,
@@ -97,22 +117,21 @@ export function readApplyInputs(getInput: GetInput): ApplyInputs {
   const previewTimeoutMinutes = wholeNumber(
     getInput,
     "preview-timeout",
-    " It is a number of whole minutes.",
+    DEFAULT_PREVIEW_TIMEOUT_MINUTES,
+    MINUTES,
   );
   return {
     deploymentId: Number(text),
     previewTimeoutMinutes,
     token: readToken(getInput),
     dryRun: readBoolean(getInput, "dry-run"),
-    deployTimeoutMinutes:
-      getInput("deploy-timeout").trim() === ""
-        ? undefined
-        : wholeNumber(getInput, "deploy-timeout", " It is a number of whole minutes."),
+    deployTimeoutMinutes: wholeNumber(getInput, "deploy-timeout", undefined, MINUTES),
   };
 }
 
 // The words GitHub's own boolean inputs use. Anything else is refused, so a
-// typo never deploys when a rehearsal was meant (record 0051).
+// typo never deploys when a rehearsal was meant (record 0051). Empty is the
+// default of every one of them, false (record 0084).
 function readBoolean(getInput: GetInput, name: string): boolean {
   const text = getInput(name).trim();
   if (text === "" || text === "false") return false;

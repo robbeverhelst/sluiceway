@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import { readScanInputs } from "../src/github/inputs.ts";
+import { readApplyInputs, readScanInputs } from "../src/github/inputs.ts";
 import { MODES } from "../src/mode.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -46,6 +46,24 @@ describe("action.yml", () => {
       token: "token",
       strict: false,
     });
+  });
+
+  // Record 0084: an empty optional input means its default, so a workflow
+  // that passes an input through from its own dispatch inputs reads what
+  // action.yml would have given. The defaults live in both places, and this
+  // holds them together.
+  test("an empty optional input reads as the default action.yml gives it", () => {
+    const defaults = (name: string) => action.inputs[name]?.default ?? "";
+    const token = (name: string) => (name === "github-token" ? "token" : "");
+    const empty = (name: string) => token(name);
+    expect(readScanInputs(empty)).toEqual(
+      readScanInputs((name) => token(name) || defaults(name)),
+    );
+    const apply = (read: (name: string) => string) => (name: string) =>
+      name === "deployment-id" ? "12" : read(name);
+    expect(readApplyInputs(apply(empty))).toEqual(
+      readApplyInputs(apply((name) => token(name) || defaults(name))),
+    );
   });
 
   // Record 0044: the id of the running job is in no variable of its
