@@ -6,11 +6,11 @@ Updating (dev):
     pulumi:pulumi:Stack network-dev running error: update failed
     pulumi:pulumi:Stack network-dev **failed** 1 error
 Diagnostics:
-  pulumi:pulumi:Stack (network-dev):
-    error: update failed
-
   command:local:Command (banner):
     error: exit status 1: running "exit 1":
+
+  pulumi:pulumi:Stack (network-dev):
+    error: update failed
 
 Resources:
     5 unchanged

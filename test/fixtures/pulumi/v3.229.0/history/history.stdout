@@ -2,7 +2,7 @@
   {
     "version": 0,
     "kind": "destroy",
-    "startTime": "2026-09-22T13:19:49.000Z",
+    "startTime": "2026-09-22T14:17:11.000Z",
     "message": "A third commit",
     "environment": {
       "exec.kind": "cli",
@@ -11,9 +11,9 @@
       "git.committer": "Ada Author",
       "git.committer.email": "ada@example.invalid",
       "git.dirty": "true",
-      "git.head": "e66374d4bc2c1f41ac1a638ebedf0820be827f5e",
+      "git.head": "7790ca54d9cff99a5dbeb4740ff3416ea32ce443",
       "git.headName": "refs/heads/master",
-      "pulumi.arch": "arm64",
+      "pulumi.arch": "amd64",
       "pulumi.env.PULUMI_BACKEND_URL": "set",
       "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
       "pulumi.env.PULUMI_HOME": "set",
@@ -23,7 +23,7 @@
       "pulumi.flag.skip-preview": "true",
       "pulumi.flag.stack": "set",
       "pulumi.flag.yes": "true",
-      "pulumi.os": "darwin",
+      "pulumi.os": "linux",
       "pulumi.version": "v3.229.0",
       "stack.environments": "[]",
       "updatePlan": "false"
@@ -42,7 +42,7 @@
       }
     },
     "result": "succeeded",
-    "endTime": "2026-09-22T13:19:50.000Z",
+    "endTime": "2026-09-22T14:17:11.000Z",
     "resourceChanges": {
       "delete": 6
     }
@@ -50,7 +50,7 @@
   {
     "version": 0,
     "kind": "update",
-    "startTime": "2026-09-22T13:19:48.000Z",
+    "startTime": "2026-09-22T14:17:11.000Z",
     "message": "A third commit",
     "environment": {
       "exec.kind": "cli",
@@ -59,9 +59,9 @@
       "git.committer": "Ada Author",
       "git.committer.email": "ada@example.invalid",
       "git.dirty": "true",
-      "git.head": "e66374d4bc2c1f41ac1a638ebedf0820be827f5e",
+      "git.head": "7790ca54d9cff99a5dbeb4740ff3416ea32ce443",
       "git.headName": "refs/heads/master",
-      "pulumi.arch": "arm64",
+      "pulumi.arch": "amd64",
       "pulumi.env.PULUMI_BACKEND_URL": "set",
       "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
       "pulumi.env.PULUMI_HOME": "set",
@@ -72,7 +72,7 @@
       "pulumi.flag.stack": "set",
       "pulumi.flag.suppress-outputs": "true",
       "pulumi.flag.yes": "true",
-      "pulumi.os": "darwin",
+      "pulumi.os": "linux",
       "pulumi.version": "v3.229.0",
       "runtime.name": "yaml",
       "stack.environments": "[]",
@@ -92,7 +92,7 @@
       }
     },
     "result": "failed",
-    "endTime": "2026-09-22T13:19:48.000Z",
+    "endTime": "2026-09-22T14:17:11.000Z",
     "resourceChanges": {
       "same": 5
     }
@@ -100,7 +100,7 @@
   {
     "version": 0,
     "kind": "refresh",
-    "startTime": "2026-09-22T13:19:46.000Z",
+    "startTime": "2026-09-22T14:17:10.000Z",
     "message": "A third commit",
     "environment": {
       "exec.kind": "cli",
@@ -109,9 +109,9 @@
       "git.committer": "Ada Author",
       "git.committer.email": "ada@example.invalid",
       "git.dirty": "false",
-      "git.head": "e66374d4bc2c1f41ac1a638ebedf0820be827f5e",
+      "git.head": "7790ca54d9cff99a5dbeb4740ff3416ea32ce443",
       "git.headName": "refs/heads/master",
-      "pulumi.arch": "arm64",
+      "pulumi.arch": "amd64",
       "pulumi.env.PULUMI_BACKEND_URL": "set",
       "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
       "pulumi.env.PULUMI_HOME": "set",
@@ -120,7 +120,7 @@
       "pulumi.flag.non-interactive": "true",
       "pulumi.flag.stack": "set",
       "pulumi.flag.yes": "true",
-      "pulumi.os": "darwin",
+      "pulumi.os": "linux",
       "pulumi.version": "v3.229.0",
       "stack.environments": "[]",
       "updatePlan": "false"
@@ -139,7 +139,7 @@
       }
     },
     "result": "succeeded",
-    "endTime": "2026-09-22T13:19:47.000Z",
+    "endTime": "2026-09-22T14:17:10.000Z",
     "resourceChanges": {
       "same": 6
     }
@@ -147,7 +147,7 @@
   {
     "version": 0,
     "kind": "update",
-    "startTime": "2026-09-22T13:19:45.000Z",
+    "startTime": "2026-09-22T14:17:09.000Z",
     "message": "A third commit",
     "environment": {
       "exec.kind": "cli",
@@ -156,9 +156,9 @@
       "git.committer": "Ada Author",
       "git.committer.email": "ada@example.invalid",
       "git.dirty": "false",
-      "git.head": "e66374d4bc2c1f41ac1a638ebedf0820be827f5e",
+      "git.head": "7790ca54d9cff99a5dbeb4740ff3416ea32ce443",
       "git.headName": "refs/heads/master",
-      "pulumi.arch": "arm64",
+      "pulumi.arch": "amd64",
       "pulumi.env.PULUMI_BACKEND_URL": "set",
       "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
       "pulumi.env.PULUMI_HOME": "set",
@@ -168,7 +168,7 @@
       "pulumi.flag.skip-preview": "true",
       "pulumi.flag.stack": "set",
       "pulumi.flag.yes": "true",
-      "pulumi.os": "darwin",
+      "pulumi.os": "linux",
       "pulumi.version": "v3.229.0",
       "runtime.name": "yaml",
       "stack.environments": "[]",
@@ -188,7 +188,7 @@
       }
     },
     "result": "succeeded",
-    "endTime": "2026-09-22T13:19:45.000Z",
+    "endTime": "2026-09-22T14:17:10.000Z",
     "resourceChanges": {
       "same": 6
     }
@@ -196,7 +196,7 @@
   {
     "version": 0,
     "kind": "update",
-    "startTime": "2026-09-22T13:19:44.000Z",
+    "startTime": "2026-09-22T14:17:09.000Z",
     "message": "A third commit",
     "environment": {
       "ci.build.id": "1234567890",
@@ -210,9 +210,9 @@
       "git.committer": "Ada Author",
       "git.committer.email": "ada@example.invalid",
       "git.dirty": "false",
-      "git.head": "e66374d4bc2c1f41ac1a638ebedf0820be827f5e",
+      "git.head": "7790ca54d9cff99a5dbeb4740ff3416ea32ce443",
       "git.headName": "refs/heads/master",
-      "pulumi.arch": "arm64",
+      "pulumi.arch": "amd64",
       "pulumi.env.PULUMI_BACKEND_URL": "set",
       "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
       "pulumi.env.PULUMI_HOME": "set",
@@ -222,7 +222,7 @@
       "pulumi.flag.skip-preview": "true",
       "pulumi.flag.stack": "set",
       "pulumi.flag.yes": "true",
-      "pulumi.os": "darwin",
+      "pulumi.os": "linux",
       "pulumi.version": "v3.229.0",
       "runtime.name": "yaml",
       "stack.environments": "[]",
@@ -242,7 +242,7 @@
       }
     },
     "result": "succeeded",
-    "endTime": "2026-09-22T13:19:44.000Z",
+    "endTime": "2026-09-22T14:17:09.000Z",
     "resourceChanges": {
       "create": 1,
       "same": 5
@@ -251,7 +251,7 @@
   {
     "version": 0,
     "kind": "update",
-    "startTime": "2026-09-22T13:19:43.000Z",
+    "startTime": "2026-09-22T14:17:08.000Z",
     "message": "A second commit",
     "environment": {
       "ci.build.id": "9876543210",
@@ -265,9 +265,9 @@
       "git.committer": "Ada Author",
       "git.committer.email": "ada@example.invalid",
       "git.dirty": "false",
-      "git.head": "e3f01f07f5c1aae592fa33baeaa66b2408395746",
+      "git.head": "c46c7fa44fd5e3771d036f79acd46578ba8c0b4d",
       "git.headName": "refs/heads/master",
-      "pulumi.arch": "arm64",
+      "pulumi.arch": "amd64",
       "pulumi.env.PULUMI_BACKEND_URL": "set",
       "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
       "pulumi.env.PULUMI_HOME": "set",
@@ -277,7 +277,7 @@
       "pulumi.flag.skip-preview": "true",
       "pulumi.flag.stack": "set",
       "pulumi.flag.yes": "true",
-      "pulumi.os": "darwin",
+      "pulumi.os": "linux",
       "pulumi.version": "v3.229.0",
       "runtime.name": "yaml",
       "stack.environments": "[]",
@@ -297,7 +297,7 @@
       }
     },
     "result": "succeeded",
-    "endTime": "2026-09-22T13:19:43.000Z",
+    "endTime": "2026-09-22T14:17:09.000Z",
     "resourceChanges": {
       "replace": 1,
       "same": 4
@@ -306,7 +306,7 @@
   {
     "version": 0,
     "kind": "update",
-    "startTime": "2026-09-22T13:19:28.000Z",
+    "startTime": "2026-09-22T14:17:08.000Z",
     "message": "CANARY-VALUE in a commit title",
     "environment": {
       "exec.kind": "cli",
@@ -315,9 +315,9 @@
       "git.committer": "Ada Author",
       "git.committer.email": "ada@example.invalid",
       "git.dirty": "false",
-      "git.head": "9c0f8b0a7cb9aa7a9099036bbd19da83fca751a7",
+      "git.head": "fc4fbc981d66415a6a58c3c23fa27bdbf9bc8831",
       "git.headName": "refs/heads/master",
-      "pulumi.arch": "arm64",
+      "pulumi.arch": "amd64",
       "pulumi.env.PULUMI_BACKEND_URL": "set",
       "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
       "pulumi.env.PULUMI_HOME": "set",
@@ -327,7 +327,7 @@
       "pulumi.flag.skip-preview": "true",
       "pulumi.flag.stack": "set",
       "pulumi.flag.yes": "true",
-      "pulumi.os": "darwin",
+      "pulumi.os": "linux",
       "pulumi.version": "v3.229.0",
       "runtime.name": "yaml",
       "stack.environments": "[]",
@@ -347,7 +347,7 @@
       }
     },
     "result": "succeeded",
-    "endTime": "2026-09-22T13:19:43.000Z",
+    "endTime": "2026-09-22T14:17:08.000Z",
     "resourceChanges": {
       "create": 5
     }
