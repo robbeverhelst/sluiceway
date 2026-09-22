@@ -54186,6 +54186,34 @@ var tools = {
   apply: (stack, context3, plan, options) => adapterOf(stack).apply(stack, context3, plan, options)
 };
 
+// src/core/merge-scan.ts
+var MERGE_SCAN_INPUT = "sluiceway-merged";
+function mergeScanInputs(pullRequests) {
+  return { [MERGE_SCAN_INPUT]: pullRequests.join(",") };
+}
+function readMergeScanInput(value) {
+  if (typeof value !== "string")
+    return [];
+  const parts = value.split(",").map((part) => part.trim());
+  if (parts.some((part) => !/^[1-9]\d*$/.test(part)))
+    return [];
+  return parts.map(Number);
+}
+function objectOf(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
+}
+function declaresMergeScanInput(workflowText) {
+  let workflow;
+  try {
+    workflow = $parse(workflowText);
+  } catch {
+    return false;
+  }
+  const triggers = objectOf(objectOf(workflow)?.on);
+  const inputs = objectOf(objectOf(triggers?.workflow_dispatch)?.inputs);
+  return inputs !== undefined && Object.hasOwn(inputs, MERGE_SCAN_INPUT);
+}
+
 // src/github/event.ts
 function record2(value) {
   return typeof value === "object" && value !== null ? value : undefined;
@@ -54227,6 +54255,11 @@ function publicRepo(payload) {
 }
 function startedByPerson(payload) {
   return record2(record2(payload)?.sender)?.type === "User";
+}
+function mergedBeforeDispatch(payload) {
+  if (startedByPerson(payload))
+    return [];
+  return readMergeScanInput(record2(record2(payload)?.inputs)?.[MERGE_SCAN_INPUT]);
 }
 
 // src/github/job.ts
@@ -54557,12 +54590,16 @@ function deploymentCalls(octokit, repo) {
 }
 
 // src/github/octokit-pulls.ts
-var OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!) {
+var OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!, $after: String) {
   repository(owner: $owner, name: $repo) {
     defaultBranchRef {
       name
     }
-    pullRequests(states: OPEN, first: 100, orderBy: {field: CREATED_AT, direction: ASC}) {
+    pullRequests(states: OPEN, first: 100, after: $after, orderBy: {field: CREATED_AT, direction: ASC}) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         number
         title
@@ -54594,6 +54631,7 @@ var OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!) {
     }
   }
 }`;
+var MAX_PAGES = 10;
 function present2(nodes) {
   return (nodes ?? []).filter((node2) => node2 !== null);
 }
@@ -54636,14 +54674,22 @@ function messageOf(error63) {
 function pullCalls(octokit, repo) {
   return {
     async listOpenPullRequests() {
-      const data = await octokit.graphql(OPEN_PULL_REQUESTS, repo);
-      const defaultBranch = data.repository?.defaultBranchRef?.name;
+      let defaultBranch;
+      const pullRequests = [];
+      let after = null;
+      for (let page = 0;page < MAX_PAGES; page++) {
+        const data = await octokit.graphql(OPEN_PULL_REQUESTS, { ...repo, after });
+        defaultBranch ??= data.repository?.defaultBranchRef?.name;
+        const list = data.repository?.pullRequests;
+        pullRequests.push(...present2(list?.nodes).map(toPullRequest2));
+        const next = list?.pageInfo;
+        if (!next?.hasNextPage || !next.endCursor)
+          break;
+        after = next.endCursor;
+      }
       if (defaultBranch === undefined)
         throw new Error("GitHub named no default branch.");
-      return {
-        defaultBranch,
-        pullRequests: present2(data.repository?.pullRequests.nodes).map(toPullRequest2)
-      };
+      return { defaultBranch, pullRequests };
     },
     async allowedMergeMethods() {
       const { data } = await octokit.rest.repos.get(repo);
@@ -54811,8 +54857,13 @@ function createOctokitPort(octokit, repo) {
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     },
-    async dispatchWorkflow(workflow, ref) {
-      await octokit.rest.actions.createWorkflowDispatch({ ...repo, workflow_id: workflow, ref });
+    async dispatchWorkflow(workflow, ref, inputs) {
+      await octokit.rest.actions.createWorkflowDispatch({
+        ...repo,
+        workflow_id: workflow,
+        ref,
+        ...inputs ? { inputs } : {}
+      });
     }
   };
 }
@@ -55162,8 +55213,15 @@ function parseDashboard(body) {
     if (RESCAN_LINE.test(line))
       rescanTicked = true;
     const merge3 = readMerge(line);
-    if (merge3)
-      merges.push(merge3);
+    if (merge3) {
+      let end2 = index;
+      while (/^ {2}\S/.test(lines[end2 + 1] ?? ""))
+        end2++;
+      merges.push({ ...merge3, text: lines.slice(index, end2 + 1).join(`
+`) });
+      index = end2;
+      continue;
+    }
     const match = ROW_LINE.exec(line);
     if (!match)
       continue;
@@ -55283,6 +55341,56 @@ function urlPart(text6) {
 }
 function mascotUrl(actionRef2, file2) {
   return `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef2)}/assets/mascot/${file2}`;
+}
+
+// src/render/merge-row.ts
+var TITLE_LENGTH = 80;
+function shorten(title) {
+  const chars = [...title];
+  return chars.length <= TITLE_LENGTH ? title : `${chars.slice(0, TITLE_LENGTH - 3).join("")}...`;
+}
+function renderMergeRow(row, options = {}) {
+  const by = row.author === undefined ? "" : ` by ${escapeText(row.author)}`;
+  const parts = [
+    `**${escapeText(row.stackId)}**`,
+    ...options.redact ? [] : [escapeText(shorten(row.title))],
+    `#${row.pr}${by}`
+  ];
+  return `- [ ] ${parts.join(" · ")} ${mergeMarker(row)}`;
+}
+function mergeBlock(row, options = {}) {
+  const [block] = parseDashboard(renderMergeRow(row, options)).merges;
+  if (!block)
+    throw new Error("A rendered merge row did not read back as one.");
+  return block;
+}
+var MERGE_ORPHAN_NOTE = ":information_source: a tick on this row was not picked up. Tick again to merge.";
+var MERGE_DEPLOYING_NOTE = ":information_source: this tick merged nothing: the stack has a deploy in progress. Tick again once it is over.";
+var MERGE_DEPLOYS_OFF_NOTE = ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick merged nothing.";
+var NOTES = {
+  orphan: MERGE_ORPHAN_NOTE,
+  deploying: MERGE_DEPLOYING_NOTE,
+  "deploys-off": MERGE_DEPLOYS_OFF_NOTE
+};
+var MERGE_FOLD_AFTER = 10;
+function readBack(text6) {
+  const [row] = parseDashboard(text6).merges;
+  if (!row)
+    throw new Error("A merge row did not read back as one.");
+  return row;
+}
+function clearMergeTick(row, options = {}) {
+  if (!row.ticked)
+    return row;
+  const [first = "", ...notes] = row.text.split(`
+`);
+  const cleared = first.replace(/^- \[[xX]\] /, "- [ ] ");
+  const lines = options.note === undefined ? notes : [`  ${NOTES[options.note]}`];
+  return readBack([cleared, ...lines].join(`
+`));
+}
+function tickedMergeBlock(row) {
+  return readBack(row.text.replace(/^- \[ \] /, "- [x] "));
 }
 
 // src/render/pending-crates.ts
@@ -55733,8 +55841,14 @@ function renderBody(input2) {
     out.push("## Deploying", blocks(deploying));
   const merges = [...input2.merges ?? []].filter((merge3, index, all) => all.findIndex((one) => one.pr === merge3.pr) === index).sort((a, b) => a.pr - b.pr);
   if (merges.length > 0) {
-    out.push("## Updates waiting to merge", MERGE_LINE2, merges.map((merge3) => merge3.text).join(`
+    out.push("## Updates waiting to merge", MERGE_LINE2);
+    out.push(merges.slice(0, MERGE_FOLD_AFTER).map((merge3) => merge3.text).join(`
 `));
+    const folded = merges.slice(MERGE_FOLD_AFTER);
+    if (folded.length > 0) {
+      out.push(`<details><summary>${folded.length} more ${folded.length === 1 ? "update" : "updates"} waiting to merge</summary>`, folded.map((merge3) => merge3.text).join(`
+`), "</details>");
+    }
   }
   out.push("## Pending", pendingLine(input2, state, pending.length));
   const alert = destroyAlert(pending);
@@ -58229,7 +58343,7 @@ var EXPORT_ENV = export_env_default;
 var DEFAULT_BRANCH = "main";
 var RUNS_ON = "ubuntu-latest";
 function starterWorkflow(options) {
-  const { findings, label } = options;
+  const { findings, label, merges } = options;
   const branch = options.branch ?? DEFAULT_BRANCH;
   const lines3 = [
     "# Written by sluiceway init from the files of this repo. Review every step",
@@ -58246,27 +58360,29 @@ function starterWorkflow(options) {
     "  schedule:",
     '    - cron: "0 6 * * *"',
     "  workflow_dispatch:",
+    ...merges ? [
+      "    inputs:",
+      `      ${MERGE_SCAN_INPUT}:`,
+      "        description: Set by Sluiceway after a merge from the dashboard. Leave it empty.",
+      "        required: false"
+    ] : [],
     "  issues:",
     "    types: [edited]",
     "",
     "permissions:",
-    `  contents: ${options.merges ? "write" : "read"}`,
-    "  issues: write",
-    "  deployments: write",
-    "  actions: write",
-    "  pull-requests: read",
-    "  checks: write",
+    ...PERMISSIONS.map((line2) => `  ${line2}`),
     "",
     "jobs:",
     "  scan:",
     "    if: github.event_name != 'issues'",
     `    runs-on: ${RUNS_ON}`,
     "    concurrency: sluiceway-scan",
+    ...merges ? ["    outputs:", "      matrix: ${{ steps.scan.outputs.matrix }}"] : [],
     "    steps:",
     "      - uses: actions/checkout@v7",
     ...toolSteps(findings, "scan"),
     ...credentialSteps(findings.envFiles, "scan"),
-    "      - uses: sluiceway/sluiceway@v0",
+    ...merges ? ["      - id: scan", "        uses: sluiceway/sluiceway@v0"] : ["      - uses: sluiceway/sluiceway@v0"],
     "        with:",
     "          mode: scan",
     "",
@@ -58274,6 +58390,10 @@ function starterWorkflow(options) {
     `    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, ${quoted(label)}))`,
     `    runs-on: ${RUNS_ON}`,
     "    concurrency: sluiceway-resolve",
+    ...merges ? [
+      "    permissions:",
+      ...PERMISSIONS.map((line2) => line2.startsWith("contents:") ? "      contents: write" : `      ${line2}`)
+    ] : [],
     "    outputs:",
     "      matrix: ${{ steps.resolve.outputs.matrix }}",
     "    steps:",
@@ -58284,13 +58404,45 @@ function starterWorkflow(options) {
     "        with:",
     "          mode: resolve",
     "",
-    "  apply:",
-    "    needs: resolve",
-    "    if: ${{ !cancelled() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]' }}",
+    ...applyJob("apply", "resolve", findings),
+    ...merges ? ["", ...applyJob("apply-merged", "scan", findings)] : [],
+    "",
+    "  settle:",
+    ...merges ? [
+      "    needs: [scan, resolve, apply, apply-merged]",
+      "    if: always() && ((needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]') || (needs.scan.outputs.matrix != '' && needs.scan.outputs.matrix != '[]'))"
+    ] : [
+      "    needs: [resolve, apply]",
+      "    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'"
+    ],
+    `    runs-on: ${RUNS_ON}`,
+    "    steps:",
+    "      - uses: actions/checkout@v7",
+    "      - uses: sluiceway/sluiceway@v0",
+    "        with:",
+    "          mode: settle"
+  ];
+  return `${lines3.join(`
+`)}
+`;
+}
+var PERMISSIONS = [
+  "contents: read",
+  "issues: write",
+  "deployments: write",
+  "actions: write",
+  "pull-requests: read",
+  "checks: write"
+];
+function applyJob(name, source, findings) {
+  return [
+    `  ${name}:`,
+    `    needs: ${source}`,
+    `    if: \${{ !cancelled() && needs.${source}.outputs.matrix != '' && needs.${source}.outputs.matrix != '[]' }}`,
     "    strategy:",
     "      fail-fast: false",
     "      matrix:",
-    "        include: ${{ fromJson(needs.resolve.outputs.matrix) }}",
+    `        include: \${{ fromJson(needs.${source}.outputs.matrix) }}`,
     `    runs-on: ${RUNS_ON}`,
     "    timeout-minutes: 60",
     "    concurrency:",
@@ -58306,21 +58458,8 @@ function starterWorkflow(options) {
     "      - uses: sluiceway/sluiceway@v0",
     "        with:",
     "          mode: apply",
-    "          deployment-id: ${{ matrix.deployment }}",
-    "",
-    "  settle:",
-    "    needs: [resolve, apply]",
-    "    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'",
-    `    runs-on: ${RUNS_ON}`,
-    "    steps:",
-    "      - uses: actions/checkout@v7",
-    "      - uses: sluiceway/sluiceway@v0",
-    "        with:",
-    "          mode: settle"
+    "          deployment-id: ${{ matrix.deployment }}"
   ];
-  return `${lines3.join(`
-`)}
-`;
 }
 function toolSteps(findings, job) {
   return [
@@ -58832,43 +58971,327 @@ var NOT_QUALIFIED = {
   "two-stacks": "more than one stack claims its files",
   "no-stack": "no stack claims any of its files"
 };
-var MAX_UPDATES = 10;
+var MAX_UPDATES = 30;
 function waitingUpdates(pullRequests, options) {
-  return [...pullRequests].sort((a, b) => a.number - b.number).flatMap((pullRequest) => {
+  const qualifying = [...pullRequests].sort((a, b) => a.number - b.number).flatMap((pullRequest) => {
     const qualified = qualify(pullRequest, options);
     return qualified.qualifies ? [{ pullRequest, stackId: qualified.stackId }] : [];
-  }).slice(0, MAX_UPDATES);
+  });
+  return {
+    listed: qualifying.slice(0, MAX_UPDATES),
+    more: Math.max(0, qualifying.length - MAX_UPDATES)
+  };
 }
 var RENOVATE_METHODS = {
   squash: "squash",
   rebase: "rebase",
-  "fast-forward": "rebase",
   "merge-commit": "merge"
 };
-var FALLBACK = ["squash", "rebase", "merge"];
+var FALLBACK = ["squash", "merge", "rebase"];
 function mergeMethod(allowed, strategy) {
   const renovate = strategy === undefined ? undefined : RENOVATE_METHODS[strategy];
   const candidates = renovate === undefined ? FALLBACK : [renovate, ...FALLBACK];
   return candidates.find((method) => allowed[method] !== false);
 }
+
+// src/core/json5.ts
+class Json5Error extends Error {
+  constructor(message2, at) {
+    super(`${message2} at character ${at + 1}.`);
+    this.name = "Json5Error";
+  }
+}
+var ESCAPES = {
+  b: "\b",
+  f: "\f",
+  n: `
+`,
+  r: "\r",
+  t: "\t",
+  v: "\v",
+  "0": "\x00"
+};
+var LINE_BREAKS = new Set([`
+`, "\r", "\u2028", "\u2029"]);
+var LITERALS = [
+  ["true", true],
+  ["false", false],
+  ["null", null]
+];
+var IDENTIFIER_START = /[\p{L}\p{Nl}$_]/u;
+var IDENTIFIER_PART = /[\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$_\u200c\u200d]/u;
+function parseJson5(text6) {
+  let at = 0;
+  const fail = (message2) => {
+    throw new Json5Error(message2, at);
+  };
+  const skip = () => {
+    for (;; ) {
+      const char = text6[at];
+      if (char === undefined)
+        return;
+      if (/\s/.test(char) || char === "\uFEFF") {
+        at++;
+      } else if (text6.startsWith("//", at)) {
+        while (at < text6.length && !LINE_BREAKS.has(text6[at] ?? ""))
+          at++;
+      } else if (text6.startsWith("/*", at)) {
+        const end = text6.indexOf("*/", at + 2);
+        if (end < 0)
+          fail("A comment is not closed");
+        at = end + 2;
+      } else {
+        return;
+      }
+    }
+  };
+  const hex3 = (length) => {
+    const digits = text6.slice(at, at + length);
+    if (!new RegExp(`^[0-9a-fA-F]{${length}}$`).test(digits))
+      fail("A bad escape");
+    at += length;
+    return String.fromCharCode(Number.parseInt(digits, 16));
+  };
+  const string4 = () => {
+    const quote = text6[at];
+    at++;
+    let out = "";
+    for (;; ) {
+      const char = text6[at];
+      if (char === undefined || char === `
+` || char === "\r")
+        fail("A string is not closed");
+      at++;
+      if (char === quote)
+        return out;
+      if (char !== "\\") {
+        out += char;
+        continue;
+      }
+      const escaped = text6[at] ?? "";
+      at++;
+      if (escaped === "u")
+        out += hex3(4);
+      else if (escaped === "x")
+        out += hex3(2);
+      else if (escaped === "\r") {
+        if (text6[at] === `
+`)
+          at++;
+      } else if (LINE_BREAKS.has(escaped)) {} else if (/[1-9]/.test(escaped))
+        fail("A bad escape");
+      else
+        out += ESCAPES[escaped] ?? escaped;
+    }
+  };
+  const number4 = () => {
+    const match = /^[+-]?(?:Infinity|NaN|0[xX][0-9a-fA-F]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/.exec(text6.slice(at));
+    if (!match)
+      return fail("Unexpected text");
+    at += match[0].length;
+    const raw = match[0];
+    const sign = raw.startsWith("-") ? -1 : 1;
+    const body = raw.replace(/^[+-]/, "");
+    if (body === "Infinity")
+      return sign * Number.POSITIVE_INFINITY;
+    if (body === "NaN")
+      return Number.NaN;
+    if (/^0[xX]/.test(body))
+      return sign * Number.parseInt(body.slice(2), 16);
+    return sign * Number(body);
+  };
+  const identifier = () => {
+    let out = "";
+    const first = text6[at] ?? "";
+    if (!IDENTIFIER_START.test(first))
+      fail("A key is not a name or a string");
+    while (at < text6.length && IDENTIFIER_PART.test(text6[at] ?? ""))
+      out += text6[at++];
+    return out;
+  };
+  const value = () => {
+    skip();
+    const char = text6[at];
+    if (char === "{")
+      return object2();
+    if (char === "[")
+      return array2();
+    if (char === '"' || char === "'")
+      return string4();
+    const literal2 = LITERALS.find(([name]) => text6.startsWith(name, at));
+    if (literal2) {
+      at += literal2[0].length;
+      return literal2[1];
+    }
+    return number4();
+  };
+  const object2 = () => {
+    at++;
+    const out = {};
+    for (;; ) {
+      skip();
+      if (text6[at] === "}") {
+        at++;
+        return out;
+      }
+      const key = text6[at] === '"' || text6[at] === "'" ? string4() : identifier();
+      skip();
+      if (text6[at] !== ":")
+        fail("A colon is missing");
+      at++;
+      Object.defineProperty(out, key, {
+        value: value(),
+        enumerable: true,
+        writable: true,
+        configurable: true
+      });
+      skip();
+      if (text6[at] === ",")
+        at++;
+      else if (text6[at] !== "}")
+        fail("A comma is missing");
+    }
+  };
+  const array2 = () => {
+    at++;
+    const out = [];
+    for (;; ) {
+      skip();
+      if (text6[at] === "]") {
+        at++;
+        return out;
+      }
+      out.push(value());
+      skip();
+      if (text6[at] === ",")
+        at++;
+      else if (text6[at] !== "]")
+        fail("A comma is missing");
+    }
+  };
+  const result = value();
+  skip();
+  if (at < text6.length)
+    fail("Unexpected text after the value");
+  return result;
+}
+
+// src/core/renovate-config.ts
 var RENOVATE_CONFIG_FILES = [
   "renovate.json",
+  "renovate.jsonc",
+  "renovate.json5",
   ".github/renovate.json",
-  ".gitlab/renovate.json",
+  ".github/renovate.jsonc",
+  ".github/renovate.json5",
   ".renovaterc",
-  ".renovaterc.json"
+  ".renovaterc.json",
+  ".renovaterc.jsonc",
+  ".renovaterc.json5",
+  "package.json"
 ];
-function renovateStrategy(text6) {
-  let config2;
+var MAX_DEPTH = 10;
+function objectOf2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
+}
+function parse7(text6) {
   try {
-    config2 = JSON.parse(text6);
+    return parseJson5(text6);
   } catch {
     return;
   }
-  if (typeof config2 !== "object" || config2 === null || Array.isArray(config2))
+}
+var INTERNAL = /^(?:[a-zA-Z]+)?:[\w.-]+$/;
+function localPreset(name, repo) {
+  if (INTERNAL.test(name))
+    return "internal";
+  let rest;
+  if (name.startsWith("github>"))
+    rest = name.slice("github>".length);
+  else if (name.startsWith("local>"))
+    rest = name.slice("local>".length);
+  else if (!name.startsWith("@") && !name.includes(">") && !/^[./]/.test(name) && name.includes("/") && !name.includes("://"))
+    rest = name;
+  else
     return;
-  const strategy = config2.automergeStrategy;
-  return typeof strategy === "string" ? strategy : undefined;
+  if (/[#()]/.test(rest))
+    return;
+  let repoName;
+  let path = "";
+  let presetName;
+  const slashes = rest.indexOf("//");
+  if (slashes >= 0) {
+    repoName = rest.slice(0, slashes);
+    const inner = rest.slice(slashes + 2).split("/");
+    presetName = inner.pop() ?? "";
+    path = inner.length > 0 ? `${inner.join("/")}/` : "";
+  } else {
+    const colon = rest.indexOf(":");
+    repoName = colon < 0 ? rest : rest.slice(0, colon);
+    presetName = colon < 0 ? "default" : rest.slice(colon + 1);
+  }
+  if (repoName.toLowerCase() !== `${repo.owner}/${repo.repo}`.toLowerCase())
+    return;
+  const [fileName = "", ...keys4] = presetName.split("/");
+  if (fileName === "" || keys4.length > 2)
+    return;
+  const files = fileName === "default" ? [`${path}default.json`, `${path}renovate.json`] : [`${path}${/\.json[5c]?$/.test(fileName) ? fileName : `${fileName}.json`}`];
+  return { files, keys: keys4 };
+}
+function renovateMergeSetting(readFile3, repo) {
+  let file2;
+  let config2;
+  for (const name of RENOVATE_CONFIG_FILES) {
+    const text6 = readFile3(name);
+    if (text6 === undefined)
+      continue;
+    if (name === "package.json") {
+      const inner = objectOf2(parse7(text6))?.renovate;
+      if (inner === undefined)
+        continue;
+      config2 = inner;
+    } else {
+      config2 = parse7(text6);
+    }
+    file2 = name;
+    break;
+  }
+  const unread = [];
+  const seen = new Set;
+  const strategyOf = (value, depth) => {
+    const object2 = objectOf2(value);
+    if (!object2)
+      return;
+    let found;
+    const extendsList = Array.isArray(object2.extends) ? object2.extends : [];
+    for (const name of extendsList) {
+      if (typeof name !== "string")
+        continue;
+      const preset = localPreset(name, repo);
+      if (preset === "internal")
+        continue;
+      if (preset === undefined || depth >= MAX_DEPTH) {
+        unread.push(name);
+        continue;
+      }
+      const key = `${preset.files[0]}#${preset.keys.join("/")}`;
+      if (seen.has(key))
+        continue;
+      seen.add(key);
+      const text6 = preset.files.map(readFile3).find((one) => one !== undefined);
+      let inner = text6 === undefined ? undefined : parse7(text6);
+      for (const part of preset.keys)
+        inner = objectOf2(inner)?.[part];
+      if (objectOf2(inner) === undefined) {
+        unread.push(name);
+        continue;
+      }
+      found = strategyOf(inner, depth + 1) ?? found;
+    }
+    const own2 = object2.automergeStrategy;
+    return typeof own2 === "string" ? own2 : found;
+  };
+  return { strategy: strategyOf(config2, 0), file: file2, unread };
 }
 
 // src/core/resolve.ts
@@ -59011,42 +59434,6 @@ function clearTick(row2, options = {}) {
   return cleared;
 }
 
-// src/render/merge-row.ts
-var TITLE_LENGTH = 80;
-function shorten(title) {
-  const chars = [...title];
-  return chars.length <= TITLE_LENGTH ? title : `${chars.slice(0, TITLE_LENGTH - 3).join("")}...`;
-}
-function renderMergeRow(row2, options = {}) {
-  const by2 = row2.author === undefined ? "" : ` by ${escapeText(row2.author)}`;
-  const parts = [
-    `**${escapeText(row2.stackId)}**`,
-    ...options.redact ? [] : [escapeText(shorten(row2.title))],
-    `#${row2.pr}${by2}`
-  ];
-  return `- [ ] ${parts.join(" · ")} ${mergeMarker(row2)}`;
-}
-function mergeBlock(row2, options = {}) {
-  const [block] = parseDashboard(renderMergeRow(row2, options)).merges;
-  if (!block)
-    throw new Error("A rendered merge row did not read back as one.");
-  return block;
-}
-function clearMergeTick(row2) {
-  if (!row2.ticked)
-    return row2;
-  const [cleared] = parseDashboard(row2.text.replace(/^- \[[xX]\] /, "- [ ] ")).merges;
-  if (!cleared)
-    throw new Error("A merge row did not read back as one.");
-  return cleared;
-}
-function tickedMergeBlock(row2) {
-  const [ticked] = parseDashboard(row2.text.replace(/^- \[ \] /, "- [x] ")).merges;
-  if (!ticked)
-    throw new Error("A merge row did not read back as one.");
-  return ticked;
-}
-
 // src/modes/resolve.ts
 async function resolve(context3) {
   let handedOn = false;
@@ -59149,7 +59536,7 @@ async function resolveTicks(context3, handOn) {
   const open2 = await openDeployments(context3, [...ticked, ...dependencies]);
   const dropped = [];
   const clear = new Map;
-  const clearMerges = new Set;
+  const clearMerges = new Map;
   const toJudge = [];
   let rescanHandled = false;
   for (const { tick, ticker } of named) {
@@ -59157,7 +59544,7 @@ async function resolveTicks(context3, handOn) {
     const fact = tick.kind === "rescan" ? undefined : open2.get(tick.stackId);
     if (tick.kind === "merge" && (fact || !config2.deploys)) {
       log.info(fact ? `${name} is ticked, and the stack already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. Nothing is merged and the box is cleared. Tick it again once that deploy is over.` : `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). Nothing is merged and the box is cleared.`);
-      clearMerges.add(tick.pr);
+      clearMerges.set(tick.pr, fact ? "deploying" : "deploys-off");
     } else if (tick.kind === "row" && fact) {
       dropped.push(tick.stackId);
       log.info(`${name} is ticked and already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. The tick is dropped.`);
@@ -59177,7 +59564,7 @@ async function resolveTicks(context3, handOn) {
       if (tick.kind === "row")
         clear.set(tick.stackId, { hash: tick.hash, note: true });
       else if (tick.kind === "merge")
-        clearMerges.add(tick.pr);
+        clearMerges.set(tick.pr, "orphan");
       else
         rescanHandled = true;
     }
@@ -59210,7 +59597,7 @@ async function resolveTicks(context3, handOn) {
         clear.set(target2.stackId, { hash: hash2, note: false });
       }
       if (target2.kind === "merge")
-        clearMerges.add(target2.pr);
+        clearMerges.set(target2.pr, undefined);
     }
     if (target2.kind === "rescan")
       rescanHandled = true;
@@ -59284,12 +59671,14 @@ async function resolveTicks(context3, handOn) {
   if (merging.failure !== undefined)
     failures.push(merging.failure);
   for (const pr of merging.cleared)
-    clearMerges.add(pr);
+    clearMerges.set(pr, undefined);
   const merged = merging.merged;
   if (rescan || merging.mergedPrs.size > 0) {
+    const prs = [...merging.mergedPrs].sort((a, b) => a - b);
+    const narrow = !rescan && declaresMergeScanInput(workflowText(context3));
     try {
-      await dispatchScan(context3);
-      log.info(rescan ? "Started a full scan for the rescan box." : "Started a full scan, which previews the merged change and hands it to apply.");
+      await dispatchScan(context3, narrow ? mergeScanInputs(prs) : undefined);
+      log.info(rescan ? "Started a full scan for the rescan box." : narrow ? `Started the scan after the merge of ${prs.map((pr) => `#${pr}`).join(", ")}. It previews what changed since the last scan and hands the merged change to apply.` : `Started a full scan, which previews the merged change and hands it to apply. It is narrowed to the merged change when ${logGroupTitle(context3.workflow?.file ?? "the workflow")} declares the workflow_dispatch input ${MERGE_SCAN_INPUT} (record 0064).`);
     } catch (error63) {
       failures.push(message2(error63));
     }
@@ -59339,17 +59728,20 @@ function targetName(target2) {
   }
   return "The rescan box";
 }
-function renovateStrategyOf(root) {
-  for (const file2 of RENOVATE_CONFIG_FILES) {
-    let text6;
+function renovateStrategyOf(context3) {
+  const [owner = "", repo = ""] = new URL(context3.repoUrl).pathname.split("/").filter(Boolean);
+  const setting = renovateMergeSetting((path) => {
     try {
-      text6 = readFileSync8(join29(root, file2), "utf8");
+      return readFileSync8(join29(context3.root, path), "utf8");
     } catch {
-      continue;
+      return;
     }
-    return renovateStrategy(text6);
-  }
-  return;
+  }, { owner, repo });
+  const one = setting.unread.length === 1;
+  const unread = setting.unread.length === 0 ? "" : ` The ${one ? "preset" : "presets"} ${setting.unread.map(logGroupTitle).join(" and ")} ${one ? "was" : "were"} not read: only a preset in a file of this repo is.`;
+  const none = setting.file === undefined ? "No Renovate config sets automergeStrategy" : `Renovate's config ${logGroupTitle(setting.file)} sets no automergeStrategy`;
+  context3.log.info(setting.strategy === undefined ? `${none}, so the method is the first the repo allows of squash, merge and rebase, as Renovate picks it.${unread}` : `Renovate's config is ${logGroupTitle(setting.file ?? "")}, and it sets automergeStrategy to ${logGroupTitle(setting.strategy)}.${unread}`);
+  return setting.strategy;
 }
 async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
   const { github, log } = context3;
@@ -59365,7 +59757,7 @@ async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
     return result;
   }
   try {
-    method = mergeMethod(await github.allowedMergeMethods(), renovateStrategyOf(context3.root));
+    method = mergeMethod(await github.allowedMergeMethods(), renovateStrategyOf(context3));
   } catch (error63) {
     result.failure = `The merge settings of the repo could not be read: ${message2(error63)}. The resolve job needs the permission \`contents: write\` to merge (record 0054). Nothing was merged, and the boxes stay ticked for the next run.`;
     return result;
@@ -59483,12 +59875,21 @@ async function discover2(context3, config2) {
     ignored: ignoredStacks(config2, found)
   };
 }
-async function dispatchScan(context3) {
+function workflowText(context3) {
+  if (!context3.workflow)
+    return "";
+  try {
+    return readFileSync8(join29(context3.root, WORKFLOW_DIRECTORY, context3.workflow.file), "utf8");
+  } catch {
+    return "";
+  }
+}
+async function dispatchScan(context3, inputs) {
   if (!context3.workflow) {
     throw new Error("A full scan could not be started: GITHUB_WORKFLOW_REF is not set, so this job does not know which workflow it belongs to.");
   }
   try {
-    await context3.github.dispatchWorkflow(context3.workflow.file, context3.workflow.ref);
+    await context3.github.dispatchWorkflow(context3.workflow.file, context3.workflow.ref, inputs);
   } catch (error63) {
     throw new Error(`A full scan could not be started: ${message2(error63)}. The resolve job needs the permission \`actions: write\`, and the workflow (${context3.workflow.file}) needs a \`workflow_dispatch\` trigger that runs the scan (record 0017).`);
   }
@@ -59591,7 +59992,7 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
   for (const merge3 of live.merges) {
     if (swap.merges?.merged.has(merge3.pr) || merges.some((one) => one.pr === merge3.pr))
       continue;
-    merges.push(swap.merges?.clear.has(merge3.pr) ? clearMergeTick(merge3) : merge3);
+    merges.push(swap.merges?.clear.has(merge3.pr) ? clearMergeTick(merge3, { note: swap.merges.clear.get(merge3.pr) }) : merge3);
   }
   const fitted = fitBody({
     root: {
@@ -59798,11 +60199,11 @@ async function runPool(items, size, work) {
 // src/core/scan-plan.ts
 var COMPARE_FILE_CAP = 300;
 var COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-function narrowsOn(event) {
-  return event === "push";
+function narrowsOn(event, afterMerge = []) {
+  return event === "push" || event === "workflow_dispatch" && afterMerge.length > 0;
 }
-function comparisonBase(event, dashboard, markerVersion) {
-  if (!narrowsOn(event))
+function comparisonBase(event, dashboard, markerVersion, afterMerge = []) {
+  if (!narrowsOn(event, afterMerge))
     return { kind: "event", event };
   if (dashboard === undefined)
     return { kind: "no-dashboard" };
@@ -59863,7 +60264,7 @@ function noClaimant(files) {
 function fullScanReasonText(reason) {
   switch (reason.kind) {
     case "event":
-      return `the event is ${reason.event}, and only a push gives a narrowed scan`;
+      return `the event is ${reason.event}, and only a push, or the scan resolve starts after a merge, gives a narrowed scan`;
     case "no-dashboard":
       return "there is no dashboard yet";
     case "no-root-marker":
@@ -60663,12 +61064,17 @@ async function resolveWaits(context3, liveBody, deploys) {
 async function makePlan(context3, config2, stacks, knownDrift) {
   const { log } = context3;
   const full = (why2) => ({ kind: "full", why: why2 });
-  const dashboard = narrowsOn(context3.event) ? await findDashboard(context3.github, config2.dashboard.label) : undefined;
+  const afterMerge = context3.afterMerge ?? [];
+  const narrows = narrowsOn(context3.event, afterMerge);
+  if (narrows && context3.event !== "push") {
+    log.info(`This scan follows the merge of ${afterMerge.map((pr) => `#${pr}`).join(", ")} from the dashboard.`);
+  }
+  const dashboard = narrows ? await findDashboard(context3.github, config2.dashboard.label) : undefined;
   const live = dashboard && parseDashboard(dashboard.body);
   for (const row2 of live?.rows ?? [])
     if (row2.known && row2.drift)
       knownDrift.add(row2.stackId);
-  const base = comparisonBase(context3.event, live, MARKER_VERSION);
+  const base = comparisonBase(context3.event, live, MARKER_VERSION, afterMerge);
   if (base.kind !== "compare")
     return full(base);
   let comparison;
@@ -60720,7 +61126,7 @@ function logPlan(context3, plan, stackCount) {
       return;
     }
     const safe = why2.kind === "unclaimed" ? { kind: "unclaimed", files: why2.files.map(fileName) } : why2;
-    log.info(`This is a full scan. A push gives a narrowed scan, and this one fell back to a full scan: ${fullScanReasonText(safe)}.`);
+    log.info(`This is a full scan. ${context3.event === "push" ? "A push" : "The scan after a merge"} gives a narrowed scan, and this one fell back to a full scan: ${fullScanReasonText(safe)}.`);
     const toPlace = why2.kind === "unclaimed" ? unclaimedToPlace(why2.files) : [];
     if (toPlace.length > 0) {
       log.group("Changed files that no stack claims", [
@@ -60993,8 +61399,11 @@ async function listUpdates(context3, config2, stacks) {
       log.info(`#${pullRequest.number} is not listed to merge: ${NOT_QUALIFIED[qualified.why]}.`);
     }
   }
-  const updates = waitingUpdates(open2.pullRequests, options);
+  const { listed: updates, more } = waitingUpdates(open2.pullRequests, options);
   log.info(updates.length === 0 ? "No pull request waits to merge." : `${plural2(updates.length, "pull request")} ${updates.length === 1 ? "waits" : "wait"} to merge: ${updates.map(({ pullRequest }) => `#${pullRequest.number}`).join(", ")}.`);
+  if (more > 0) {
+    log.info(`${plural2(more, "more pull request")} ${more === 1 ? "qualifies" : "qualify"} and ${more === 1 ? "is" : "are"} not listed: the dashboard lists the oldest ${MAX_UPDATES}.`);
+  }
   return { kind: "listed", updates };
 }
 function mergeRows(listing, live, waits, redact) {
@@ -61017,7 +61426,7 @@ function mergeRows(listing, live, waits, redact) {
     const same = ticked.head === block.head && ticked.stackId === block.stackId;
     const carry = same && waits;
     mergeTicks.push({ pr: block.pr, tick: carry ? "carry" : "sweep" });
-    return carry ? tickedMergeBlock(block) : block;
+    return carry ? tickedMergeBlock(block) : clearMergeTick(tickedMergeBlock(block), { note: "orphan" });
   });
   return { merges, mergeTicks };
 }
@@ -61134,6 +61543,7 @@ async function runScan(directory) {
     jobId: readJobId(getInput),
     sha: job.sha,
     event: job.event,
+    afterMerge: mergedBeforeDispatch(payload),
     workflow: job.workflow,
     actionRef: readActionRef(env, directory, (path) => readFileSync10(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),
