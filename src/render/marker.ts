@@ -71,6 +71,18 @@ export interface RowFacts {
   shortened?: number | undefined;
 }
 
+// A pull request the dashboard offers to merge and deploy (record 0054). One
+// line, outside the row blocks: it belongs to no stack's row, and a parser of
+// an older version does not see it at all.
+export interface MergeFacts {
+  pr: number;
+  // The stack its files are claimed by. A tick is judged by that stack's rule.
+  stackId: string;
+  // The commit at the head of the pull request. A tick approves merging
+  // exactly that commit.
+  head: string;
+}
+
 export const ROW_CLOSE_MARKER = "<!-- /sluiceway:row -->";
 export const RESCAN_MARKER = "<!-- sluiceway:rescan -->";
 
@@ -104,6 +116,14 @@ export function rowMarker(facts: RowFacts): string {
   return marker("row", pairs);
 }
 
+export function mergeMarker(facts: MergeFacts): string {
+  return marker("merge", [
+    ["pr", String(facts.pr)],
+    ["stack", facts.stackId],
+    ["head", facts.head],
+  ]);
+}
+
 export interface ParsedRoot {
   // A writer that meets a version other than its own does not touch the body.
   version: number;
@@ -134,10 +154,19 @@ export type ParsedRow =
   // such a row is carried through and never acted on.
   | { known: false; stackId: string; state: string; text: string };
 
+// A merge row as it stands in the body. `text` is its one line.
+export interface ParsedMerge extends MergeFacts {
+  ticked: boolean;
+  text: string;
+}
+
 export interface ParsedDashboard {
   // Absent when the first line of the body is not a root marker.
   root: ParsedRoot | undefined;
   rows: ParsedRow[];
+  // In body order. Of two lines for one pull request both are here: the
+  // readers take the first.
+  merges: ParsedMerge[];
   rescanTicked: boolean;
 }
 
@@ -146,6 +175,7 @@ const ROOT_LINE = new RegExp(`^<!-- sluiceway:dashboard${PAIRS} -->[ \\t]*$`);
 // The tick: one regex on one line, anchored on the box at the start and the
 // marker at the end. The visible text between them is never parsed.
 const ROW_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:row${PAIRS} -->[ \\t]*$`);
+const MERGE_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:merge${PAIRS} -->[ \\t]*$`);
 const RESCAN_LINE = /^- \[[xX]\] .*<!-- sluiceway:rescan -->[ \t]*$/;
 
 function readPairs(payload: string): Map<string, string> {
@@ -179,11 +209,14 @@ function isRowState(state: string): state is RowState {
 export function parseDashboard(body: string): ParsedDashboard {
   const lines = body.replace(/\r\n?/g, "\n").split("\n");
   const rows: ParsedRow[] = [];
+  const merges: ParsedMerge[] = [];
   let rescanTicked = false;
 
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index] ?? "";
     if (RESCAN_LINE.test(line)) rescanTicked = true;
+    const merge = readMerge(line);
+    if (merge) merges.push(merge);
 
     const match = ROW_LINE.exec(line);
     if (!match) continue;
@@ -224,5 +257,30 @@ export function parseDashboard(body: string): ParsedDashboard {
     });
   }
 
-  return { root: readRoot(lines[0] ?? ""), rows, rescanTicked };
+  return { root: readRoot(lines[0] ?? ""), rows, merges, rescanTicked };
+}
+
+// A merge line whose marker lacks a number, a stack or a whole commit id is
+// not one: nothing could be merged from it.
+function readMerge(line: string): ParsedMerge | undefined {
+  const match = MERGE_LINE.exec(line);
+  if (!match) return undefined;
+  const pairs = readPairs(match[2] ?? "");
+  const pr = pairs.get("pr") ?? "";
+  const stackId = pairs.get("stack");
+  const head = pairs.get("head") ?? "";
+  if (
+    !/^[1-9]\d*$/.test(pr) ||
+    stackId === undefined ||
+    !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(head)
+  ) {
+    return undefined;
+  }
+  return {
+    pr: Number(pr),
+    stackId,
+    head,
+    ticked: match[1] === "x" || match[1] === "X",
+    text: line,
+  };
 }

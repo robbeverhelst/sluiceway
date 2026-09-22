@@ -56,6 +56,7 @@ describe("reading a body", () => {
           ].join("\n"),
         },
       ],
+      merges: [],
       rescanTicked: false,
     });
   });

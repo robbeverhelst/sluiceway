@@ -8,6 +8,7 @@ import { destroySign } from "./destroy-sign.ts";
 import { escapeText } from "./escape.ts";
 import { type HeaderState, headerState } from "./header-state.ts";
 import {
+  type ParsedMerge,
   type ParsedRow,
   parseDashboard,
   RESCAN_MARKER,
@@ -20,6 +21,7 @@ import { utcMinute } from "./time.ts";
 import {
   DRY,
   INSTRUCTION_LINE,
+  MERGE_LINE,
   NOTHING_TO_DEPLOY,
   PREVIEW_FAILED_LINE,
   READ_ONLY_LINE,
@@ -62,6 +64,10 @@ export interface BodyInput {
   // They have no row and no marker: every writer lists them from its own
   // config.
   ignored?: readonly IgnoredStack[] | undefined;
+  // The updates waiting to merge (record 0054). The scan makes them, and
+  // every other writer carries them as `parseDashboard` read them, less the
+  // ones it merged.
+  merges?: readonly ParsedMerge[] | undefined;
 }
 
 export const RECENTLY_DEPLOYED = 10;
@@ -271,6 +277,19 @@ export function renderBody(input: BodyInput): string {
   const pending = of("pending");
   const shortened = pending.filter((row) => row.shortened > 0).length;
   if (shortened > 0) out.push(shortenedNote(shortened, pending.length));
+
+  // Above Pending, because a tick there also ends in a deploy (record 0054).
+  // Of two lines for one pull request the first stays.
+  const merges = [...(input.merges ?? [])]
+    .filter((merge, index, all) => all.findIndex((one) => one.pr === merge.pr) === index)
+    .sort((a, b) => a.pr - b.pr);
+  if (merges.length > 0) {
+    out.push(
+      "## Updates waiting to merge",
+      MERGE_LINE,
+      merges.map((merge) => merge.text).join("\n"),
+    );
+  }
 
   // Pending is always shown. The other sections are left out when empty.
   out.push("## Pending", pendingLine(input, state, pending.length));

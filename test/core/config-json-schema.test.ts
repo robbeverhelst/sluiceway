@@ -28,6 +28,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "ignore",
       "scan",
       "stacks",
+      "mergeAndDeploy",
     ]);
     expect(Object.keys(schema.properties?.dashboard?.properties ?? {})).toEqual([
       "title",
@@ -64,6 +65,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "root.properties.scan",
       "root.properties.stacks.items",
       "root.properties.stacks.items.properties.options",
+      "root.properties.mergeAndDeploy",
     ]);
     for (const [, object] of found) {
       expect(object.additionalProperties as unknown).toBe(false);

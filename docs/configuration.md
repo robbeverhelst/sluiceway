@@ -432,5 +432,5 @@ ticker: admin
 
 ```text
 sluiceway.yaml is not valid:
-- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, stacks.
+- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, stacks, mergeAndDeploy.
 ```

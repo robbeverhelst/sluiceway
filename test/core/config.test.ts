@@ -17,6 +17,7 @@ const DEFAULTS: Config = {
   ignore: [],
   scan: { unrelated: [], logDiff: false },
   stacks: [],
+  mergeAndDeploy: { authors: [] },
 };
 
 describe("zero config", () => {
@@ -69,6 +70,7 @@ scan:
       ignore: ["**/*:dev"],
       scan: { unrelated: ["**/*.md"], logDiff: false },
       stacks: [],
+      mergeAndDeploy: { authors: [] },
     });
   });
 });
@@ -87,7 +89,7 @@ function problems(text: string): string[] {
 describe("unknown keys", () => {
   test("a typo at the top level is an error that lists the known keys", () => {
     expect(problems("tickerz: admin\n")).toEqual([
-      'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, stacks.',
+      'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, stacks, mergeAndDeploy.',
     ]);
   });
 });
@@ -345,7 +347,7 @@ describe("a file that is not a mapping", () => {
 describe("the error", () => {
   test("names the file and lists every problem", () => {
     expect(() => parseConfig("tickerz: admin\ndashboard:\n  pin: 1\n")).toThrow(
-      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, stacks.\n- dashboard.pin: expected true or false, got 1.',
+      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, stacks, mergeAndDeploy.\n- dashboard.pin: expected true or false, got 1.',
     );
   });
 });
@@ -425,5 +427,35 @@ describe("deploys", () => {
 
   test("takes true or false and nothing else", () => {
     expect(problems('deploys: "off"\n')).toEqual(['deploys: expected true or false, got "off".']);
+  });
+});
+
+// Slice 4.2 (record 0054): pull requests by these authors may be merged and
+// deployed with one tick. Off by default.
+describe("mergeAndDeploy", () => {
+  test("is off unless the file names authors", () => {
+    expect(parseConfig(undefined).mergeAndDeploy).toEqual({ authors: [] });
+    expect(parseConfig("mergeAndDeploy: {}\n").mergeAndDeploy).toEqual({ authors: [] });
+  });
+
+  test("takes logins of people and of apps, kept once each in lower case", () => {
+    expect(
+      parseConfig(
+        "mergeAndDeploy:\n  authors:\n    - Renovate[bot]\n    - dependabot[bot]\n    - alice\n    - renovate[bot]\n",
+      ).mergeAndDeploy.authors,
+    ).toEqual(["renovate[bot]", "dependabot[bot]", "alice"]);
+  });
+
+  test("a login with an @ or a slash is refused", () => {
+    expect(problems("mergeAndDeploy:\n  authors: ['@alice', org/bots]\n")).toEqual([
+      'mergeAndDeploy.authors[0]: "@alice" is not a GitHub login. Write the login alone, without "@". An app is written with [bot], such as renovate[bot].',
+      'mergeAndDeploy.authors[1]: "org/bots" is not a GitHub login. Write the login alone, without "@". An app is written with [bot], such as renovate[bot].',
+    ]);
+  });
+
+  test("an unknown key is refused", () => {
+    expect(problems("mergeAndDeploy:\n  author: [alice]\n")).toEqual([
+      'mergeAndDeploy: unknown key "author". Known keys here: authors.',
+    ]);
   });
 });

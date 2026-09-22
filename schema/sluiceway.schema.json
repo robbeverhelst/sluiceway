@@ -230,6 +230,21 @@
         "additionalProperties": false
       },
       "description": "Settings for stacks that discovery found. An entry never creates a stack."
+    },
+    "mergeAndDeploy": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "authors": {
+          "description": "Logins whose open pull requests may be merged and deployed with one tick, such as renovate[bot]. Empty turns it off.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]+(\\[bot\\])?$"
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

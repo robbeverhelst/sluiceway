@@ -31,6 +31,10 @@ export const NOTHING_TO_DEPLOY = "Nothing to deploy.";
 
 export const INSTRUCTION_LINE = "Tick a box to deploy that stack exactly as its row shows it.";
 
+// Under the heading of the updates waiting to merge (record 0054). Plain.
+export const MERGE_LINE =
+  "Tick a box to merge that pull request. Its stack is then previewed again and deployed as that preview shows it.";
+
 // Under the Pending heading of a read-only dashboard while rows are pending
 // (slice 2.17). Plain, like every line but the two of record 0032.
 export const READ_ONLY_LINE =

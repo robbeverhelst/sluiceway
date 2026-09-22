@@ -19,6 +19,14 @@ const tickers = z.union([
     .transform((names) => [...new Set(names.map((name) => name.toLowerCase()))]),
 ]);
 
+// The author of a pull request, as GitHub writes it: a person's login, or an
+// app's login with "[bot]" (record 0054). The two are different accounts, so
+// "renovate" never stands for "renovate[bot]".
+const author = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]+(\[bot\])?$/)
+  .transform((login) => login.toLowerCase());
+
 const text = z.string().min(1);
 const globs = z.array(text);
 
@@ -201,6 +209,19 @@ export const configSchema = z.strictObject({
   stacks: stackEntries
     .describe("Settings for stacks that discovery found. An entry never creates a stack.")
     .default([]),
+  // Slice 4.2 (record 0054): one tick merges a routine pull request and
+  // deploys its stack. Off while the list is empty.
+  mergeAndDeploy: z
+    .strictObject({
+      authors: z
+        .array(author)
+        .transform((logins) => [...new Set(logins)])
+        .describe(
+          "Logins whose open pull requests may be merged and deployed with one tick, such as renovate[bot]. Empty turns it off.",
+        )
+        .default([]),
+    })
+    .prefault({}),
 });
 
 export type Config = z.output<typeof configSchema>;
@@ -312,7 +333,12 @@ function describe(issue: Issue, raw: unknown): Problem[] {
       describe({ ...inner, path: [...issue.path, ...inner.path] }, raw),
     );
   }
-  // The only pattern in the schema is the username.
+  if (issue.code === "invalid_format" && issue.path[0] === "mergeAndDeploy") {
+    return problem(
+      `${show(value)} is not a GitHub login. Write the login alone, without "@". An app is written with [bot], such as renovate[bot].`,
+    );
+  }
+  // The other pattern in the schema is the username.
   if (issue.code === "invalid_format") {
     return problem(
       String(value).includes("/")
