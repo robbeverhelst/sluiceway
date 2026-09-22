@@ -93,7 +93,8 @@ describe("the workflows in the docs", () => {
   });
 
   // actions/cache v4 runs on Node 20, which the runner forces onto Node 24 with
-  // a warning in every run. v5 and newer run on Node 24.
+  // a warning in every run. v5 and newer run on Node 24 (onboarding log,
+  // hurdle 25).
   test("actions/cache is v5 or newer", () => {
     const wrong = all.flatMap(({ where, workflow }) =>
       Object.values(workflow.jobs)
