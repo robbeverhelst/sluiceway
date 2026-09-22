@@ -86,7 +86,26 @@ export type WorkflowWarning =
   // No permissions block for the job or the workflow: the token gets the
   // repo's default, which a file cannot show.
   | { kind: "no-permissions"; path: string; job: string; mode: Mode; needs: string[] }
-  | { kind: "missing-permissions"; path: string; job: string; mode: Mode; missing: string[] };
+  | { kind: "missing-permissions"; path: string; job: string; mode: Mode; missing: string[] }
+  // Record 0074 from here on. Scans run one at a time, ticks too, and deploys
+  // one at a time per stack (records 0004, 0025, 0035).
+  | { kind: "no-concurrency"; path: string; job: string; mode: "scan" | "resolve" | "apply" }
+  // One group for every stack makes a deploy wait for another stack's.
+  | { kind: "apply-group-shared"; path: string; job: string }
+  // Without queue: max a waiting deploy is cancelled by a newer one.
+  | { kind: "apply-no-queue"; path: string; job: string }
+  // cancel-in-progress stops a deploy half way.
+  | { kind: "apply-cancels"; path: string; job: string }
+  // apply needs !cancelled() or always() to run after a red resolve, and
+  // settle needs always() to run after a cancelled deploy.
+  | { kind: "no-status-check"; path: string; job: string; mode: "apply" | "settle" }
+  // settle ends the records of deploys that ended without a result, so it
+  // runs after every apply job.
+  | { kind: "settle-skips-apply"; path: string; job: string; apply: string }
+  // Merge and deploy (records 0054, 0064): the scan after a merge hands its
+  // deploy to a second apply job through its own matrix output.
+  | { kind: "no-merged-apply"; path: string }
+  | { kind: "scan-no-matrix-output"; path: string; job: string; scan: string };
 
 // Something worth knowing that is not a mistake.
 export type WorkflowNote =
@@ -154,10 +173,25 @@ export function refKind(ref: string): RefKind {
 
 type Permissions = Record<string, string> | "read-all" | "write-all" | undefined;
 
+// What the check reads of one job.
+interface ParsedJob {
+  permissions: Permissions;
+  steps: unknown[];
+  // `concurrency` in its long form. Undefined when the job has none.
+  concurrency: { group: string; queue: string; cancels: boolean } | undefined;
+  // The `if:` as text, "" when there is none.
+  condition: string;
+  needs: string[];
+  // The names of the job's outputs.
+  outputs: string[];
+  // The strategy block as text, where a matrix names the job it comes from.
+  strategy: string;
+}
+
 interface Parsed {
   on: Record<string, unknown>;
   permissions: Permissions;
-  jobs: Record<string, { permissions: Permissions; steps: unknown[] }>;
+  jobs: Record<string, ParsedJob>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -177,6 +211,21 @@ function triggersOf(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
 }
 
+// `concurrency` as a group name or as a map, always as the map.
+function concurrencyOf(value: unknown): ParsedJob["concurrency"] {
+  if (typeof value === "string" || typeof value === "number") {
+    return { group: String(value), queue: "", cancels: false };
+  }
+  if (!isRecord(value) || value.group === undefined) return undefined;
+  const cancels = value["cancel-in-progress"];
+  return {
+    group: String(value.group),
+    queue: value.queue === undefined ? "" : String(value.queue),
+    // An expression may cancel, and whether it does shows only in a run.
+    cancels: cancels === true || cancels === "true",
+  };
+}
+
 function parseWorkflow(text: string): Parsed | "unreadable" | undefined {
   let document: unknown;
   try {
@@ -191,6 +240,16 @@ function parseWorkflow(text: string): Parsed | "unreadable" | undefined {
     jobs[name] = {
       permissions: permissionsOf(job.permissions),
       steps: Array.isArray(job.steps) ? job.steps : [],
+      concurrency: concurrencyOf(job.concurrency),
+      condition: job.if === undefined || job.if === null ? "" : String(job.if),
+      needs:
+        typeof job.needs === "string"
+          ? [job.needs]
+          : Array.isArray(job.needs)
+            ? job.needs.map(String)
+            : [],
+      outputs: isRecord(job.outputs) ? Object.keys(job.outputs) : [],
+      strategy: job.strategy === undefined ? "" : JSON.stringify(job.strategy),
     };
   }
   return { on: triggersOf(document.on), permissions: permissionsOf(document.permissions), jobs };
@@ -295,6 +354,8 @@ function checkOne(path: string, workflow: Parsed, config: Config, report: Workfl
     warnings.push({ kind: "boxes-do-nothing", path });
   }
 
+  checkJobs(path, workflow, found, config, warnings);
+
   if (called) return;
   for (const { step, permissions } of found) {
     if (step.mode === undefined) continue;
@@ -315,6 +376,69 @@ function checkOne(path: string, workflow: Parsed, config: Config, report: Workfl
     if (mode === "scan" && !has(permissions, "checks")) {
       notes.push({ kind: "no-preview-pages", path, job });
     }
+  }
+}
+
+// The job settings a mode relies on (record 0074). Each is read from the
+// file as it is written: a group or a condition is an expression GitHub
+// evaluates, so only what the text plainly lacks is a warning.
+function checkJobs(
+  path: string,
+  workflow: Parsed,
+  found: { step: SluicewayJob }[],
+  config: Config,
+  warnings: WorkflowWarning[],
+): void {
+  const jobOf = (name: string): ParsedJob => workflow.jobs[name] as ParsedJob;
+  const withMode = (mode: Mode) =>
+    found.filter(({ step }) => step.mode === mode).map(({ step }) => step.job);
+  for (const { step } of found) {
+    const { job, mode } = step;
+    const { concurrency, condition } = jobOf(job);
+    if (mode === "scan" || mode === "resolve" || mode === "apply") {
+      if (concurrency === undefined) {
+        warnings.push({ kind: "no-concurrency", path, job, mode });
+      } else if (mode === "apply") {
+        if (!/\bmatrix\.stack\b/.test(concurrency.group)) {
+          warnings.push({ kind: "apply-group-shared", path, job });
+        }
+        if (concurrency.queue !== "max") warnings.push({ kind: "apply-no-queue", path, job });
+        if (concurrency.cancels) warnings.push({ kind: "apply-cancels", path, job });
+      }
+    }
+    if (mode === "apply" && !/!\s*cancelled\(\s*\)|\balways\(\s*\)/.test(condition)) {
+      warnings.push({ kind: "no-status-check", path, job, mode });
+    }
+    if (mode === "settle" && !/(^|[^!\w])always\(\s*\)/.test(condition)) {
+      warnings.push({ kind: "no-status-check", path, job, mode });
+    }
+  }
+
+  const applies = withMode("apply");
+  for (const settle of withMode("settle")) {
+    const { needs } = jobOf(settle);
+    for (const apply of applies) {
+      if (!needs.includes(apply)) {
+        warnings.push({ kind: "settle-skips-apply", path, job: settle, apply });
+      }
+    }
+  }
+
+  // The job whose matrix an apply job takes, from `needs.<job>.outputs.matrix`
+  // in its strategy.
+  const scans = withMode("scan");
+  const fromScan = applies.flatMap((apply) => {
+    const source = /needs\.([\w-]+)\.outputs\.matrix/.exec(jobOf(apply).strategy)?.[1];
+    return source !== undefined && scans.includes(source) ? [{ apply, scan: source }] : [];
+  });
+  for (const { apply, scan } of fromScan) {
+    if (!jobOf(scan).outputs.includes("matrix")) {
+      warnings.push({ kind: "scan-no-matrix-output", path, job: apply, scan });
+    }
+  }
+  const mergesAndDeploys = config.mergeAndDeploy.authors.length > 0;
+  if (mergesAndDeploys && scans.length > 0 && withMode("resolve").length > 0) {
+    if (fromScan.length === 0) warnings.push({ kind: "no-merged-apply", path });
   }
 }
 

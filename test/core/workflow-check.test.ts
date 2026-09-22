@@ -192,6 +192,8 @@ describe("a broken workflow", () => {
   test("merge and deploy needs contents: write on resolve", () => {
     const merging = parseConfig('mergeAndDeploy:\n  authors: ["renovate[bot]"]\n');
     expect(checkWorkflows([file(WHOLE)], merging).warnings).toEqual([
+      // Slice 5.7: and a second apply job (record 0074).
+      { kind: "no-merged-apply", path: PATH },
       {
         kind: "missing-permissions",
         path: PATH,
@@ -285,5 +287,192 @@ describe("the ref of the action", () => {
       ),
     );
     expect(report.warnings).toEqual([{ kind: "mixed-refs", path: PATH, refs: ["v0", "v0.8.0"] }]);
+  });
+});
+
+// Slice 5.7, record 0074: the concurrency groups, the status check in the
+// `if:` of apply and settle, and the second apply job of merge and deploy.
+describe("the rest of the workflow", () => {
+  test("a scan or resolve job with no concurrency group", () => {
+    const { warnings } = broken((text) =>
+      text
+        .replace("    concurrency: sluiceway-scan\n", "")
+        .replace("    concurrency: sluiceway-resolve\n", ""),
+    );
+    expect(warnings).toEqual([
+      { kind: "no-concurrency", path: PATH, job: "scan", mode: "scan" },
+      { kind: "no-concurrency", path: PATH, job: "resolve", mode: "resolve" },
+    ]);
+  });
+
+  test("a group of another name is fine, and so is the long form", () => {
+    const { warnings } = broken((text) =>
+      text.replace(
+        "    concurrency: sluiceway-scan\n",
+        "    concurrency:\n      group: deploys-scan\n",
+      ),
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  test("an apply job with no concurrency group", () => {
+    const { warnings } = broken((text) =>
+      text.replace(
+        "    concurrency:\n      group: sluiceway-apply-${{ matrix.stack }}\n      queue: max\n",
+        "",
+      ),
+    );
+    expect(warnings).toEqual([{ kind: "no-concurrency", path: PATH, job: "apply", mode: "apply" }]);
+  });
+
+  test("an apply group that is not one per stack", () => {
+    const { warnings } = broken((text) =>
+      text.replace("group: sluiceway-apply-${{ matrix.stack }}", "group: sluiceway-apply"),
+    );
+    expect(warnings).toEqual([{ kind: "apply-group-shared", path: PATH, job: "apply" }]);
+  });
+
+  test("an apply group without queue: max", () => {
+    const { warnings } = broken((text) => text.replace("      queue: max\n", ""));
+    expect(warnings).toEqual([{ kind: "apply-no-queue", path: PATH, job: "apply" }]);
+  });
+
+  test("an apply group that cancels a running deploy", () => {
+    const { warnings } = broken((text) =>
+      text.replace("      queue: max\n", "      queue: max\n      cancel-in-progress: true\n"),
+    );
+    expect(warnings).toEqual([{ kind: "apply-cancels", path: PATH, job: "apply" }]);
+  });
+
+  test("an apply job without !cancelled()", () => {
+    const { warnings } = broken((text) => text.replace("${{ !cancelled() && ", "${{ "));
+    expect(warnings).toEqual([
+      { kind: "no-status-check", path: PATH, job: "apply", mode: "apply" },
+    ]);
+  });
+
+  test("an apply job with always() is fine", () => {
+    expect(broken((text) => text.replace("!cancelled()", "always()")).warnings).toEqual([]);
+  });
+
+  test("an apply job with no if: at all", () => {
+    const { warnings } = broken((text) => text.replace(/ {4}if: \$\{\{ !cancelled\(\).*\n/, ""));
+    expect(warnings).toEqual([
+      { kind: "no-status-check", path: PATH, job: "apply", mode: "apply" },
+    ]);
+  });
+
+  test("a settle job without always(), even with !cancelled()", () => {
+    for (const status of ["", "!cancelled() && "]) {
+      const { warnings } = broken((text) => text.replace("if: always() && ", `if: ${status}`));
+      expect(warnings).toEqual([
+        { kind: "no-status-check", path: PATH, job: "settle", mode: "settle" },
+      ]);
+    }
+  });
+
+  test("a settle job that does not wait for apply", () => {
+    const { warnings } = broken((text) =>
+      text.replace("needs: [resolve, apply]", "needs: resolve"),
+    );
+    expect(warnings).toEqual([
+      { kind: "settle-skips-apply", path: PATH, job: "settle", apply: "apply" },
+    ]);
+  });
+});
+
+// The whole workflow with the changes docs/workflow.md asks for merge and
+// deploy: contents: write on resolve, the scan's matrix as an output, a second
+// apply job that takes it, and settle waiting for both.
+const MERGED = WHOLE.replace(
+  "    concurrency: sluiceway-scan\n",
+  "    concurrency: sluiceway-scan\n    outputs:\n      matrix: ${{ steps.scan.outputs.matrix }}\n",
+)
+  .replace(
+    "      - uses: sluiceway/sluiceway@v0\n        with:\n          mode: scan\n",
+    "      - id: scan\n        uses: sluiceway/sluiceway@v0\n        with:\n          mode: scan\n",
+  )
+  .replace(
+    "    runs-on: ubuntu-latest\n    concurrency: sluiceway-resolve\n",
+    "    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n      issues: write\n      deployments: write\n      actions: write\n      pull-requests: read\n    concurrency: sluiceway-resolve\n",
+  )
+  .replace(
+    "  settle:\n    needs: [resolve, apply]\n",
+    `  apply-merged:
+    needs: scan
+    if: \${{ !cancelled() && needs.scan.outputs.matrix != '' && needs.scan.outputs.matrix != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: \${{ fromJson(needs.scan.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: sluiceway-apply-\${{ matrix.stack }}
+      queue: max
+    steps:
+      - uses: actions/checkout@v7
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: apply
+          deployment-id: \${{ matrix.deployment }}
+
+  settle:
+    needs: [scan, resolve, apply, apply-merged]
+`,
+  );
+
+const MERGE_AND_DEPLOY = parseConfig('mergeAndDeploy:\n  authors: ["renovate[bot]"]\n');
+
+function merged(edit: (text: string) => string = (text) => text) {
+  return checkWorkflows([file(edit(MERGED))], MERGE_AND_DEPLOY);
+}
+
+describe("the second apply job of merge and deploy", () => {
+  test("the workflow docs/workflow.md describes has nothing missing", () => {
+    expect(MERGED).toContain("apply-merged:");
+    expect(merged().warnings).toEqual([]);
+  });
+
+  test("without it, the deploy after a merge never starts", () => {
+    // The first warning is the merge's contents: write on resolve.
+    const { warnings } = checkWorkflows([file(WHOLE)], MERGE_AND_DEPLOY);
+    expect(warnings.map((warning) => warning.kind)).toEqual([
+      "no-merged-apply",
+      "missing-permissions",
+    ]);
+  });
+
+  test("merge and deploy off needs no second apply job", () => {
+    expect(checkWorkflows([file(WHOLE)], DEFAULTS).warnings).toEqual([]);
+  });
+
+  test("a second apply job that reads a scan with no matrix output", () => {
+    const { warnings } = merged((text) =>
+      text.replace("    outputs:\n      matrix: ${{ steps.scan.outputs.matrix }}\n", ""),
+    );
+    expect(warnings).toEqual([
+      { kind: "scan-no-matrix-output", path: PATH, job: "apply-merged", scan: "scan" },
+    ]);
+  });
+
+  test("settle that does not wait for the second apply job", () => {
+    const { warnings } = merged((text) =>
+      text.replace("needs: [scan, resolve, apply, apply-merged]", "needs: [resolve, apply]"),
+    );
+    expect(warnings).toEqual([
+      { kind: "settle-skips-apply", path: PATH, job: "settle", apply: "apply-merged" },
+    ]);
+  });
+
+  test("the second apply job is held to the same rules as the first", () => {
+    const { warnings } = merged((text) =>
+      text.replace(
+        "${{ !cancelled() && needs.scan.outputs.matrix",
+        "${{ needs.scan.outputs.matrix",
+      ),
+    );
+    expect(warnings).toEqual([
+      { kind: "no-status-check", path: PATH, job: "apply-merged", mode: "apply" },
+    ]);
   });
 });
