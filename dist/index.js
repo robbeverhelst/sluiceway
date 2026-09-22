@@ -62790,9 +62790,9 @@ function changedPaths2(comparison) {
   };
 }
 function treeChanges(base, head) {
-  const ids = (tree) => new Map(tree.filter(({ type }) => type !== "tree").map(({ path, sha }) => [path, sha]));
-  const before = ids(base);
-  const after = ids(head);
+  const ids2 = (tree) => new Map(tree.filter(({ type }) => type !== "tree").map(({ path, sha }) => [path, sha]));
+  const before = ids2(base);
+  const after = ids2(head);
   const changed = new Set;
   for (const [path, sha] of before)
     if (after.get(path) !== sha)
@@ -63720,8 +63720,8 @@ async function scanning(context3, report) {
     throw new ScanFailedError(`Every preview failed (${failed.length} of ${previewed.size}). That nearly always means the environment is broken, such as missing credentials or a backend that cannot be reached. The dashboard was written first and shows a preview failure on every row of a previewed stack, which is true: nothing can be deployed either. The job log holds what the tool printed, in the group of each stack.`);
   }
   if (context3.strict && failed.length > 0) {
-    const ids2 = failed.map(({ id }) => id).sort(byCodeUnit);
-    throw new ScanFailedError(`${plural2(failed.length, "preview")} failed (${ids2.join(", ")}), and the strict input turns the job red on any preview failure. The dashboard was written first and shows ${failed.length === 1 ? "it" : "them"}.`);
+    const ids3 = failed.map(({ id }) => id).sort(byCodeUnit);
+    throw new ScanFailedError(`${plural2(failed.length, "preview")} failed (${ids3.join(", ")}), and the strict input turns the job red on any preview failure. The dashboard was written first and shows ${failed.length === 1 ? "it" : "them"}.`);
   }
 }
 var PREVIEW_FIRST = {
