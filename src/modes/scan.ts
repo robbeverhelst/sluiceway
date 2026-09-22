@@ -20,16 +20,10 @@ import type { Attribution } from "../core/attribution.ts";
 import { sharedFiles, suggestedUnrelated } from "../core/check.ts";
 import type { Config, ConfiguredStack } from "../core/config.ts";
 import {
-  type DeployFact,
   type DeployFacts,
   deployFacts,
   lastDeployedCommit,
-  type PreviewFirstWhy,
-  pendingAgain,
   type RecordEnd,
-  rowAtLateRead,
-  standingFailure,
-  type TrailEntry,
 } from "../core/deployment.ts";
 import { diffHash } from "../core/diff-hash.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
@@ -42,16 +36,26 @@ import {
   waitingUpdates,
 } from "../core/merge-and-deploy.ts";
 import { repositoryOf, scanNotifications } from "../core/notify.ts";
-import { resolveOnItsWay, type TickAtLateRead, tickAtLateRead } from "../core/orphan-tick.ts";
-import {
-  type OutsideDeploy,
-  outsideDeploys,
-  ownRuns,
-  trailOutside,
-} from "../core/outside-deploy.ts";
+import { resolveOnItsWay, type TickAtLateRead } from "../core/orphan-tick.ts";
+import { ownRuns } from "../core/outside-deploy.ts";
 import { runPool } from "../core/pool.ts";
 import { openRepo } from "../core/repo.ts";
 import { type MatrixEntry, matrixOutput } from "../core/resolve.ts";
+import {
+  isFullScan,
+  type LateDeploys,
+  type LateWhy,
+  type Listing,
+  mergesAtLateRead,
+  NO_DEPLOYS,
+  type Placed,
+  type PreviewedStack,
+  type PreviewFirst,
+  placeRows,
+  type RowsAtLateRead,
+  type ScanSoFar,
+  type WaitingMerge,
+} from "../core/row-placement.ts";
 import {
   COMPARE_FILE_CAP,
   changedPaths,
@@ -59,7 +63,6 @@ import {
   type FullScanReason,
   fullScanReasonText,
   narrowsOn,
-  oneRowPerStack,
   type PreviewWhy,
   planScan,
   type ScanPlan,
@@ -77,7 +80,6 @@ import {
   type LiveDashboard,
   liveDashboard,
   type ScanAnswer,
-  type ScanRows,
   type Written,
   writeScan,
 } from "../github/dashboard-write.ts";
@@ -106,34 +108,13 @@ import {
   PUBLIC_LOG_DIFF,
   toolDiffLogLines,
 } from "../render/log-text.ts";
-import {
-  isDeployingState,
-  MARKER_VERSION,
-  type ParsedMerge,
-  type ParsedRow,
-  type ParsedWaiting,
-  parseDashboard,
-} from "../render/marker.ts";
-import {
-  type BranchPreview,
-  clearMergeTick,
-  mergeBlock,
-  tickedMergeBlock,
-} from "../render/merge-row.ts";
+import { isDeployingState, MARKER_VERSION, parseDashboard } from "../render/marker.ts";
+import type { BranchPreview } from "../render/merge-row.ts";
 import { renderPreviewPage } from "../render/preview-page.ts";
-import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
+import { previewOutcome, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, scanResultFile } from "../render/result-file.ts";
-import {
-  type AttributionLines,
-  byCodeUnit,
-  driftCounts,
-  type FailureLine,
-  isDestroy,
-  plural,
-  type Row,
-} from "../render/row.ts";
+import { byCodeUnit, driftCounts, plural } from "../render/row.ts";
 import { renderSummary, type UnclaimedFiles } from "../render/summary.ts";
-import { waitingBlock } from "../render/waiting-line.ts";
 import { previewBranches } from "./branch-preview.ts";
 import { readHistories } from "./outside-deploys.ts";
 import { prepareStacks } from "./prepare.ts";
@@ -207,12 +188,8 @@ export class ScanFailedError extends Error {
   }
 }
 
-interface Previewed {
+interface Previewed extends PreviewedStack {
   id: string;
-  result: PreviewResult;
-  // When the preview started. A deploy that ended after it is fresher than
-  // the preview (record 0004).
-  startedAt: Date;
   milliseconds: number;
   // The tool's own diff, for the stack's group of the job log and nothing
   // else (record 0048). Only a pending stack of a scan with `scan.logDiff` on
@@ -223,21 +200,22 @@ interface Previewed {
   drift?: DriftResult | undefined;
 }
 
-// Thrown by the builder of the body, at the late read: these stacks have to be
-// previewed before the dashboard can be written. The scan previews them and
-// returns to its late read (record 0011).
-class PreviewFirst extends Error {
-  constructor(readonly stacks: { id: string; why: LateWhy }[]) {
+// Row placement answers "preview these first" as a value (see
+// core/row-placement.ts). The builder of the write loop has no such answer, so
+// the scan throws this one out of it, previews the stacks and returns to its
+// late read (record 0011). It never leaves the scan.
+class PreviewFirstError extends Error {
+  constructor(readonly first: PreviewFirst) {
     super("More stacks have to be previewed before the dashboard can be written.");
-    this.name = "PreviewFirst";
+    this.name = "PreviewFirstError";
   }
 }
 
-// Why a stack is previewed at the late read: for its deployment records
-// (record 0004), because its row holds an orphan tick and only a fresh row
-// can carry the note (record 0025), or because a merge waits for its fresh
-// diff (record 0054).
-type LateWhy = PreviewFirstWhy | "orphan-tick" | "merged";
+// The rows of a late read, or out of the builder to preview first.
+function placed(answer: RowsAtLateRead): Extract<RowsAtLateRead, { kind: "placed" }> {
+  if (answer.kind === "preview-first") throw new PreviewFirstError(answer);
+  return answer;
+}
 
 function seconds(milliseconds: number): string {
   return `${(milliseconds / 1000).toFixed(1)} s`;
@@ -399,7 +377,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   let rounds = 0;
   // The stacks whose preparation worked in an earlier round (record 0053).
   const prepared = new Set<string>();
-  let composed: Composed | undefined;
+  let lastPlaced: Placed | undefined;
   let written: Written & DashboardResult;
   let startedFrom: string | undefined;
   // Stacks this scan previewed a second time for a deploy that ended under it.
@@ -449,188 +427,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
     // (record 0011), and at every stack the scan defers to fresher facts.
     // A full scan is a scan that previews every stack, whatever row each
     // stack then gets.
-    const full = ids.every((id) => previewed.has(id));
-    const place = (
-      live: LiveDashboard,
-      deploys: LateDeploys,
-      // A run that an issue edit started is queued or in progress.
-      waits: boolean,
-      lines: Attributed,
-      // What each deploy of the trail shipped (record 0072).
-      shipped: ReadonlyMap<TrailEntry, AttributionLines> = new Map(),
-    ): { rows: ScanRows; composed: Composed } => {
-      // Rows under a root marker that is missing or of another version are not
-      // rows this version can carry. Every stack then counts as having none,
-      // which makes the scan a full one by itself (record 0011). One row per
-      // stack: of two blocks with one stack id the first stays.
-      const liveRows: ReadonlyMap<string, ParsedRow> = live.current ? live.first : new Map();
-      const { dropped } = oneRowPerStack(ids, new Set(previewed.keys()), [...liveRows.keys()]);
-      // A tick is read whatever the version of the body: a scan that writes
-      // the body again in its own version clears the ticks it meets with the
-      // note (record 0009). Of two blocks for one stack the first counts.
-      const liveTicks = new Map<string, string | undefined>();
-      // On a read-only dashboard no row has a box, so a tick left from before
-      // the switch goes with the box, with no note and nobody asked (slice
-      // 2.17). The switch changes the config file, so this scan is full.
-      for (const [id, row] of config.dashboard.readOnly ? [] : live.first) {
-        if (row.known && row.ticked) liveTicks.set(id, row.hash);
-      }
-
-      const { merges, mergeTicks } = mergeRows(
-        listing,
-        branchPreviews,
-        live.current ? live.merges : [],
-        waits,
-        config.dashboard.redact,
-      );
-      const waiting = waitingLines(
-        listing,
-        live.current ? live.waiting : [],
-        config.dashboard.redact,
-      );
-
-      // What this scan read of the tools' histories, and for every other
-      // stack the lines the live body has (record 0073). A row's failure line
-      // stands only while none of them ended after the failure (record 0076).
-      const outside = trailOutside(
-        ids,
-        new Map(
-          [...(histories ?? [])].map(([id, history]) => [
-            id,
-            outsideDeploys(id, history, deploys.runs.get(id)),
-          ]),
-        ),
-        live.current ? live.outside : [],
-      );
-
-      const rows = new Map<string, Row>();
-      const carried = new Map<string, ParsedRow>();
-      const first: { id: string; why: LateWhy }[] = [];
-      const deploying: string[] = [];
-      const deferred: string[] = [];
-      const ticks: Composed["ticks"] = [];
-      for (const id of ids) {
-        const mine = previewed.get(id);
-        const liveRow = liveRows.get(id);
-        const fact = deploys.facts.byStack.get(id);
-        const decided = rowAtLateRead({
-          previewedAt: mine?.startedAt,
-          liveState: liveRow?.state,
-          fact,
-          settledHere: deploys.settled.has(id),
-          again: again.has(id),
-        });
-        // A stack with an open deployment gets the deploying row below, so a
-        // tick only matters on the two branches that write a box.
-        const ticked = liveTicks.has(id);
-        if (decided.row === "preview-first") first.push({ id, why: decided.why });
-        else if (decided.row === "fresh" && mine) {
-          const fresh = previewRow(
-            id,
-            mine.result,
-            links,
-            failureLine(context, id, fact, outside),
-            {
-              toolDiffInLog: logDiff,
-              pageUrl: pageUrls.get(id),
-            },
-          );
-          const row =
-            fresh.state === "pending"
-              ? {
-                  ...fresh,
-                  attribution: lines.get(id)?.lines,
-                  pendingAgain: pendingAgain(fact, fresh.hash)
-                    ? { logUrl: logDiff ? links.log : undefined }
-                    : undefined,
-                }
-              : fresh;
-          if (!ticked) {
-            rows.set(id, row);
-            continue;
-          }
-          // Only a pending or a drifted row has a box, for a tick or for the
-          // note (record 0055).
-          const box = row.state === "pending" || row.state === "drift";
-          const carry =
-            tickAtLateRead({
-              liveHash: liveTicks.get(id),
-              writes: { row: "fresh", hash: box ? row.hash : undefined },
-              resolveOnItsWay: waits,
-            }) === "carry";
-          ticks.push({ id, tick: carry ? "carry" : "sweep", box });
-          rows.set(
-            id,
-            !box ? row : carry ? { ...row, ticked: true } : { ...row, orphanTick: true },
-          );
-        } else if (
-          decided.row === "deploying" &&
-          decided.from === "record" &&
-          fact?.kind === "open"
-        ) {
-          deploying.push(id);
-          rows.set(id, {
-            state: "deploying",
-            stackId: id,
-            ticker: fact.ticker,
-            runUrl: runUrl(context.repoUrl, fact.run, fact.attempt),
-            waiting: fact.waiting,
-            destroys: destroysOf(mine, liveRow),
-            deletes: deletesOf(mine, liveRow),
-            attribution: lines.get(id)?.lines,
-            behind: fact.behind,
-          });
-        } else if (liveRow) {
-          if (ticked && decided.row === "live") {
-            const tick = tickAtLateRead({
-              liveHash: liveTicks.get(id),
-              writes: { row: "live", previewed: mine !== undefined },
-              resolveOnItsWay: waits,
-            });
-            if (tick === "preview-first") {
-              first.push({ id, why: "orphan-tick" });
-              continue;
-            }
-            ticks.push({ id, tick, box: true });
-          }
-          if (decided.row === "deploying") deploying.push(id);
-          else if (mine) deferred.push(id);
-          carried.set(id, liveRow);
-        }
-      }
-      if (first.length > 0) throw new PreviewFirst(first);
-
-      return {
-        rows: {
-          root: {
-            scanSha: context.sha,
-            scanRun: context.runId,
-            scanAt: at,
-            // Written by a full scan, carried through by every other writer.
-            fullScanAt: full ? at : live.root?.fullScanAt,
-            fullScanRun: full ? context.runId : live.root?.fullScanRun,
-          },
-          facts: deploys.facts,
-          shipped,
-          rows,
-          carried,
-          merges,
-          waiting,
-          outside,
-        },
-        composed: {
-          carried: [...carried.keys()].filter((id) => !previewed.has(id)),
-          carriedBlocks: carried.size,
-          dropped,
-          deploying,
-          deferred,
-          ticks,
-          mergeTicks,
-          resolveWaits: waits,
-          unread: deploys.facts.unread,
-        },
-      };
-    };
+    const full = isFullScan({ ids, previewed });
     const writer: DashboardWriter = {
       github: context.github,
       log,
@@ -644,9 +441,26 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
     // Only a full scan reads the tools' histories: after every preview, once,
     // and before the late read that matches them with the records (record
     // 0073).
-    if (histories === undefined && ids.length > 0 && ids.every((id) => previewed.has(id))) {
+    if (histories === undefined && ids.length > 0 && full) {
       histories = await readHistories(context, stacks, config.dashboard.recentlyDeployed);
     }
+    // What the scan has at its late read. Row placement decides every row
+    // from it and the late read, and never reads or writes itself.
+    const soFar: ScanSoFar = {
+      ids,
+      scan: { sha: context.sha, runId: context.runId, at },
+      repoUrl: context.repoUrl,
+      links,
+      logDiff,
+      readOnly: config.dashboard.readOnly,
+      redact: config.dashboard.redact,
+      listing,
+      branchPreviews,
+      previewed,
+      again,
+      pageUrls,
+      histories,
+    };
 
     let answer: ScanAnswer;
     try {
@@ -654,7 +468,14 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       // through the deployment records, which change a few lines. A body that
       // does not fit on its own fails the scan before any request.
       if (full) {
-        const alone = place(liveDashboard(""), NO_DEPLOYS, false, new Map()).rows;
+        const alone = placed(
+          placeRows(soFar, {
+            live: liveDashboard(""),
+            deploys: NO_DEPLOYS,
+            resolveWaits: false,
+            attributed: new Map(),
+          }),
+        ).rows;
         const fitted = fitScan(writer, full, alone);
         if (!fitted.fits) throw new ScanFailedError(bodyDoesNotFitMessage(fitted.size));
       }
@@ -668,11 +489,9 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         // previewed first, and then the fresh diff goes to a record of its
         // own. Once handed on, the records are read again, so the row is made
         // from the new one.
-        const waiting = mergesWaiting(deploys.facts);
-        const toPreview = waiting.filter(({ id }) => ids.includes(id) && !previewed.has(id));
-        if (toPreview.length > 0) {
-          throw new PreviewFirst(toPreview.map(({ id }) => ({ id, why: "merged" })));
-        }
+        const merges = mergesAtLateRead(soFar, deploys.facts);
+        if (merges.kind === "preview-first") throw new PreviewFirstError(merges);
+        const { waiting } = merges;
         if (waiting.length > 0) {
           const ended = await handOffMerges(context, config, stacks, previewed, waiting, handedOn);
           // Before the body, so a failed write does not lose the hand-off
@@ -682,21 +501,24 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         }
         attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
         const shipped = await attribution.ship(deploys.facts.trail);
-        const placed = place(
-          live,
-          deploys,
-          !config.dashboard.readOnly && (await resolveWaits(context, live, deploys)),
-          attributed,
-          shipped,
+        const late = placed(
+          placeRows(soFar, {
+            live,
+            deploys,
+            resolveWaits:
+              !config.dashboard.readOnly && (await resolveWaits(context, live, deploys)),
+            attributed,
+            shipped,
+          }),
         );
-        composed = placed.composed;
-        return placed.rows;
+        lastPlaced = late.placed;
+        return late.rows;
       });
     } catch (error) {
-      if (!(error instanceof PreviewFirst)) throw error;
-      const late = new Set(error.stacks.map(({ id }) => id));
+      if (!(error instanceof PreviewFirstError)) throw error;
+      const late = new Set(error.first.stacks.map(({ id }) => id));
       next = stacks.filter(({ stack }) => late.has(stackId(stack)));
-      for (const { id, why } of error.stacks) {
+      for (const { id, why } of error.first.stacks) {
         if (why === "deploy-ended") again.add(id);
         log.info(`${logGroupTitle(id)} ${PREVIEW_FIRST[why]}`);
       }
@@ -710,14 +532,14 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
     // Only a fresh row can be shortened, so a scan that carries rows previews
     // those too and can then shorten everything.
     if (full) throw new ScanFailedError(bodyDoesNotFitMessage(answer.size));
-    const why: FullScanReason = { kind: "does-not-fit", carried: composed?.carriedBlocks ?? 0 };
+    const why: FullScanReason = { kind: "does-not-fit", carried: lastPlaced?.carriedBlocks ?? 0 };
     next = stacks.filter(({ stack }) => !previewed.has(stackId(stack)));
     log.info(
       `This scan falls back to a full scan: ${fullScanReasonText(why)}. Previewing the other ${plural(next.length, "stack")} now.`,
     );
   }
 
-  reportDashboard(context, written, composed);
+  reportDashboard(context, written, lastPlaced);
   report.attributed = attributed;
   report.dashboard = {
     url: dashboardUrl(context.repoUrl, written.number),
@@ -766,29 +588,6 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   }
 }
 
-// What the late read placed on its last try, besides the rows.
-interface Composed {
-  // Stacks this scan did not preview, whose live row stays as it is.
-  carried: string[];
-  // Every live row block the scan carried, previewed or not.
-  carriedBlocks: number;
-  dropped: string[];
-  // Stacks with an open deployment.
-  deploying: string[];
-  // Previewed stacks that keep their live row, because a deploy of them ended
-  // after the preview started.
-  deferred: string[];
-  // What became of every tick the scan met on a stack with no open deployment
-  // (record 0025). `box` says whether the row it wrote has a box.
-  ticks: { id: string; tick: Exclude<TickAtLateRead, "preview-first">; box: boolean }[];
-  // The same for the ticks on updates waiting to merge (record 0054).
-  mergeTicks: { pr: number; tick: "carry" | "sweep" }[];
-  // A run that an issue edit started was queued or in progress.
-  resolveWaits: boolean;
-  // Deployment records with a payload this version cannot read.
-  unread: number;
-}
-
 const PREVIEW_FIRST: Record<LateWhy, string> = {
   "no-row": "is previewed now: the dashboard has no row for it any more.",
   "no-open-deployment": "is previewed now: its row says deploying and no deployment is open.",
@@ -797,22 +596,6 @@ const PREVIEW_FIRST: Record<LateWhy, string> = {
     "is previewed now: its row holds an orphan tick, and only a fresh row can ask for a fresh tick.",
   merged:
     "is previewed now: a pull request for it was merged, and its deploy waits for this preview.",
-};
-
-// The deploy facts of one late read (record 0003).
-interface LateDeploys {
-  facts: DeployFacts;
-  // Stacks whose open deployment this scan ended, because its run was over.
-  settled: Set<string>;
-  // The runs on the records of each stack, which tell its own deploys in the
-  // tool's history apart (record 0073).
-  runs: Map<string, Set<string>>;
-}
-
-const NO_DEPLOYS: LateDeploys = {
-  facts: { byStack: new Map(), succeeded: [], trail: [], unread: 0 },
-  settled: new Set(),
-  runs: new Map(),
 };
 
 // What attribution found, by stack id. A stack is missing when the lookup
@@ -832,46 +615,6 @@ function startingCommits(
     if (result.ok && result.diff.changes.length > 0) add(id);
   for (const [id, fact] of facts.byStack) if (fact.kind === "open") add(id);
   return from;
-}
-
-// A link to a run lands on the attempt that created the record, when the
-// record says (slice 5.9).
-// A deploy fact from the deployment record, never from the old row. It
-// stands while no deploy of the stack ended after it, outside the dashboard
-// included (record 0076).
-function failureLine(
-  context: ScanContext,
-  id: string,
-  deployFact: DeployFact | undefined,
-  outside: readonly OutsideDeploy[],
-): FailureLine | undefined {
-  const fact = standingFailure(id, deployFact, outside);
-  if (fact === undefined) return undefined;
-  return {
-    reason: fact.reason,
-    ticker: fact.ticker,
-    at: fact.at,
-    runUrl: runUrl(context.repoUrl, fact.run, fact.attempt),
-  };
-}
-
-// The header and the counts line need to know whether a deploying stack
-// destroys something (record 0027). The preview knows. Without one, the
-// marker of the row that is replaced does.
-function destroysOf(mine: Previewed | undefined, liveRow: ParsedRow | undefined): number {
-  if (mine?.result.ok) return mine.result.diff.changes.filter(isDestroy).length;
-  return liveRow?.known ? liveRow.destroys : 0;
-}
-
-// And how many of those are deletes, for the delete sign (record 0075). A
-// marker an older version wrote does not say.
-function deletesOf(
-  mine: Previewed | undefined,
-  liveRow: ParsedRow | undefined,
-): number | undefined {
-  if (mine?.result.ok)
-    return mine.result.diff.changes.filter((change) => change.op === "delete").length;
-  return liveRow?.known ? liveRow.deletes : undefined;
 }
 
 // The late read of the deployment records: bounded reads, then every open
@@ -1462,7 +1205,7 @@ const FOUND: Record<DashboardResult["found"], string> = {
 function reportDashboard(
   context: ScanContext,
   written: Written & DashboardResult,
-  composed: Composed | undefined,
+  lastPlaced: Placed | undefined,
 ): void {
   const { log } = context;
   const { shortened } = written;
@@ -1481,35 +1224,35 @@ function reportDashboard(
       `${plural(left, "more pull request")} ${left === 1 ? "qualifies" : "qualify"} and ${left === 1 ? "is" : "are"} not listed: the dashboard has no room for ${left === 1 ? "it" : "them"}. They are listed as the older ones merge.`,
     );
   }
-  if (composed && composed.carried.length > 0) {
+  if (lastPlaced && lastPlaced.carried.length > 0) {
     log.info(
-      `Carried ${plural(composed.carried.length, "row")} through as ${composed.carried.length === 1 ? "it was" : "they were"}, for the stacks this scan did not preview.`,
+      `Carried ${plural(lastPlaced.carried.length, "row")} through as ${lastPlaced.carried.length === 1 ? "it was" : "they were"}, for the stacks this scan did not preview.`,
     );
   }
-  for (const id of composed?.dropped ?? []) {
+  for (const id of lastPlaced?.dropped ?? []) {
     log.info(`Dropped the row of ${logGroupTitle(id)}: discovery knows no such stack.`);
   }
-  for (const id of composed?.deploying ?? []) {
+  for (const id of lastPlaced?.deploying ?? []) {
     log.info(
       `${logGroupTitle(id)} has an open deployment, so its row says deploying and has no box, whatever the preview says.`,
     );
   }
-  for (const id of composed?.deferred ?? []) {
+  for (const id of lastPlaced?.deferred ?? []) {
     log.info(
       `Kept the live row of ${logGroupTitle(id)}: a deploy of it ended after its preview started.`,
     );
   }
-  for (const { id, tick, box } of composed?.ticks ?? []) {
-    log.info(tickText(logGroupTitle(id), tick, box, composed?.resolveWaits ?? false));
+  for (const { id, tick, box } of lastPlaced?.ticks ?? []) {
+    log.info(tickText(logGroupTitle(id), tick, box, lastPlaced?.resolveWaits ?? false));
   }
-  for (const { pr, tick } of composed?.mergeTicks ?? []) {
+  for (const { pr, tick } of lastPlaced?.mergeTicks ?? []) {
     log.info(
       tick === "carry"
         ? `Left the tick on the merge of #${pr} alone: a run that an issue edit started is queued or in progress, and its \`resolve\` job handles every tick.`
         : `Cleared an orphan tick on the merge of #${pr}: no run that an issue edit started is queued or in progress. Tick it again to merge.`,
     );
   }
-  const unread = composed?.unread ?? 0;
+  const unread = lastPlaced?.unread ?? 0;
   if (unread > 0) {
     log.info(
       unread === 1
@@ -1544,15 +1287,6 @@ function reportDashboard(
     );
   }
 }
-
-// What the scan knows of the updates waiting to merge (record 0054): nothing
-// to list, because the setting is off or nothing could be merged or ticked
-// here; the list; or a list that could not be read, which keeps the live rows.
-// The updates waiting on their checks come with the list (record 0081).
-type Listing =
-  | { kind: "off" }
-  | { kind: "listed"; updates: WaitingUpdate[]; onChecks: WaitingUpdate[] }
-  | { kind: "failed" };
 
 // One GraphQL query, and only when mergeAndDeploy names authors. A list that
 // cannot be read never fails the scan: the updates only offer a merge, and
@@ -1622,87 +1356,6 @@ async function listUpdates(
     );
   }
   return { kind: "listed", updates, onChecks: shown };
-}
-
-// The merge rows of this scan. A tick on a live row carries over while a
-// `resolve` run is on its way and the row still shows the same pull request at
-// the same head commit, for the same stack. Otherwise it goes, as an orphan
-// tick does (record 0025).
-function mergeRows(
-  listing: Listing,
-  previews: ReadonlyMap<number, BranchPreview[]>,
-  live: readonly ParsedMerge[],
-  waits: boolean,
-  redact: boolean,
-): { merges: ParsedMerge[]; mergeTicks: Composed["mergeTicks"] } {
-  if (listing.kind === "off") return { merges: [], mergeTicks: [] };
-  if (listing.kind === "failed") return { merges: [...live], mergeTicks: [] };
-  const mergeTicks: Composed["mergeTicks"] = [];
-  const merges = listing.updates.map(({ pullRequest, stackIds }) => {
-    const block = mergeBlock(
-      {
-        pr: pullRequest.number,
-        stackIds,
-        head: pullRequest.head,
-        title: pullRequest.title,
-        author: pullRequest.author,
-        preview: previews.get(pullRequest.number),
-      },
-      { redact },
-    );
-    const ticked = live.find((one) => one.pr === block.pr);
-    if (!ticked?.ticked) return block;
-    const same =
-      ticked.head === block.head &&
-      JSON.stringify(ticked.stackIds) === JSON.stringify(block.stackIds);
-    const carry = same && waits;
-    mergeTicks.push({ pr: block.pr, tick: carry ? "carry" : "sweep" });
-    // A tick swept away gets the orphan note, as a stack's row does (record
-    // 0064).
-    return carry
-      ? tickedMergeBlock(block)
-      : clearMergeTick(tickedMergeBlock(block), { note: "orphan" });
-  });
-  return { merges, mergeTicks };
-}
-
-// The lines of the updates waiting on their checks (record 0081), drawn fresh
-// from the list, or kept as the live body has them when the list could not be
-// read. They have no box, so there is no tick to carry.
-function waitingLines(
-  listing: Listing,
-  live: readonly ParsedWaiting[],
-  redact: boolean,
-): ParsedWaiting[] {
-  if (listing.kind === "off") return [];
-  if (listing.kind === "failed") return [...live];
-  return listing.onChecks.map(({ pullRequest, stackIds }) =>
-    waitingBlock(
-      {
-        pr: pullRequest.number,
-        stackIds,
-        title: pullRequest.title,
-        author: pullRequest.author,
-      },
-      { redact },
-    ),
-  );
-}
-
-interface WaitingMerge {
-  id: string;
-  fact: Extract<DeployFact, { kind: "open" }> & { merge: number };
-}
-
-// The records `resolve` opened for a merge, which wait for this scan.
-function mergesWaiting(facts: DeployFacts): WaitingMerge[] {
-  const waiting: WaitingMerge[] = [];
-  for (const [id, fact] of facts.byStack) {
-    if (fact.kind === "open" && fact.merge !== undefined) {
-      waiting.push({ id, fact: { ...fact, merge: fact.merge } });
-    }
-  }
-  return waiting.sort((a, b) => byCodeUnit(a.id, b.id));
 }
 
 // The hand-off of record 0054. A scan of a commit that holds the merge ends
