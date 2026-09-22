@@ -54430,6 +54430,97 @@ function readEvents(stdout) {
   return events;
 }
 
+// src/adapters/pulumi/history.ts
+import { join as join26 } from "node:path";
+function historyCommand(name, limit) {
+  return [
+    "pulumi",
+    "stack",
+    "history",
+    "--json",
+    "--page-size",
+    String(limit),
+    "--non-interactive",
+    "--color",
+    "never",
+    "--stack",
+    name
+  ];
+}
+var entry2 = exports_external.object({
+  kind: exports_external.string(),
+  result: exports_external.string(),
+  endTime: exports_external.string(),
+  resourceChanges: exports_external.record(exports_external.string(), exports_external.number()).nullish(),
+  environment: exports_external.object({
+    "git.head": exports_external.string().optional(),
+    "git.dirty": exports_external.string().optional(),
+    "ci.system": exports_external.string().optional(),
+    "ci.build.id": exports_external.string().optional()
+  }).nullish()
+});
+var KINDS = { update: "deploy", destroy: "destroy" };
+var COMMIT = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
+var RUN_ID = /^[1-9]\d*$/;
+async function deployHistory(stack, options) {
+  if (stack.name === undefined)
+    throw new Error("A Pulumi stack always has a name.");
+  const result = await options.run({
+    argv: historyCommand(stack.name, options.limit),
+    cwd: join26(options.root, stack.path),
+    env: pulumiEnvironment(options.env),
+    timeoutMs: options.timeoutMinutes * 60000
+  });
+  const failed = (reason, toolLog2, detail = []) => ({ ok: false, reason, detail, toolLog: toolLog2 });
+  if (result.status === "not-started")
+    return failed({ kind: "tool-error", exitCode: null }, "");
+  const words = stripAnsi(result.stderr);
+  if (result.status === "timed-out") {
+    return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, words);
+  }
+  if (result.exitCode !== 0) {
+    return failed(result.exitCode === STACK_NOT_FOUND_EXIT_CODE ? { kind: "stack-not-found" } : { kind: "tool-error", exitCode: result.exitCode }, words);
+  }
+  const read3 = readHistory(result.stdout);
+  if (typeof read3 === "string")
+    return failed({ kind: "unreadable-output" }, words, [read3]);
+  return { ok: true, deploys: read3, toolLog: words };
+}
+function readHistory(stdout) {
+  let json2;
+  try {
+    json2 = JSON.parse(stdout);
+  } catch {
+    return "The tool's output: expected one JSON document.";
+  }
+  if (!Array.isArray(json2))
+    return "The tool's output: expected a list of updates.";
+  const deploys = [];
+  for (const [index, raw] of json2.entries()) {
+    const parsed = entry2.safeParse(raw);
+    const at = `The tool's output, at update ${index + 1}`;
+    if (!parsed.success)
+      return `${at}: expected a kind, a result and an end time.`;
+    const { kind, result, endTime, resourceChanges, environment } = parsed.data;
+    const endedAt = new Date(endTime);
+    if (Number.isNaN(endedAt.getTime()))
+      return `${at}: expected an end time.`;
+    const deployKind = Object.hasOwn(KINDS, kind) ? KINDS[kind] : undefined;
+    const changed = Object.entries(resourceChanges ?? {}).some(([op, count]) => op !== "same" && count > 0);
+    if (deployKind === undefined || result !== "succeeded" || !changed)
+      continue;
+    const sha = environment?.["git.head"] ?? "";
+    const runId = environment?.["ci.build.id"] ?? "";
+    deploys.push({
+      kind: deployKind,
+      endedAt,
+      ...COMMIT.test(sha) ? { commit: { sha, dirty: environment?.["git.dirty"] === "true" } } : {},
+      ...environment?.["ci.system"] === "GitHub Actions" && RUN_ID.test(runId) ? { runId } : {}
+    });
+  }
+  return deploys.sort((a, b) => b.endedAt.getTime() - a.endedAt.getTime());
+}
+
 // src/adapters/pulumi/references.ts
 async function readDependencies(stack, names, root, candidates) {
   const self = stackId(stack);
@@ -54467,7 +54558,7 @@ function byCodeUnit8(a, b) {
 }
 
 // src/adapters/pulumi/tool-diff.ts
-import { join as join26 } from "node:path";
+import { join as join27 } from "node:path";
 function toolDiffCommand3(name) {
   return [
     "pulumi",
@@ -54486,7 +54577,7 @@ async function toolDiff4(stack, options) {
     throw new Error("A Pulumi stack always has a name.");
   const result = await options.run({
     argv: toolDiffCommand3(stack.name),
-    cwd: join26(options.root, stack.path),
+    cwd: join27(options.root, stack.path),
     env: pulumiEnvironment(options.env),
     timeoutMs: options.timeoutMinutes * 60000
   });
@@ -54547,6 +54638,7 @@ var pulumi = {
   preview: preview4,
   toolDiff: toolDiff4,
   detectDrift,
+  deployHistory,
   apply: apply4,
   readsFiles: readsFiles2,
   findInBackend
@@ -54588,6 +54680,7 @@ var tools = {
   preview: (stack, options) => adapterOf(stack).preview(stack, options),
   toolDiff: (stack, options) => adapterOf(stack).toolDiff(stack, options),
   detectDrift: async (stack, options) => adapterOf(stack).detectDrift?.(stack, options),
+  deployHistory: async (stack, options) => adapterOf(stack).deployHistory?.(stack, options),
   apply: (stack, context3, plan, options) => adapterOf(stack).apply(stack, context3, plan, options),
   async findInBackend(stacks, context3) {
     const answers = [];
@@ -55324,7 +55417,7 @@ function toIssue(issue3) {
 
 // src/github/outputs.ts
 import { writeFileSync } from "node:fs";
-import { join as join27 } from "node:path";
+import { join as join28 } from "node:path";
 
 // src/core/claim.ts
 function inside(directory, file2) {
@@ -55450,7 +55543,7 @@ function deploymentPayload(payload) {
 function mergePayload(payload) {
   return { v: PAYLOAD_VERSION, ticker: payload.ticker, run: payload.run, merge: payload.merge };
 }
-var RUN_ID = /^[1-9]\d*$/;
+var RUN_ID2 = /^[1-9]\d*$/;
 function readDeploymentPayload(payload) {
   if (typeof payload !== "object" || payload === null)
     return;
@@ -55460,12 +55553,12 @@ function readDeploymentPayload(payload) {
   if (merge3 !== undefined) {
     const number4 = typeof merge3 === "number" && Number.isInteger(merge3) && merge3 > 0;
     const plain = hash2 === undefined && behind === undefined;
-    return number4 && plain && typeof ticker === "string" && typeof run === "string" && RUN_ID.test(run) ? { hash: "", ticker, run, merge: merge3 } : undefined;
+    return number4 && plain && typeof ticker === "string" && typeof run === "string" && RUN_ID2.test(run) ? { hash: "", ticker, run, merge: merge3 } : undefined;
   }
   if (typeof hash2 !== "string" || typeof ticker !== "string" || typeof run !== "string") {
     return;
   }
-  if (!RUN_ID.test(run))
+  if (!RUN_ID2.test(run))
     return;
   const read3 = { hash: hash2, ticker, run };
   if (drift === true)
@@ -55706,10 +55799,23 @@ function mergeMarker(facts) {
     ["head", facts.head]
   ]);
 }
+function outsideMarker(deploy) {
+  const pairs = [
+    ["stack", deploy.stackId],
+    ["kind", deploy.kind],
+    ["at", deploy.at.toISOString()]
+  ];
+  if (deploy.commit !== undefined)
+    pairs.push(["commit", deploy.commit]);
+  if (deploy.dirty)
+    pairs.push(["dirty", "true"]);
+  return marker("outside", pairs);
+}
 var PAIRS = '((?: [^\\s="]+="[^"]*")*)';
 var ROOT_LINE = new RegExp(`^<!-- sluiceway:dashboard${PAIRS} -->[ \\t]*$`);
 var ROW_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:row${PAIRS} -->[ \\t]*$`);
 var MERGE_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:merge${PAIRS} -->[ \\t]*$`);
+var OUTSIDE_LINE = new RegExp(`^- .*<!-- sluiceway:outside${PAIRS} -->[ \\t]*$`);
 var RESCAN_LINE = /^- \[[xX]\] .*<!-- sluiceway:rescan -->[ \t]*$/;
 function readPairs(payload) {
   const pairs = new Map;
@@ -55742,11 +55848,17 @@ function parseDashboard(body) {
 `);
   const rows = [];
   const merges = [];
+  const outside = [];
   let rescanTicked = false;
   for (let index = 0;index < lines.length; index++) {
     const line = lines[index] ?? "";
     if (RESCAN_LINE.test(line))
       rescanTicked = true;
+    const deploy = readOutside(line);
+    if (deploy) {
+      outside.push(deploy);
+      continue;
+    }
     const merge3 = readMerge(line);
     if (merge3) {
       let end2 = index;
@@ -55799,7 +55911,7 @@ function parseDashboard(body) {
       text: text6
     });
   }
-  return { root: readRoot(lines[0] ?? ""), rows, merges, rescanTicked };
+  return { root: readRoot(lines[0] ?? ""), rows, merges, outside, rescanTicked };
 }
 function readMerge(line) {
   const match = MERGE_LINE.exec(line);
@@ -55818,6 +55930,26 @@ function readMerge(line) {
     head,
     ticked: match[1] === "x" || match[1] === "X",
     text: line
+  };
+}
+function readOutside(line) {
+  const match = OUTSIDE_LINE.exec(line);
+  if (!match)
+    return;
+  const pairs = readPairs(match[1] ?? "");
+  const stackId2 = pairs.get("stack");
+  const kind = pairs.get("kind");
+  const at = new Date(pairs.get("at") ?? "");
+  const commit = pairs.get("commit");
+  if (stackId2 === undefined || kind !== "deploy" && kind !== "destroy" || Number.isNaN(at.getTime()) || commit !== undefined && !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit)) {
+    return;
+  }
+  return {
+    stackId: stackId2,
+    kind,
+    at,
+    ...commit === undefined ? {} : { commit },
+    ...pairs.get("dirty") === "true" ? { dirty: true } : {}
   };
 }
 
@@ -56387,6 +56519,12 @@ function recentLine(deploy, dots) {
   const dot = dots ? `${RESULT_DOT[outcome]}&nbsp;` : "";
   return `- ${dot}${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)}${result} · ${utcMinute(deploy.at)} · [run](${deploy.runUrl})`;
 }
+function outsideLine(deploy, repoUrl, dots) {
+  const dot = dots ? `${RESULT_DOT.deployed}&nbsp;` : "";
+  const verb = deploy.kind === "destroy" ? "destroyed" : "deployed";
+  const commit = deploy.commit === undefined ? "" : `, from commit [\`${deploy.commit.slice(0, 7)}\`](${repoUrl}/commit/${urlPart(deploy.commit)})${deploy.dirty ? " with uncommitted changes" : ""}`;
+  return `- ${dot}${escapeText(deploy.stackId)} · ${verb} outside the dashboard${commit} · ${utcMinute(deploy.at)} ${outsideMarker(deploy)}`;
+}
 function version2(actionRef2) {
   return /^[0-9a-f]{40,}$/.test(actionRef2) ? `\`${actionRef2.slice(0, 7)}\`` : escapeText(actionRef2);
 }
@@ -56450,9 +56588,21 @@ function renderBody(input2) {
 `), "</details>");
     }
   }
-  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit11(a.stackId, b.stackId)).slice(0, input2.recentLength ?? RECENTLY_DEPLOYED);
+  const outside = (input2.outsideDeploys ?? []).filter((deploy, index, all) => all.findIndex((one) => one.stackId === deploy.stackId && one.kind === deploy.kind && one.at.getTime() === deploy.at.getTime()) === index);
+  const recent = [
+    ...input2.recentlyDeployed.map((deploy) => ({
+      at: deploy.at,
+      stackId: deploy.stackId,
+      line: () => recentLine(deploy, input2.personality)
+    })),
+    ...outside.map((deploy) => ({
+      at: deploy.at,
+      stackId: deploy.stackId,
+      line: () => outsideLine(deploy, input2.repoUrl, input2.personality)
+    }))
+  ].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit11(a.stackId, b.stackId)).slice(0, input2.recentLength ?? RECENTLY_DEPLOYED);
   if (recent.length > 0)
-    out.push("## Recently deployed", recent.map((deploy) => recentLine(deploy, input2.personality)).join(`
+    out.push("## Recently deployed", recent.map((entry3) => entry3.line()).join(`
 `));
   out.push("---");
   if (!input2.readOnly)
@@ -56474,8 +56624,8 @@ function bodyDoesNotFitMessage(size) {
   return `The dashboard does not fit in one issue. With every pending row shortened as far as it goes the body is ${count(size)} characters, and GitHub drops a body over ${count(BODY_LIMIT)} without an error. Nothing was written and the dashboard stays as it was. It fits again with fewer stacks pending at once: deploy some, or take stacks off the dashboard with \`ignore\` in \`sluiceway.yaml\`.`;
 }
 var LEVELS = [0, 1, 2, 3];
-function sizeOf(entry2, level = entry2.level) {
-  return entry2.blocks[level]?.text.length ?? 0;
+function sizeOf(entry3, level = entry3.level) {
+  return entry3.blocks[level]?.text.length ?? 0;
 }
 function fitBody(input2, options = {}) {
   const limit = options.limit ?? BODY_LIMIT;
@@ -56490,7 +56640,7 @@ function fitBody(input2, options = {}) {
     const still = row.state === "deploying" && spinning ? rowBlock(row, plain) : undefined;
     return { stackId: blocks2[0]?.stackId ?? "", blocks: blocks2, still, level: 0 };
   });
-  const blockOf = (entry2) => !spinning && entry2.still || entry2.blocks[entry2.level] || [];
+  const blockOf = (entry3) => !spinning && entry3.still || entry3.blocks[entry3.level] || [];
   const render = () => renderBody({
     ...input2,
     rows: [...input2.carried, ...entries.flatMap(blockOf)],
@@ -56514,25 +56664,25 @@ function fitBody(input2, options = {}) {
     spinning = false;
   for (const level of LEVELS.slice(1)) {
     const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit10(a.stackId, b.stackId));
-    for (const entry2 of biggestFirst) {
+    for (const entry3 of biggestFirst) {
       if (fits())
         break;
-      if (entry2.blocks[level] && sizeOf(entry2, level) < sizeOf(entry2))
-        entry2.level = level;
+      if (entry3.blocks[level] && sizeOf(entry3, level) < sizeOf(entry3))
+        entry3.level = level;
     }
   }
   const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit10(a.stackId, b.stackId));
-  for (const entry2 of smallestFirst) {
-    const reached = entry2.level;
+  for (const entry3 of smallestFirst) {
+    const reached = entry3.level;
     for (const level of LEVELS.slice(0, reached)) {
-      entry2.level = level;
+      entry3.level = level;
       if (fits())
         break;
-      entry2.level = reached;
+      entry3.level = reached;
     }
   }
   const body = render();
-  const shortened = entries.filter((entry2) => entry2.level > 0).length;
+  const shortened = entries.filter((entry3) => entry3.level > 0).length;
   return {
     body,
     size: body.length,
@@ -56678,7 +56828,7 @@ function actionsOutputs(runnerTemp) {
       if (!runnerTemp) {
         throw new Error("RUNNER_TEMP is not set, so there is no directory for the result file");
       }
-      const path = join27(runnerTemp, resultFileName(mode));
+      const path = join28(runnerTemp, resultFileName(mode));
       writeFileSync(path, text6);
       return path;
     }
@@ -56708,18 +56858,18 @@ function writeResultFile(outputs, log, mode, text6) {
 
 // src/core/config-file.ts
 import { existsSync as existsSync3, readFileSync as readFileSync5 } from "node:fs";
-import { join as join28 } from "node:path";
+import { join as join29 } from "node:path";
 var CONFIG_FILE = "sluiceway.yaml";
 var FILE = CONFIG_FILE;
 var WRONG_FILE = "sluiceway.yml";
 function loadConfig(root) {
-  if (existsSync3(join28(root, WRONG_FILE))) {
+  if (existsSync3(join29(root, WRONG_FILE))) {
     throw new ConfigError([`found ${WRONG_FILE}. The file must be named ${FILE}. Rename it.`]);
   }
-  return parseConfig(read3(join28(root, FILE)));
+  return parseConfig(read3(join29(root, FILE)));
 }
 function hasConfigFile(root) {
-  return existsSync3(join28(root, FILE));
+  return existsSync3(join29(root, FILE));
 }
 function read3(file2) {
   try {
@@ -58052,7 +58202,8 @@ async function swapRow(context3, setup, id, make) {
       personality: setup.config.dashboard.personality,
       readOnly: setup.config.dashboard.readOnly,
       ignored: setup.ignored,
-      merges: live.merges
+      merges: live.merges,
+      outsideDeploys: live.outside
     }, { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
     if (!fitted.fits) {
       throw new Error(`With this row swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment record holds the result, and the next scan brings the row in line.`);
@@ -58116,7 +58267,7 @@ function checkSetup(config2, found, files, references = new Map) {
   const reads = readsOf(claimants, files, new Set(unclaimed), references);
   return {
     stacks,
-    ignore: config2.ignore.map((entry2) => ignoreReport(ignoreGlob(entry2), found)),
+    ignore: config2.ignore.map((entry3) => ignoreReport(ignoreGlob(entry3), found)),
     unclaimed: groups(unclaimed),
     suggested: suggestedUnrelated(unclaimed),
     phases: phaseGroups(config2.phases, new Map(stacks.flatMap((one) => one.phase === undefined ? [] : [[stackId(one.stack), one.phase]]))),
@@ -58192,20 +58343,20 @@ function byCodeUnit14(a, b) {
 
 // src/core/repo-files.ts
 import { readdir as readdir3 } from "node:fs/promises";
-import { join as join29 } from "node:path";
+import { join as join30 } from "node:path";
 var SKIPPED2 = new Set([".git", "node_modules"]);
 async function repoFiles(root) {
   const files = [];
   const walk2 = async (relative5) => {
-    const entries = await readdir3(join29(root, ...relative5), { withFileTypes: true });
-    for (const entry2 of entries) {
-      if (entry2.name === ".git")
+    const entries = await readdir3(join30(root, ...relative5), { withFileTypes: true });
+    for (const entry3 of entries) {
+      if (entry3.name === ".git")
         continue;
-      if (entry2.isDirectory()) {
-        if (!SKIPPED2.has(entry2.name))
-          await walk2([...relative5, entry2.name]);
+      if (entry3.isDirectory()) {
+        if (!SKIPPED2.has(entry3.name))
+          await walk2([...relative5, entry3.name]);
       } else {
-        files.push([...relative5, entry2.name].join("/"));
+        files.push([...relative5, entry3.name].join("/"));
       }
     }
   };
@@ -58215,18 +58366,18 @@ async function repoFiles(root) {
 
 // src/core/workflow-check.ts
 import { readdirSync as readdirSync3, readFileSync as readFileSync7 } from "node:fs";
-import { join as join30 } from "node:path";
+import { join as join31 } from "node:path";
 var WORKFLOW_DIRECTORY = ".github/workflows";
 function readWorkflowFiles(root) {
   let names;
   try {
-    names = readdirSync3(join30(root, WORKFLOW_DIRECTORY), { withFileTypes: true }).filter((entry2) => entry2.isFile() && /\.ya?ml$/.test(entry2.name)).map((entry2) => entry2.name);
+    names = readdirSync3(join31(root, WORKFLOW_DIRECTORY), { withFileTypes: true }).filter((entry3) => entry3.isFile() && /\.ya?ml$/.test(entry3.name)).map((entry3) => entry3.name);
   } catch {
     return [];
   }
   return names.sort(byCodeUnit15).map((name) => ({
     path: `${WORKFLOW_DIRECTORY}/${name}`,
-    text: readFileSync7(join30(root, WORKFLOW_DIRECTORY, name), "utf8")
+    text: readFileSync7(join31(root, WORKFLOW_DIRECTORY, name), "utf8")
   }));
 }
 var MODES = ["scan", "resolve", "apply", "settle", "check", "init"];
@@ -58586,8 +58737,8 @@ function listed3(words) {
 function ignoreText({ glob, stacks }) {
   return `ignore ${JSON.stringify(glob)} leaves out ${plural2(stacks.length, "stack")}: ${stacks.join(", ")}.`;
 }
-function unmatchedText(entry2) {
-  return `ignore ${JSON.stringify(entry2.glob)} matches no stack. ${unmatchedWhy(entry2)}`;
+function unmatchedText(entry3) {
+  return `ignore ${JSON.stringify(entry3.glob)} matches no stack. ${unmatchedWhy(entry3)}`;
 }
 function unmatchedWhy({ hint }) {
   const why = "It is matched against the stack id, not the directory.";
@@ -58642,9 +58793,9 @@ function couldNotAskText(check2) {
 function ignoreBlock(existing, stackIds) {
   return [
     "ignore:",
-    ...existing.flatMap((entry2) => typeof entry2 === "string" ? [`  - ${JSON.stringify(entry2)}`] : [
-      `  - glob: ${JSON.stringify(entry2.glob)}`,
-      `    reason: ${JSON.stringify(entry2.reason)}`
+    ...existing.flatMap((entry3) => typeof entry3 === "string" ? [`  - ${JSON.stringify(entry3)}`] : [
+      `  - glob: ${JSON.stringify(entry3.glob)}`,
+      `    reason: ${JSON.stringify(entry3.reason)}`
     ]),
     ...stackIds.map((id) => `  - ${JSON.stringify(globOf(id))}`)
   ];
@@ -58811,9 +58962,9 @@ function renderCheckSummary({
     parts.push("### Ignore", [
       "| Glob | Leaves out |",
       "|---|---|",
-      ...report.ignore.map((entry2) => row([
-        entry2.glob,
-        entry2.stacks.length > 0 ? entry2.stacks.join(", ") : `No stack. ${unmatchedWhy(entry2)}`
+      ...report.ignore.map((entry3) => row([
+        entry3.glob,
+        entry3.stacks.length > 0 ? entry3.stacks.join(", ") : `No stack. ${unmatchedWhy(entry3)}`
       ]))
     ].join(`
 `));
@@ -58925,11 +59076,11 @@ async function check2(context3) {
   }
   if (report.phases.length > 0)
     log.group("Phases", phaseLines(report.phases).map(line));
-  for (const entry2 of report.ignore) {
-    if (entry2.stacks.length > 0)
-      log.info(line(ignoreText(entry2)));
+  for (const entry3 of report.ignore) {
+    if (entry3.stacks.length > 0)
+      log.info(line(ignoreText(entry3)));
     else
-      log.warning(line(unmatchedText(entry2)), "An ignore glob matches no stack");
+      log.warning(line(unmatchedText(entry3)), "An ignore glob matches no stack");
   }
   const unclaimed = report.unclaimed.flatMap((group) => group.files);
   if (unclaimed.length > 0) {
@@ -59044,7 +59195,7 @@ async function runCheck(makeBackend) {
 
 // src/modes/init.ts
 import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync8, statSync as statSync4, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname2, join as join31 } from "node:path";
+import { dirname as dirname2, join as join32 } from "node:path";
 
 // src/adapters/init-findings.ts
 import { posix } from "node:path";
@@ -59632,7 +59783,7 @@ function quotedIfNeeded(text6) {
 // src/modes/init.ts
 async function init(context3) {
   const { root, log } = context3;
-  if (!existsSync4(join31(root, ".git")))
+  if (!existsSync4(join32(root, ".git")))
     throw new Error(NOT_A_REPO_ROOT);
   const configKept = hasConfigFile(root);
   const existing = loadConfig(root);
@@ -59643,7 +59794,7 @@ async function init(context3) {
   const files = await repoFiles(root);
   const read4 = (file2) => {
     try {
-      return readFileSync8(join31(root, file2), "utf8");
+      return readFileSync8(join32(root, file2), "utf8");
     } catch {
       return;
     }
@@ -59717,16 +59868,16 @@ function nearest(directory, paths) {
   return paths.reduce((best, path) => shared(path) > shared(best) ? path : best);
 }
 function exists2(root, file2) {
-  return existsSync4(join31(root, file2));
+  return existsSync4(join32(root, file2));
 }
 function write(root, file2, text6) {
-  mkdirSync(dirname2(join31(root, file2)), { recursive: true });
-  writeFileSync2(join31(root, file2), text6, { flag: "wx" });
+  mkdirSync(dirname2(join32(root, file2)), { recursive: true });
+  writeFileSync2(join32(root, file2), text6, { flag: "wx" });
 }
 function defaultBranch(root) {
-  const file2 = join31(root, ".git", "refs", "remotes", "origin", "HEAD");
+  const file2 = join32(root, ".git", "refs", "remotes", "origin", "HEAD");
   try {
-    if (!statSync4(join31(root, ".git")).isDirectory())
+    if (!statSync4(join32(root, ".git")).isDirectory())
       return;
     const match = /^ref: refs\/remotes\/origin\/(\S+)\s*$/.exec(readFileSync8(file2, "utf8"));
     return match?.[1];
@@ -59780,7 +59931,7 @@ function readWorkflowRef(env) {
 
 // src/modes/resolve.ts
 import { readFileSync as readFileSync9 } from "node:fs";
-import { join as join32 } from "node:path";
+import { join as join33 } from "node:path";
 
 // src/core/edit-history.ts
 var HISTORY_CAP = 100;
@@ -59833,20 +59984,20 @@ async function nameTickers(ticks, readPage) {
   while (open2()) {
     const page = await readPage(after);
     capped ||= page.total >= HISTORY_CAP;
-    for (const [position, entry2] of page.entries.entries()) {
+    for (const [position, entry3] of page.entries.entries()) {
       if (!open2())
         break;
       const last = page.next === undefined && position === page.entries.length - 1;
       if (capped && last)
         break;
-      const dashboard = entry2.body ? parseDashboard(entry2.body) : undefined;
+      const dashboard = entry3.body ? parseDashboard(entry3.body) : undefined;
       ticks.forEach((tick, index) => {
         if (answers[index] !== undefined)
           return;
         if (dashboard === undefined) {
           answers[index] = { named: false, reason: "entry-without-body" };
         } else if (holds(dashboard, tick)) {
-          oldest[index] = entry2;
+          oldest[index] = entry3;
         } else {
           const made = oldest[index];
           answers[index] = made ? { named: true, editor: made.editor, editedAt: made.editedAt } : { named: false, reason: "not-in-newest-entry" };
@@ -60659,7 +60810,7 @@ async function renovateStrategyOf(context3) {
   const [owner = "", repo = ""] = new URL(context3.repoUrl).pathname.split("/").filter(Boolean);
   const setting = await renovateMergeSetting((path) => {
     try {
-      return readFileSync9(join32(context3.root, path), "utf8");
+      return readFileSync9(join33(context3.root, path), "utf8");
     } catch {
       return;
     }
@@ -60813,7 +60964,7 @@ function workflowText(context3) {
   if (!context3.workflow)
     return "";
   try {
-    return readFileSync9(join32(context3.root, WORKFLOW_DIRECTORY, context3.workflow.file), "utf8");
+    return readFileSync9(join33(context3.root, WORKFLOW_DIRECTORY, context3.workflow.file), "utf8");
   } catch {
     return "";
   }
@@ -60953,7 +61104,8 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
     personality: config2.dashboard.personality,
     readOnly: config2.dashboard.readOnly,
     ignored,
-    merges
+    merges,
+    outsideDeploys: live.outside
   }, { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
   if (!fitted.fits) {
     throw new Error(`With these rows swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment records hold what was started, and the next scan brings the rows in line.`);
@@ -61107,6 +61259,37 @@ function tickAtLateRead(row2) {
   return row2.resolveOnItsWay && sameTick ? "carry" : "sweep";
 }
 
+// src/core/outside-deploy.ts
+function ownRuns(records) {
+  const runs = new Map;
+  for (const record3 of records) {
+    const stackId2 = taskStackId(record3.task);
+    const payload = readDeploymentPayload(record3.payload);
+    if (stackId2 === undefined || payload === undefined)
+      continue;
+    const set2 = runs.get(stackId2) ?? new Set;
+    set2.add(payload.run);
+    runs.set(stackId2, set2);
+  }
+  return runs;
+}
+function outsideDeploys(stackId2, history, own2) {
+  return history.filter((deploy2) => deploy2.runId === undefined || !own2?.has(deploy2.runId)).map((deploy2) => ({
+    stackId: stackId2,
+    kind: deploy2.kind,
+    at: deploy2.endedAt,
+    ...deploy2.commit ? { commit: deploy2.commit.sha } : {},
+    ...deploy2.commit?.dirty ? { dirty: true } : {}
+  }));
+}
+function trailOutside(stackIds, read4, live) {
+  const stacks = new Set(stackIds);
+  return [
+    ...live.filter((deploy2) => stacks.has(deploy2.stackId) && !read4.has(deploy2.stackId)),
+    ...[...read4.entries()].filter(([id]) => stacks.has(id)).flatMap(([, deploys]) => deploys)
+  ].sort((a, b) => b.at.getTime() - a.at.getTime() || (a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0));
+}
+
 // src/core/pool.ts
 async function runPool(items, size, work) {
   if (!Number.isInteger(size) || size < 1) {
@@ -61132,7 +61315,7 @@ async function runPool(items, size, work) {
 
 // src/core/scan-plan.ts
 var COMPARE_FILE_CAP = 300;
-var COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+var COMMIT2 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 function narrowsOn(event, afterMerge = []) {
   return event === "push" || event === "workflow_dispatch" && afterMerge.length > 0;
 }
@@ -61146,7 +61329,7 @@ function comparisonBase(event, dashboard, markerVersion, afterMerge = []) {
     return { kind: "no-root-marker" };
   if (root.version !== markerVersion)
     return { kind: "other-version", version: root.version };
-  if (root.scanSha === undefined || !COMMIT.test(root.scanSha))
+  if (root.scanSha === undefined || !COMMIT2.test(root.scanSha))
     return { kind: "no-scan-sha" };
   return { kind: "compare", from: root.scanSha };
 }
@@ -61475,31 +61658,31 @@ function note(shortened, pending, options) {
   return `> **This summary is shortened: ${shortened} of ${plural2(pending, "pending stack")} ${shows} whole diff.** Every diff is in full in the ${jobLog2(options)} of this run, in the group that has the stack id as its title. Deletes and replaces are cut last.`;
 }
 function fitToBudget(entries, frameCost, budget) {
-  let blocks2 = entries.reduce((sum, entry2) => sum + (entry2.costs[0] ?? 0), 0);
+  let blocks2 = entries.reduce((sum, entry3) => sum + (entry3.costs[0] ?? 0), 0);
   let shortened = 0;
-  const move = (entry2, level) => {
-    blocks2 += (entry2.costs[level] ?? 0) - (entry2.costs[entry2.level] ?? 0);
-    shortened += Number(level > 0) - Number(entry2.level > 0);
-    entry2.level = level;
+  const move = (entry3, level) => {
+    blocks2 += (entry3.costs[level] ?? 0) - (entry3.costs[entry3.level] ?? 0);
+    shortened += Number(level > 0) - Number(entry3.level > 0);
+    entry3.level = level;
   };
   const fits = () => frameCost(shortened) + blocks2 - 1 <= budget;
   const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit10(a.stackId, b.stackId);
   for (const level of LEVELS2.slice(1)) {
-    for (const entry2 of [...entries].sort(bySize((entry3) => entry3.level, -1))) {
+    for (const entry3 of [...entries].sort(bySize((entry4) => entry4.level, -1))) {
       if (fits())
         break;
-      move(entry2, level);
+      move(entry3, level);
     }
   }
   if (!fits())
     return;
-  for (const entry2 of [...entries].sort(bySize(() => 0, 1))) {
-    const reached = entry2.level;
+  for (const entry3 of [...entries].sort(bySize(() => 0, 1))) {
+    const reached = entry3.level;
     for (const level of LEVELS2.slice(0, reached)) {
-      move(entry2, level);
+      move(entry3, level);
       if (fits())
         break;
-      move(entry2, reached);
+      move(entry3, reached);
     }
   }
 }
@@ -61577,10 +61760,10 @@ function renderSummary(stacks, options = {}) {
   });
   const tailCost = cost(tail);
   fitToBudget(entries, (shortened2) => cost(frame(shortened2)) + tailCost, options.budget ?? SUMMARY_BUDGET);
-  const shortened = entries.filter((entry2) => entry2.level > 0).length;
+  const shortened = entries.filter((entry3) => entry3.level > 0).length;
   const text6 = `${[
     ...frame(shortened),
-    ...entries.flatMap((entry2) => entry2.parts[entry2.level] ?? []),
+    ...entries.flatMap((entry3) => entry3.parts[entry3.level] ?? []),
     ...tail
   ].join(`
 
@@ -61593,7 +61776,7 @@ function renderSummary(stacks, options = {}) {
 // src/modes/branch-preview.ts
 import { cp, mkdir as mkdir2, mkdtemp as mkdtemp3, realpath, rm as rm4, writeFile as writeFile3 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
-import { basename, dirname as dirname3, join as join33, resolve as resolve2, sep as sep6 } from "node:path";
+import { basename, dirname as dirname3, join as join34, resolve as resolve2, sep as sep6 } from "node:path";
 async function previewBranches(context3, stacks, updates) {
   const { log } = context3;
   const previews = new Map;
@@ -61613,7 +61796,7 @@ async function previewOne(context3, number4, head, files, stacks) {
     log.info(`#${number4} could not be previewed: ${why2}`);
     return stacks.map(({ stack }) => ({ stackId: stackId(stack) }));
   };
-  const copy = await mkdtemp3(join33(context3.env.RUNNER_TEMP || tmpdir3(), "sluiceway-branch-"));
+  const copy = await mkdtemp3(join34(context3.env.RUNNER_TEMP || tmpdir3(), "sluiceway-branch-"));
   try {
     await cp(context3.root, copy, {
       recursive: true,
@@ -61669,6 +61852,54 @@ async function previewOne(context3, number4, head, files, stacks) {
   }
 }
 
+// src/modes/outside-deploys.ts
+function lines3(text6) {
+  return text6.split(`
+`).filter((line3) => line3.trim() !== "");
+}
+async function readHistories(context3, stacks, limit) {
+  const read4 = new Map;
+  const { adapter, log } = context3;
+  if (limit === 0 || stacks.length === 0 || adapter.deployHistory === undefined)
+    return read4;
+  const history = adapter.deployHistory.bind(adapter);
+  const cannot = [];
+  await runPool(stacks, context3.concurrency, async (configured) => {
+    const id = stackId(configured.stack);
+    const result = await history(configured.stack, {
+      root: context3.root,
+      env: context3.env,
+      run: context3.run,
+      timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
+      limit
+    });
+    if (result === undefined) {
+      cannot.push(id);
+      return;
+    }
+    if (result.ok) {
+      read4.set(id, result.deploys);
+      return;
+    }
+    const words = lines3(result.toolLog);
+    log.group(`${logGroupTitle(id)}, its history`, [
+      `history not read: ${previewFailureText(result.reason)}`,
+      ...result.detail,
+      ...words.length > 0 ? ["The tool's own words:", ...words] : []
+    ]);
+    log.warning(`The history of ${logGroupTitle(id)} could not be read: ${previewFailureText(result.reason)}. Its deploys made outside the dashboard stay as the dashboard listed them.`, "History not read");
+  });
+  const deploys = [...read4.values()].reduce((sum, one) => sum + one.length, 0);
+  if (read4.size > 0) {
+    log.info(`Read the history of ${read4.size} ${read4.size === 1 ? "stack" : "stacks"}: ${deploys} ${deploys === 1 ? "deploy" : "deploys"} among the newest ${limit} entries of each.`);
+  }
+  if (cannot.length > 0) {
+    cannot.sort();
+    log.info(`${cannot.length} ${cannot.length === 1 ? "stack was" : "stacks were"} not read for deploys made outside the dashboard: their tool keeps no history of its deploys (record 0073). ${cannot.map(logGroupTitle).join(", ")}.`);
+  }
+  return read4;
+}
+
 // src/modes/scan.ts
 class ScanFailedError extends Error {
   constructor(message3) {
@@ -61693,7 +61924,7 @@ function seconds2(milliseconds) {
 function minutes(count3) {
   return plural2(count3, "minute");
 }
-function lines3(text6) {
+function lines4(text6) {
   const all = text6.split(/\r?\n/);
   if (all.at(-1) === "")
     all.pop();
@@ -61794,6 +62025,7 @@ async function scanning(context3, report) {
   let composed;
   let written;
   const again = new Set;
+  let histories;
   for (;; ) {
     if (next.length > 0 && !versionChecked) {
       await checkVersion5(context3, stacks.map(({ stack }) => stack));
@@ -61814,7 +62046,7 @@ async function scanning(context3, report) {
       label: config2.dashboard.label,
       logDiff
     });
-    const compose = (liveBody, deploys, waits, lines4) => {
+    const compose = (liveBody, deploys, waits, lines5) => {
       const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
       const liveRows = new Map;
       if (live?.root?.version === MARKER_VERSION) {
@@ -61860,7 +62092,7 @@ async function scanning(context3, report) {
           });
           const row2 = fresh.state === "pending" ? {
             ...fresh,
-            attribution: lines4.get(id)?.lines,
+            attribution: lines5.get(id)?.lines,
             pendingAgain: pendingAgain(fact, fresh.hash) ? { logUrl: logDiff ? links.log : undefined } : undefined
           } : fresh;
           if (!ticked) {
@@ -61884,7 +62116,7 @@ async function scanning(context3, report) {
             runUrl: runUrlOf(context3, fact.run),
             waiting: fact.waiting,
             destroys: destroysOf(mine, liveRow),
-            attribution: lines4.get(id)?.lines,
+            attribution: lines5.get(id)?.lines,
             behind: fact.behind
           });
         } else if (liveRow) {
@@ -61935,7 +62167,11 @@ async function scanning(context3, report) {
         personality: config2.dashboard.personality,
         readOnly: config2.dashboard.readOnly,
         ignored,
-        merges
+        merges,
+        outsideDeploys: trailOutside(ids, new Map([...histories ?? []].map(([id, history]) => [
+          id,
+          outsideDeploys(id, history, deploys.runs.get(id))
+        ])), live?.root?.version === MARKER_VERSION ? live.outside : [])
       }, full ? context3.limits?.body : { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
       if (!fitted.fits) {
         if (full)
@@ -61957,6 +62193,9 @@ async function scanning(context3, report) {
         mergesLeftOut: fitted.mergesLeftOut
       };
     };
+    if (histories === undefined && ids.length > 0 && ids.every((id) => previewed.has(id))) {
+      histories = await readHistories(context3, stacks, config2.dashboard.recentlyDeployed);
+    }
     try {
       if (previewed.size === ids.length)
         compose(undefined, NO_DEPLOYS, false, new Map);
@@ -62019,7 +62258,8 @@ var PREVIEW_FIRST = {
 };
 var NO_DEPLOYS = {
   facts: { byStack: new Map, succeeded: [], trail: [], unread: 0 },
-  settled: new Set
+  settled: new Set,
+  runs: new Map
 };
 function startingCommits(facts, previewed) {
   const from = new Map;
@@ -62065,7 +62305,11 @@ async function lateDeploys(context3, stacks, previewed, liveBody) {
       const fact = before.get(id);
       log.info(`Ended the open deployment of ${logGroupTitle(id)}: run ${fact?.kind === "open" ? fact.run : ""} is over and never reported a result.`);
     }
-    return { facts: deployFacts(settled.records), settled: new Set(settled.stackIds) };
+    return {
+      facts: deployFacts(settled.records),
+      settled: new Set(settled.stackIds),
+      runs: ownRuns(settled.records)
+    };
   } catch (error63) {
     throw new Error(`The deployment records could not be read: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permissions \`deployments: write\` and \`actions: read\` next to \`contents: read\` and \`issues: write\` (record 0003).`);
   }
@@ -62167,7 +62411,7 @@ async function checkVersion5(context3, stacks) {
     await context3.adapter.checkVersion({ root: context3.root, env: context3.env, run: context3.run }, stacks);
   } catch (error63) {
     if (error63 instanceof ToolVersionError && error63.toolLog !== "") {
-      context3.log.group("The tool's own words", lines3(error63.toolLog));
+      context3.log.group("The tool's own words", lines4(error63.toolLog));
     }
     throw error63;
   }
@@ -62259,7 +62503,7 @@ function readDependenciesText(id, read4) {
 function logResults(context3, previewed) {
   const { log } = context3;
   for (const { id, result, toolDiff: toolDiff5, drift } of previewed) {
-    const words = lines3(result.toolLog + (toolDiff5?.toolLog ?? "") + (drift?.toolLog ?? ""));
+    const words = lines4(result.toolLog + (toolDiff5?.toolLog ?? "") + (drift?.toolLog ?? ""));
     const own2 = [
       ...result.ok ? diffLogLines(result.diff) : [`preview failed: ${previewFailureText(result.reason)}`, ...result.detail],
       ...drift !== undefined && !drift.ok ? [`drift check failed: ${previewFailureText(drift.reason)}`, ...drift.detail] : [],
@@ -62267,7 +62511,7 @@ function logResults(context3, previewed) {
       ...words.length > 0 ? ["The tool's own words:", ...words] : []
     ];
     if (toolDiff5?.ok)
-      log.group(logGroupTitle(id), own2, lines3(toolDiff5.text));
+      log.group(logGroupTitle(id), own2, lines4(toolDiff5.text));
     else
       log.group(logGroupTitle(id), own2);
   }
