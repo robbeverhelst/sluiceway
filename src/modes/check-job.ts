@@ -2,7 +2,7 @@
 // process runner and no GitHub port (record 0042): the check takes no token,
 // and a test proves this file cannot reach the code that builds either.
 
-import { tools } from "../adapters/tools.ts";
+import { discoverAll } from "../adapters/discover-all.ts";
 import { actionsLog } from "../github/job-log.ts";
 import { check } from "./check.ts";
 
@@ -15,8 +15,9 @@ export async function runCheck(): Promise<void> {
   }
   await check({
     root,
-    // Of every tool the check uses discovery and nothing else (record 0053).
-    adapter: tools,
+    // Of every tool the check uses discovery and nothing else (records 0042
+    // and 0053).
+    adapter: { discover: discoverAll },
     log: actionsLog(),
   });
 }
