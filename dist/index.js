@@ -51386,6 +51386,7 @@ function encodeIds(ids) {
 function decodeIds(value) {
   return value.split(",").map(decodeMarkerValue);
 }
+var BULK_SECTIONS = ["pending", "drift"];
 var ROW_CLOSE_MARKER = "<!-- /sluiceway:row -->";
 var RESCAN_MARKER = "<!-- sluiceway:rescan -->";
 function marker(kind, pairs) {
@@ -51442,6 +51443,24 @@ function waitingMarker(facts) {
     ["stack", encodeIds(facts.stackIds)]
   ]);
 }
+function bulkMarker(facts) {
+  const pairs = [["section", facts.section]];
+  if (facts.kind === "confirm") {
+    pairs.push(["confirm", facts.by], ["stacks", encodeIds(facts.stacks.map(({ stackId }) => stackId))], ["hashes", facts.stacks.map(({ hash: hash2 }) => hash2).join(",")], ["scan-run", facts.scanRun]);
+  } else if (facts.note) {
+    pairs.push(["note", facts.note.kind]);
+    if (facts.note.kind === "changed") {
+      const { added, gone, moved } = facts.note;
+      if (added.length > 0)
+        pairs.push(["added", encodeIds(added)]);
+      if (gone.length > 0)
+        pairs.push(["gone", encodeIds(gone)]);
+      if (moved.length > 0)
+        pairs.push(["moved", encodeIds(moved)]);
+    }
+  }
+  return marker("bulk", pairs);
+}
 function outsideMarker(deploy) {
   const pairs = [
     ["stack", deploy.stackId],
@@ -51460,6 +51479,7 @@ var ROW_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:row${PAIRS} --
 var MERGE_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:merge${PAIRS} -->[ \\t]*$`);
 var WAITING_LINE = new RegExp(`^- .*<!-- sluiceway:waiting${PAIRS} -->[ \\t]*$`);
 var OUTSIDE_LINE = new RegExp(`^- .*<!-- sluiceway:outside${PAIRS} -->[ \\t]*$`);
+var BULK_LINE = new RegExp(`^- \\[([ xX])\\] .*<!-- sluiceway:bulk${PAIRS} -->[ \\t]*$`);
 var RESCAN_LINE = /^- \[[xX]\] .*<!-- sluiceway:rescan -->[ \t]*$/;
 function readPairs(payload) {
   const pairs = new Map;
@@ -51494,6 +51514,7 @@ function parseDashboard(body) {
   const merges = [];
   const waiting = [];
   const outside = [];
+  const bulk = [];
   let rescanTicked = false;
   for (let index = 0;index < lines.length; index++) {
     const line = lines[index] ?? "";
@@ -51502,6 +51523,16 @@ function parseDashboard(body) {
     const deploy = readOutside(line);
     if (deploy) {
       outside.push(deploy);
+      continue;
+    }
+    const box = readBulk(line);
+    if (box) {
+      let end2 = index;
+      while (/^ {2}\S/.test(lines[end2 + 1] ?? ""))
+        end2++;
+      bulk.push({ ...box, text: lines.slice(index, end2 + 1).join(`
+`) });
+      index = end2;
       continue;
     }
     const waits = readWaiting(line);
@@ -51564,7 +51595,7 @@ function parseDashboard(body) {
       text
     });
   }
-  return { root: readRoot(lines[0] ?? ""), rows, merges, waiting, outside, rescanTicked };
+  return { root: readRoot(lines[0] ?? ""), rows, merges, waiting, outside, bulk, rescanTicked };
 }
 function readMerge(line) {
   const match = MERGE_LINE.exec(line);
@@ -51583,6 +51614,49 @@ function readMerge(line) {
     head,
     ticked: match[1] === "x" || match[1] === "X",
     text: line
+  };
+}
+function isBulkSection(section) {
+  return BULK_SECTIONS.includes(section);
+}
+function readIds(pairs, key) {
+  const value = pairs.get(key) ?? "";
+  return value === "" ? [] : decodeIds(value);
+}
+function readBulk(line) {
+  const match = BULK_LINE.exec(line);
+  if (!match)
+    return;
+  const pairs = readPairs(match[2] ?? "");
+  const section = pairs.get("section");
+  if (!isBulkSection(section))
+    return;
+  const ticked = match[1] === "x" || match[1] === "X";
+  const by = pairs.get("confirm");
+  if (by === undefined) {
+    const note = pairs.get("note");
+    if (note === "orphan" || note === "expired") {
+      return { kind: "box", section, note: { kind: note }, ticked };
+    }
+    if (note === "changed") {
+      const [added = [], gone = [], moved = []] = ["added", "gone", "moved"].map((key) => readIds(pairs, key));
+      return { kind: "box", section, note: { kind: "changed", added, gone, moved }, ticked };
+    }
+    return { kind: "box", section, ticked };
+  }
+  const ids = readIds(pairs, "stacks");
+  const hashes = (pairs.get("hashes") ?? "").split(",");
+  const scanRun = pairs.get("scan-run") ?? "";
+  if (by === "" || scanRun === "" || ids.length === 0 || hashes.length !== ids.length || hashes.some((hash2) => hash2 === "")) {
+    return;
+  }
+  return {
+    kind: "confirm",
+    section,
+    by,
+    stacks: ids.map((stackId, index) => ({ stackId, hash: hashes[index] ?? "" })),
+    scanRun,
+    ticked
   };
 }
 function readWaiting(line) {
@@ -57745,6 +57819,182 @@ function mergeMethod(allowed, strategy) {
   return candidates.find((method) => allowed[method] !== false);
 }
 
+// src/core/bulk.ts
+var BULK_MIN_ROWS = 2;
+function byCodeUnit13(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function bulkRows(rows, section) {
+  const seen = new Set;
+  const found = [];
+  for (const row of rows) {
+    if (seen.has(row.stackId))
+      continue;
+    seen.add(row.stackId);
+    if (row.known && row.state === section && row.hash !== undefined) {
+      found.push({ stackId: row.stackId, hash: row.hash });
+    }
+  }
+  return found.sort((a, b) => byCodeUnit13(a.stackId, b.stackId));
+}
+function sectionChanges(named, now) {
+  const before = new Map(named.map(({ stackId: stackId2, hash: hash2 }) => [stackId2, hash2]));
+  const after = new Map(now.map(({ stackId: stackId2, hash: hash2 }) => [stackId2, hash2]));
+  const added = [...after.keys()].filter((id) => !before.has(id)).sort(byCodeUnit13);
+  const gone = [...before.keys()].filter((id) => !after.has(id)).sort(byCodeUnit13);
+  const moved = [...after].filter(([id, hash2]) => before.has(id) && before.get(id) !== hash2).map(([id]) => id).sort(byCodeUnit13);
+  return added.length + gone.length + moved.length === 0 ? undefined : { added, gone, moved };
+}
+function holdsBulkTick(live, tick) {
+  if (!live?.ticked || live.section !== tick.section)
+    return false;
+  if (tick.kind === "bulk")
+    return live.kind === "box";
+  return live.kind === "confirm" && sectionChanges(live.stacks, tick.stacks) === undefined;
+}
+function drawBulk(input2) {
+  const { section, rows, live, act, scan } = input2;
+  if (!input2.on || rows.length < BULK_MIN_ROWS)
+    return;
+  const box = (ticked, note) => ({
+    kind: "box",
+    section,
+    count: rows.length,
+    ticked,
+    ...note ? { note } : {}
+  });
+  if (act && holdsBulkTick(live, act.tick)) {
+    if (act.outcome === "confirm") {
+      return {
+        kind: "confirm",
+        section,
+        by: act.by,
+        stacks: [...rows],
+        scanRun: act.scanRun,
+        ticked: false
+      };
+    }
+    return box(false, act.outcome === "clear" ? act.note : undefined);
+  }
+  if (live?.kind === "confirm") {
+    const changes = sectionChanges(live.stacks, rows);
+    if (changes)
+      return box(false, { kind: "changed", ...changes });
+    const { text: _, ...facts } = live;
+    if (scan) {
+      if (live.ticked)
+        return scan.resolveOnItsWay ? facts : box(false, { kind: "orphan" });
+      if (live.scanRun !== scan.liveScanRun)
+        return box(false, { kind: "expired" });
+    }
+    return facts;
+  }
+  if (live?.kind === "box") {
+    if (scan) {
+      if (!live.ticked)
+        return box(false);
+      return scan.resolveOnItsWay ? box(true) : box(false, { kind: "orphan" });
+    }
+    return box(live.ticked, live.note);
+  }
+  return box(false);
+}
+function sectionBulk(state, rows, section) {
+  return drawBulk({
+    section,
+    rows: bulkRows(rows, section),
+    on: state.on,
+    live: state.live.find((line) => line.section === section),
+    act: state.acts?.find(({ tick }) => tick.section === section),
+    scan: state.scan
+  });
+}
+
+// src/render/bulk-box.ts
+var NAMES_IN_A_BULK_LINE = 10;
+var WORDS = {
+  pending: { verb: "deploy", rows: "pending", left: "is not pending any more" },
+  drift: { verb: "repair", rows: "drifted", left: "is not drifted any more" }
+};
+function stacks(count) {
+  return count === 1 ? "1 stack" : `${count} stacks`;
+}
+function named(ids) {
+  const shown3 = ids.slice(0, NAMES_IN_A_BULK_LINE).map((id) => `**${escapeText(id)}**`);
+  const rest = ids.length - shown3.length;
+  return rest > 0 ? `${shown3.join(", ")} and ${rest} more` : shown3.join(", ");
+}
+function clause(ids, one, many) {
+  return `${named(ids)} ${ids.length === 1 ? one : many}`;
+}
+function noteText(section, note) {
+  if (note.kind === "orphan") {
+    return ":information_source: a tick on this box was not picked up. Tick again to ask once more.";
+  }
+  if (note.kind === "expired") {
+    return ":information_source: the confirm box was not ticked before the next scan, so it was taken back. Tick again for a fresh one.";
+  }
+  const left = WORDS[section].left;
+  const parts = [
+    ...note.added.length > 0 ? [clause(note.added, "is new", "are new")] : [],
+    ...note.gone.length > 0 ? [clause(note.gone, left, left.replace(/^is/, "are"))] : [],
+    ...note.moved.length > 0 ? [clause(note.moved, "has a new diff", "have a new diff")] : []
+  ];
+  const what = parts.length > 0 ? `: ${parts.join(", ")}` : "";
+  return `:information_source: the rows changed before the confirm box was ticked${what}. Tick again to confirm the stacks as they are now.`;
+}
+var CONFIRM_HINT = "Ticking this deploys each stack as its row shows it, in dependency order. A change to these rows first takes it back.";
+function renderBulkLine(line) {
+  const box = line.ticked ? "- [x] " : "- [ ] ";
+  const words = WORDS[line.section];
+  if (line.kind === "box") {
+    const first = `${box}${words.verb === "deploy" ? "Deploy" : "Repair"} all ${stacks(line.count).replace(/stacks?$/, `${words.rows} $&`)} ${bulkMarker(line)}`;
+    return line.note ? `${first}
+  ${noteText(line.section, line.note)}` : first;
+  }
+  const ids = line.stacks.map(({ stackId: stackId2 }) => stackId2);
+  const count = stacks(ids.length).replace(/stacks?$/, `${words.rows} $&`);
+  return [
+    `${box}**Confirm:** ${words.verb} all ${count}: ${named(ids)} · asked by ${escapeText(line.by)} ${bulkMarker(line)}`,
+    `  ${CONFIRM_HINT}`
+  ].join(`
+`);
+}
+function bulkName(kind, section) {
+  if (kind === "confirm")
+    return `the confirm box of the ${WORDS[section].rows} stacks`;
+  return `the box that ${WORDS[section].verb}s all ${WORDS[section].rows} stacks`;
+}
+function changedText(note, section) {
+  const say = (ids, one) => ids.length === 0 ? [] : [
+    `${ids.join(", ")} ${ids.length === 1 ? one : one.replace(/^is|^has/, (w) => w === "is" ? "are" : "have")}`
+  ];
+  return [
+    ...say(note.added, "is new"),
+    ...say(note.gone, WORDS[section].left),
+    ...say(note.moved, "has a new diff")
+  ].join(", ");
+}
+function bulkSweepText(live, written) {
+  const lines = [];
+  for (const section of ["pending", "drift"]) {
+    const before = live.find((line) => line.section === section);
+    if (!before)
+      continue;
+    const after = written.find((line) => line.section === section);
+    const name = bulkName(before.kind, section);
+    if (before.ticked && after?.ticked) {
+      lines.push(`Left the tick on ${name} alone: a run that an issue edit started is queued or in progress, and its \`resolve\` job handles every tick.`);
+    } else if (after?.kind === "box" && after.note?.kind === "orphan" && before.ticked) {
+      lines.push(`Cleared an orphan tick on ${name}: no run that an issue edit started is queued or in progress. Tick it again to ask once more.`);
+    } else if (before.kind === "confirm" && after?.kind !== "confirm") {
+      const why = after?.kind === "box" && after.note?.kind === "changed" ? `its rows changed (${changedText(after.note, section)})` : after?.kind === "box" && after.note?.kind === "expired" ? "nobody ticked it before this scan" : "the section has fewer than two rows now, and each has its own box";
+      lines.push(`Took back ${name}: ${why}.`);
+    }
+  }
+  return lines;
+}
+
 // src/render/dashboard-facts.ts
 var MAX_CRATES = 20;
 function headerStateOf(total, known, facts, failed2) {
@@ -57925,7 +58175,7 @@ var WARM = {
   firstRun: "The channel is dry. Add a stack to `sluiceway.yaml` and the next scan fills it."
 };
 var DRY = {
-  goodNews: (stacks) => `Nothing to deploy. ${stacks === 1 ? "1 stack is" : `All ${stacks} stacks are`} in sync.`,
+  goodNews: (stacks2) => `Nothing to deploy. ${stacks2 === 1 ? "1 stack is" : `All ${stacks2} stacks are`} in sync.`,
   firstRun: "No stacks found yet. Add one to `sluiceway.yaml` and the next scan lists it here."
 };
 var NOTHING_TO_DEPLOY = "Nothing to deploy.";
@@ -57973,7 +58223,7 @@ function signed(state, signs) {
   const subject = state === "pending" ? "some" : "some changes";
   return { suffix, fact: suffix === "" ? "" : `, ${subject} ${verb} resources` };
 }
-function byCodeUnit13(a, b) {
+function byCodeUnit14(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function plural3(count, word) {
@@ -58075,7 +58325,7 @@ ${INDENT}${short ? deploy.shipped.counted : deploy.shipped.full}` : "";
   return `- ${dot}${escapeText(deploy.stackId)}${result} · ${escapeText(deploy.ticker)} · ${trailMinute(deploy.at, year)} · [run](${deploy.runUrl})${shipped}`;
 }
 function newestTrail(deploys, length) {
-  return [...deploys].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit13(a.stackId, b.stackId)).slice(0, length ?? RECENTLY_DEPLOYED);
+  return [...deploys].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit14(a.stackId, b.stackId)).slice(0, length ?? RECENTLY_DEPLOYED);
 }
 function outsideLine(deploy, repoUrl, dots, year) {
   const dot = dots ? `${RESULT_DOT.deployed}&nbsp;` : "";
@@ -58125,14 +58375,19 @@ function renderBody(input2) {
     out.push(facts.alert);
   if (pending.length > 0)
     out.push(blocks(pending));
+  const bulk = (section) => {
+    const line = input2.bulk && sectionBulk(input2.bulk, input2.rows, section);
+    return line ? [renderBulkLine(line)] : [];
+  };
+  out.push(...bulk("pending"));
   const drifted = facts.drift;
   if (drifted.length > 0)
-    out.push("## Drifted", DRIFTED_LINE, blocks(drifted));
+    out.push("## Drifted", DRIFTED_LINE, blocks(drifted), ...bulk("drift"));
   const { previewFailed } = facts;
   if (previewFailed.length > 0)
     out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
   const { inSync } = facts;
-  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit13(a.stackId, b.stackId));
+  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit14(a.stackId, b.stackId));
   if (inSync.length > 0 || ignored.length > 0) {
     const loud = inSync.filter((row) => row.failed);
     const quiet = inSync.filter((row) => !row.failed);
@@ -58453,28 +58708,28 @@ var DOT = {
   failed: RESULT_DOT.failed,
   refused: RESULT_DOT.refused
 };
-function names(stacks) {
-  const named = stacks.slice(0, NAMES_IN_A_NOTIFICATION).join(", ");
-  const rest = stacks.length - NAMES_IN_A_NOTIFICATION;
-  return rest > 0 ? `${named} and ${rest} more` : named;
+function names(stacks2) {
+  const named2 = stacks2.slice(0, NAMES_IN_A_NOTIFICATION).join(", ");
+  const rest = stacks2.length - NAMES_IN_A_NOTIFICATION;
+  return rest > 0 ? `${named2} and ${rest} more` : named2;
 }
 function sentence(n, id) {
-  const { stacks } = n;
-  const one = stacks.length === 1 ? id(stacks[0] ?? "") : undefined;
-  const all = () => names(stacks.map(id));
+  const { stacks: stacks2 } = n;
+  const one = stacks2.length === 1 ? id(stacks2[0] ?? "") : undefined;
+  const all = () => names(stacks2.map(id));
   switch (n.event) {
     case "pending":
-      return one ? `${one} is pending` : `${stacks.length} stacks are pending: ${all()}`;
+      return one ? `${one} is pending` : `${stacks2.length} stacks are pending: ${all()}`;
     case "drift":
-      return one ? `drift found on ${one}` : `drift found on ${stacks.length} stacks: ${all()}`;
+      return one ? `drift found on ${one}` : `drift found on ${stacks2.length} stacks: ${all()}`;
     case "deployed":
       return `${one ?? all()} deployed`;
     case "failed":
-      return stacks.length === 0 ? "a deploy failed" : `${one ?? all()} failed to deploy`;
+      return stacks2.length === 0 ? "a deploy failed" : `${one ?? all()} failed to deploy`;
     case "refused":
-      if (stacks.length === 0)
+      if (stacks2.length === 0)
         return "a tick was refused, nothing was deployed";
-      return one ? `the tick on ${one} was refused, nothing was deployed` : `the ticks on ${stacks.length} stacks were refused, nothing was deployed: ${all()}`;
+      return one ? `the tick on ${one} was refused, nothing was deployed` : `the ticks on ${stacks2.length} stacks were refused, nothing was deployed: ${all()}`;
   }
 }
 function links(n) {
@@ -58592,18 +58847,18 @@ function stepNotifier(getInput2, log, mask) {
 
 // src/core/diff-hash.ts
 import { createHash as createHash4 } from "node:crypto";
-function byCodeUnit14(a, b) {
+function byCodeUnit15(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function sortedSet3(keys4) {
-  return [...new Set(keys4)].sort(byCodeUnit14);
+  return [...new Set(keys4)].sort(byCodeUnit15);
 }
 function canonicalJson(value) {
   if (typeof value === "string")
     return JSON.stringify(value);
   if (Array.isArray(value))
     return `[${value.map(canonicalJson).join(",")}]`;
-  const members2 = Object.keys(value).sort(byCodeUnit14).flatMap((key) => {
+  const members2 = Object.keys(value).sort(byCodeUnit15).flatMap((key) => {
     const member = value[key];
     return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
   });
@@ -58625,14 +58880,14 @@ function canonicalChange(change3) {
 function canonicalValues(values2) {
   if (values2 === undefined || values2.length === 0)
     return;
-  return [...values2].sort((a, b) => byCodeUnit14(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
+  return [...values2].sort((a, b) => byCodeUnit15(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
 }
 function canonicalDiff(diff2) {
   const drift = diff2.drift === undefined || diff2.drift.length === 0 ? "" : `"drift":[${canonicalChanges(diff2.drift).join(",")}],`;
   return `{"changes":[${canonicalChanges(diff2.changes).join(",")}],${drift}"stackId":${JSON.stringify(diff2.stackId)}}`;
 }
 function canonicalChanges(changes) {
-  return changes.map((change3) => ({ address: change3.address, text: canonicalJson(canonicalChange(change3)) })).sort((a, b) => byCodeUnit14(a.address, b.address) || byCodeUnit14(a.text, b.text)).map((change3) => change3.text);
+  return changes.map((change3) => ({ address: change3.address, text: canonicalJson(canonicalChange(change3)) })).sort((a, b) => byCodeUnit15(a.address, b.address) || byCodeUnit15(a.text, b.text)).map((change3) => change3.text);
 }
 function diffHash(diff2) {
   return createHash4("sha256").update(canonicalDiff(diff2), "utf8").digest("hex").slice(0, 16);
@@ -59034,7 +59289,7 @@ function read2(file2) {
 // src/core/repo.ts
 function openRepo(root, discovery) {
   let read3;
-  let stacks;
+  let stacks2;
   const config2 = () => {
     if (read3 === undefined) {
       try {
@@ -59052,19 +59307,19 @@ function openRepo(root, discovery) {
     const found = await discovery.discover(root, loaded);
     const ignored = ignoredStacks(loaded, found);
     return {
-      stacks: applyConfig(loaded, found).sort((a, b) => byCodeUnit15(stackId(a.stack), stackId(b.stack))),
+      stacks: applyConfig(loaded, found).sort((a, b) => byCodeUnit16(stackId(a.stack), stackId(b.stack))),
       ignored
     };
   };
   return {
     config: config2,
     stacks: () => {
-      stacks ??= load();
-      return stacks;
+      stacks2 ??= load();
+      return stacks2;
     }
   };
 }
-function byCodeUnit15(a, b) {
+function byCodeUnit16(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -59320,7 +59575,7 @@ function json2(value) {
 `;
 }
 function scanResultFile(input2) {
-  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? {
+  const stacks2 = [...input2.stacks].sort((a, b) => byCodeUnit(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? {
     stack: stack.diff.stackId,
     seconds: seconds(milliseconds),
     ...diffOf(stack.diff),
@@ -59340,7 +59595,7 @@ function scanResultFile(input2) {
     commit: input2.commit,
     seconds: seconds(input2.milliseconds),
     dashboard: dashboard ? { url: dashboard.url, changed: dashboard.changed, ...dashboard.counts } : null,
-    stacks
+    stacks: stacks2
   }));
 }
 function previewOf(preview5) {
@@ -59394,7 +59649,8 @@ async function swapRows(writer, issue3, rows) {
       shipped: mine.shipped,
       merges: mine.merges ?? live.merges,
       waiting: mine.waiting ?? live.waiting,
-      outside: mine.outside ?? live.outside
+      outside: mine.outside ?? live.outside,
+      bulk: { live: live.bulk, ...mine.bulk }
     }, false));
     last = drawn;
     return drawn.body;
@@ -59423,7 +59679,8 @@ function fitScan(writer, full, mine) {
     shipped: mine.shipped,
     merges: mine.merges,
     waiting: mine.waiting,
-    outside: mine.outside
+    outside: mine.outside,
+    bulk: { live: [], ...mine.bulk }
   }, full);
 }
 function liveDashboard(body) {
@@ -59474,7 +59731,8 @@ function fit(writer, body, aimAtTarget) {
     ignored: writer.ignored,
     merges: body.merges,
     waiting: body.waiting,
-    outsideDeploys: body.outside
+    outsideDeploys: body.outside,
+    bulk: { ...body.bulk, on: writer.deploys && !dashboard.readOnly }
   }, aimAtTarget ? writer.budget : { ...writer.budget, target: Number.POSITIVE_INFINITY });
 }
 function counted(last) {
@@ -59511,11 +59769,11 @@ async function doesItFit(write) {
 }
 
 // src/core/dependencies.ts
-function byCodeUnit16(a, b) {
+function byCodeUnit17(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function planDeploys(input2) {
-  const ids2 = [...new Set(input2.allowed)].sort(byCodeUnit16);
+  const ids2 = [...new Set(input2.allowed)].sort(byCodeUnit17);
   const going = new Set(ids2);
   const refused = new Map;
   for (let changed = true;changed; ) {
@@ -59526,7 +59784,7 @@ function planDeploys(input2) {
       const waitingOn = (input2.dependsOn.get(id) ?? []).filter((dependency) => !input2.open.has(dependency) && !going.has(dependency) && (input2.pending.has(dependency) || refused.has(dependency)));
       if (waitingOn.length === 0)
         continue;
-      refused.set(id, [...waitingOn].sort(byCodeUnit16));
+      refused.set(id, [...waitingOn].sort(byCodeUnit17));
       going.delete(id);
       changed = true;
     }
@@ -59536,7 +59794,7 @@ function planDeploys(input2) {
   for (const id of ids2) {
     if (refused.has(id))
       continue;
-    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit16);
+    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit17);
     if (behind.length === 0)
       start.push(id);
     else
@@ -59582,11 +59840,11 @@ function withReadDependencies(input2) {
     return walk3(from);
   };
   const dropped = [];
-  for (const id of [...input2.auto].sort(byCodeUnit16)) {
+  for (const id of [...input2.auto].sort(byCodeUnit17)) {
     const list = dependsOn.get(id);
     if (list === undefined)
       continue;
-    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit16)) {
+    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit17)) {
       if (dependency === id || !dependsOn.has(dependency) || list.includes(dependency))
         continue;
       if (reaches(dependency, id))
@@ -59594,7 +59852,7 @@ function withReadDependencies(input2) {
       else
         list.push(dependency);
     }
-    list.sort(byCodeUnit16);
+    list.sort(byCodeUnit17);
   }
   return { dependsOn, dropped };
 }
@@ -59631,8 +59889,8 @@ async function readDeploymentRecords(github, environments, fallBack) {
   if (more.size === 0)
     return records;
   const onAPage = new Set(records.map(({ task }) => task));
-  const stacks = typeof fallBack === "function" ? await fallBack() : fallBack;
-  for (const { stackId: stackId2, environment } of stacks) {
+  const stacks2 = typeof fallBack === "function" ? await fallBack() : fallBack;
+  for (const { stackId: stackId2, environment } of stacks2) {
     const task = deploymentTask(stackId2);
     if (!more.has(environment) || onAPage.has(task))
       continue;
@@ -60002,13 +60260,13 @@ function previewOutcome(result) {
 }
 
 // src/modes/prepare.ts
-async function prepareStacks(context3, stacks, defaultTimeoutMinutes) {
+async function prepareStacks(context3, stacks2, defaultTimeoutMinutes) {
   const failed3 = new Map;
-  if (stacks.length === 0 || context3.adapter.prepare === undefined)
+  if (stacks2.length === 0 || context3.adapter.prepare === undefined)
     return failed3;
-  const timeouts = new Map(stacks.map((one) => [stackId(one.stack), one.previewTimeout ?? defaultTimeoutMinutes]));
+  const timeouts = new Map(stacks2.map((one) => [stackId(one.stack), one.previewTimeout ?? defaultTimeoutMinutes]));
   const tool = { root: context3.root, env: context3.env, run: context3.run };
-  for (const preparation of context3.adapter.prepare(stacks.map(({ stack }) => stack))) {
+  for (const preparation of context3.adapter.prepare(stacks2.map(({ stack }) => stack))) {
     const ids2 = preparation.stacks.map(stackId);
     const timeoutMinutes = Math.max(...ids2.map((id) => timeouts.get(id) ?? defaultTimeoutMinutes));
     const result = await preparation.run({ ...tool, timeoutMinutes });
@@ -60242,8 +60500,8 @@ async function deploy(context3, repo, id, payload, runUrl2, progress) {
       const reason = { kind: "deploys-off" };
       return { end: { kind: "failed", reason }, failed: notDeployed(reason) };
     }
-    const { stacks, ignored } = await repo.stacks();
-    const stack = stacks.find((one) => stackId(one.stack) === id);
+    const { stacks: stacks2, ignored } = await repo.stacks();
+    const stack = stacks2.find((one) => stackId(one.stack) === id);
     if (!stack) {
       const reason = { kind: "unknown-stack" };
       return {
@@ -60253,11 +60511,11 @@ async function deploy(context3, repo, id, payload, runUrl2, progress) {
     }
     setup = {
       config: config2,
-      stacks,
+      stacks: stacks2,
       stack,
       ignored,
       attribution: attributionSource(context3.github, {
-        stacks: stacks.map((one) => ({
+        stacks: stacks2.map((one) => ({
           id: stackId(one.stack),
           path: one.stack.path,
           inputs: one.inputs
@@ -60486,6 +60744,7 @@ async function swapRow(context3, setup, id, make) {
     repoUrl: context3.repoUrl,
     actionRef: context3.actionRef,
     dashboard: setup.config.dashboard,
+    deploys: setup.config.deploys,
     ignored: setup.ignored,
     budget: context3.limits?.body
   }, dashboard.number, async (live) => {
@@ -60590,6 +60849,9 @@ var HISTORY_PAGE_SIZE = 10;
 function holds(dashboard, tick) {
   if (tick.kind === "rescan")
     return dashboard.rescanTicked;
+  if (tick.kind === "bulk" || tick.kind === "confirm") {
+    return holdsBulkTick(dashboard.bulk.find((line) => line.section === tick.section), tick);
+  }
   if (tick.kind === "merge") {
     const merge3 = dashboard.merges.find((candidate) => candidate.pr === tick.pr);
     return merge3?.ticked === true && merge3.head === tick.head && JSON.stringify(merge3.stackIds) === JSON.stringify(tick.stackIds);
@@ -60621,6 +60883,15 @@ function ticksIn(body) {
     merged.add(pr);
     if (ticked)
       ticks.push({ kind: "merge", pr, stackIds, head });
+  }
+  const sections = new Set;
+  for (const line of dashboard.bulk) {
+    if (sections.has(line.section))
+      continue;
+    sections.add(line.section);
+    if (!line.ticked)
+      continue;
+    ticks.push(line.kind === "box" ? { kind: "bulk", section: line.section } : { kind: "confirm", section: line.section, stacks: line.stacks });
   }
   if (dashboard.rescanTicked)
     ticks.push({ kind: "rescan" });
@@ -61000,7 +61271,7 @@ function readWorkflowFiles(root) {
   } catch {
     return [];
   }
-  return names2.sort(byCodeUnit17).map((name) => ({
+  return names2.sort(byCodeUnit18).map((name) => ({
     path: `${WORKFLOW_DIRECTORY}/${name}`,
     text: readFileSync7(join30(root, WORKFLOW_DIRECTORY, name), "utf8")
   }));
@@ -61112,10 +61383,10 @@ function sluicewayJob(job, steps, auto) {
     if (ref === undefined)
       continue;
     const written = isRecord2(step3.with) ? String(step3.with.mode ?? "").trim() : "";
-    const named = written === "" ? "auto" : written;
-    const mode = isMode(named) ? named : undefined;
+    const named2 = written === "" ? "auto" : written;
+    const mode = isMode(named2) ? named2 : undefined;
     const runs = mode === undefined ? [] : mode === "auto" ? auto : [mode];
-    return { job, mode, runs, ref, refKind: refKind(ref), named };
+    return { job, mode, runs, ref, refKind: refKind(ref), named: named2 };
   }
   return;
 }
@@ -61312,7 +61583,7 @@ function listensToEdits(issues, present3) {
   const types = issues.types;
   return Array.isArray(types) ? types.includes("edited") : types === "edited";
 }
-function byCodeUnit17(a, b) {
+function byCodeUnit18(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -61333,13 +61604,18 @@ function judgeTick(rule, login, permission) {
 
 // src/render/refused-ticks.ts
 var NAMES_IN_A_REFUSAL = 10;
-function what(target2) {
+function what(target2, via) {
   if (target2.kind === "rescan")
     return "the rescan box";
+  if (target2.kind === "bulk")
+    return bulkName("box", target2.section);
+  if (target2.kind === "stack" && via) {
+    return `**${escapeText(target2.stackId)}** through ${bulkName("confirm", via)}`;
+  }
   if (target2.kind === "stack")
     return `**${escapeText(target2.stackId)}**`;
-  const stacks = target2.stackIds.map((id) => `**${escapeText(id)}**`).join(" and ");
-  return `the merge of #${target2.pr} for ${stacks}`;
+  const stacks2 = target2.stackIds.map((id) => `**${escapeText(id)}**`).join(" and ");
+  return `the merge of #${target2.pr} for ${stacks2}`;
 }
 function sentence2(text6) {
   const trimmed = escapeText(text6).trim();
@@ -61365,19 +61641,19 @@ function why({ target: target2, reason, detail, waitsOn }) {
   if (reason === "unverified") {
     return "The tick could not be verified, because the permission lookup failed. Tick the box again for a fresh try.";
   }
-  if (reason === "no-write-access" || target2.kind === "rescan") {
+  if (reason === "no-write-access" || target2.kind === "rescan" || target2.kind === "bulk") {
     return "The tick was refused: ticking needs write access to this repository.";
   }
   if (typeof target2.rule === "string") {
     return `The tick was refused: the tick rule of this stack is \`${target2.rule}\`, which takes ${target2.rule} access to this repository.`;
   }
-  const named = target2.rule.slice(0, NAMES_IN_A_REFUSAL).map(escapeText).join(", ");
+  const named2 = target2.rule.slice(0, NAMES_IN_A_REFUSAL).map(escapeText).join(", ");
   const rest = target2.rule.length - NAMES_IN_A_REFUSAL;
-  const names2 = rest > 0 ? `${named} and ${rest} more in sluiceway.yaml` : named;
+  const names2 = rest > 0 ? `${named2} and ${rest} more in sluiceway.yaml` : named2;
   return `The tick was refused: the tick rule of this stack names who can tick it: ${names2}.`;
 }
 function line(refused) {
-  return `@${refused.login} ticked ${what(refused.target)}. ${why(refused)}`;
+  return `@${refused.login} ticked ${what(refused.target, refused.via)}. ${why(refused)}`;
 }
 function refusedTicksComment(refused) {
   const [only, ...others] = refused;
@@ -61426,7 +61702,7 @@ async function judgeTicks(github, ticks, { pauseMs = PAUSE_MS } = {}) {
       outcomes.push({ tick, outcome: "refused", reason: "no-account" });
       continue;
     }
-    const rule = tick.target.kind === "rescan" ? "write" : tick.target.rule;
+    const rule = tick.target.kind === "rescan" || tick.target.kind === "bulk" ? "write" : tick.target.rule;
     const verdict = judgeTick(rule, login, lookup.permission);
     outcomes.push(verdict.allowed ? { tick, outcome: "allowed" } : { tick, outcome: "refused", reason: verdict.reason });
   }
@@ -61447,7 +61723,8 @@ function refusedTicks(outcomes, merges = []) {
       {
         target: outcome.tick.target,
         login: outcome.tick.editor.login,
-        reason: outcome.outcome === "refused" ? outcome.reason : "unverified"
+        reason: outcome.outcome === "refused" ? outcome.reason : "unverified",
+        ...outcome.tick.via ? { via: outcome.tick.via } : {}
       }
     ];
   });
@@ -61457,7 +61734,7 @@ function refusedTicks(outcomes, merges = []) {
 // src/render/clear-tick.ts
 var TICKED_BOX = /^- \[[xX]\] /;
 function clearTick(row, options = {}) {
-  if (!row.known || !row.ticked)
+  if (!row.known || !row.ticked && !(options.unticked && options.note))
     return row;
   const [first = "", ...rest] = row.text.split(`
 `);
@@ -61552,9 +61829,9 @@ async function resolveTicks(context3, handOn, report) {
   }
   const config2 = repo.config();
   report.acting = true;
-  let stacks;
+  let stacks2;
   let ignored = [];
-  let named = [];
+  let named2 = [];
   let liveRows = [];
   for (let reads = 1;; reads++) {
     const first = await github.readEditHistory(issue3.number, {
@@ -61580,32 +61857,35 @@ async function resolveTicks(context3, handOn, report) {
       log.info("No box is ticked. Nothing to do.");
       return;
     }
-    if (!stacks)
-      ({ stacks, ignored } = byId(await repo.stacks()));
+    if (!stacks2)
+      ({ stacks: stacks2, ignored } = byId(await repo.stacks()));
     const known = ticks.filter((tick) => {
-      if (tick.kind === "rescan")
+      if (tick.kind !== "row" && tick.kind !== "merge")
         return true;
-      const unknown2 = (tick.kind === "merge" ? tick.stackIds : [tick.stackId]).filter((id) => !stacks?.has(id));
+      const unknown2 = (tick.kind === "merge" ? tick.stackIds : [tick.stackId]).filter((id) => !stacks2?.has(id));
       if (unknown2.length === 0)
         return true;
       log.info(`${tick.kind === "merge" ? `${tickName(tick)} is ticked, and discovery knows no stack ${unknown2.map(logGroupTitle).join(" or ")}` : `${logGroupTitle(tick.stackId)} is ticked, and discovery knows no such stack`}. Left alone.`);
       return false;
     });
     const tickers3 = await nameTickers(known, (after) => after === undefined ? Promise.resolve(first) : github.readEditHistory(issue3.number, { size: HISTORY_PAGE_SIZE, after }));
-    named = known.flatMap((tick, index) => {
+    named2 = known.flatMap((tick, index) => {
       const ticker = tickers3[index];
       return ticker ? [{ tick, ticker }] : [];
     });
-    const moved = named.some(({ ticker }) => !ticker.named && ticker.reason === "not-in-newest-entry");
+    const moved = named2.some(({ ticker }) => !ticker.named && ticker.reason === "not-in-newest-entry");
     if (!moved || reads === MAX_READS)
       break;
     log.info("The body moved between the read and the walk. Reading again.");
   }
-  if (stacks)
-    stacks = withRowDependencies(context3, stacks, liveRows);
+  if (stacks2)
+    stacks2 = withRowDependencies(context3, stacks2, liveRows);
+  const bulk = handOnConfirms(context3, config2, named2, liveRows, stacks2);
+  named2 = bulk.named;
+  const bulkActs = [...bulk.acts];
   const hashes = new Map;
   const drifted = new Set;
-  for (const { tick } of named) {
+  for (const { tick } of named2) {
     if (tick.kind !== "row")
       continue;
     hashes.set(tick.stackId, tick.hash);
@@ -61613,24 +61893,39 @@ async function resolveTicks(context3, handOn, report) {
       drifted.add(tick.stackId);
   }
   const mergeTicks = new Map;
-  for (const { tick } of named)
+  for (const { tick } of named2)
     if (tick.kind === "merge")
       mergeTicks.set(tick.pr, tick);
   const tickedIds = new Set([
     ...hashes.keys(),
     ...[...mergeTicks.values()].flatMap((one) => one.stackIds)
   ]);
-  const ticked = [...tickedIds].flatMap((id) => stacks?.get(id) ?? []);
-  const dependencies = ticked.flatMap(({ dependsOn }) => (dependsOn ?? []).flatMap((id) => stacks?.get(id) ?? []));
+  const ticked = [...tickedIds].flatMap((id) => stacks2?.get(id) ?? []);
+  const dependencies = ticked.flatMap(({ dependsOn }) => (dependsOn ?? []).flatMap((id) => stacks2?.get(id) ?? []));
   const open2 = await openDeployments(context3, [...ticked, ...dependencies]);
   const dropped = [];
   const clear = new Map;
   const clearMerges = new Map;
   const toJudge = [];
   let rescanHandled = false;
-  for (const { tick, ticker } of named) {
+  for (const { tick, ticker, via } of named2) {
     const name = tickName(tick);
-    const fact = tick.kind === "rescan" ? undefined : tick.kind === "merge" ? tick.stackIds.map((id) => open2.get(id)).find((one) => one !== undefined) : open2.get(tick.stackId);
+    const fact = tick.kind === "row" ? open2.get(tick.stackId) : tick.kind === "merge" ? tick.stackIds.map((id) => open2.get(id)).find((one) => one !== undefined) : undefined;
+    if (tick.kind === "bulk" || tick.kind === "confirm") {
+      const section = tick.section;
+      if (!config2.deploys) {
+        log.info(`${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). The box goes.`);
+        bulkActs.push({ tick, outcome: "clear" });
+      } else if (ticker.named) {
+        toJudge.push({ target: { kind: "bulk", section }, editor: ticker.editor });
+      } else if (ticker.reason === "not-in-newest-entry") {
+        log.info(`${name} is ticked in a body that kept moving. Left for the run that edit woke.`);
+      } else {
+        log.info(`${name} is ticked and the edit history names nobody for it (${NOBODY[ticker.reason]}). The box is cleared.`);
+        bulkActs.push({ tick, outcome: "clear", note: { kind: "orphan" } });
+      }
+      continue;
+    }
     if (tick.kind === "merge" && (fact || !config2.deploys)) {
       log.info(fact ? `${name} is ticked, and the stack already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. Nothing is merged and the box is cleared. Tick it again once that deploy is over.` : `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). Nothing is merged and the box is cleared.`);
       clearMerges.set(tick.pr, fact ? "deploying" : "deploys-off");
@@ -61642,7 +61937,7 @@ async function resolveTicks(context3, handOn, report) {
       clear.set(tick.stackId, { hash: tick.hash, note: "deploys-off" });
     } else if (ticker.named && tick.kind === "merge") {
       for (const id of tick.stackIds) {
-        const stack = stacks?.get(id);
+        const stack = stacks2?.get(id);
         if (!stack)
           continue;
         toJudge.push({
@@ -61651,10 +61946,11 @@ async function resolveTicks(context3, handOn, report) {
         });
       }
     } else if (ticker.named) {
-      const stack = tick.kind === "row" ? stacks?.get(tick.stackId) : undefined;
+      const stack = tick.kind === "row" ? stacks2?.get(tick.stackId) : undefined;
       toJudge.push({
         target: !stack ? { kind: "rescan" } : { kind: "stack", stackId: stackId(stack.stack), rule: stack.tickers },
-        editor: ticker.editor
+        editor: ticker.editor,
+        ...via ? { via } : {}
       });
     } else if (ticker.reason === "not-in-newest-entry") {
       log.info(`${name} is ticked in a body that kept moving. Left for the run that edit woke.`);
@@ -61679,6 +61975,17 @@ async function resolveTicks(context3, handOn, report) {
       log.info(`${name} was ticked by ${editor.login || "nobody"}, who is not a person. Left alone.`);
       continue;
     }
+    if (outcome.outcome === "allowed" && target2.kind === "bulk") {
+      const rows = bulkRows(liveRows, target2.section).map(({ stackId: id }) => id);
+      log.info(rows.length < 2 ? `${name} was ticked by ${editor.login}, and the section has fewer than two rows now. Each has its own box, so the box goes.` : `${name} was ticked by ${editor.login}. Its confirm box names ${plural2(rows.length, "stack")}: ${listed4(rows)}.`);
+      bulkActs.push({
+        tick: { kind: "bulk", section: target2.section },
+        outcome: "confirm",
+        by: editor.login,
+        scanRun: ""
+      });
+      continue;
+    }
     if (outcome.outcome === "allowed") {
       log.info(`${name} was ticked by ${editor.login}.`);
       if (target2.kind === "stack")
@@ -61695,6 +62002,9 @@ async function resolveTicks(context3, handOn, report) {
       }
       if (target2.kind === "merge")
         clearMerges.set(target2.pr, undefined);
+      if (target2.kind === "bulk") {
+        bulkActs.push({ tick: { kind: "bulk", section: target2.section }, outcome: "clear" });
+      }
     }
     if (target2.kind === "rescan")
       rescanHandled = true;
@@ -61716,21 +62026,21 @@ async function resolveTicks(context3, handOn, report) {
   }
   const plan = planDeploys({
     allowed: start.map(({ stackId: id }) => id),
-    dependsOn: new Map([...stacks?.values() ?? []].map((one) => [stackId(one.stack), one.dependsOn ?? []])),
+    dependsOn: new Map([...stacks2?.values() ?? []].map((one) => [stackId(one.stack), one.dependsOn ?? []])),
     pending: new Set(liveRows.flatMap((row) => row.known && row.state === "pending" ? [row.stackId] : [])),
     open: new Set(open2.keys())
   });
-  const phaseOf = new Map([...stacks?.values() ?? []].flatMap((one) => one.phase === undefined ? [] : [[stackId(one.stack), one.phase]]));
+  const phaseOf = new Map([...stacks2?.values() ?? []].flatMap((one) => one.phase === undefined ? [] : [[stackId(one.stack), one.phase]]));
   for (const { stackId: id, waitingOn: waitingOn2 } of plan.refused) {
     const one = waitingOn2.length === 1;
-    const { named: named2, phases } = waitsByPhase({
+    const { named: named3, phases } = waitsByPhase({
       phases: config2.phases,
       phaseOf,
       stackId: id,
       waitingOn: waitingOn2
     });
     const words = [
-      ...named2.map(logGroupTitle),
+      ...named3.map(logGroupTitle),
       ...phases.flatMap(({ phase, stackIds }) => stackIds.map((dependency) => `${logGroupTitle(dependency)} of the ${phase} phase`))
     ];
     log.info(`${logGroupTitle(id)} is ticked, and it depends on ${words.join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`);
@@ -61738,9 +62048,12 @@ async function resolveTicks(context3, handOn, report) {
     if (hash2 !== undefined)
       clear.set(id, {
         hash: hash2,
-        note: { dependsOn: named2, ...phases.length === 0 ? {} : { phases } }
+        note: { dependsOn: named3, ...phases.length === 0 ? {} : { phases } }
       });
   }
+  for (const [id, one] of clear)
+    if (bulk.fromConfirm.has(id))
+      one.unticked = true;
   const tickers2 = new Map(start.map(({ stackId: id, ticker }) => [id, ticker]));
   const toCreate = [
     ...plan.start.map((id) => ({ id, behind: undefined })),
@@ -61749,7 +62062,7 @@ async function resolveTicks(context3, handOn, report) {
   const failures = [];
   const started = [];
   for (const { id, behind } of toCreate) {
-    const stack = stacks?.get(id);
+    const stack = stacks2?.get(id);
     const hash2 = hashes.get(id);
     const ticker = tickers2.get(id);
     if (!stack || hash2 === undefined || ticker === undefined)
@@ -61781,8 +62094,8 @@ async function resolveTicks(context3, handOn, report) {
   }
   handOn(started.flatMap(({ stackId: stack, environment, deployment, behind }) => behind ? [] : [{ stack, environment, deployment }]));
   const pendingIds = new Set(liveRows.flatMap((row) => row.known && row.state === "pending" ? [row.stackId] : []));
-  const waitingOn = (id) => (stacks?.get(id)?.dependsOn ?? []).filter((one) => pendingIds.has(one) || open2.has(one));
-  const merging = await mergeAll(context3, config2, stacks, allowedMerges, waitingOn);
+  const waitingOn = (id) => (stacks2?.get(id)?.dependsOn ?? []).filter((one) => pendingIds.has(one) || open2.has(one));
+  const merging = await mergeAll(context3, config2, stacks2, allowedMerges, waitingOn);
   if (merging.failure !== undefined)
     failures.push(merging.failure);
   for (const pr of merging.cleared)
@@ -61802,13 +62115,14 @@ async function resolveTicks(context3, handOn, report) {
     }
   }
   let written = true;
-  if (started.length > 0 || dropped.length > 0 || clear.size > 0 || rescanHandled || clearMerges.size > 0 || merging.mergedPrs.size > 0) {
+  if (started.length > 0 || dropped.length > 0 || clear.size > 0 || rescanHandled || clearMerges.size > 0 || merging.mergedPrs.size > 0 || bulkActs.length > 0 || bulk.stale) {
     try {
-      const result = await swapRows2(context3, config2, [...stacks?.values() ?? []], ignored, issue3.number, {
+      const result = await swapRows2(context3, config2, [...stacks2?.values() ?? []], ignored, issue3.number, {
         started: [...started, ...merged],
         dropped,
         clear,
-        merges: { merged: merging.mergedPrs, clear: clearMerges }
+        merges: { merged: merging.mergedPrs, clear: clearMerges },
+        bulk: bulkActs
       });
       log.info(result.written ? `Wrote the dashboard (#${issue3.number}).` : `The dashboard (#${issue3.number}) already says all of this. Nothing was written.`);
     } catch (error63) {
@@ -61852,7 +62166,84 @@ function tickName(tick) {
   if (tick.kind === "merge") {
     return `The merge of #${tick.pr} for ${tick.stackIds.map(logGroupTitle).join(" and ")}`;
   }
+  if (tick.kind === "bulk")
+    return capitalized(bulkName("box", tick.section));
+  if (tick.kind === "confirm")
+    return capitalized(bulkName("confirm", tick.section));
   return "The rescan box";
+}
+function capitalized(text6) {
+  return `${text6.charAt(0).toUpperCase()}${text6.slice(1)}`;
+}
+function listed4(ids2) {
+  const names2 = ids2.map(logGroupTitle);
+  return names2.length < 2 ? names2.join("") : `${names2.slice(0, -1).join(", ")} and ${names2[names2.length - 1]}`;
+}
+function handOnConfirms(context3, config2, named2, liveRows, stacks2) {
+  const { log } = context3;
+  const result = { named: [], acts: [], fromConfirm: new Set, stale: false };
+  const rowTicks = new Set(named2.flatMap(({ tick }) => tick.kind === "row" ? [tick.stackId] : []));
+  for (const one of named2) {
+    const { tick, ticker } = one;
+    if (tick.kind !== "confirm") {
+      result.named.push(one);
+      continue;
+    }
+    const name = tickName(tick);
+    if (!config2.deploys) {
+      log.info(`${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). Nothing is deployed and the box goes.`);
+      result.acts.push({ tick, outcome: "clear" });
+      continue;
+    }
+    if (!ticker.named) {
+      if (ticker.reason === "not-in-newest-entry") {
+        log.info(`${name} is ticked in a body that kept moving. Left for the run that edit woke.`);
+      } else {
+        log.info(`${name} is ticked and the edit history names nobody for it (${NOBODY[ticker.reason]}). The box is cleared.`);
+        result.acts.push({ tick, outcome: "clear", note: { kind: "orphan" } });
+      }
+      continue;
+    }
+    const changes = sectionChanges(tick.stacks, bulkRows(liveRows, tick.section));
+    if (changes) {
+      const what2 = [
+        ...changes.added.length > 0 ? [`${listed4(changes.added)} ${changes.added.length === 1 ? "is" : "are"} new`] : [],
+        ...changes.gone.length > 0 ? [
+          `${listed4(changes.gone)} ${changes.gone.length === 1 ? "is" : "are"} not ${tick.section === "pending" ? "pending" : "drifted"} any more`
+        ] : [],
+        ...changes.moved.length > 0 ? [`${listed4(changes.moved)} ${changes.moved.length === 1 ? "has" : "have"} a new diff`] : []
+      ];
+      log.info(`${name} was ticked, and its rows changed since it was drawn (${what2.join(", ")}). Nothing is deployed and the bulk box asks for a fresh tick.`);
+      result.stale = true;
+      continue;
+    }
+    result.acts.push({ tick, outcome: "consumed" });
+    const handed = [];
+    for (const { stackId: id, hash: hash2 } of tick.stacks) {
+      if (rowTicks.has(id)) {
+        log.info(`${logGroupTitle(id)} is ticked on its own row too. That tick and its ticker count.`);
+        continue;
+      }
+      if (!stacks2?.has(id)) {
+        log.info(`${logGroupTitle(id)} is in ${bulkName("confirm", tick.section)}, and discovery knows no such stack. Left alone.`);
+        continue;
+      }
+      handed.push(id);
+      result.fromConfirm.add(id);
+      result.named.push({
+        tick: {
+          kind: "row",
+          stackId: id,
+          hash: hash2,
+          ...tick.section === "drift" ? { drift: true } : {}
+        },
+        ticker,
+        via: tick.section
+      });
+    }
+    log.info(`${name} was ticked by ${ticker.editor.login}. It stands for a tick on each of ${plural2(handed.length, "stack")}: ${listed4(handed)}.`);
+  }
+  return result;
 }
 function targetName(target2) {
   if (target2.kind === "stack")
@@ -61860,6 +62251,8 @@ function targetName(target2) {
   if (target2.kind === "merge") {
     return `The merge of #${target2.pr} for ${target2.stackIds.map(logGroupTitle).join(" and ")}`;
   }
+  if (target2.kind === "bulk")
+    return capitalized(bulkName("box", target2.section));
   return "The rescan box";
 }
 async function renovateStrategyOf(context3) {
@@ -61877,10 +62270,10 @@ async function renovateStrategyOf(context3) {
   context3.log.info(setting.strategy === undefined ? `${none}, so the method is the first the repo allows of squash, merge and rebase, as Renovate picks it.${unread}` : `Renovate's config is ${logGroupTitle(setting.file ?? "")}, and it sets automergeStrategy to ${logGroupTitle(setting.strategy)}.${unread}`);
   return setting.strategy;
 }
-async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
+async function mergeAll(context3, config2, stacks2, ticks, waitingOn) {
   const { github, log } = context3;
   const result = { merged: [], mergedPrs: new Set, cleared: [], problems: [] };
-  if (ticks.length === 0 || !stacks)
+  if (ticks.length === 0 || !stacks2)
     return result;
   let open2;
   let method;
@@ -61896,12 +62289,12 @@ async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
     result.failure = `The merge settings of the repo could not be read: ${message2(error63)}. The resolve job needs the permission \`contents: write\` to merge (record 0054). Nothing was merged, and the boxes stay ticked for the next run.`;
     return result;
   }
-  const claimants = [...stacks.values()].map(({ stack, inputs }) => ({
+  const claimants = [...stacks2.values()].map(({ stack, inputs }) => ({
     id: stackId(stack),
     path: stack.path,
     inputs
   }));
-  const dependsOn = new Map([...stacks.values()].map((one) => [stackId(one.stack), one.dependsOn ?? []]));
+  const dependsOn = new Map([...stacks2.values()].map((one) => [stackId(one.stack), one.dependsOn ?? []]));
   const sorted = [...ticks].sort((a, b) => a.tick.pr - b.tick.pr);
   for (const { tick, ticker } of sorted) {
     const name = tickName(tick);
@@ -61968,7 +62361,7 @@ async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
     log.info(`${name} was ticked by ${ticker} and is merged (${method}) as ${answer.sha.slice(0, 7)}.`);
     result.mergedPrs.add(tick.pr);
     for (const id of tick.stackIds) {
-      const stack = stacks.get(id);
+      const stack = stacks2.get(id);
       if (!stack)
         continue;
       try {
@@ -62008,8 +62401,8 @@ function unverifiedMessage(unverified) {
   const logins = [...new Set(unverified.map(({ tick }) => tick.editor.login))].join(", ");
   return `GitHub gave no answer about the access of ${logins}, so ${plural2(unverified.length, "tick")} could not be verified. Nothing was deployed for ${unverified.length === 1 ? "it" : "them"}, and the comment on the dashboard asks for a fresh tick (record 0018).`;
 }
-function byId({ stacks, ignored }) {
-  return { stacks: new Map(stacks.map((stack) => [stackId(stack.stack), stack])), ignored };
+function byId({ stacks: stacks2, ignored }) {
+  return { stacks: new Map(stacks2.map((stack) => [stackId(stack.stack), stack])), ignored };
 }
 function workflowText(context3) {
   if (!context3.workflow)
@@ -62054,7 +62447,7 @@ async function openDeployments(context3, ticked) {
   }
   return open2;
 }
-async function swapRows2(context3, config2, stacks, ignored, issue3, swap) {
+async function swapRows2(context3, config2, stacks2, ignored, issue3, swap) {
   const attribution = new Map;
   const result = await swapRows({
     github: context3.github,
@@ -62062,13 +62455,14 @@ async function swapRows2(context3, config2, stacks, ignored, issue3, swap) {
     repoUrl: context3.repoUrl,
     actionRef: context3.actionRef,
     dashboard: config2.dashboard,
+    deploys: config2.deploys,
     ignored,
     budget: context3.limits?.body
   }, issue3, async (live, root) => {
-    const droppedStacks = stacks.filter(({ stack }) => swap.dropped.includes(stackId(stack)));
-    const facts = deployFacts(await readRecords(context3, stacks.map(({ environment }) => environment), droppedStacks));
+    const droppedStacks = stacks2.filter(({ stack }) => swap.dropped.includes(stackId(stack)));
+    const facts = deployFacts(await readRecords(context3, stacks2.map(({ environment }) => environment), droppedStacks));
     const source = attribution.get(root.scanSha) ?? attributionSource(context3.github, {
-      stacks: stacks.map(({ stack, inputs }) => ({
+      stacks: stacks2.map(({ stack, inputs }) => ({
         id: stackId(stack),
         path: stack.path,
         inputs
@@ -62119,8 +62513,8 @@ async function swapRows2(context3, config2, stacks, ignored, issue3, swap) {
           attribution: lines3.get(id)?.lines,
           behind: fact.behind
         });
-      } else if (wanted && row.ticked && row.hash === wanted.hash) {
-        carried.set(id, clearTick(row, { note: wanted.note }));
+      } else if (wanted && (row.ticked || wanted.unticked) && row.hash === wanted.hash) {
+        carried.set(id, clearTick(row, { note: wanted.note, unticked: wanted.unticked }));
       }
     }
     const merges = [];
@@ -62130,31 +62524,32 @@ async function swapRows2(context3, config2, stacks, ignored, issue3, swap) {
       }
       merges.push(swap.merges?.clear.has(merge3.pr) ? clearMergeTick(merge3, { note: swap.merges.clear.get(merge3.pr) }) : merge3);
     }
-    return { facts, shipped, rows, carried, merges };
+    const acts = (swap.bulk ?? []).map((act) => act.outcome === "confirm" ? { ...act, scanRun: root.scanRun } : act);
+    return { facts, shipped, rows, carried, merges, bulk: { acts } };
   });
   if (!result.fits) {
     throw new Error(`With these rows swapped the dashboard body is ${result.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment records hold what was started, and the next scan brings the rows in line.`);
   }
   return result;
 }
-function withRowDependencies(context3, stacks, rows) {
-  const auto = new Set([...stacks.values()].flatMap((one) => one.dependsOnAuto ? [stackId(one.stack)] : []));
+function withRowDependencies(context3, stacks2, rows) {
+  const auto = new Set([...stacks2.values()].flatMap((one) => one.dependsOnAuto ? [stackId(one.stack)] : []));
   if (auto.size === 0)
-    return stacks;
+    return stacks2;
   const read3 = new Map;
   for (const row of rows) {
     if (row.known && row.dependsOn && !read3.has(row.stackId))
       read3.set(row.stackId, row.dependsOn);
   }
   const { dependsOn, dropped } = withReadDependencies({
-    configured: new Map([...stacks].map(([id, one]) => [id, one.dependsOn ?? []])),
+    configured: new Map([...stacks2].map(([id, one]) => [id, one.dependsOn ?? []])),
     auto,
     read: read3
   });
   for (const { stackId: id, dependency } of dropped) {
     context3.log.info(`${logGroupTitle(id)} reads ${logGroupTitle(dependency)} through its stack references, and ${logGroupTitle(dependency)} already depends on ${logGroupTitle(id)}. That would be a circle, so ${logGroupTitle(id)} does not wait on ${logGroupTitle(dependency)}.`);
   }
-  return new Map([...stacks].map(([id, one]) => {
+  return new Map([...stacks2].map(([id, one]) => {
     const ids2 = dependsOn.get(id) ?? [];
     const { dependsOn: _, ...rest } = one;
     return [id, ids2.length === 0 ? rest : { ...rest, dependsOn: ids2 }];
@@ -62167,15 +62562,15 @@ async function startQueued(context3, repo, handOn) {
     log.info("The event that started this job is not about an issue, and no stack has dependsOn or a phase. Nothing to do.");
     return;
   }
-  const { stacks, ignored } = byId(await repo.stacks());
-  const all = [...stacks.values()];
+  const { stacks: stacks2, ignored } = byId(await repo.stacks());
+  const all = [...stacks2.values()];
   const anyAuto = all.some(({ dependsOnAuto }) => dependsOnAuto);
   const involved = all.filter(({ stack, dependsOn }) => anyAuto || dependsOn !== undefined || all.some((other) => other.dependsOn?.includes(stackId(stack)) === true));
   const settled = await settleEndedRuns(github, await readRecords(context3, all.map(({ environment }) => environment), involved), context3.repoUrl);
   for (const { stackId: id } of settled.ended) {
     log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
   }
-  const ready = [...deployFacts(settled.records).byStack].flatMap(([id, fact]) => fact.kind === "open" && fact.behind && stacks.has(id) && queueState(fact.behind, settled.records) === "ready" ? [{ stackId: id, fact }] : []).sort((a, b) => a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0);
+  const ready = [...deployFacts(settled.records).byStack].flatMap(([id, fact]) => fact.kind === "open" && fact.behind && stacks2.has(id) && queueState(fact.behind, settled.records) === "ready" ? [{ stackId: id, fact }] : []).sort((a, b) => a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0);
   if (ready.length === 0) {
     log.info("No queued stack is ready to start. Nothing to do.");
     return;
@@ -62183,7 +62578,7 @@ async function startQueued(context3, repo, handOn) {
   const failures = [];
   const started = [];
   for (const { stackId: id, fact } of capDeploys(ready).start) {
-    const stack = stacks.get(id);
+    const stack = stacks2.get(id);
     const queued = settled.records.find((record3) => record3.id === fact.deployment);
     if (!stack || !queued)
       continue;
@@ -62395,12 +62790,12 @@ function treeChanges(base, head) {
       changed.add(path);
   return [...changed].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
 }
-function planScan(stacks, changed, unrelated, rows) {
-  const { claims, unclaimed } = claim2(stacks, changed, unrelated);
+function planScan(stacks2, changed, unrelated, rows) {
+  const { claims, unclaimed } = claim2(stacks2, changed, unrelated);
   if (unclaimed.length > 0)
     return { kind: "full", why: { kind: "unclaimed", files: unclaimed } };
   const states = new Map(rows.map((row) => [row.stackId, row.state]));
-  const previews = stacks.flatMap(({ id }) => {
+  const previews = stacks2.flatMap(({ id }) => {
     const files = claims.get(id);
     if (files)
       return [{ id, why: { kind: "claims", files } }];
@@ -62500,11 +62895,11 @@ var SHARED_FILES = new Set([
   "Directory.Packages.props"
 ]);
 function sharedFiles(files) {
-  return files.filter((file2) => SHARED_FILES.has(file2.slice(file2.lastIndexOf("/") + 1))).sort(byCodeUnit18);
+  return files.filter((file2) => SHARED_FILES.has(file2.slice(file2.lastIndexOf("/") + 1))).sort(byCodeUnit19);
 }
 function checkSetup(config2, found, files, references = new Map) {
-  const stacks = applyConfig(config2, found);
-  const claimants = stacks.map(({ stack, inputs }) => ({
+  const stacks2 = applyConfig(config2, found);
+  const claimants = stacks2.map(({ stack, inputs }) => ({
     id: stackId(stack),
     path: stack.path,
     inputs
@@ -62514,15 +62909,15 @@ function checkSetup(config2, found, files, references = new Map) {
   const configFile = claimed.unclaimed.find((file2) => !unclaimed.includes(file2));
   const reads = readsOf(claimants, files, new Set(claimed.unclaimed), references);
   return {
-    stacks,
+    stacks: stacks2,
     ignore: config2.ignore.map((entry3) => ignoreReport(ignoreGlob(entry3), found)),
     unclaimed: groups(unclaimed),
     suggested: suggestedUnrelated(unclaimed),
     shared: sharedFiles(unclaimed),
     ...configFile === undefined ? {} : { configFile },
-    phases: phaseGroups(config2.phases, new Map(stacks.flatMap((one) => one.phase === undefined ? [] : [[stackId(one.stack), one.phase]]))),
+    phases: phaseGroups(config2.phases, new Map(stacks2.flatMap((one) => one.phase === undefined ? [] : [[stackId(one.stack), one.phase]]))),
     reads,
-    inputs: inputsEntries(stacks, reads)
+    inputs: inputsEntries(stacks2, reads)
   };
 }
 function readsOf(claimants, files, unclaimed, references) {
@@ -62530,7 +62925,7 @@ function readsOf(claimants, files, unclaimed, references) {
     const matches = globMatcher(inputs);
     const claims = (file2) => path === "." || file2.startsWith(`${path}/`) || matches(file2);
     const read3 = references.get(id) ?? [];
-    return [...read3].sort((a, b) => byCodeUnit18(a.path, b.path)).flatMap((reference) => {
+    return [...read3].sort((a, b) => byCodeUnit19(a.path, b.path)).flatMap((reference) => {
       const under = reference.kind === "file" ? [reference.path] : files.filter((file2) => file2.startsWith(`${reference.path}/`));
       const left = under.filter((file2) => !claims(file2));
       if (left.length === 0)
@@ -62543,9 +62938,9 @@ function readsOf(claimants, files, unclaimed, references) {
 function globFor({ path, kind }) {
   return kind === "file" ? globOf(path) : `${globOf(path)}/**`;
 }
-function inputsEntries(stacks, reads) {
+function inputsEntries(stacks2, reads) {
   const byStack = Map.groupBy(reads, (read3) => read3.stackId);
-  const byPath = Map.groupBy(stacks, ({ stack }) => stack.path);
+  const byPath = Map.groupBy(stacks2, ({ stack }) => stack.path);
   return [...byPath].flatMap(([path, inPath]) => {
     const globs2 = inPath.map(({ stack }) => (byStack.get(stackId(stack)) ?? []).map(globFor).join(`
 `));
@@ -62571,23 +62966,23 @@ function suggestedUnrelated(unclaimed) {
 }
 function ignoreReport(glob, found) {
   const matches = globMatcher([glob]);
-  const stacks = found.map(stackId).filter(matches);
-  if (stacks.length > 0)
-    return { glob, stacks };
+  const stacks2 = found.map(stackId).filter(matches);
+  if (stacks2.length > 0)
+    return { glob, stacks: stacks2 };
   const better = `${glob}:*`;
   const works = globMatcher([better]);
   const hinted = found.filter((stack) => matches(stack.path)).map(stackId).filter(works);
-  return hinted.length === 0 ? { glob, stacks } : { glob, stacks, hint: { glob: better, stacks: hinted } };
+  return hinted.length === 0 ? { glob, stacks: stacks2 } : { glob, stacks: stacks2, hint: { glob: better, stacks: hinted } };
 }
 function groups(files) {
   const top = (file2) => {
     const slash = file2.indexOf("/");
     return slash === -1 ? "." : file2.slice(0, slash);
   };
-  const byDirectory = Map.groupBy([...files].sort(byCodeUnit18), top);
-  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit18(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
+  const byDirectory = Map.groupBy([...files].sort(byCodeUnit19), top);
+  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit19(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
 }
-function byCodeUnit18(a, b) {
+function byCodeUnit19(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -62633,9 +63028,9 @@ function whereFilesBelong(shared, show2 = logGroupTitle) {
   }
   const names2 = shared.slice(0, SHARED_NAMED).map(show2);
   const rest = shared.length - names2.length;
-  const listed4 = rest > 0 ? `${names2.join(", ")} and ${rest} more` : names2.length === 1 ? names2[0] ?? "" : `${names2.slice(0, -1).join(", ")} and ${names2.at(-1)}`;
+  const listed5 = rest > 0 ? `${names2.join(", ")} and ${rest} more` : names2.length === 1 ? names2[0] ?? "" : `${names2.slice(0, -1).join(", ")} and ${names2.at(-1)}`;
   const why2 = shared.length === 1 ? "it is a lockfile or a package manifest, and a change to it should preview every stack" : "they are lockfiles and package manifests, and a change to one should preview every stack";
-  return `${start} Keep ${listed4} off that list: ${why2}.`;
+  return `${start} Keep ${listed5} off that list: ${why2}.`;
 }
 var SHARED_NAMED = 5;
 var PASTE_NOTE = "The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.";
@@ -62671,18 +63066,18 @@ function split(configured, phases) {
   });
 }
 function dependsOnWords(configured, phases) {
-  const { named, phases: through } = split(configured, phases);
+  const { named: named2, phases: through } = split(configured, phases);
   const parts = [
-    ...named,
+    ...named2,
     ...through.map(({ phase, stackIds }) => `${stackIds.join(", ")} through the ${phase} phase`),
     ...configured.dependsOnAuto ? ["the stacks its stack references name, read at each preview (auto)"] : []
   ];
   return parts.length === 0 ? undefined : parts.join(", ");
 }
 function dependsOnCell(configured, phases) {
-  const { named, phases: through } = split(configured, phases);
+  const { named: named2, phases: through } = split(configured, phases);
   const parts = [
-    ...named,
+    ...named2,
     ...through.map(({ phase }) => `the ${phase} phase`),
     ...configured.dependsOnAuto ? ["auto: its stack references, read at each preview"] : []
   ];
@@ -62691,16 +63086,16 @@ function dependsOnCell(configured, phases) {
 function phaseLines(phases) {
   return phases.map(({ phase, stackIds }, index) => {
     const earlier = phases.slice(0, index).map((one) => one.phase);
-    const stacks = stackIds.length === 0 ? "no stack" : stackIds.join(", ");
-    const waits = earlier.length === 0 ? "" : `. Waits on every stack of ${listed4(earlier)}`;
-    return `${index + 1}. ${phase}: ${stacks}${waits}`;
+    const stacks2 = stackIds.length === 0 ? "no stack" : stackIds.join(", ");
+    const waits = earlier.length === 0 ? "" : `. Waits on every stack of ${listed5(earlier)}`;
+    return `${index + 1}. ${phase}: ${stacks2}${waits}`;
   });
 }
-function listed4(words) {
+function listed5(words) {
   return words.length <= 1 ? words[0] ?? "" : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 }
-function ignoreText({ glob, stacks }) {
-  return `ignore ${JSON.stringify(glob)} leaves out ${plural2(stacks.length, "stack")}: ${stacks.join(", ")}.`;
+function ignoreText({ glob, stacks: stacks2 }) {
+  return `ignore ${JSON.stringify(glob)} leaves out ${plural2(stacks2.length, "stack")}: ${stacks2.join(", ")}.`;
 }
 function unmatchedText(entry3) {
   return `ignore ${JSON.stringify(entry3.glob)} matches no stack. ${unmatchedWhy(entry3)}`;
@@ -62887,18 +63282,18 @@ function headerPart(hasConfigFile2) {
     summary: ["## Sluiceway check", VALID, ...noFile]
   };
 }
-function stacksPart({ stacks, phases }) {
-  const found = foundText(stacks.length);
-  if (stacks.length === 0)
+function stacksPart({ stacks: stacks2, phases }) {
+  const found = foundText(stacks2.length);
+  if (stacks2.length === 0)
     return { log: [{ info: found }], summary: ["### Stacks", found] };
-  const waits = stacks.some((configured) => configured.dependsOn !== undefined || configured.dependsOnAuto);
-  const phased = stacks.some((configured) => configured.phase !== undefined);
+  const waits = stacks2.some((configured) => configured.dependsOn !== undefined || configured.dependsOnAuto);
+  const phased = stacks2.some((configured) => configured.phase !== undefined);
   return {
     log: [
       { info: found },
       {
         group: "Stacks",
-        lines: stacks.map((configured) => line2(`${stackId(configured.stack)}: ${settingsText(configured, phases)}`))
+        lines: stacks2.map((configured) => line2(`${stackId(configured.stack)}: ${settingsText(configured, phases)}`))
       }
     ],
     summary: [
@@ -62907,7 +63302,7 @@ function stacksPart({ stacks, phases }) {
       [
         `| Stack | Environment | Tickers | Inputs |${phased ? " Phase |" : ""}${waits ? " Depends on |" : ""}`,
         `|---|---|---|---|${phased ? "---|" : ""}${waits ? "---|" : ""}`,
-        ...stacks.map((configured) => {
+        ...stacks2.map((configured) => {
           const { environment, tickers: tickers2, inputs } = configured;
           return row([
             stackId(configured.stack),
@@ -63018,16 +63413,16 @@ function readsPart({ reads, inputs }) {
   };
 }
 function workflowsPart(workflows) {
-  const listed5 = workflows.workflows.length > 0;
+  const listed6 = workflows.workflows.length > 0;
   const noScan = scansSomewhere(workflows) ? [] : [NO_SCAN_WORKFLOW];
   const warnings = workflows.warnings.map(workflowWarningText);
   const notes = workflows.notes.map(workflowNoteText);
-  const nothingMissing = listed5 && warnings.length === 0 ? [NOTHING_MISSING] : [];
+  const nothingMissing = listed6 && warnings.length === 0 ? [NOTHING_MISSING] : [];
   const bullets = (texts) => texts.length === 0 ? [] : [texts.map((text7) => `- ${escapeText(text7)}`).join(`
 `)];
   return {
     log: [
-      ...listed5 ? [
+      ...listed6 ? [
         {
           group: "Workflows",
           lines: workflows.workflows.flatMap(({ path, jobs }) => jobs.map((job) => line2(workflowJobText(path, job))))
@@ -63040,7 +63435,7 @@ function workflowsPart(workflows) {
     ],
     summary: [
       "### Workflows",
-      ...listed5 ? [
+      ...listed6 ? [
         [
           "| Workflow | Job | Mode | Action ref |",
           "|---|---|---|---|",
@@ -63163,8 +63558,8 @@ async function check2(context3) {
   for (const part of parts)
     write(log, part);
   if (context3.backend !== undefined) {
-    const stacks = report.stacks.map(({ stack }) => stack);
-    const { checks: checks3, toolLog: toolLog2 } = await askBackend(context3.backend, root, stacks);
+    const stacks2 = report.stacks.map(({ stack }) => stack);
+    const { checks: checks3, toolLog: toolLog2 } = await askBackend(context3.backend, root, stacks2);
     const backend = backendPart(checks3, config2.ignore, toolLog2);
     write(log, backend);
     parts.push(backend);
@@ -63173,14 +63568,14 @@ async function check2(context3) {
   await summary2(context3, renderCheckSummary([...parts, closing]));
   write(log, closing);
 }
-async function askBackend(backend, root, stacks) {
-  const result = await backend.adapter.findInBackend?.(stacks, {
+async function askBackend(backend, root, stacks2) {
+  const result = await backend.adapter.findInBackend?.(stacks2, {
     root,
     env: backend.env,
     run: backend.run
   });
   const answers = new Map((result?.answers ?? []).map((answer) => [stackId(answer.stack), answer]));
-  const checks3 = stacks.map((stack) => {
+  const checks3 = stacks2.map((stack) => {
     const id = stackId(stack);
     const answer = answers.get(id);
     if (answer === undefined)
@@ -63315,10 +63710,10 @@ function outsideDeploys(stackId2, history, own2) {
   }));
 }
 function trailOutside(stackIds, read3, live) {
-  const stacks = new Set(stackIds);
+  const stacks2 = new Set(stackIds);
   return [
-    ...live.filter((deploy2) => stacks.has(deploy2.stackId) && !read3.has(deploy2.stackId)),
-    ...[...read3.entries()].filter(([id]) => stacks.has(id)).flatMap(([, deploys]) => deploys)
+    ...live.filter((deploy2) => stacks2.has(deploy2.stackId) && !read3.has(deploy2.stackId)),
+    ...[...read3.entries()].filter(([id]) => stacks2.has(id)).flatMap(([, deploys]) => deploys)
   ].sort((a, b) => b.at.getTime() - a.at.getTime() || (a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0));
 }
 
@@ -63482,7 +63877,11 @@ function placeRows(so, late) {
       carried,
       merges,
       waiting,
-      outside
+      outside,
+      bulk: {
+        live: live.current ? live.bulk : [],
+        scan: { liveScanRun: live.root?.scanRun, resolveOnItsWay: waits }
+      }
     },
     placed: {
       carried: [...carried.keys()].filter((id) => !previewed.has(id)),
@@ -63493,7 +63892,8 @@ function placeRows(so, late) {
       ticks,
       mergeTicks,
       resolveWaits: waits,
-      unread: deploys.facts.unread
+      unread: deploys.facts.unread,
+      bulk: live.current ? live.bulk : []
     }
   };
 }
@@ -63868,15 +64268,15 @@ function toolDiffLine(options) {
   const log = options.jobLogUrl === undefined ? "job log" : `[job log](${options.jobLogUrl})`;
   return `The tool's own diff of every pending stack, values included, is in the ${log}, in the stack's group.`;
 }
-function renderSummary(stacks, options = {}) {
-  const sorted = [...stacks].sort((a, b) => byCodeUnit(stackIdOf2(a), stackIdOf2(b)));
+function renderSummary(stacks2, options = {}) {
+  const sorted = [...stacks2].sort((a, b) => byCodeUnit(stackIdOf2(a), stackIdOf2(b)));
   const diffs = sorted.filter((stack) => stack.kind === "diff");
   const pending = diffs.filter((stack) => stack.diff.changes.length > 0);
   const hasDrift = (stack) => (stack.diff.drift ?? []).length > 0;
   const drifted = diffs.filter((stack) => stack.diff.changes.length === 0 && hasDrift(stack));
   const inSync = diffs.filter((stack) => stack.diff.changes.length === 0 && !hasDrift(stack));
   const failed3 = sorted.filter((stack) => stack.kind === "preview-failed");
-  const counted2 = stacks.length === 0 ? "No stacks previewed." : `${plural2(stacks.length, "stack")} previewed: ${[
+  const counted2 = stacks2.length === 0 ? "No stacks previewed." : `${plural2(stacks2.length, "stack")} previewed: ${[
     pending.length && `${pending.length} pending`,
     drifted.length && `${drifted.length} drifted`,
     failed3.length && `${failed3.length} preview failed`,
@@ -63939,7 +64339,7 @@ function renderSummary(stacks, options = {}) {
 import { cp, mkdir as mkdir2, mkdtemp as mkdtemp3, realpath, rm as rm4, writeFile as writeFile4 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
 import { basename as basename2, dirname as dirname2, join as join33, resolve as resolve2, sep as sep6 } from "node:path";
-async function previewBranches(context3, stacks, updates) {
+async function previewBranches(context3, stacks2, updates) {
   const { log } = context3;
   const previews = new Map;
   for (const { pullRequest, stackIds } of updates.slice(0, MAX_UPDATES)) {
@@ -63947,16 +64347,16 @@ async function previewBranches(context3, stacks, updates) {
       log.info(`#${pullRequest.number} is not previewed: its branch lives in a fork, and its code would run with the credentials of this job.`);
       continue;
     }
-    const configured = stackIds.flatMap((id) => stacks.find(({ stack }) => stackId(stack) === id) ?? []);
+    const configured = stackIds.flatMap((id) => stacks2.find(({ stack }) => stackId(stack) === id) ?? []);
     previews.set(pullRequest.number, await previewOne(context3, pullRequest.number, pullRequest.head, pullRequest.files, configured));
   }
   return previews;
 }
-async function previewOne(context3, number4, head, files, stacks) {
+async function previewOne(context3, number4, head, files, stacks2) {
   const { log, now } = context3;
   const failedAll = (why2) => {
     log.info(`#${number4} could not be previewed: ${why2}`);
-    return stacks.map(({ stack }) => ({ stackId: stackId(stack) }));
+    return stacks2.map(({ stack }) => ({ stackId: stackId(stack) }));
   };
   const copy = await mkdtemp3(join33(context3.env.RUNNER_TEMP || tmpdir3(), "sluiceway-branch-"));
   try {
@@ -63986,9 +64386,9 @@ async function previewOne(context3, number4, head, files, stacks) {
         await writeFile4(target2, text7);
     }
     const tool = { root: copy, env: context3.env, run: context3.run };
-    const failed3 = await prepareStacks({ ...tool, log, adapter: context3.adapter }, stacks, context3.previewTimeoutMinutes);
+    const failed3 = await prepareStacks({ ...tool, log, adapter: context3.adapter }, stacks2, context3.previewTimeoutMinutes);
     const previews = [];
-    for (const configured of stacks) {
+    for (const configured of stacks2) {
       const id = stackId(configured.stack);
       const started = now().getTime();
       const result = failed3.get(id) ?? await context3.adapter.preview(configured.stack, {
@@ -64019,14 +64419,14 @@ function lines3(text7) {
   return text7.split(`
 `).filter((line3) => line3.trim() !== "");
 }
-async function readHistories(context3, stacks, limit) {
+async function readHistories(context3, stacks2, limit) {
   const read3 = new Map;
   const { adapter, log } = context3;
-  if (limit === 0 || stacks.length === 0 || adapter.deployHistory === undefined)
+  if (limit === 0 || stacks2.length === 0 || adapter.deployHistory === undefined)
     return read3;
   const history = adapter.deployHistory.bind(adapter);
   const cannot = [];
-  await runPool(stacks, context3.concurrency, async (configured) => {
+  await runPool(stacks2, context3.concurrency, async (configured) => {
     const id = stackId(configured.stack);
     const result = await history(configured.stack, {
       root: context3.root,
@@ -64151,31 +64551,31 @@ async function scanning(context3, report) {
   const links2 = runLinks(context3);
   const repo = openRepo(context3.root, context3.adapter);
   const config2 = repo.config();
-  const { stacks, ignored } = await repo.stacks();
-  const ids2 = stacks.map(({ stack }) => stackId(stack));
-  log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural2(stacks.length, "stack")}.`);
+  const { stacks: stacks2, ignored } = await repo.stacks();
+  const ids2 = stacks2.map(({ stack }) => stackId(stack));
+  log.info(stacks2.length === 0 ? "Found no stacks." : `Found ${plural2(stacks2.length, "stack")}.`);
   const { logDiff } = config2.scan;
   if (logDiff && context3.publicRepo) {
     log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
   }
   const knownDrift = new Set;
-  const plan = await makePlan(context3, config2, stacks, knownDrift);
-  logPlan(context3, plan, stacks.length);
-  const checkDrift = driftCheckRule(config2, context3, knownDrift, stacks);
+  const plan = await makePlan(context3, config2, stacks2, knownDrift);
+  logPlan(context3, plan, stacks2.length);
+  const checkDrift = driftCheckRule(config2, context3, knownDrift, stacks2);
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
   const unclaimed = unclaimedFiles(plan, config2);
-  let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
-  const listing = await listUpdates(context3, config2, stacks);
+  let next = planned ? stacks2.filter(({ stack }) => planned.has(stackId(stack))) : stacks2;
+  const listing = await listUpdates(context3, config2, stacks2);
   let versionChecked = false;
   let branchPreviews = new Map;
   if (listing.kind === "listed" && config2.mergeAndDeploy.preview && listing.updates.length > 0) {
-    await checkVersion5(context3, stacks.map(({ stack }) => stack));
+    await checkVersion5(context3, stacks2.map(({ stack }) => stack));
     versionChecked = true;
-    branchPreviews = await previewBranches(context3, stacks, listing.updates);
+    branchPreviews = await previewBranches(context3, stacks2, listing.updates);
   }
   const handedOn = [];
   const attribution = attributionSource(context3.github, {
-    stacks: stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
+    stacks: stacks2.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
     unrelated: config2.scan.unrelated,
     repoUrl: context3.repoUrl,
     scanSha: context3.sha,
@@ -64195,10 +64595,10 @@ async function scanning(context3, report) {
   let histories;
   for (;; ) {
     if (next.length > 0 && !versionChecked) {
-      await checkVersion5(context3, stacks.map(({ stack }) => stack));
+      await checkVersion5(context3, stacks2.map(({ stack }) => stack));
       versionChecked = true;
     }
-    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), prepared, checkDrift, stacks.map(({ stack }) => stack));
+    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), prepared, checkDrift, stacks2.map(({ stack }) => stack));
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
@@ -64220,11 +64620,12 @@ async function scanning(context3, report) {
       repoUrl: context3.repoUrl,
       actionRef: context3.actionRef,
       dashboard: config2.dashboard,
+      deploys: config2.deploys,
       ignored,
       budget: context3.limits?.body
     };
     if (histories === undefined && ids2.length > 0 && full) {
-      histories = await readHistories(context3, stacks, config2.dashboard.recentlyDeployed);
+      histories = await readHistories(context3, stacks2, config2.dashboard.recentlyDeployed);
     }
     const soFar = {
       ids: ids2,
@@ -64256,16 +64657,16 @@ async function scanning(context3, report) {
       }
       answer = await writeScan(writer, full, async (live) => {
         startedFrom ??= live.body;
-        let deploys = await lateDeploys(context3, stacks, previewed, live);
+        let deploys = await lateDeploys(context3, stacks2, previewed, live);
         const merges = mergesAtLateRead(soFar, deploys.facts);
         if (merges.kind === "preview-first")
           throw new PreviewFirstError(merges);
         const { waiting } = merges;
         if (waiting.length > 0) {
-          const ended = await handOffMerges(context3, config2, stacks, previewed, waiting, handedOn);
+          const ended = await handOffMerges(context3, config2, stacks2, previewed, waiting, handedOn);
           context3.outputs?.set("matrix", matrixOutput(handedOn));
           if (ended)
-            deploys = await lateDeploys(context3, stacks, previewed, live);
+            deploys = await lateDeploys(context3, stacks2, previewed, live);
         }
         attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
         const shipped = await attribution.ship(deploys.facts.trail);
@@ -64283,7 +64684,7 @@ async function scanning(context3, report) {
       if (!(error63 instanceof PreviewFirstError))
         throw error63;
       const late = new Set(error63.first.stacks.map(({ id }) => id));
-      next = stacks.filter(({ stack }) => late.has(stackId(stack)));
+      next = stacks2.filter(({ stack }) => late.has(stackId(stack)));
       for (const { id, why: why3 } of error63.first.stacks) {
         if (why3 === "deploy-ended")
           again.add(id);
@@ -64298,7 +64699,7 @@ async function scanning(context3, report) {
     if (full)
       throw new ScanFailedError(bodyDoesNotFitMessage(answer.size));
     const why2 = { kind: "does-not-fit", carried: lastPlaced?.carriedBlocks ?? 0 };
-    next = stacks.filter(({ stack }) => !previewed.has(stackId(stack)));
+    next = stacks2.filter(({ stack }) => !previewed.has(stackId(stack)));
     log.info(`This scan falls back to a full scan: ${fullScanReasonText(why2)}. Previewing the other ${plural2(next.length, "stack")} now.`);
   }
   reportDashboard(context3, written, lastPlaced);
@@ -64347,15 +64748,15 @@ function startingCommits(facts, previewed) {
       add(id);
   return from;
 }
-async function lateDeploys(context3, stacks, previewed, live) {
+async function lateDeploys(context3, stacks2, previewed, live) {
   const { log, github } = context3;
   const liveStates = new Map(live.rows.map((row2) => [row2.stackId, row2.state]));
-  const fallBack = stacks.map(({ stack, environment }) => ({ stackId: stackId(stack), environment })).filter(({ stackId: id }) => {
+  const fallBack = stacks2.map(({ stack, environment }) => ({ stackId: stackId(stack), environment })).filter(({ stackId: id }) => {
     const result = previewed.get(id)?.result;
     return result?.ok === true && result.diff.changes.length > 0 || isDeployingState(liveStates.get(id) ?? "");
   });
   try {
-    const records = await readDeploymentRecords(github, stacks.map(({ environment }) => environment), fallBack);
+    const records = await readDeploymentRecords(github, stacks2.map(({ environment }) => environment), fallBack);
     const settled = await settleEndedRuns(github, records, context3.repoUrl);
     for (const { stackId: id, run } of settled.ended) {
       log.info(`Ended the open deployment of ${logGroupTitle(id)}: run ${run} is over and never reported a result.`);
@@ -64370,7 +64771,7 @@ async function lateDeploys(context3, stacks, previewed, live) {
   }
 }
 async function resolveWaits(context3, live, deploys) {
-  const met = live.rows.some((row2) => row2.known && row2.ticked && deploys.facts.byStack.get(row2.stackId)?.kind !== "open") || live.merges.some((merge3) => merge3.ticked);
+  const met = live.rows.some((row2) => row2.known && row2.ticked && deploys.facts.byStack.get(row2.stackId)?.kind !== "open") || live.merges.some((merge3) => merge3.ticked) || live.bulk.some((line3) => line3.ticked);
   if (!met)
     return false;
   try {
@@ -64379,7 +64780,7 @@ async function resolveWaits(context3, live, deploys) {
     throw new Error(`The runs of ${logGroupTitle(context3.workflow)} that an issue edit started could not be read: ${error63 instanceof Error ? error63.message : error63}. The scan met a ticked box and has to know whether a \`resolve\` run is still on its way before it clears it. The scan job needs the permission \`actions: read\` (record 0025).`);
   }
 }
-async function makePlan(context3, config2, stacks, knownDrift) {
+async function makePlan(context3, config2, stacks2, knownDrift) {
   const { log } = context3;
   const full = (why2) => ({ kind: "full", why: why2 });
   const afterMerge = context3.afterMerge ?? [];
@@ -64414,7 +64815,7 @@ async function makePlan(context3, config2, stacks, knownDrift) {
   }
   if (changed.kind !== "changed")
     return full(changed);
-  return planScan(stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })), changed.paths, config2.scan.unrelated, live?.rows ?? []);
+  return planScan(stacks2.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })), changed.paths, config2.scan.unrelated, live?.rows ?? []);
 }
 async function treeDiff(context3, from) {
   try {
@@ -64483,9 +64884,9 @@ function logPlan(context3, plan, stackCount) {
     log.info(`${logGroupTitle(id)} is previewed: ${whyText(why2)}.`);
   }
 }
-async function checkVersion5(context3, stacks) {
+async function checkVersion5(context3, stacks2) {
   try {
-    await context3.adapter.checkVersion({ root: context3.root, env: context3.env, run: context3.run }, stacks);
+    await context3.adapter.checkVersion({ root: context3.root, env: context3.env, run: context3.run }, stacks2);
   } catch (error63) {
     if (error63 instanceof ToolVersionError && error63.toolLog !== "") {
       context3.log.group("The tool's own words", lines4(error63.toolLog));
@@ -64493,34 +64894,34 @@ async function checkVersion5(context3, stacks) {
     throw error63;
   }
 }
-function driftCheckRule(config2, context3, knownDrift, stacks) {
-  const enabled = new Set(stacks.flatMap((one) => one.drift ?? config2.drift.enabled ? [stackId(one.stack)] : []));
+function driftCheckRule(config2, context3, knownDrift, stacks2) {
+  const enabled = new Set(stacks2.flatMap((one) => one.drift ?? config2.drift.enabled ? [stackId(one.stack)] : []));
   if (enabled.size === 0)
     return () => false;
   const every = context3.event === "schedule" || context3.event === "workflow_dispatch" && context3.startedByPerson === true;
   return (id) => enabled.has(id) && (every || knownDrift.has(id));
 }
-async function previewAll(context3, stacks, logDiff, showValues, prepared, checkDrift, repoStacks) {
+async function previewAll(context3, stacks2, logDiff, showValues, prepared, checkDrift, repoStacks) {
   const { log, now, adapter } = context3;
-  if (stacks.length === 0)
+  if (stacks2.length === 0)
     return [];
   const tool = { root: context3.root, env: context3.env, run: context3.run };
-  const unprepared = stacks.filter(({ stack }) => !prepared.has(stackId(stack)));
+  const unprepared = stacks2.filter(({ stack }) => !prepared.has(stackId(stack)));
   const failed3 = await prepareStacks({ ...tool, log, adapter }, unprepared, context3.previewTimeoutMinutes);
   for (const { stack } of unprepared) {
     if (!failed3.has(stackId(stack)))
       prepared.add(stackId(stack));
   }
-  const unpreparedFailures = stacks.flatMap(({ stack }) => {
+  const unpreparedFailures = stacks2.flatMap(({ stack }) => {
     const result = failed3.get(stackId(stack));
     return result === undefined ? [] : [{ id: stackId(stack), result, startedAt: now(), milliseconds: 0 }];
   });
-  stacks = stacks.filter(({ stack }) => !failed3.has(stackId(stack)));
-  if (stacks.length === 0)
+  stacks2 = stacks2.filter(({ stack }) => !failed3.has(stackId(stack)));
+  if (stacks2.length === 0)
     return unpreparedFailures;
-  log.info(`Previewing ${plural2(stacks.length, "stack")} with a pool of ${context3.concurrency} and a time limit of ${minutes(context3.previewTimeoutMinutes)} for each preview.`);
+  log.info(`Previewing ${plural2(stacks2.length, "stack")} with a pool of ${context3.concurrency} and a time limit of ${minutes(context3.previewTimeoutMinutes)} for each preview.`);
   const poolStarted = now().getTime();
-  const previewed = await runPool(stacks, context3.concurrency, async (configured) => {
+  const previewed = await runPool(stacks2, context3.concurrency, async (configured) => {
     const id = stackId(configured.stack);
     const startedAt = now();
     const started = startedAt.getTime();
@@ -64590,11 +64991,11 @@ function liveRun(run, id, log) {
   return (one) => run({ ...one, onStderrLine: (line3) => log.info(`${prefix} ${stripAnsi(line3)}`) });
 }
 function readDependenciesText(id, read3) {
-  const named = read3.stackIds.length === 0 ? `${logGroupTitle(id)} reads no stack of this repo through its stack references.` : `${logGroupTitle(id)} reads ${read3.stackIds.map(logGroupTitle).join(", ")} through its stack references.`;
+  const named2 = read3.stackIds.length === 0 ? `${logGroupTitle(id)} reads no stack of this repo through its stack references.` : `${logGroupTitle(id)} reads ${read3.stackIds.map(logGroupTitle).join(", ")} through its stack references.`;
   if (read3.elsewhere === 0)
-    return named;
+    return named2;
   const one = read3.elsewhere === 1;
-  return `${named} ${plural2(read3.elsewhere, "stack reference")} ${one ? "names" : "name"} no stack of this repo that Sluiceway knows, so nothing waits on ${one ? "it" : "them"}.`;
+  return `${named2} ${plural2(read3.elsewhere, "stack reference")} ${one ? "names" : "name"} no stack of this repo that Sluiceway knows, so nothing waits on ${one ? "it" : "them"}.`;
 }
 function logResults(context3, previewed) {
   const { log } = context3;
@@ -64728,6 +65129,9 @@ function reportDashboard(context3, written, lastPlaced) {
   for (const { pr, tick } of lastPlaced?.mergeTicks ?? []) {
     log.info(tick === "carry" ? `Left the tick on the merge of #${pr} alone: a run that an issue edit started is queued or in progress, and its \`resolve\` job handles every tick.` : `Cleared an orphan tick on the merge of #${pr}: no run that an issue edit started is queued or in progress. Tick it again to merge.`);
   }
+  for (const line3 of bulkSweepText(lastPlaced?.bulk ?? [], parseDashboard(written.body).bulk)) {
+    log.info(line3);
+  }
   const unread = lastPlaced?.unread ?? 0;
   if (unread > 0) {
     log.info(unread === 1 ? "1 deployment record carries a payload this version of Sluiceway cannot read. It was left alone." : `${unread} deployment records carry a payload this version of Sluiceway cannot read. They were left alone.`);
@@ -64748,7 +65152,7 @@ function reportDashboard(context3, written, lastPlaced) {
     log.warning(`The new dashboard (#${written.number}) could not be pinned. A repo holds at most three pinned issues. Pin it by hand if you want it at the top of the issue list.`, "Dashboard not pinned");
   }
 }
-async function listUpdates(context3, config2, stacks) {
+async function listUpdates(context3, config2, stacks2) {
   const { authors } = config2.mergeAndDeploy;
   if (authors.length === 0 || !config2.deploys || config2.dashboard.readOnly)
     return { kind: "off" };
@@ -64763,9 +65167,9 @@ async function listUpdates(context3, config2, stacks) {
   const options = {
     authors,
     defaultBranch: open2.defaultBranch,
-    stacks: stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
+    stacks: stacks2.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
     unrelated: config2.scan.unrelated,
-    dependsOn: new Map(stacks.map((one) => [stackId(one.stack), one.dependsOn ?? []]))
+    dependsOn: new Map(stacks2.map((one) => [stackId(one.stack), one.dependsOn ?? []]))
   };
   for (const pullRequest of open2.pullRequests) {
     const qualified = qualify(pullRequest.checks === "pending" ? { ...pullRequest, checks: "success" } : pullRequest, options);
@@ -64788,7 +65192,7 @@ async function listUpdates(context3, config2, stacks) {
   }
   return { kind: "listed", updates, onChecks: shown3 };
 }
-async function handOffMerges(context3, config2, stacks, previewed, waiting, handedOn) {
+async function handOffMerges(context3, config2, stacks2, previewed, waiting, handedOn) {
   const { log } = context3;
   let ended = false;
   for (const { id, fact } of waiting) {
@@ -64800,7 +65204,7 @@ async function handOffMerges(context3, config2, stacks, previewed, waiting, hand
       }
       continue;
     }
-    const stack = stacks.find(({ stack: one }) => stackId(one) === id);
+    const stack = stacks2.find(({ stack: one }) => stackId(one) === id);
     const result = previewed.get(id)?.result;
     const end = async (how) => {
       try {
@@ -64913,8 +65317,8 @@ async function settle3(context3) {
   const url2 = eventDashboardUrl(context3.repoUrl, context3.event);
   if (url2 !== undefined)
     context3.outputs?.set("dashboard-url", url2);
-  const { stacks } = await openRepo(context3.root, context3.adapter).stacks();
-  const read3 = await readRecords2(context3, stacks);
+  const { stacks: stacks2 } = await openRepo(context3.root, context3.adapter).stacks();
+  const read3 = await readRecords2(context3, stacks2);
   const settled = await settleOwnRun(context3, read3);
   const { records } = settled;
   const ended = settled.ended.length;
@@ -64948,21 +65352,21 @@ function logEnded(log, ended) {
     log.info(dead ? `${RESULT_DOT.failed} Ended the queued deployment of ${logGroupTitle(stack)} (record ${deployment}): a stack it depends on did not deploy.` : `${RESULT_DOT.failed} Ended the open deployment of ${logGroupTitle(stack)} (record ${deployment}): this run ended without a result for it.`);
   }
 }
-async function readRecords2(context3, stacks) {
+async function readRecords2(context3, stacks2) {
   try {
-    return await readDeploymentRecords(context3.github, stacks.map(({ environment }) => environment), () => startedHere(context3, stacks));
+    return await readDeploymentRecords(context3.github, stacks2.map(({ environment }) => environment), () => startedHere(context3, stacks2));
   } catch (error63) {
     throw new Error(`The deployment records could not be read: ${message4(error63)}. The settle job needs the permission \`deployments: write\` (record 0003).`);
   }
 }
-async function startedHere(context3, stacks) {
+async function startedHere(context3, stacks2) {
   const issue3 = editedIssue(context3.event);
   if (!issue3)
     return [];
   const { body } = await context3.github.getIssue(issue3.number);
   const rows = parseDashboard(body).rows;
   const hinted = new Set(rows.flatMap((row2) => row2.known && (isDeployingState(row2.state) || row2.ticked) ? [row2.stackId] : []));
-  return stacks.flatMap(({ stack, environment }) => hinted.has(stackId(stack)) ? [{ stackId: stackId(stack), environment }] : []);
+  return stacks2.flatMap(({ stack, environment }) => hinted.has(stackId(stack)) ? [{ stackId: stackId(stack), environment }] : []);
 }
 async function dispatchScan2(context3) {
   if (!context3.workflow) {
@@ -65037,9 +65441,9 @@ function openTofuRoots(files, read3) {
   const code2 = files.filter((file2) => /\.(tf|tofu)$/.test(file2) && !SKIPPED3.test(file2));
   const directories = [...new Set(code2.map(directoryOf))];
   const called = new Set(code2.flatMap((file2) => [...(read3(file2) ?? "").matchAll(/^\s*source\s*=\s*"(\.\.?\/[^"]*)"/gm)].map((match) => normal(posix.join(directoryOf(file2), match[1] ?? "")))));
-  return directories.filter((path) => !called.has(path) && !path.split("/").includes("modules")).sort(byCodeUnit19).map((path) => ({
+  return directories.filter((path) => !called.has(path) && !path.split("/").includes("modules")).sort(byCodeUnit20).map((path) => ({
     path,
-    varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit19)
+    varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit20)
   }));
 }
 function openTofuStacks(root) {
@@ -65067,7 +65471,7 @@ function helmCharts(files, read3) {
       return [];
     const release2 = releaseName(typeof chart.name === "string" ? chart.name : "", path);
     return release2 === undefined ? [] : [{ path, release: release2 }];
-  }).sort((a, b) => byCodeUnit19(a.path, b.path));
+  }).sort((a, b) => byCodeUnit20(a.path, b.path));
 }
 function releaseName(name, path) {
   for (const candidate of [name, posix.basename(path)]) {
@@ -65085,22 +65489,22 @@ var LOCKFILES = [
   ["bun.lockb", "bun"]
 ];
 var SECRET_REFERENCE = "op://";
-function findForWorkflow(stacks, files, read3) {
+function findForWorkflow(stacks2, files, read3) {
   const tool = (stack) => stack.options.tool;
   const pulumiPaths = [
-    ...new Set(stacks.filter((stack) => tool(stack) === undefined).map((s) => s.path))
+    ...new Set(stacks2.filter((stack) => tool(stack) === undefined).map((s) => s.path))
   ];
   const runtimes = pulumiPaths.map((path) => ({ path, runtime: pulumiRuntime(path, files, read3) }));
   const nodePaths = runtimes.filter(({ runtime }) => runtime === "nodejs").map((p) => p.path);
   const other = Map.groupBy(runtimes.filter(({ runtime }) => runtime !== "nodejs" && runtime !== "yaml"), ({ runtime }) => runtime);
   return {
     pulumi: pulumiPaths.length > 0,
-    opentofu: stacks.some((stack) => tool(stack) === OPENTOFU),
-    helm: stacks.some((stack) => tool(stack) === HELM),
-    kubectl: stacks.some((stack) => tool(stack) === KUBECTL),
+    opentofu: stacks2.some((stack) => tool(stack) === OPENTOFU),
+    helm: stacks2.some((stack) => tool(stack) === HELM),
+    kubectl: stacks2.some((stack) => tool(stack) === KUBECTL),
     node: nodePaths.length === 0 ? undefined : nodeFindings(nodePaths, files, read3),
-    otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit19(a.runtime, b.runtime)),
-    helmRepositories: helmRepositories(stacks, read3),
+    otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit20(a.runtime, b.runtime)),
+    helmRepositories: helmRepositories(stacks2, read3),
     envFiles: envFiles(files, read3)
   };
 }
@@ -65130,15 +65534,15 @@ function nodeFindings(paths2, files, read3) {
   const managers = new Set(installs.values());
   const manifest = yamlObject2(read3("package.json"));
   return {
-    installs: [...installs].map(([directory, manager]) => ({ directory, manager })).sort((a, b) => byCodeUnit19(a.directory, b.directory)),
+    installs: [...installs].map(([directory, manager]) => ({ directory, manager })).sort((a, b) => byCodeUnit20(a.directory, b.directory)),
     withoutLockfile,
     versionFile: [".nvmrc", ".node-version"].find((file2) => files.includes(file2)),
     yarnBerry: managers.has("yarn") && files.includes(".yarnrc.yml"),
     pnpmWithoutVersion: managers.has("pnpm") && !(typeof manifest?.packageManager === "string" && manifest.packageManager.startsWith("pnpm@"))
   };
 }
-function helmRepositories(stacks, read3) {
-  const repositories = stacks.flatMap((stack) => {
+function helmRepositories(stacks2, read3) {
+  const repositories = stacks2.flatMap((stack) => {
     const chartDir = stack.options.tool === HELM ? stack.options.chartDir : undefined;
     if (typeof chartDir !== "string")
       return [];
@@ -65149,16 +65553,16 @@ function helmRepositories(stacks, read3) {
       return typeof repository === "string" && /^https?:\/\//.test(repository) ? [repository] : [];
     });
   });
-  return [...new Set(repositories)].sort(byCodeUnit19);
+  return [...new Set(repositories)].sort(byCodeUnit20);
 }
 function envFiles(files, read3) {
   const found = files.filter((file2) => /(^|\/)(\.env(\.[^/]+)?|[^/]+\.env)$/.test(file2)).filter((file2) => /^[\w./-]+$/.test(file2)).filter((file2) => (read3(file2) ?? "").split(`
 `).some((line3) => /^\s*(export\s+)?[A-Za-z_]\w*\s*=/.test(line3) && line3.includes(SECRET_REFERENCE)));
   if (found.length === 0)
     return;
-  const named = (pattern) => found.find((file2) => pattern.test(posix.basename(file2)));
-  const deploy2 = named(/deploy|apply|write/i);
-  const preview5 = named(/preview|read|scan|plan/i);
+  const named2 = (pattern) => found.find((file2) => pattern.test(posix.basename(file2)));
+  const deploy2 = named2(/deploy|apply|write/i);
+  const preview5 = named2(/preview|read|scan|plan/i);
   const [first] = found;
   const pair = deploy2 !== undefined && preview5 !== undefined && deploy2 !== preview5 ? { preview: preview5, deploy: deploy2 } : { preview: first, deploy: first };
   return {
@@ -65193,7 +65597,7 @@ function normal(path) {
   const joined2 = posix.normalize(path).replace(/\/$/, "");
   return joined2 === "" ? "." : joined2;
 }
-function byCodeUnit19(a, b) {
+function byCodeUnit20(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -65440,9 +65844,9 @@ function starterConfig({ declarable, unrelated, unclaimed }) {
   if (opentofu2.length + helm2.length > 0) {
     lines5.push("", "stacks:");
     for (const root of opentofu2) {
-      const stacks = openTofuStacks(root);
-      lines5.push(stacks.length > 1 ? `  # An OpenTofu root module with a var file per stack, each in a workspace of its name.` : "  # An OpenTofu root module.");
-      for (const { name, varFile } of stacks) {
+      const stacks2 = openTofuStacks(root);
+      lines5.push(stacks2.length > 1 ? `  # An OpenTofu root module with a var file per stack, each in a workspace of its name.` : "  # An OpenTofu root module.");
+      for (const { name, varFile } of stacks2) {
         lines5.push(`  - path: ${quotedIfNeeded(root.path)}`);
         if (name !== undefined)
           lines5.push(`    name: ${quotedIfNeeded(name)}`);
@@ -65555,24 +65959,24 @@ async function init(context3) {
   const declarable = configKept ? { opentofu: [], helm: [] } : findDeclarable(files, read3, found.map(({ path }) => path));
   let config2 = existing;
   let configText2;
-  let stacks = found;
+  let stacks2 = found;
   if (!configKept) {
     const declared = starterConfig({ declarable, unrelated: [], unclaimed: undefined });
     config2 = parseConfig(declared);
-    stacks = await context3.adapter.discover(root, config2);
+    stacks2 = await context3.adapter.discover(root, config2);
   }
-  if (stacks.length === 0)
+  if (stacks2.length === 0)
     throw new Error(noStacksText());
-  const findings = findForWorkflow(stacks, files, read3);
+  const findings = findForWorkflow(stacks2, files, read3);
   const written = [
     WORKFLOW_FILE,
     ...configKept ? [] : [CONFIG_FILE],
     ...findings.envFiles !== undefined && !exists2(root, EXPORT_ENV_FILE) ? [EXPORT_ENV_FILE] : []
   ];
   if (!configKept) {
-    const report = checkSetup(config2, stacks, [...new Set([...files, ...written])].sort());
+    const report = checkSetup(config2, stacks2, [...new Set([...files, ...written])].sort());
     const unrelated = report.suggested;
-    const covered = checkSetup(parseConfig(starterConfig({ declarable, unrelated, unclaimed: undefined })), stacks, files);
+    const covered = checkSetup(parseConfig(starterConfig({ declarable, unrelated, unclaimed: undefined })), stacks2, files);
     const directories = [
       ...new Set(covered.unclaimed.flatMap(({ files: unclaimed }) => unclaimed.map((file2) => dirname3(file2)).filter((directory) => directory !== ".")))
     ].sort();
@@ -65582,11 +65986,11 @@ async function init(context3) {
       unrelated,
       unclaimed: first === undefined ? undefined : {
         directories,
-        stack: nearest(first, stacks.map(({ path }) => path))
+        stack: nearest(first, stacks2.map(({ path }) => path))
       }
     });
     config2 = parseConfig(configText2);
-    stacks = await context3.adapter.discover(root, config2);
+    stacks2 = await context3.adapter.discover(root, config2);
   }
   const branch = defaultBranch(root);
   const workflow = starterWorkflow({
@@ -65599,8 +66003,8 @@ async function init(context3) {
     write2(root, CONFIG_FILE, configText2);
   if (written.includes(EXPORT_ENV_FILE))
     write2(root, EXPORT_ENV_FILE, EXPORT_ENV);
-  log.info(foundText(stacks.length));
-  log.group("Stacks", stacks.map((stack) => stackId(stack)));
+  log.info(foundText(stacks2.length));
+  log.group("Stacks", stacks2.map((stack) => stackId(stack)));
   for (const file2 of written)
     log.info(wroteText(file2));
   if (configKept)
