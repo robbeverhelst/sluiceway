@@ -128,6 +128,43 @@ export interface WaitingFacts {
   stackIds: string[];
 }
 
+// The two sections whose rows a bulk box deploys at once (record 0083).
+export type BulkSection = "pending" | "drift";
+export const BULK_SECTIONS: readonly BulkSection[] = ["pending", "drift"];
+
+// A stack of a confirm box, with the diff hash its row had when the box was
+// drawn. Ticking the confirm box approves exactly these (record 0083).
+export interface BulkStack {
+  stackId: string;
+  hash: string;
+}
+
+// Why a bulk box stands under its section again with a note (record 0083):
+// a tick on it or on its confirm box that nothing picked up, a confirm box
+// that no one ticked before the next scan, or the rows that changed under a
+// confirm box.
+export type BulkNote =
+  | { kind: "orphan" }
+  | { kind: "expired" }
+  | { kind: "changed"; added: string[]; gone: string[]; moved: string[] };
+
+// The facts of a bulk line (record 0083). It sits outside the row blocks, like
+// a merge row, and every writer draws it again from these facts and the rows
+// of its section.
+export type BulkFacts =
+  | { kind: "box"; section: BulkSection; note?: BulkNote }
+  | {
+      kind: "confirm";
+      section: BulkSection;
+      // The ticker of the bulk box it replaced. Plain text, so nobody is
+      // notified.
+      by: string;
+      stacks: BulkStack[];
+      // The scan run of the body it was drawn into. A scan after that one
+      // takes it back (record 0083).
+      scanRun: string;
+    };
+
 export const ROW_CLOSE_MARKER = "<!-- /sluiceway:row -->";
 export const RESCAN_MARKER = "<!-- sluiceway:rescan -->";
 
@@ -184,6 +221,29 @@ export function waitingMarker(facts: WaitingFacts): string {
     ["pr", String(facts.pr)],
     ["stack", encodeIds(facts.stackIds)],
   ]);
+}
+
+// A bulk box or a confirm box (record 0083). A marker kind of its own, so no
+// reader of rows or merge rows ever takes it for one of theirs.
+export function bulkMarker(facts: BulkFacts): string {
+  const pairs: [string, string][] = [["section", facts.section]];
+  if (facts.kind === "confirm") {
+    pairs.push(
+      ["confirm", facts.by],
+      ["stacks", encodeIds(facts.stacks.map(({ stackId }) => stackId))],
+      ["hashes", facts.stacks.map(({ hash }) => hash).join(",")],
+      ["scan-run", facts.scanRun],
+    );
+  } else if (facts.note) {
+    pairs.push(["note", facts.note.kind]);
+    if (facts.note.kind === "changed") {
+      const { added, gone, moved } = facts.note;
+      if (added.length > 0) pairs.push(["added", encodeIds(added)]);
+      if (gone.length > 0) pairs.push(["gone", encodeIds(gone)]);
+      if (moved.length > 0) pairs.push(["moved", encodeIds(moved)]);
+    }
+  }
+  return marker("bulk", pairs);
 }
 
 // A deploy made outside the dashboard, at the end of its line of the trail
@@ -248,6 +308,9 @@ export interface ParsedMerge extends MergeFacts {
   text: string;
 }
 
+// A bulk line as it stands in the body: its line and the lines under it.
+export type ParsedBulk = BulkFacts & { ticked: boolean; text: string };
+
 // A line of an update waiting on its checks as it stands in the body.
 export interface ParsedWaiting extends WaitingFacts {
   text: string;
@@ -264,6 +327,9 @@ export interface ParsedDashboard {
   waiting: ParsedWaiting[];
   // The outside deploys on the trail, in body order (record 0073).
   outside: OutsideDeploy[];
+  // The bulk boxes and confirm boxes, in body order (record 0083). Of two
+  // lines for one section the readers take the first.
+  bulk: ParsedBulk[];
   rescanTicked: boolean;
 }
 
@@ -275,6 +341,7 @@ const ROW_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:row${PAIRS} 
 const MERGE_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:merge${PAIRS} -->[ \\t]*$`);
 const WAITING_LINE = new RegExp(`^- .*<!-- sluiceway:waiting${PAIRS} -->[ \\t]*$`);
 const OUTSIDE_LINE = new RegExp(`^- .*<!-- sluiceway:outside${PAIRS} -->[ \\t]*$`);
+const BULK_LINE = new RegExp(`^- \\[([ xX])\\] .*<!-- sluiceway:bulk${PAIRS} -->[ \\t]*$`);
 const RESCAN_LINE = /^- \[[xX]\] .*<!-- sluiceway:rescan -->[ \t]*$/;
 
 function readPairs(payload: string): Map<string, string> {
@@ -311,6 +378,7 @@ export function parseDashboard(body: string): ParsedDashboard {
   const merges: ParsedMerge[] = [];
   const waiting: ParsedWaiting[] = [];
   const outside: OutsideDeploy[] = [];
+  const bulk: ParsedBulk[] = [];
   let rescanTicked = false;
 
   for (let index = 0; index < lines.length; index++) {
@@ -319,6 +387,16 @@ export function parseDashboard(body: string): ParsedDashboard {
     const deploy = readOutside(line);
     if (deploy) {
       outside.push(deploy);
+      continue;
+    }
+    const box = readBulk(line);
+    if (box) {
+      // Its line and the indented lines under it. Only Sluiceway writes
+      // such a line there.
+      let end = index;
+      while (/^ {2}\S/.test(lines[end + 1] ?? "")) end++;
+      bulk.push({ ...box, text: lines.slice(index, end + 1).join("\n") });
+      index = end;
       continue;
     }
     const waits = readWaiting(line);
@@ -382,7 +460,7 @@ export function parseDashboard(body: string): ParsedDashboard {
     });
   }
 
-  return { root: readRoot(lines[0] ?? ""), rows, merges, waiting, outside, rescanTicked };
+  return { root: readRoot(lines[0] ?? ""), rows, merges, waiting, outside, bulk, rescanTicked };
 }
 
 // A merge line whose marker lacks a number, a stack or a whole commit id is
@@ -407,6 +485,62 @@ function readMerge(line: string): ParsedMerge | undefined {
     head,
     ticked: match[1] === "x" || match[1] === "X",
     text: line,
+  };
+}
+
+function isBulkSection(section: string | undefined): section is BulkSection {
+  return (BULK_SECTIONS as readonly (string | undefined)[]).includes(section);
+}
+
+function readIds(pairs: Map<string, string>, key: string): string[] {
+  const value = pairs.get(key) ?? "";
+  return value === "" ? [] : decodeIds(value);
+}
+
+// A bulk line of a section this version does not know is not one. A confirm
+// box without a login, without stacks, with a hash missing for one of them,
+// or without its scan run is not one either: nothing could be deployed from
+// it.
+function readBulk(line: string): (BulkFacts & { ticked: boolean }) | undefined {
+  const match = BULK_LINE.exec(line);
+  if (!match) return undefined;
+  const pairs = readPairs(match[2] ?? "");
+  const section = pairs.get("section");
+  if (!isBulkSection(section)) return undefined;
+  const ticked = match[1] === "x" || match[1] === "X";
+  const by = pairs.get("confirm");
+  if (by === undefined) {
+    const note = pairs.get("note");
+    if (note === "orphan" || note === "expired") {
+      return { kind: "box", section, note: { kind: note }, ticked };
+    }
+    if (note === "changed") {
+      const [added = [], gone = [], moved = []] = ["added", "gone", "moved"].map((key) =>
+        readIds(pairs, key),
+      );
+      return { kind: "box", section, note: { kind: "changed", added, gone, moved }, ticked };
+    }
+    return { kind: "box", section, ticked };
+  }
+  const ids = readIds(pairs, "stacks");
+  const hashes = (pairs.get("hashes") ?? "").split(",");
+  const scanRun = pairs.get("scan-run") ?? "";
+  if (
+    by === "" ||
+    scanRun === "" ||
+    ids.length === 0 ||
+    hashes.length !== ids.length ||
+    hashes.some((hash) => hash === "")
+  ) {
+    return undefined;
+  }
+  return {
+    kind: "confirm",
+    section,
+    by,
+    stacks: ids.map((stackId, index) => ({ stackId, hash: hashes[index] ?? "" })),
+    scanRun,
+    ticked,
   };
 }
 

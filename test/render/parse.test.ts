@@ -61,6 +61,7 @@ describe("reading a body", () => {
       merges: [],
       waiting: [],
       outside: [],
+      bulk: [],
       rescanTicked: false,
     });
   });

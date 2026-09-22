@@ -2,8 +2,10 @@
 // of the root facts, the row blocks and the deployment records. Every writer
 // regenerates it, and nothing in it is ever patched or carried through.
 
+import { type BulkState, sectionBulk } from "../core/bulk.ts";
 import type { IgnoredStack } from "../core/config.ts";
 import type { OutsideDeploy } from "../core/outside-deploy.ts";
+import { renderBulkLine } from "./bulk-box.ts";
 import {
   type CountsLineNumbers,
   type Crates,
@@ -101,6 +103,9 @@ export interface BodyInput {
   // the merges are. A line for a pull request that has a merge row is left
   // out.
   waiting?: readonly ParsedWaiting[] | undefined;
+  // The bulk boxes and confirm boxes under the pending and drifted rows
+  // (record 0083). Without it the body has none.
+  bulk?: BulkState | undefined;
   // The size budget's first cut after the spinners (record 0072): what each
   // deploy of the trail shipped becomes a count, as a row's names do.
   shortTrail?: boolean | undefined;
@@ -430,10 +435,16 @@ export function renderBody(input: BodyInput): string {
   // 0075). It names drifted stacks too, which are listed right under it.
   if (facts.alert) out.push(facts.alert);
   if (pending.length > 0) out.push(blocks(pending));
+  // Under the rows it deploys (record 0083).
+  const bulk = (section: "pending" | "drift") => {
+    const line = input.bulk && sectionBulk(input.bulk, input.rows, section);
+    return line ? [renderBulkLine(line)] : [];
+  };
+  out.push(...bulk("pending"));
 
   // Drift sits right under Pending: its rows have boxes too (record 0055).
   const drifted = facts.drift;
-  if (drifted.length > 0) out.push("## Drifted", DRIFTED_LINE, blocks(drifted));
+  if (drifted.length > 0) out.push("## Drifted", DRIFTED_LINE, blocks(drifted), ...bulk("drift"));
 
   const { previewFailed } = facts;
   if (previewFailed.length > 0)
