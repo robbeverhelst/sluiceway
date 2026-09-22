@@ -61,7 +61,7 @@ describe("a stack with an open deployment", () => {
     // because the header and the counts line need it.
     expect(rows(body)["a:prod"]?.text).toBe(
       [
-        `- ${SPINNER}**a:prod** · waiting to start · ticked by carol · [run](${REPO_URL}/actions/runs/77) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" -->`,
+        `- ${SPINNER}**a:prod** · waiting to start · ticked by carol · [run](${REPO_URL}/actions/runs/77) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" deletes="1" -->`,
         // No success of this stack is on record, so attribution has no commit
         // to start from (record 0026).
         "  not deployed from this dashboard yet",
@@ -126,7 +126,7 @@ describe("a stack with an open deployment", () => {
     expect(adapter.previewed).toEqual(["b:prod"]);
     // The count of destroys is copied from the marker of the row it replaces.
     expect(rows(dashboardBody(first.github))["a:prod"]?.text).toContain(
-      'state="deploying" destroys="1" -->',
+      'state="deploying" destroys="1" deletes="1" -->',
     );
   });
 });

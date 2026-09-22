@@ -536,6 +536,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
             runUrl: runUrlOf(context, fact.run, fact.attempt),
             waiting: fact.waiting,
             destroys: destroysOf(mine, liveRow),
+            deletes: deletesOf(mine, liveRow),
             attribution: lines.get(id)?.lines,
             behind: fact.behind,
           });
@@ -828,6 +829,17 @@ function failureLine(context: ScanContext, fact: DeployFact | undefined): Failur
 function destroysOf(mine: Previewed | undefined, liveRow: ParsedRow | undefined): number {
   if (mine?.result.ok) return mine.result.diff.changes.filter(isDestroy).length;
   return liveRow?.known ? liveRow.destroys : 0;
+}
+
+// And how many of those are deletes, for the delete sign (record 0075). A
+// marker an older version wrote does not say.
+function deletesOf(
+  mine: Previewed | undefined,
+  liveRow: ParsedRow | undefined,
+): number | undefined {
+  if (mine?.result.ok)
+    return mine.result.diff.changes.filter((change) => change.op === "delete").length;
+  return liveRow?.known ? liveRow.deletes : undefined;
 }
 
 // The late read of the deployment records: bounded reads, then every open

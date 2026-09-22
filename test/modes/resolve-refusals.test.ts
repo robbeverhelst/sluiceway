@@ -50,7 +50,7 @@ describe("a second tick on a stack that is deploying", () => {
     expect(h.github.comments(h.number)).toEqual([]);
     expect(rowsOf(h)["a:prod"]).toBe(
       [
-        `- ${SPINNER}**a:prod** · deploying · ticked by carol · [run](${REPO_URL}/actions/runs/77) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" -->`,
+        `- ${SPINNER}**a:prod** · deploying · ticked by carol · [run](${REPO_URL}/actions/runs/77) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" deletes="1" -->`,
         // No success of this stack is on record (record 0026).
         "  not deployed from this dashboard yet",
         "  <!-- /sluiceway:row -->",
@@ -173,7 +173,10 @@ describe("a box that is ticked again at another hash before the write", () => {
         h.number,
         h.github
           .issue(h.number)
-          .body.replace(/hash="[0-9a-f]{16}" destroys="1"/, 'hash="ffffffffffffffff" destroys="1"'),
+          .body.replace(
+            /hash="[0-9a-f]{16}" destroys="1" deletes="1"/,
+            'hash="ffffffffffffffff" destroys="1" deletes="1"',
+          ),
         BOB,
       );
     };

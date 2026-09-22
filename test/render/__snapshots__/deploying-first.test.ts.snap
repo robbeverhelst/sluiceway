@@ -5,8 +5,8 @@ exports[`snapshots deploying and queued rows at the top, with the spinner 1`] = 
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/deploying-1-destroys-dark.svg">
-    <img alt="Sluiceway: deploying, 1 stack is pending, some changes delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/deploying-1-destroys-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/deploying-1-deletes-dark.svg">
+    <img alt="Sluiceway: deploying, 1 stack is pending, some changes delete resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/deploying-1-deletes-light.svg">
   </picture>
 </p>
 
@@ -32,7 +32,7 @@ Tick a box to deploy that stack exactly as its row shows it.
 > [!CAUTION]
 > 1 pending stack deletes or replaces resources: **apps/api:prod**
 
-- [ ] **apps/api:prod** · **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" -->
+- [ ] **apps/api:prod** · **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" deletes="1" -->
   :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b>
   <!-- /sluiceway:row -->
 
@@ -64,8 +64,8 @@ exports[`snapshots nothing deploying, pending first 1`] = `
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/pending-1-destroys-dark.svg">
-    <img alt="Sluiceway: 1 stack is pending, some delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/pending-1-destroys-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/pending-1-deletes-dark.svg">
+    <img alt="Sluiceway: 1 stack is pending, some delete resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/pending-1-deletes-light.svg">
   </picture>
 </p>
 
@@ -84,7 +84,7 @@ Tick a box to deploy that stack exactly as its row shows it.
 > [!CAUTION]
 > 1 pending stack deletes or replaces resources: **apps/api:prod**
 
-- [ ] **apps/api:prod** · **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" -->
+- [ ] **apps/api:prod** · **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" deletes="1" -->
   :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b>
   <!-- /sluiceway:row -->
 

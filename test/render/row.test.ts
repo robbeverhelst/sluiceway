@@ -42,7 +42,7 @@ describe("a pending row", () => {
   test("the worked example of record 0027", () => {
     expect(renderRow(BUCKETS)).toBe(
       [
-        '- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](run-url) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="2b44350653e84a11" destroys="2" -->',
+        '- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](run-url) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="2b44350653e84a11" destroys="2" deletes="1" -->',
         "  from #433 by alice, #429 by alice, [3fa9c1e](commit-url) by bob, and 1 change outside this stack · [compare](compare-url)",
         "  :warning: <kbd>DELETE</kbd> <code>aws:s3/bucketPolicy:BucketPolicy</code> <b>uploads-public-read</b>",
         "  :warning: <kbd>REPLACE</kbd> <code>aws:s3/bucket:Bucket</code> <b>uploads</b> · forced by <code>bucket</code> · also changes <code>tags</code>",
@@ -83,7 +83,7 @@ describe("a pending row", () => {
       change("create", "t", "c3"),
     ]);
     expect(firstLine(renderRow(row))).toBe(
-      `- [ ] **a:prod** · 3 creates, 2 updates, **2 deletes**, 2 tracking only · [preview](${RUN_URL}) <!-- sluiceway:row stack="a:prod" state="pending" hash="00000000000000aa" destroys="2" -->`,
+      `- [ ] **a:prod** · 3 creates, 2 updates, **2 deletes**, 2 tracking only · [preview](${RUN_URL}) <!-- sluiceway:row stack="a:prod" state="pending" hash="00000000000000aa" destroys="2" deletes="2" -->`,
     );
     const replaces = pending("a:prod", [
       change("replace", "t", "r1"),
@@ -289,7 +289,7 @@ describe("the lines a deploy leaves on a row", () => {
 
   test("a row with a failure line says so on its marker", () => {
     const first = renderRow({ ...BUCKETS, failure: FAILURE }).split("\n")[0];
-    expect(first).toEndWith('hash="2b44350653e84a11" destroys="2" failed="true" -->');
+    expect(first).toEndWith('hash="2b44350653e84a11" destroys="2" deletes="1" failed="true" -->');
   });
 });
 
@@ -343,6 +343,21 @@ describe("rows without a box", () => {
     });
     expect(block.split("\n")[0]).toEndWith(
       '<!-- sluiceway:row stack="a:prod" state="deploying" destroys="2" -->',
+    );
+  });
+
+  // Record 0075: the split between deletes and replaces goes along too.
+  test("a deploying row carries the deletes of the row it replaced on its marker", () => {
+    const block = renderRow({
+      state: "deploying",
+      stackId: "a:prod",
+      ticker: "alice",
+      runUrl: CERT_RUN,
+      destroys: 2,
+      deletes: 0,
+    });
+    expect(block.split("\n")[0]).toEndWith(
+      '<!-- sluiceway:row stack="a:prod" state="deploying" destroys="2" deletes="0" -->',
     );
   });
 
@@ -520,7 +535,7 @@ describe("a shortened row", () => {
 
   test("the marker of a shortened row holds its level, after every other key", () => {
     expect(level(2)[0]).toBe(
-      '- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](run-url) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="2b44350653e84a11" destroys="2" shortened="2" -->',
+      '- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](run-url) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="2b44350653e84a11" destroys="2" deletes="1" shortened="2" -->',
     );
     expect(full[0]).not.toContain("shortened");
   });
@@ -732,7 +747,7 @@ describe("text from outside is never markup", () => {
   test("a hostile stack id, type, name and key are escaped on every line", () => {
     const lines = renderRow(row).split("\n");
     expect(lines[0]).toBe(
-      '- [ ] **apps/&lt;b&gt;&#42;x&#42;&lt;/b&gt; &quot;q&quot;:prod** · 1 update, **1 replace**, **1 delete** · [preview](run-url) <!-- sluiceway:row stack="apps/%3Cb%3E*x*%3C/b%3E%20%22q%22:prod" state="pending" hash="00000000000000aa" destroys="2" -->',
+      '- [ ] **apps/&lt;b&gt;&#42;x&#42;&lt;/b&gt; &quot;q&quot;:prod** · 1 update, **1 replace**, **1 delete** · [preview](run-url) <!-- sluiceway:row stack="apps/%3Cb%3E*x*%3C/b%3E%20%22q%22:prod" state="pending" hash="00000000000000aa" destroys="2" deletes="1" -->',
     );
     expect(lines[1]).toStartWith(
       "  :warning: <kbd>DELETE</kbd> <code>&lt;script&gt;&lt;/details&gt;   &lt;!-- /sluiceway:row --&gt; - &#91;x&#93;",

@@ -106,6 +106,26 @@ describe("reading a body", () => {
     expect(parseDashboard(body).rows[0]).toMatchObject({ destroys: 12, failed: true });
   });
 
+  // Record 0075: absent when the marker has no number for it, which is a row
+  // an older version wrote.
+  test("deletes is read from the marker, and absent when the marker has none", () => {
+    const body = [
+      '- [ ] x <!-- sluiceway:row stack="a" state="pending" hash="00" destroys="3" deletes="1" -->',
+      "  <!-- /sluiceway:row -->",
+      '- [ ] x <!-- sluiceway:row stack="b" state="pending" hash="00" destroys="2" deletes="0" -->',
+      "  <!-- /sluiceway:row -->",
+      '- [ ] x <!-- sluiceway:row stack="c" state="pending" hash="00" destroys="2" -->',
+      "  <!-- /sluiceway:row -->",
+      '- [ ] x <!-- sluiceway:row stack="d" state="pending" hash="00" destroys="2" deletes="some" -->',
+      "  <!-- /sluiceway:row -->",
+    ].join("\n");
+    const rows = parseDashboard(body).rows;
+    expect(rows[0]).toMatchObject({ destroys: 3, deletes: 1 });
+    expect(rows[1]).toMatchObject({ destroys: 2, deletes: 0 });
+    expect(rows[2]).not.toHaveProperty("deletes");
+    expect(rows[3]).not.toHaveProperty("deletes");
+  });
+
   test("a cache that does not read as a number counts as nothing", () => {
     const body = [
       '- x <!-- sluiceway:row stack="a" state="in-sync" destroys="many" failed="yes" -->',

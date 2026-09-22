@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { destroySign } from "../../src/render/destroy-sign.ts";
+import { destroySigns } from "../../src/render/destroy-sign.ts";
 import type { ParsedRow } from "../../src/render/marker.ts";
 
 type Known = Extract<ParsedRow, { known: true }>;
 
-function row(state: Known["state"], destroys = 0, failed = false): Known {
+function row(state: Known["state"], destroys = 0, failed = false, deletes?: number): Known {
   return {
+    ...(deletes === undefined ? {} : { deletes }),
     known: true,
     stackId: `stack-${state}-${destroys}`,
     state,
@@ -23,10 +24,57 @@ function row(state: Known["state"], destroys = 0, failed = false): Known {
 // `destroys` key, but the parser keeps no facts for it, so it has none.
 const unknown: ParsedRow = { known: false, stackId: "later", state: "drift", text: "" };
 
+// Whether any sign is up, as the rule of record 0043 had it.
+const destroySign = (rows: ParsedRow[]) => {
+  const signs = destroySigns(rows);
+  return signs.deletes || signs.replaces;
+};
+
+// Record 0075: a sign for a replace and a sign of its own for a delete.
+describe("the delete sign and the replace sign of record 0075", () => {
+  const NONE = { deletes: false, replaces: false };
+
+  test("a row with only replaces puts up the replace sign", () => {
+    expect(destroySigns([row("pending", 2, false, 0)])).toEqual({ deletes: false, replaces: true });
+  });
+
+  test("a row with only deletes puts up the delete sign", () => {
+    expect(destroySigns([row("pending", 2, false, 2)])).toEqual({ deletes: true, replaces: false });
+  });
+
+  test("a row with both puts up both", () => {
+    expect(destroySigns([row("deploying", 3, false, 1)])).toEqual({
+      deletes: true,
+      replaces: true,
+    });
+  });
+
+  test("two rows, one of each, put up both", () => {
+    expect(destroySigns([row("pending", 1, false, 1), row("queued", 1, false, 0)])).toEqual({
+      deletes: true,
+      replaces: true,
+    });
+  });
+
+  // An older version counted them together and did not say which. The delete
+  // sign asks for the more care of the two.
+  test("a marker that does not say how many are deletes counts them all as deletes", () => {
+    expect(destroySigns([row("pending", 2)])).toEqual({ deletes: true, replaces: false });
+  });
+
+  test("no destroy puts up neither", () => {
+    expect(destroySigns([row("pending"), row("in-sync", 1, false, 1)])).toEqual(NONE);
+  });
+});
+
 // The rule of record 0043: the one plain had in record 0031, moved.
 describe("the destroy sign of record 0043", () => {
   test("a destroy on a pending row turns it on", () => {
     expect(destroySign([row("pending", 1), row("in-sync")])).toBe(true);
+  });
+
+  test("a destroy on a queued row turns it on", () => {
+    expect(destroySign([row("queued", 1)])).toBe(true);
   });
 
   test("a destroy on a deploying row turns it on", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderBody, rowBlock } from "../../src/render/body.ts";
 import { clearTick } from "../../src/render/clear-tick.ts";
-import { destroySign } from "../../src/render/destroy-sign.ts";
+import { destroySigns } from "../../src/render/destroy-sign.ts";
 import { headerState } from "../../src/render/header-state.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
 import { dashboardCounts } from "../../src/render/result-file.ts";
@@ -76,10 +76,13 @@ describe("the body with a queued row", () => {
     expect(dashboardCounts(parseDashboard(body).rows)).toMatchObject({ deploying: 1 });
   });
 
-  test("makes the header deploying, and its destroys turn the sign on", () => {
+  // Record 0075: a queued row with nothing deploying has a header state of
+  // its own.
+  test("makes the header queued, and its destroys turn a sign on", () => {
     const parsed = parseDashboard(body).rows;
-    expect(headerState(parsed)).toBe("deploying");
-    expect(destroySign(parsed)).toBe(true);
+    expect(headerState(parsed)).toBe("queued");
+    const signs = destroySigns(parsed);
+    expect(signs.deletes || signs.replaces).toBe(true);
   });
 });
 

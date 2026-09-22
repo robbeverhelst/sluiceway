@@ -39,18 +39,19 @@ describe("the example dashboard in the README", () => {
     for (const url of urls) expect(url.startsWith(`${IMAGES}/`)).toBe(true);
   });
 
-  // Record 0047: one crate per pending stack, and the sign when one destroys.
-  test("shows one crate per pending stack and the destroy sign", () => {
+  // Record 0047: one crate per pending stack. Record 0075: the example's
+  // destroys are deletes, so the delete sign.
+  test("shows one crate per pending stack and the delete sign", () => {
     const pending = Number(shown.match(/\*\*(\d+) pending\*\*/)?.[1]);
     expect(pending).toBeGreaterThan(1);
-    expect(shown).toContain(`${IMAGES}/pending-${pending}-destroys-light.svg`);
-    expect(shown).toContain(`${IMAGES}/pending-${pending}-destroys-dark.svg`);
+    expect(shown).toContain(`${IMAGES}/pending-${pending}-deletes-light.svg`);
+    expect(shown).toContain(`${IMAGES}/pending-${pending}-deletes-dark.svg`);
     expect(shown).toContain(
-      `alt="Sluiceway: ${pending} stacks are pending, some delete or replace resources"`,
+      `alt="Sluiceway: ${pending} stacks are pending, some delete resources"`,
     );
     for (const theme of ["light", "dark"]) {
       expect(
-        existsSync(resolve(ROOT, `assets/mascot/pending-${pending}-destroys-${theme}.svg`)),
+        existsSync(resolve(ROOT, `assets/mascot/pending-${pending}-deletes-${theme}.svg`)),
       ).toBe(true);
     }
   });

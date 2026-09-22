@@ -23,11 +23,12 @@ function row(state: Known["state"], facts: { destroys?: number; failed?: boolean
 
 const unknown: ParsedRow = { known: false, stackId: "later", state: "someday", text: "" };
 
-describe("the six header states of records 0031, 0043 and 0055", () => {
+describe("the seven header states of records 0031, 0043, 0055 and 0075", () => {
   test("they are listed in the order in which they win, and plain is gone", () => {
     expect(HEADER_STATES).toEqual([
       "failing",
       "deploying",
+      "queued",
       "pending",
       "drift",
       "first-run",
@@ -60,6 +61,17 @@ describe("the six header states of records 0031, 0043 and 0055", () => {
 
   test("a deploying row is deploying", () => {
     expect(headerState([row("deploying")])).toBe("deploying");
+  });
+
+  // Record 0075: a stack queued behind its dependencies while nothing
+  // deploys has a state of its own. Deploying wins over it.
+  test("a queued row is queued, and a deploying row wins over it", () => {
+    expect(headerState([row("queued"), row("in-sync")])).toBe("queued");
+    expect(headerState([row("queued"), row("deploying")])).toBe("deploying");
+  });
+
+  test("a queued row wins over a pending row", () => {
+    expect(headerState([row("pending"), row("queued")])).toBe("queued");
   });
 
   test("a preview failure is failing", () => {
@@ -106,7 +118,11 @@ describe("precedence: bad news wins", () => {
       "failing",
       [row("in-sync", { failed: true }), row("deploying"), row("pending"), row("in-sync")],
     ],
+    ["failing", [row("preview-failed"), row("queued"), row("pending")]],
+    ["deploying", [row("deploying"), row("queued"), row("pending"), row("in-sync")]],
     ["deploying", [row("deploying"), row("pending"), row("in-sync")]],
+    ["queued", [row("queued"), row("pending"), row("drift"), row("in-sync")]],
+    ["queued", [row("queued", { destroys: 1 }), row("pending", { destroys: 1 })]],
     ["deploying", [row("deploying", { destroys: 1 }), row("pending", { destroys: 1 })]],
     ["pending", [row("pending"), row("in-sync")]],
     ["pending", [row("pending", { destroys: 3 }), row("in-sync")]],

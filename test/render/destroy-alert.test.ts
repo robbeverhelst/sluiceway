@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type BodyInput, renderBody, rowBlock } from "../../src/render/body.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
-import type { PendingRow, Row } from "../../src/render/row.ts";
+import type { DriftRow, PendingRow, Row } from "../../src/render/row.ts";
 
 // Slice 4.11 (record 0062): one alert block above the pending list that names
 // the pending stacks with a delete or replace. Written out by hand from the
@@ -25,6 +25,27 @@ function pending(stackId: string, ops: ("create" | "update" | "delete")[]): Pend
       })),
     },
     hash: "3fa9c1e2aabbccdd",
+    runUrl: RUN_URL,
+  };
+}
+
+// Record 0055: nothing to deploy from the code, and what changed outside it.
+function drifted(stackId: string, ops: ("update" | "delete")[]): DriftRow {
+  return {
+    state: "drift",
+    diff: {
+      stackId,
+      changes: [],
+      drift: ops.map((op, index) => ({
+        address: `address-${index}`,
+        type: "local:index/file:File",
+        name: `file-${index}`,
+        op,
+        changedKeys: op === "update" ? ["content"] : [],
+        replaceKeys: [],
+      })),
+    },
+    hash: "4be1a0c93d7e5f20",
     runUrl: RUN_URL,
   };
 }
@@ -108,5 +129,61 @@ describe("the destroy alert", () => {
     expect(alerts(renderBody(input([pending("a*b<c>", ["delete"])])))[0]).toContain(
       "**a&#42;b&lt;c&gt;**",
     );
+  });
+});
+
+// Record 0075: a drifted row deletes and replaces nothing, because nothing
+// waits from its code. What the alert names for it is a resource gone outside
+// the code, the one loss a person may not know of yet.
+describe("drifted rows in the destroy alert", () => {
+  test("names every drifted stack with a resource gone outside the code", () => {
+    const body = renderBody(
+      input([drifted("site:prod", ["delete"]), drifted("web:prod", ["update"])]),
+    );
+    expect(alerts(body)).toEqual([
+      "> [!CAUTION]\n> 1 drifted stack has resources gone outside the code: **site:prod**",
+    ]);
+  });
+
+  test("the plural", () => {
+    const body = renderBody(
+      input([drifted("b", ["delete", "update"]), drifted("a", ["delete", "delete"])]),
+    );
+    expect(alerts(body)).toEqual([
+      "> [!CAUTION]\n> 2 drifted stacks have resources gone outside the code: **a**, **b**",
+    ]);
+  });
+
+  test("with pending destroys too, one block with a paragraph for each", () => {
+    const body = renderBody(input([pending("p", ["delete"]), drifted("d", ["delete"])]));
+    expect(alerts(body)).toEqual([
+      [
+        "> [!CAUTION]",
+        "> 1 pending stack deletes or replaces resources: **p**",
+        ">",
+        "> 1 drifted stack has resources gone outside the code: **d**",
+      ].join("\n"),
+    ]);
+  });
+
+  test("sits right above the pending list, and under the Pending line when nothing is pending", () => {
+    const all = paragraphs(renderBody(input([drifted("d", ["delete"])])));
+    const heading = all.indexOf("## Pending");
+    expect(all[heading + 1]).toBe("Nothing to deploy from the code.");
+    expect(all[heading + 2]).toStartWith("> [!CAUTION]");
+    expect(all[heading + 3]).toBe("## Drifted");
+  });
+
+  test("a drifted row with only changed properties is not named", () => {
+    expect(alerts(renderBody(input([drifted("d", ["update", "update"])])))).toEqual([]);
+  });
+
+  test("is there under redact and without personality", () => {
+    const rows = [drifted("d", ["delete"])];
+    const expected = ["> [!CAUTION]\n> 1 drifted stack has resources gone outside the code: **d**"];
+    expect(alerts(renderBody(input(rows, { personality: false })))).toEqual(expected);
+    const redacted = input([]);
+    redacted.rows = rows.map((row) => rowBlock(row, { redact: true }));
+    expect(alerts(renderBody(redacted))).toEqual(expected);
   });
 });

@@ -108,6 +108,26 @@ describe("writing markers", () => {
     );
   });
 
+  // Record 0075: how many of the destroys are deletes, so the header can put
+  // up the delete sign or the replace sign. Written whenever there are
+  // destroys, 0 included, so a marker without it is one an older version
+  // wrote.
+  test("deletes follows destroys, 0 included, and is left out without destroys", () => {
+    expect(rowMarker({ stackId: "a", state: "pending", hash: "00", destroys: 3, deletes: 1 })).toBe(
+      '<!-- sluiceway:row stack="a" state="pending" hash="00" destroys="3" deletes="1" -->',
+    );
+    expect(rowMarker({ stackId: "a", state: "pending", hash: "00", destroys: 2, deletes: 0 })).toBe(
+      '<!-- sluiceway:row stack="a" state="pending" hash="00" destroys="2" deletes="0" -->',
+    );
+    expect(rowMarker({ stackId: "a", state: "pending", hash: "00", deletes: 0 })).toBe(
+      '<!-- sluiceway:row stack="a" state="pending" hash="00" -->',
+    );
+    // A deploying row copied from an older marker does not know the split.
+    expect(rowMarker({ stackId: "a", state: "deploying", destroys: 2 })).toBe(
+      '<!-- sluiceway:row stack="a" state="deploying" destroys="2" -->',
+    );
+  });
+
   // Record 0028, settled in slice 1.8: a writer that carries a row through
   // cannot read its text, and the note under the scan line counts these.
   test("shortened follows failed and holds the level, and is left out for a row in full", () => {

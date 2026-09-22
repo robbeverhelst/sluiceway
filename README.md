@@ -24,8 +24,8 @@ The dashboard is Markdown, so here is one. It is an example, rendered by Sluicew
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.1/assets/mascot/pending-4-destroys-dark.svg">
-    <img alt="Sluiceway: 4 stacks are pending, some delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.1/assets/mascot/pending-4-destroys-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.1/assets/mascot/pending-4-deletes-dark.svg">
+    <img alt="Sluiceway: 4 stacks are pending, some delete resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.1/assets/mascot/pending-4-deletes-light.svg">
   </picture>
 </p>
 

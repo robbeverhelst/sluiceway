@@ -4,7 +4,14 @@ import { join, resolve } from "node:path";
 import { type BodyInput, type RecentDeploy, renderBody, rowBlock } from "../../src/render/body.ts";
 import { HEADER_STATES, type HeaderState } from "../../src/render/header-state.ts";
 import { type ParsedRow, parseDashboard } from "../../src/render/marker.ts";
-import type { DriftRow, FailureLine, InSyncRow, PendingRow, Row } from "../../src/render/row.ts";
+import type {
+  DeployingRow,
+  DriftRow,
+  FailureLine,
+  InSyncRow,
+  PendingRow,
+  Row,
+} from "../../src/render/row.ts";
 import { rows58, rows100 } from "./fixtures.ts";
 
 const ROOT = {
@@ -20,7 +27,7 @@ const RUN_URL = `${REPO_URL}/actions/runs/17034455121`;
 
 function pending(
   stackId: string,
-  ops: ("create" | "update" | "delete")[] = ["update"],
+  ops: ("create" | "update" | "delete" | "replace")[] = ["update"],
 ): PendingRow {
   return {
     state: "pending",
@@ -79,7 +86,7 @@ const IMAGES = "https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/ass
 
 // Written out by hand from records 0029, 0040 and 0055, not from the code.
 describe("a body with drift (record 0055)", () => {
-  test("one drifted stack and one in sync: the drift picture, the count, and the Drifted section under Pending", () => {
+  test("one drifted stack and one in sync: the drift picture, the count, the alert, and the Drifted section under Pending", () => {
     expect(renderBody(input([inSync("apps/web:prod"), drifted("apps/api:prod")]))).toBe(
       [
         '<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->',
@@ -103,11 +110,15 @@ describe("a body with drift (record 0055)", () => {
         "",
         "Nothing to deploy from the code.",
         "",
+        // Record 0075: a resource gone outside the code is named above the list.
+        "> [!CAUTION]",
+        "> 1 drifted stack has resources gone outside the code: **apps/api:prod**",
+        "",
         "## Drifted",
         "",
         "Real infrastructure changed outside the code. Deploying a stack puts it back as its code says.",
         "",
-        `- [ ] **apps/api:prod** · 1 gone outside the code · [preview](${RUN_URL}) <!-- sluiceway:row stack="apps/api:prod" state="drift" hash="4be1a0c93d7e5f20" drift="true" -->`,
+        `- [ ] **apps/api:prod** · 1 gone outside the code · [preview](${RUN_URL}) <!-- sluiceway:row stack="apps/api:prod" state="drift" hash="4be1a0c93d7e5f20" drift="true" gone="1" -->`,
         "  <details><summary>1 change outside the code</summary>",
         "  <kbd>gone</kbd> <code>local:index/file:File</code> <b>notes</b><br>",
         "  </details>",
@@ -210,12 +221,21 @@ const FAILURE: FailureLine = {
   runUrl: `${REPO_URL}/actions/runs/17019884120`,
 };
 
-const deploying = (stackId: string, destroys = 0): Row => ({
+// `deletes` left out is a marker of an older version, which did not say how
+// many of the destroys are deletes (record 0075).
+const deploying = (stackId: string, destroys = 0, deletes?: number): DeployingRow => ({
   state: "deploying",
   stackId,
   ticker: "carol",
   runUrl: RUN_URL,
   destroys,
+  ...(deletes === undefined ? {} : { deletes }),
+});
+
+// A stack queued behind its dependency (record 0056).
+const queued = (stackId: string, destroys = 0, deletes?: number): DeployingRow => ({
+  ...deploying(stackId, destroys, deletes),
+  behind: ["n:network"],
 });
 
 const previewFailed = (stackId: string): Row => ({
@@ -236,6 +256,7 @@ const DASHBOARDS: Record<HeaderState, Row[]> = {
     inSync("f:calm"),
   ],
   deploying: [deploying("c:deploying"), pending("d:pending"), inSync("e:calm")],
+  queued: [queued("q:queued"), pending("d:pending"), inSync("e:calm")],
   pending: [pending("d:pending"), inSync("e:calm")],
   drift: [drifted("g:drift"), inSync("e:calm")],
   "first-run": [],
@@ -285,6 +306,7 @@ describe("the picture", () => {
     "in-sync": "in-sync",
     pending: "pending-1",
     deploying: "deploying-1",
+    queued: "queued-1",
     failing: "failing-1",
     drift: "drift",
   };
@@ -293,13 +315,14 @@ describe("the picture", () => {
     "in-sync": "Sluiceway: everything is in sync",
     pending: "Sluiceway: 1 stack is pending",
     deploying: "Sluiceway: deploying, 1 stack is pending",
+    queued: "Sluiceway: queued behind dependencies, 1 stack is pending",
     failing: "Sluiceway: something failed, 1 stack is pending",
     drift: "Sluiceway: something changed outside the code",
   };
-  // Record 0043: the state's alt text plus the fact.
+  // Records 0043 and 0075: the state's alt text plus the fact.
   const SIGNED_ALT = {
     pending: "Sluiceway: 1 stack is pending, some delete or replace resources",
-    deploying: "Sluiceway: deploying, 1 stack is pending, some changes delete or replace resources",
+    deploying: "Sluiceway: deploying, 1 stack is pending, some changes replace resources",
   };
 
   // The markup of record 0040: centered, and as wide as the issue (0039).
@@ -326,8 +349,10 @@ describe("the picture", () => {
     [1, "failing-1", "Sluiceway: something failed, 1 stack is pending"],
     [9, "failing-9", "Sluiceway: something failed, 9 stacks are pending"],
     [12, "failing-12", "Sluiceway: something failed, 12 stacks are pending"],
-    [13, "failing-more", "Sluiceway: something failed, more than 12 stacks are pending"],
-    [58, "failing-more", "Sluiceway: something failed, more than 12 stacks are pending"],
+    [13, "failing-13", "Sluiceway: something failed, 13 stacks are pending"],
+    [20, "failing-20", "Sluiceway: something failed, 20 stacks are pending"],
+    [21, "failing-more", "Sluiceway: something failed, more than 20 stacks are pending"],
+    [58, "failing-more", "Sluiceway: something failed, more than 20 stacks are pending"],
   ])("a failed preview and %i pending rows show %s", (count, file, alt) => {
     const rows = Array.from({ length: count }, (_, index) => pending(`stack-${index}`));
     const body = renderBody(input([...rows, previewFailed("broken"), inSync("calm")]));
@@ -339,11 +364,31 @@ describe("the picture", () => {
     [1, "deploying-1", "Sluiceway: deploying, 1 stack is pending"],
     [4, "deploying-4", "Sluiceway: deploying, 4 stacks are pending"],
     [12, "deploying-12", "Sluiceway: deploying, 12 stacks are pending"],
-    [13, "deploying-more", "Sluiceway: deploying, more than 12 stacks are pending"],
+    [17, "deploying-17", "Sluiceway: deploying, 17 stacks are pending"],
+    [21, "deploying-more", "Sluiceway: deploying, more than 20 stacks are pending"],
   ])("a deploying row and %i pending rows show %s", (count, file, alt) => {
     const rows = Array.from({ length: count }, (_, index) => pending(`stack-${index}`));
     const body = renderBody(input([deploying("moving"), ...rows, inSync("calm")]));
     expect(paragraphs(body)[1]).toBe(centered(file, alt));
+  });
+
+  // Record 0075: a queued row while nothing deploys has a picture of its
+  // own, with the crates of the pending stacks like failing and deploying.
+  test.each<[number, string, string]>([
+    [0, "queued-0", "Sluiceway: queued behind dependencies"],
+    [1, "queued-1", "Sluiceway: queued behind dependencies, 1 stack is pending"],
+    [5, "queued-5", "Sluiceway: queued behind dependencies, 5 stacks are pending"],
+    [20, "queued-20", "Sluiceway: queued behind dependencies, 20 stacks are pending"],
+    [21, "queued-more", "Sluiceway: queued behind dependencies, more than 20 stacks are pending"],
+  ])("a queued row and %i pending rows show %s", (count, file, alt) => {
+    const rows = Array.from({ length: count }, (_, index) => pending(`stack-${index}`));
+    const body = renderBody(input([queued("waiting"), ...rows, inSync("calm")]));
+    expect(paragraphs(body)[1]).toBe(centered(file, alt));
+  });
+
+  test("a deploying row wins over a queued row, and the queued row is no crate", () => {
+    const body = renderBody(input([deploying("moving"), queued("waiting"), inSync("calm")]));
+    expect(paragraphs(body)[1]).toBe(centered("deploying-0", "Sluiceway: deploying"));
   });
 
   // The count is the pending rows alone: a deploying, queued or failed row is
@@ -371,8 +416,11 @@ describe("the picture", () => {
     [2, "pending-2", "Sluiceway: 2 stacks are pending"],
     [7, "pending-7", "Sluiceway: 7 stacks are pending"],
     [12, "pending-12", "Sluiceway: 12 stacks are pending"],
-    [13, "pending-more", "Sluiceway: more than 12 stacks are pending"],
-    [58, "pending-more", "Sluiceway: more than 12 stacks are pending"],
+    [13, "pending-13", "Sluiceway: 13 stacks are pending"],
+    [19, "pending-19", "Sluiceway: 19 stacks are pending"],
+    [20, "pending-20", "Sluiceway: 20 stacks are pending"],
+    [21, "pending-more", "Sluiceway: more than 20 stacks are pending"],
+    [58, "pending-more", "Sluiceway: more than 20 stacks are pending"],
   ])("%i pending rows show %s", (count, file, alt) => {
     const rows = Array.from({ length: count }, (_, index) => pending(`stack-${index}`));
     const body = renderBody(input([...rows, inSync("calm")]));
@@ -402,29 +450,69 @@ describe("the picture", () => {
     );
   });
 
-  // Record 0043: the sign is added to the picture of the real state, with the
-  // crates that state already had.
+  // Records 0043 and 0075: a sign is added to the picture of the real state,
+  // with the crates that state already had. A delete puts up the delete
+  // sign, a replace the replace sign.
   test.each<[number, string, string]>([
-    [1, "pending-1-destroys", "Sluiceway: 1 stack is pending"],
-    [3, "pending-3-destroys", "Sluiceway: 3 stacks are pending"],
-    [12, "pending-12-destroys", "Sluiceway: 12 stacks are pending"],
-    [13, "pending-more-destroys", "Sluiceway: more than 12 stacks are pending"],
-  ])("a pending header with a destroy at %i pending rows is %s", (count, file, alt) => {
+    [1, "pending-1-deletes", "Sluiceway: 1 stack is pending"],
+    [3, "pending-3-deletes", "Sluiceway: 3 stacks are pending"],
+    [12, "pending-12-deletes", "Sluiceway: 12 stacks are pending"],
+    [13, "pending-13-deletes", "Sluiceway: 13 stacks are pending"],
+    [21, "pending-more-deletes", "Sluiceway: more than 20 stacks are pending"],
+  ])("a pending header with a delete at %i pending rows is %s", (count, file, alt) => {
     const rows = Array.from({ length: count }, (_, index) =>
       pending(`stack-${index}`, index === 0 ? ["delete"] : ["update"]),
     );
     const body = renderBody(input([...rows, inSync("calm")]));
-    expect(paragraphs(body)[1]).toBe(centered(file, `${alt}, some delete or replace resources`));
+    expect(paragraphs(body)[1]).toBe(centered(file, `${alt}, some delete resources`));
+  });
+
+  test("a replace puts up the replace sign, and a delete and a replace put up both", () => {
+    expect(paragraphs(renderBody(input([pending("a", ["replace"]), pending("b")])))[1]).toBe(
+      centered("pending-2-replaces", "Sluiceway: 2 stacks are pending, some replace resources"),
+    );
+    expect(
+      paragraphs(renderBody(input([pending("a", ["replace"]), pending("b", ["delete"])])))[1],
+    ).toBe(
+      centered(
+        "pending-2-deletes-replaces",
+        "Sluiceway: 2 stacks are pending, some delete or replace resources",
+      ),
+    );
   });
 
   test("a deploying header gets the sign from a deploying row", () => {
-    const body = renderBody(input([deploying("a", 1), pending("b"), inSync("c")]));
-    expect(paragraphs(body)[1]).toBe(centered("deploying-1-destroys", SIGNED_ALT.deploying));
+    const body = renderBody(input([deploying("a", 1, 0), pending("b"), inSync("c")]));
+    expect(paragraphs(body)[1]).toBe(centered("deploying-1-replaces", SIGNED_ALT.deploying));
   });
 
   test("a deploying header gets the sign from a pending row", () => {
     const body = renderBody(input([deploying("a"), pending("b", ["create", "delete"])]));
-    expect(paragraphs(body)[1]).toBe(centered("deploying-1-destroys", SIGNED_ALT.deploying));
+    expect(paragraphs(body)[1]).toBe(
+      centered(
+        "deploying-1-deletes",
+        "Sluiceway: deploying, 1 stack is pending, some changes delete resources",
+      ),
+    );
+  });
+
+  // A marker an older version wrote does not say how many are deletes, so
+  // they count as deletes (record 0075).
+  test("a deploying row from an older marker puts up the delete sign", () => {
+    const body = renderBody(input([deploying("a", 2), inSync("c")]));
+    expect(paragraphs(body)[1]).toBe(
+      centered("deploying-0-deletes", "Sluiceway: deploying, some changes delete resources"),
+    );
+  });
+
+  test("a queued header gets the sign from a queued row", () => {
+    const body = renderBody(input([queued("a", 2, 1), inSync("c")]));
+    expect(paragraphs(body)[1]).toBe(
+      centered(
+        "queued-0-deletes-replaces",
+        "Sluiceway: queued behind dependencies, some changes delete or replace resources",
+      ),
+    );
   });
 
   // Record 0066 amends 0043: the jam gets the sign too, from the same rule.
@@ -432,14 +520,14 @@ describe("the picture", () => {
     [
       "a pending row",
       [pending("a", ["delete"]), previewFailed("b")],
-      "failing-1-destroys",
-      "Sluiceway: something failed, 1 stack is pending, some changes delete or replace resources",
+      "failing-1-deletes",
+      "Sluiceway: something failed, 1 stack is pending, some changes delete resources",
     ],
     [
       "a deploying row",
-      [deploying("a", 1), { ...inSync("b"), failure: FAILURE }],
-      "failing-0-destroys",
-      "Sluiceway: something failed, some changes delete or replace resources",
+      [deploying("a", 1, 0), { ...inSync("b"), failure: FAILURE }],
+      "failing-0-replaces",
+      "Sluiceway: something failed, some changes replace resources",
     ],
   ])("a failing header gets the sign from %s", (_, rows, file, alt) => {
     expect(paragraphs(renderBody(input(rows)))[1]).toBe(centered(file, alt));
@@ -447,7 +535,7 @@ describe("the picture", () => {
 
   test("a failing header without a destroy has no sign", () => {
     const body = renderBody(input([pending("a"), previewFailed("b")]));
-    expect(body).not.toContain("-destroys-");
+    expect(body).not.toMatch(/-(deletes|replaces)-/);
   });
 
   test("an in sync or preview failed row does not turn the sign on", () => {
@@ -489,9 +577,10 @@ describe("the picture", () => {
     const [, picture, , counts] = paragraphs(renderBody({ ...input([]), rows: blocks(true) }));
     const full = paragraphs(renderBody({ ...input([]), rows: blocks(false) }));
     expect([full[1], full[3]]).toEqual([picture ?? "", counts ?? ""]);
-    // The fixture has preview failures and 11 pending stacks, one with a
-    // destroy, so its header is the jam with 11 crates and the sign, with dots.
-    expect(picture).toContain("/failing-11-destroys-light.svg");
+    // The fixture has preview failures and 11 pending stacks, with deletes and
+    // replaces among them, so its header is the jam with 11 crates and both
+    // signs, with dots.
+    expect(picture).toContain("/failing-11-deletes-replaces-light.svg");
     expect(counts).toStartWith("🟡&nbsp;**11 pending** · ");
   });
 });
@@ -956,14 +1045,51 @@ describe("recently deployed", () => {
   });
 });
 
+// Record 0075: the good-news line is picked by the day of the scan on the
+// root marker, so every writer of the same scan gives the same line.
+describe("the good-news line of the day", () => {
+  const onDay = (scanAt: string) =>
+    lineUnderPending(renderBody(input(DASHBOARDS["in-sync"], { root: { ...ROOT, scanAt } })));
+
+  test("three scan days give three lines, and the fourth the first again", () => {
+    expect(
+      [
+        "2026-09-19T08:00:00Z",
+        "2026-09-20T23:59:00Z",
+        "2026-09-21T00:00:00Z",
+        "2026-09-22T12:00:00Z",
+      ].map(onDay),
+    ).toEqual([
+      "Gate closed, water calm. Nothing to deploy.",
+      "Level water on both sides of the gate. Nothing to deploy.",
+      "Still water upstream. Nothing to deploy.",
+      "Gate closed, water calm. Nothing to deploy.",
+    ]);
+  });
+
+  test("a scan time that does not parse gives the first line", () => {
+    expect(onDay("yesterday")).toBe("Gate closed, water calm. Nothing to deploy.");
+  });
+
+  test("without personality the dry line stays whatever the day", () => {
+    const dry = (scanAt: string) =>
+      lineUnderPending(
+        renderBody(input(DASHBOARDS["in-sync"], { root: { ...ROOT, scanAt }, personality: false })),
+      );
+    expect(dry("2026-09-19T08:00:00Z")).toBe(dry("2026-09-20T08:00:00Z"));
+  });
+});
+
 // Records 0032 and 0034: which words stand under the Pending heading.
 describe("the line under the Pending heading", () => {
   const INSTRUCTION = "Tick a box to deploy that stack exactly as its row shows it.";
   const cases: [string, Row[], string, string][] = [
+    // The scan of ROOT ran on 2026-09-21, the day of the third good-news line
+    // (record 0075).
     [
       "in sync",
       DASHBOARDS["in-sync"],
-      "Gate closed, water calm. Nothing to deploy.",
+      "Still water upstream. Nothing to deploy.",
       "Nothing to deploy. All 2 stacks are in sync.",
     ],
     [
@@ -985,6 +1111,12 @@ describe("the line under the Pending heading", () => {
     [
       "deploying with nothing pending",
       [deploying("a"), inSync("b")],
+      "Nothing to deploy.",
+      "Nothing to deploy.",
+    ],
+    [
+      "queued with nothing pending",
+      [queued("a"), inSync("b")],
       "Nothing to deploy.",
       "Nothing to deploy.",
     ],
@@ -1250,7 +1382,7 @@ describe("snapshots", () => {
   // 0047). The header state snapshot above is one crate. Three whole bodies,
   // and the picture alone for every count, with and without the destroy sign
   // (record 0043), so the snapshots name every file.
-  for (const count of [3, 12, 13]) {
+  for (const count of [3, 12, 20, 21]) {
     test(`${count} pending`, () => {
       const rows = Array.from({ length: count }, (_, index) => pending(`stack-${index}`));
       expect(`${renderBody(input([...rows, inSync("calm")]))}\n`).toMatchSnapshot();
@@ -1263,28 +1395,42 @@ describe("snapshots", () => {
     });
   }
 
-  for (const sign of [false, true])
-    test(`the pending picture at 1 to 13 pending${sign ? ", with the destroy sign" : ""}`, () => {
-      const pictures = Array.from({ length: 13 }, (_, index) => {
+  // The signs of record 0075: none, the delete sign, the replace sign, both.
+  // On the pending picture they come from the first pending row, and on the
+  // others from a queued row, which stands in no other rule of the header.
+  const SIGNS: [string, ("delete" | "replace")[], Row[]][] = [
+    ["", [], []],
+    [", with the delete sign", ["delete"], [queued("signed", 1, 1)]],
+    [", with the replace sign", ["replace"], [queued("signed", 1, 0)]],
+    [", with both signs", ["delete", "replace"], [queued("signed", 2, 1)]],
+  ];
+
+  for (const [sign, ops] of SIGNS)
+    test(`the pending picture at 1 to 21 pending${sign}`, () => {
+      const pictures = Array.from({ length: 21 }, (_, index) => {
         const rows = Array.from({ length: index + 1 }, (_, row) =>
-          pending(`stack-${row}`, sign && row === 0 ? ["delete"] : ["update"]),
+          pending(`stack-${row}`, row === 0 && ops.length > 0 ? ops : ["update"]),
         );
         return paragraphs(renderBody(input(rows)))[1];
       });
       expect(`${pictures.join("\n\n")}\n`).toMatchSnapshot();
     });
 
-  // Record 0066: failing and deploying have one picture per crate count from
-  // 0 to 12 and one past it, with and without the destroy sign, so the
+  // Records 0066 and 0075: failing, deploying and queued have one picture per
+  // crate count from 0 to 20 and one past it, with each of the signs, so the
   // snapshots name every file of theirs too.
-  for (const state of ["failing", "deploying"] as const)
-    for (const sign of [false, true])
-      test(`the ${state} picture at 0 to 13 pending${sign ? ", with the destroy sign" : ""}`, () => {
-        const pictures = Array.from({ length: 14 }, (_, count) => {
+  for (const state of ["failing", "deploying", "queued"] as const)
+    for (const [sign, , signed] of SIGNS)
+      test(`the ${state} picture at 0 to 21 pending${sign}`, () => {
+        const pictures = Array.from({ length: 22 }, (_, count) => {
           const rows = Array.from({ length: count }, (_, row) => pending(`stack-${row}`));
-          const cause = state === "failing" ? previewFailed("broken") : deploying("moving");
-          const signed = sign ? [deploying("signed", 1)] : [];
-          return paragraphs(renderBody(input([cause, ...signed, ...rows])))[1];
+          const cause =
+            state === "failing"
+              ? [previewFailed("broken")]
+              : state === "deploying"
+                ? [deploying("moving")]
+                : [queued("waiting")];
+          return paragraphs(renderBody(input([...cause, ...signed, ...rows])))[1];
         });
         expect(`${pictures.join("\n\n")}\n`).toMatchSnapshot();
       });
@@ -1386,9 +1532,9 @@ describe("the image urls in the snapshots", () => {
       readFileSync(join(import.meta.dir, "__snapshots__/body.test.ts.snap"), "utf8"),
     );
     const files = readdirSync(MASCOT).filter((name) => name.endsWith(".svg"));
-    // The 170 header files and the row spinner in both themes (records 0063
-    // and 0066).
-    expect(files).toHaveLength(172);
+    // The 702 header files and the row spinner in both themes (records 0063,
+    // 0066 and 0075).
+    expect(files).toHaveLength(704);
     expect([...new Set(own.map((url) => url.split("/").at(-1) ?? ""))].sort()).toEqual(
       files.sort(),
     );

@@ -1,17 +1,18 @@
-// Which of the six header states the header shows (records 0031, 0043 and
-// 0055). A
-// pure function of the row markers, so every writer can compute it for rows
-// it only carries through. It decides nothing.
+// Which of the seven header states the header shows (records 0031, 0043, 0055
+// and 0075). A pure function of the row markers, so every writer can compute
+// it for rows it only carries through. It decides nothing.
 
-import { isDeployingState, type ParsedRow } from "./marker.ts";
+import type { ParsedRow } from "./marker.ts";
 
 // In the order in which they win: bad news first. A destroy is not a state of
-// its own: it adds the destroy sign to the picture (record 0043). Drift is
-// water seeping through the closed gate, a picture of nothing waiting, so a
-// pending row wins over it (record 0055).
+// its own: it adds a sign to the picture (records 0043 and 0075). Queued is a
+// stack that waits behind its dependencies while nothing deploys (record
+// 0075). Drift is water seeping through the closed gate, a picture of nothing
+// waiting, so a pending row wins over it (record 0055).
 export const HEADER_STATES = [
   "failing",
   "deploying",
+  "queued",
   "pending",
   "drift",
   "first-run",
@@ -28,7 +29,8 @@ export function headerState(rows: readonly ParsedRow[]): HeaderState {
   const is = (state: string) => known.some((row) => row.state === state);
 
   if (is("preview-failed") || known.some((row) => row.failed)) return "failing";
-  if (known.some((row) => isDeployingState(row.state))) return "deploying";
+  if (is("deploying")) return "deploying";
+  if (is("queued")) return "queued";
   if (is("pending")) return "pending";
   if (is("drift")) return "drift";
   return "in-sync";

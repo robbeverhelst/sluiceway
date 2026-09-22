@@ -15,7 +15,7 @@ exports[`snapshots every row of the 58 stack fixture, in full 1`] = `
   <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>web-feature-flags</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **data/postgres:prod** · 2 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/postgres:prod" state="pending" hash="620c897f92719080" destroys="1" -->
+- [ ] **data/postgres:prod** · 2 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/postgres:prod" state="pending" hash="620c897f92719080" destroys="1" deletes="0" -->
   from #431 by bob · [compare](https://github.com/example-org/infra/compare/912fee8...8c41f0e)
   :warning: <kbd>REPLACE</kbd> <code>aws:rds/instance:Instance</code> <b>main</b> · forced by <code>engineVersion</code>, <code>storageType</code> · also changes <code>instanceClass</code>
   <details><summary>2 other changes</summary>
@@ -23,7 +23,7 @@ exports[`snapshots every row of the 58 stack fixture, in full 1`] = `
   <kbd>update</kbd> <code>aws:rds/parameterGroup:ParameterGroup</code> <b>main</b> · <code>parameters</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" -->
+- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" deletes="3" -->
   from #427 by dave · [compare](https://github.com/example-org/infra/compare/284fd2d...8c41f0e)
   :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>legacy-jobs</b>
   :warning: <kbd>DELETE</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>legacy-worker</b>
@@ -32,7 +32,7 @@ exports[`snapshots every row of the 58 stack fixture, in full 1`] = `
   <kbd>forget</kbd> <code>aws:iam/role:Role</code> <b>legacy-worker</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="ac75cd9db439bb8e" destroys="2" -->
+- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="ac75cd9db439bb8e" destroys="2" deletes="1" -->
   from #433 by alice, #429 by alice, [3fa9c1e](https://github.com/example-org/infra/commit/3fa9c1e) by bob, and 1 change outside this stack · [compare](https://github.com/example-org/infra/compare/7008dda...8c41f0e)
   :warning: <kbd>DELETE</kbd> <code>aws:s3/bucketPolicy:BucketPolicy</code> <b>uploads-public-read</b>
   :warning: <kbd>REPLACE</kbd> <code>aws:s3/bucket:Bucket</code> <b>uploads</b> · forced by <code>bucket</code> · also changes <code>tags</code>
@@ -42,7 +42,7 @@ exports[`snapshots every row of the 58 stack fixture, in full 1`] = `
   <kbd>create</kbd> <code>aws:s3/bucketVersioning:BucketVersioning</code> <b>uploads</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" -->
+- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" deletes="0" -->
   from #436 by renovate[bot], #434 by carol, #430 by renovate[bot], #425 by bob, #421 by renovate[bot], and 2 more, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/5990691...8c41f0e)
   :warning: <kbd>REPLACE</kbd> <code>kubernetes:batch/v1:Job</code> <b>ingress-admission-patch</b> · forced by <code>spec</code>
   <details><summary>45 other changes</summary>
@@ -365,19 +365,19 @@ exports[`snapshots every row of the 58 stack fixture, redacted 1`] = `
   from #418 by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1dfd7ad...8c41f0e)
   Changes are listed in the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **data/postgres:prod** · 2 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/postgres:prod" state="pending" hash="620c897f92719080" destroys="1" -->
+- [ ] **data/postgres:prod** · 2 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/postgres:prod" state="pending" hash="620c897f92719080" destroys="1" deletes="0" -->
   from #431 by bob · [compare](https://github.com/example-org/infra/compare/912fee8...8c41f0e)
   :warning: **replaces 1.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
-- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" -->
+- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" deletes="3" -->
   from #427 by dave · [compare](https://github.com/example-org/infra/compare/284fd2d...8c41f0e)
   :warning: **deletes 3.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
-- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="ac75cd9db439bb8e" destroys="2" -->
+- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="ac75cd9db439bb8e" destroys="2" deletes="1" -->
   from #433 by alice, #429 by alice, [3fa9c1e](https://github.com/example-org/infra/commit/3fa9c1e) by bob, and 1 change outside this stack · [compare](https://github.com/example-org/infra/compare/7008dda...8c41f0e)
   :warning: **deletes 1, replaces 1.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
-- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" -->
+- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" deletes="0" -->
   from #436 by renovate[bot], #434 by carol, #430 by renovate[bot], #425 by bob, #421 by renovate[bot], and 2 more, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/5990691...8c41f0e)
   :warning: **replaces 1.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -512,19 +512,19 @@ exports[`snapshots every row of the 100 stack fixture at level 3 1`] = `
   from 1 pull request, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1dfd7ad...8c41f0e)
   Changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **data/postgres:prod** · 2 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/postgres:prod" state="pending" hash="620c897f92719080" destroys="1" shortened="3" -->
+- [ ] **data/postgres:prod** · 2 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/postgres:prod" state="pending" hash="620c897f92719080" destroys="1" deletes="0" shortened="3" -->
   from 1 pull request · [compare](https://github.com/example-org/infra/compare/912fee8...8c41f0e)
   :warning: **replaces 1, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
-- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" shortened="3" -->
+- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" deletes="3" shortened="3" -->
   from 1 pull request · [compare](https://github.com/example-org/infra/compare/284fd2d...8c41f0e)
   :warning: **deletes 3, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
-- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="ac75cd9db439bb8e" destroys="2" shortened="3" -->
+- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="ac75cd9db439bb8e" destroys="2" deletes="1" shortened="3" -->
   from 3 pull requests, and 1 change outside this stack · [compare](https://github.com/example-org/infra/compare/7008dda...8c41f0e)
   :warning: **deletes 1, replaces 1, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
-- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" shortened="3" -->
+- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" deletes="0" shortened="3" -->
   from 7 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/5990691...8c41f0e)
   :warning: **replaces 1, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -570,7 +570,7 @@ exports[`snapshots every row of the 100 stack fixture at level 3 1`] = `
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1db769a...8c41f0e)
   Changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-06:staging** · 17 creates, 37 updates, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-06:staging" state="pending" hash="7e948ecee2fbd0d5" destroys="1" shortened="3" -->
+- [ ] **services/svc-06:staging** · 17 creates, 37 updates, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-06:staging" state="pending" hash="7e948ecee2fbd0d5" destroys="1" deletes="1" shortened="3" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/c2ad1da...8c41f0e)
   :warning: **deletes 1, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -582,7 +582,7 @@ exports[`snapshots every row of the 100 stack fixture at level 3 1`] = `
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/b51bedb...8c41f0e)
   Changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-09:prod** · 28 creates, 50 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-09:prod" state="pending" hash="ae78c57f0bb0d1b3" destroys="1" shortened="3" -->
+- [ ] **services/svc-09:prod** · 28 creates, 50 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-09:prod" state="pending" hash="ae78c57f0bb0d1b3" destroys="1" deletes="0" shortened="3" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/2846680...8c41f0e)
   :warning: **replaces 1, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -594,7 +594,7 @@ exports[`snapshots every row of the 100 stack fixture at level 3 1`] = `
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/3165a6f...8c41f0e)
   Changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-12:staging** · 14 creates, 25 updates, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-12:staging" state="pending" hash="0f281f9a693a5bcd" destroys="451" shortened="3" -->
+- [ ] **services/svc-12:staging** · 14 creates, 25 updates, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-12:staging" state="pending" hash="0f281f9a693a5bcd" destroys="451" deletes="451" shortened="3" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/ca009d9...8c41f0e)
   :warning: **deletes 451, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -618,7 +618,7 @@ exports[`snapshots every row of the 100 stack fixture at level 3 1`] = `
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/a4acfa7...8c41f0e)
   Changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-18:staging** · 10 creates, 34 updates, **1 replace**, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-18:staging" state="pending" hash="daf7c64390ff8794" destroys="2" shortened="3" -->
+- [ ] **services/svc-18:staging** · 10 creates, 34 updates, **1 replace**, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-18:staging" state="pending" hash="daf7c64390ff8794" destroys="2" deletes="1" shortened="3" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/b025414...8c41f0e)
   :warning: **deletes 1, replaces 1, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -642,7 +642,7 @@ exports[`snapshots every row of the 100 stack fixture at level 3 1`] = `
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/43c196b...8c41f0e)
   Changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-24:staging** · 13 creates, 19 updates, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-24:staging" state="pending" hash="70a4c89d680934f4" destroys="451" shortened="3" -->
+- [ ] **services/svc-24:staging** · 13 creates, 19 updates, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-24:staging" state="pending" hash="70a4c89d680934f4" destroys="451" deletes="451" shortened="3" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/ff5070e...8c41f0e)
   :warning: **deletes 451, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -654,7 +654,7 @@ exports[`snapshots every row of the 100 stack fixture at level 3 1`] = `
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/4efbe1c...8c41f0e)
   Changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-27:prod** · 23 creates, 47 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-27:prod" state="pending" hash="72d7176b5f17d728" destroys="1" shortened="3" -->
+- [ ] **services/svc-27:prod** · 23 creates, 47 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-27:prod" state="pending" hash="72d7176b5f17d728" destroys="1" deletes="0" shortened="3" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/e50fd2f...8c41f0e)
   :warning: **replaces 1, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -666,7 +666,7 @@ exports[`snapshots every row of the 100 stack fixture at level 3 1`] = `
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/52f2311...8c41f0e)
   Changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-30:staging** · 33 creates, 43 updates, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-30:staging" state="pending" hash="7ce22a94221f3144" destroys="1" shortened="3" -->
+- [ ] **services/svc-30:staging** · 33 creates, 43 updates, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-30:staging" state="pending" hash="7ce22a94221f3144" destroys="1" deletes="1" shortened="3" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/fc1535c...8c41f0e)
   :warning: **deletes 1, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -690,7 +690,7 @@ exports[`snapshots every row of the 100 stack fixture at level 3 1`] = `
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/bdc2593...8c41f0e)
   Changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-36:staging** · 13 creates, 33 updates, **1 replace**, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-36:staging" state="pending" hash="3d7b97ed54f427c7" destroys="452" shortened="3" -->
+- [ ] **services/svc-36:staging** · 13 creates, 33 updates, **1 replace**, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-36:staging" state="pending" hash="3d7b97ed54f427c7" destroys="452" deletes="451" shortened="3" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/8756524...8c41f0e)
   :warning: **deletes 451, replaces 1, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -714,7 +714,7 @@ exports[`snapshots every row of the 100 stack fixture at level 3 1`] = `
   from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1c21b45...8c41f0e)
   Changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-42:staging** · 16 creates, 43 updates, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-42:staging" state="pending" hash="8e4bfa9b854ce2c0" destroys="1" shortened="3" -->
+- [ ] **services/svc-42:staging** · 16 creates, 43 updates, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-42:staging" state="pending" hash="8e4bfa9b854ce2c0" destroys="1" deletes="1" shortened="3" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/a150c84...8c41f0e)
   :warning: **deletes 1, too many to list here.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -819,7 +819,7 @@ exports[`snapshots every row of the 100 stack fixture at level 3 1`] = `
 `;
 
 exports[`snapshots one large row at levels 1 and 2 1`] = `
-"- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" shortened="1" -->
+"- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" deletes="0" shortened="1" -->
   from 7 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/5990691...8c41f0e)
   :warning: <kbd>REPLACE</kbd> <code>kubernetes:batch/v1:Job</code> <b>ingress-admission-patch</b> · forced by <code>spec</code>
   <details><summary>45 other changes</summary>
@@ -874,7 +874,7 @@ exports[`snapshots one large row at levels 1 and 2 1`] = `
 `;
 
 exports[`snapshots one large row at levels 1 and 2 2`] = `
-"- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" shortened="2" -->
+"- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" deletes="0" shortened="2" -->
   from 7 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/5990691...8c41f0e)
   :warning: <kbd>REPLACE</kbd> <code>kubernetes:batch/v1:Job</code> <b>ingress-admission-patch</b> · forced by <code>spec</code>
   45 other changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)

@@ -1,7 +1,7 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
 exports[`the recorded nested changes read the same from both CLI versions 1`] = `
-"- [ ] **generated/nested:dev** · 1 update, **1 replace** · [preview](run-url) <!-- sluiceway:row stack="generated/nested:dev" state="pending" hash="107f31a6b75680f2" destroys="1" -->
+"- [ ] **generated/nested:dev** · 1 update, **1 replace** · [preview](run-url) <!-- sluiceway:row stack="generated/nested:dev" state="pending" hash="107f31a6b75680f2" destroys="1" deletes="0" -->
   :warning: <kbd>REPLACE</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>settings</b> · forced by <code>data&#91;&quot;app.properties&quot;&#93;</code>
   <details><summary>1 other change</summary>
   <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>web</b> · <code>metadata.annotations&#91;&quot;example.com/revision&quot;&#93;</code>, <code>spec.template.spec.containers&#91;0&#93;.env&#91;0&#93;.value</code>, <code>spec.template.spec.containers&#91;0&#93;.image</code><br>

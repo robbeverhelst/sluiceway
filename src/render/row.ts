@@ -88,8 +88,10 @@ export interface DeployingRow {
   // The deployment record is still `queued`. That cannot tell a wait for a
   // reviewer from a wait for a runner, so the row does not guess.
   waiting?: boolean | undefined;
-  // Copied from the marker of the row this one replaces.
+  // Copied from the marker of the row this one replaces, with how many of
+  // them are deletes (record 0075).
   destroys?: number | undefined;
+  deletes?: number | undefined;
   attribution?: AttributionLines | undefined;
   // The record is queued behind these stacks (record 0056). The row then says
   // so, and its marker state is `queued`.
@@ -389,6 +391,7 @@ function driftRow(row: DriftRow, options: RowOptions): string[] {
         failed: row.failure !== undefined,
         shortened: level >= 2 ? level : 0,
         drift: true,
+        gone: drift.filter((change) => change.op === "delete").length,
         dependsOn: row.dependsOn,
       },
     )}`,
@@ -420,6 +423,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
         state: "pending",
         hash: row.hash,
         destroys,
+        deletes: deletes.length,
         failed: row.failure !== undefined,
         shortened: level,
         drift: drift.length > 0,
@@ -498,7 +502,7 @@ function deployingRow(row: DeployingRow, options: RowOptions): string[] {
   const lines = [
     `- ${options.actionRef === undefined ? "" : spinner(options.actionRef)}**${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${
       row.runUrl
-    }) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys })}`,
+    }) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys, deletes: row.deletes })}`,
   ];
   if (row.attribution) lines.push(row.attribution.full, ...outsideFold(row.attribution, 0));
   return lines;

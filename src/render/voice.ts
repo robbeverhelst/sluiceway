@@ -4,16 +4,33 @@
 
 export interface VoicedLines {
   // Under the Pending heading when every stack is in sync. `stacks` is how
-  // many there are. A warm line never carries a number.
-  goodNews: (stacks: number) => string;
+  // many there are, and `day` the time of the scan the body shows, which
+  // picks the warm line (record 0075). A warm line never carries a number.
+  goodNews: (stacks: number, day: Date | undefined) => string;
   // Under the Pending heading when the scan found no stacks.
   firstRun: string;
 }
 
 // One water image, then the fact. Penny does not speak: the line describes
-// the water.
+// the water. Three lines, so one read every day does not wear thin (record
+// 0075).
+export const GOOD_NEWS = [
+  "Gate closed, water calm. Nothing to deploy.",
+  "Level water on both sides of the gate. Nothing to deploy.",
+  "Still water upstream. Nothing to deploy.",
+] as const;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// One line per UTC day in turn, counted from 1970-01-01, so the same scan day
+// always gives the same body (record 0004). Without a day, the first line.
+function goodNewsOf(day: Date | undefined): string {
+  const days = Math.floor((day?.getTime() ?? Number.NaN) / DAY_MS);
+  return GOOD_NEWS[Number.isNaN(days) ? 0 : days % GOOD_NEWS.length] ?? GOOD_NEWS[0];
+}
+
 export const WARM: VoicedLines = {
-  goodNews: () => "Gate closed, water calm. Nothing to deploy.",
+  goodNews: (_stacks, day) => goodNewsOf(day),
   firstRun: "The channel is dry. Add a stack to `sluiceway.yaml` and the next scan fills it.",
 };
 

@@ -45,7 +45,7 @@ describe("a drift row", () => {
   test("has a box, the drift counts, a preview link that lands on the summary without a page, and every drift line in a fold", () => {
     expect(renderRow(driftRow())).toBe(
       [
-        `- [ ] **site:prod** · 1 changed, 1 gone outside the code · [preview](${RUN}) <!-- sluiceway:row stack="site:prod" state="drift" hash="3503645c1819ce4f" drift="true" -->`,
+        `- [ ] **site:prod** · 1 changed, 1 gone outside the code · [preview](${RUN}) <!-- sluiceway:row stack="site:prod" state="drift" hash="3503645c1819ce4f" drift="true" gone="1" -->`,
         "  <details><summary>2 changes outside the code</summary>",
         "  <kbd>changed</kbd> <code>aws:s3/bucket:Bucket</code> <b>assets</b> · <code>tags.owner</code>, <code>versioning.enabled</code><br>",
         "  <kbd>gone</kbd> <code>local:index/file:File</code> <b>notes</b><br>",
@@ -70,7 +70,7 @@ describe("a drift row", () => {
     );
     const [first = "", second] = text.split("\n");
     expect(first).toStartWith("- [x] **site:prod**");
-    expect(first).toEndWith('drift="true" -->');
+    expect(first).toEndWith('drift="true" gone="1" -->');
     expect(first).toContain('failed="true"');
     expect(second).toBe(
       "  :x: last deploy failed: the tool exited with an error · ticked by alice · 2026-09-22 08:00 UTC · [run](https://github.com/acme/infra/actions/runs/6)",
@@ -80,7 +80,7 @@ describe("a drift row", () => {
   test("redacted, it names no type, name or path, and keeps the counts", () => {
     expect(renderRow(driftRow(), { redact: true })).toBe(
       [
-        `- [ ] **site:prod** · 1 changed, 1 gone outside the code · [preview](${RUN}) <!-- sluiceway:row stack="site:prod" state="drift" hash="3503645c1819ce4f" drift="true" -->`,
+        `- [ ] **site:prod** · 1 changed, 1 gone outside the code · [preview](${RUN}) <!-- sluiceway:row stack="site:prod" state="drift" hash="3503645c1819ce4f" drift="true" gone="1" -->`,
         `  Changes outside the code are listed in the [summary](${RUN})`,
         "  <!-- /sluiceway:row -->",
       ].join("\n"),

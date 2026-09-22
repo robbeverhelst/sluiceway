@@ -49,7 +49,9 @@ describe("while the deploy runs", () => {
     await runApply(h);
 
     expect(during).toBe(
-      `- ${SPINNER}**a:prod** · deploying · ticked by alice · [run](${RESOLVE_RUN_URL}/attempts/1) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" -->\n  not deployed from this dashboard yet\n  <!-- /sluiceway:row -->`,
+      `- ${SPINNER}**a:prod** · deploying · ticked by alice · [run](${RESOLVE_RUN_URL}/attempts/1) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" deletes="1" -->
+  not deployed from this dashboard yet
+  <!-- /sluiceway:row -->`,
     );
   });
 

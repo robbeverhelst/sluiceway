@@ -5,7 +5,7 @@
 import type { IgnoredStack } from "../core/config.ts";
 import type { OutsideDeploy } from "../core/outside-deploy.ts";
 import { destroyAlert } from "./destroy-alert.ts";
-import { destroySign } from "./destroy-sign.ts";
+import { type DestroySigns, destroySigns } from "./destroy-sign.ts";
 import { COUNT_DOT, DOT_AT_ZERO, RESULT_DOT } from "./dots.ts";
 import { escapeText } from "./escape.ts";
 import { type HeaderState, headerState } from "./header-state.ts";
@@ -104,12 +104,13 @@ const TRAIL_LINE = "Times are in UTC.";
 const ACTION_REPO = "sluiceway/sluiceway";
 const ACTION_URL = `https://github.com/${ACTION_REPO}`;
 
-// Plain and fixed per state. The pending, failing and deploying pictures show
-// how many stacks wait, so their alt texts say the same number in words
-// (records 0047 and 0066).
+// Plain and fixed per state. The pending, failing, deploying and queued
+// pictures show how many stacks wait, so their alt texts say the same number
+// in words (records 0047, 0066 and 0075).
 const ALT: Record<Exclude<HeaderState, "pending">, string> = {
   failing: "Sluiceway: something failed",
   deploying: "Sluiceway: deploying",
+  queued: "Sluiceway: queued behind dependencies",
   drift: "Sluiceway: something changed outside the code",
   "first-run": "Sluiceway: no stacks yet",
   "in-sync": "Sluiceway: everything is in sync",
@@ -120,9 +121,9 @@ function pendingWords(crates: Crates): string {
   return crates === 1 ? "1 stack is pending" : `${crates} stacks are pending`;
 }
 
-// The three pictures that have one file per crate count, 0 to 12 and past it
-// (records 0047 and 0066). A pending header always has a pending row.
-const COUNTED = ["pending", "failing", "deploying"] as const;
+// The four pictures that have one file per crate count, 0 to 20 and past it
+// (records 0047, 0066 and 0075). A pending header always has a pending row.
+const COUNTED = ["pending", "failing", "deploying", "queued"] as const;
 type Counted = (typeof COUNTED)[number];
 const isCounted = (state: HeaderState): state is Counted =>
   (COUNTED as readonly string[]).includes(state);
@@ -132,13 +133,15 @@ function countedAlt(state: Counted, crates: Crates): string {
   return crates === 0 ? ALT[state] : `${ALT[state]}, ${pendingWords(crates)}`;
 }
 
-// The alt text plus the fact, for the three states whose picture can carry
-// the destroy sign (records 0043 and 0066).
-const SIGNED_FACT: Record<Counted, string> = {
-  pending: ", some delete or replace resources",
-  failing: ", some changes delete or replace resources",
-  deploying: ", some changes delete or replace resources",
-};
+// The name part and the fact the signs add, for the states whose picture can
+// carry them (records 0043, 0066 and 0075). The fact follows the alt text.
+function signed(state: Counted, signs: DestroySigns): { suffix: string; fact: string } {
+  const verb =
+    signs.deletes && signs.replaces ? "delete or replace" : signs.deletes ? "delete" : "replace";
+  const suffix = `${signs.deletes ? "-deletes" : ""}${signs.replaces ? "-replaces" : ""}`;
+  const subject = state === "pending" ? "some" : "some changes";
+  return { suffix, fact: suffix === "" ? "" : `, ${subject} ${verb} resources` };
+}
 
 type KnownRow = Extract<ParsedRow, { known: true }>;
 
@@ -165,18 +168,27 @@ export function rowBlock(row: Row, options: RowOptions = {}): ParsedRow {
 
 // One file per theme, because `<picture>` follows the reader's GitHub theme
 // and a media query inside an SVG follows the operating system (record 0033).
-// Pending, failing and deploying have one picture per crate count up to the
-// maximum, and one past it, and each exists once more with the destroy sign
-// (records 0043, 0047 and 0066). Drift, first run and in sync can hold no
-// pending row, so they are one picture each. The picture is as wide as the
-// issue and centered in it (record 0040).
-function picture(state: HeaderState, crates: Crates, sign: boolean, actionRef: string): string[] {
-  const counted = isCounted(state);
-  const base = counted ? `${state}-${crates}` : state;
-  const signed = sign && counted;
-  const name = signed ? `${base}-destroys` : base;
-  const plainAlt = counted ? countedAlt(state, crates) : ALT[state];
-  const alt = signed ? `${plainAlt}${SIGNED_FACT[state]}` : plainAlt;
+// Pending, failing, deploying and queued have one picture per crate count up
+// to the maximum, and one past it, and each exists three more times with the
+// signs: the delete sign, the replace sign, and both (records 0043, 0047, 0066
+// and 0075). Drift, first run and in sync can hold no pending row, so they
+// are one picture each. The picture is as wide as the issue and centered in
+// it (record 0040).
+function picture(
+  state: HeaderState,
+  crates: Crates,
+  signs: DestroySigns,
+  actionRef: string,
+): string[] {
+  let name: string = state;
+  let alt: string;
+  if (isCounted(state)) {
+    const { suffix, fact } = signed(state, signs);
+    name = `${state}-${crates}${suffix}`;
+    alt = `${countedAlt(state, crates)}${fact}`;
+  } else {
+    alt = ALT[state];
+  }
   const file = (theme: string) => mascotUrl(actionRef, `${name}-${theme}.svg`);
   return [
     '<p align="center">',
@@ -236,6 +248,14 @@ function scanLine(root: RootFacts, repoUrl: string): string {
   return parts.join(" · ");
 }
 
+// The day of the scan the body shows picks the good-news line (record 0075).
+// It rides on the root marker, so a writer that is not the scan keeps the
+// line the scan wrote. A time that does not parse gives no day.
+function scanDay(root: RootFacts): Date | undefined {
+  const at = new Date(root.scanAt);
+  return Number.isNaN(at.getTime()) ? undefined : at;
+}
+
 // The one line under the Pending heading (records 0029, 0032 and 0034).
 function pendingLine(input: BodyInput, state: HeaderState, pending: number): string {
   if (pending > 0) return input.readOnly ? READ_ONLY_LINE : INSTRUCTION_LINE;
@@ -244,7 +264,7 @@ function pendingLine(input: BodyInput, state: HeaderState, pending: number): str
   if (state === "first-run") return lines.firstRun;
   // A row of a state this version does not know is not known to be calm.
   if (state === "in-sync" && input.rows.every((row) => row.known))
-    return lines.goodNews(input.rows.length);
+    return lines.goodNews(input.rows.length, scanDay(input.root));
   return NOTHING_TO_DEPLOY;
 }
 
@@ -345,7 +365,7 @@ export function renderBody(input: BodyInput): string {
   const scan = scanLine(input.root, input.repoUrl);
   if (input.personality)
     out.push(
-      picture(state, pendingCrates(rows), destroySign(rows), input.actionRef).join("\n"),
+      picture(state, pendingCrates(rows), destroySigns(rows), input.actionRef).join("\n"),
       '<div align="center">',
       counts,
       scan,
@@ -394,13 +414,14 @@ export function renderBody(input: BodyInput): string {
 
   // Pending is always shown. The other sections are left out when empty.
   out.push("## Pending", pendingLine(input, state, pending.length));
-  // The destroy alert sits right above the pending list (record 0062).
-  const alert = destroyAlert(pending);
+  // The destroy alert sits right above the pending list (records 0062 and
+  // 0075). It names drifted stacks too, which are listed right under it.
+  const drifted = of("drift");
+  const alert = destroyAlert([...pending, ...drifted]);
   if (alert) out.push(alert);
   if (pending.length > 0) out.push(blocks(pending));
 
   // Drift sits right under Pending: its rows have boxes too (record 0055).
-  const drifted = of("drift");
   if (drifted.length > 0) out.push("## Drifted", DRIFTED_LINE, blocks(drifted));
 
   const previewFailed = of("preview-failed");

@@ -1057,7 +1057,7 @@ async function swapRows(
   const shipped = await source.ship(facts.trail);
 
   const startedBy = new Map(swap.started.map((one) => [one.stackId, one]));
-  const mine = (one: Started, destroys: number): DeployingRow => ({
+  const mine = (one: Started, destroys: number, deletes: number | undefined): DeployingRow => ({
     state: "deploying",
     stackId: one.stackId,
     ticker: one.ticker,
@@ -1065,6 +1065,7 @@ async function swapRows(
     // The record is `queued` until `apply` takes it.
     waiting: true,
     destroys,
+    deletes,
     attribution: lines.get(one.stackId)?.lines,
     behind: one.behind,
   });
@@ -1082,10 +1083,11 @@ async function swapRows(
     // `destroys` is copied from the old marker, because the header needs it
     // and the row's text is never read (record 0031).
     const destroys = row.known ? row.destroys : 0;
+    const deletes = row.known ? row.deletes : undefined;
     if (!first || !row.known) {
       carried.push(row);
     } else if (one) {
-      rows.push(mine(one, destroys));
+      rows.push(mine(one, destroys, deletes));
     } else if (
       swap.dropped.includes(row.stackId) &&
       fact?.kind === "open" &&
@@ -1100,6 +1102,7 @@ async function swapRows(
         runUrl: runUrlOf(context.repoUrl, fact.run, fact.attempt),
         waiting: fact.waiting,
         destroys,
+        deletes,
         attribution: lines.get(row.stackId)?.lines,
         behind: fact.behind,
       });
@@ -1111,7 +1114,7 @@ async function swapRows(
   }
   // A row that was deleted by hand since the tick: the stack is deploying all
   // the same, and every deploying stack has a row.
-  for (const one of swap.started) if (!seen.has(one.stackId)) rows.push(mine(one, 0));
+  for (const one of swap.started) if (!seen.has(one.stackId)) rows.push(mine(one, 0, undefined));
 
   // Every other merge row is carried as it is. Of two lines for one pull
   // request the first counts.

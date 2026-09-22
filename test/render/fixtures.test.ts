@@ -17,6 +17,12 @@ function destroysOf(row: Row): number {
     .length;
 }
 
+// Record 0075: how many of the destroys are deletes, on a row that has any.
+function deletesOf(row: Row): { deletes?: number } {
+  if (row.state !== "pending" || destroysOf(row) === 0) return {};
+  return { deletes: row.diff.changes.filter((change) => change.op === "delete").length };
+}
+
 describe("the fixtures", () => {
   test("58 stacks: 11 pending, 2 deploying, 2 preview failures, 43 in sync", () => {
     expect(byState(rows58())).toEqual({
@@ -96,6 +102,7 @@ describe("every rendered block", () => {
           state: row.state,
           hash: row.state === "pending" ? row.hash : undefined,
           destroys: destroysOf(row),
+          ...deletesOf(row),
           failed: "failure" in row && row.failure !== undefined,
           shortened: row.state === "pending" ? level : 0,
           drift: false,

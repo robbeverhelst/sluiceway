@@ -36,6 +36,8 @@ export const RESULT_DOT: Record<ApplyResultOutcome, string> = {
 export const HEADER_DOT: Record<HeaderState, string> = {
   failing: COUNT_DOT.failed,
   deploying: COUNT_DOT.deploying,
+  // A queued row is counted with the deploying ones (record 0056).
+  queued: COUNT_DOT.deploying,
   pending: COUNT_DOT.pending,
   drift: COUNT_DOT.drift,
   "first-run": DOT_AT_ZERO,

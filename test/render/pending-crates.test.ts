@@ -32,10 +32,10 @@ const unknown = (index: number): ParsedRow => ({
 });
 
 // Record 0047: one crate per pending stack up to the maximum, and past it
-// the row runs on off the edge.
-describe("the crates of record 0047", () => {
-  test("the maximum is 12", () => {
-    expect(MAX_CRATES).toBe(12);
+// the row runs on off the edge. Record 0075 raised the maximum from 12 to 20.
+describe("the crates of records 0047 and 0075", () => {
+  test("the maximum is 20", () => {
+    expect(MAX_CRATES).toBe(20);
   });
 
   test.each<[number, number | "more"]>([
@@ -44,8 +44,11 @@ describe("the crates of record 0047", () => {
     [7, 7],
     [11, 11],
     [12, 12],
-    [13, "more"],
-    [14, "more"],
+    [13, 13],
+    [14, 14],
+    [19, 19],
+    [20, 20],
+    [21, "more"],
     [58, "more"],
   ])("%i pending rows show %p", (count, crates) => {
     expect(pendingCrates(pending(count))).toBe(crates);
@@ -65,7 +68,7 @@ describe("the crates of record 0047", () => {
   });
 
   test("rows of an unknown state do not count", () => {
-    const later = Array.from({ length: 20 }, (_, index) => unknown(index));
+    const later = Array.from({ length: 30 }, (_, index) => unknown(index));
     expect(pendingCrates(later)).toBe(0);
     expect(pendingCrates([...pending(2), ...later])).toBe(2);
     expect(pendingCrates([...pending(12), ...later])).toBe(12);

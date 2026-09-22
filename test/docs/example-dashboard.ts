@@ -6,7 +6,8 @@ import type { InSyncRow, PendingRow, Row } from "../../src/render/row.ts";
 // The example dashboard of the README, made from made-up rows by the real
 // renderer. The header can show one state, and bad news wins (record 0031),
 // so the example is a pending dashboard: that is the one picture that shows
-// both the crate count (record 0047) and the destroy sign (record 0043).
+// both the crate count (record 0047) and a destroy sign (records 0043 and
+// 0075).
 // Regenerate the README's block with:
 //   bun -e 'import { exampleDashboard } from "./test/docs/example-dashboard.ts"; console.log(exampleDashboard())'
 

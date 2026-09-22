@@ -19,6 +19,8 @@ describe("the result dots", () => {
     expect(HEADER_DOT).toEqual({
       failing: "🔴",
       deploying: "🔵",
+      // Record 0075: a queued row is counted with the deploying ones.
+      queued: "🔵",
       pending: "🟡",
       drift: "🟠",
       "first-run": "⚪",

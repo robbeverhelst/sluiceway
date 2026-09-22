@@ -5,8 +5,8 @@ exports[`a full scan of the example project gives the same dashboard, summary an
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/failing-2-destroys-dark.svg">
-    <img alt="Sluiceway: something failed, 2 stacks are pending, some changes delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/failing-2-destroys-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/failing-2-deletes-replaces-dark.svg">
+    <img alt="Sluiceway: something failed, 2 stacks are pending, some changes delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/failing-2-deletes-replaces-light.svg">
   </picture>
 </p>
 
@@ -33,7 +33,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>release</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **network:dev** · 1 create, 1 update, **2 replaces**, **1 delete** · [preview](https://github.com/acme/infra/runs/106538952702) <!-- sluiceway:row stack="network:dev" state="pending" hash="f64ca542f4ede7ae" destroys="3" -->
+- [ ] **network:dev** · 1 create, 1 update, **2 replaces**, **1 delete** · [preview](https://github.com/acme/infra/runs/106538952702) <!-- sluiceway:row stack="network:dev" state="pending" hash="f64ca542f4ede7ae" destroys="3" deletes="1" -->
   not deployed from this dashboard yet
   :warning: <kbd>DELETE</kbd> <code>random:index/randomString:RandomString</code> <b>subnet</b>
   :warning: <kbd>REPLACE</kbd> <code>local:index/file:File</code> <b>notes</b> · forced by <code>content</code> · also changes <code>contentBase64sha256</code>, <code>contentBase64sha512</code>, <code>contentMd5</code>, <code>contentSha1</code>, <code>contentSha256</code>, <code>contentSha512</code>, <code>id</code>

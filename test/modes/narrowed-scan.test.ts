@@ -543,7 +543,7 @@ describe("what a narrowed scan carries through (records 0009 and 0011)", () => {
     await scan({ ...first.context, github: scanned.github, root: scanned.context.root });
     let body = dashboardBody(scanned.github);
     expect(body).toMatch(
-      /stack="app:prod" state="pending" hash="[0-9a-f]{16}" destroys="40" shortened="\d"/,
+      /stack="app:prod" state="pending" hash="[0-9a-f]{16}" destroys="40" deletes="40" shortened="\d"/,
     );
 
     // What only later writers put on a row: a tick, a failure line with its
@@ -551,7 +551,7 @@ describe("what a narrowed scan carries through (records 0009 and 0011)", () => {
     body = body
       .replace("- [ ] **network:dev**", "- [x] **network:dev**")
       .replace(
-        /(stack="network:dev" state="pending" hash="[0-9a-f]{16}" destroys="1")/,
+        /(stack="network:dev" state="pending" hash="[0-9a-f]{16}" destroys="1" deletes="1")/,
         '$1 failed="true"',
       )
       .replace(

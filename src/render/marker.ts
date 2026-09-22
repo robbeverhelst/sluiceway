@@ -74,6 +74,9 @@ export interface RowFacts {
   // Display caches (record 0027): the number of deletes and replaces in the
   // diff, and whether the row carries a failure line.
   destroys?: number | undefined;
+  // How many of those are deletes (record 0075), so the header can tell a
+  // delete from a replace. Written whenever there are destroys.
+  deletes?: number | undefined;
   failed?: boolean | undefined;
   // A display cache too (record 0028): the level a shortened row is at. The
   // note under the scan line counts these, and a writer that carries a row
@@ -82,6 +85,9 @@ export interface RowFacts {
   // The diff hash covers drift (records 0009 and 0055), so `apply` checks
   // drift again before it compares, and a deploy puts the drift back.
   drift?: boolean | undefined;
+  // How many resources a drifted row's drift check found gone outside the
+  // code (record 0075), for the destroy alert.
+  gone?: number | undefined;
   // The stacks this stack's preview read from its program's stack references,
   // for a stack with `dependsOn: auto` (record 0059). `resolve` never
   // previews, so the row is where it finds them.
@@ -141,9 +147,11 @@ export function rowMarker(facts: RowFacts): string {
   ];
   if (facts.hash !== undefined) pairs.push(["hash", facts.hash]);
   if (facts.destroys) pairs.push(["destroys", String(facts.destroys)]);
+  if (facts.destroys && facts.deletes !== undefined) pairs.push(["deletes", String(facts.deletes)]);
   if (facts.failed) pairs.push(["failed", "true"]);
   if (facts.shortened) pairs.push(["shortened", String(facts.shortened)]);
   if (facts.drift) pairs.push(["drift", "true"]);
+  if (facts.gone) pairs.push(["gone", String(facts.gone)]);
   if (facts.dependsOn && facts.dependsOn.length > 0) {
     pairs.push(["depends-on", encodeIds(facts.dependsOn)]);
   }
@@ -194,11 +202,17 @@ export type ParsedRow =
       state: RowState;
       hash: string | undefined;
       destroys: number;
+      // How many of the destroys are deletes (record 0075). Absent on a
+      // marker an older version wrote, which did not tell them apart.
+      deletes?: number;
       failed: boolean;
       // The level of a shortened row, 0 for a row in full.
       shortened: number;
       // The hash covers drift (record 0055).
       drift: boolean;
+      // Resources gone outside the code, on a drifted row (record 0075).
+      // Absent when there are none.
+      gone?: number;
       // Read from the program's stack references (record 0059). Absent when
       // the marker names none.
       dependsOn?: string[];
@@ -318,15 +332,18 @@ export function parseDashboard(body: string): ParsedDashboard {
       return /^\d+$/.test(value) ? Number(value) : 0;
     };
     const dependsOn = pairs.get("depends-on") ?? "";
+    const deletes = pairs.get("deletes") ?? "";
     rows.push({
       known: true,
       stackId,
       state,
       hash: pairs.get("hash"),
       destroys: count("destroys"),
+      ...(/^\d+$/.test(deletes) ? { deletes: Number(deletes) } : {}),
       failed: pairs.get("failed") === "true",
       shortened: count("shortened"),
       drift: pairs.get("drift") === "true",
+      ...(count("gone") > 0 ? { gone: count("gone") } : {}),
       ...(dependsOn === "" ? {} : { dependsOn: decodeIds(dependsOn) }),
       ticked: match[1] === "x" || match[1] === "X",
       text,

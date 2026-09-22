@@ -651,6 +651,7 @@ async function afterFreshPreview(
       runUrl,
       waiting: false,
       destroys: fresh.diff.changes.filter(isDestroy).length,
+      deletes: fresh.diff.changes.filter((change) => change.op === "delete").length,
       attribution,
     }));
   } catch (error) {

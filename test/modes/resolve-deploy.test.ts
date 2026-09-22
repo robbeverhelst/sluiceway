@@ -62,10 +62,10 @@ describe("a tick by a person who may tick", () => {
     expect(h.github.deployment(entries[1]?.deployment ?? 0).environment).toBe("production");
   });
 
-  test("swaps the row for a deploying row without a box, and copies `destroys` from the old marker", async () => {
+  test("swaps the row for a deploying row without a box, and copies `destroys` and `deletes` from the old marker", async () => {
     const h = await scanned(TABLE);
     const before = rowsOf(h);
-    expect(before["a:prod"]).toContain('destroys="2"');
+    expect(before["a:prod"]).toContain('destroys="2" deletes="1"');
     tick(h, ALICE, ["a:prod"]);
 
     await wake(h);
@@ -73,7 +73,7 @@ describe("a tick by a person who may tick", () => {
     const after = rowsOf(h);
     expect(after["a:prod"]).toBe(
       [
-        `- ${SPINNER}**a:prod** · waiting to start · ticked by alice · [run](${RESOLVE_RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="2" -->`,
+        `- ${SPINNER}**a:prod** · waiting to start · ticked by alice · [run](${RESOLVE_RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="2" deletes="1" -->`,
         // No success of this stack is on record (record 0026).
         "  not deployed from this dashboard yet",
         "  <!-- /sluiceway:row -->",
@@ -96,13 +96,13 @@ describe("a tick by a person who may tick", () => {
     );
     // Deploying sits at the top while it has rows (record 0063).
     expect(body.indexOf("## Deploying")).toBeLessThan(body.indexOf("## Pending"));
-    // A deploying row that destroys something shows the deploying picture
-    // with the destroy sign (0043), and one crate for the stack still pending
+    // A deploying row that deletes and replaces shows the deploying picture
+    // with both signs (0043, 0075), and one crate for the stack still pending
     // (0066).
     expect(body).toContain(
       'alt="Sluiceway: deploying, 1 stack is pending, some changes delete or replace resources"',
     );
-    expect(body).toContain("/deploying-1-destroys-light.svg");
+    expect(body).toContain("/deploying-1-deletes-replaces-light.svg");
     // The scan facts on the root marker are the scan's, carried through.
     expect(body.split("\n")[0]).toBe(h.github.issue(h.number).body.split("\n")[0] as string);
     expect(body.split("\n")[0]).toContain('scan-run="4242"');

@@ -116,7 +116,7 @@ describe("three ticked stacks in one chain", () => {
     const rows = rowsOf(h);
     expect(rows["network:prod"]?.split("\n")[0]).toContain("· waiting to start ·");
     expect(rows["app:prod"]?.split("\n")[0]).toBe(
-      `- ${SPINNER}**app:prod** · queued behind **network:prod** · ticked by alice · [run](${RESOLVE_RUN_URL}) <!-- sluiceway:row stack="app:prod" state="queued" destroys="1" -->`,
+      `- ${SPINNER}**app:prod** · queued behind **network:prod** · ticked by alice · [run](${RESOLVE_RUN_URL}) <!-- sluiceway:row stack="app:prod" state="queued" destroys="1" deletes="1" -->`,
     );
     expect(rows["site:prod"]?.split("\n")[0]).toContain("· queued behind **app:prod** ·");
     expect(h.github.issue(h.number).body).toContain("🔵&nbsp;3 deploying");
