@@ -116,7 +116,6 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Final art for Penny
 - Showing a change that touches only a stack's outputs
 - Deploying the exact plan that was previewed, for Pulumi
-- A strict mode input that turns the scan job red on any preview failure
 - A size budget level for the summary beyond its two, or the full diffs as a file to download
 - The count of changes outside a stack, `and earlier changes` and the compare link in the summary
 - A link from the summary's note to the stack's group in the job log

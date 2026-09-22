@@ -22,6 +22,7 @@ One action, six modes, chosen with the `mode` input.
 | `mode` | required | One of `scan`, `resolve`, `apply`, `settle`, `check`, `init`. |
 | `concurrency` | `4` | How many previews a scan runs at the same time. |
 | `preview-timeout` | `10` | Time limit for one preview, in minutes. `apply` uses it for the preview it runs before the deploy. The deploy itself has no time limit of Sluiceway's: set `timeout-minutes` on the job. |
+| `strict` | `false` | `scan` only. `true` turns the job red when any preview failed, after the dashboard is written. Off by default, because a job that is red for one broken stack on every push teaches people to ignore red. |
 | `github-token` | the workflow token | Leave it at the default. Sluiceway always acts as the workflow's own `GITHUB_TOKEN`. A GitHub App token or a personal access token is not supported. `check` never uses it. |
 | `deployment-id` | required in `apply` | The deployment record to deploy. It comes from the `matrix` output of `resolve`. An error in every other mode. |
 | `dry-run` | `false` | `apply` only. `true` rehearses a tick: the deployment record, the fresh preview and the check that it matches the row run as for a deploy, and then nothing is deployed. The record ends as `inactive` with "rehearsed, nothing was deployed", the row is pending again and Recently deployed says `rehearsed`. Set it on the `apply` step while you try out a new workflow. |

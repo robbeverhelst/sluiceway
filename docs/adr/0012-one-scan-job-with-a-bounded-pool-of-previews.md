@@ -30,3 +30,7 @@ Parallel previews inside one job are safe: previews of different stacks share no
 
 - With a replayed tool that answers at once, a full scan of 100 stacks through the real adapter, ten of them previews of 300 resources, takes about 0.2 s of Sluiceway's own work: discovery, parsing, the body, the budget, the summary and the write. A scan is as long as its previews.
 - With every preview taking 40 ms, the pool of 4 previews 100 stacks in 1.0 s, which is 100 divided by 4 times 40 ms. That is the formula for the worst case above, with the time limit in place of the 40 ms.
+
+## Settled while building (slice 5.9)
+
+- A `strict` input, `scan` only and `false` by default, turns the job red when any preview failed. The dashboard is written first, as for the rule that every preview failing turns the job red, so the red job and the rows say the same. Off by default for the reason this record gives: a job that is red for one broken stack on every push teaches people to ignore red. It is read like `dry-run`, `true` or `false` and nothing else, and `strict: true` in any other mode is refused.

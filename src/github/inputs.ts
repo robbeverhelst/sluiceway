@@ -11,6 +11,10 @@ export interface ScanInputs {
   previewTimeoutMinutes: number;
   // The workflow's own token (record 0017).
   token: string;
+  // The job goes red on any preview failure, after the dashboard is written
+  // (slice 5.9). Off by default: a job that is red for one broken stack on
+  // every push teaches people to ignore red (record 0012).
+  strict: boolean;
 }
 
 function wholeNumber(getInput: GetInput, name: string, hint = ""): number {
@@ -41,7 +45,12 @@ export function readScanInputs(getInput: GetInput): ScanInputs {
     "preview-timeout",
     " It is a number of whole minutes.",
   );
-  return { concurrency, previewTimeoutMinutes, token: readToken(getInput) };
+  return {
+    concurrency,
+    previewTimeoutMinutes,
+    token: readToken(getInput),
+    strict: readBoolean(getInput, "strict"),
+  };
 }
 
 // The id of the running job (record 0044). GitHub puts it in no variable of
@@ -90,17 +99,17 @@ export function readApplyInputs(getInput: GetInput): ApplyInputs {
     deploymentId: Number(text),
     previewTimeoutMinutes,
     token: readToken(getInput),
-    dryRun: readDryRun(getInput),
+    dryRun: readBoolean(getInput, "dry-run"),
   };
 }
 
 // The words GitHub's own boolean inputs use. Anything else is refused, so a
 // typo never deploys when a rehearsal was meant (record 0051).
-function readDryRun(getInput: GetInput): boolean {
-  const text = getInput("dry-run").trim();
+function readBoolean(getInput: GetInput, name: string): boolean {
+  const text = getInput(name).trim();
   if (text === "" || text === "false") return false;
   if (text === "true") return true;
-  throw new Error(`The "dry-run" input is true or false, and it is ${JSON.stringify(text)}.`);
+  throw new Error(`The "${name}" input is true or false, and it is ${JSON.stringify(text)}.`);
 }
 
 // `backend: true` makes the check ask the backend which stacks it holds, with
@@ -119,16 +128,15 @@ export function readBackend(getInput: GetInput): boolean {
 // reaches every mode and says nothing.
 // `backend: true` is refused in every mode but check (record 0074).
 export function refuseDeploymentId(mode: string, getInput: GetInput): void {
-  if (mode !== "check" && getInput("backend").trim() === "true") {
-    throw new Error(
-      `The "backend" input is only for check mode, and this step runs ${mode} mode. Take it out of this step.`,
-    );
-  }
-  if (mode === "apply") return;
-  const only = (name: string) =>
+  const only = (name: string, of = "apply") =>
     new Error(
-      `The "${name}" input is only for apply mode, and this step runs ${mode} mode. Take it out of this step.`,
+      `The "${name}" input is only for ${of} mode, and this step runs ${mode} mode. Take it out of this step.`,
     );
+  // `strict: true` belongs to a scan the same way (slice 5.9), and
+  // `backend: true` to the check.
+  if (mode !== "check" && getInput("backend").trim() === "true") throw only("backend", "check");
+  if (mode !== "scan" && getInput("strict").trim() === "true") throw only("strict", "scan");
+  if (mode === "apply") return;
   if (getInput("deployment-id").trim() !== "") throw only("deployment-id");
   if (getInput("dry-run").trim() === "true") throw only("dry-run");
 }

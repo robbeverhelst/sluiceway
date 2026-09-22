@@ -40,6 +40,7 @@ export async function runScan(directory: string): Promise<void> {
     now: () => new Date(),
     concurrency: inputs.concurrency,
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
+    strict: inputs.strict,
     repoUrl: job.repoUrl,
     runId: job.runId,
     runAttempt: job.runAttempt,

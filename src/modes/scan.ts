@@ -133,6 +133,9 @@ export interface ScanContext {
   concurrency: number;
   // The `preview-timeout` input, in whole minutes.
   previewTimeoutMinutes: number;
+  // The `strict` input: any preview failure turns the job red, after the
+  // dashboard is written (slice 5.9).
+  strict?: boolean | undefined;
   // `https://github.com/<owner>/<repo>`.
   repoUrl: string;
   runId: string;
@@ -708,6 +711,12 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   if (everyPreviewFailed(previewed.size, failed.length)) {
     throw new ScanFailedError(
       `Every preview failed (${failed.length} of ${previewed.size}). That nearly always means the environment is broken, such as missing credentials or a backend that cannot be reached. The dashboard was written first and shows a preview failure on every row of a previewed stack, which is true: nothing can be deployed either. The job log holds what the tool printed, in the group of each stack.`,
+    );
+  }
+  if (context.strict && failed.length > 0) {
+    const ids = failed.map(({ id }) => id).sort(byCodeUnit);
+    throw new ScanFailedError(
+      `${plural(failed.length, "preview")} failed (${ids.join(", ")}), and the strict input turns the job red on any preview failure. The dashboard was written first and shows ${failed.length === 1 ? "it" : "them"}.`,
     );
   }
 }

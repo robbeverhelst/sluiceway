@@ -19,7 +19,30 @@ const GOOD = { concurrency: "4", "preview-timeout": "10", "github-token": "ghs_t
 
 describe("the inputs of a scan", () => {
   test("reads the pool size, the time limit and the token", () => {
-    expect(inputs(GOOD)).toEqual({ concurrency: 4, previewTimeoutMinutes: 10, token: "ghs_token" });
+    expect(inputs(GOOD)).toEqual({
+      concurrency: 4,
+      previewTimeoutMinutes: 10,
+      token: "ghs_token",
+      strict: false,
+    });
+  });
+
+  // Slice 5.9: the strict input, true or false and nothing else, as dry-run.
+  test("strict is true or false, and nothing else", () => {
+    expect(inputs({ ...GOOD, strict: "true" }).strict).toBe(true);
+    expect(inputs({ ...GOOD, strict: "false" }).strict).toBe(false);
+    expect(() => inputs({ ...GOOD, strict: "yes" })).toThrow(
+      'The "strict" input is true or false, and it is "yes".',
+    );
+  });
+
+  test("any other mode refuses strict: true", () => {
+    expect(() => refuseDeploymentId("apply", (name) => (name === "strict" ? "true" : ""))).toThrow(
+      'The "strict" input is only for scan mode, and this step runs apply mode. Take it out of this step.',
+    );
+    expect(() =>
+      refuseDeploymentId("resolve", (name) => (name === "strict" ? "false" : "")),
+    ).not.toThrow();
   });
 
   test("takes white space around a number", () => {

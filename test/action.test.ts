@@ -34,6 +34,7 @@ describe("action.yml", () => {
       concurrency: 4,
       previewTimeoutMinutes: 10,
       token: "token",
+      strict: false,
     });
   });
 
@@ -88,6 +89,7 @@ describe("action.yml", () => {
       "job-id",
       "mode",
       "preview-timeout",
+      "strict",
     ]);
   });
 

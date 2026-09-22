@@ -63,6 +63,7 @@ Collected here so nobody has to search the records. The record in the last colum
 | `mode` | input | all | required | `scan`, `resolve`, `apply`, `settle`, `check` or `init` | 0003, 0042, 0065 |
 | `concurrency` | input | `scan` | `4` | Size of the preview pool | 0012 |
 | `preview-timeout` | input | `scan`, `apply` | `10` | Time limit for one preview, whole minutes | 0012, 0035 |
+| `strict` | input | `scan` | `false` | Any preview failure turns the job red, after the dashboard is written (slice 5.9) | 0012 |
 | `github-token` | input | all | the workflow token | Always the workflow's own `GITHUB_TOKEN` | 0017, 0035 |
 | `deployment-id` | input | `apply` | required there | The deployment record to deploy | 0035 |
 | `dry-run` | input | `apply` | `false` | A rehearsal: everything up to the hash check, then no deploy. The record ends as `inactive`, "rehearsed, nothing was deployed" | 0051 |

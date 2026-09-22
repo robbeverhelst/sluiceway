@@ -25,6 +25,13 @@ inputs:
       gets a preview failure row.
     required: false
     default: "10"
+  strict:
+    description: >-
+      scan only. true turns the job red when any preview failed, after the dashboard is written.
+      Off by default, because a job that is red for one broken stack on every push teaches people
+      to ignore red.
+    required: false
+    default: "false"
   github-token:
     description: >-
       The GITHUB_TOKEN of the workflow run. Leave it at the default. Sluiceway always acts as the

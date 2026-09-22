@@ -185,6 +185,29 @@ describe("the job result (record 0012)", () => {
     expect(log.summaries).toHaveLength(1);
   });
 
+  // Slice 5.9: the strict input turns the job red on any preview failure,
+  // after the dashboard was written, which still tells the truth.
+  test("with strict on, one preview failure turns the job red after the dashboard was written", async () => {
+    const adapter = tableAdapter({ "a:prod": pending("a:prod", change("x")), "b:prod": failing() });
+    const { context, github } = harness(adapter, { strict: true });
+
+    const result = scan(context);
+
+    await expect(result).rejects.toBeInstanceOf(ScanFailedError);
+    await expect(result).rejects.toThrow(
+      "1 preview failed (b:prod), and the strict input turns the job red on any preview failure. The dashboard was written first and shows it.",
+    );
+    expect(rowStates(dashboardBody(github))).toEqual({
+      "a:prod": "pending",
+      "b:prod": "preview-failed",
+    });
+  });
+
+  test("with strict on and every preview working, the job stays green", async () => {
+    const { context } = harness(tableAdapter({ "a:prod": inSync("a:prod") }), { strict: true });
+    await scan(context);
+  });
+
   test("the only stack of a repo failing leaves the job green", async () => {
     const { context, github } = harness(tableAdapter({ "a:prod": failing() }));
     await scan(context);
