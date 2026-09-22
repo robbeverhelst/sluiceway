@@ -230,7 +230,7 @@ Default: `[]`
 
 Globs for files that claim nothing and force nothing. A push previews only the stacks that claim a changed file (a narrowed scan), and a changed file that no stack claims makes it a full scan. That is the safe side, because Sluiceway cannot know what your programs read. List here the files that no program reads, so that changing them costs no preview at all.
 
-A file listed here claims nothing even inside a stack's directory, so `**/*.md` keeps a README change from previewing its stack. Never list a file one of your programs reads: its stack would show a stale row until the next full scan. There are no defaults. The `check` mode prints a ready-to-paste block for the files that look like docs and tooling.
+A file listed here claims nothing even inside a stack's directory, so `**/*.md` keeps a README change from previewing its stack. Never list a file one of your programs reads: its stack would show a stale row until the next full scan. There are no defaults. The `check` mode prints a ready-to-paste block for the files that look like docs and tooling, and so does the summary of a push that fell back to a full scan because of files no stack claims, for the files of that push.
 
 ```yaml
 scan:
@@ -258,6 +258,7 @@ Read this before you turn it on:
 
 - **Anyone who can read the repo can read its job logs.** In a public repository that is anyone at all, and the scan warns about it on the run. In a private one it is every person and integration with read access, for as long as the repository keeps its logs (90 days unless you changed it).
 - **Only what the tool marks as secret is masked, plus what your workflow registered with `::add-mask::`.** Pulumi prints `[secret]` for a secret config value and for a value a provider marks secret, and every other value in plain text. Sluiceway adds no mask of its own ([credentials](credentials.md)).
+- **It helps with a stack that is pending again right after every deploy.** Its row then says so, and points at the job log, where the tool's own diff shows which value differs on every run.
 - **It costs one more tool run per pending stack**, in the same pool slot and with the same time limit as the stack's preview. Stacks in sync and failed previews get no second run.
 
 With it on, a pending row's `preview` link still opens the stack's preview page, which says the tool's diff is in the job log and links to it. The page itself never shows a value, because the masks your workflow registers do not reach it. Without a preview page, the link opens the job's log instead of the summary. In the job log, open the Sluiceway step and the group named after the stack, or type the stack id into the log's search box. The group holds Sluiceway's own list of changes, then the tool's diff. `apply` prints the tool's diff of its fresh preview too, in the group `<stack id>: the fresh preview`. When the second run fails, the group says why and the row does not change: the row and the diff hash always come from the preview itself.

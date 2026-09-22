@@ -91,7 +91,17 @@ export type DeployFact =
       ticker: string;
       run: string;
     }
-  | { kind: "succeeded"; ticker: string; run: string; at: Date }
+  | {
+      kind: "succeeded";
+      ticker: string;
+      run: string;
+      at: Date;
+      // The diff hash the tick approved, which is what went out (record 0008).
+      hash: string;
+      // The fresh preview had nothing to deploy, so nothing went out (record
+      // 0051).
+      inSync?: boolean;
+    }
   | {
       kind: "failed";
       // Display text from the status. Nothing is decided from it.
@@ -165,7 +175,17 @@ function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFac
   const { ticker, run } = payload;
   const state = record.status?.state ?? "";
   const at = new Date(record.status?.createdAt ?? record.createdAt);
-  if (SUCCEEDED.has(state)) return { kind: "succeeded", ticker, run, at };
+  if (SUCCEEDED.has(state)) {
+    const inSync = state === "success" && record.status?.description === IN_SYNC_DESCRIPTION;
+    return {
+      kind: "succeeded",
+      ticker,
+      run,
+      at,
+      hash: payload.hash,
+      ...(inSync ? { inSync } : {}),
+    };
+  }
   if (FAILED.has(state)) {
     return {
       kind: "failed",
@@ -205,15 +225,13 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
     // Newest last, so the newest record of a stack is the one that stays.
     facts.byStack.set(stackId, fact);
     if (fact.kind === "succeeded") {
-      const inSync =
-        record.status?.state === "success" && record.status.description === IN_SYNC_DESCRIPTION;
       facts.succeeded.push({
         stackId,
         ticker: fact.ticker,
         run: fact.run,
         at: fact.at,
         sha: record.sha,
-        ...(inSync ? { result: "in-sync" as const } : {}),
+        ...(fact.inSync ? { result: "in-sync" as const } : {}),
       });
     }
   }
@@ -227,6 +245,15 @@ export function lastDeployedCommit(facts: DeployFacts, stackId: string): string 
   return facts.succeeded.findLast(
     (deploy) => deploy.stackId === stackId && deploy.result !== "rehearsed",
   )?.sha;
+}
+
+// A pending stack whose newest record is a deploy that went out with this
+// same diff hash (onboarding log, hurdle 21). The deploy did not bring it in
+// sync, which is what a program does that makes a value that differs on every
+// run. It explains a row and decides nothing: the tick and the hash check work
+// as they always do.
+export function pendingAgain(fact: DeployFact | undefined, hash: string): boolean {
+  return fact?.kind === "succeeded" && !fact.inSync && fact.hash === hash;
 }
 
 // One stack as a scan sees it at its late read (record 0004).

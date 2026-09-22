@@ -52176,8 +52176,17 @@ function factOf(record3, payload) {
   const { ticker, run } = payload;
   const state = record3.status?.state ?? "";
   const at = new Date(record3.status?.createdAt ?? record3.createdAt);
-  if (SUCCEEDED.has(state))
-    return { kind: "succeeded", ticker, run, at };
+  if (SUCCEEDED.has(state)) {
+    const inSync = state === "success" && record3.status?.description === IN_SYNC_DESCRIPTION;
+    return {
+      kind: "succeeded",
+      ticker,
+      run,
+      at,
+      hash: payload.hash,
+      ...inSync ? { inSync } : {}
+    };
+  }
   if (FAILED.has(state)) {
     return {
       kind: "failed",
@@ -52214,14 +52223,13 @@ function deployFacts(records) {
     }
     facts.byStack.set(stackId2, fact);
     if (fact.kind === "succeeded") {
-      const inSync = record3.status?.state === "success" && record3.status.description === IN_SYNC_DESCRIPTION;
       facts.succeeded.push({
         stackId: stackId2,
         ticker: fact.ticker,
         run: fact.run,
         at: fact.at,
         sha: record3.sha,
-        ...inSync ? { result: "in-sync" } : {}
+        ...fact.inSync ? { result: "in-sync" } : {}
       });
     }
   }
@@ -52229,6 +52237,9 @@ function deployFacts(records) {
 }
 function lastDeployedCommit(facts, stackId2) {
   return facts.succeeded.findLast((deploy) => deploy.stackId === stackId2 && deploy.result !== "rehearsed")?.sha;
+}
+function pendingAgain(fact, hash2) {
+  return fact?.kind === "succeeded" && !fact.inSync && fact.hash === hash2;
 }
 function rowAtLateRead(stack) {
   const { previewedAt, liveState, fact } = stack;
@@ -52495,6 +52506,10 @@ function changeLine(change, options = {}) {
 }
 var ORPHAN_TICK_NOTE = ":information_source: a tick on this row was not picked up. Tick again to deploy.";
 var DEPLOYS_OFF_NOTE = ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick started nothing.";
+var PENDING_AGAIN_NOTE = ":information_source: pending again right after a deploy of this same change, a value in the program may differ on every run.";
+function pendingAgainLine({ logUrl }) {
+  return logUrl === undefined ? PENDING_AGAIN_NOTE : `${PENDING_AGAIN_NOTE} Compare the tool's own diff in the [job log](${logUrl}).`;
+}
 function failureLine(failure2) {
   return `:x: last deploy failed: ${escapeText(failure2.reason)} · ticked by ${escapeText(failure2.ticker)} · ${utcMinute(failure2.at)} · [run](${failure2.runUrl})`;
 }
@@ -52524,6 +52539,8 @@ function pendingRow(row, options) {
     lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
   if (row.failure)
     lines.push(failureLine(row.failure));
+  if (row.pendingAgain)
+    lines.push(pendingAgainLine(row.pendingAgain));
   if (row.orphanTick && !options.readOnly)
     lines.push(ORPHAN_TICK_NOTE);
   if (options.redact || level >= 3) {
@@ -54403,8 +54420,11 @@ function checkSetup(config2, found, files) {
     stacks,
     ignore: config2.ignore.map((entry) => ignoreReport(ignoreGlob(entry), found)),
     unclaimed: groups(unclaimed),
-    suggested: SUGGESTIONS.filter((glob) => unclaimed.some(globMatcher([glob])))
+    suggested: suggestedUnrelated(unclaimed)
   };
+}
+function suggestedUnrelated(unclaimed) {
+  return SUGGESTIONS.filter((glob) => unclaimed.some(globMatcher([glob])));
 }
 function ignoreReport(glob, found) {
   const matches = globMatcher([glob]);
@@ -55602,6 +55622,22 @@ function fitToBudget(entries, frameCost, budget) {
     }
   }
 }
+var UNCLAIMED_FILES_SHOWN = 20;
+function unclaimedParts({ files, unrelated, suggested }) {
+  const shown = files.slice(0, UNCLAIMED_FILES_SHOWN).map(escapeText).join(", ");
+  const rest = files.length - UNCLAIMED_FILES_SHOWN;
+  const more = rest > 0 ? `, and ${plural2(rest, "more file")}. The job log lists them all` : "";
+  const parts = [
+    "### Why this was a full scan",
+    `This push fell back to a full scan, because no stack claims ${files.length} of the changed files: ${shown}${more}. A push that changes one of them previews every stack.`,
+    WHERE_FILES_BELONG
+  ];
+  if (suggested.length > 0) {
+    parts.push(PASTE_NOTE, ["```yaml", ...unrelatedBlock(unrelated, suggested), "```"].join(`
+`));
+  }
+  return parts;
+}
 function toolDiffLine(options) {
   const log = options.jobLogUrl === undefined ? "job log" : `[job log](${options.jobLogUrl})`;
   return `The tool's own diff of every pending stack, values included, is in the ${log}, in the stack's group.`;
@@ -55625,6 +55661,9 @@ function renderSummary(stacks, options = {}) {
   if (inSync.length > 0) {
     tail.push("### In sync", inSync.map((stack) => `- ${anchorTag(stack.diff.stackId)}${escapeText(stack.diff.stackId)}`).join(`
 `));
+  }
+  if (options.unclaimed !== undefined && options.unclaimed.files.length > 0) {
+    tail.push(...unclaimedParts(options.unclaimed));
   }
   const index = [
     pending.length > 0 && `- Pending: ${pending.map((stack) => indexLink(stack.diff.stackId)).join(" · ")}`,
@@ -55754,6 +55793,7 @@ async function scanning(context3, report) {
   const plan = await makePlan(context3, config2, stacks);
   logPlan(context3, plan, stacks.length);
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
+  const unclaimed = unclaimedFiles(plan, config2);
   let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
   const attribution = attributionSource(context3.github, {
     stacks: stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
@@ -55781,7 +55821,7 @@ async function scanning(context3, report) {
     logResults(context3, round);
     const all = [...previewed.values()].sort((a, b) => byCodeUnit2(a.id, b.id));
     if (round.length > 0 || rounds === 0) {
-      await writeSummary2(context3, all, logDiff);
+      await writeSummary2(context3, all, { logDiff, unclaimed });
       report.previewed = all;
     }
     rounds++;
@@ -55833,7 +55873,11 @@ async function scanning(context3, report) {
             toolDiffInLog: logDiff,
             pageUrl: pageUrls.get(id)
           });
-          const row2 = fresh.state === "pending" ? { ...fresh, attribution: lines3.get(id)?.lines } : fresh;
+          const row2 = fresh.state === "pending" ? {
+            ...fresh,
+            attribution: lines3.get(id)?.lines,
+            pendingAgain: pendingAgain(fact, fresh.hash) ? { logUrl: logDiff ? links.log : undefined } : undefined
+          } : fresh;
           if (!ticked) {
             rows.push(row2);
             continue;
@@ -55956,7 +56000,7 @@ async function scanning(context3, report) {
   };
   if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
     const all = [...previewed.values()].sort((a, b) => byCodeUnit2(a.id, b.id));
-    await writeSummary2(context3, all, logDiff, attributed);
+    await writeSummary2(context3, all, { logDiff, unclaimed }, attributed);
   }
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
   if (everyPreviewFailed(previewed.size, failed.length)) {
@@ -56067,6 +56111,18 @@ function whyText(why2) {
     case "preview-failed":
       return "its row is a preview failure";
   }
+}
+function unclaimedFiles(plan, config2) {
+  if (plan.kind !== "full" || plan.why.kind !== "unclaimed")
+    return;
+  const files = unclaimedToPlace(plan.why.files);
+  if (files.length === 0)
+    return;
+  return {
+    files: files.map(fileName),
+    unrelated: config2.scan.unrelated,
+    suggested: suggestedUnrelated(files)
+  };
 }
 function logPlan(context3, plan, stackCount) {
   const { log } = context3;
@@ -56193,12 +56249,13 @@ async function writePages(context3, pages, round, urls, options) {
     log.info(`GitHub answered "${refused.message}" while the preview pages were written. No more pages are written in this scan, and the preview links of ${plural2(written.skipped.length, "pending stack")} land on ${fallBack}.`);
   }
 }
-async function writeSummary2(context3, previewed, logDiff, attributed = new Map) {
+async function writeSummary2(context3, previewed, { logDiff, unclaimed }, attributed = new Map) {
   const { log } = context3;
   const summary3 = renderSummary(previewed.map(({ id, result }) => previewSummary(id, result, attributed.get(id)?.merges)), {
     budget: context3.limits?.summaryBudget,
     jobLogUrl: context3.jobId === undefined ? undefined : runLinks(context3).log,
-    toolDiffInLog: logDiff
+    toolDiffInLog: logDiff,
+    unclaimed
   });
   if (!summary3.fits) {
     log.warning("The summary of this run is too large for GitHub even with every stack shortened as far as it goes, so it was not written. The dashboard is still brought up to date, and the job log of this run holds every diff in full.", "Summary not written");

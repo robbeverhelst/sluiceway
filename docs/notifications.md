@@ -72,7 +72,7 @@ Every recipe is one more step in a job of the workflow in the [README](../README
           mode: scan
 ```
 
-Each step below runs only when there is something to say: a scan that changed the dashboard and left something pending or failed, a scan step that failed, or a deploy that did not go out. The secret is in the `env` of that one step and nowhere else. The outputs reach the script through `env` as well, never pasted into the script with `${{ }}`, so nothing in them can be read as a command. `jq` and `curl` are on GitHub's hosted runners.
+Each step below runs only when there is something to say: a scan that changed the dashboard and left something pending or failed, a scan step that failed, or a deploy that needs a person, because its `outcome` is `failed` or `refused` (a change that moved since the tick is `refused`) or the step failed before it set one. An `apply` that ended as `in-sync` or `rehearsed` sent nothing out and is a green job, so the recipes stay quiet about it, as they do about `deployed`. The secret is in the `env` of that one step and nowhere else. The outputs reach the script through `env` as well, never pasted into the script with `${{ }}`, so nothing in them can be read as a command. `jq` and `curl` are on GitHub's hosted runners.
 
 ### Slack
 
@@ -96,7 +96,7 @@ Create an incoming webhook for the channel and store its address as the secret `
             curl -fsS -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"
 ```
 
-In the `apply` job, the same step with `if: always() && steps.sluiceway.outputs.outcome != 'deployed'` and the text built from `steps.sluiceway.outputs.stack` and `steps.sluiceway.outputs.outcome` tells the channel about a deploy that did not go out. An empty `outcome` means the step stopped before it read the deployment record, which is a failure too. Slack's own `slackapi/slack-github-action` works as well, if you prefer an action over `curl`.
+In the `apply` job, the same step with `if: always() && (steps.sluiceway.outcome == 'failure' || steps.sluiceway.outputs.outcome == 'failed' || steps.sluiceway.outputs.outcome == 'refused')` and the text built from `steps.sluiceway.outputs.stack` and `steps.sluiceway.outputs.outcome` tells the channel about a deploy that failed or was refused. A failed step with an empty `outcome` stopped before it read the deployment record, which is a failure too. Slack's own `slackapi/slack-github-action` works as well, if you prefer an action over `curl`.
 
 ### Telegram
 
@@ -104,7 +104,9 @@ Create a bot with BotFather, store its token as `TELEGRAM_BOT_TOKEN` and the cha
 
 ```yaml
       - name: Tell Telegram
-        if: always() && steps.sluiceway.outputs.outcome != 'deployed'
+        if: >-
+          always() && (steps.sluiceway.outcome == 'failure' ||
+          steps.sluiceway.outputs.outcome == 'failed' || steps.sluiceway.outputs.outcome == 'refused')
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -139,7 +141,7 @@ Send the whole result file to your own endpoint, which can do anything with it: 
             --data-binary @"$RESULT_FILE" "$WEBHOOK_URL"
 ```
 
-In the `apply` job, use `always() && steps.sluiceway.outputs['result-file'] != '' && steps.sluiceway.outputs.outcome != 'deployed'`.
+In the `apply` job, use `if: always() && steps.sluiceway.outputs['result-file'] != '' && (steps.sluiceway.outcome == 'failure' || steps.sluiceway.outputs.outcome == 'failed' || steps.sluiceway.outputs.outcome == 'refused')`.
 
 ### A Pushgateway push
 

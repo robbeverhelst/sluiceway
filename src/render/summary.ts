@@ -5,6 +5,7 @@
 
 import type { Diff } from "../core/diff.ts";
 import { orderChanges } from "./changes.ts";
+import { PASTE_NOTE, unrelatedBlock, WHERE_FILES_BELONG } from "./check.ts";
 import { escapeText } from "./escape.ts";
 import { byCodeUnit, changeLine, counts, destroyWords, plural } from "./row.ts";
 
@@ -63,6 +64,19 @@ export interface SummaryOptions {
   // The job log holds the tool's own diff of every pending stack (record
   // 0048), and the summary says so under its counts.
   toolDiffInLog?: boolean | undefined;
+  // A push that fell back to a full scan because no stack claims some of its
+  // changed files (record 0010). The summary names them and offers the block
+  // the check prints (record 0042, onboarding log hurdle 5).
+  unclaimed?: UnclaimedFiles | undefined;
+}
+
+export interface UnclaimedFiles {
+  // The changed files that no stack claims, the config file left out.
+  files: string[];
+  // The scan.unrelated globs the config has.
+  unrelated: string[];
+  // The globs offered for the files, from the check's fixed list.
+  suggested: string[];
 }
 
 // The anchor of a stack's entry (record 0044). GitHub keeps the id of an
@@ -234,6 +248,24 @@ function fitToBudget(entries: Entry[], frameCost: (shortened: number) => number,
   }
 }
 
+// A summary names this many unclaimed files. The job log names them all.
+const UNCLAIMED_FILES_SHOWN = 20;
+
+function unclaimedParts({ files, unrelated, suggested }: UnclaimedFiles): string[] {
+  const shown = files.slice(0, UNCLAIMED_FILES_SHOWN).map(escapeText).join(", ");
+  const rest = files.length - UNCLAIMED_FILES_SHOWN;
+  const more = rest > 0 ? `, and ${plural(rest, "more file")}. The job log lists them all` : "";
+  const parts = [
+    "### Why this was a full scan",
+    `This push fell back to a full scan, because no stack claims ${files.length} of the changed files: ${shown}${more}. A push that changes one of them previews every stack.`,
+    WHERE_FILES_BELONG,
+  ];
+  if (suggested.length > 0) {
+    parts.push(PASTE_NOTE, ["```yaml", ...unrelatedBlock(unrelated, suggested), "```"].join("\n"));
+  }
+  return parts;
+}
+
 function toolDiffLine(options: SummaryOptions): string {
   const log = options.jobLogUrl === undefined ? "job log" : `[job log](${options.jobLogUrl})`;
   return `The tool's own diff of every pending stack, values included, is in the ${log}, in the stack's group.`;
@@ -267,6 +299,9 @@ export function renderSummary(stacks: SummaryStack[], options: SummaryOptions = 
         .map((stack) => `- ${anchorTag(stack.diff.stackId)}${escapeText(stack.diff.stackId)}`)
         .join("\n"),
     );
+  }
+  if (options.unclaimed !== undefined && options.unclaimed.files.length > 0) {
+    tail.push(...unclaimedParts(options.unclaimed));
   }
   // The index lists, in the order of the dashboard, every stack a row links
   // to: the pending ones and the preview failures (record 0044). A stack in

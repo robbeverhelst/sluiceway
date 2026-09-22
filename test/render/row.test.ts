@@ -201,6 +201,37 @@ describe("the lines a deploy leaves on a row", () => {
     ]);
   });
 
+  // Onboarding log, hurdle 21 (slice 2.22).
+  test("the pending-again line sits after the failure line and before the orphan tick note", () => {
+    const lines = renderRow({
+      ...BUCKETS,
+      failure: FAILURE,
+      orphanTick: true,
+      pendingAgain: {},
+    }).split("\n");
+    expect(lines.slice(3, 5)).toEqual([
+      "  :information_source: pending again right after a deploy of this same change, a value in the program may differ on every run.",
+      "  :information_source: a tick on this row was not picked up. Tick again to deploy.",
+    ]);
+  });
+
+  test("the pending-again line points at the job log that holds the tool's own diff", () => {
+    const lines = renderRow({ ...BUCKETS, pendingAgain: { logUrl: "log-url" } }).split("\n");
+    expect(lines[2]).toBe(
+      "  :information_source: pending again right after a deploy of this same change, a value in the program may differ on every run. Compare the tool's own diff in the [job log](log-url).",
+    );
+  });
+
+  test("the pending-again line stays on a redacted, a read-only and a fully shortened row, and changes neither marker nor hash", () => {
+    const plain = renderRow(BUCKETS).split("\n")[0];
+    for (const options of [{ redact: true }, { readOnly: true }, { level: 3 as const }]) {
+      const block = renderRow({ ...BUCKETS, pendingAgain: {} }, options);
+      expect(block).toContain("pending again right after a deploy");
+      expect(block.split("\n")[0]).toBe(renderRow(BUCKETS, options).split("\n")[0]);
+    }
+    expect(renderRow({ ...BUCKETS, pendingAgain: {} }).split("\n")[0]).toBe(plain);
+  });
+
   test("a row with a failure line says so on its marker", () => {
     const first = renderRow({ ...BUCKETS, failure: FAILURE }).split("\n")[0];
     expect(first).toEndWith('hash="2b44350653e84a11" destroys="2" failed="true" -->');

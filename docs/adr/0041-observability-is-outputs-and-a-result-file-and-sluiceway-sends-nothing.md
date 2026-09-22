@@ -26,3 +26,7 @@ Considered and rejected: a built-in Slack or webhook notifier (the promises abov
 - The file is `sluiceway-scan-result.json` or `sluiceway-apply-result.json` directly under `RUNNER_TEMP`. A file that cannot be written, or a runner without `RUNNER_TEMP`, leaves `result-file` unset, writes a warning with Sluiceway's own words and changes nothing else, as for a summary (0037).
 - The file has a `version`, 1. Its schema is strict: the renderer checks its own output against it, so a field that is not named there cannot ride along. The JSON schema is held by a snapshot test. The file holds no address, because no summary shows one, and no attribution (later.md).
 - The recipes in `docs/notifications.md` stay quiet unless a scan changed the dashboard and left something pending or preview failed, the scan step failed, or a deploy did not go out. The Pushgateway push is the exception and runs on every scan that wrote the dashboard: a gauge that is only pushed when something is pending never goes back to 0.
+
+## Settled while building (slice 2.22)
+
+- The recipes for the `apply` job send when `outcome` is `failed` or `refused`, or when the step failed before it set one, and stay quiet for `deployed`, `in-sync` and `rehearsed` (slice 2.20 noted the noise). A change that moved since the tick is `refused`: there is no `moved` outcome. A test evaluates every such condition in `docs/notifications.md` for each outcome.

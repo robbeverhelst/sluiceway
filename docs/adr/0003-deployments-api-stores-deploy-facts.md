@@ -31,4 +31,8 @@ A preview can recompute what is pending, but not that a deploy is running, how t
 - A run that GitHub does not have any more (404) counts as over. Any other failure to read a run or a record fails the scan with GitHub's words and the permissions it needs, as every other API error does (slice 1.10).
 - The scan job now needs `deployments: write` and `actions: read` too, because every scan does the late read. The scan-only workflow in the README has them.
 
+## Settled while building (slice 2.22)
+
+- A success fact keeps the hash from the payload of its record. When the newest record of a pending stack is a deploy that went out (`success` or `inactive`, not "nothing to deploy, already in sync", not a rehearsal) with the diff hash the fresh row has, the row gets the pending-again line (onboarding log, hurdle 21). The line decides nothing, and the scan reads no record for it that it did not already read.
+
 Research: https://github.com/sluiceway/sluiceway/blob/research/github-actions-behaviors/docs/research/github-actions-behaviors.md

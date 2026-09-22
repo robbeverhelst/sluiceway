@@ -8,6 +8,7 @@ import {
   IN_SYNC_DESCRIPTION,
   isOpenStatus,
   lastDeployedCommit,
+  pendingAgain,
   REHEARSED_DESCRIPTION,
   readDeploymentPayload,
   rowAtLateRead,
@@ -119,6 +120,7 @@ describe("the deploy facts of a stack", () => {
       ticker: "alice",
       run: "4242",
       at: new Date("2026-09-21T09:41:30Z"),
+      hash: "2b44350653e84a11",
     });
   });
 
@@ -314,6 +316,7 @@ describe("which row a stack gets at the late read of a scan (record 0004)", () =
     ticker: "alice",
     run: "1",
     at,
+    hash: "2b44350653e84a11",
   });
   const failed = (at: Date): DeployFact => ({
     kind: "failed",
@@ -419,5 +422,25 @@ describe("whether a deployment record is still open (record 0019)", () => {
     for (const state of ["success", "inactive", "failure", "error"]) {
       expect(isOpenStatus({ state, description: "", createdAt: at })).toBe(false);
     }
+  });
+});
+
+describe("pending again right after a deploy (onboarding log, hurdle 21)", () => {
+  const fact = (state: string, description = "") =>
+    deployFacts([
+      { ...record({ state }), status: { state, description, createdAt: "2026-09-21T08:52:10Z" } },
+    ]).byStack.get("apps/grafana:prod");
+
+  test("a deploy that went out with this same diff hash", () => {
+    expect(pendingAgain(fact("success"), "2b44350653e84a11")).toBe(true);
+    expect(pendingAgain(fact("inactive"), "2b44350653e84a11")).toBe(true);
+  });
+
+  test("not with another hash, not after a deploy that sent nothing, not without a success", () => {
+    expect(pendingAgain(fact("success"), "0123456789abcdef")).toBe(false);
+    expect(pendingAgain(fact("success", IN_SYNC_DESCRIPTION), "2b44350653e84a11")).toBe(false);
+    expect(pendingAgain(fact("failure"), "2b44350653e84a11")).toBe(false);
+    expect(pendingAgain(fact("queued"), "2b44350653e84a11")).toBe(false);
+    expect(pendingAgain(undefined, "2b44350653e84a11")).toBe(false);
   });
 });

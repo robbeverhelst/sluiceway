@@ -222,6 +222,10 @@ _Avoid_: Error row, broken stack, failed stack
 The note on a stack's row saying its last deploy failed. It rides on the row wherever the row sits and is not a row state.
 _Avoid_: Failed row, failed state, error row
 
+**Pending-again line**:
+The note on a pending row whose newest deployment record is a deploy that went out with the same diff hash the row has now: the deploy did not bring the stack in sync. It suggests that a value in the program differs on every run, and points at the tool diff when the job log holds one. It explains a row and decides nothing.
+_Avoid_: Flapping, drift, stuck row
+
 **Failure reason**:
 Why a preview or a deploy failed, in words from a short fixed list that Sluiceway owns. It never quotes the tool. The tool's own words stay in the job log, one link away.
 _Avoid_: Error message, error text, tool error

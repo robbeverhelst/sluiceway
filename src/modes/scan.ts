@@ -9,7 +9,8 @@ import type { Adapter, PreviewResult, ToolDiffResult } from "../adapters/adapter
 import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import type { Attribution } from "../core/attribution.ts";
-import { applyConfig, type ConfiguredStack, ignoredStacks } from "../core/config.ts";
+import { suggestedUnrelated } from "../core/check.ts";
+import { applyConfig, type Config, type ConfiguredStack, ignoredStacks } from "../core/config.ts";
 import { loadConfig } from "../core/config-file.ts";
 import {
   type DeployFact,
@@ -17,6 +18,7 @@ import {
   deployFacts,
   lastDeployedCommit,
   type PreviewFirstWhy,
+  pendingAgain,
   rowAtLateRead,
 } from "../core/deployment.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
@@ -66,7 +68,7 @@ import { renderPreviewPage } from "../render/preview-page.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, dashboardCounts, scanResultFile } from "../render/result-file.ts";
 import { byCodeUnit, type FailureLine, isDestroy, plural, type Row } from "../render/row.ts";
-import { renderSummary } from "../render/summary.ts";
+import { renderSummary, type UnclaimedFiles } from "../render/summary.ts";
 
 // Everything a scan needs, handed in as data and seams (build plan, section
 // 5): the port, the process runner, the clock and the environment.
@@ -263,6 +265,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   const plan = await makePlan(context, config, stacks);
   logPlan(context, plan, stacks.length);
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
+  const unclaimed = unclaimedFiles(plan, config);
   let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
 
   // Attribution (record 0026): walked once per job, shared by every stack,
@@ -307,7 +310,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
     // every stack this scan previewed, so a later round writes it again.
     const all = [...previewed.values()].sort((a, b) => byCodeUnit(a.id, b.id));
     if (round.length > 0 || rounds === 0) {
-      await writeSummary(context, all, logDiff);
+      await writeSummary(context, all, { logDiff, unclaimed });
       report.previewed = all;
     }
     rounds++;
@@ -379,7 +382,15 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
             pageUrl: pageUrls.get(id),
           });
           const row =
-            fresh.state === "pending" ? { ...fresh, attribution: lines.get(id)?.lines } : fresh;
+            fresh.state === "pending"
+              ? {
+                  ...fresh,
+                  attribution: lines.get(id)?.lines,
+                  pendingAgain: pendingAgain(fact, fresh.hash)
+                    ? { logUrl: logDiff ? links.log : undefined }
+                    : undefined,
+                }
+              : fresh;
           if (!ticked) {
             rows.push(row);
             continue;
@@ -535,7 +546,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   // written once more with the pull requests of every previewed stack.
   if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
     const all = [...previewed.values()].sort((a, b) => byCodeUnit(a.id, b.id));
-    await writeSummary(context, all, logDiff, attributed);
+    await writeSummary(context, all, { logDiff, unclaimed }, attributed);
   }
 
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
@@ -763,6 +774,20 @@ function whyText(why: PreviewWhy): string {
   }
 }
 
+// The files that made a push fall back to a full scan, for the summary, with
+// the globs the check would offer for them (onboarding log, hurdle 5). Nothing
+// for any other scan, and nothing when only the config file changed.
+function unclaimedFiles(plan: ScanPlan, config: Config): UnclaimedFiles | undefined {
+  if (plan.kind !== "full" || plan.why.kind !== "unclaimed") return undefined;
+  const files = unclaimedToPlace(plan.why.files);
+  if (files.length === 0) return undefined;
+  return {
+    files: files.map(fileName),
+    unrelated: config.scan.unrelated,
+    suggested: suggestedUnrelated(files),
+  };
+}
+
 // The job log says plainly whether the scan is narrowed or full, and why.
 function logPlan(context: ScanContext, plan: ScanPlan, stackCount: number): void {
   const { log } = context;
@@ -955,7 +980,7 @@ async function writePages(
 async function writeSummary(
   context: ScanContext,
   previewed: Previewed[],
-  logDiff: boolean,
+  { logDiff, unclaimed }: { logDiff: boolean; unclaimed: UnclaimedFiles | undefined },
   attributed: Attributed = new Map(),
 ): Promise<void> {
   const { log } = context;
@@ -965,6 +990,7 @@ async function writeSummary(
       budget: context.limits?.summaryBudget,
       jobLogUrl: context.jobId === undefined ? undefined : runLinks(context).log,
       toolDiffInLog: logDiff,
+      unclaimed,
     },
   );
   if (!summary.fits) {

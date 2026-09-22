@@ -672,3 +672,79 @@ describe("the job of a narrowed scan", () => {
     ]);
   });
 });
+
+// Slice 2.22, onboarding log hurdle 5: a push that fell back to a full scan
+// because of files no stack claims says so in its summary, with the block the
+// check mode prints (record 0042), ready to paste.
+describe("the summary of a scan that fell back because of unclaimed files", () => {
+  function section(summary: string): string {
+    const from = summary.indexOf("### Why this was a full scan");
+    return from < 0 ? "" : summary.slice(from);
+  }
+
+  test("names the files and holds the ready-to-paste scan.unrelated block", async () => {
+    const scanned = await pushed(
+      TABLE,
+      ahead("README.md", "docs/setup.md", "package.json", "site/index.ts"),
+      { config: 'scan:\n  unrelated:\n    - "**/*.txt"\n' },
+    );
+    await scan(scanned.context);
+    expect(scanned.adapter.previewed).toEqual(ALL);
+    const summary = scanned.log.summaries.at(-1) ?? "";
+    expect(section(summary)).toBe(
+      [
+        "### Why this was a full scan",
+        "This push fell back to a full scan, because no stack claims 3 of the changed files: README.md, docs/setup.md, package.json. A push that changes one of them previews every stack.",
+        "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.",
+        "The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.",
+        [
+          "```yaml",
+          "scan:",
+          "  unrelated:",
+          '    - "**/*.txt"',
+          '    - "**/*.md"',
+          '    - "docs/**"',
+          "```",
+        ].join("\n"),
+      ].join("\n\n") + "\n",
+    );
+  });
+
+  test("offers no block when no file looks like docs or tooling, and never sluiceway.yaml", async () => {
+    const scanned = await pushed(TABLE, ahead("package.json", "sluiceway.yaml"));
+    await scan(scanned.context);
+    const summary = section(scanned.log.summaries.at(-1) ?? "");
+    expect(summary).toContain("no stack claims 1 of the changed files: package.json.");
+    expect(summary).not.toContain("```yaml");
+    expect(summary).not.toContain("sluiceway.yaml:");
+  });
+
+  test("names at most twenty files and points at the job log for the rest", async () => {
+    const files = Array.from({ length: 23 }, (_, i) => `notes/n${String(i).padStart(2, "0")}.md`);
+    const scanned = await pushed(TABLE, ahead(...files));
+    await scan(scanned.context);
+    const summary = section(scanned.log.summaries.at(-1) ?? "");
+    expect(summary).toContain("notes/n19.md, and 3 more files. The job log lists them all.");
+    expect(summary).not.toContain("notes/n20.md");
+  });
+});
+
+describe("no full scan section in the summary", () => {
+  test("of a narrowed scan", async () => {
+    const scanned = await pushed(TABLE, ahead("site/index.ts"));
+    await scan(scanned.context);
+    expect(scanned.log.summaries.at(-1)).not.toContain("### Why this was a full scan");
+  });
+
+  test("of a full scan for another reason, or a change of sluiceway.yaml alone", async () => {
+    for (const comparison of [
+      { status: "diverged", files: [{ path: "README.md" }] },
+      ahead("sluiceway.yaml"),
+    ]) {
+      const scanned = await pushed(TABLE, comparison);
+      await scan(scanned.context);
+      expect(scanned.adapter.previewed).toEqual(ALL);
+      expect(scanned.log.summaries.at(-1)).not.toContain("### Why this was a full scan");
+    }
+  });
+});

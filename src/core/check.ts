@@ -66,8 +66,16 @@ export function checkSetup(config: Config, found: Stack[], files: string[]): Che
     stacks,
     ignore: config.ignore.map((entry) => ignoreReport(ignoreGlob(entry), found)),
     unclaimed: groups(unclaimed),
-    suggested: SUGGESTIONS.filter((glob) => unclaimed.some(globMatcher([glob]))),
+    suggested: suggestedUnrelated(unclaimed),
   };
+}
+
+// The globs of SUGGESTIONS that cover at least one of these unclaimed files,
+// in the order of the list. The check offers them for the whole repo, and a
+// scan that fell back to a full scan for the files that made it fall back
+// (onboarding log, hurdle 5).
+export function suggestedUnrelated(unclaimed: string[]): string[] {
+  return SUGGESTIONS.filter((glob) => unclaimed.some(globMatcher([glob])));
 }
 
 function ignoreReport(glob: string, found: Stack[]): IgnoreReport {

@@ -28,3 +28,7 @@ It was weighed against "docs only" (a checklist a person follows by eye). Reject
 - An `ignore` glob that leaves out nothing is a warning annotation. When the glob matches the directory of a stack, the warning offers the glob with `:*` added, and only when that glob does match the stack's id.
 - The job goes red on a config error or a discovery error only, and the summary lists the problems first. Everything else is a line in the log, a group, a warning or a line in the summary.
 - The check job is handed discovery and the job log, and nothing else. A test walks every import it can reach and fails when that includes the process runner, anything under `src/github/` but the job log, or a package besides `@actions/core`, `node:fs`, `node:path`, `picomatch`, `yaml` and `zod`. A second test runs the job with a `fetch` that fails on any call.
+
+## Settled while building (slice 2.22)
+
+- The summary of a push that fell back to a full scan because of files no stack claims shows the same block, under "Why this was a full scan", built from the files of that push, not the whole repo: the scan does not walk the checkout. The files are named up to 20, the config file is left out as in the log line of slice 2.13, and the block appears only when a glob of the fixed list covers one of them. A scan that is full for any other reason, or only because `sluiceway.yaml` changed, has no such section (onboarding log, hurdle 5).

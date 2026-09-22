@@ -44,6 +44,11 @@ export interface PendingRow {
   // A tick on the old row, at this same diff hash, that a scan carries
   // through because a `resolve` run is on its way (record 0025).
   ticked?: boolean | undefined;
+  // The newest deploy of the stack went out with this same diff hash, and the
+  // stack is pending again (onboarding log, hurdle 21). `logUrl` is the job
+  // log that holds the tool's own diff of the stack, when it holds one (record
+  // 0048).
+  pendingAgain?: { logUrl?: string | undefined } | undefined;
 }
 
 // Written by `resolve` without a diff (record 0014), so it has no box, no
@@ -207,6 +212,18 @@ export const ORPHAN_TICK_NOTE =
 export const DEPLOYS_OFF_NOTE =
   ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick started nothing.";
 
+// The note on a row that a deploy of this same change did not bring in sync
+// (onboarding log, hurdle 21). Fixed words of Sluiceway's own: it guesses at
+// the cause and names no value.
+export const PENDING_AGAIN_NOTE =
+  ":information_source: pending again right after a deploy of this same change, a value in the program may differ on every run.";
+
+function pendingAgainLine({ logUrl }: { logUrl?: string | undefined }): string {
+  return logUrl === undefined
+    ? PENDING_AGAIN_NOTE
+    : `${PENDING_AGAIN_NOTE} Compare the tool's own diff in the [job log](${logUrl}).`;
+}
+
 function failureLine(failure: FailureLine): string {
   return `:x: last deploy failed: ${escapeText(failure.reason)} · ticked by ${escapeText(
     failure.ticker,
@@ -244,6 +261,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
   ];
   if (row.attribution) lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
   if (row.failure) lines.push(failureLine(row.failure));
+  if (row.pendingAgain) lines.push(pendingAgainLine(row.pendingAgain));
   if (row.orphanTick && !options.readOnly) lines.push(ORPHAN_TICK_NOTE);
 
   // A row that lists no delete or replace line still carries the warning, with
