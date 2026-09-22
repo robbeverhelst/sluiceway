@@ -14,6 +14,7 @@ import {
   type WorkflowFindings,
 } from "../adapters/init-findings.ts";
 import { MERGE_SCAN_INPUT } from "../core/merge-scan.ts";
+import { DOCS } from "./docs-site.ts";
 
 export const WORKFLOW_FILE = ".github/workflows/deploy-dashboard.yml";
 export const EXPORT_ENV_FILE = ".github/scripts/export-env.sh";
@@ -44,11 +45,11 @@ export function starterWorkflow(options: WorkflowOptions): string {
   const branch = options.branch ?? DEFAULT_BRANCH;
   const lines = [
     "# Written by sluiceway init from the files of this repo. Review every step",
-    "# before you commit it: docs/example-workflows.md says what to change, and",
-    "# init printed what it could not know.",
+    "# before you commit it, and change what init printed it could not know:",
+    `# ${DOCS.exampleWorkflows}`,
     "#",
     "# `@v0` follows every release until 1.0.0. To review every update yourself,",
-    '# pin a full commit SHA instead, as the README\'s "Pin a commit" says.',
+    `# pin a full commit SHA instead: ${DOCS.pinACommit}`,
     "name: deploy-dashboard",
     "",
     "on:",
@@ -272,7 +273,7 @@ export function starterConfig({ declarable, unrelated, unclaimed }: ConfigOption
     SCHEMA,
     "#",
     "# Written by sluiceway init from the files of this repo. Review it before",
-    "# you commit it: docs/configuration.md explains every key.",
+    `# you commit it. Every key is explained at ${DOCS.configuration}`,
   ];
   if (opentofu.length + helm.length > 0) {
     lines.push("", "stacks:");
@@ -368,7 +369,7 @@ export function needsText({ findings, declarable, branchGuessed }: NeedsInput): 
   const { envFiles, node } = findings;
   if (envFiles === undefined) {
     needs.push(
-      "Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.",
+      `Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. Recipes: ${DOCS.credentials}`,
     );
   } else {
     needs.push(
@@ -380,13 +381,16 @@ export function needsText({ findings, declarable, branchGuessed }: NeedsInput): 
     ];
     if (unused.length > 0) {
       needs.push(
-        `init did not use ${unused.join(", ")}: one job previews and deploys, with the credentials of ${envFiles.deploy}. For credentials that only read in scans, use the split workflow (docs/split-workflow.md).`,
+        `init did not use ${unused.join(", ")}: one job previews and deploys, with the credentials of ${envFiles.deploy}. For credentials that only read in scans, use the split workflow: ${DOCS.splitWorkflow}`,
       );
     }
   }
   if (findings.helm || findings.kubectl) {
     needs.push(
-      "The job needs a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).",
+      `The job needs a kubeconfig for the cluster: ${[
+        ...(findings.helm ? [DOCS.credentialsHelm] : []),
+        ...(findings.kubectl ? [DOCS.credentialsKubectl] : []),
+      ].join(" and ")}`,
     );
   }
   if (declarable.helm.length > 0) {

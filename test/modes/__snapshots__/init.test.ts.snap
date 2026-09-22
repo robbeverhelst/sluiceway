@@ -6,7 +6,7 @@ exports[`what init writes, whole the Pulumi example 1`] = `
 "# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json
 #
 # Written by sluiceway init from the files of this repo. Review it before
-# you commit it: docs/configuration.md explains every key.
+# you commit it. Every key is explained at https://docs.sluiceway.dev/guides/configuration/
 
 # No stack claims the files in these directories, so a push that changes
 # one of them previews every stack:
@@ -32,7 +32,7 @@ exports[`what init writes, whole the Pulumi example 1`] = `
     },
     {
       "lines": [
-        "- Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.",
+        "- Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. Recipes: https://docs.sluiceway.dev/guides/credentials/#recipes",
         "- The workflow scans after a push to main: init could not read the default branch. Change it if yours is another.",
         "- The job runs on ubuntu-latest with timeout-minutes: 60. Raise it when a scan or a deploy of yours takes longer, since one run can hold both. For a self-hosted runner change runs-on, with runner 2.328.0 or newer.",
         "- Review the files, run the check in a pull request, and commit them. init commits nothing.",
@@ -47,11 +47,11 @@ exports[`what init writes, whole the Pulumi example 1`] = `
   ],
   "workflow": 
 "# Written by sluiceway init from the files of this repo. Review every step
-# before you commit it: docs/example-workflows.md says what to change, and
-# init printed what it could not know.
+# before you commit it, and change what init printed it could not know:
+# https://docs.sluiceway.dev/guides/example-workflows/#what-to-change
 #
 # \`@v0\` follows every release until 1.0.0. To review every update yourself,
-# pin a full commit SHA instead, as the README's "Pin a commit" says.
+# pin a full commit SHA instead: https://docs.sluiceway.dev/guides/workflow/#pin-a-commit
 name: deploy-dashboard
 
 on:
@@ -114,7 +114,7 @@ exports[`what init writes, whole the OpenTofu example 1`] = `
 "# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json
 #
 # Written by sluiceway init from the files of this repo. Review it before
-# you commit it: docs/configuration.md explains every key.
+# you commit it. Every key is explained at https://docs.sluiceway.dev/guides/configuration/
 
 stacks:
   # An OpenTofu root module.
@@ -146,7 +146,7 @@ stacks:
     },
     {
       "lines": [
-        "- Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.",
+        "- Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. Recipes: https://docs.sluiceway.dev/guides/credentials/#recipes",
         "- network: one stack per var file, each in a workspace of the same name. Change workspace where yours is named otherwise.",
         "- The workflow scans after a push to main: init could not read the default branch. Change it if yours is another.",
         "- The job runs on ubuntu-latest with timeout-minutes: 60. Raise it when a scan or a deploy of yours takes longer, since one run can hold both. For a self-hosted runner change runs-on, with runner 2.328.0 or newer.",
@@ -162,11 +162,11 @@ stacks:
   ],
   "workflow": 
 "# Written by sluiceway init from the files of this repo. Review every step
-# before you commit it: docs/example-workflows.md says what to change, and
-# init printed what it could not know.
+# before you commit it, and change what init printed it could not know:
+# https://docs.sluiceway.dev/guides/example-workflows/#what-to-change
 #
 # \`@v0\` follows every release until 1.0.0. To review every update yourself,
-# pin a full commit SHA instead, as the README's "Pin a commit" says.
+# pin a full commit SHA instead: https://docs.sluiceway.dev/guides/workflow/#pin-a-commit
 name: deploy-dashboard
 
 on:
@@ -217,7 +217,7 @@ exports[`what init writes, whole the Helm example 1`] = `
 "# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json
 #
 # Written by sluiceway init from the files of this repo. Review it before
-# you commit it: docs/configuration.md explains every key.
+# you commit it. Every key is explained at https://docs.sluiceway.dev/guides/configuration/
 
 stacks:
   # A local chart. Set the release and the namespace it runs as, and its
@@ -259,8 +259,8 @@ stacks:
     },
     {
       "lines": [
-        "- Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.",
-        "- The job needs a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).",
+        "- Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. Recipes: https://docs.sluiceway.dev/guides/credentials/#recipes",
+        "- The job needs a kubeconfig for the cluster: https://docs.sluiceway.dev/guides/credentials/#helm",
         "- sluiceway.yaml names each Helm release and its namespace after the chart: charts/web, charts/worker. Set both to where the release runs, and add its values files. The namespace must exist.",
         "- The workflow scans after a push to main: init could not read the default branch. Change it if yours is another.",
         "- The job runs on ubuntu-latest with timeout-minutes: 60. Raise it when a scan or a deploy of yours takes longer, since one run can hold both. For a self-hosted runner change runs-on, with runner 2.328.0 or newer.",
@@ -276,11 +276,11 @@ stacks:
   ],
   "workflow": 
 "# Written by sluiceway init from the files of this repo. Review every step
-# before you commit it: docs/example-workflows.md says what to change, and
-# init printed what it could not know.
+# before you commit it, and change what init printed it could not know:
+# https://docs.sluiceway.dev/guides/example-workflows/#what-to-change
 #
 # \`@v0\` follows every release until 1.0.0. To review every update yourself,
-# pin a full commit SHA instead, as the README's "Pin a commit" says.
+# pin a full commit SHA instead: https://docs.sluiceway.dev/guides/workflow/#pin-a-commit
 name: deploy-dashboard
 
 on:
@@ -332,7 +332,7 @@ exports[`what init writes, whole the three examples in one repo 1`] = `
 "# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json
 #
 # Written by sluiceway init from the files of this repo. Review it before
-# you commit it: docs/configuration.md explains every key.
+# you commit it. Every key is explained at https://docs.sluiceway.dev/guides/configuration/
 
 stacks:
   # An OpenTofu root module.
@@ -399,8 +399,8 @@ stacks:
     },
     {
       "lines": [
-        "- Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.",
-        "- The job needs a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).",
+        "- Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. Recipes: https://docs.sluiceway.dev/guides/credentials/#recipes",
+        "- The job needs a kubeconfig for the cluster: https://docs.sluiceway.dev/guides/credentials/#helm",
         "- sluiceway.yaml names each Helm release and its namespace after the chart: helm/charts/web, helm/charts/worker. Set both to where the release runs, and add its values files. The namespace must exist.",
         "- tofu/network: one stack per var file, each in a workspace of the same name. Change workspace where yours is named otherwise.",
         "- The workflow scans after a push to main: init could not read the default branch. Change it if yours is another.",
@@ -417,11 +417,11 @@ stacks:
   ],
   "workflow": 
 "# Written by sluiceway init from the files of this repo. Review every step
-# before you commit it: docs/example-workflows.md says what to change, and
-# init printed what it could not know.
+# before you commit it, and change what init printed it could not know:
+# https://docs.sluiceway.dev/guides/example-workflows/#what-to-change
 #
 # \`@v0\` follows every release until 1.0.0. To review every update yourself,
-# pin a full commit SHA instead, as the README's "Pin a commit" says.
+# pin a full commit SHA instead: https://docs.sluiceway.dev/guides/workflow/#pin-a-commit
 name: deploy-dashboard
 
 on:
