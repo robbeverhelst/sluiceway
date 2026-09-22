@@ -220,7 +220,9 @@ export interface GitHubPort {
   // Starts a `workflow_dispatch` run of one workflow file on a branch or tag.
   // It is the one thing the workflow token may start (record 0017), and it
   // needs `actions: write`: without it GitHub answers 403.
-  dispatchWorkflow(workflow: string, ref: string): Promise<void>;
+  // With `inputs` only for a workflow that declares them: GitHub refuses a
+  // dispatch with an input the workflow does not declare (record 0064).
+  dispatchWorkflow(workflow: string, ref: string, inputs?: Record<string, string>): Promise<void>;
 
   // The oldest 100 open pull requests, each with its files and the combined
   // checks of its head commit, in one GraphQL query (record 0054). Needs

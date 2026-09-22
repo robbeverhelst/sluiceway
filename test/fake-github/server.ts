@@ -126,7 +126,11 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
       "POST",
       new RegExp(`^${REPO}/actions/workflows/([^/]+)/dispatches$`),
       async ({ body }, workflow) => {
-        await fake.dispatchWorkflow(workflow, text(body.ref));
+        const inputs =
+          typeof body.inputs === "object" && body.inputs !== null
+            ? (body.inputs as Record<string, string>)
+            : undefined;
+        await fake.dispatchWorkflow(workflow, text(body.ref), inputs);
         return { status: 204 };
       },
     ],

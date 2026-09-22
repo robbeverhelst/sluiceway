@@ -36,10 +36,12 @@ export interface FirstRead {
 // written by a scan.
 const COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
-// A scan that follows a push is a narrowed scan. A scan on schedule, on manual
-// dispatch or from the rescan box is always a full scan (record 0010).
-export function narrowsOn(event: string): boolean {
-  return event === "push";
+// A scan that follows a push is a narrowed scan, and so is the scan `resolve`
+// dispatches after a merge, which names the pull requests it merged (record
+// 0064). A scan on schedule, on manual dispatch or from the rescan box is
+// always a full scan (record 0010).
+export function narrowsOn(event: string, afterMerge: readonly number[] = []): boolean {
+  return event === "push" || (event === "workflow_dispatch" && afterMerge.length > 0);
 }
 
 // Decided from the event and the first read, before any request for a
@@ -48,8 +50,10 @@ export function comparisonBase(
   event: string,
   dashboard: FirstRead | undefined,
   markerVersion: number,
+  // The pull requests `resolve` merged before it dispatched this scan.
+  afterMerge: readonly number[] = [],
 ): { kind: "compare"; from: string } | FullScanReason {
-  if (!narrowsOn(event)) return { kind: "event", event };
+  if (!narrowsOn(event, afterMerge)) return { kind: "event", event };
   if (dashboard === undefined) return { kind: "no-dashboard" };
   const { root } = dashboard;
   if (root === undefined) return { kind: "no-root-marker" };
@@ -165,7 +169,7 @@ function noClaimant(files: string[]): string {
 export function fullScanReasonText(reason: FullScanReason): string {
   switch (reason.kind) {
     case "event":
-      return `the event is ${reason.event}, and only a push gives a narrowed scan`;
+      return `the event is ${reason.event}, and only a push, or the scan resolve starts after a merge, gives a narrowed scan`;
     case "no-dashboard":
       return "there is no dashboard yet";
     case "no-root-marker":

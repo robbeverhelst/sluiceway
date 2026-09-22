@@ -30,6 +30,16 @@ describe("a workflow dispatch over HTTP", () => {
     expect(fake.requests).toEqual(["dispatchWorkflow"]);
   });
 
+  test("carries the inputs of the scan after a merge (slice 4.13)", async () => {
+    const { fake, port } = await served();
+
+    await port.dispatchWorkflow("sluiceway.yml", "main", { "sluiceway-merged": "418" });
+
+    expect(fake.dispatches).toEqual([
+      { workflow: "sluiceway.yml", ref: "main", inputs: { "sluiceway-merged": "418" } },
+    ]);
+  });
+
   test("a token without `actions: write` gets the 403", async () => {
     const { fake, port } = await served();
     fake.withoutActionsWrite();

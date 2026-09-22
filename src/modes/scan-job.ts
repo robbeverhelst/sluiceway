@@ -7,7 +7,12 @@ import { getOctokit } from "@actions/github";
 import { runProcess } from "../adapters/process.ts";
 import { tools } from "../adapters/tools.ts";
 import { readActionRef } from "../github/action-ref.ts";
-import { publicRepo, readEventPayload, startedByPerson } from "../github/event.ts";
+import {
+  mergedBeforeDispatch,
+  publicRepo,
+  readEventPayload,
+  startedByPerson,
+} from "../github/event.ts";
 import { readJobId, readScanInputs } from "../github/inputs.ts";
 import { readJob } from "../github/job.ts";
 import { actionsLog } from "../github/job-log.ts";
@@ -41,6 +46,7 @@ export async function runScan(directory: string): Promise<void> {
     jobId: readJobId(core.getInput),
     sha: job.sha,
     event: job.event,
+    afterMerge: mergedBeforeDispatch(payload),
     workflow: job.workflow,
     // A ref that can move, with no version to fall back on, fails the scan
     // here with its own message. It means the action's own files are broken,

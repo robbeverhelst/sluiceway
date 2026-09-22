@@ -133,8 +133,11 @@ export interface ScanContext {
   // The commit the scan checked out.
   sha: string;
   // What started the run, as GitHub names it. Only "push" gives a narrowed
-  // scan (record 0010).
+  // scan (record 0010), and a dispatch that names a merge (record 0064).
   event: string;
+  // The pull requests `resolve` merged before it dispatched this scan, from
+  // the dispatch's input. Empty for any other run (record 0064).
+  afterMerge?: readonly number[] | undefined;
   // The file name of the running workflow. The orphan tick sweep asks for the
   // runs of it that an issue edit started (record 0025).
   workflow: string;
@@ -833,12 +836,19 @@ async function makePlan(
   const full = (why: FullScanReason): ScanPlan => ({ kind: "full", why });
 
   // Only a scan that may narrow pays for the first read.
-  const dashboard = narrowsOn(context.event)
+  const afterMerge = context.afterMerge ?? [];
+  const narrows = narrowsOn(context.event, afterMerge);
+  if (narrows && context.event !== "push") {
+    log.info(
+      `This scan follows the merge of ${afterMerge.map((pr) => `#${pr}`).join(", ")} from the dashboard.`,
+    );
+  }
+  const dashboard = narrows
     ? await findDashboard(context.github, config.dashboard.label)
     : undefined;
   const live = dashboard && parseDashboard(dashboard.body);
   for (const row of live?.rows ?? []) if (row.known && row.drift) knownDrift.add(row.stackId);
-  const base = comparisonBase(context.event, live, MARKER_VERSION);
+  const base = comparisonBase(context.event, live, MARKER_VERSION, afterMerge);
   if (base.kind !== "compare") return full(base);
 
   let comparison: Awaited<ReturnType<typeof context.github.compareCommits>>;
@@ -914,7 +924,7 @@ function logPlan(context: ScanContext, plan: ScanPlan, stackCount: number): void
     const safe: FullScanReason =
       why.kind === "unclaimed" ? { kind: "unclaimed", files: why.files.map(fileName) } : why;
     log.info(
-      `This is a full scan. A push gives a narrowed scan, and this one fell back to a full scan: ${fullScanReasonText(safe)}.`,
+      `This is a full scan. ${context.event === "push" ? "A push" : "The scan after a merge"} gives a narrowed scan, and this one fell back to a full scan: ${fullScanReasonText(safe)}.`,
     );
     const toPlace = why.kind === "unclaimed" ? unclaimedToPlace(why.files) : [];
     if (toPlace.length > 0) {

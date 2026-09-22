@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   editedIssue,
+  mergedBeforeDispatch,
   publicRepo,
   readEventPayload,
   startedByPerson,
@@ -111,5 +112,30 @@ describe("who started the run", () => {
   test("a payload that does not say is nobody", () => {
     expect(startedByPerson(undefined)).toBe(false);
     expect(startedByPerson({ sender: null })).toBe(false);
+  });
+});
+
+describe("the pull requests resolve merged before it dispatched the scan (slice 4.13)", () => {
+  const BOT = { login: "github-actions[bot]", type: "Bot" };
+
+  test("are read from the input of a dispatch by the workflow token", () => {
+    expect(
+      mergedBeforeDispatch({ inputs: { "sluiceway-merged": "418,421" }, sender: BOT }),
+    ).toEqual([418, 421]);
+  });
+
+  test("are none for a dispatch a person started, so that run stays a full scan", () => {
+    expect(
+      mergedBeforeDispatch({
+        inputs: { "sluiceway-merged": "418" },
+        sender: { login: "alice", type: "User" },
+      }),
+    ).toEqual([]);
+  });
+
+  test("are none without the input, or for a payload that does not say", () => {
+    expect(mergedBeforeDispatch({ inputs: { "sluiceway-merged": "" }, sender: BOT })).toEqual([]);
+    expect(mergedBeforeDispatch({ sender: BOT })).toEqual([]);
+    expect(mergedBeforeDispatch(undefined)).toEqual([]);
   });
 });

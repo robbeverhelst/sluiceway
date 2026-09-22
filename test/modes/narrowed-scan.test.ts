@@ -127,7 +127,7 @@ describe("falling back to a full scan (record 0010)", () => {
       await scan({ ...scanned.context, event });
       expect(scanned.adapter.previewed).toEqual(ALL);
       expect(scanned.log.lines).toContain(
-        `This is a full scan: the event is ${event}, and only a push gives a narrowed scan.`,
+        `This is a full scan: the event is ${event}, and only a push, or the scan resolve starts after a merge, gives a narrowed scan.`,
       );
       expect(scanned.github.requests).not.toContain("compareCommits");
       expect(root(dashboardBody(scanned.github))?.fullScanRun).toBe("4242");

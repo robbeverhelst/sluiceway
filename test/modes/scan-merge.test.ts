@@ -391,6 +391,64 @@ describe("the scan after a merge", () => {
     expect(github.deployment(merge.id).status?.state).toBe("inactive");
   });
 
+  test("the scan resolve dispatches after a merge is narrowed to the merged files (slice 4.13)", async () => {
+    const adapter = tableAdapter({ ...TABLE, "a:prod": pending("a:prod", change("release")) });
+    const { context, github, log } = harness(adapter, { config: CONFIG });
+    await scan(context);
+    const scanned = parseDashboard(dashboardBody(github)).root?.scanSha ?? "";
+    github.seedComparison(scanned, MERGED, { status: "ahead", files: [{ path: "a/values.yaml" }] });
+    const merge = seedMergeRecord(github);
+    adapter.previewed.length = 0;
+    log.lines.length = 0;
+
+    await scan({ ...context, event: "workflow_dispatch", sha: MERGED, afterMerge: [418] });
+
+    expect(adapter.previewed).toEqual(["a:prod"]);
+    expect(log.lines).toContain("This scan follows the merge of #418 from the dashboard.");
+    expect(log.lines).toContain(
+      "This is a narrowed scan: it previews 1 of 3 stacks and keeps the rows of the other 2 as they are.",
+    );
+    expect(github.deployment(merge.id).status?.state).toBe("inactive");
+    expect(github.deployment(merge.id + 1)).toMatchObject({
+      sha: MERGED,
+      payload: { ticker: "alice", run: RUN_ID },
+    });
+  });
+
+  test("the scan after a merge falls back to a full scan the way a push does", async () => {
+    const adapter = tableAdapter(TABLE);
+    const { context, github, log } = harness(adapter, { config: CONFIG });
+    await scan(context);
+    const scanned = parseDashboard(dashboardBody(github)).root?.scanSha ?? "";
+    github.seedComparison(scanned, MERGED, { status: "diverged", files: [] });
+    adapter.previewed.length = 0;
+    log.lines.length = 0;
+
+    await scan({ ...context, event: "workflow_dispatch", sha: MERGED, afterMerge: [418] });
+
+    expect(adapter.previewed.sort()).toEqual(["a:prod", "b:prod", "c:prod"]);
+    expect(
+      log.lines.some((line) =>
+        line.startsWith(
+          "This is a full scan. The scan after a merge gives a narrowed scan, and this one fell back to a full scan: the checked-out commit does not follow",
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  test("a dispatch without the merge, such as the rescan box, stays a full scan", async () => {
+    const adapter = tableAdapter(TABLE);
+    const { context, github } = harness(adapter, { config: CONFIG });
+    await scan(context);
+    adapter.previewed.length = 0;
+    github.requests.length = 0;
+
+    await scan({ ...context, event: "workflow_dispatch", sha: MERGED, afterMerge: [] });
+
+    expect(adapter.previewed.sort()).toEqual(["a:prod", "b:prod", "c:prod"]);
+    expect(github.requests).not.toContain("compareCommits");
+  });
+
   test("ends every merge record once: a second scan finds nothing to hand on", async () => {
     const { context, github } = harness(
       tableAdapter({ ...TABLE, "a:prod": pending("a:prod", change("x")) }),

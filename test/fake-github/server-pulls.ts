@@ -46,10 +46,7 @@ function node(pullRequest: OpenPullRequest): unknown {
 
 // A page of 100, oldest first, with GraphQL's cursor: the fake's cursor is the
 // number of pull requests before the page (record 0064).
-export function openPullRequestsQuery(
-  fake: FakeGitHub,
-  variables: unknown,
-): Answer {
+export function openPullRequestsQuery(fake: FakeGitHub, variables: unknown): Answer {
   const after = (variables as { after?: unknown } | undefined)?.after;
   const from = typeof after === "string" ? Number(after) : 0;
   const { defaultBranch, pullRequests: page, total } = fake.openPullRequestsPage(from, PAGE);

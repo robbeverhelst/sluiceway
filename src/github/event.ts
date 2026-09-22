@@ -5,6 +5,7 @@
 // because its body is the newest one at delivery time and not the body of its
 // own edit (issue 28).
 
+import { MERGE_SCAN_INPUT, readMergeScanInput } from "../core/merge-scan.ts";
 import type { Issue } from "./port.ts";
 
 export type EventIssue = Pick<Issue, "number" | "state" | "body" | "labels" | "author">;
@@ -70,4 +71,12 @@ export function publicRepo(payload: unknown): boolean | undefined {
 // send, names the bot. Nothing that does not say is a person.
 export function startedByPerson(payload: unknown): boolean {
   return record(record(payload)?.sender)?.type === "User";
+}
+
+// The pull requests `resolve` merged before it dispatched this run, from the
+// dispatch's input (record 0064). A run a person started with the input filled
+// in by hand is theirs, and stays a full scan.
+export function mergedBeforeDispatch(payload: unknown): number[] {
+  if (startedByPerson(payload)) return [];
+  return readMergeScanInput(record(record(payload)?.inputs)?.[MERGE_SCAN_INPUT]);
 }

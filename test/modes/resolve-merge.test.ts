@@ -102,6 +102,28 @@ describe("a tick on an update waiting to merge", () => {
     await wake(h);
 
     expect(h.github.dispatches).toEqual([{ workflow: WORKFLOW.file, ref: WORKFLOW.ref }]);
+    expect(h.log.lines).toContain(
+      "Started a full scan, which previews the merged change and hands it to apply. It is narrowed to the merged change when sluiceway.yml declares the workflow_dispatch input sluiceway-merged (record 0064).",
+    );
+  });
+
+  test("names the merged pull request to the scan when the workflow declares the input, so it narrows (slice 4.13)", async () => {
+    const h = await ready();
+    mkdirSync(join(h.context.root, ".github/workflows"), { recursive: true });
+    writeFileSync(
+      join(h.context.root, ".github/workflows", WORKFLOW.file),
+      "on:\n  workflow_dispatch:\n    inputs:\n      sluiceway-merged:\n        required: false\njobs: {}\n",
+    );
+    tickMerge(h);
+
+    await wake(h);
+
+    expect(h.github.dispatches).toEqual([
+      { workflow: WORKFLOW.file, ref: WORKFLOW.ref, inputs: { "sluiceway-merged": "418" } },
+    ]);
+    expect(h.log.lines).toContain(
+      "Started the scan after the merge of #418. It previews what changed since the last scan and hands the merged change to apply.",
+    );
   });
 
   test("takes the row of the pull request away and shows the stack as deploying", async () => {

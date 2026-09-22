@@ -36,9 +36,11 @@ import {
   ticksIn,
 } from "../core/edit-history.ts";
 import { type MergeMethod, mergeMethod, NOT_QUALIFIED, qualify } from "../core/merge-and-deploy.ts";
+import { declaresMergeScanInput, MERGE_SCAN_INPUT, mergeScanInputs } from "../core/merge-scan.ts";
 import { renovateMergeSetting } from "../core/renovate-config.ts";
 import { capDeploys, type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import { stackId } from "../core/stack.ts";
+import { WORKFLOW_DIRECTORY } from "../core/workflow-check.ts";
 import { type AttributionSource, attributionSource } from "../github/attribution.ts";
 import { findDashboard, isBotIssueWithRootMarker } from "../github/dashboard.ts";
 import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts";
@@ -453,16 +455,23 @@ async function resolveTicks(
   for (const pr of merging.cleared) clearMerges.set(pr, undefined);
   const merged = merging.merged;
 
-  // One full scan for the rescan box and for every merge: a merge made with
-  // the workflow token starts no run of its push (record 0017), and the scan
-  // is what hands the merged change to `apply` (record 0054).
+  // One scan for the rescan box and for every merge: a merge made with the
+  // workflow token starts no run of its push (record 0017), and the scan is
+  // what hands the merged change to `apply` (record 0054). After a merge
+  // alone it is told what was merged, so it narrows as a push does, when the
+  // workflow declares the input (record 0064). The rescan box asks for a
+  // full scan.
   if (rescan || merging.mergedPrs.size > 0) {
+    const prs = [...merging.mergedPrs].sort((a, b) => a - b);
+    const narrow = !rescan && declaresMergeScanInput(workflowText(context));
     try {
-      await dispatchScan(context);
+      await dispatchScan(context, narrow ? mergeScanInputs(prs) : undefined);
       log.info(
         rescan
           ? "Started a full scan for the rescan box."
-          : "Started a full scan, which previews the merged change and hands it to apply.",
+          : narrow
+            ? `Started the scan after the merge of ${prs.map((pr) => `#${pr}`).join(", ")}. It previews what changed since the last scan and hands the merged change to apply.`
+            : `Started a full scan, which previews the merged change and hands it to apply. It is narrowed to the merged change when ${logGroupTitle(context.workflow?.file ?? "the workflow")} declares the workflow_dispatch input ${MERGE_SCAN_INPUT} (record 0064).`,
       );
     } catch (error) {
       failures.push(message(error));
@@ -763,14 +772,27 @@ async function discover(context: ResolveContext, config: Config): Promise<Discov
 
 // The rescan box, and a body of another version, start a full scan by
 // dispatching this same workflow (records 0009 and 0017).
-async function dispatchScan(context: ResolveContext): Promise<void> {
+// The text of the running workflow's file in the checkout, or nothing.
+function workflowText(context: ResolveContext): string {
+  if (!context.workflow) return "";
+  try {
+    return readFileSync(join(context.root, WORKFLOW_DIRECTORY, context.workflow.file), "utf8");
+  } catch {
+    return "";
+  }
+}
+
+async function dispatchScan(
+  context: ResolveContext,
+  inputs?: Record<string, string>,
+): Promise<void> {
   if (!context.workflow) {
     throw new Error(
       "A full scan could not be started: GITHUB_WORKFLOW_REF is not set, so this job does not know which workflow it belongs to.",
     );
   }
   try {
-    await context.github.dispatchWorkflow(context.workflow.file, context.workflow.ref);
+    await context.github.dispatchWorkflow(context.workflow.file, context.workflow.ref, inputs);
   } catch (error) {
     throw new Error(
       `A full scan could not be started: ${message(error)}. The resolve job needs the permission \`actions: write\`, and the workflow (${context.workflow.file}) needs a \`workflow_dispatch\` trigger that runs the scan (record 0017).`,

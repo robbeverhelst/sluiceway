@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { PreviewResult } from "../../src/adapters/adapter.ts";
+import { mergedBeforeDispatch } from "../../src/github/event.ts";
 import { type ApplyContext, apply } from "../../src/modes/apply.ts";
 import { type ResolveContext, resolve } from "../../src/modes/resolve.ts";
 import { scan } from "../../src/modes/scan.ts";
@@ -29,7 +32,7 @@ const FIRST_SCAN = { runId: "100", sha: "100000000000000000000000000000000000000
 const RESOLVE = "200";
 const SECOND_SCAN = "300";
 
-async function loop(options: { moveBeforeApply?: boolean } = {}) {
+async function loop(options: { moveBeforeApply?: boolean; declaresInput?: boolean } = {}) {
   const table: Record<string, PreviewResult> = {
     "a:prod": inSync("a:prod"),
     "b:prod": inSync("b:prod"),
@@ -49,6 +52,14 @@ async function loop(options: { moveBeforeApply?: boolean } = {}) {
     files: ["b/package.json"],
   });
   await scan(first.context);
+  if (options.declaresInput) {
+    // The workflow declares the input of the scan after a merge (record 0064).
+    mkdirSync(join(first.context.root, ".github/workflows"), { recursive: true });
+    writeFileSync(
+      join(first.context.root, ".github/workflows", WORKFLOW.file),
+      "on:\n  workflow_dispatch:\n    inputs:\n      sluiceway-merged:\n        required: false\njobs: {}\n",
+    );
+  }
 
   // Alice ticks the update of a:prod.
   const body = dashboardBody(github);
@@ -82,13 +93,21 @@ async function loop(options: { moveBeforeApply?: boolean } = {}) {
   });
   github.seedRun(SECOND_SCAN, { completed: false });
   const outputs = rememberingOutputs();
+  adapter.previewed.length = 0;
+  // The dispatched run reads the input from its payload, as the glue does.
+  const [dispatch] = github.dispatches;
   await scan({
     ...first.context,
     runId: SECOND_SCAN,
     sha: merged.sha,
     event: "workflow_dispatch",
+    afterMerge: mergedBeforeDispatch({
+      inputs: dispatch?.inputs,
+      sender: { login: "github-actions[bot]", type: "Bot" },
+    }),
     outputs,
   });
+  const previewedAfterMerge = [...adapter.previewed];
   const matrix = JSON.parse(outputs.values.matrix ?? "[]") as { deployment: number }[];
 
   if (options.moveBeforeApply) table["a:prod"] = pending("a:prod", change("release"), change("x"));
@@ -119,7 +138,7 @@ async function loop(options: { moveBeforeApply?: boolean } = {}) {
     () => undefined,
     (error: unknown) => error,
   );
-  return { github, adapter, matrix, error: await applied, applyOutputs };
+  return { github, adapter, matrix, error: await applied, applyOutputs, previewedAfterMerge };
 }
 
 describe("merge and deploy on the fake GitHub", () => {
@@ -137,6 +156,21 @@ describe("merge and deploy on the fake GitHub", () => {
     expect(dashboardBody(github)).toMatch(
       /## Recently deployed\n\n- 🟢&nbsp;a:prod · ticked by alice · /,
     );
+  });
+
+  test("the scan after the merge previews every stack when the workflow does not declare the input", async () => {
+    const { previewedAfterMerge } = await loop();
+    expect(previewedAfterMerge.sort()).toEqual(["a:prod", "b:prod"]);
+  });
+
+  test("the scan after the merge is narrowed to the merged files when it does (slice 4.13)", async () => {
+    const { previewedAfterMerge, adapter, applyOutputs, github } = await loop({
+      declaresInput: true,
+    });
+    expect(github.dispatches[0]?.inputs).toEqual({ "sluiceway-merged": "418" });
+    expect(previewedAfterMerge).toEqual(["a:prod"]);
+    expect(adapter.applied).toEqual(["a:prod"]);
+    expect(applyOutputs.values.outcome).toBe("deployed");
   });
 
   test("a change that moved after the merge is refused, and the ticker gets the comment", async () => {

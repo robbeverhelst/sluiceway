@@ -100,7 +100,7 @@ export class FakeGitHub implements GitHubPort {
   readonly #issuesRuns = new Map<string, IssuesRun[]>();
   // The `issues.edited` events that were started and not delivered yet.
   readonly #events: { number: number; sender: IssueAuthor }[] = [];
-  readonly #dispatches: { workflow: string; ref: string }[] = [];
+  readonly #dispatches: { workflow: string; ref: string; inputs?: Record<string, string> }[] = [];
   #actionsWrite = true;
   #checksWrite = true;
   // Every check run of every commit, oldest first.
@@ -286,7 +286,7 @@ export class FakeGitHub implements GitHubPort {
       .map(({ sha: _sha, ...run }) => ({ ...run, output: { ...run.output } }));
   }
 
-  get dispatches(): { workflow: string; ref: string }[] {
+  get dispatches(): { workflow: string; ref: string; inputs?: Record<string, string> }[] {
     return this.#dispatches.map((dispatch) => ({ ...dispatch }));
   }
 
@@ -538,12 +538,16 @@ export class FakeGitHub implements GitHubPort {
     return { id: run.id, name: run.name, htmlUrl: run.htmlUrl };
   }
 
-  async dispatchWorkflow(workflow: string, ref: string): Promise<void> {
+  async dispatchWorkflow(
+    workflow: string,
+    ref: string,
+    inputs?: Record<string, string>,
+  ): Promise<void> {
     this.#count("dispatchWorkflow");
     if (!this.#actionsWrite) {
       throw new FakeGitHubError(403, "Resource not accessible by integration");
     }
-    this.#dispatches.push({ workflow, ref });
+    this.#dispatches.push({ workflow, ref, ...(inputs ? { inputs: { ...inputs } } : {}) });
   }
 
   // One request per page of 100, as GitHub's GraphQL gives them (record 0064).

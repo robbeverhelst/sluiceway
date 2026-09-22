@@ -30,6 +30,27 @@ describe("where a scan compares from", () => {
     },
   );
 
+  test("the scan resolve starts after a merge compares from the scan-sha, as a push does (slice 4.13)", () => {
+    expect(comparisonBase("workflow_dispatch", dashboard, 1, [418])).toEqual({
+      kind: "compare",
+      from: OLD,
+    });
+    expect(comparisonBase("workflow_dispatch", undefined, 1, [418])).toEqual({
+      kind: "no-dashboard",
+    });
+  });
+
+  test("a merge named on any other event, or no merge named, changes nothing", () => {
+    expect(comparisonBase("schedule", dashboard, 1, [418])).toEqual({
+      kind: "event",
+      event: "schedule",
+    });
+    expect(comparisonBase("workflow_dispatch", dashboard, 1, [])).toEqual({
+      kind: "event",
+      event: "workflow_dispatch",
+    });
+  });
+
   test("no dashboard yet", () => {
     expect(comparisonBase("push", undefined, 1)).toEqual({ kind: "no-dashboard" });
   });
@@ -190,7 +211,7 @@ describe("the words for why a scan is a full scan", () => {
   const words: [FullScanReason, string][] = [
     [
       { kind: "event", event: "schedule" },
-      "the event is schedule, and only a push gives a narrowed scan",
+      "the event is schedule, and only a push, or the scan resolve starts after a merge, gives a narrowed scan",
     ],
     [{ kind: "no-dashboard" }, "there is no dashboard yet"],
     [{ kind: "no-root-marker" }, "the dashboard has no root marker that can be read"],
