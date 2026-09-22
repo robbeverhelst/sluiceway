@@ -4,10 +4,10 @@ import type { Change, Op } from "../../core/diff.ts";
 import type { PreviewFailureReason } from "../../core/failure-reason.ts";
 import type { Stack } from "../../core/stack.ts";
 import type { DriftResult, PreviewOptions } from "../adapter.ts";
+import { runTool, stripAnsi } from "../tool-run.ts";
 import { pulumiEnvironment } from "./environment.ts";
+import { PULUMI_EXIT_CODES } from "./exit-codes.ts";
 import { typeAndName } from "./fold.ts";
-import { exitReason } from "./preview.ts";
-import { stripAnsi } from "./tool-log.ts";
 
 // The drift check (record 0055): a refresh that only previews. It compares the
 // stack's state with what is real and changes neither (Pulumi research). From
@@ -69,20 +69,21 @@ const DRIFT_OPS: Record<string, Op | "drop"> = {
 
 export async function detectDrift(stack: Stack, options: PreviewOptions): Promise<DriftResult> {
   if (stack.name === undefined) throw new Error("A Pulumi stack always has a name.");
-  const result = await options.run({
+  const result = await runTool(options.run, {
     argv: driftCommand(stack.name),
     // The same directory, environment and time limit as the preview (record
     // 0012).
     cwd: join(options.root, stack.path),
     env: { ...pulumiEnvironment(options.env), ...STREAM_EVENTS },
-    timeoutMs: options.timeoutMinutes * 60_000,
+    timeoutMinutes: options.timeoutMinutes,
+    // As on the preview, the reason comes from the exit code alone.
+    exitCodes: PULUMI_EXIT_CODES,
   });
 
   const failed = (reason: PreviewFailureReason, toolLog: string, detail: string[] = []) =>
     ({ ok: false, reason, detail, toolLog }) as const;
-  if (result.status === "not-started") return failed({ kind: "tool-error", exitCode: null }, "");
-  if (result.status === "timed-out") {
-    return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, stripAnsi(result.stderr));
+  if (!result.ok && result.reason.kind === "timed-out") {
+    return failed(result.reason, stripAnsi(result.stderr));
   }
   // The events hold values, so nothing of stdout but the diagnostics is ever
   // the tool's words here (record 0022).
@@ -90,10 +91,7 @@ export async function detectDrift(stack: Stack, options: PreviewOptions): Promis
   const words = stripAnsi(
     [result.stderr, ...(typeof read === "string" ? [] : read.diagnostics)].join(""),
   );
-  if (result.exitCode !== 0) {
-    // As on the preview, the reason comes from the exit code alone.
-    return failed(exitReason(result.exitCode), words);
-  }
+  if (!result.ok) return failed(result.reason, words);
   if (typeof read === "string") return failed({ kind: "unreadable-output" }, words, [read]);
   if (read.unknown.length > 0) return failed({ kind: "unknown-step" }, words, read.unknown);
   if (read.summary === undefined) {

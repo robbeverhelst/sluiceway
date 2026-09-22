@@ -3,8 +3,8 @@ import { z } from "zod";
 import type { PreviewFailureReason } from "../../core/failure-reason.ts";
 import type { Stack } from "../../core/stack.ts";
 import type { BackendAnswer, BackendResult, ToolContext } from "../adapter.ts";
+import { runTool, stripAnsi } from "../tool-run.ts";
 import { pulumiEnvironment } from "./environment.ts";
-import { stripAnsi } from "./tool-log.ts";
 
 // Which stacks the backend holds (record 0074), for the check with
 // backend: true: one `pulumi stack ls` per project directory, which lists the
@@ -24,25 +24,17 @@ export async function findInBackend(stacks: Stack[], context: ToolContext): Prom
   const answers: BackendAnswer[] = [];
   const logs: string[] = [];
   for (const [path, inPath] of Map.groupBy(stacks, (stack) => stack.path)) {
-    const result = await context.run({
+    const result = await runTool(context.run, {
       argv: LIST,
       cwd: join(context.root, path),
       env: pulumiEnvironment(context.env),
-      timeoutMs: BACKEND_TIMEOUT_MINUTES * 60_000,
+      timeoutMinutes: BACKEND_TIMEOUT_MINUTES,
     });
     const unknown = (reason: PreviewFailureReason) =>
       answers.push(...inPath.map((stack) => ({ stack, found: "unknown" as const, reason })));
-    if (result.status === "not-started") {
-      unknown({ kind: "tool-error", exitCode: null });
-      continue;
-    }
     if (result.stderr !== "") logs.push(stripAnsi(result.stderr));
-    if (result.status === "timed-out") {
-      unknown({ kind: "timed-out", minutes: BACKEND_TIMEOUT_MINUTES });
-      continue;
-    }
-    if (result.exitCode !== 0) {
-      unknown({ kind: "tool-error", exitCode: result.exitCode });
+    if (!result.ok) {
+      unknown(result.reason);
       continue;
     }
     const parsed = parseList(result.stdout);

@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import type { Stack } from "../../core/stack.ts";
 import type { ApplyOptions, ApplyResult, SavedPlan, ToolContext } from "../adapter.ts";
+import { runDeploy, stripAnsi } from "../tool-run.ts";
 import { pulumiEnvironment } from "./environment.ts";
-import { stripAnsi } from "./tool-log.ts";
 
 // The command line of the Pulumi research ("Non-interactive up"), with the
 // flags of the preview's command line that make it quiet. `--skip-preview`,
@@ -39,23 +39,15 @@ export async function apply(
   options: ApplyOptions = {},
 ): Promise<ApplyResult> {
   if (stack.name === undefined) throw new Error("A Pulumi stack always has a name.");
-  const result = await context.run({
+  const result = await runDeploy(context.run, {
     argv: upCommand(stack.name, options.repairDrift === true),
     // The same directory as the preview (record 0012).
     cwd: join(context.root, stack.path),
     env: pulumiEnvironment(context.env),
-    // No time limit. The job's own is the user's.
   });
-
-  if (result.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-  }
   // What `up` prints without --json is the tool's own display: which
   // resources it changes, and its diagnostics. It goes to the job log only
   // (record 0022).
   const toolLog = stripAnsi(result.stdout + result.stderr);
-  if (result.status === "exited" && result.exitCode === 0) return { ok: true, toolLog };
-  // A run without a time limit is never timed out by the runner.
-  const exitCode = result.status === "exited" ? result.exitCode : null;
-  return { ok: false, reason: { kind: "tool-error", exitCode }, toolLog };
+  return result.ok ? { ok: true, toolLog } : { ok: false, reason: result.reason, toolLog };
 }

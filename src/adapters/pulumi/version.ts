@@ -1,6 +1,6 @@
 import { type ToolContext, ToolVersionError } from "../adapter.ts";
+import { stripAnsi } from "../tool-run.ts";
 import { pulumiEnvironment } from "./environment.ts";
-import { stripAnsi } from "./tool-log.ts";
 
 // The floor of record 0001: exit codes are only distinct from v3.226.1, and
 // "refresh --preview-only" stops taking the stack lock in v3.229.0.
