@@ -33,6 +33,8 @@ describe("a deploy that goes out", () => {
 });
 
 describe("while the deploy runs", () => {
+  // Slice 5.9: the run link names the attempt of `apply`'s run, so a re-run
+  // of the run does not move it.
   test("the row says deploying, no longer waiting to start, with the fresh diff's destroys", async () => {
     const h = await handedOn({ "a:prod": pending("a:prod", change("bucket", "delete")) }, [
       "a:prod",
@@ -47,7 +49,7 @@ describe("while the deploy runs", () => {
     await runApply(h);
 
     expect(during).toBe(
-      `- ${SPINNER}**a:prod** · deploying · ticked by alice · [run](${RESOLVE_RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" -->\n  not deployed from this dashboard yet\n  <!-- /sluiceway:row -->`,
+      `- ${SPINNER}**a:prod** · deploying · ticked by alice · [run](${RESOLVE_RUN_URL}/attempts/1) <!-- sluiceway:row stack="a:prod" state="deploying" destroys="1" -->\n  not deployed from this dashboard yet\n  <!-- /sluiceway:row -->`,
     );
   });
 

@@ -279,6 +279,8 @@ describe("the scan after a merge", () => {
         hash: diff.ok ? diffHash(diff.diff) : "",
         ticker: "alice",
         run: RUN_ID,
+        // Slice 5.9: the attempt of the scan's run.
+        attempt: "1",
       },
       status: { state: "queued" },
     });
@@ -286,7 +288,7 @@ describe("the scan after a merge", () => {
       { stack: "a:prod", environment: "sluiceway", deployment: handedOn.id },
     ]);
     expect(rows(dashboardBody(github))["a:prod"]?.text.split("\n")[0]).toBe(
-      `- ${SPINNER}**a:prod** · waiting to start · ticked by alice · [run](${RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" -->`,
+      `- ${SPINNER}**a:prod** · waiting to start · ticked by alice · [run](${RUN_URL}/attempts/1) <!-- sluiceway:row stack="a:prod" state="deploying" -->`,
     );
   });
 
@@ -309,6 +311,7 @@ describe("the scan after a merge", () => {
       hash: diff.ok ? diffHash({ ...diff.diff, drift: [gone] }) : "",
       ticker: "alice",
       run: RUN_ID,
+      attempt: "1",
       drift: true,
     });
   });

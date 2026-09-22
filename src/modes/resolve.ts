@@ -53,6 +53,7 @@ import type { WorkflowRef } from "../github/workflow-ref.ts";
 import { writeBody } from "../github/write-loop.ts";
 import { BODY_LIMIT, type BudgetOptions, fitBody } from "../render/budget.ts";
 import { type ClearTickOptions, clearTick } from "../render/clear-tick.ts";
+import { runUrl as runUrlOf } from "../render/links.ts";
 import { logGroupTitle } from "../render/log-text.ts";
 import {
   MARKER_VERSION,
@@ -74,6 +75,9 @@ export interface ResolveContext {
   // `https://github.com/<owner>/<repo>`.
   repoUrl: string;
   runId: string;
+  // The attempt of the run, kept on the records it creates so a link lands
+  // on it after a re-run (slice 5.9). Absent in a test that does not look.
+  runAttempt?: string | undefined;
   // The commit the job checked out: the head of the default branch, because an
   // `issues` event always runs there (record 0003).
   sha: string;
@@ -454,6 +458,7 @@ async function resolveTicks(
           hash,
           ticker,
           run: context.runId,
+          attempt: context.runAttempt,
           behind,
           ...(drifted.has(id) ? { drift: true } : {}),
         }),
@@ -778,7 +783,12 @@ async function mergeAll(
           sha: answer.sha,
           task: deploymentTask(id),
           environment: stack.environment,
-          payload: mergePayload({ ticker, run: context.runId, merge: tick.pr }),
+          payload: mergePayload({
+            ticker,
+            run: context.runId,
+            attempt: context.runAttempt,
+            merge: tick.pr,
+          }),
         });
         result.merged.push({
           stackId: id,
@@ -809,7 +819,7 @@ const NOBODY: Record<NobodyReason, string> = {
 };
 
 function runUrl(context: ResolveContext): string {
-  return `${context.repoUrl}/actions/runs/${context.runId}`;
+  return runUrlOf(context.repoUrl, context.runId, context.runAttempt);
 }
 
 function unverifiedMessage(unverified: TickOutcome[]): string {
@@ -1033,7 +1043,7 @@ async function swapRows(
         state: "deploying",
         stackId: row.stackId,
         ticker: fact.ticker,
-        runUrl: `${context.repoUrl}/actions/runs/${fact.run}`,
+        runUrl: runUrlOf(context.repoUrl, fact.run, fact.attempt),
         waiting: fact.waiting,
         destroys,
         attribution: lines.get(row.stackId)?.lines,
@@ -1079,7 +1089,7 @@ async function swapRows(
         reason: entry.reason,
         ticker: entry.ticker,
         at: entry.at,
-        runUrl: `${context.repoUrl}/actions/runs/${entry.run}`,
+        runUrl: runUrlOf(context.repoUrl, entry.run, entry.attempt),
         shipped: shipped.get(entry),
       })),
       repoUrl: context.repoUrl,
@@ -1215,6 +1225,7 @@ async function startQueued(
           hash: payload.hash,
           ticker: payload.ticker,
           run: context.runId,
+          attempt: context.runAttempt,
         }),
       });
       started.push({

@@ -30,6 +30,7 @@ export async function runResolve(directory: string): Promise<void> {
     log: actionsLog(),
     repoUrl: job.repoUrl,
     runId: job.runId,
+    runAttempt: job.runAttempt,
     sha: job.sha,
     actionRef: readActionRef(env, directory, read),
     event: readEventPayload(env, read),

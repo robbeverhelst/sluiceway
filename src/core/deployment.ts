@@ -62,6 +62,10 @@ export interface DeploymentPayload {
   // The id of the workflow run that deploys. The record lives as long as that
   // run does (record 0003).
   run: string;
+  // The attempt of that run which created the record, so a link lands on it
+  // after a re-run (slice 5.9). An added key, so the version stays 1. Absent
+  // on a record written before.
+  attempt?: string | undefined;
   // A queued record: the stacks it waits behind, which have to go out first
   // (records 0009 and 0056). Absent on every other record.
   behind?: string[] | undefined;
@@ -83,6 +87,7 @@ export function deploymentPayload(payload: DeploymentPayload): Record<string, un
     hash: payload.hash,
     ticker: payload.ticker,
     run: payload.run,
+    ...(payload.attempt === undefined ? {} : { attempt: payload.attempt }),
     ...(payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {}),
     ...(payload.drift ? { drift: true } : {}),
   };
@@ -93,9 +98,16 @@ export function deploymentPayload(payload: DeploymentPayload): Record<string, un
 export function mergePayload(payload: {
   ticker: string;
   run: string;
+  attempt?: string | undefined;
   merge: number;
 }): Record<string, unknown> {
-  return { v: PAYLOAD_VERSION, ticker: payload.ticker, run: payload.run, merge: payload.merge };
+  return {
+    v: PAYLOAD_VERSION,
+    ticker: payload.ticker,
+    run: payload.run,
+    ...(payload.attempt === undefined ? {} : { attempt: payload.attempt }),
+    merge: payload.merge,
+  };
 }
 
 const RUN_ID = /^[1-9]\d*$/;
@@ -105,8 +117,14 @@ const RUN_ID = /^[1-9]\d*$/;
 // built from text that came from outside.
 export function readDeploymentPayload(payload: unknown): DeploymentPayload | undefined {
   if (typeof payload !== "object" || payload === null) return undefined;
-  const { v, hash, ticker, run, behind, merge, drift } = payload as Record<string, unknown>;
+  const { v, hash, ticker, run, behind, merge, drift, attempt } = payload as Record<
+    string,
+    unknown
+  >;
   if (v !== PAYLOAD_VERSION) return undefined;
+  // Only a number is kept, so no link is built from text that came from
+  // outside. Anything else leaves the attempt out, not the record.
+  const attempted = typeof attempt === "string" && RUN_ID.test(attempt) ? { attempt } : {};
   if (merge !== undefined) {
     const number = typeof merge === "number" && Number.isInteger(merge) && merge > 0;
     const plain = hash === undefined && behind === undefined;
@@ -115,14 +133,14 @@ export function readDeploymentPayload(payload: unknown): DeploymentPayload | und
       typeof ticker === "string" &&
       typeof run === "string" &&
       RUN_ID.test(run)
-      ? { hash: "", ticker, run, merge }
+      ? { hash: "", ticker, run, ...attempted, merge }
       : undefined;
   }
   if (typeof hash !== "string" || typeof ticker !== "string" || typeof run !== "string") {
     return undefined;
   }
   if (!RUN_ID.test(run)) return undefined;
-  const read: DeploymentPayload = { hash, ticker, run };
+  const read: DeploymentPayload = { hash, ticker, run, ...attempted };
   if (drift === true) read.drift = true;
   if (behind === undefined) return read;
   const ids = Array.isArray(behind) ? behind : [];
@@ -144,6 +162,7 @@ export type DeployFact =
       waiting: boolean;
       ticker: string;
       run: string;
+      attempt?: string | undefined;
       // Queued behind these stacks (record 0056): it starts only after they
       // went out, in a later run.
       behind?: string[] | undefined;
@@ -155,6 +174,7 @@ export type DeployFact =
       kind: "succeeded";
       ticker: string;
       run: string;
+      attempt?: string | undefined;
       at: Date;
       // The diff hash the tick approved, which is what went out (record 0008).
       hash: string;
@@ -168,6 +188,7 @@ export type DeployFact =
       reason: string;
       ticker: string;
       run: string;
+      attempt?: string | undefined;
       at: Date;
     };
 
@@ -176,6 +197,7 @@ export interface SucceededDeploy {
   stackId: string;
   ticker: string;
   run: string;
+  attempt?: string | undefined;
   at: Date;
   // The commit that went out. Attribution starts there (record 0026).
   sha: string;
@@ -192,6 +214,8 @@ export interface TrailEntry {
   stackId: string;
   ticker: string;
   run: string;
+  // The attempt of the run, when the record says (slice 5.9).
+  attempt?: string | undefined;
   at: Date;
   // Absent for a deploy that went out. "in-sync", "rehearsed" and
   // "drift-repaired" as on `SucceededDeploy`, "failed" for a record that
@@ -273,7 +297,12 @@ export function newestLast(a: DeploymentRecord, b: DeploymentRecord): number {
 // A state that is no result is open, also one GitHub adds tomorrow: a stack
 // that may be deploying never gets a box.
 function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFact {
-  const { ticker, run } = payload;
+  const { ticker } = payload;
+  // The run and, when the record says, its attempt (slice 5.9).
+  const run =
+    payload.attempt === undefined
+      ? { run: payload.run }
+      : { run: payload.run, attempt: payload.attempt };
   const state = record.status?.state ?? "";
   const at = new Date(record.status?.createdAt ?? record.createdAt);
   if (SUCCEEDED.has(state)) {
@@ -286,7 +315,7 @@ function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFac
     return {
       kind: "succeeded",
       ticker,
-      run,
+      ...run,
       at: Number.isNaN(ended.getTime()) ? at : ended,
       hash: payload.hash,
       ...(inSync ? { inSync } : {}),
@@ -297,7 +326,7 @@ function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFac
       kind: "failed",
       reason: record.status?.description || NO_REASON_RECORDED,
       ticker,
-      run,
+      ...run,
       at,
     };
   }
@@ -306,7 +335,7 @@ function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFac
     deployment: record.id,
     waiting: state !== "in_progress",
     ticker,
-    run,
+    ...run,
     ...(payload.behind ? { behind: payload.behind } : {}),
     ...(payload.merge === undefined ? {} : { merge: payload.merge }),
   };
@@ -331,6 +360,7 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
         stackId,
         ticker: payload.ticker,
         run: payload.run,
+        ...(payload.attempt === undefined ? {} : { attempt: payload.attempt }),
         at: new Date(record.status?.createdAt ?? record.createdAt),
         result: "rehearsed" as const,
       };
@@ -347,6 +377,7 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
         stackId,
         ticker: fact.ticker,
         run: fact.run,
+        ...(fact.attempt === undefined ? {} : { attempt: fact.attempt }),
         at: fact.at,
         ...(fact.inSync
           ? { result: "in-sync" as const }
@@ -367,6 +398,7 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
         stackId,
         ticker: fact.ticker,
         run: fact.run,
+        ...(fact.attempt === undefined ? {} : { attempt: fact.attempt }),
         at: fact.at,
         result: "failed",
         reason: fact.reason,

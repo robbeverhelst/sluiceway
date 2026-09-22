@@ -66,6 +66,24 @@ describe("the payload of a deployment record", () => {
     expect(readDeploymentPayload({ v: 1, hash: "h", ticker: 7, run: "4242" })).toBeUndefined();
   });
 
+  // Slice 5.9: the attempt of the run that created the record, so a link
+  // lands on that attempt after a re-run. An added key, so the version stays.
+  test("carries the attempt of the run when it has one, and reads it back", () => {
+    const withAttempt = { ...facts, attempt: "2" };
+    expect(deploymentPayload(withAttempt)).toEqual({
+      v: 1,
+      hash: "2b44350653e84a11",
+      ticker: "alice",
+      run: "4242",
+      attempt: "2",
+    });
+    expect(readDeploymentPayload(deploymentPayload(withAttempt))).toEqual(withAttempt);
+  });
+
+  test("an attempt that is not a number is left out, and the record is still read", () => {
+    expect(readDeploymentPayload({ ...deploymentPayload(facts), attempt: "../2" })).toEqual(facts);
+  });
+
   test("a run that is not a run id is not read, so no request is built from it", () => {
     expect(readDeploymentPayload({ v: 1, hash: "h", ticker: "alice", run: "../1" })).toBe(
       undefined,
@@ -101,6 +119,17 @@ describe("the deploy facts of a stack", () => {
         ],
       ]),
     );
+  });
+
+  test("the facts and the trail carry the attempt of the record's run (slice 5.9)", () => {
+    const payload = { v: 1, hash: "2b44350653e84a11", ticker: "alice", run: "4242", attempt: "3" };
+    const open = deployFacts([record({ id: 7, state: "queued", payload })]);
+    expect(open.byStack.get("apps/grafana:prod")).toMatchObject({ run: "4242", attempt: "3" });
+    const ended = deployFacts([record({ state: "failure", payload })]);
+    expect(ended.byStack.get("apps/grafana:prod")).toMatchObject({ attempt: "3" });
+    expect(ended.trail[0]).toMatchObject({ run: "4242", attempt: "3" });
+    const done = deployFacts([record({ state: "success", payload })]);
+    expect(done.trail[0]).toMatchObject({ attempt: "3" });
   });
 
   test("a record in progress is open and no longer waits", () => {

@@ -49,3 +49,7 @@ Rejected:
 - `GITHUB_RUN_ATTEMPT` is read with the other facts of the job.
 - `apply` writes a fresh row with the same rule: its pending row links to the summary of its own attempt, and its preview failure to its own job's log.
 - A row's link now differs between two attempts of one run. That changes nothing about a tick: links are not in the marker and not in the diff hash (0008, 0009).
+
+## Settled while building (slice 5.9)
+
+- A link to the run of a deploy lands on the attempt that created its record, as the summary link already does. The deployment payload carries `"attempt"`, the attempt of the run of `resolve` (or of the scan that hands a merged change on), an added key, so the version stays 1 and an older reader ignores it. The deploying row, the failure line and the line of the trail link to `/actions/runs/<run>/attempts/<attempt>`, and so do the deployment status's `log_url` and the rows `apply` and `resolve` write about their own run. A record written before this, or one whose attempt is not a number, links to the run as before: the attempt is left out, never the record.

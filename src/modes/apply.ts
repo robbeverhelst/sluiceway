@@ -57,7 +57,7 @@ import {
 } from "../render/apply-summary.ts";
 import { BODY_LIMIT, type BudgetOptions, fitBody } from "../render/budget.ts";
 import { RESULT_DOT } from "../render/dots.ts";
-import { runLinks } from "../render/links.ts";
+import { runLinks, runUrl as runUrlOf } from "../render/links.ts";
 import {
   diffLogLines,
   logGroupTitle,
@@ -262,7 +262,9 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
 
   report.ticker = payload.ticker;
   report.outcome = "failed";
-  const runUrl = `${context.repoUrl}/actions/runs/${context.runId}`;
+  // The attempt of this run, so the link stays on it after a re-run (slice
+  // 5.9).
+  const runUrl = runUrlOf(context.repoUrl, context.runId, context.runAttempt);
   try {
     await github.createDeploymentStatus(id, { state: "in_progress", logUrl: runUrl });
   } catch (error) {
@@ -346,7 +348,7 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
                 reason: fact.reason,
                 ticker: fact.ticker,
                 at: fact.at,
-                runUrl: `${context.repoUrl}/actions/runs/${fact.run}`,
+                runUrl: runUrlOf(context.repoUrl, fact.run, fact.attempt),
               }
             : undefined;
         const row = previewRow(id_, made, runLinks(context), failure, {
@@ -880,7 +882,7 @@ async function swapRow(
           reason: entry.reason,
           ticker: entry.ticker,
           at: entry.at,
-          runUrl: `${context.repoUrl}/actions/runs/${entry.run}`,
+          runUrl: runUrlOf(context.repoUrl, entry.run, entry.attempt),
           shipped: shipped.get(entry),
         })),
         repoUrl: context.repoUrl,

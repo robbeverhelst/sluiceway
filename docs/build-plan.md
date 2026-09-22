@@ -130,7 +130,7 @@ Rules for config loading:
 |---|---|---|
 | Bot | `github-actions[bot]`, type `Bot` | 0017 |
 | Deployment `task` | `sluiceway:<stack id>` | 0003 |
-| Deployment payload | `{ "v": 1, "hash", "ticker", "run" }`, plus `"drift": true` when the approved hash covers drift | 0003, 0055 |
+| Deployment payload | `{ "v": 1, "hash", "ticker", "run" }`, plus `"drift": true` when the approved hash covers drift, and since slice 5.9 `"attempt"`, the attempt of the run that created the record | 0003, 0055, 0044 |
 | Default environment label | `sluiceway` | 0003 |
 | Concurrency groups | `sluiceway-scan`, `sluiceway-resolve`, `sluiceway-apply-<stack id>` | 0004, 0025, 0035 |
 | Dispatch input of the scan after a merge | `sluiceway-merged`, the merged pull request numbers joined with commas, sent only to a workflow that declares it | 0064 |

@@ -133,7 +133,6 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Naming the step op that Sluiceway did not know, in the job log
 - Stopping GitHub from linking a `#123`, an `@name` or a web address that sits inside a resource name or a stack id
 - Trying a dashboard write again after an API error
-- Links on a row to the attempt of a run that was run again
 - A preview after a deploy that went out, to check the row
 - A row of its own for a deploy that ended before any preview (the tool missing, the stack gone, a broken `sluiceway.yaml`)
 - Deploying a record from another run

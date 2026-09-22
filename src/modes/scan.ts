@@ -80,7 +80,7 @@ import {
 } from "../render/budget.ts";
 import { COUNT_DOT, HEADER_DOT } from "../render/dots.ts";
 import { headerState } from "../render/header-state.ts";
-import { dashboardSearchUrl, type RunLinks, runLinks } from "../render/links.ts";
+import { dashboardSearchUrl, type RunLinks, runLinks, runUrl } from "../render/links.ts";
 import {
   diffLogLines,
   logGroupTitle,
@@ -531,7 +531,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
             state: "deploying",
             stackId: id,
             ticker: fact.ticker,
-            runUrl: runUrlOf(context, fact.run),
+            runUrl: runUrlOf(context, fact.run, fact.attempt),
             waiting: fact.waiting,
             destroys: destroysOf(mine, liveRow),
             attribution: lines.get(id)?.lines,
@@ -579,7 +579,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
             reason: entry.reason,
             ticker: entry.ticker,
             at: entry.at,
-            runUrl: runUrlOf(context, entry.run),
+            runUrl: runUrlOf(context, entry.run, entry.attempt),
             shipped: shipped.get(entry),
           })),
           repoUrl: context.repoUrl,
@@ -803,8 +803,10 @@ function startingCommits(
   return from;
 }
 
-function runUrlOf(context: ScanContext, run: string): string {
-  return `${context.repoUrl}/actions/runs/${run}`;
+// A link to a run lands on the attempt that created the record, when the
+// record says (slice 5.9).
+function runUrlOf(context: ScanContext, run: string, attempt?: string | undefined): string {
+  return runUrl(context.repoUrl, run, attempt);
 }
 
 // A deploy fact from the deployment record, never from the old row.
@@ -814,7 +816,7 @@ function failureLine(context: ScanContext, fact: DeployFact | undefined): Failur
     reason: fact.reason,
     ticker: fact.ticker,
     at: fact.at,
-    runUrl: runUrlOf(context, fact.run),
+    runUrl: runUrlOf(context, fact.run, fact.attempt),
   };
 }
 
@@ -1597,7 +1599,7 @@ async function handOffMerges(
   handedOn: MatrixEntry[],
 ): Promise<boolean> {
   const { github, log } = context;
-  const logUrl = runUrlOf(context, context.runId);
+  const logUrl = runUrlOf(context, context.runId, context.runAttempt);
   let ended = false;
   for (const { id, fact } of waiting) {
     const name = logGroupTitle(id);
@@ -1656,6 +1658,7 @@ async function handOffMerges(
             hash,
             ticker: fact.ticker,
             run: context.runId,
+            attempt: context.runAttempt,
             ...((result.diff.drift ?? []).length > 0 ? { drift: true } : {}),
           }),
         });

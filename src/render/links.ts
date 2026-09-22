@@ -30,6 +30,15 @@ export function runLinks(run: RunFacts): RunLinks {
   return { summary, log: run.jobId === undefined ? summary : `${base}/job/${run.jobId}` };
 }
 
+// The run of a deploy, from its deployment record. With the attempt that
+// created the record the link stays on that attempt after a re-run (slice
+// 5.9). A record written before attempts were kept links to the run, which
+// GitHub shows at its newest attempt.
+export function runUrl(repoUrl: string, run: string, attempt: string | undefined): string {
+  const base = `${repoUrl}/actions/runs/${run}`;
+  return attempt === undefined ? base : `${base}/attempts/${attempt}`;
+}
+
 // The issues of the repo with the dashboard's label. A preview page is written
 // before the dashboard, whose number a first scan does not know yet, so the
 // page links here: the one open issue with that label is the dashboard
