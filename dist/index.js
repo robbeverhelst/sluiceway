@@ -51059,6 +51059,58 @@ function describe3(stack) {
   return stack.name === undefined ? `the stack in ${path}` : `${JSON.stringify(stack.name)} in ${path}`;
 }
 
+// src/core/phases.ts
+function phaseKeysOf(config2) {
+  return [
+    ...new Set(config2.stacks.flatMap((entry) => typeof entry.phase === "object" ? [entry.phase.from] : []))
+  ];
+}
+var PHASE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+function byCodeUnit(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function phaseGroups(phases, phaseOf) {
+  return phases.map((phase) => ({
+    phase,
+    stackIds: [...phaseOf].flatMap(([id, one]) => one === phase ? [id] : []).sort(byCodeUnit)
+  }));
+}
+function phaseDependencies(phases, phaseOf) {
+  const index = (id) => phases.indexOf(phaseOf.get(id) ?? "");
+  const edges = new Map;
+  for (const id of [...phaseOf.keys()].sort(byCodeUnit)) {
+    const at = index(id);
+    if (at === -1)
+      continue;
+    edges.set(id, [...phaseOf.keys()].filter((other) => index(other) !== -1 && index(other) < at).sort(byCodeUnit));
+  }
+  return edges;
+}
+function throughPhase(phases, phaseOf, stackId2, dependency) {
+  const own2 = phases.indexOf(phaseOf.get(stackId2) ?? "");
+  const theirs = phases.indexOf(phaseOf.get(dependency) ?? "");
+  return own2 !== -1 && theirs !== -1 && theirs < own2;
+}
+function waitsByPhase(input2) {
+  const { phases, phaseOf, stackId: stackId2 } = input2;
+  const named = [];
+  const grouped = new Map;
+  for (const id of [...new Set(input2.waitingOn)].sort(byCodeUnit)) {
+    const phase = phaseOf.get(id);
+    if (phase === undefined || !throughPhase(phases, phaseOf, stackId2, id))
+      named.push(id);
+    else
+      grouped.set(phase, [...grouped.get(phase) ?? [], id]);
+  }
+  return {
+    named,
+    phases: phases.flatMap((phase) => {
+      const stackIds = grouped.get(phase);
+      return stackIds ? [{ phase, stackIds }] : [];
+    })
+  };
+}
+
 // src/core/show-values.ts
 function shownValues(dashboard) {
   return dashboard.redact ? [] : dashboard.showValues;
@@ -51115,6 +51167,7 @@ var ignoreEntry = exports_external.union([
     reason: text.describe("Why these stacks are left out. Shown on the dashboard under In sync.")
   })
 ]);
+var phaseName = text.regex(PHASE_NAME);
 var stackPath = text.superRefine((path, context3) => {
   const refuse = (message) => context3.addIssue({ code: "custom", message });
   if (path.includes("\\"))
@@ -51136,6 +51189,12 @@ var stackEntry = exports_external.strictObject({
   inputs: globs.describe("Extra globs this stack claims, relative to the repo root.").exactOptional(),
   previewTimeout: exports_external.int().min(1).describe("Time limit for one preview of this stack, in whole minutes. Default: the preview-timeout input.").exactOptional(),
   dependsOn: exports_external.union([exports_external.literal(DEPENDS_ON_AUTO), exports_external.array(text)]).describe("Stack ids of the stacks this stack depends on, or auto to read them from the program's stack references at each preview. A tick on this stack is refused while one of them has a change waiting, and when both are ticked they deploy in order.").exactOptional(),
+  phase: exports_external.union([
+    phaseName,
+    exports_external.strictObject({
+      from: text.describe("A key of the project file whose text is the phase, under config or at the top level.")
+    })
+  ]).describe("The phase of these stacks, one of phases, or from: a key of the project file that names it. A stack in a phase depends on every stack in every earlier phase.").exactOptional(),
   drift: exports_external.strictObject({
     enabled: exports_external.boolean().describe("Check these stacks for drift, or not, whatever drift.enabled at the top level says. The scans that check are the same.")
   }).describe("The drift check of these stacks. Default: the top level drift.").exactOptional(),
@@ -51192,10 +51251,23 @@ var configSchema = exports_external.strictObject({
   drift: exports_external.strictObject({
     enabled: exports_external.boolean().describe("Check every stack for drift in each scan that a schedule starts, or that a person starts with Run workflow: changes made to real infrastructure outside the code. A stack with drift gets a row with a box, and a tick deploys the code as it is, which puts it back. Costs one more tool run per stack in those scans.").default(false)
   }).prefault({}),
+  phases: exports_external.array(phaseName).describe("Names of the phases stacks deploy in, in order. A stack in a phase depends on every stack in every earlier phase.").default([]),
   stacks: stackEntries.describe("Settings for stacks that discovery found. An entry never creates a stack.").default([]),
   mergeAndDeploy: exports_external.strictObject({
     authors: exports_external.array(author).transform((logins) => [...new Set(logins)]).describe("Logins whose open pull requests may be merged and deployed with one tick, such as renovate[bot]. Empty turns it off.").default([])
   }).prefault({})
+}).superRefine((config2, context3) => {
+  const refuse = (path, message) => context3.addIssue({ code: "custom", path, message });
+  config2.phases.forEach((phase, index) => {
+    const first = config2.phases.indexOf(phase);
+    if (first !== index)
+      refuse(["phases", index], `${show(phase)} is already phases[${first}]. Each phase is named once.`);
+  });
+  config2.stacks.forEach((entry, index) => {
+    if (typeof entry.phase !== "string" || config2.phases.includes(entry.phase))
+      return;
+    refuse(["stacks", index, "phase"], config2.phases.length === 0 ? `${show(entry.phase)} is not one of the phases, and sluiceway.yaml has no phases. List them in order at the top: phases: [first, second].` : `${show(entry.phase)} is not one of the phases. The phases are: ${config2.phases.join(", ")}.`);
+  });
 });
 
 class ConfigError extends Error {
@@ -51277,6 +51349,12 @@ function describe4(issue3, raw) {
     }
     return (issue3.errors[1] ?? []).flatMap((inner) => describe4({ ...inner, path: [...issue3.path, ...inner.path] }, raw));
   }
+  if (issue3.code === "invalid_union" && key === "phase") {
+    if (!isMapping(value)) {
+      return problem(`expected a phase name, or a mapping with from, got ${show(value)}.`);
+    }
+    return (issue3.errors[1] ?? []).flatMap((inner) => describe4({ ...inner, path: [...issue3.path, ...inner.path] }, raw));
+  }
   if (issue3.code === "invalid_type" && key === "drift" && issue3.path[0] === "stacks") {
     return problem(`expected a mapping, got ${show(value)}. Write it as the top level has it: drift: { enabled: ${typeof value === "boolean" ? value : true} }.`);
   }
@@ -51285,6 +51363,9 @@ function describe4(issue3, raw) {
       return problem(`expected "write", "maintain", "admin" or a list of usernames, got ${show(value)}.`);
     }
     return (issue3.errors[1] ?? []).flatMap((inner) => describe4({ ...inner, path: [...issue3.path, ...inner.path] }, raw));
+  }
+  if (issue3.code === "invalid_format" && (issue3.path[0] === "phases" || key === "phase")) {
+    return problem(`${show(value)} is not a phase name. Use letters, digits, ".", "_" and "-".`);
   }
   if (issue3.code === "invalid_format" && issue3.path[0] === "mergeAndDeploy") {
     return problem(`${show(value)} is not a GitHub login. Write the login alone, without "@". An app is written with [bot], such as renovate[bot].`);
@@ -51395,36 +51476,78 @@ function applyConfig(config2, found) {
   });
   if (problems.length > 0)
     throw new ConfigError(problems);
-  const dependencyProblems = checkDependsOn(config2, found, stacks);
+  const phases = phasesOf(config2, stacks);
+  if (phases.problems.length > 0)
+    throw new ConfigError(phases.problems);
+  const dependencyProblems = checkDependsOn(config2, found, stacks, phases.phaseOf);
   if (dependencyProblems.length > 0)
     throw new ConfigError(dependencyProblems);
+  const derived2 = phaseDependencies(config2.phases, phases.phaseOf);
   return stacks.map((stack) => {
-    const entries = config2.stacks.filter((entry) => covers(entry, stack)).sort((a, b) => Number(a.name !== undefined) - Number(b.name !== undefined));
+    const entries = entriesOf(config2, stack);
+    const id = stackId(stack);
     const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
     const drift = entries.findLast((entry) => entry.drift)?.drift?.enabled;
+    const phase = phases.phaseOf.get(id);
+    const from = phases.from.get(id);
     return {
       stack,
       environment: entries.findLast((entry) => entry.environment)?.environment ?? DEFAULT_ENVIRONMENT,
       tickers: entries.findLast((entry) => entry.tickers)?.tickers ?? config2.tickers,
       inputs: [...new Set(entries.flatMap((entry) => entry.inputs ?? []))],
       ...previewTimeout === undefined ? {} : { previewTimeout },
-      ...dependsOnOf(entries),
+      ...dependsOnOf(entries, derived2.get(id)),
+      ...phase === undefined ? {} : { phase },
+      ...from === undefined ? {} : { phaseFrom: from },
       ...entries.some((entry) => entry.dependsOn === DEPENDS_ON_AUTO) ? { dependsOnAuto: true } : {},
       ...drift === undefined ? {} : { drift }
     };
   });
 }
-function dependsOnOf(entries) {
-  const ids = [...new Set(entries.flatMap((entry) => listed(entry.dependsOn)))].sort(byCodeUnit);
+function entriesOf(config2, stack) {
+  return config2.stacks.filter((entry) => covers(entry, stack)).sort((a, b) => Number(a.name !== undefined) - Number(b.name !== undefined));
+}
+function dependsOnOf(entries, fromPhases = []) {
+  const ids = [
+    ...new Set([...entries.flatMap((entry) => listed(entry.dependsOn)), ...fromPhases])
+  ].sort(byCodeUnit2);
   return ids.length === 0 ? {} : { dependsOn: ids };
+}
+function phasesOf(config2, stacks) {
+  const phaseOf = new Map;
+  const from = new Map;
+  const problems = [];
+  const known = config2.phases.join(", ");
+  for (const stack of stacks) {
+    const entry = entriesOf(config2, stack).findLast((one) => one.phase !== undefined);
+    if (entry?.phase === undefined)
+      continue;
+    const id = stackId(stack);
+    if (typeof entry.phase === "string") {
+      phaseOf.set(id, entry.phase);
+      continue;
+    }
+    const at = `stacks[${config2.stacks.indexOf(entry)}].phase`;
+    const key = entry.phase.from;
+    const read = stack.phaseKeys?.[key];
+    if (read === undefined) {
+      problems.push(`${at}: ${id} has no text under ${key} in its project file, under config or at the top level. Add it there, or name the phase here.`);
+    } else if (!config2.phases.includes(read)) {
+      problems.push(`${at}: the text under ${key} in the project file of ${id} is not one of the phases. The phases are: ${known === "" ? "none, sluiceway.yaml has no phases" : known}.`);
+    } else {
+      phaseOf.set(id, read);
+      from.set(id, key);
+    }
+  }
+  return { phaseOf, from, problems: [...new Set(problems)] };
 }
 function listed(dependsOn) {
   return Array.isArray(dependsOn) ? dependsOn : [];
 }
-function byCodeUnit(a, b) {
+function byCodeUnit2(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
-function checkDependsOn(config2, found, stacks) {
+function checkDependsOn(config2, found, stacks, phaseOf) {
   const known = new Set(stacks.map(stackId));
   const all = new Set(found.map(stackId));
   const problems = config2.stacks.flatMap((entry, index) => listed(entry.dependsOn).flatMap((id, at) => {
@@ -51443,21 +51566,42 @@ function checkDependsOn(config2, found, stacks) {
     const self = stacks.find((stack) => stackId(stack) === id);
     if (self && covers(entry, self))
       return [`${where2} is the stack itself. A stack cannot depend on itself.`];
+    const earlier = stacks.filter((stack) => covers(entry, stack)).map(stackId).sort(byCodeUnit2).find((one) => throughPhase(config2.phases, phaseOf, id, one));
+    if (earlier !== undefined)
+      return [
+        `${where2} is in the ${phaseOf.get(id)} phase, which comes after the ${phaseOf.get(earlier)} phase of ${earlier}. ${id} already waits on every stack of the ${phaseOf.get(earlier)} phase, so take this out, or move one of them to another phase.`
+      ];
     return [];
   }));
   if (problems.length > 0)
     return problems;
   const edges = new Map;
   for (const stack of stacks) {
-    const entries = config2.stacks.filter((entry) => covers(entry, stack));
-    edges.set(stackId(stack), dependsOnOf(entries).dependsOn ?? []);
+    const id = stackId(stack);
+    const at = config2.phases.indexOf(phaseOf.get(id) ?? "");
+    const earlierPhases = at === -1 ? [] : config2.phases.slice(0, at).map(phaseNode);
+    edges.set(id, [...dependsOnOf(entriesOf(config2, stack)).dependsOn ?? [], ...earlierPhases]);
+  }
+  for (const phase of config2.phases) {
+    edges.set(phaseNode(phase), [...phaseOf].flatMap(([id, one]) => one === phase ? [id] : []));
   }
   return dependencyCircles(edges).map((circle) => {
     const [first = "", ...rest] = circle;
-    const links = rest.map((id, index) => `${index === 0 ? "depends on" : "which depends on"} ${id}`);
+    const links = rest.map((to, index) => {
+      const from = circle[index] ?? "";
+      if (isPhaseNode(to))
+        return `${index === 0 ? "" : "which "}waits on the ${phaseOfNode(to)} phase`;
+      if (isPhaseNode(from))
+        return `which holds ${to}`;
+      return `${index === 0 ? "depends on" : "which depends on"} ${to}`;
+    });
     return `dependsOn goes round in a circle: ${first} ${links.join(", ")}. Nothing in a circle could ever deploy first, so take one of these out.`;
   });
 }
+var PHASE_NODE = "￿";
+var phaseNode = (phase) => `${PHASE_NODE}${phase}`;
+var isPhaseNode = (node2) => node2.startsWith(PHASE_NODE);
+var phaseOfNode = (node2) => node2.slice(PHASE_NODE.length);
 function dependencyCircles(edges) {
   const circles = new Map;
   const walk = (path) => {
@@ -51469,17 +51613,17 @@ function dependencyCircles(edges) {
         continue;
       }
       const circle = path.slice(at);
-      const start = circle.indexOf([...circle].sort(byCodeUnit)[0] ?? "");
+      const start = circle.indexOf([...circle].sort(byCodeUnit2)[0] ?? "");
       const turned = [...circle.slice(start), ...circle.slice(0, start)];
-      const key = [...turned].sort(byCodeUnit).join(`
+      const key = [...turned].sort(byCodeUnit2).join(`
 `);
       if (!circles.has(key))
         circles.set(key, [...turned, turned[0] ?? ""]);
     }
   };
-  for (const id of [...edges.keys()].sort(byCodeUnit))
+  for (const id of [...edges.keys()].sort(byCodeUnit2))
     walk([id]);
-  return [...circles.values()].sort((a, b) => byCodeUnit(a[0] ?? "", b[0] ?? ""));
+  return [...circles.values()].sort((a, b) => byCodeUnit2(a[0] ?? "", b[0] ?? ""));
 }
 function covers(entry, stack) {
   return entry.path === stack.path && (entry.name === undefined || entry.name === stack.name);
@@ -51734,7 +51878,7 @@ function sourceOf(dir) {
   return (filesIn(dir) ?? []).some(isKustomization) ? "kustomization" : "manifests";
 }
 function bundleManifests(dir) {
-  const names = (filesIn(dir) ?? []).filter(isManifestFile).sort(byCodeUnit2);
+  const names = (filesIn(dir) ?? []).filter(isManifestFile).sort(byCodeUnit3);
   return names.map((name) => {
     const text4 = readFileSync3(join3(dir, name), "utf8");
     return text4.endsWith(`
@@ -51743,7 +51887,7 @@ function bundleManifests(dir) {
   }).join(`---
 `);
 }
-function byCodeUnit2(a, b) {
+function byCodeUnit3(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function filesIn(dir) {
@@ -51901,7 +52045,8 @@ import { isAbsolute as isAbsolute3, join as join6, relative as relative3, sep as
 var PROJECT_FILE = "Pulumi";
 var EXTENSIONS = [".json", ".yaml", ".yml"];
 var SKIPPED = new Set([".git", "node_modules"]);
-async function discover(root) {
+async function discover(root, config2) {
+  const phaseKeys = config2 === undefined ? [] : phaseKeysOf(config2);
   const stacks = [];
   const problems = [];
   const walk = async (dir) => {
@@ -51910,11 +52055,18 @@ async function discover(root) {
     if (extension !== undefined) {
       const projectFile = join6(dir, PROJECT_FILE + extension);
       try {
-        const stackDir = await stackConfigDir(root, projectFile);
+        const { stackDir, project } = await readProjectFile(root, projectFile);
         const files = stackDir === dir ? fileNames(entries) : await fileNamesIn(stackDir);
         const path = slashed(relative3(root, dir)) || ".";
-        for (const name of stackNames(files, extension))
-          stacks.push({ path, name, options: {} });
+        const read = keysOf(project, phaseKeys);
+        for (const name of stackNames(files, extension)) {
+          stacks.push({
+            path,
+            name,
+            options: {},
+            ...read === undefined ? {} : { phaseKeys: read }
+          });
+        }
       } catch (error63) {
         if (!(error63 instanceof ProjectFileProblem))
           throw error63;
@@ -51955,7 +52107,30 @@ async function projectName(root, path) {
     return;
   return typeof project.name === "string" ? project.name : undefined;
 }
-async function stackConfigDir(root, projectFile) {
+function keysOf(project, keys) {
+  if (keys.length === 0 || !isMapping2(project))
+    return;
+  const config2 = isMapping2(project.config) ? project.config : {};
+  const read = {};
+  for (const key of keys) {
+    const text5 = configText(config2[key]) ?? project[key];
+    if (typeof text5 === "string")
+      read[key] = text5;
+  }
+  return Object.keys(read).length === 0 ? undefined : read;
+}
+function configText(entry) {
+  if (typeof entry === "string")
+    return entry;
+  if (!isMapping2(entry) || entry.secret === true)
+    return;
+  const text5 = entry.value ?? entry.default;
+  return typeof text5 === "string" ? text5 : undefined;
+}
+function isMapping2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+async function readProjectFile(root, projectFile) {
   const dir = join6(projectFile, "..");
   const lineCounter2 = new $LineCounter;
   const document = $parseDocument(await readFile(projectFile, "utf8"), {
@@ -51970,7 +52145,7 @@ async function stackConfigDir(root, projectFile) {
   }
   const project = document.toJS();
   if (typeof project !== "object" || project === null || !("stackConfigDir" in project))
-    return dir;
+    return { stackDir: dir, project };
   const named = project.stackConfigDir;
   if (typeof named !== "string") {
     throw new ProjectFileProblem("stackConfigDir must be text, the directory that holds the stack files.");
@@ -51980,7 +52155,7 @@ async function stackConfigDir(root, projectFile) {
   if (fromRoot === ".." || fromRoot.startsWith(`..${sep4}`) || isAbsolute3(fromRoot)) {
     throw new ProjectFileProblem(`stackConfigDir points outside the repo (${JSON.stringify(named)}). Sluiceway only reads files inside the repo.`);
   }
-  return stackDir;
+  return { stackDir, project };
 }
 function stackNames(files, extension) {
   const prefix = `${PROJECT_FILE}.`;
@@ -52017,9 +52192,14 @@ async function discoverAll(root, config2) {
         `stacks[${index}].tool: unknown tool ${JSON.stringify(entry.tool)}. Known tools: ${TOOLS.join(", ")}.`
       ];
     }
-    return entry.dependsOn === DEPENDS_ON_AUTO ? [
-      `stacks[${index}].dependsOn: ${DEPENDS_ON_AUTO} reads the stack references of a Pulumi program, and an ${entry.tool} stack has none. Name the stack ids instead.`
-    ] : [];
+    return [
+      ...entry.dependsOn === DEPENDS_ON_AUTO ? [
+        `stacks[${index}].dependsOn: ${DEPENDS_ON_AUTO} reads the stack references of a Pulumi program, and an ${entry.tool} stack has none. Name the stack ids instead.`
+      ] : [],
+      ...typeof entry.phase === "object" ? [
+        `stacks[${index}].phase: from reads a key of a Pulumi project file, and an ${entry.tool} stack has none. Name the phase instead.`
+      ] : []
+    ];
   });
   const tofu = tryDiscover(() => discoverOpenTofu(root, config2));
   const charts = tryDiscover(() => discoverHelm(root, config2));
@@ -52040,7 +52220,7 @@ async function discoverAll(root, config2) {
     throw new DiscoveryError(errors4.flatMap((error63) => error63.problems).sort(byEntry));
   }
   const declared = [...tofu.stacks, ...charts.stacks, ...manifests.stacks];
-  const discovered = await discover(root);
+  const discovered = await discover(root, config2);
   if (declared.length === 0)
     return discovered;
   return [...discovered, ...declared].sort((a, b) => compare2(a.path, b.path) || compare2(a.name ?? "", b.name ?? ""));
@@ -52389,7 +52569,7 @@ function foldEntries(entries, namespace, showValues) {
     return { ok: false, reason: "unreadable-output", detail: unreadable };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
-  changes.sort((a, b) => byCodeUnit3(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit4(a.address, b.address));
   return { ok: true, changes };
 }
 function typeOf(entry) {
@@ -52411,8 +52591,8 @@ function keys(entry, showValues) {
     }
     return path;
   });
-  const changedKeys = [...new Set(paths.filter((path) => path !== ""))].sort(byCodeUnit3);
-  const shown2 = values2.filter((value, index) => values2.findIndex((one) => one.path === value.path) === index).sort((a, b) => byCodeUnit3(a.path, b.path));
+  const changedKeys = [...new Set(paths.filter((path) => path !== ""))].sort(byCodeUnit4);
+  const shown2 = values2.filter((value, index) => values2.findIndex((one) => one.path === value.path) === index).sort((a, b) => byCodeUnit4(a.path, b.path));
   return { changedKeys, ...shown2.length === 0 ? {} : { values: shown2 } };
 }
 function propertyPath(change) {
@@ -52452,7 +52632,7 @@ function shown2(value) {
     return "refused";
   return shortValue(value);
 }
-function byCodeUnit3(a, b) {
+function byCodeUnit4(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -52887,10 +53067,10 @@ function foldObjects2(pairs, showValues) {
       beforeSensitive: sensitive,
       afterSensitive: sensitive
     }, showValues);
-    const changedKeys = [...new Set(paths)].sort(byCodeUnit4);
+    const changedKeys = [...new Set(paths)].sort(byCodeUnit5);
     if (changedKeys.length === 0)
       return;
-    const shown3 = values2.sort((a, b) => byCodeUnit4(a.path, b.path));
+    const shown3 = values2.sort((a, b) => byCodeUnit5(a.path, b.path));
     changes.push({
       ...base,
       changedKeys,
@@ -52900,7 +53080,7 @@ function foldObjects2(pairs, showValues) {
   });
   if (problems.length > 0)
     return { ok: false, reason: "unreadable-output", detail: problems };
-  changes.sort((a, b) => byCodeUnit4(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit5(a.address, b.address));
   return { ok: true, changes };
 }
 function yamlObject(text5) {
@@ -52946,7 +53126,7 @@ function withoutServerFields(object2) {
 function isObject3(node2) {
   return typeof node2 === "object" && node2 !== null && !Array.isArray(node2);
 }
-function byCodeUnit4(a, b) {
+function byCodeUnit5(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -53397,7 +53577,7 @@ function foldChanges(found, showValues) {
     return { ok: false, reason: "unreadable-output", detail: unreadable };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
-  changes.sort((a, b) => byCodeUnit5(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit6(a.address, b.address));
   return { ok: true, changes };
 }
 function withTracking(known, tracking) {
@@ -53427,13 +53607,13 @@ function keys2(resource, op, showValues) {
   }, showValues);
   const replaceKeys = op === "replace" ? sortedSet((change3.replace_paths ?? []).map((steps) => replacePath(steps, change3.before_sensitive, change3.after_sensitive))) : [];
   const changedKeys = sortedSet([...paths, ...replaceKeys]);
-  const shown3 = values2.filter((value) => changedKeys.includes(value.path)).sort((a, b) => byCodeUnit5(a.path, b.path));
+  const shown3 = values2.filter((value) => changedKeys.includes(value.path)).sort((a, b) => byCodeUnit6(a.path, b.path));
   return { changedKeys, replaceKeys, ...shown3.length === 0 ? {} : { values: shown3 } };
 }
 function sortedSet(names) {
-  return [...new Set(names.filter((name) => name !== ""))].sort(byCodeUnit5);
+  return [...new Set(names.filter((name) => name !== ""))].sort(byCodeUnit6);
 }
-function byCodeUnit5(a, b) {
+function byCodeUnit6(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -53657,7 +53837,7 @@ function foldSteps(steps) {
     return { ok: false, reason: "unreadable-output", detail: unreadable };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
-  changes.sort((a, b) => byCodeUnit6(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit7(a.address, b.address));
   return { ok: true, changes };
 }
 function typeAndName(urn) {
@@ -53679,9 +53859,9 @@ function keys3(step, op) {
   return { changedKeys, replaceKeys, ...values2.length === 0 ? {} : { values: values2 } };
 }
 function sortedSet2(names) {
-  return [...new Set(names)].sort(byCodeUnit6);
+  return [...new Set(names)].sort(byCodeUnit7);
 }
-function byCodeUnit6(a, b) {
+function byCodeUnit7(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -54062,12 +54242,12 @@ async function readDependencies(stack, names, root, candidates) {
     else if (one.id !== self)
       found.add(one.id);
   }
-  return { stackIds: [...found].sort(byCodeUnit7), elsewhere };
+  return { stackIds: [...found].sort(byCodeUnit8), elsewhere };
 }
 function orElse(first, second) {
   return first.length > 0 ? first : second();
 }
-function byCodeUnit7(a, b) {
+function byCodeUnit8(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -55408,7 +55588,7 @@ function utcMinute(at) {
 
 // src/render/row.ts
 var INDENT = "  ";
-function byCodeUnit8(a, b) {
+function byCodeUnit9(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function isDestroy(change3) {
@@ -55439,7 +55619,7 @@ function code(text6) {
   return `<code>${escapeText(text6)}</code>`;
 }
 function sortedKeys(keys4) {
-  return [...new Set(keys4)].sort(byCodeUnit8);
+  return [...new Set(keys4)].sort(byCodeUnit9);
 }
 var ROW_PATH_LENGTH = 80;
 var ROW_PATHS_PER_CHANGE = 10;
@@ -55478,10 +55658,32 @@ function changeLine(change3, options = {}) {
 }
 var ORPHAN_TICK_NOTE = ":information_source: a tick on this row was not picked up. Tick again to deploy.";
 var DEPLOYS_OFF_NOTE = ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick started nothing.";
-function dependencyNote(ids) {
+function dependencyNote(ids, phases = []) {
   const names = ids.map((id) => `**${escapeText(id)}**`).join(" and ");
   const one = ids.length === 1;
-  return `:information_source: this tick started nothing: it depends on ${names}, which ${one ? "has a change" : "have changes"} waiting. Tick ${one ? "both" : "them all"} to deploy them in order, or deploy ${names} first.`;
+  if (phases.length === 0) {
+    return `:information_source: this tick started nothing: it depends on ${names}, which ${one ? "has a change" : "have changes"} waiting. Tick ${one ? "both" : "them all"} to deploy them in order, or deploy ${names} first.`;
+  }
+  const waiting = (count2) => count2 === 1 ? "has a change" : "have changes";
+  const clauses = [
+    ...ids.length === 0 ? [] : [`it depends on ${names}, which ${waiting(ids.length)} waiting`],
+    ...phases.map(({ phase, stackIds }) => `it waits on the **${escapeText(phase)}** phase: ${shortList(stackIds)} ${waiting(stackIds.length)} waiting`)
+  ];
+  const count = ids.length + phases.reduce((sum, { stackIds }) => sum + stackIds.length, 0);
+  const first = [
+    ...ids.map((id) => `**${escapeText(id)}**`),
+    ...phases.map(({ phase }) => `the **${escapeText(phase)}** phase`)
+  ];
+  return `:information_source: this tick started nothing: ${clauses.join(", and ")}. Tick ${count === 1 ? "both" : "them all"} to deploy them in order, or deploy ${listWords(first)} first.`;
+}
+var NAMES_PER_PHASE = 5;
+function shortList(ids) {
+  const shown3 = ids.slice(0, NAMES_PER_PHASE).map((id) => `**${escapeText(id)}**`);
+  const more = ids.length - shown3.length;
+  return more > 0 ? `${shown3.join(", ")} and ${more} more` : listWords(shown3);
+}
+function listWords(words) {
+  return words.length <= 1 ? words[0] ?? "" : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 }
 var PENDING_AGAIN_NOTE = ":information_source: pending again right after a deploy of this same change, a value in the program may differ on every run.";
 function pendingAgainLine({ logUrl }) {
@@ -55516,7 +55718,7 @@ function driftLine(change3, options = {}) {
   return parts.join(" · ");
 }
 function sortedDrift(diff2) {
-  return [...diff2.drift ?? []].sort((a, b) => byCodeUnit8(a.address, b.address));
+  return [...diff2.drift ?? []].sort((a, b) => byCodeUnit9(a.address, b.address));
 }
 function driftLines(drift, summary2, options) {
   if (drift.length === 0)
@@ -55558,7 +55760,7 @@ function driftRow(row, options) {
 }
 function pendingRow(row, options) {
   const level = options.level ?? 0;
-  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit8(a.address, b.address));
+  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit9(a.address, b.address));
   const deletes = changes.filter((change3) => change3.op === "delete");
   const replaces = changes.filter((change3) => change3.op === "replace");
   const folded = changes.filter((change3) => !isDestroy(change3));
@@ -55729,7 +55931,7 @@ var SIGNED_FACT = {
 function placed(row) {
   return row.state === "queued" ? "deploying" : row.state;
 }
-function byCodeUnit9(a, b) {
+function byCodeUnit10(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function plural3(count, word) {
@@ -55827,7 +56029,7 @@ function version2(actionRef2) {
   return /^[0-9a-f]{40,}$/.test(actionRef2) ? `\`${actionRef2.slice(0, 7)}\`` : escapeText(actionRef2);
 }
 function renderBody(input2) {
-  const rows = [...input2.rows].sort((a, b) => byCodeUnit9(a.stackId, b.stackId));
+  const rows = [...input2.rows].sort((a, b) => byCodeUnit10(a.stackId, b.stackId));
   const known = rows.filter((row) => row.known);
   const of = (state2) => known.filter((row) => row.state === state2);
   const state = headerState(rows);
@@ -55843,7 +56045,7 @@ function renderBody(input2) {
   const shortened = pending.filter((row) => row.shortened > 0).length;
   if (shortened > 0)
     out.push(shortenedNote(shortened, pending.length));
-  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) => byCodeUnit9(a.stackId, b.stackId));
+  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) => byCodeUnit10(a.stackId, b.stackId));
   if (deploying.length > 0)
     out.push("## Deploying", blocks(deploying));
   const merges = [...input2.merges ?? []].filter((merge3, index, all) => all.findIndex((one) => one.pr === merge3.pr) === index).sort((a, b) => a.pr - b.pr);
@@ -55870,7 +56072,7 @@ function renderBody(input2) {
   if (previewFailed.length > 0)
     out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
   const inSync = of("in-sync");
-  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit9(a.stackId, b.stackId));
+  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit10(a.stackId, b.stackId));
   if (inSync.length > 0 || ignored.length > 0) {
     const loud = inSync.filter((row) => row.failed);
     const quiet = inSync.filter((row) => !row.failed);
@@ -55886,7 +56088,7 @@ function renderBody(input2) {
 `), "</details>");
     }
   }
-  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit9(a.stackId, b.stackId)).slice(0, input2.recentLength ?? RECENTLY_DEPLOYED);
+  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit10(a.stackId, b.stackId)).slice(0, input2.recentLength ?? RECENTLY_DEPLOYED);
   if (recent.length > 0)
     out.push("## Recently deployed", recent.map((deploy) => recentLine(deploy, input2.personality)).join(`
 `));
@@ -55933,7 +56135,7 @@ function fitBody(input2, options = {}) {
   if (spinning && !fits())
     spinning = false;
   for (const level of LEVELS.slice(1)) {
-    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit8(a.stackId, b.stackId));
+    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit9(a.stackId, b.stackId));
     for (const entry2 of biggestFirst) {
       if (fits())
         break;
@@ -55941,7 +56143,7 @@ function fitBody(input2, options = {}) {
         entry2.level = level;
     }
   }
-  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit8(a.stackId, b.stackId));
+  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit9(a.stackId, b.stackId));
   for (const entry2 of smallestFirst) {
     const reached = entry2.level;
     for (const level of LEVELS.slice(0, reached)) {
@@ -56147,18 +56349,18 @@ function read2(file2) {
 
 // src/core/diff-hash.ts
 import { createHash as createHash3 } from "node:crypto";
-function byCodeUnit10(a, b) {
+function byCodeUnit11(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function sortedSet3(keys4) {
-  return [...new Set(keys4)].sort(byCodeUnit10);
+  return [...new Set(keys4)].sort(byCodeUnit11);
 }
 function canonicalJson(value) {
   if (typeof value === "string")
     return JSON.stringify(value);
   if (Array.isArray(value))
     return `[${value.map(canonicalJson).join(",")}]`;
-  const members2 = Object.keys(value).sort(byCodeUnit10).flatMap((key) => {
+  const members2 = Object.keys(value).sort(byCodeUnit11).flatMap((key) => {
     const member = value[key];
     return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
   });
@@ -56180,14 +56382,14 @@ function canonicalChange(change3) {
 function canonicalValues(values2) {
   if (values2 === undefined || values2.length === 0)
     return;
-  return [...values2].sort((a, b) => byCodeUnit10(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
+  return [...values2].sort((a, b) => byCodeUnit11(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
 }
 function canonicalDiff(diff2) {
   const drift = diff2.drift === undefined || diff2.drift.length === 0 ? "" : `"drift":[${canonicalChanges(diff2.drift).join(",")}],`;
   return `{"changes":[${canonicalChanges(diff2.changes).join(",")}],${drift}"stackId":${JSON.stringify(diff2.stackId)}}`;
 }
 function canonicalChanges(changes) {
-  return changes.map((change3) => ({ address: change3.address, text: canonicalJson(canonicalChange(change3)) })).sort((a, b) => byCodeUnit10(a.address, b.address) || byCodeUnit10(a.text, b.text)).map((change3) => change3.text);
+  return changes.map((change3) => ({ address: change3.address, text: canonicalJson(canonicalChange(change3)) })).sort((a, b) => byCodeUnit11(a.address, b.address) || byCodeUnit11(a.text, b.text)).map((change3) => change3.text);
 }
 function diffHash(diff2) {
   return createHash3("sha256").update(canonicalDiff(diff2), "utf8").digest("hex").slice(0, 16);
@@ -56407,11 +56609,11 @@ function attributionSource(github, input2, onFailure) {
 }
 
 // src/core/dependencies.ts
-function byCodeUnit11(a, b) {
+function byCodeUnit12(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function planDeploys(input2) {
-  const ids = [...new Set(input2.allowed)].sort(byCodeUnit11);
+  const ids = [...new Set(input2.allowed)].sort(byCodeUnit12);
   const going = new Set(ids);
   const refused = new Map;
   for (let changed = true;changed; ) {
@@ -56422,7 +56624,7 @@ function planDeploys(input2) {
       const waitingOn = (input2.dependsOn.get(id) ?? []).filter((dependency) => !input2.open.has(dependency) && !going.has(dependency) && (input2.pending.has(dependency) || refused.has(dependency)));
       if (waitingOn.length === 0)
         continue;
-      refused.set(id, [...waitingOn].sort(byCodeUnit11));
+      refused.set(id, [...waitingOn].sort(byCodeUnit12));
       going.delete(id);
       changed = true;
     }
@@ -56432,7 +56634,7 @@ function planDeploys(input2) {
   for (const id of ids) {
     if (refused.has(id))
       continue;
-    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit11);
+    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit12);
     if (behind.length === 0)
       start.push(id);
     else
@@ -56478,11 +56680,11 @@ function withReadDependencies(input2) {
     return walk(from);
   };
   const dropped = [];
-  for (const id of [...input2.auto].sort(byCodeUnit11)) {
+  for (const id of [...input2.auto].sort(byCodeUnit12)) {
     const list = dependsOn.get(id);
     if (list === undefined)
       continue;
-    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit11)) {
+    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit12)) {
       if (dependency === id || !dependsOn.has(dependency) || list.includes(dependency))
         continue;
       if (reaches(dependency, id))
@@ -56490,7 +56692,7 @@ function withReadDependencies(input2) {
       else
         list.push(dependency);
     }
-    list.sort(byCodeUnit11);
+    list.sort(byCodeUnit12);
   }
   return { dependsOn, dropped };
 }
@@ -56557,7 +56759,7 @@ async function settleEndedRuns(github, records, repoUrl) {
 
 // src/render/changes.ts
 function orderChanges(diff2) {
-  const changes = [...diff2.changes].sort((a, b) => byCodeUnit8(a.address, b.address));
+  const changes = [...diff2.changes].sort((a, b) => byCodeUnit9(a.address, b.address));
   return {
     deletes: changes.filter((change3) => change3.op === "delete"),
     replaces: changes.filter((change3) => change3.op === "replace"),
@@ -56908,7 +57110,7 @@ function json2(value) {
 `;
 }
 function scanResultFile(input2) {
-  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit8(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? {
+  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit9(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? {
     stack: stack.diff.stackId,
     seconds: seconds(milliseconds),
     ...diffOf(stack.diff),
@@ -57539,7 +57741,8 @@ function checkSetup(config2, found, files) {
     stacks,
     ignore: config2.ignore.map((entry2) => ignoreReport(ignoreGlob(entry2), found)),
     unclaimed: groups(unclaimed),
-    suggested: suggestedUnrelated(unclaimed)
+    suggested: suggestedUnrelated(unclaimed),
+    phases: phaseGroups(config2.phases, new Map(stacks.flatMap((one) => one.phase === undefined ? [] : [[stackId(one.stack), one.phase]])))
   };
 }
 function suggestedUnrelated(unclaimed) {
@@ -57560,10 +57763,10 @@ function groups(files) {
     const slash = file2.indexOf("/");
     return slash === -1 ? "." : file2.slice(0, slash);
   };
-  const byDirectory = Map.groupBy([...files].sort(byCodeUnit12), top);
-  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit12(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
+  const byDirectory = Map.groupBy([...files].sort(byCodeUnit13), top);
+  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit13(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
 }
-function byCodeUnit12(a, b) {
+function byCodeUnit13(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -57601,7 +57804,7 @@ function readWorkflowFiles(root) {
   } catch {
     return [];
   }
-  return names.sort(byCodeUnit13).map((name) => ({
+  return names.sort(byCodeUnit14).map((name) => ({
     path: `${WORKFLOW_DIRECTORY}/${name}`,
     text: readFileSync6(join27(root, WORKFLOW_DIRECTORY, name), "utf8")
   }));
@@ -57812,7 +58015,7 @@ function listensToEdits(issues, present3) {
   const types = issues.types;
   return Array.isArray(types) ? types.includes("edited") : types === "edited";
 }
-function byCodeUnit13(a, b) {
+function byCodeUnit14(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -57830,26 +58033,53 @@ var FILES_PER_DIRECTORY = 20;
 function foundText(count3) {
   return count3 === 0 ? "Found no stacks." : `Found ${plural2(count3, "stack")}.`;
 }
-function settingsText(configured) {
+function settingsText(configured, phases = []) {
   const { environment, tickers: tickers2, inputs } = configured;
   const rule = typeof tickers2 === "string" ? tickers2 : tickers2.join(", ");
   const claims = inputs.length === 0 ? "no inputs" : `inputs ${inputs.join(", ")}`;
-  const waits = dependsOnWords(configured);
-  return `environment ${environment}, tickers ${rule}, ${claims}${waits === undefined ? "" : `, depends on ${waits}`}`;
+  const phase = configured.phase === undefined ? "" : `, phase ${phaseWords(configured, " (read from ", ")")}`;
+  const waits = dependsOnWords(configured, phases);
+  return `environment ${environment}, tickers ${rule}, ${claims}${phase}${waits === undefined ? "" : `, depends on ${waits}`}`;
 }
-function dependsOnWords({ dependsOn, dependsOnAuto }) {
+function phaseWords({ phase, phaseFrom }, before, after) {
+  return phaseFrom === undefined ? `${phase}` : `${phase}${before}${phaseFrom}${after}`;
+}
+function split(configured, phases) {
+  return waitsByPhase({
+    phases: phases.map(({ phase }) => phase),
+    phaseOf: new Map(phases.flatMap(({ phase, stackIds }) => stackIds.map((id) => [id, phase]))),
+    stackId: stackId(configured.stack),
+    waitingOn: configured.dependsOn ?? []
+  });
+}
+function dependsOnWords(configured, phases) {
+  const { named, phases: through } = split(configured, phases);
   const parts = [
-    ...dependsOn ?? [],
-    ...dependsOnAuto ? ["the stacks its stack references name, read at each preview (auto)"] : []
+    ...named,
+    ...through.map(({ phase, stackIds }) => `${stackIds.join(", ")} through the ${phase} phase`),
+    ...configured.dependsOnAuto ? ["the stacks its stack references name, read at each preview (auto)"] : []
   ];
   return parts.length === 0 ? undefined : parts.join(", ");
 }
-function dependsOnCell({ dependsOn, dependsOnAuto }) {
+function dependsOnCell(configured, phases) {
+  const { named, phases: through } = split(configured, phases);
   const parts = [
-    ...dependsOn ?? [],
-    ...dependsOnAuto ? ["auto: its stack references, read at each preview"] : []
+    ...named,
+    ...through.map(({ phase }) => `the ${phase} phase`),
+    ...configured.dependsOnAuto ? ["auto: its stack references, read at each preview"] : []
   ];
   return parts.length === 0 ? "none" : parts.join(", ");
+}
+function phaseLines(phases) {
+  return phases.map(({ phase, stackIds }, index) => {
+    const earlier = phases.slice(0, index).map((one) => one.phase);
+    const stacks = stackIds.length === 0 ? "no stack" : stackIds.join(", ");
+    const waits = earlier.length === 0 ? "" : `. Waits on every stack of ${listed2(earlier)}`;
+    return `${index + 1}. ${phase}: ${stacks}${waits}`;
+  });
+}
+function listed2(words) {
+  return words.length <= 1 ? words[0] ?? "" : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 }
 function ignoreText({ glob, stacks }) {
   return `ignore ${JSON.stringify(glob)} leaves out ${plural2(stacks.length, "stack")}: ${stacks.join(", ")}.`;
@@ -57939,9 +58169,10 @@ function renderCheckSummary({
   parts.push("### Stacks", foundText(report.stacks.length));
   if (report.stacks.length > 0) {
     const waits = report.stacks.some((configured) => configured.dependsOn !== undefined || configured.dependsOnAuto);
+    const phased = report.stacks.some((configured) => configured.phase !== undefined);
     parts.push([
-      `| Stack | Environment | Tickers | Inputs |${waits ? " Depends on |" : ""}`,
-      `|---|---|---|---|${waits ? "---|" : ""}`,
+      `| Stack | Environment | Tickers | Inputs |${phased ? " Phase |" : ""}${waits ? " Depends on |" : ""}`,
+      `|---|---|---|---|${phased ? "---|" : ""}${waits ? "---|" : ""}`,
       ...report.stacks.map((configured) => {
         const { environment, tickers: tickers2, inputs } = configured;
         return row([
@@ -57949,7 +58180,23 @@ function renderCheckSummary({
           environment,
           typeof tickers2 === "string" ? tickers2 : tickers2.join(", "),
           inputs.length === 0 ? "none" : inputs.join(", "),
-          ...waits ? [dependsOnCell(configured)] : []
+          ...phased ? [configured.phase === undefined ? "none" : phaseWords(configured, ", from ", "")] : [],
+          ...waits ? [dependsOnCell(configured, report.phases)] : []
+        ]);
+      })
+    ].join(`
+`));
+  }
+  if (report.phases.length > 0) {
+    parts.push("### Phases", [
+      "| Phase | Stacks | Waits on |",
+      "|---|---|---|",
+      ...report.phases.map(({ phase, stackIds }, index) => {
+        const earlier = report.phases.slice(0, index).map((one) => one.phase);
+        return row([
+          phase,
+          stackIds.length === 0 ? "none" : stackIds.join(", "),
+          earlier.length === 0 ? "nothing" : earlier.join(", ")
         ]);
       })
     ].join(`
@@ -58056,8 +58303,10 @@ async function check2(context3) {
     log.info(NO_CONFIG_FILE);
   log.info(foundText(report.stacks.length));
   if (report.stacks.length > 0) {
-    log.group("Stacks", report.stacks.map((configured) => line(`${stackId(configured.stack)}: ${settingsText(configured)}`)));
+    log.group("Stacks", report.stacks.map((configured) => line(`${stackId(configured.stack)}: ${settingsText(configured, report.phases)}`)));
   }
+  if (report.phases.length > 0)
+    log.group("Phases", phaseLines(report.phases).map(line));
   for (const entry2 of report.ignore) {
     if (entry2.stacks.length > 0)
       log.info(line(ignoreText(entry2)));
@@ -58139,9 +58388,9 @@ function openTofuRoots(files, read3) {
   const code2 = files.filter((file2) => /\.(tf|tofu)$/.test(file2) && !SKIPPED3.test(file2));
   const directories = [...new Set(code2.map(directoryOf))];
   const called = new Set(code2.flatMap((file2) => [...(read3(file2) ?? "").matchAll(/^\s*source\s*=\s*"(\.\.?\/[^"]*)"/gm)].map((match) => normal(posix.join(directoryOf(file2), match[1] ?? "")))));
-  return directories.filter((path) => !called.has(path) && !path.split("/").includes("modules")).sort(byCodeUnit14).map((path) => ({
+  return directories.filter((path) => !called.has(path) && !path.split("/").includes("modules")).sort(byCodeUnit15).map((path) => ({
     path,
-    varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit14)
+    varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit15)
   }));
 }
 function openTofuStacks(root) {
@@ -58169,7 +58418,7 @@ function helmCharts(files, read3) {
       return [];
     const release2 = releaseName(typeof chart.name === "string" ? chart.name : "", path);
     return release2 === undefined ? [] : [{ path, release: release2 }];
-  }).sort((a, b) => byCodeUnit14(a.path, b.path));
+  }).sort((a, b) => byCodeUnit15(a.path, b.path));
 }
 function releaseName(name, path) {
   for (const candidate of [name, posix.basename(path)]) {
@@ -58201,7 +58450,7 @@ function findForWorkflow(stacks, files, read3) {
     helm: stacks.some((stack) => tool(stack) === HELM),
     kubectl: stacks.some((stack) => tool(stack) === KUBECTL),
     node: nodePaths.length === 0 ? undefined : nodeFindings(nodePaths, files, read3),
-    otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit14(a.runtime, b.runtime)),
+    otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit15(a.runtime, b.runtime)),
     helmRepositories: helmRepositories(stacks, read3),
     envFiles: envFiles(files, read3)
   };
@@ -58232,7 +58481,7 @@ function nodeFindings(paths, files, read3) {
   const managers = new Set(installs.values());
   const manifest = yamlObject2(read3("package.json"));
   return {
-    installs: [...installs].map(([directory, manager]) => ({ directory, manager })).sort((a, b) => byCodeUnit14(a.directory, b.directory)),
+    installs: [...installs].map(([directory, manager]) => ({ directory, manager })).sort((a, b) => byCodeUnit15(a.directory, b.directory)),
     withoutLockfile,
     versionFile: [".nvmrc", ".node-version"].find((file2) => files.includes(file2)),
     yarnBerry: managers.has("yarn") && files.includes(".yarnrc.yml"),
@@ -58251,7 +58500,7 @@ function helmRepositories(stacks, read3) {
       return typeof repository === "string" && /^https?:\/\//.test(repository) ? [repository] : [];
     });
   });
-  return [...new Set(repositories)].sort(byCodeUnit14);
+  return [...new Set(repositories)].sort(byCodeUnit15);
 }
 function envFiles(files, read3) {
   const found = files.filter((file2) => /(^|\/)(\.env(\.[^/]+)?|[^/]+\.env)$/.test(file2)).filter((file2) => /^[\w./-]+$/.test(file2)).filter((file2) => (read3(file2) ?? "").split(`
@@ -58295,7 +58544,7 @@ function normal(path) {
   const joined2 = posix.normalize(path).replace(/\/$/, "");
   return joined2 === "" ? "." : joined2;
 }
-function byCodeUnit14(a, b) {
+function byCodeUnit15(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -58729,7 +58978,7 @@ async function init(context3) {
   const found = await context3.adapter.discover(root, existing);
   const declarable = configKept ? { opentofu: [], helm: [] } : findDeclarable(files, read3, found.map(({ path }) => path));
   let config2 = existing;
-  let configText;
+  let configText2;
   let stacks = found;
   if (!configKept) {
     const declared = starterConfig({ declarable, unrelated: [], unclaimed: undefined });
@@ -58752,7 +59001,7 @@ async function init(context3) {
       ...new Set(covered.unclaimed.flatMap(({ files: unclaimed }) => unclaimed.map((file2) => dirname2(file2)).filter((directory) => directory !== ".")))
     ].sort();
     const [first] = directories;
-    configText = starterConfig({
+    configText2 = starterConfig({
       declarable,
       unrelated,
       unclaimed: first === undefined ? undefined : {
@@ -58760,7 +59009,7 @@ async function init(context3) {
         stack: nearest(first, stacks.map(({ path }) => path))
       }
     });
-    config2 = parseConfig(configText);
+    config2 = parseConfig(configText2);
     stacks = await context3.adapter.discover(root, config2);
   }
   const branch = defaultBranch(root);
@@ -58771,8 +59020,8 @@ async function init(context3) {
     merges: config2.mergeAndDeploy.authors.length > 0
   });
   write(root, WORKFLOW_FILE, workflow);
-  if (configText !== undefined)
-    write(root, CONFIG_FILE, configText);
+  if (configText2 !== undefined)
+    write(root, CONFIG_FILE, configText2);
   if (written.includes(EXPORT_ENV_FILE))
     write(root, EXPORT_ENV_FILE, EXPORT_ENV);
   log.info(foundText(stacks.length));
@@ -59432,7 +59681,7 @@ function clearTick(row2, options = {}) {
     return row2;
   const [first = "", ...rest] = row2.text.split(`
 `);
-  const note = INDENT + (options.note === "deploys-off" ? DEPLOYS_OFF_NOTE : typeof options.note === "object" ? dependencyNote(options.note.dependsOn) : ORPHAN_TICK_NOTE);
+  const note = INDENT + (options.note === "deploys-off" ? DEPLOYS_OFF_NOTE : typeof options.note === "object" ? dependencyNote(options.note.dependsOn, options.note.phases) : ORPHAN_TICK_NOTE);
   const lines3 = options.note && !rest.includes(note) ? [note, ...rest] : rest;
   const [cleared] = parseDashboard([first.replace(TICKED_BOX, "- [ ] "), ...lines3].join(`
 `)).rows;
@@ -59624,12 +59873,26 @@ async function resolveTicks(context3, handOn) {
     pending: new Set(liveRows.flatMap((row2) => row2.known && row2.state === "pending" ? [row2.stackId] : [])),
     open: new Set(open2.keys())
   });
+  const phaseOf = new Map([...stacks?.values() ?? []].flatMap((one) => one.phase === undefined ? [] : [[stackId(one.stack), one.phase]]));
   for (const { stackId: id, waitingOn: waitingOn2 } of plan.refused) {
     const one = waitingOn2.length === 1;
-    log.info(`${logGroupTitle(id)} is ticked, and it depends on ${waitingOn2.map(logGroupTitle).join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`);
+    const { named: named2, phases } = waitsByPhase({
+      phases: config2.phases,
+      phaseOf,
+      stackId: id,
+      waitingOn: waitingOn2
+    });
+    const words = [
+      ...named2.map(logGroupTitle),
+      ...phases.flatMap(({ phase, stackIds }) => stackIds.map((dependency) => `${logGroupTitle(dependency)} of the ${phase} phase`))
+    ];
+    log.info(`${logGroupTitle(id)} is ticked, and it depends on ${words.join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`);
     const hash2 = hashes.get(id);
     if (hash2 !== undefined)
-      clear.set(id, { hash: hash2, note: { dependsOn: waitingOn2 } });
+      clear.set(id, {
+        hash: hash2,
+        note: { dependsOn: named2, ...phases.length === 0 ? {} : { phases } }
+      });
   }
   const tickers2 = new Map(start.map(({ stackId: id, ticker }) => [id, ticker]));
   const toCreate = [
@@ -60059,8 +60322,8 @@ function withRowDependencies(context3, stacks, rows) {
 async function startQueued(context3, handOn) {
   const { log, github } = context3;
   const config2 = loadConfig(context3.root);
-  if (!config2.stacks.some(({ dependsOn }) => dependsOn !== undefined)) {
-    log.info("The event that started this job is not about an issue, and no stack has dependsOn. Nothing to do.");
+  if (!config2.stacks.some(({ dependsOn, phase }) => dependsOn !== undefined || phase !== undefined)) {
+    log.info("The event that started this job is not about an issue, and no stack has dependsOn or a phase. Nothing to do.");
     return;
   }
   const { stacks, ignored } = await discover2(context3, config2);
@@ -60556,7 +60819,7 @@ function fitToBudget(entries, frameCost, budget) {
     entry2.level = level;
   };
   const fits = () => frameCost(shortened) + blocks2 - 1 <= budget;
-  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit8(a.stackId, b.stackId);
+  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit9(a.stackId, b.stackId);
   for (const level of LEVELS2.slice(1)) {
     for (const entry2 of [...entries].sort(bySize((entry3) => entry3.level, -1))) {
       if (fits())
@@ -60597,7 +60860,7 @@ function toolDiffLine(options) {
   return `The tool's own diff of every pending stack, values included, is in the ${log}, in the stack's group.`;
 }
 function renderSummary(stacks, options = {}) {
-  const sorted = [...stacks].sort((a, b) => byCodeUnit8(stackIdOf2(a), stackIdOf2(b)));
+  const sorted = [...stacks].sort((a, b) => byCodeUnit9(stackIdOf2(a), stackIdOf2(b)));
   const diffs = sorted.filter((stack) => stack.kind === "diff");
   const pending = diffs.filter((stack) => stack.diff.changes.length > 0);
   const hasDrift = (stack) => (stack.diff.drift ?? []).length > 0;
@@ -60750,7 +61013,7 @@ async function scanning(context3, report) {
   const config2 = loadConfig(context3.root);
   const found = await context3.adapter.discover(context3.root, config2);
   const ignored = ignoredStacks(config2, found);
-  const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit8(stackId(a.stack), stackId(b.stack)));
+  const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit9(stackId(a.stack), stackId(b.stack)));
   const ids = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural2(stacks.length, "stack")}.`);
   const { logDiff } = config2.scan;
@@ -60791,7 +61054,7 @@ async function scanning(context3, report) {
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit8(a.id, b.id));
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit9(a.id, b.id));
     if (round.length > 0 || rounds === 0) {
       await writeSummary2(context3, all, { logDiff, unclaimed });
       report.previewed = all;
@@ -60989,7 +61252,7 @@ async function scanning(context3, report) {
     counts: dashboardCounts(parseDashboard(written.body).rows)
   };
   if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit8(a.id, b.id));
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit9(a.id, b.id));
     await writeSummary2(context3, all, { logDiff, unclaimed }, attributed);
   }
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
@@ -61444,7 +61707,7 @@ function mergesWaiting(facts) {
       waiting.push({ id, fact: { ...fact, merge: fact.merge } });
     }
   }
-  return waiting.sort((a, b) => byCodeUnit8(a.id, b.id));
+  return waiting.sort((a, b) => byCodeUnit9(a.id, b.id));
 }
 async function handOffMerges(context3, config2, stacks, previewed, waiting, handedOn) {
   const { github, log } = context3;
