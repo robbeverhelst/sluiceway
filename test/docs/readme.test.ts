@@ -8,6 +8,9 @@ import { fences, modeOf, read, section, workflows } from "./docs.ts";
 
 const readme = read("README.md");
 
+// A link to a page of the docs site, with or without an anchor.
+const SITE_LINK = /\]\(https:\/\/docs\.sluiceway\.dev\/[\w/-]*\/(#[\w-]+)?\)/;
+
 // The headings of the README, in order.
 const headings = [...readme.matchAll(/^## (.+)$/gm)].map((match) => match[1]);
 
@@ -45,12 +48,13 @@ describe("the README as the front door", () => {
     expect(top.indexOf("<picture>")).toBeLessThan(top.indexOf("> [!IMPORTANT]"));
   });
 
-  // The links go to the Markdown files for now. The swap to the docs site is
-  // one pass later, and the comment says so to whoever does it.
-  test("says at the top that its links move to docs.sluiceway.dev later", () => {
-    const comment = readme.match(/^<!--([\s\S]*?)-->/)?.[1] ?? "";
-    expect(comment).toContain("docs.sluiceway.dev");
-    expect(comment).toContain("docs/");
+  // Slice 5.16: the docs site is live, so the note that said its links would
+  // move is gone, and no link sends a reader to a Markdown file in docs/.
+  test("links to the docs site and not into docs/", () => {
+    expect(readme).not.toMatch(/^<!--/);
+    expect(readme).not.toContain("](docs/");
+    expect(readme).not.toContain("](CONTEXT.md");
+    expect(readme).not.toMatch(/(?:src|srcset|href)="docs\//);
   });
 
   test("tells how it works in five steps", () => {
@@ -58,7 +62,7 @@ describe("the README as the front door", () => {
     expect(steps.length).toBe(5);
   });
 
-  test("gets you started in four short paragraphs, each with a link into docs/", () => {
+  test("gets you started in four short paragraphs, each with a link to the docs site", () => {
     const paragraphs = section(readme, "## Get started")
       .replace(/^```[\s\S]*?^```$/gm, "")
       .split("\n\n")
@@ -69,7 +73,7 @@ describe("the README as the front door", () => {
       "Tell it about your stacks.",
       "Load your credentials.",
     ]);
-    for (const block of paragraphs) expect(block).toMatch(/\]\(docs\/[\w-]+\.md(#[\w-]+)?\)/);
+    for (const block of paragraphs) expect(block).toMatch(SITE_LINK);
   });
 
   // What people copy. The check, the read-only trial and the wiring for merge
@@ -101,12 +105,12 @@ describe("the README as the front door", () => {
     expect(lines.length).toBe(3);
   });
 
-  test("lists what it does, one line per capability, each linking into docs/", () => {
+  test("lists what it does, one line per capability, each linking to the docs site", () => {
     const lines = section(readme, "## What it does")
       .split("\n")
       .filter((line) => line.startsWith("- "));
     expect(lines.length).toBeGreaterThanOrEqual(12);
-    for (const line of lines) expect(line).toMatch(/\]\(docs\/[\w-]+\.md(#[\w-]+)?\)/);
+    for (const line of lines) expect(line).toMatch(SITE_LINK);
     const text = lines.join("\n");
     for (const word of [
       "Pulumi",
@@ -139,7 +143,7 @@ describe("the README as the front door", () => {
   test("ends with the links out: docs, examples, changelog, contributing, license", () => {
     const more = section(readme, "## More");
     for (const target of [
-      "(docs/README.md)",
+      "(https://docs.sluiceway.dev/)",
       "(https://github.com/sluiceway/examples)",
       "(CHANGELOG.md)",
       "(CONTRIBUTING.md)",

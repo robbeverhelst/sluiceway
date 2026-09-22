@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Check [docs/later.md](https://github.com/sluiceway/sluiceway/blob/main/docs/later.md) first. It lists what was left out of v1 on purpose, and what was rejected and why.
+        Check [what is not in v1](https://docs.sluiceway.dev/not-in-v1/) first. It lists what was left out of v1 on purpose, and what was rejected and why.
   - type: textarea
     id: problem
     attributes:
@@ -30,5 +30,5 @@ body:
     attributes:
       label: Checks
       options:
-        - label: I read docs/later.md and this is not listed under "Rejected on principle".
+        - label: I read what is not in v1, and this is not listed under "Rejected on principle".
           required: true

@@ -343,11 +343,14 @@ describe("every user doc", () => {
 
   // @v0 moves with every release (build plan, section 8). A page that shows it
   // leads a reader who wants to review every update to the pinned commit, in
-  // docs/workflow.md since the README rewrite.
+  // docs/workflow.md since the README rewrite, and on the docs site for the
+  // README since slice 5.16.
   test.each(USER_DOCS)("that shows @v0 links to Pin a commit: %s", (path) => {
     const text = read(path);
     if (text.includes("sluiceway/sluiceway@v0"))
-      expect(text).toMatch(/workflow\.md#pin-a-commit|\(#pin-a-commit\)/);
+      expect(text).toMatch(
+        /workflow\.md#pin-a-commit|\/guides\/workflow\/#pin-a-commit|\(#pin-a-commit\)/,
+      );
   });
 
   test.each(USER_DOCS)("has no em-dash: %s", (path) => {

@@ -90,7 +90,9 @@ describe("docs/configuration.md", () => {
 
 describe("the README", () => {
   test("links to the config reference", () => {
-    expect(read("README.md").includes("(docs/configuration.md)")).toBe(true);
+    expect(read("README.md").includes("(https://docs.sluiceway.dev/guides/configuration/)")).toBe(
+      true,
+    );
   });
 });
 

@@ -1,8 +1,3 @@
-<!--
-The links below point at the Markdown files in docs/ of this repo. When the
-docs site at docs.sluiceway.dev is live, one pass swaps every docs/ link for
-its page there.
--->
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/mascot/in-sync-dark.svg">
@@ -13,7 +8,7 @@ its page there.
 Sluiceway keeps one GitHub issue that shows which infrastructure stacks have changes waiting, and deploys a stack when you tick its box.
 
 > [!IMPORTANT]
-> **Sluiceway is in beta.** It works end to end and is released as [0.x](https://github.com/sluiceway/sluiceway/releases), and the [roadmap](docs/roadmap.md) says what comes before 1.0. Use `sluiceway/sluiceway@v0`, or [pin a commit](docs/workflow.md#pin-a-commit) if you want to review every update. Please report every rough edge as an [issue](https://github.com/sluiceway/sluiceway/issues/new). The [onboarding log](docs/onboarding-log.md) lists the ones found so far.
+> **Sluiceway is in beta.** It works end to end and is released as [0.x](https://github.com/sluiceway/sluiceway/releases), and the [roadmap](https://docs.sluiceway.dev/roadmap/) says what comes before 1.0. Use `sluiceway/sluiceway@v0`, or [pin a commit](https://docs.sluiceway.dev/guides/workflow/#pin-a-commit) if you want to review every update. Please report every rough edge as an [issue](https://github.com/sluiceway/sluiceway/issues/new). The [onboarding log](https://docs.sluiceway.dev/onboarding-log/) lists the ones found so far.
 
 ## What it looks like
 
@@ -116,9 +111,9 @@ The issue is a view and never the source of truth. What is pending is always wor
 
 ## Get started
 
-**Check your setup.** A check on every pull request reads your files and says which stacks Sluiceway found and whether its settings are valid. It needs no credentials, no tool and no write access, so start with it before anything can deploy. [The check](docs/workflow.md#check-your-setup) has the workflow file. To see your dashboard first with nothing that can deploy, [start read only](docs/read-only-trial.md).
+**Check your setup.** A check on every pull request reads your files and says which stacks Sluiceway found and whether its settings are valid. It needs no credentials, no tool and no write access, so start with it before anything can deploy. [The check](https://docs.sluiceway.dev/guides/workflow/#check-your-setup) has the workflow file. To see your dashboard first with nothing that can deploy, [start read only](https://docs.sluiceway.dev/guides/read-only-trial/).
 
-**Add the workflow.** This is the whole loop: one job with one Sluiceway step, and no `if:` anywhere. The step reads the event of the run and does what it asks for: a push or the schedule scans, a tick deploys, an edit of any other issue ends with a notice. It goes in `.github/workflows/deploy-dashboard.yml` on the default branch, and the comments mark where your own steps go. [The workflow](docs/workflow.md) explains every part, and what merge and deploy, stack dependencies, self-hosted runners and GitHub Environments add. [Example workflows](docs/example-workflows.md) has it complete for common setups, and [init](docs/init.md) writes a first version from what it finds in your repo.
+**Add the workflow.** This is the whole loop: one job with one Sluiceway step, and no `if:` anywhere. The step reads the event of the run and does what it asks for: a push or the schedule scans, a tick deploys, an edit of any other issue ends with a notice. It goes in `.github/workflows/deploy-dashboard.yml` on the default branch, and the comments mark where your own steps go. [The workflow](https://docs.sluiceway.dev/guides/workflow/) explains every part, and what merge and deploy, stack dependencies, self-hosted runners and GitHub Environments add. [Example workflows](https://docs.sluiceway.dev/guides/example-workflows/) has it complete for common setups, and [init](https://docs.sluiceway.dev/guides/init/) writes a first version from what it finds in your repo.
 
 ```yaml
 name: deploy-dashboard
@@ -162,35 +157,35 @@ jobs:
       - uses: sluiceway/sluiceway@v0
 ```
 
-**Tell it about your stacks.** Optional. Without `sluiceway.yaml` every stack that discovery finds gets a row, and anyone with write access can tick. The file at the repo root says who may tick which stack, which stacks to leave out and which files outside a stack's directory it reads. [Configuration](docs/configuration.md) has every key.
+**Tell it about your stacks.** Optional. Without `sluiceway.yaml` every stack that discovery finds gets a row, and anyone with write access can tick. The file at the repo root says who may tick which stack, which stacks to leave out and which files outside a stack's directory it reads. [Configuration](https://docs.sluiceway.dev/guides/configuration/) has every key.
 
-**Load your credentials.** The workflow puts what the tool needs into the job environment, in steps before Sluiceway. Sluiceway passes that environment to the tool as it is and never reads a credential by name. [Credentials](docs/credentials.md) has recipes for GitHub secrets, a cloud with OIDC, a secret manager and private registries.
+**Load your credentials.** The workflow puts what the tool needs into the job environment, in steps before Sluiceway. Sluiceway passes that environment to the tool as it is and never reads a credential by name. [Credentials](https://docs.sluiceway.dev/guides/credentials/) has recipes for GitHub secrets, a cloud with OIDC, a secret manager and private registries.
 
 ## What it promises
 
-- **It never holds your credentials, and there is no backend.** Previews and deploys run in your own runners with the secrets your workflow loads, and Sluiceway itself calls the GitHub API and nothing else ([security](docs/security.md)).
-- **A fresh preview before every deploy.** A tick deploys only what the row showed. If the change moved since, nothing is deployed and the row comes back with the new diff ([what a tick promises](docs/security.md#what-a-tick-promises)).
-- **No values, unless you list them.** Rows show resource types, resource names and the paths of changed properties, never a value, except at the paths you list, and never one the tool marks secret ([what reaches the issue](docs/security.md#what-reaches-the-issue)).
+- **It never holds your credentials, and there is no backend.** Previews and deploys run in your own runners with the secrets your workflow loads, and Sluiceway itself calls the GitHub API and nothing else ([security](https://docs.sluiceway.dev/guides/security/)).
+- **A fresh preview before every deploy.** A tick deploys only what the row showed. If the change moved since, nothing is deployed and the row comes back with the new diff ([what a tick promises](https://docs.sluiceway.dev/guides/security/#what-a-tick-promises)).
+- **No values, unless you list them.** Rows show resource types, resource names and the paths of changed properties, never a value, except at the paths you list, and never one the tool marks secret ([what reaches the issue](https://docs.sluiceway.dev/guides/security/#what-reaches-the-issue)).
 
 ## What it does
 
-- **Pulumi**, with stacks found from their files alone ([configuration](docs/configuration.md#stacks-and-stack-ids)).
-- **OpenTofu and Terraform**, also behind Terragrunt or CDK for Terraform, with stacks declared in `sluiceway.yaml`. A tick deploys the very plan file whose diff was approved ([`stacks[].tool`](docs/configuration.md#stackstool)).
-- **Helm**, with a release in a namespace declared in `sluiceway.yaml`. A tick deploys only what the chart rendered when the diff was checked ([`stacks[].tool`](docs/configuration.md#stackstool)).
-- **Kubernetes manifests**, with a directory of manifests or a kustomization declared in `sluiceway.yaml`. A tick deploys the very set of manifests that was diffed ([`stacks[].tool`](docs/configuration.md#stackstool)).
-- **Tick to deploy.** One box per stack with changes waiting, checked against who may tick ([using the dashboard](docs/using-the-dashboard.md)).
-- **Merge and deploy**, for Renovate and other routine updates: one tick merges a green pull request and deploys its stack ([merge and deploy](docs/workflow.md#merge-and-deploy)).
-- **Drift**, opt-in: a scheduled scan finds changes made outside the code, and a tick puts them back ([`drift.enabled`](docs/configuration.md#driftenabled)).
-- **Stack dependencies** with `dependsOn` or `phases`: a stack waits for the stacks it depends on, or for every stack of the phases before its own, and a chain deploys one layer per run ([`dependsOn`](docs/configuration.md#stacksdependson), [`phases`](docs/configuration.md#phases)).
-- **A preview page per pending stack**, a check run with the stack's whole diff ([using the dashboard](docs/using-the-dashboard.md#rows-and-ticks)).
-- **The check mode**, which reads your files in a pull request and says what Sluiceway will find and what your workflow lacks ([check your setup](docs/workflow.md#check-your-setup)).
-- **Values at the paths you list** with `showValues`, such as a chart's version, and the tool's own diff in the job log if you ask ([`dashboard.showValues`](docs/configuration.md#dashboardshowvalues)).
-- **A kill switch and a rehearsal**: `deploys: false` stops every deploy, and `dry-run` rehearses a tick without deploying ([`deploys`](docs/configuration.md#deploys), [`dry-run`](docs/reference.md#inputs)).
-- **Notifications**, opt-in: a short message to Slack, Telegram or your own webhook when stacks are pending, drift is found, a deploy fails or a tick is refused, plus outputs and a result file for anything else ([notifications](docs/notifications.md)).
+- **Pulumi**, with stacks found from their files alone ([configuration](https://docs.sluiceway.dev/guides/configuration/#stacks-and-stack-ids)).
+- **OpenTofu and Terraform**, also behind Terragrunt or CDK for Terraform, with stacks declared in `sluiceway.yaml`. A tick deploys the very plan file whose diff was approved ([`stacks[].tool`](https://docs.sluiceway.dev/guides/configuration/#stackstool)).
+- **Helm**, with a release in a namespace declared in `sluiceway.yaml`. A tick deploys only what the chart rendered when the diff was checked ([`stacks[].tool`](https://docs.sluiceway.dev/guides/configuration/#stackstool)).
+- **Kubernetes manifests**, with a directory of manifests or a kustomization declared in `sluiceway.yaml`. A tick deploys the very set of manifests that was diffed ([`stacks[].tool`](https://docs.sluiceway.dev/guides/configuration/#stackstool)).
+- **Tick to deploy.** One box per stack with changes waiting, checked against who may tick ([using the dashboard](https://docs.sluiceway.dev/using-the-dashboard/)).
+- **Merge and deploy**, for Renovate and other routine updates: one tick merges a green pull request and deploys its stack ([merge and deploy](https://docs.sluiceway.dev/guides/workflow/#merge-and-deploy)).
+- **Drift**, opt-in: a scheduled scan finds changes made outside the code, and a tick puts them back ([`drift.enabled`](https://docs.sluiceway.dev/guides/configuration/#driftenabled)).
+- **Stack dependencies** with `dependsOn` or `phases`: a stack waits for the stacks it depends on, or for every stack of the phases before its own, and a chain deploys one layer per run ([`dependsOn`](https://docs.sluiceway.dev/guides/configuration/#stacksdependson), [`phases`](https://docs.sluiceway.dev/guides/configuration/#phases)).
+- **A preview page per pending stack**, a check run with the stack's whole diff ([using the dashboard](https://docs.sluiceway.dev/using-the-dashboard/#rows-and-ticks)).
+- **The check mode**, which reads your files in a pull request and says what Sluiceway will find and what your workflow lacks ([check your setup](https://docs.sluiceway.dev/guides/workflow/#check-your-setup)).
+- **Values at the paths you list** with `showValues`, such as a chart's version, and the tool's own diff in the job log if you ask ([`dashboard.showValues`](https://docs.sluiceway.dev/guides/configuration/#dashboardshowvalues)).
+- **A kill switch and a rehearsal**: `deploys: false` stops every deploy, and `dry-run` rehearses a tick without deploying ([`deploys`](https://docs.sluiceway.dev/guides/configuration/#deploys), [`dry-run`](https://docs.sluiceway.dev/reference/action/#inputs)).
+- **Notifications**, opt-in: a short message to Slack, Telegram or your own webhook when stacks are pending, drift is found, a deploy fails or a tick is refused, plus outputs and a result file for anything else ([notifications](https://docs.sluiceway.dev/guides/notifications/)).
 
 ## More
 
-- [The documentation](docs/README.md): [the workflow](docs/workflow.md), [using the dashboard](docs/using-the-dashboard.md), [configuration](docs/configuration.md), [credentials](docs/credentials.md), [security](docs/security.md), [reference](docs/reference.md), [the roadmap](docs/roadmap.md) and [the glossary](CONTEXT.md).
+- [The documentation](https://docs.sluiceway.dev/): [the workflow](https://docs.sluiceway.dev/guides/workflow/), [using the dashboard](https://docs.sluiceway.dev/using-the-dashboard/), [configuration](https://docs.sluiceway.dev/guides/configuration/), [credentials](https://docs.sluiceway.dev/guides/credentials/), [security](https://docs.sluiceway.dev/guides/security/), [reference](https://docs.sluiceway.dev/reference/action/), [the roadmap](https://docs.sluiceway.dev/roadmap/) and [the glossary](https://docs.sluiceway.dev/reference/glossary/).
 - [sluiceway/examples](https://github.com/sluiceway/examples): a repo with Sluiceway installed and a live dashboard.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release.
 - [CONTRIBUTING.md](CONTRIBUTING.md): how to build and test it. To report a vulnerability, see [SECURITY.md](SECURITY.md).

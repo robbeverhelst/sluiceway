@@ -51,9 +51,9 @@ describe("the README", () => {
     expect(notice).toContain("**Sluiceway is in beta.**");
     expect(notice).toContain("released as [0.x](https://github.com/sluiceway/sluiceway/releases)");
     expect(notice).not.toMatch(/releases\/tag\//);
-    expect(notice).toContain("(docs/roadmap.md)");
+    expect(notice).toContain("(https://docs.sluiceway.dev/roadmap/)");
     expect(notice).toContain("`sluiceway/sluiceway@v0`");
-    expect(notice).toContain("(docs/workflow.md#pin-a-commit)");
+    expect(notice).toContain("(https://docs.sluiceway.dev/guides/workflow/#pin-a-commit)");
   });
 
   test("Pin a commit, in docs/workflow.md, still shows how to pin a release by its full commit SHA", () => {
