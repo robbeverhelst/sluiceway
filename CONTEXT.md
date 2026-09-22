@@ -107,7 +107,7 @@ A change made to real infrastructure outside the code: a property that changed, 
 _Avoid_: Out-of-band change, skew
 
 **Drift check**:
-A run of the tool that compares a stack's state with real infrastructure and changes neither. With `drift.enabled`, or `stacks[].drift.enabled` for the stacks of an entry, a scan that a schedule or a person starts runs one for every such stack it previews, right after its preview. Its findings join the stack's diff hash, and `apply` runs it again before a deploy of a row whose hash covers drift.
+A run of the tool that compares a stack's state with real infrastructure and changes neither. For a Helm release it is two diffs, one against the release helm stored and one against the live objects. With `drift.enabled`, or `stacks[].drift.enabled` for the stacks of an entry, a scan that a schedule or a person starts runs one for every such stack it previews, right after its preview. Its findings join the stack's diff hash, and `apply` runs it again before a deploy of a row whose hash covers drift.
 _Avoid_: Refresh (that is the tool's word, and a plain refresh changes the state), drift scan, drift detection run
 
 **In sync**:

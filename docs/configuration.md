@@ -298,9 +298,9 @@ drift:
 ```
 
 - **When is the workflow's business.** There is no `drift.schedule`: add a `schedule` trigger to the workflow, and every scan it starts checks drift. A scan that a push starts checks only the stacks whose row showed drift, so known drift is not lost.
-- **It costs one more tool run per stack** in those scans, in the same pool slot and with the same time limit as the stack's preview. For Pulumi it is `pulumi refresh --preview-only`, which changes neither the state nor anything real, and from v3.229.0 takes no stack lock, so it never blocks a deploy.
-- **The deploy of a row with drift reads what is real first.** For Pulumi it runs `pulumi up --refresh`. `apply` checks the drift again before it compares the diff hash, so drift that changed after the tick stops the deploy, as a moved change does.
-- **What counts as drift is up to the tool.** A resource whose provider cannot read it back never drifts. OpenTofu and Helm stacks are not checked yet.
+- **It costs one more tool run per stack** in those scans, in the same pool slot and with the same time limit as the stack's preview. For Pulumi it is `pulumi refresh --preview-only`, which changes neither the state nor anything real, and from v3.229.0 takes no stack lock, so it never blocks a deploy. For Helm it is two runs: the preview's diff once more, and the same diff with the plugin's `--three-way-merge --no-hooks`, which compares the chart with the live objects. What the second finds beyond the first is drift: a field changed with kubectl, or an object deleted ([record 0069](adr/0069-helm-drift-is-the-three-way-diff-beyond-the-plain-one-and-the-deploy-flags-follow-helm.md)).
+- **The deploy of a row with drift reads what is real first.** For Pulumi it runs `pulumi up --refresh`. Helm merges the chart into the live objects on every deploy, and on Helm 4 a release it applies server-side gets `--force-conflicts`, so a field changed with kubectl is taken back. `apply` checks the drift again before it compares the diff hash, so drift that changed after the tick stops the deploy, as a moved change does.
+- **What counts as drift is up to the tool.** A resource whose provider cannot read it back never drifts. A field a Helm chart does not set, such as a label added by hand, stays after a deploy and is no drift. OpenTofu stacks are not checked yet.
 - **A drift check that fails** leaves the row as the preview made it, with a warning on the run and the tool's words in the job log.
 - **A stack entry can turn it on or off** for its own stacks, with [`stacks[].drift.enabled`](#stacksdriftenabled).
 - **A drifted row's `preview` link** opens a preview page that lists the drift, as a pending row's lists its changes. Without `checks: write` it opens the summary.
@@ -420,7 +420,7 @@ An unknown tool, an unknown option or an option of the wrong kind stops every mo
 
 Sluiceway runs `tofu init` for every directory of the stacks it is about to preview, one directory at a time, before the first preview. Then `tofu plan -refresh=false -out` and `tofu show -json` give the preview, and a tick deploys the plan file that `apply`'s own fresh preview saved and hashed, with `tofu apply` of that file. Install `tofu` in the workflow before Sluiceway, v1.11.0 or newer ([credentials](credentials.md)). A `terraform` stack runs the same commands with `terraform`, v1.14.0 or newer: Terraform and OpenTofu write the same plan JSON, and a recording of each gives the same diff. The stacks of one directory share its init, so they name the same tool and wrapper.
 
-For Helm, Sluiceway runs `helm dependency build` for every local chart that has dependencies, one chart at a time, before the first preview. `helm diff upgrade --install --reset-values --dry-run=server --output=structured`, from the [helm-diff](https://github.com/databus23/helm-diff) plugin, gives the preview: the objects the release would add, change and remove, and the path of every field that changes. A tick deploys with `helm upgrade --install --reset-values --atomic`. Helm saves no plan, so `apply` renders the chart with `helm template` in its fresh preview and once more right before the deploy, and deploys only when both renders are the same. A chart that renders differently every time, such as one with a random value, is refused as a moved change and never deploys. Install helm v3.18.0 or newer and the diff plugin v3.15.11 or newer in the workflow before Sluiceway ([credentials](credentials.md)). The release's namespace must exist.
+For Helm, Sluiceway runs `helm dependency build` for every local chart that has dependencies, one chart at a time, before the first preview. That includes the local charts a chart depends on through a `file://` repository, each built before the chart that depends on it: helm leaves out the objects of a subchart whose own dependencies were not built, and says nothing. `helm diff upgrade --install --reset-values --dry-run=server --output=structured`, from the [helm-diff](https://github.com/databus23/helm-diff) plugin, gives the preview: the objects the release would add, change and remove, and the path of every field that changes. A tick deploys with `helm upgrade --install --reset-values`, and `--rollback-on-failure` on Helm 4 or `--atomic` on Helm 3, whichever the installed helm knows. Helm saves no plan, so `apply` renders the chart with `helm template` in its fresh preview and once more right before the deploy, and deploys only when both renders are the same. A chart that renders differently every time, such as one with a random value, is refused as a moved change and never deploys. Install helm v3.18.0 or newer and the diff plugin v3.15.11 or newer in the workflow before Sluiceway ([credentials](credentials.md)). The release's namespace must exist, unless [`createNamespace`](#stacksoptionscreatenamespace) lets the deploy make it.
 
 For `kubectl`, Sluiceway renders the stack into one set of manifests: the files of the directory as they are, or what `kubectl kustomize` builds when the directory holds a `kustomization.yaml`. `kubectl diff --server-side` of that set is the preview: the API server runs the apply as a dry run, so a field that cannot change in place, a field another manager owns and an object the server refuses all fail the preview, before anyone ticks. A tick deploys, with `kubectl apply --server-side`, the very set `apply`'s own fresh preview diffed and hashed. Three things to know:
 
@@ -668,7 +668,7 @@ The name of the Helm release, by helm's own rule: lower case letters, digits, `-
 
 Required with `tool: helm`. With `tool: kubectl`, default: the namespace of the context.
 
-With `tool: helm`, the namespace of the release, passed with `--namespace` to every command of the stack. It must exist before the first deploy: Sluiceway does not create it.
+With `tool: helm`, the namespace of the release, passed with `--namespace` to every command of the stack. It must exist before the first deploy, unless `createNamespace` is on.
 
 With `tool: kubectl`, the namespace of every object that names none, passed with `--namespace` to the preview, the tool diff and the deploy. An object that names another namespace is an error of the tool, so its preview fails.
 
@@ -691,6 +691,12 @@ The exact version of a chart reference, such as `4.11.3`, never a range: the dep
 Default: `[]`
 
 Only with `tool: helm`. Values files, relative to the directory of the stack, handed to every command with `--values` in this order, after the chart's own `values.yaml`. Every deploy starts from the chart's values and these files, with `--reset-values`, so nothing a release kept from an earlier deploy by hand stays. A values file outside the directory of the stack is not claimed by it: add it to `inputs` too.
+
+### `stacks[].options.createNamespace`
+
+Default: `false`
+
+Only with `tool: helm`. With `true`, the deploy passes `--create-namespace`, so the first deploy makes the release's namespace when it is not there. The preview works without it: the diff and the render never need the namespace. The namespace is not an object of the release, so the row does not show it ([record 0069](adr/0069-helm-drift-is-the-three-way-diff-beyond-the-plain-one-and-the-deploy-flags-follow-helm.md)).
 
 ### `stacks[].options.context`
 

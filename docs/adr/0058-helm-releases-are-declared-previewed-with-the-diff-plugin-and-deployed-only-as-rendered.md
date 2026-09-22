@@ -1,5 +1,7 @@
 # Helm releases are declared in sluiceway.yaml, previewed with the diff plugin, and deployed only as the fresh preview rendered them
 
+> Amended by 0069: Helm stacks have a drift check (the diff plugin's three-way diff beyond the plain one), the deploy passes `--rollback-on-failure` to Helm 4 and `--atomic` to Helm 3, `createNamespace` is a named option, and the local charts a chart depends on are built before it.
+
 The build plan's slice 4.6 adds a third adapter, so that a Kubernetes team that runs Helm can use the dashboard (issue 100). Record 0053 set the pattern for a tool whose stacks files cannot name: declared entries, a preparation before the pool, a saved plan. This record settles how Helm fits it, from what helm v3.18.0 and v4.3.0 and the diff plugin v3.15.11 and v3.15.13 printed against a kind cluster on 2026-09-22, and from the plugin's source.
 
 ## Decision

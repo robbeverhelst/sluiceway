@@ -193,8 +193,9 @@ For Helm releases (record 0058), install helm v3.18.0 or newer and the [helm-dif
 
 Then give the job a kubeconfig for the cluster, the way your own CI does: a cloud's own login action writes one for EKS, GKE or AKS through OIDC, and `KUBECONFIG` can point at a file a step writes from a secret. Sluiceway hands helm the whole environment, `KUBECONFIG`, `HELM_*` and the plugin's `HELM_DIFF_*` included, and sets nothing. A chart reference needs its repository: add it with `helm repo add` in a step before Sluiceway, or log in to an OCI registry with `helm registry login` (see below).
 
-- **The namespace of every release must exist.** Sluiceway does not create it.
+- **The namespace of every release must exist**, unless the stack turns on [`createNamespace`](configuration.md#stacksoptionscreatenamespace). Then the deploy's credentials need to create namespaces too.
 - **The credentials need what a deploy needs.** The preview reads the release and renders with `--dry-run=server`, which the cluster answers as it would a deploy. The `scan` job and the `apply` job both need them. `check`, `resolve` and `settle` never reach the cluster.
+- **The drift check sends a dry-run patch of every object** of the release, which changes nothing and needs `patch` on those objects ([record 0069](adr/0069-helm-drift-is-the-three-way-diff-beyond-the-plain-one-and-the-deploy-flags-follow-helm.md)). With read access only, the diff plugin v3.15.13 and newer merges locally instead and says so in the job log, and older plugins fail the check.
 - **Rendered manifests hold every value in plain text.** Sluiceway keeps only a digest of the render in memory while `apply` runs, and never writes the manifests anywhere.
 ### Kubernetes manifests
 

@@ -40,8 +40,7 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Zero-config discovery for OpenTofu (a directory with a backend block or a lock file as a stack)
 - A `backendConfig` option for OpenTofu (`tofu init -backend-config`)
 - A hint in the check for a directory of `.tf` files that no entry declares
-- Helm, part 2: a drift check (the diff plugin's `--three-way-merge` compares with the live objects), a `createNamespace` option, a `kubeContext` option, zero-config discovery from `Chart.yaml`, and `--take-ownership` for objects made outside the release
-- `--rollback-on-failure` in place of `--atomic` for the Helm deploy
+- Helm, part 3: a `kubeContext` option, zero-config discovery from `Chart.yaml`, and `--take-ownership` for objects made outside the release
 - Pruning for Kubernetes manifests stacks: an object taken out of the manifests deleted by the deploy, and shown as a delete on the row
 - A drift check for Kubernetes manifests stacks
 - Manifests in subdirectories of a Kubernetes manifests stack (`kubectl apply -R`)
