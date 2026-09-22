@@ -57947,6 +57947,19 @@ function dashboardFacts(rows) {
   };
 }
 
+// src/render/docs-site.ts
+var DOCS_SITE = "https://docs.sluiceway.dev";
+var DOCS = {
+  home: `${DOCS_SITE}/`,
+  configuration: `${DOCS_SITE}/guides/configuration/`,
+  credentials: `${DOCS_SITE}/guides/credentials/#recipes`,
+  credentialsHelm: `${DOCS_SITE}/guides/credentials/#helm`,
+  credentialsKubectl: `${DOCS_SITE}/guides/credentials/#kubernetes-manifests`,
+  exampleWorkflows: `${DOCS_SITE}/guides/example-workflows/#what-to-change`,
+  pinACommit: `${DOCS_SITE}/guides/workflow/#pin-a-commit`,
+  splitWorkflow: `${DOCS_SITE}/guides/split-workflow/`
+};
+
 // src/render/dots.ts
 var COUNT_DOT = {
   pending: "\uD83D\uDFE1",
@@ -58297,7 +58310,7 @@ function renderBody(input2) {
   out.push("---");
   if (!input2.readOnly)
     out.push(`- [ ] Rescan all stacks ${RESCAN_MARKER}`);
-  out.push(`<sub>[Sluiceway](${ACTION_URL}) ${version2(input2.actionRef)} · [docs](${ACTION_URL}#readme)</sub>`);
+  out.push(`<sub>[Sluiceway](${ACTION_URL}) ${version2(input2.actionRef)} · [docs](${DOCS.home})</sub>`);
   const { unknown: unknown2 } = facts;
   if (unknown2.length > 0)
     out.push(blocks(unknown2));
@@ -65729,11 +65742,11 @@ function starterWorkflow(options) {
   const branch = options.branch ?? DEFAULT_BRANCH;
   const lines5 = [
     "# Written by sluiceway init from the files of this repo. Review every step",
-    "# before you commit it: docs/example-workflows.md says what to change, and",
-    "# init printed what it could not know.",
+    "# before you commit it, and change what init printed it could not know:",
+    `# ${DOCS.exampleWorkflows}`,
     "#",
     "# `@v0` follows every release until 1.0.0. To review every update yourself,",
-    `# pin a full commit SHA instead, as the README's "Pin a commit" says.`,
+    `# pin a full commit SHA instead: ${DOCS.pinACommit}`,
     "name: deploy-dashboard",
     "",
     "on:",
@@ -65912,7 +65925,7 @@ function starterConfig({ declarable, unrelated, unclaimed }) {
     SCHEMA,
     "#",
     "# Written by sluiceway init from the files of this repo. Review it before",
-    "# you commit it: docs/configuration.md explains every key."
+    `# you commit it. Every key is explained at ${DOCS.configuration}`
   ];
   if (opentofu2.length + helm2.length > 0) {
     lines5.push("", "stacks:");
@@ -65963,7 +65976,7 @@ function needsText({ findings, declarable, branchGuessed }) {
   const needs = [];
   const { envFiles: envFiles2, node: node2 } = findings;
   if (envFiles2 === undefined) {
-    needs.push("Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.");
+    needs.push(`Load the credentials and the state backend settings of your stacks where the comment in the workflow says, with credentials that can deploy. init writes no credential step it did not find in the repo. Recipes: ${DOCS.credentials}`);
   } else {
     needs.push(`Create the secret ${TOKEN_SECRET}, a 1Password service account token that resolves ${envFiles2.deploy}.`);
     const unused = [
@@ -65971,11 +65984,14 @@ function needsText({ findings, declarable, branchGuessed }) {
       ...envFiles2.others
     ];
     if (unused.length > 0) {
-      needs.push(`init did not use ${unused.join(", ")}: one job previews and deploys, with the credentials of ${envFiles2.deploy}. For credentials that only read in scans, use the split workflow (docs/split-workflow.md).`);
+      needs.push(`init did not use ${unused.join(", ")}: one job previews and deploys, with the credentials of ${envFiles2.deploy}. For credentials that only read in scans, use the split workflow: ${DOCS.splitWorkflow}`);
     }
   }
   if (findings.helm || findings.kubectl) {
-    needs.push("The job needs a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).");
+    needs.push(`The job needs a kubeconfig for the cluster: ${[
+      ...findings.helm ? [DOCS.credentialsHelm] : [],
+      ...findings.kubectl ? [DOCS.credentialsKubectl] : []
+    ].join(" and ")}`);
   }
   if (declarable.helm.length > 0) {
     needs.push(`sluiceway.yaml names each Helm release and its namespace after the chart: ${declarable.helm.map(({ path }) => path).join(", ")}. Set both to where the release runs, and add its values files. The namespace must exist.`);
