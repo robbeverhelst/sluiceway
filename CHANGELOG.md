@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.13.0](https://github.com/sluiceway/sluiceway/compare/v0.12.0...v0.13.0) (2026-09-22)
+
+
+### Features
+
+* a merge row whose tick was cleared without a comment gets a note, and more than ten updates are folded ([ae6770a](https://github.com/sluiceway/sluiceway/commit/ae6770a4d81529801033f76e07682d6486ef198d))
+* record 0064 and the docs for merge and deploy, part 2, and dist rebuilt (slice 4.13) ([eb9b095](https://github.com/sluiceway/sluiceway/commit/eb9b095ad9d2d6b8d8e999b4c5485b01b7462a24))
+* the merge method follows Renovate's config as Renovate reads it on GitHub ([85a5267](https://github.com/sluiceway/sluiceway/commit/85a5267669925a19bcd700ea1709fbd94f5d9ed2))
+* the scan resolve dispatches after a merge is narrowed, through a dispatch input the workflow declares ([44fa60e](https://github.com/sluiceway/sluiceway/commit/44fa60e18096aa2ca73b40bcad6adf01612e2876))
+* up to thirty updates waiting to merge, and open pull requests paged past the oldest 100 ([40b0ad0](https://github.com/sluiceway/sluiceway/commit/40b0ad07f866b0f9dffe72753e1b57124da2a3c3))
+
 ## [0.12.0](https://github.com/sluiceway/sluiceway/compare/v0.11.0...v0.12.0) (2026-09-22)
 
 
