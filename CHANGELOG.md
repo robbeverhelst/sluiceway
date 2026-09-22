@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.17.0](https://github.com/sluiceway/sluiceway/compare/v0.16.0...v0.17.0) (2026-09-22)
+
+
+### Features
+
+* record the stacks the backend holds, for the check with backend: true ([ad1cfd6](https://github.com/sluiceway/sluiceway/commit/ad1cfd6f1bb7cf1e8ff3ca235864097d13cb7793))
+* the check asks the backend with backend: true and gives one ignore block ([4206025](https://github.com/sluiceway/sluiceway/commit/42060258db6a9915a5be297df06ff685d3618477))
+* the check reads concurrency groups, status checks and the second apply job ([74aee7f](https://github.com/sluiceway/sluiceway/commit/74aee7fc1f9710b8779fd22ee64565718014763f))
+* the check suggests inputs from the files a stack's own files name ([6ad2a56](https://github.com/sluiceway/sluiceway/commit/6ad2a561314ee096020b6e5e975911a9cf4a22e2))
+* wire the check part 3 into the check mode, its words and the backend input ([f9822fc](https://github.com/sluiceway/sluiceway/commit/f9822fc9e5497b5731b2054d5a81888b23efaba8))
+
 ## [0.16.0](https://github.com/sluiceway/sluiceway/compare/v0.15.0...v0.16.0) (2026-09-22)
 
 
