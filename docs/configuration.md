@@ -303,6 +303,29 @@ drift:
 - **A stack entry can turn it on or off** for its own stacks, with [`stacks[].drift.enabled`](#stacksdriftenabled).
 - **A drifted row's `preview` link** opens a preview page that lists the drift, as a pending row's lists its changes. Without `checks: write` it opens the summary.
 
+### `phases`
+
+Default: `[]`
+
+The names of the phases your stacks deploy in, in order. A stack says which phase it is in with [`stacks[].phase`](#stacksphase), and depends on every stack in every earlier phase: a tick on it waits while one of them has a change waiting that nobody ticked, and ticks across phases deploy one phase after the other, one layer per run, as [`dependsOn`](#stacksdependson) does. A repo that deploys in phases writes three lines instead of an edge for every pair of stacks ([record 0067](adr/0067-a-stack-may-name-its-phase-and-depends-on-every-stack-of-every-earlier-phase.md)).
+
+```yaml
+phases: [infrastructure, monitoring, applications]
+stacks:
+  - path: network
+    phase: infrastructure
+  - path: grafana
+    phase: monitoring
+  - path: web
+    phase: applications
+```
+
+- **A name is a plain word**: letters, digits, `.`, `_` and `-`. Each phase is named once.
+- **A phase with no stack is fine.** The phases after it wait on the ones before it all the same.
+- **A stack without a phase** neither waits on a phase nor holds one back. `dependsOn` still works for it.
+- **The note on a refused tick names the phase**, and at most five of the stacks in it that have a change waiting, not every stack it depends on: `this tick started nothing: it waits on the **infrastructure** phase: **network:prod** has a change waiting.`
+- **The check lists the phases** in order, the stacks in each and what each stack depends on through its phase.
+
 ### `stacks[].path`
 
 Required in every entry.
@@ -474,6 +497,62 @@ stacks:
 - **Until the stack's first preview with `auto`, and while its preview fails,** it waits only on what a list in another entry names. Entries add up: one entry can say `auto` and another a list.
 - **Only Pulumi.** An OpenTofu entry with `auto` is an error. The check mode lists `auto` as it is, because it reads files only and cannot know what a preview will read.
 
+### `stacks[].phase`
+
+Default: none.
+
+The phase of the stacks of this entry, one of [`phases`](#phases). The stack then depends on every stack in every earlier phase, and a `dependsOn` list adds to that, also on stacks of its own phase. An entry with a name wins over one without, as for `environment`.
+
+```yaml
+phases: [infrastructure, applications]
+stacks:
+  - path: network
+    phase: infrastructure
+  - path: app
+    phase: applications
+    # Inside a phase, name the order by hand.
+  - path: cache
+    phase: applications
+    dependsOn: [app:prod]
+```
+
+A phase that `phases` does not list is an error, and so is a `dependsOn` on a stack of a later phase, which would be a circle:
+
+```yaml
+# Not valid: a phase that is not listed
+phases: [infrastructure, applications]
+stacks:
+  - path: network
+    phase: infrastructure
+  - path: app
+    phase: aplications
+```
+
+```text
+sluiceway.yaml is not valid:
+- stacks[1].phase: "aplications" is not one of the phases. The phases are: infrastructure, applications.
+```
+
+#### `phase: { from }`
+
+A repo that already writes each project's phase into its Pulumi project file, such as `platform:phase: infrastructure` under `config` in `network/Pulumi.yaml`, can point at that key instead of repeating it:
+
+```yaml
+phases: [infrastructure, monitoring, applications]
+stacks:
+  - path: network
+    phase:
+      from: "platform:phase"
+  - path: grafana
+    phase:
+      from: "platform:phase"
+```
+
+- **Where the key is read.** Under `config` in the project file, as text or as a mapping with a text `value` or `default`, and else at the top level of the project file. These are the places Pulumi accepts a key a program does not use. A value marked `secret: true` is never read.
+- **Only the text under that key leaves discovery.** Nothing else of the project file is read for it.
+- **A stack whose project file has no such key, or whose text is not one of the phases, is an error.** The error names the key and the stack, and does not quote the text.
+- **Only Pulumi.** An entry with `tool` that says `from` is an error: name the phase instead.
+
 ### `stacks[].drift.enabled`
 
 Default: the top level `drift.enabled`.
@@ -599,5 +678,5 @@ ticker: admin
 
 ```text
 sluiceway.yaml is not valid:
-- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, stacks, mergeAndDeploy.
+- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, phases, stacks, mergeAndDeploy.
 ```

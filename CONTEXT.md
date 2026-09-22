@@ -207,8 +207,12 @@ To give an open deployment a result when its workflow run ended without reportin
 _Avoid_: Clean up, time out, expire
 
 **Dependency**:
-A stack that another stack names in `dependsOn`, because it reads something the dependency makes. With `dependsOn: auto`, also a stack that its Pulumi program reads through a stack reference, as its last preview found and its row says. A tick waits on a dependency only while its row is pending and nobody ticked it: the box is cleared with a note that names the dependency. A stack waits only on its own dependencies, not on theirs.
+A stack that another stack names in `dependsOn`, because it reads something the dependency makes. With `dependsOn: auto`, also a stack that its Pulumi program reads through a stack reference, as its last preview found and its row says, and every stack of every phase before its own. A tick waits on a dependency only while its row is pending and nobody ticked it: the box is cleared with a note that names the dependency. A stack waits only on its own dependencies, not on theirs.
 _Avoid_: Upstream (that is a side of Penny in the header), parent, prerequisite, blocker
+
+**Phase**:
+One step of a repo's deploy order, named in `phases`, such as infrastructure, then monitoring, then applications. A stack in a phase depends on every stack in every earlier phase, so a tick on it waits while one of them has a change waiting that nobody ticked, and the note names the phase. A stack's phase is written in `sluiceway.yaml`, or read from a key of its Pulumi project file.
+_Avoid_: Stage, tier, wave, layer (a layer is what deploys in one run)
 
 **Stack reference**:
 Pulumi's way for a program to read the outputs of another stack, by a name such as `organization/project/stack`. With `dependsOn: auto` the adapter turns each one into the stack id of a stack of the repo, and nothing else of the name leaves it.

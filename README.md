@@ -224,7 +224,7 @@ jobs:
 - **Tick to deploy.** One box per stack with changes waiting, checked against who may tick ([using the dashboard](docs/using-the-dashboard.md)).
 - **Merge and deploy**, for Renovate and other routine updates: one tick merges a green pull request and deploys its stack ([merge and deploy](docs/workflow.md#merge-and-deploy)).
 - **Drift**, opt-in: a scheduled scan finds changes made outside the code, and a tick puts them back ([`drift.enabled`](docs/configuration.md#driftenabled)).
-- **Stack dependencies** with `dependsOn`: a stack waits for the stacks it depends on, and a chain deploys one layer per run ([`dependsOn`](docs/configuration.md#stacksdependson)).
+- **Stack dependencies** with `dependsOn` or `phases`: a stack waits for the stacks it depends on, or for every stack of the phases before its own, and a chain deploys one layer per run ([`dependsOn`](docs/configuration.md#stacksdependson), [`phases`](docs/configuration.md#phases)).
 - **A preview page per pending stack**, a check run with the stack's whole diff ([using the dashboard](docs/using-the-dashboard.md#rows-and-ticks)).
 - **The check mode**, which reads your files in a pull request and says what Sluiceway will find and what your workflow lacks ([check your setup](docs/workflow.md#check-your-setup)).
 - **Values at the paths you list** with `showValues`, such as a chart's version, and the tool's own diff in the job log if you ask ([`dashboard.showValues`](docs/configuration.md#dashboardshowvalues)).

@@ -244,12 +244,12 @@ A merge never skips a check: branch protection and required reviews apply to the
 
 ## Stack dependencies
 
-With [`dependsOn`](configuration.md#stacksdependson) in `sluiceway.yaml`, a stack waits for the stacks it depends on, and ticks in one chain deploy one layer per run. The workflow above already has what that needs, so keep these two parts when you change it:
+With [`dependsOn`](configuration.md#stacksdependson) or [`phases`](configuration.md#phases) in `sluiceway.yaml`, a stack waits for the stacks it depends on, and ticks in one chain deploy one layer per run. The workflow above already has what that needs, so keep these two parts when you change it:
 
 - **`resolve` runs on `workflow_dispatch`.** The `if:` of the `resolve` job lets a dispatched run through, not only an edit of the dashboard.
 - **`settle` has `actions: write`.** Once a stack went out that others are queued behind, `settle` starts the workflow again. The `resolve` job of that run starts the stacks that were queued behind it, the next layer.
 
-Without `dependsOn`, a dispatched `resolve` finds nothing to do in a few seconds and asks GitHub nothing.
+Without `dependsOn` or a phase, a dispatched `resolve` finds nothing to do in a few seconds and asks GitHub nothing.
 
 ## Pin a commit
 

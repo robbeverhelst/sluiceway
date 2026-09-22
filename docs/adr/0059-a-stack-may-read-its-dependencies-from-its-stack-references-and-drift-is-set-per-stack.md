@@ -2,6 +2,8 @@
 
 > Amended by 0066: failing and deploying got a picture per crate count. Drift did not, as this record says.
 
+> Amended by 0067: the check lists phases and the edges they give, and `phase: { from }`, like `auto`, is Pulumi's only.
+
 Records 0055 and 0056 built part 1 of drift and of dependencies, and each listed what it left for part 2. Build plan slice 4.7 picks what makes both complete enough for daily use. Dependencies: the check mode lists `dependsOn`, a dependency that `ignore` leaves out is refused with the reason, and a dependency may be read from Pulumi stack references as an opt-in, `dependsOn: auto`. Drift: `stacks[].drift`, a drifted row's changes listed like a pending row's, `drift` on the counts line with a dot, one drift picture, and a line of the trail that says a deploy repaired drift. This record fixes how.
 
 Amends 0009, 0021, 0050, 0055 and 0056.
