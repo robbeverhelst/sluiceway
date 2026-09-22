@@ -1,5 +1,7 @@
 # The trail lists every deploy that ended, and a caution block names pending destroys
 
+> Amended by 0073: the trail also lists deploys made outside the dashboard that a full scan found in the tool's own history, in the same list by time and within the same length. Their facts ride on a marker at the end of each line.
+
 Record 0029 made Recently deployed a log of what went out: the newest 10 successful deployment records, failed ones left out because a failure already has its failure line on its row. Record 0003 reads `inactive` as "succeeded, then superseded", and GitHub keeps only the latest status of a record, so a superseded deploy was listed at the moment it was superseded. Record 0027 rejected one `> [!CAUTION]` block above the pending list in favour of delete and replace lines open under each row. `docs/later.md` held all four as left out of v1. Build plan slice 4.11 brings them in, so the trail is complete and a destroy cannot be missed on a long dashboard.
 
 ## Decision

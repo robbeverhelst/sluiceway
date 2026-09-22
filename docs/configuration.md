@@ -167,7 +167,7 @@ Default: `10`
 
 How many lines the Recently deployed list at the bottom of the dashboard shows, newest first. A whole number from 0 to 50. `0` leaves the list out, heading and all.
 
-Every deploy from the dashboard that ended is a line: one that went out, one that found nothing to deploy, a rehearsal, and a failed one with its failure reason. The list is built from the deployment records a writer already reads, one page of the newest 100 per environment, so a longer list costs no extra request. Each line is about 150 characters of the issue's room, which is why the list stops at 50.
+Every deploy from the dashboard that ended is a line: one that went out, one that found nothing to deploy, a rehearsal, and a failed one with its failure reason. So is every deploy of a Pulumi stack made outside the dashboard that a full scan found in the tool's history. A full scan reads as many entries of each Pulumi stack's history as this number, with one call of `pulumi stack history` per stack, and `0` reads none. The list is built from the deployment records a writer already reads, one page of the newest 100 per environment, so a longer list costs no extra request. Each line is about 150 characters of the issue's room, which is why the list stops at 50.
 
 ```yaml
 dashboard:

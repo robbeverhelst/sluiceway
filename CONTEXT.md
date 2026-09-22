@@ -231,8 +231,12 @@ The stacks of a dependency chain that deploy in one workflow run, because nothin
 _Avoid_: Wave, stage, batch, level
 
 **Outside deploy**:
-A deploy of a stack that did not go through a tick: from a laptop, a script or another pipeline. It is allowed, leaves no deployment record, and the next full scan brings the row back in line. A tick on the stale row finds nothing to deploy, and its record ends as a success that says so.
+A deploy of a stack that did not go through a tick: from a laptop, a script or another pipeline. It is allowed, leaves no deployment record, and the next full scan brings the row back in line. A tick on the stale row finds nothing to deploy, and its record ends as a success that says so. Where the tool keeps a history of its deploys (Pulumi), a full scan finds it there and lists it on the trail with when and from which commit, never who.
 _Avoid_: Manual deploy, rogue deploy, out-of-band deploy
+
+**Tool history**:
+The tool's own list of the deploys of one stack, whoever ran them, as Pulumi keeps it. A full scan reads the newest entries of it for every stack whose tool keeps one, and every deploy there that no deployment record of the stack ran is an outside deploy. Only when, what kind, the commit and the run are read, never a config value, a message or a person.
+_Avoid_: Update history, audit log, deploy log, state history
 
 ### Credentials
 
@@ -283,7 +287,7 @@ The note on a stack's row saying its last deploy failed. It rides on the row whe
 _Avoid_: Failed row, failed state, error row
 
 **Trail**:
-The Recently deployed list at the bottom of the dashboard: every deploy from the dashboard that ended, newest first, with who ticked it and when it went out. A deploy that found nothing to deploy, a rehearsal and a failed deploy say so on their line. Its length is `dashboard.recentlyDeployed`. It is built from the deployment records and decides nothing.
+The Recently deployed list at the bottom of the dashboard: every deploy from the dashboard that ended, newest first, with who ticked it and when it went out, and the outside deploys a full scan found in the tool's history. A deploy that found nothing to deploy, a rehearsal and a failed deploy say so on their line. Its length is `dashboard.recentlyDeployed`. It is built from the deployment records and the tool's history, and decides nothing.
 _Avoid_: History, audit log, deploy log, changelog
 
 **Pending-again line**:

@@ -1,5 +1,7 @@
 # The body puts pending first and folds away only what is calm
 
+> Amended by 0073: Recently deployed also lists deploys made outside the dashboard, from the tool's own history. Those lines carry a marker, so the section is no longer drawn from the deployment records alone.
+>
 > Amended by 0040: the header, the counts line and the scan line are centered, and every count has a dot. The wording of both lines stays as it is here.
 >
 > Amended by 0051: the In sync section ends with a fold of the stacks that an `ignore` entry with a reason leaves out, and is shown when that fold has a line even with no in sync rows.

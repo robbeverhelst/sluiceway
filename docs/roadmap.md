@@ -76,7 +76,9 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A cap on the names a refusal comment lists from a tick rule
 - The stacks a narrowed scan carried, in the result file of a scan
 - `sluiceway.yml` as a second spelling of the config file
-- Logging deploys made outside the dashboard under recently deployed (a manual `pulumi up` from a laptop, a script, another pipeline), with when and from which commit
+- Who made a deploy outside the dashboard, from Pulumi Cloud's `requestedBy`
+- Deploys made outside the dashboard for OpenTofu, Helm and kubectl stacks
+- Reading the tool's history in a narrowed scan, gated by `pulumi stack ls` and its `lastUpdate`
 - A link to the scan that the rescan box started
 - Placing the orphan tick note in the order of record 0027 when `resolve` adds it
 - Carrying on with the other records after one deployment record could not be written
