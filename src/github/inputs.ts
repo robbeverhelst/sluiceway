@@ -62,6 +62,8 @@ export function readJobId(getInput: GetInput): string | undefined {
 export interface ApplyInputs {
   // The deployment record to deploy (record 0035).
   deploymentId: number;
+  // A rehearsal: everything up to the hash check, and no deploy (record 0051).
+  dryRun: boolean;
   // The time limit of the fresh preview, in whole minutes.
   previewTimeoutMinutes: number;
   token: string;
@@ -84,14 +86,33 @@ export function readApplyInputs(getInput: GetInput): ApplyInputs {
     "preview-timeout",
     " It is a number of whole minutes.",
   );
-  return { deploymentId: Number(text), previewTimeoutMinutes, token: readToken(getInput) };
+  return {
+    deploymentId: Number(text),
+    previewTimeoutMinutes,
+    token: readToken(getInput),
+    dryRun: readDryRun(getInput),
+  };
+}
+
+// The words GitHub's own boolean inputs use. Anything else is refused, so a
+// typo never deploys when a rehearsal was meant (record 0051).
+function readDryRun(getInput: GetInput): boolean {
+  const text = getInput("dry-run").trim();
+  if (text === "" || text === "false") return false;
+  if (text === "true") return true;
+  throw new Error(`The "dry-run" input is true or false, and it is ${JSON.stringify(text)}.`);
 }
 
 // `deployment-id` is an error in every mode but apply (record 0035), so a
 // workflow that hands it to the wrong step hears about it.
+// `dry-run: true` is refused the same way (record 0051). Its default, false,
+// reaches every mode and says nothing.
 export function refuseDeploymentId(mode: string, getInput: GetInput): void {
-  if (mode === "apply" || getInput("deployment-id").trim() === "") return;
-  throw new Error(
-    `The "deployment-id" input is only for apply mode, and this step runs ${mode} mode. Take it out of this step.`,
-  );
+  if (mode === "apply") return;
+  const only = (name: string) =>
+    new Error(
+      `The "${name}" input is only for apply mode, and this step runs ${mode} mode. Take it out of this step.`,
+    );
+  if (getInput("deployment-id").trim() !== "") throw only("deployment-id");
+  if (getInput("dry-run").trim() === "true") throw only("dry-run");
 }

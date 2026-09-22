@@ -37,6 +37,13 @@ inputs:
       Required in apply mode and an error in every other mode. The deployment record to deploy:
       the deployment field of a matrix entry of resolve.
     required: false
+  dry-run:
+    description: >-
+      apply only. true rehearses a tick: the deployment record, the fresh preview and the hash
+      check run as for a deploy, and then nothing is deployed. The record ends as inactive,
+      "rehearsed, nothing was deployed", and the job is green.
+    required: false
+    default: "false"
   job-id:
     description: >-
       Leave it at the default. The id of the running job, which GitHub gives no step in any other
@@ -71,7 +78,8 @@ outputs:
       otherwise, so a notify step can stay quiet when nothing changed.
   outcome:
     description: >-
-      Set by apply. deployed, in-sync (the fresh preview had nothing to deploy), refused (the
+      Set by apply. deployed, in-sync (the fresh preview had nothing to deploy), rehearsed
+      (dry-run stopped after the check of the hash), refused (the
       change moved since the tick, the deployment record was not one this job may deploy, or
       deploys are turned off) or failed.
   stack:

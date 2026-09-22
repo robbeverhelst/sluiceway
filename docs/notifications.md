@@ -16,7 +16,7 @@ Two things work with nothing from Sluiceway at all, because every deploy is a Gi
 | `preview-failed` | `scan` | Stacks on the dashboard whose preview failed |
 | `in-sync` | `scan` | Stacks on the dashboard that are in sync |
 | `dashboard-changed` | `scan` | `true` when this scan wrote a body that differs from the one before |
-| `outcome` | `apply` | `deployed`, `in-sync` (the fresh preview had nothing to deploy, so nothing went out and the job is green), `refused` (the change moved since the tick, the deployment record was not one this job may deploy, or `deploys: false`) or `failed` |
+| `outcome` | `apply` | `deployed`, `in-sync` (the fresh preview had nothing to deploy, so nothing went out and the job is green), `rehearsed` (`dry-run: true`, nothing went out and the job is green), `refused` (the change moved since the tick, the deployment record was not one this job may deploy, or `deploys: false`) or `failed` |
 | `stack` | `apply` | The stack id the job handled. Empty when it never learned it |
 | `result-file` | `scan`, `apply` | The path of the result file |
 | `matrix` | `resolve` | The hand-off to the `apply` job. Not for notifications |

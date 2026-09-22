@@ -264,6 +264,36 @@ export function checkApply(
   return problems;
 }
 
+// A rehearsal (record 0051): `apply` with `dry-run: true` previews, checks
+// the hash and deploys nothing. The record ends as inactive with its own
+// words, the job is green, the row is pending again with its box, and the
+// trail says rehearsed.
+export function checkRehearsal(
+  step: LoopStep,
+  expected: { stack: string; deployment: number; ticker: string },
+): string[] {
+  const { stack, deployment, ticker } = expected;
+  const problems = exitCode(step, true);
+  const record = step.records.find(({ id }) => id === deployment);
+  if (!record) problems.push(`Deployment record ${deployment} does not exist.`);
+  else {
+    problems.push(
+      ...statuses(record, ["queued", "in_progress", "inactive"], "rehearsed, nothing was deployed"),
+    );
+  }
+  if (step.outputs.outcome !== "rehearsed") {
+    problems.push(`The outcome output is ${step.outputs.outcome}, expected rehearsed.`);
+  }
+  problems.push(...rowState(step.body, stack, "pending"));
+  const row = rows(step.body).get(stack);
+  if (row?.ticked) problems.push(`The box of ${stack} is still ticked.`);
+  const trail = `- ${stack} · ticked by ${ticker} · rehearsed, nothing was deployed · `;
+  if (!step.body.split("\n").some((line) => line.startsWith(trail))) {
+    problems.push(`Recently deployed does not say that ${stack} was rehearsed.`);
+  }
+  return problems;
+}
+
 // A re-run of an `apply` job whose record already ended (record 0019): one
 // request, no tool, nothing written, and a red job.
 export function checkRerun(

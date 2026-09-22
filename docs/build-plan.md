@@ -54,6 +54,7 @@ Collected here so nobody has to search the records. The record in the last colum
 | `preview-timeout` | input | `scan`, `apply` | `10` | Time limit for one preview, whole minutes | 0012, 0035 |
 | `github-token` | input | all | the workflow token | Always the workflow's own `GITHUB_TOKEN` | 0017, 0035 |
 | `deployment-id` | input | `apply` | required there | The deployment record to deploy | 0035 |
+| `dry-run` | input | `apply` | `false` | A rehearsal: everything up to the hash check, then no deploy. The record ends as `inactive`, "rehearsed, nothing was deployed" | 0051 |
 | `job-id` | input | `scan`, `apply` | `${{ job.check_run_id }}` | The id of the running job, for links to its log. Never set by hand | 0044 |
 | `matrix` | output | `resolve` | `[]` | `[{ stack, environment, deployment }]` | 0035 |
 | `dashboard-url` | output | `scan`, `apply`, `settle` | none | Web address of the dashboard issue | 0041 |
@@ -61,7 +62,7 @@ Collected here so nobody has to search the records. The record in the last colum
 | `preview-failed` | output | `scan` | `0` | Number of stacks whose preview failed | 0041 |
 | `in-sync` | output | `scan` | `0` | Number of stacks in sync | 0041 |
 | `dashboard-changed` | output | `scan` | `false` | `true` when this scan wrote a different body, so a notify step can stay quiet otherwise | 0041 |
-| `outcome` | output | `apply` | none | `deployed`, `in-sync` (nothing to deploy), `refused` (the change moved, the record was not open, or `deploys: false`) or `failed` | 0041, 0051 |
+| `outcome` | output | `apply` | none | `deployed`, `in-sync` (nothing to deploy), `rehearsed` (`dry-run`), `refused` (the change moved, the record was not open, or `deploys: false`) or `failed` | 0041, 0051 |
 | `stack` | output | `apply` | none | The stack id this job handled | 0041 |
 | `result-file` | output | `scan`, `apply` | none | Path under `RUNNER_TEMP` of a JSON file with what the summary holds: no values, none of the tool's words | 0041 |
 

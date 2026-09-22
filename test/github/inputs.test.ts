@@ -71,7 +71,28 @@ describe("the inputs of apply", () => {
       deploymentId: 6575759143,
       previewTimeoutMinutes: 10,
       token: "t",
+      dryRun: false,
     });
+  });
+
+  // Record 0051: a rehearsal. Only the two words GitHub's own boolean
+  // inputs use, so a typo never deploys and never rehearses by accident.
+  test("dry-run is true or false, and nothing else", () => {
+    expect(read({ ...APPLY, "dry-run": "true" }).dryRun).toBe(true);
+    expect(read({ ...APPLY, "dry-run": "false" }).dryRun).toBe(false);
+    expect(read({ ...APPLY, "dry-run": "" }).dryRun).toBe(false);
+    expect(() => read({ ...APPLY, "dry-run": "yes" })).toThrow(
+      'The "dry-run" input is true or false, and it is "yes".',
+    );
+  });
+
+  test("any other mode refuses dry-run: true", () => {
+    expect(() => refuseDeploymentId("scan", (name) => (name === "dry-run" ? "true" : ""))).toThrow(
+      'The "dry-run" input is only for apply mode, and this step runs scan mode. Take it out of this step.',
+    );
+    expect(() =>
+      refuseDeploymentId("scan", (name) => (name === "dry-run" ? "false" : "")),
+    ).not.toThrow();
   });
 
   test("a missing deployment-id says where it comes from", () => {

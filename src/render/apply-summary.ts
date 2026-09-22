@@ -4,7 +4,7 @@
 // the result is a reason from the fixed list (record 0022). It needs no
 // budget: it is about one stack.
 
-import { IN_SYNC_DESCRIPTION } from "../core/deployment.ts";
+import { IN_SYNC_DESCRIPTION, REHEARSED_DESCRIPTION } from "../core/deployment.ts";
 import type { Diff } from "../core/diff.ts";
 import { orderChanges } from "./changes.ts";
 import { escapeText } from "./escape.ts";
@@ -20,6 +20,9 @@ export type ApplyOutcome =
   | { kind: "deployed"; diff: Diff }
   // The fresh preview was empty: nothing to deploy (record 0051).
   | { kind: "in-sync" }
+  // A rehearsal: `diff` is the fresh preview whose hash the tick approved,
+  // what a deploy would have sent (record 0051).
+  | { kind: "rehearsed"; diff: Diff }
   | {
       kind: "not-deployed";
       // A deploy failure reason from the fixed list, as display text.
@@ -45,6 +48,9 @@ export const ALREADY_ENDED =
 
 const IN_SYNC_LINE =
   "The fresh preview shows no change, so nothing was deployed. The stack is already as its code says, most likely from a deploy outside the dashboard.";
+
+const REHEARSED_LINE =
+  "This was a rehearsal (`dry-run: true`). The fresh preview matched the tick, and nothing was deployed. The row is pending again, and a tick in a workflow without `dry-run` deploys it.";
 
 const NOT_DEPLOYED =
   "Nothing was deployed from this deployment record, and nothing will be. The job log of this run holds the tool's own words. A fresh tick on the dashboard tries again.";
@@ -82,7 +88,9 @@ export function renderApplySummary(input: ApplySummaryInput): string {
       ? "deployed"
       : outcome.kind === "in-sync"
         ? IN_SYNC_DESCRIPTION
-        : `not deployed: ${escapeText(outcome.reason)}`;
+        : outcome.kind === "rehearsed"
+          ? REHEARSED_DESCRIPTION
+          : `not deployed: ${escapeText(outcome.reason)}`;
   const parts = [
     "## Sluiceway apply",
     `**${escapeText(input.stackId)}** · ${result} · ticked by ${escapeText(input.ticker)} · [run](${input.runUrl})`,
@@ -91,6 +99,12 @@ export function renderApplySummary(input: ApplySummaryInput): string {
     parts.push("### What went out", ...diffParts(outcome.diff, "No changes."));
   } else if (outcome.kind === "in-sync") {
     parts.push(IN_SYNC_LINE);
+  } else if (outcome.kind === "rehearsed") {
+    parts.push(
+      REHEARSED_LINE,
+      "### What a deploy would send",
+      ...diffParts(outcome.diff, "No changes."),
+    );
   } else {
     parts.push(NOT_DEPLOYED);
     if (outcome.checked) {

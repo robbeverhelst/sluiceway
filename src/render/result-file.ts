@@ -106,15 +106,16 @@ export const applyResultSchema = z.strictObject({
   // `refused`: the change moved since the tick, the record was not one this
   // job may deploy, or deploys are turned off. `failed`: the deploy was
   // tried, or meant to be, and did not go out. `in-sync`: the fresh preview
-  // had nothing to deploy (record 0051).
-  outcome: z.enum(["deployed", "in-sync", "refused", "failed"]),
+  // had nothing to deploy. `rehearsed`: `dry-run` stopped after the hash
+  // check (record 0051).
+  outcome: z.enum(["deployed", "in-sync", "rehearsed", "refused", "failed"]),
   // Null when the job never learned which stack the record is for.
   stack: z.string().nullable(),
   ticker: z.string().nullable(),
   // The deploy failure reason from the fixed list (record 0022), when there is one.
   reason: z.string().nullable(),
   // The fresh preview that was held against the tick. After a deploy it is
-  // what went out.
+  // what went out, after a rehearsal what would have.
   preview: previewSchema.nullable(),
   // The preview after a deploy that failed half way: what is pending now.
   after: previewSchema.nullable(),
@@ -262,7 +263,7 @@ export function applyResultFile(input: ApplyResultInput): string {
       ticker: input.ticker ?? null,
       reason: input.reason ?? null,
       preview:
-        applied?.kind === "deployed"
+        applied?.kind === "deployed" || applied?.kind === "rehearsed"
           ? diffOf(applied.diff)
           : previewOf(applied?.kind === "not-deployed" ? applied.checked : undefined),
       after: previewOf(applied?.kind === "not-deployed" ? applied.after : undefined),

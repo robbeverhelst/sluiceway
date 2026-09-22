@@ -17,8 +17,9 @@ jobs:
     # The committed bundle on a real runner, with the real CLI, the example
     # project and the fake GitHub server (build plan, section 6). A full scan
     # and a narrowed one, then the whole loop: ticks, resolve, apply with the
-    # real tool and settle, with a refused tick, a cancelled deploy, a stack
-    # deployed by hand so that nothing is left to deploy, and a re-run. Last, a scan started the way a runner starts
+    # real tool and settle, with a refused tick, a cancelled deploy, a
+    # rehearsal, a stack deployed by hand so that nothing is left to deploy,
+    # and a re-run. Last, a scan started the way a runner starts
     # `uses: sluiceway/sluiceway@v0`, from a moving tag (hotfix 0.1.1).
     #
     # The bundle is started by scripts/e2e.ts and not by a `uses: ./` step. A

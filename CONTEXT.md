@@ -158,6 +158,10 @@ _Avoid_: Deploy log, run, job
 A deployment record with no result yet. A stack with one is deploying.
 _Avoid_: Pending deployment, active deployment, lock
 
+**Rehearsal**:
+An `apply` run with `dry-run: true`: it takes the deployment record, previews the stack again and checks the diff hash like a deploy, and then deploys nothing. Its record ends as `inactive`, "rehearsed, nothing was deployed", the row is pending again, and the recently deployed list says rehearsed. It is not a deploy fact of the stack.
+_Avoid_: Dry run (that is the input's name, not the thing), test deploy, simulation
+
 **Settle**:
 To give an open deployment a result when its workflow run ended without reporting one.
 _Avoid_: Clean up, time out, expire

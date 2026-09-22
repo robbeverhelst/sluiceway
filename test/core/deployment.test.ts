@@ -8,6 +8,7 @@ import {
   IN_SYNC_DESCRIPTION,
   isOpenStatus,
   lastDeployedCommit,
+  REHEARSED_DESCRIPTION,
   readDeploymentPayload,
   rowAtLateRead,
   taskStackId,
@@ -202,6 +203,35 @@ describe("the deploy facts of a stack", () => {
     expect(lastDeployedCommit(facts, "apps/grafana:prod")).toBe(
       "0123456789abcdef0123456789abcdef01234567",
     );
+  });
+
+  // Slice 2.20 (record 0051): a rehearsal ends as inactive with fixed words.
+  // Nothing went out, so it is no deploy fact of the stack and no start of its
+  // attribution, and the trail lists it as rehearsed.
+  test("a rehearsal is listed for the trail and changes nothing else", () => {
+    const failed = record({ id: 1, createdAt: "2026-09-21T08:00:00Z", state: "failure" });
+    const rehearsal = record({
+      id: 2,
+      createdAt: "2026-09-21T09:00:00Z",
+      state: "inactive",
+      at: "2026-09-21T09:05:00Z",
+      sha: "fedcba9876543210fedcba9876543210fedcba98",
+    });
+    rehearsal.status = { ...rehearsal.status, description: REHEARSED_DESCRIPTION } as never;
+    const facts = deployFacts([failed, rehearsal]);
+    expect(REHEARSED_DESCRIPTION).toBe("rehearsed, nothing was deployed");
+    expect(facts.byStack.get("apps/grafana:prod")).toMatchObject({ kind: "failed" });
+    expect(facts.succeeded).toEqual([
+      {
+        stackId: "apps/grafana:prod",
+        ticker: "alice",
+        run: "4242",
+        at: new Date("2026-09-21T09:05:00Z"),
+        sha: "fedcba9876543210fedcba9876543210fedcba98",
+        result: "rehearsed",
+      },
+    ]);
+    expect(lastDeployedCommit(facts, "apps/grafana:prod")).toBeUndefined();
   });
 
   test("every success is handed over for recently deployed, older ones of a stack too", () => {

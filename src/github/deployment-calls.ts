@@ -17,7 +17,8 @@ export interface NewDeployment {
 }
 
 export interface NewDeploymentStatus {
-  state: "queued" | "in_progress" | "success" | "failure" | "error";
+  // `inactive` only ends a rehearsal (record 0051).
+  state: "queued" | "in_progress" | "success" | "failure" | "error" | "inactive";
   // A failure reason from Sluiceway's fixed list (record 0022). GitHub takes
   // at most 140 characters.
   description?: string | undefined;

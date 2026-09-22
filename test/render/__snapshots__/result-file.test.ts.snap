@@ -288,6 +288,7 @@ exports[`the JSON schema of the result file 1`] = `
           "enum": [
             "deployed",
             "in-sync",
+            "rehearsed",
             "refused",
             "failed"
           ]

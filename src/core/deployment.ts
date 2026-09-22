@@ -110,13 +110,15 @@ export interface SucceededDeploy {
   // The commit that went out. Attribution starts there (record 0026).
   sha: string;
   // Absent for a deploy that went out. "in-sync": the fresh preview had
-  // nothing to deploy (record 0051).
-  result?: "in-sync";
+  // nothing to deploy. "rehearsed": a rehearsal, nothing went out (record
+  // 0051).
+  result?: "in-sync" | "rehearsed";
 }
 
 export interface DeployFacts {
   byStack: Map<string, DeployFact>;
-  // Every success among the records, oldest first.
+  // Every success among the records, oldest first, and every rehearsal: the
+  // trail of recently deployed (record 0051).
   succeeded: SucceededDeploy[];
   // Records of Sluiceway's whose payload this version cannot read. They are
   // left alone, as a body of another marker version is.
@@ -135,6 +137,16 @@ export const NO_REASON_RECORDED = "no reason was recorded";
 // (record 0051). Sluiceway's own words, and the one description a reader
 // tells a result by, so the trail can say that nothing went out.
 export const IN_SYNC_DESCRIPTION = "nothing to deploy, already in sync";
+
+// The description of the `inactive` status that ends a rehearsal (record
+// 0051). `inactive` because nothing went live, so GitHub's own views and the
+// Slack and Teams apps do not show it as a deploy. Told apart from GitHub's
+// own `inactive` by these words, which GitHub never writes.
+export const REHEARSED_DESCRIPTION = "rehearsed, nothing was deployed";
+
+function isRehearsal(status: DeploymentStatus | undefined): boolean {
+  return status?.state === "inactive" && status.description === REHEARSED_DESCRIPTION;
+}
 
 // A record with no status, or with a state that is no result, is an open
 // deployment (record 0003). `apply` deploys only on one (record 0019).
@@ -177,6 +189,19 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
       continue;
     }
     const fact = factOf(record, payload);
+    // A rehearsal changed nothing about the stack: it is only a line of the
+    // trail, and the fact before it stands.
+    if (isRehearsal(record.status)) {
+      facts.succeeded.push({
+        stackId,
+        ticker: payload.ticker,
+        run: payload.run,
+        at: new Date(record.status?.createdAt ?? record.createdAt),
+        sha: record.sha,
+        result: "rehearsed",
+      });
+      continue;
+    }
     // Newest last, so the newest record of a stack is the one that stays.
     facts.byStack.set(stackId, fact);
     if (fact.kind === "succeeded") {
@@ -199,7 +224,9 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
 // attribution starts (record 0026). Nothing when the bounded reads of record
 // 0003 hold no success of the stack: no extra page is read to look for one.
 export function lastDeployedCommit(facts: DeployFacts, stackId: string): string | undefined {
-  return facts.succeeded.findLast((deploy) => deploy.stackId === stackId)?.sha;
+  return facts.succeeded.findLast(
+    (deploy) => deploy.stackId === stackId && deploy.result !== "rehearsed",
+  )?.sha;
 }
 
 // One stack as a scan sees it at its late read (record 0004).

@@ -27441,12 +27441,29 @@ function readApplyInputs(getInput2) {
     throw new Error(`The "deployment-id" input must be the id of a deployment record, a whole number, and it is ${JSON.stringify(text)}.`);
   }
   const previewTimeoutMinutes = wholeNumber(getInput2, "preview-timeout", " It is a number of whole minutes.");
-  return { deploymentId: Number(text), previewTimeoutMinutes, token: readToken(getInput2) };
+  return {
+    deploymentId: Number(text),
+    previewTimeoutMinutes,
+    token: readToken(getInput2),
+    dryRun: readDryRun(getInput2)
+  };
+}
+function readDryRun(getInput2) {
+  const text = getInput2("dry-run").trim();
+  if (text === "" || text === "false")
+    return false;
+  if (text === "true")
+    return true;
+  throw new Error(`The "dry-run" input is true or false, and it is ${JSON.stringify(text)}.`);
 }
 function refuseDeploymentId(mode, getInput2) {
-  if (mode === "apply" || getInput2("deployment-id").trim() === "")
+  if (mode === "apply")
     return;
-  throw new Error(`The "deployment-id" input is only for apply mode, and this step runs ${mode} mode. Take it out of this step.`);
+  const only = (name) => new Error(`The "${name}" input is only for apply mode, and this step runs ${mode} mode. Take it out of this step.`);
+  if (getInput2("deployment-id").trim() !== "")
+    throw only("deployment-id");
+  if (getInput2("dry-run").trim() === "true")
+    throw only("dry-run");
 }
 
 // src/modes/apply-job.ts
@@ -51965,6 +51982,124 @@ function toIssue(issue3) {
 import { writeFileSync } from "node:fs";
 import { join as join6 } from "node:path";
 
+// src/core/deployment.ts
+var TASK_PREFIX = "sluiceway:";
+function deploymentTask(stackId2) {
+  return `${TASK_PREFIX}${stackId2}`;
+}
+function taskStackId(task) {
+  if (!task.startsWith(TASK_PREFIX) || task.length === TASK_PREFIX.length)
+    return;
+  return task.slice(TASK_PREFIX.length);
+}
+var PAYLOAD_VERSION = 1;
+function deploymentPayload(payload) {
+  return { v: PAYLOAD_VERSION, hash: payload.hash, ticker: payload.ticker, run: payload.run };
+}
+var RUN_ID = /^[1-9]\d*$/;
+function readDeploymentPayload(payload) {
+  if (typeof payload !== "object" || payload === null)
+    return;
+  const { v, hash: hash2, ticker, run } = payload;
+  if (v !== PAYLOAD_VERSION)
+    return;
+  if (typeof hash2 !== "string" || typeof ticker !== "string" || typeof run !== "string") {
+    return;
+  }
+  return RUN_ID.test(run) ? { hash: hash2, ticker, run } : undefined;
+}
+var SUCCEEDED = new Set(["success", "inactive"]);
+var FAILED = new Set(["failure", "error"]);
+var NO_REASON_RECORDED = "no reason was recorded";
+var IN_SYNC_DESCRIPTION = "nothing to deploy, already in sync";
+var REHEARSED_DESCRIPTION = "rehearsed, nothing was deployed";
+function isRehearsal(status) {
+  return status?.state === "inactive" && status.description === REHEARSED_DESCRIPTION;
+}
+function isOpenStatus(status) {
+  const state = status?.state ?? "";
+  return !SUCCEEDED.has(state) && !FAILED.has(state);
+}
+function newestLast(a, b) {
+  return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id;
+}
+function factOf(record3, payload) {
+  const { ticker, run } = payload;
+  const state = record3.status?.state ?? "";
+  const at = new Date(record3.status?.createdAt ?? record3.createdAt);
+  if (SUCCEEDED.has(state))
+    return { kind: "succeeded", ticker, run, at };
+  if (FAILED.has(state)) {
+    return {
+      kind: "failed",
+      reason: record3.status?.description || NO_REASON_RECORDED,
+      ticker,
+      run,
+      at
+    };
+  }
+  return { kind: "open", deployment: record3.id, waiting: state !== "in_progress", ticker, run };
+}
+function deployFacts(records) {
+  const facts = { byStack: new Map, succeeded: [], unread: 0 };
+  for (const record3 of [...records].sort(newestLast)) {
+    const stackId2 = taskStackId(record3.task);
+    if (stackId2 === undefined)
+      continue;
+    const payload = readDeploymentPayload(record3.payload);
+    if (!payload) {
+      facts.unread++;
+      continue;
+    }
+    const fact = factOf(record3, payload);
+    if (isRehearsal(record3.status)) {
+      facts.succeeded.push({
+        stackId: stackId2,
+        ticker: payload.ticker,
+        run: payload.run,
+        at: new Date(record3.status?.createdAt ?? record3.createdAt),
+        sha: record3.sha,
+        result: "rehearsed"
+      });
+      continue;
+    }
+    facts.byStack.set(stackId2, fact);
+    if (fact.kind === "succeeded") {
+      const inSync = record3.status?.state === "success" && record3.status.description === IN_SYNC_DESCRIPTION;
+      facts.succeeded.push({
+        stackId: stackId2,
+        ticker: fact.ticker,
+        run: fact.run,
+        at: fact.at,
+        sha: record3.sha,
+        ...inSync ? { result: "in-sync" } : {}
+      });
+    }
+  }
+  return facts;
+}
+function lastDeployedCommit(facts, stackId2) {
+  return facts.succeeded.findLast((deploy) => deploy.stackId === stackId2 && deploy.result !== "rehearsed")?.sha;
+}
+function rowAtLateRead(stack) {
+  const { previewedAt, liveState, fact } = stack;
+  if (fact?.kind === "open") {
+    return { row: "deploying", from: liveState === "deploying" ? "live" : "record" };
+  }
+  const usableLive = liveState !== undefined && liveState !== "deploying";
+  if (previewedAt === undefined) {
+    if (usableLive)
+      return { row: "live" };
+    return { row: "preview-first", why: liveState === undefined ? "no-row" : "no-open-deployment" };
+  }
+  const predates = fact !== undefined && !stack.settledHere && fact.at > previewedAt;
+  if (!predates)
+    return { row: "fresh" };
+  if (usableLive)
+    return { row: "live" };
+  return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
+}
+
 // src/render/destroy-sign.ts
 function destroySign(rows) {
   return rows.some((row) => row.known && (row.state === "pending" || row.state === "deploying") && row.destroys > 0);
@@ -52203,6 +52338,7 @@ function changeLine(change, options = {}) {
   return parts.join(" · ");
 }
 var ORPHAN_TICK_NOTE = ":information_source: a tick on this row was not picked up. Tick again to deploy.";
+var DEPLOYS_OFF_NOTE = ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick started nothing.";
 function failureLine(failure2) {
   return `:x: last deploy failed: ${escapeText(failure2.reason)} · ticked by ${escapeText(failure2.ticker)} · ${utcMinute(failure2.at)} · [run](${failure2.runUrl})`;
 }
@@ -52437,8 +52573,13 @@ function blocks(rows) {
   return rows.map((row) => row.text).join(`
 `);
 }
+var RESULT_WORDS = {
+  "in-sync": IN_SYNC_DESCRIPTION,
+  rehearsed: REHEARSED_DESCRIPTION
+};
 function recentLine(deploy) {
-  return `- ${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)} · ${utcMinute(deploy.at)} · [run](${deploy.runUrl})`;
+  const result = deploy.result === undefined ? "" : ` · ${RESULT_WORDS[deploy.result]}`;
+  return `- ${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)}${result} · ${utcMinute(deploy.at)} · [run](${deploy.runUrl})`;
 }
 function version2(actionRef2) {
   return /^[0-9a-f]{40,}$/.test(actionRef2) ? `\`${actionRef2.slice(0, 7)}\`` : escapeText(actionRef2);
@@ -52470,7 +52611,8 @@ function renderBody(input2) {
   if (previewFailed.length > 0)
     out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
   const inSync = of("in-sync");
-  if (inSync.length > 0) {
+  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit3(a.stackId, b.stackId));
+  if (inSync.length > 0 || ignored.length > 0) {
     const loud = inSync.filter((row) => row.failed);
     const quiet = inSync.filter((row) => !row.failed);
     out.push("## In sync");
@@ -52479,6 +52621,10 @@ function renderBody(input2) {
     if (quiet.length > 0) {
       const summary2 = loud.length > 0 ? `${quiet.length} more in sync` : `${plural3(quiet.length, "stack")} in sync`;
       out.push(`<details><summary>${summary2}</summary>`, blocks(quiet), "</details>");
+    }
+    if (ignored.length > 0) {
+      out.push(`<details><summary>${plural3(ignored.length, "stack")} left out by ignore</summary>`, ignored.map(({ stackId: stackId2, reason }) => `- ${escapeText(stackId2)} · ${escapeText(reason)}`).join(`
+`), "</details>");
     }
   }
   const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit3(a.stackId, b.stackId)).slice(0, RECENTLY_DEPLOYED);
@@ -52714,6 +52860,13 @@ var tickers = exports_external.union([
 ]);
 var text2 = exports_external.string().min(1);
 var globs = exports_external.array(text2);
+var ignoreEntry = exports_external.union([
+  text2,
+  exports_external.strictObject({
+    glob: text2.describe("Glob matched against the stack id."),
+    reason: text2.describe("Why these stacks are left out. Shown on the dashboard under In sync.")
+  })
+]);
 var stackPath = text2.superRefine((path, context3) => {
   const refuse = (message) => context3.addIssue({ code: "custom", message });
   if (path.includes("\\"))
@@ -52760,7 +52913,8 @@ var configSchema = exports_external.strictObject({
     readOnly: exports_external.boolean().describe("Draw no boxes: pending rows have none, there is no rescan box, and a line under the Pending heading says so. For a workflow that only scans.").default(false)
   }).prefault({}),
   tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
-  ignore: globs.describe("Globs matched against the stack id. An ignored stack has no row.").default([]),
+  deploys: exports_external.boolean().describe("false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.").default(true),
+  ignore: exports_external.array(ignoreEntry).describe("Globs matched against the stack id. An ignored stack has no row. An entry with a reason is listed with it under In sync.").default([]),
   scan: exports_external.strictObject({
     unrelated: globs.describe("Globs for files that claim nothing and force nothing, such as **/*.md.").default([]),
     logDiff: exports_external.boolean().describe("Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else. Anyone who can read the repo can read its job logs. Costs one more tool run per pending stack.").default(false)
@@ -52819,8 +52973,24 @@ function describe4(issue3, raw) {
   if (value === undefined && key === "path") {
     return problem2("is required. It is the directory of the stack, relative to the repo root.");
   }
+  if (issue3.path[0] === "ignore" && issue3.path.length === 3) {
+    const glob = valueAt(raw, [...issue3.path.slice(0, -1), "glob"]);
+    if (value === undefined && key === "reason") {
+      return problem2(`is required. Say why the stack is left out, or write the glob as text: ${show(glob)}.`);
+    }
+    if (value === undefined && key === "glob") {
+      return problem2("is required. It is matched against the stack id.");
+    }
+  }
   if (key === "previewTimeout" && issue3.code !== "custom") {
     return problem2(`expected a whole number of minutes, 1 or more, got ${show(value)}.`);
+  }
+  if (issue3.code === "invalid_union" && issue3.path[0] === "ignore") {
+    const branch = typeof value === "string" ? 0 : isMapping(value) ? 1 : undefined;
+    if (branch === undefined) {
+      return problem2(`expected a glob as text, or a mapping with glob and reason, got ${show(value)}.`);
+    }
+    return (issue3.errors[branch] ?? []).flatMap((inner) => describe4({ ...inner, path: [...issue3.path, ...inner.path] }, raw));
   }
   if (issue3.code === "invalid_union") {
     if (!Array.isArray(value)) {
@@ -52845,6 +53015,9 @@ var EXPECTED2 = {
   array: "a list",
   object: "a mapping"
 };
+function isMapping(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 function valueAt(raw, path) {
   let value = raw;
   for (const segment of path) {
@@ -52905,11 +53078,23 @@ function unwrap(schema) {
   while (inner instanceof exports_external.ZodDefault || inner instanceof exports_external.ZodPrefault) {
     inner = inner.def.innerType;
   }
+  if (inner instanceof exports_external.ZodUnion) {
+    return inner.options.find((option) => option instanceof exports_external.ZodObject) ?? inner;
+  }
   return inner;
+}
+function ignoreGlob(entry) {
+  return typeof entry === "string" ? entry : entry.glob;
+}
+function ignoredStacks(config2, found) {
+  return found.map(stackId).sort((a, b) => a < b ? -1 : a > b ? 1 : 0).flatMap((id) => {
+    const entry = config2.ignore.find((one) => globMatcher([ignoreGlob(one)])(id));
+    return entry === undefined || typeof entry === "string" ? [] : [{ stackId: id, reason: entry.reason }];
+  });
 }
 var DEFAULT_ENVIRONMENT = "sluiceway";
 function applyConfig(config2, found) {
-  const stacks = knownStacks(found, config2.ignore);
+  const stacks = knownStacks(found, config2.ignore.map(ignoreGlob));
   const problems = config2.stacks.flatMap((entry, index) => {
     const inPath = stacks.filter((stack) => stack.path === entry.path);
     if (inPath.some((stack) => covers(entry, stack)))
@@ -52974,106 +53159,6 @@ function read(file2) {
       throw new ConfigError(["it is not a file."]);
     throw error63;
   }
-}
-
-// src/core/deployment.ts
-var TASK_PREFIX = "sluiceway:";
-function deploymentTask(stackId2) {
-  return `${TASK_PREFIX}${stackId2}`;
-}
-function taskStackId(task) {
-  if (!task.startsWith(TASK_PREFIX) || task.length === TASK_PREFIX.length)
-    return;
-  return task.slice(TASK_PREFIX.length);
-}
-var PAYLOAD_VERSION = 1;
-function deploymentPayload(payload) {
-  return { v: PAYLOAD_VERSION, hash: payload.hash, ticker: payload.ticker, run: payload.run };
-}
-var RUN_ID = /^[1-9]\d*$/;
-function readDeploymentPayload(payload) {
-  if (typeof payload !== "object" || payload === null)
-    return;
-  const { v, hash: hash2, ticker, run } = payload;
-  if (v !== PAYLOAD_VERSION)
-    return;
-  if (typeof hash2 !== "string" || typeof ticker !== "string" || typeof run !== "string") {
-    return;
-  }
-  return RUN_ID.test(run) ? { hash: hash2, ticker, run } : undefined;
-}
-var SUCCEEDED = new Set(["success", "inactive"]);
-var FAILED = new Set(["failure", "error"]);
-var NO_REASON_RECORDED = "no reason was recorded";
-function isOpenStatus(status) {
-  const state = status?.state ?? "";
-  return !SUCCEEDED.has(state) && !FAILED.has(state);
-}
-function newestLast(a, b) {
-  return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id;
-}
-function factOf(record3, payload) {
-  const { ticker, run } = payload;
-  const state = record3.status?.state ?? "";
-  const at = new Date(record3.status?.createdAt ?? record3.createdAt);
-  if (SUCCEEDED.has(state))
-    return { kind: "succeeded", ticker, run, at };
-  if (FAILED.has(state)) {
-    return {
-      kind: "failed",
-      reason: record3.status?.description || NO_REASON_RECORDED,
-      ticker,
-      run,
-      at
-    };
-  }
-  return { kind: "open", deployment: record3.id, waiting: state !== "in_progress", ticker, run };
-}
-function deployFacts(records) {
-  const facts = { byStack: new Map, succeeded: [], unread: 0 };
-  for (const record3 of [...records].sort(newestLast)) {
-    const stackId2 = taskStackId(record3.task);
-    if (stackId2 === undefined)
-      continue;
-    const payload = readDeploymentPayload(record3.payload);
-    if (!payload) {
-      facts.unread++;
-      continue;
-    }
-    const fact = factOf(record3, payload);
-    facts.byStack.set(stackId2, fact);
-    if (fact.kind === "succeeded") {
-      facts.succeeded.push({
-        stackId: stackId2,
-        ticker: fact.ticker,
-        run: fact.run,
-        at: fact.at,
-        sha: record3.sha
-      });
-    }
-  }
-  return facts;
-}
-function lastDeployedCommit(facts, stackId2) {
-  return facts.succeeded.findLast((deploy) => deploy.stackId === stackId2)?.sha;
-}
-function rowAtLateRead(stack) {
-  const { previewedAt, liveState, fact } = stack;
-  if (fact?.kind === "open") {
-    return { row: "deploying", from: liveState === "deploying" ? "live" : "record" };
-  }
-  const usableLive = liveState !== undefined && liveState !== "deploying";
-  if (previewedAt === undefined) {
-    if (usableLive)
-      return { row: "live" };
-    return { row: "preview-first", why: liveState === undefined ? "no-row" : "no-open-deployment" };
-  }
-  const predates = fact !== undefined && !stack.settledHere && fact.at > previewedAt;
-  if (!predates)
-    return { row: "fresh" };
-  if (usableLive)
-    return { row: "live" };
-  return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
 }
 
 // src/core/diff-hash.ts
@@ -53144,6 +53229,8 @@ function deployFailureText(reason) {
       return "the tool is missing or older than Sluiceway needs";
     case "unknown-stack":
       return "the stack is not in the repo any more";
+    case "deploys-off":
+      return "deploys are turned off in sluiceway.yaml";
     case "not-started":
       return "the deploy stopped before the tool ran";
   }
@@ -53381,6 +53468,8 @@ function orderChanges(diff) {
 
 // src/render/apply-summary.ts
 var ALREADY_ENDED = "This deploy already ended. Tick the box on the dashboard to try again.";
+var IN_SYNC_LINE = "The fresh preview shows no change, so nothing was deployed. The stack is already as its code says, most likely from a deploy outside the dashboard.";
+var REHEARSED_LINE = "This was a rehearsal (`dry-run: true`). The fresh preview matched the tick, and nothing was deployed. The row is pending again, and a tick in a workflow without `dry-run` deploys it.";
 var NOT_DEPLOYED = "Nothing was deployed from this deployment record, and nothing will be. The job log of this run holds the tool's own words. A fresh tick on the dashboard tries again.";
 function diffParts(diff, empty) {
   if (diff.changes.length === 0)
@@ -53403,13 +53492,17 @@ function previewParts(preview2, empty) {
 }
 function renderApplySummary(input2) {
   const { outcome } = input2;
-  const result = outcome.kind === "deployed" ? "deployed" : `not deployed: ${escapeText(outcome.reason)}`;
+  const result = outcome.kind === "deployed" ? "deployed" : outcome.kind === "in-sync" ? IN_SYNC_DESCRIPTION : outcome.kind === "rehearsed" ? REHEARSED_DESCRIPTION : `not deployed: ${escapeText(outcome.reason)}`;
   const parts = [
     "## Sluiceway apply",
     `**${escapeText(input2.stackId)}** · ${result} · ticked by ${escapeText(input2.ticker)} · [run](${input2.runUrl})`
   ];
   if (outcome.kind === "deployed") {
     parts.push("### What went out", ...diffParts(outcome.diff, "No changes."));
+  } else if (outcome.kind === "in-sync") {
+    parts.push(IN_SYNC_LINE);
+  } else if (outcome.kind === "rehearsed") {
+    parts.push(REHEARSED_LINE, "### What a deploy would send", ...diffParts(outcome.diff, "No changes."));
   } else {
     parts.push(NOT_DEPLOYED);
     if (outcome.checked) {
@@ -53478,6 +53571,12 @@ var PUBLIC_LOG_DIFF = {
   title: "Values in the job log of a public repo",
   message: "scan.logDiff is on and this repository is public, so anyone can read the values in the tool's own diff in this job log. Turn it off in sluiceway.yaml unless that is what you want."
 };
+
+// src/render/moved-comment.ts
+var MOVED_COMMENT_TAIL = "The row on the dashboard shows the change as it is now. Tick it again to deploy that.";
+function movedComment({ login, stackId: stackId2 }) {
+  return `@${login} ticked **${escapeText(stackId2)}**, and the change moved since the tick, so nothing was deployed. ${MOVED_COMMENT_TAIL}`;
+}
 
 // src/render/preview-result.ts
 function previewRow(stackId2, result, links, failure2, options = {}) {
@@ -53578,7 +53677,7 @@ var applyResultSchema = exports_external.strictObject({
   commit: exports_external.string(),
   deployment: count2(),
   dashboard: exports_external.strictObject({ url: exports_external.string() }).nullable(),
-  outcome: exports_external.enum(["deployed", "refused", "failed"]),
+  outcome: exports_external.enum(["deployed", "in-sync", "rehearsed", "refused", "failed"]),
   stack: exports_external.string().nullable(),
   ticker: exports_external.string().nullable(),
   reason: exports_external.string().nullable(),
@@ -53668,7 +53767,7 @@ function applyResultFile(input2) {
     stack: input2.stack ?? null,
     ticker: input2.ticker ?? null,
     reason: input2.reason ?? null,
-    preview: applied?.kind === "deployed" ? diffOf(applied.diff) : previewOf(applied?.kind === "not-deployed" ? applied.checked : undefined),
+    preview: applied?.kind === "deployed" || applied?.kind === "rehearsed" ? diffOf(applied.diff) : previewOf(applied?.kind === "not-deployed" ? applied.checked : undefined),
     after: previewOf(applied?.kind === "not-deployed" ? applied.after : undefined)
   }));
 }
@@ -53784,7 +53883,7 @@ ${ALREADY_ENDED}
       failed: `${name} was not deployed: ${deployFailureText(reason)}. ${message(error63)}`
     };
   }
-  report.outcome = attempt.state === "success" ? "deployed" : attempt.reason?.kind === "moved" ? "refused" : "failed";
+  report.outcome = attempt.summary?.kind === "in-sync" || attempt.summary?.kind === "rehearsed" ? attempt.summary.kind : attempt.state === "success" ? "deployed" : attempt.reason?.kind === "moved" || attempt.reason?.kind === "deploys-off" ? "refused" : "failed";
   report.reason = attempt.reason && deployFailureText(attempt.reason);
   report.applied = attempt.summary;
   const failures = [];
@@ -53792,7 +53891,7 @@ ${ALREADY_ENDED}
   try {
     await github.createDeploymentStatus(id, {
       state: attempt.state,
-      description: attempt.reason && deployFailureText(attempt.reason),
+      description: attempt.description ?? (attempt.reason && deployFailureText(attempt.reason)),
       logUrl: runUrl
     });
     ended = true;
@@ -53810,8 +53909,9 @@ ${ALREADY_ENDED}
   }
   if (ended && attempt.row && attempt.setup) {
     const made = attempt.row;
+    let written;
     try {
-      await swapRow(context3, attempt.setup, id_, (facts, attribution) => {
+      written = await swapRow(context3, attempt.setup, id_, (facts, attribution) => {
         const fact = facts.byStack.get(id_);
         const failure2 = fact?.kind === "failed" ? {
           reason: fact.reason,
@@ -53826,6 +53926,13 @@ ${ALREADY_ENDED}
       });
     } catch (error63) {
       failures.push(`The dashboard could not be written: ${message(error63)}`);
+    }
+    if (written !== undefined && attempt.reason?.kind === "moved") {
+      try {
+        await github.createComment(written, movedComment({ login: payload.ticker, stackId: id_ }));
+      } catch (error63) {
+        failures.push(`The comment to ${payload.ticker} about the moved change could not be written: ${message(error63)}. The job needs the permission \`issues: write\`.`);
+      }
     }
   }
   if (attempt.failed)
@@ -53844,7 +53951,12 @@ async function deploy(context3, id, payload, runUrl, progress) {
   let setup;
   try {
     const config2 = loadConfig(context3.root);
-    const stacks = applyConfig(config2, await adapter.discover(context3.root));
+    if (!config2.deploys) {
+      const reason = { kind: "deploys-off" };
+      return { state: "failure", reason, failed: notDeployed(reason) };
+    }
+    const found = await adapter.discover(context3.root);
+    const stacks = applyConfig(config2, found);
     const stack = stacks.find((one) => stackId(one.stack) === id);
     if (!stack) {
       const reason = { kind: "unknown-stack" };
@@ -53858,6 +53970,7 @@ async function deploy(context3, id, payload, runUrl, progress) {
       config: config2,
       stacks,
       stack,
+      ignored: ignoredStacks(config2, found),
       attribution: attributionSource(context3.github, {
         stacks: stacks.map((one) => ({
           id: stackId(one.stack),
@@ -53907,6 +54020,17 @@ async function deploy(context3, id, payload, runUrl, progress) {
       setup
     };
   }
+  if (fresh.diff.changes.length === 0) {
+    log.info(`The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`);
+    return {
+      state: "success",
+      description: IN_SYNC_DESCRIPTION,
+      row: fresh,
+      toolDiffInLog: toolDiff2 !== undefined,
+      summary: { kind: "in-sync" },
+      setup
+    };
+  }
   const hash2 = diffHash(fresh.diff);
   if (hash2 !== payload.hash) {
     const reason = { kind: "moved" };
@@ -53917,6 +54041,17 @@ async function deploy(context3, id, payload, runUrl, progress) {
       row: fresh,
       toolDiffInLog: toolDiff2 !== undefined,
       summary: { kind: "not-deployed", reason: deployFailureText(reason), checked: applied(fresh) },
+      setup
+    };
+  }
+  if (context3.dryRun) {
+    log.info(`The fresh preview gives diff hash ${hash2}, the one the tick approved. This is a rehearsal (dry-run: true), so nothing is deployed.`);
+    return {
+      state: "inactive",
+      description: REHEARSED_DESCRIPTION,
+      row: fresh,
+      toolDiffInLog: toolDiff2 !== undefined,
+      summary: { kind: "rehearsed", diff: fresh.diff },
       setup
     };
   }
@@ -54027,8 +54162,9 @@ async function swapRow(context3, setup, id, make) {
       rows,
       carried,
       redact: setup.config.dashboard.redact,
-      recentlyDeployed: facts.succeeded.map(({ stackId: stack, ticker, run, at }) => ({
+      recentlyDeployed: facts.succeeded.map(({ stackId: stack, ticker, run, at, result: result2 }) => ({
         stackId: stack,
+        result: result2,
         ticker,
         at,
         runUrl: `${context3.repoUrl}/actions/runs/${run}`
@@ -54036,7 +54172,8 @@ async function swapRow(context3, setup, id, make) {
       repoUrl: context3.repoUrl,
       actionRef: context3.actionRef,
       personality: setup.config.dashboard.personality,
-      readOnly: setup.config.dashboard.readOnly
+      readOnly: setup.config.dashboard.readOnly,
+      ignored: setup.ignored
     }, { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
     if (!fitted.fits) {
       throw new Error(`With this row swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment record holds the result, and the next scan brings the row in line.`);
@@ -54044,6 +54181,7 @@ async function swapRow(context3, setup, id, make) {
     return fitted.body;
   });
   log.info(result.written ? `Wrote the dashboard (#${dashboard.number}).` : `The dashboard (#${dashboard.number}) already says this. Nothing was written.`);
+  return dashboard.number;
 }
 
 // src/modes/apply-job.ts
@@ -54066,6 +54204,7 @@ async function runApply(directory) {
     sha: job.sha,
     actionRef: readActionRef(env, directory, (path) => readFileSync3(path, "utf8")),
     deploymentId: inputs.deploymentId,
+    dryRun: inputs.dryRun,
     event: readEventPayload(env, (path) => readFileSync3(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP)
   });
@@ -54086,7 +54225,7 @@ function checkSetup(config2, found, files) {
   const { unclaimed } = claim2(stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })), files, config2.scan.unrelated);
   return {
     stacks,
-    ignore: config2.ignore.map((glob) => ignoreReport(glob, found)),
+    ignore: config2.ignore.map((entry) => ignoreReport(ignoreGlob(entry), found)),
     unclaimed: groups(unclaimed),
     suggested: SUGGESTIONS.filter((glob) => unclaimed.some(globMatcher([glob])))
   };
@@ -54489,7 +54628,7 @@ function clearTick(row2, options = {}) {
     return row2;
   const [first = "", ...rest] = row2.text.split(`
 `);
-  const note = INDENT + ORPHAN_TICK_NOTE;
+  const note = INDENT + (options.note === "deploys-off" ? DEPLOYS_OFF_NOTE : ORPHAN_TICK_NOTE);
   const lines2 = options.note && !rest.includes(note) ? [note, ...rest] : rest;
   const [cleared] = parseDashboard([first.replace(TICKED_BOX, "- [ ] "), ...lines2].join(`
 `)).rows;
@@ -54534,6 +54673,7 @@ async function resolveTicks(context3, handOn) {
     return;
   }
   let stacks;
+  let ignored = [];
   let named = [];
   for (let reads = 1;; reads++) {
     const first = await github.readEditHistory(issue3.number, {
@@ -54555,7 +54695,8 @@ async function resolveTicks(context3, handOn) {
       log.info("No box is ticked. Nothing to do.");
       return;
     }
-    stacks ??= await discover2(context3, config2);
+    if (!stacks)
+      ({ stacks, ignored } = await discover2(context3, config2));
     const known = ticks.filter((tick) => {
       if (tick.kind === "rescan" || stacks?.has(tick.stackId))
         return true;
@@ -54588,6 +54729,9 @@ async function resolveTicks(context3, handOn) {
     if (tick.kind === "row" && fact) {
       dropped.push(tick.stackId);
       log.info(`${name} is ticked and already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. The tick is dropped.`);
+    } else if (tick.kind === "row" && !config2.deploys) {
+      log.info(`${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). The box is cleared.`);
+      clear.set(tick.stackId, { hash: tick.hash, note: "deploys-off" });
     } else if (ticker.named) {
       const stack = tick.kind === "row" ? stacks?.get(tick.stackId) : undefined;
       toJudge.push({
@@ -54678,7 +54822,7 @@ async function resolveTicks(context3, handOn) {
   if (started.length > 0 || dropped.length > 0 || clear.size > 0 || rescanHandled) {
     try {
       const attribution = new Map;
-      const result = await writeBody(github, issue3.number, (liveBody) => swapRows(context3, config2, [...stacks?.values() ?? []], liveBody, { started, dropped, clear }, attribution));
+      const result = await writeBody(github, issue3.number, (liveBody) => swapRows(context3, config2, [...stacks?.values() ?? []], ignored, liveBody, { started, dropped, clear }, attribution));
       log.info(result.written ? `Wrote the dashboard (#${issue3.number}).` : `The dashboard (#${issue3.number}) already says all of this. Nothing was written.`);
     } catch (error63) {
       written = false;
@@ -54712,8 +54856,11 @@ function unverifiedMessage(unverified) {
   return `GitHub gave no answer about the access of ${logins}, so ${plural2(unverified.length, "tick")} could not be verified. Nothing was deployed for ${unverified.length === 1 ? "it" : "them"}, and the comment on the dashboard asks for a fresh tick (record 0018).`;
 }
 async function discover2(context3, config2) {
-  const found = applyConfig(config2, await context3.adapter.discover(context3.root));
-  return new Map(found.map((stack) => [stackId(stack.stack), stack]));
+  const found = await context3.adapter.discover(context3.root);
+  return {
+    stacks: new Map(applyConfig(config2, found).map((stack) => [stackId(stack.stack), stack])),
+    ignored: ignoredStacks(config2, found)
+  };
 }
 async function dispatchScan(context3) {
   if (!context3.workflow) {
@@ -54749,7 +54896,7 @@ async function openDeployments(context3, ticked) {
   }
   return open2;
 }
-async function swapRows(context3, config2, stacks, liveBody, swap, attribution) {
+async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attribution) {
   const live = parseDashboard(liveBody);
   const root = live.root;
   if (root?.version !== MARKER_VERSION || root.scanSha === undefined || root.scanRun === undefined || root.scanAt === undefined) {
@@ -54828,8 +54975,9 @@ async function swapRows(context3, config2, stacks, liveBody, swap, attribution) 
     rows,
     carried,
     redact: config2.dashboard.redact,
-    recentlyDeployed: facts.succeeded.map(({ stackId: id, ticker, run, at }) => ({
+    recentlyDeployed: facts.succeeded.map(({ stackId: id, ticker, run, at, result }) => ({
       stackId: id,
+      result,
       ticker,
       at,
       runUrl: `${context3.repoUrl}/actions/runs/${run}`
@@ -54837,7 +54985,8 @@ async function swapRows(context3, config2, stacks, liveBody, swap, attribution) 
     repoUrl: context3.repoUrl,
     actionRef: context3.actionRef,
     personality: config2.dashboard.personality,
-    readOnly: config2.dashboard.readOnly
+    readOnly: config2.dashboard.readOnly,
+    ignored
   }, { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
   if (!fitted.fits) {
     throw new Error(`With these rows swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment records hold what was started, and the next scan brings the rows in line.`);
@@ -55417,7 +55566,9 @@ async function scanning(context3, report) {
   const at = startedAt.toISOString();
   const links = runLinks(context3);
   const config2 = loadConfig(context3.root);
-  const stacks = applyConfig(config2, await context3.adapter.discover(context3.root)).sort((a, b) => byCodeUnit2(stackId(a.stack), stackId(b.stack)));
+  const found = await context3.adapter.discover(context3.root);
+  const ignored = ignoredStacks(config2, found);
+  const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit2(stackId(a.stack), stackId(b.stack)));
   const ids = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural2(stacks.length, "stack")}.`);
   const { logDiff } = config2.scan;
@@ -55564,8 +55715,9 @@ async function scanning(context3, report) {
         rows,
         carried,
         redact: config2.dashboard.redact,
-        recentlyDeployed: deploys.facts.succeeded.map(({ stackId: id, ticker, run, at: when }) => ({
+        recentlyDeployed: deploys.facts.succeeded.map(({ stackId: id, ticker, run, at: when, result }) => ({
           stackId: id,
+          result,
           ticker,
           at: when,
           runUrl: runUrlOf(context3, run)
@@ -55573,7 +55725,8 @@ async function scanning(context3, report) {
         repoUrl: context3.repoUrl,
         actionRef: context3.actionRef,
         personality: config2.dashboard.personality,
-        readOnly: config2.dashboard.readOnly
+        readOnly: config2.dashboard.readOnly,
+        ignored
       }, full ? context3.limits?.body : { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
       if (!fitted.fits) {
         if (full)

@@ -3,6 +3,7 @@ import {
   checkApply,
   checkNothingLeaks,
   checkRefusedTick,
+  checkRehearsal,
   checkRerun,
   checkResolve,
   checkRowFacts,
@@ -190,6 +191,48 @@ describe("the checks of resolve", () => {
     expect(
       checkResolve({ ...resolved, body: dashboard(row("network:dev", "pending")) }, expected),
     ).toEqual(["The row of network:dev is in state pending, expected deploying."]);
+  });
+});
+
+// Record 0051.
+describe("the check of a rehearsal", () => {
+  const trail =
+    "## Recently deployed\n\n- site:prod · ticked by alice · rehearsed, nothing was deployed · 2026-09-22 10:00 UTC · [run](x)";
+  const rehearsed = stepped({
+    summary: "## Sluiceway apply",
+    outputs: { outcome: "rehearsed" },
+    records: [
+      record(["queued", "in_progress", "inactive"], {
+        task: "sluiceway:site:prod",
+        description: "rehearsed, nothing was deployed",
+      }),
+    ],
+    body: `${dashboard(row("site:prod", "pending"))}\n\n${trail}`,
+  });
+  const expected = { stack: "site:prod", deployment: 1, ticker: "alice" };
+
+  test("a rehearsal that deployed nothing has no problems", () => {
+    expect(checkRehearsal(rehearsed, expected)).toEqual([]);
+  });
+
+  test("a rehearsal that deployed, or left no trail, is a problem", () => {
+    expect(
+      checkRehearsal(
+        {
+          ...rehearsed,
+          outputs: { outcome: "deployed" },
+          records: [record(["queued", "in_progress", "success"], { task: "sluiceway:site:prod" })],
+          body: dashboard(row("site:prod", "in-sync")),
+        },
+        expected,
+      ),
+    ).toEqual([
+      "Deployment record 1 has the statuses queued, in_progress, success, expected queued, in_progress, inactive.",
+      'Deployment record 1 has the description "", expected "rehearsed, nothing was deployed".',
+      "The outcome output is deployed, expected rehearsed.",
+      "The row of site:prod is in state in-sync, expected pending.",
+      "Recently deployed does not say that site:prod was rehearsed.",
+    ]);
   });
 });
 

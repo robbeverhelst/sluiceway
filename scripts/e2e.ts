@@ -20,11 +20,13 @@
 //   5. site:prod is ticked and its apply job never starts, as when it is
 //      cancelled. settle ends the record and starts a full scan, which shows
 //      network:dev in sync and site:prod with a failure line.
-//   6. site:prod is ticked again and deployed by hand before its apply job
+//   6. site:prod is ticked, and apply runs with dry-run: true. It previews,
+//      checks the hash and deploys nothing, and the record ends as rehearsed.
+//   7. site:prod is ticked again and deployed by hand before its apply job
 //      starts. The fresh preview has nothing to deploy: nothing goes out, the
 //      record ends as success that says so, and the job is green.
-//   7. A last full scan: every stack in sync, and no failure line left.
-//   8. The same scan once more, started the way a runner starts
+//   8. A last full scan: every stack in sync, and no failure line left.
+//   9. The same scan once more, started the way a runner starts
 //      `uses: sluiceway/sluiceway@v0`: from a copy of the action in a
 //      directory of its own, with the moving tag as its ref and no
 //      GITHUB_ACTION_PATH. Its images come from the tag of package.json.
@@ -45,6 +47,7 @@ import {
   checkApply,
   checkNothingLeaks,
   checkRefusedTick,
+  checkRehearsal,
   checkRerun,
   checkResolve,
   checkRowFacts,
@@ -443,16 +446,21 @@ async function tick(stack: string, person: { login: string; type: string }): Pro
   return { runId, payload, resolved, matrix: matrixEntries(resolved.outputs.matrix ?? "") };
 }
 
-function applyStep(issuesRun: IssuesRun, deployment: number, runAttempt = "1"): Promise<LoopStep> {
+function applyStep(
+  issuesRun: IssuesRun,
+  deployment: number,
+  runAttempt = "1",
+  inputs: Record<string, string> = {},
+): Promise<LoopStep> {
   const attempt = runAttempt === "1" ? "" : `, attempt ${runAttempt}`;
   return loopStep("apply", {
-    inputs: { "deployment-id": String(deployment) },
+    inputs: { "deployment-id": String(deployment), ...inputs },
     runId: issuesRun.runId,
     runAttempt,
     sha: SECOND_SHA,
     event: "issues",
     payload: issuesRun.payload,
-    title: `Run ${issuesRun.runId}: apply of deployment record ${deployment}${attempt}`,
+    title: `Run ${issuesRun.runId}: apply of deployment record ${deployment}${attempt}${inputs["dry-run"] === "true" ? ", a rehearsal" : ""}`,
   });
 }
 
@@ -603,7 +611,32 @@ good =
     }),
   ]) && good;
 
-// 6. alice ticks site:prod again, and before its apply job starts someone
+// 6. alice ticks site:prod, and the apply job is a rehearsal (record 0051):
+// the whole path to the hash check with the real tool, and no deploy.
+const rehearsed = await tick("site:prod", ALICE);
+const [rehearsedEntry] = rehearsed.matrix;
+if (!rehearsedEntry) throw new Error("resolve handed on no deploy of site:prod.");
+const rehearsal = await applyStep(rehearsed, rehearsedEntry.deployment, "1", {
+  "dry-run": "true",
+});
+good =
+  reportStep("The rehearsal", rehearsal, [
+    ...checkRehearsal(rehearsal, {
+      stack: "site:prod",
+      deployment: rehearsedEntry.deployment,
+      ticker: ALICE.login,
+    }),
+    ...checkDeploys("site:prod", await deploysOf("site", "prod"), 0),
+  ]) && good;
+const settledRehearsal = await settleStep(rehearsed);
+good =
+  reportStep(
+    "The rehearsal: settle",
+    settledRehearsal,
+    checkSettle(settledRehearsal, { ended: undefined, before: rehearsal.records }),
+  ) && good;
+
+// 7. alice ticks site:prod again, and before its apply job starts someone
 // deploys the stack by hand (record 0016). The fresh preview has nothing to
 // deploy: nothing goes out, the record ends as success with the words of
 // record 0051, and the row is in sync with no failure line.
@@ -638,7 +671,7 @@ good =
     checkSettle(settledOutside, { ended: undefined, before: outsideApply.records }),
   ) && good;
 
-// 7. The next full scan. Every stack is in sync. The last record of site:prod
+// 8. The next full scan. Every stack is in sync. The last record of site:prod
 // is the success with nothing to deploy, so its failure line is gone, and the
 // trail says that nothing went out (record 0051).
 const last = await scanStep(SECOND_SHA, "schedule");
@@ -656,7 +689,7 @@ good =
       : ["Recently deployed does not say that site:prod had nothing to deploy."]),
   ]) && good;
 
-// 8. The scan of 7 once more, from the moving tag v0, the way the first user's
+// 9. The scan of 8 once more, from the moving tag v0, the way the first user's
 // runs of 0.1.0 started it and failed (hotfix 0.1.1). A runner downloads the
 // repo at the tag to `_actions/<owner>/<repo>/<ref>/`, starts the bundle with
 // the workspace as its working directory, and sets no GITHUB_ACTION_PATH for

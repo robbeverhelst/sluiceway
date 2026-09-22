@@ -724,6 +724,19 @@ describe("recently deployed", () => {
   });
 
   // Slice 2.20 (record 0051): the trail says when nothing went out.
+  test("a rehearsal says so", () => {
+    const all = paragraphs(
+      renderBody(
+        input(DASHBOARDS["in-sync"], {
+          recentlyDeployed: [{ ...(RECENT[0] as RecentDeploy), result: "rehearsed" }],
+        }),
+      ),
+    );
+    expect(all[all.indexOf("## Recently deployed") + 1]).toBe(
+      "- apps/auth:prod · ticked by alice · rehearsed, nothing was deployed · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
+    );
+  });
+
   test("a deploy that found nothing to deploy says so", () => {
     const all = paragraphs(
       renderBody(

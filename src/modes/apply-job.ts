@@ -36,6 +36,7 @@ export async function runApply(directory: string): Promise<void> {
     sha: job.sha,
     actionRef: readActionRef(env, directory, (path) => readFileSync(path, "utf8")),
     deploymentId: inputs.deploymentId,
+    dryRun: inputs.dryRun,
     event: readEventPayload(env, (path) => readFileSync(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),
   });

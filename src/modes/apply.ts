@@ -23,6 +23,7 @@ import {
   IN_SYNC_DESCRIPTION,
   isOpenStatus,
   lastDeployedCommit,
+  REHEARSED_DESCRIPTION,
   readDeploymentPayload,
   taskStackId,
 } from "../core/deployment.ts";
@@ -90,6 +91,9 @@ export interface ApplyContext {
   actionRef: string;
   // The `deployment-id` input: the record to deploy (record 0035).
   deploymentId: number;
+  // The `dry-run` input: stop after the hash check, deploy nothing and end
+  // the record as rehearsed (record 0051).
+  dryRun?: boolean | undefined;
   // The payload of the event that started the run: the edit of the dashboard
   // that `resolve` acted on. The `dashboard-url` output reads it, and so does
   // the warning for a public repo with `scan.logDiff` on (record 0048).
@@ -262,8 +266,8 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
   // A deploy that went out is deployed, also when its record could not be
   // given the result. The job is red then, and says why.
   report.outcome =
-    attempt.summary?.kind === "in-sync"
-      ? "in-sync"
+    attempt.summary?.kind === "in-sync" || attempt.summary?.kind === "rehearsed"
+      ? attempt.summary.kind
       : attempt.state === "success"
         ? "deployed"
         : attempt.reason?.kind === "moved" || attempt.reason?.kind === "deploys-off"
@@ -353,7 +357,7 @@ interface Setup {
 }
 
 interface Attempt {
-  state: "success" | "failure" | "error";
+  state: "success" | "failure" | "error" | "inactive";
   reason?: DeployFailureReason | undefined;
   // The status description of a result that is no failure (record 0051).
   description?: string | undefined;
@@ -517,6 +521,22 @@ async function deploy(
       row: fresh,
       toolDiffInLog: toolDiff !== undefined,
       summary: { kind: "not-deployed", reason: deployFailureText(reason), checked: applied(fresh) },
+      setup,
+    };
+  }
+  if (context.dryRun) {
+    // A rehearsal stops here (record 0051): everything a deploy checks was
+    // checked, and nothing goes out. The row is the fresh preview, pending
+    // with its box, and it never said deploying.
+    log.info(
+      `The fresh preview gives diff hash ${hash}, the one the tick approved. This is a rehearsal (dry-run: true), so nothing is deployed.`,
+    );
+    return {
+      state: "inactive",
+      description: REHEARSED_DESCRIPTION,
+      row: fresh,
+      toolDiffInLog: toolDiff !== undefined,
+      summary: { kind: "rehearsed", diff: fresh.diff },
       setup,
     };
   }

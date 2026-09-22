@@ -63,3 +63,24 @@ When the fresh preview gives another diff hash than the tick approved (0008), `a
 - A comment that cannot be written is one more line in the red job's message, naming `issues: write`. It changes nothing about the record or the row.
 - Only a moved change gets one. A deploy that failed does not: that is about the stack or the tool, the failure line says it, and later.md keeps that comment out. A refused re-run (0019), a record of another run and `deploys: false` do not either: the first two are about the workflow, and the switch is a decision the team made in review. An empty fresh preview is not a moved change any more (part 3), so it gets none.
 - This amends 0018, whose comment for a refused tick was the only one Sluiceway wrote.
+
+## 5. A tick can be rehearsed
+
+A team that sets up Sluiceway, or changes its workflow, wants to see the whole path of a tick work before it lets a tick deploy: the edit history names the ticker, the tick rule allows them, `resolve` makes the record and hands it on, the `apply` job gets its credentials and a runner, the fresh preview runs, and its hash matches the row. The `dry-run` input of `apply` does all of that and stops before the deploy.
+
+```yaml
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: apply
+          deployment-id: ${{ matrix.deployment }}
+          dry-run: true
+```
+
+- An input, not a config key, because it belongs to one step of one workflow, like `deployment-id`, and is taken out of the workflow the same way when the rehearsal is over. It takes `true` or `false` and nothing else, so a typo never deploys when a rehearsal was meant. `dry-run: true` on any other mode is an error, as `deployment-id` is (0035). The default, `false`, reaches every mode and says nothing.
+- Everything before the deploy runs as for a deploy, in the same order (0035, slice 2.5): the record's status, the record, `in_progress`, the config and `deploys: false`, discovery, the version check, the fresh preview, the check for nothing to deploy, and the hash check. A record that is not open, a moved change, an empty preview and the switch end the way they end without `dry-run`, so a rehearsal proves those paths too.
+- After the hash check the record ends as `inactive` with the description "rehearsed, nothing was deployed". GitHub has no state of its own for a rehearsal. `success` was rejected: GitHub's own views, its Slack and Teams apps (0041) and every notify step that watches deployments would show a deploy that never happened, and attribution would start from a commit that never went out. `failure` and `error` were rejected because a rehearsal that worked is no failure and would put a failure line on the row. `inactive` is GitHub's word for a deployment that is not live, and GitHub writes it with an empty description when it supersedes a success, so the fixed words tell the two apart. Writing `inactive` directly with `auto_inactive: false` was checked on real GitHub on 2026-09-22 in the private lab repo: REST takes it, and GraphQL gives back `INACTIVE` with the description.
+- A rehearsal is no deploy fact of the stack. 0003 reads `inactive` as "succeeded, then superseded". A record with the rehearsal's words is the exception: it is left out of the stack's facts, so a failure line or a success before it stands, and attribution never starts from it. It is listed in recently deployed, the trail, as `- <stack id> · ticked by alice · rehearsed, nothing was deployed · <time> · [run](...)`, so the team sees the rehearsal where it would have seen the deploy.
+- The row is made from the fresh preview, so it is pending again with its box and without the tick. It never says deploying: nothing was going to deploy.
+- The job is green and the `outcome` output is `rehearsed`, a new value (0041). The result file's `preview` holds what a deploy would have sent, and the summary of the `apply` lists it under "What a deploy would send".
+- The tool's `up` is never started, so a rehearsal needs the credentials a preview needs and no more. A team can rehearse with read-only credentials in the `apply` job.
+- `settle` finds nothing open after a rehearsal, as after any `apply` that gave its record a result.

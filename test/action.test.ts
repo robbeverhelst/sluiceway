@@ -81,6 +81,7 @@ describe("action.yml", () => {
     expect(Object.keys(action.inputs).sort()).toEqual([
       "concurrency",
       "deployment-id",
+      "dry-run",
       "github-token",
       "job-id",
       "mode",
@@ -94,6 +95,13 @@ describe("action.yml", () => {
     expect(action.inputs["deployment-id"]?.required).toBe(false);
     expect(action.inputs["deployment-id"]?.default).toBeUndefined();
     expect(action.inputs["deployment-id"]?.description).toContain("apply");
+  });
+
+  // Record 0051: a rehearsal of apply. Off unless a workflow turns it on.
+  test("dry-run is false by default and belongs to apply", () => {
+    expect(action.inputs["dry-run"]?.required).toBe(false);
+    expect(action.inputs["dry-run"]?.default).toBe("false");
+    expect(action.inputs["dry-run"]?.description).toContain("apply");
   });
 
   // The Marketplace shows an action with its icon on its colour, and GitHub
