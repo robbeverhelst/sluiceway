@@ -55868,6 +55868,7 @@ function foldSteps(steps) {
   const unknown2 = [];
   const unreadable = [];
   const firstAt = new Map;
+  let rootCreate;
   steps.forEach((step2, index) => {
     const at = `The tool's output, at steps[${index}]`;
     const known = Object.hasOwn(STEP_OPS, step2.op) ? STEP_OPS[step2.op] : undefined;
@@ -55876,6 +55877,8 @@ function foldSteps(steps) {
       return;
     }
     if (known === "drop")
+      return;
+    if (isRootStack(step2.urn) && step2.op === "update")
       return;
     const resource = typeAndName(step2.urn);
     if (resource === undefined) {
@@ -55889,14 +55892,24 @@ function foldSteps(steps) {
     }
     firstAt.set(step2.urn, index);
     const folded = step2.op === "delete" && step2.oldState?.retainOnDelete === true ? FORGET : known;
-    changes.push({ address: step2.urn, ...resource, ...folded, ...keys3(step2, folded.op) });
+    const change3 = { address: step2.urn, ...resource, ...folded, ...keys3(step2, folded.op) };
+    if (isRootStack(step2.urn) && step2.op === "create")
+      rootCreate = change3;
+    else
+      changes.push(change3);
   });
   if (unreadable.length > 0)
     return { ok: false, reason: "unreadable-output", detail: unreadable };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
+  if (rootCreate !== undefined && changes.length === 0)
+    changes.push(rootCreate);
   changes.sort((a, b) => byCodeUnit10(a.address, b.address));
   return { ok: true, changes };
+}
+var ROOT_STACK_TYPE = "pulumi:pulumi:Stack";
+function isRootStack(urn) {
+  return urn.startsWith("urn:pulumi:") && urn.split("::")[2] === ROOT_STACK_TYPE;
 }
 function typeAndName(urn) {
   if (!urn.startsWith("urn:pulumi:"))
