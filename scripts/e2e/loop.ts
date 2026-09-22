@@ -388,3 +388,27 @@ export function checkNothingLeaks(step: LoopStep, secrets: string[]): string[] {
   }
   return problems;
 }
+
+// The stacks of a chain that wait (record 0056): the newest record of each is
+// queued, not handed on, and waits behind the stacks given, and its row is
+// queued.
+export function checkQueued(
+  step: LoopStep,
+  expected: { stack: string; behind: string[] }[],
+): string[] {
+  return expected.flatMap(({ stack, behind }) => {
+    const record = step.records.findLast(({ task }) => task === `sluiceway:${stack}`);
+    if (!record) return [`${stack} has no deployment record.`];
+    const found = payloadField(record.payload, "behind");
+    const waits = Array.isArray(found) ? found.join(", ") : "";
+    return [
+      ...(waits === behind.join(", ")
+        ? []
+        : [
+            `The newest record of ${stack} waits behind ${waits || "nothing"}, expected ${behind.join(", ")}.`,
+          ]),
+      ...statuses(record, ["queued"]),
+      ...rowState(step.body, stack, "queued"),
+    ];
+  });
+}

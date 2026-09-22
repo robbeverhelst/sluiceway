@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   checkApply,
   checkNothingLeaks,
+  checkQueued,
   checkRefusedTick,
   checkRehearsal,
   checkRerun,
@@ -486,5 +487,51 @@ describe("nothing leaks from a step", () => {
       "The summary holds CANARY-SECRET.",
       "The output matrix holds CANARY-SECRET.",
     ]);
+  });
+});
+
+// A chain of stacks (record 0056): the stacks after the first layer have a
+// queued record behind the stack before them and a queued row.
+describe("the queued stacks of a chain", () => {
+  const queuedRecord = (over: Partial<LoopRecord> = {}) =>
+    record(["queued"], {
+      id: 2,
+      task: "sluiceway:app:prod",
+      environment: "sluiceway",
+      payload: { ...PAYLOAD, behind: ["network:dev"] },
+      ...over,
+    });
+  const queuedBody = dashboard(row("app:prod", "queued"));
+
+  test("a queued record behind the right stack and a queued row are good", () => {
+    expect(
+      checkQueued(stepped({ body: queuedBody, records: [queuedRecord()] }), [
+        { stack: "app:prod", behind: ["network:dev"] },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("a record behind another stack, one that is not queued, and a row that is not queued are named", () => {
+    expect(
+      checkQueued(
+        stepped({
+          body: dashboard(row("app:prod", "deploying")),
+          records: [queuedRecord({ states: ["queued", "in_progress"], payload: PAYLOAD })],
+        }),
+        [{ stack: "app:prod", behind: ["network:dev"] }],
+      ),
+    ).toEqual([
+      "The newest record of app:prod waits behind nothing, expected network:dev.",
+      "Deployment record 2 has the statuses queued, in_progress, expected queued.",
+      "The row of app:prod is in state deploying, expected queued.",
+    ]);
+  });
+
+  test("a stack with no record at all is named", () => {
+    expect(
+      checkQueued(stepped({ body: queuedBody, records: [] }), [
+        { stack: "app:prod", behind: ["network:dev"] },
+      ]),
+    ).toEqual(["app:prod has no deployment record."]);
   });
 });

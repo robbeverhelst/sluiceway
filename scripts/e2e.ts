@@ -30,6 +30,11 @@
 //      `uses: sluiceway/sluiceway@v0`: from a copy of the action in a
 //      directory of its own, with the moving tag as its ref and no
 //      GITHUB_ACTION_PATH. Its images come from the tag of package.json.
+//  10. Three stacks in a chain (record 0056): sluiceway.yaml says app:prod
+//      depends on network:dev and site:prod on app:prod, a push changes all
+//      three, and alice ticks them in one edit. Each run deploys one layer
+//      with the real tool, settle starts the workflow again, and the resolve
+//      of that run starts the next stack.
 //
 // The tool only runs in a copy inside the work directory, against a file
 // backend made there, with an environment built from nothing. `node` on PATH
@@ -46,6 +51,7 @@ import { checkFullScan, checkNarrowedScan, type Expected, type Observed } from "
 import {
   checkApply,
   checkNothingLeaks,
+  checkQueued,
   checkRefusedTick,
   checkRehearsal,
   checkRerun,
@@ -715,6 +721,153 @@ good =
       ? []
       : [`The footer does not name v${version}.`]),
   ]) && good;
+
+// 10. Three stacks in a chain (record 0056). The config and the three programs
+// change in one push, so all three are pending, and alice ticks them in one
+// edit.
+const THIRD_SHA = "3333333333333333333333333333333333333333";
+console.log("::group::Pushing a chain of dependencies and a change to three stacks");
+const configFile = join(workspace, "sluiceway.yaml");
+writeFileSync(
+  configFile,
+  `${readFileSync(configFile, "utf8").replace(
+    "  - path: app\n    inputs:\n      - shared/**\n",
+    "  - path: app\n    inputs:\n      - shared/**\n    dependsOn:\n      - network:dev\n",
+  )}\n  - path: site\n    dependsOn:\n      - app:prod\n`,
+);
+const edit = (file: string, from: string, to: string) => {
+  const path = join(workspace, file);
+  const text = readFileSync(path, "utf8");
+  if (!text.includes(from)) throw new Error(`${file} holds no "${from}".`);
+  writeFileSync(path, text.replace(from, to));
+};
+edit("network/Pulumi.dev.yaml", "network:zone: dev-a", "network:zone: dev-b");
+edit("app/Pulumi.prod.yml", "app:tier: standard", "app:tier: premium");
+edit("site/Pulumi.prod.yaml", "    - contact\n", "    - contact\n    - blog\n");
+console.log(readFileSync(configFile, "utf8"));
+console.log("::endgroup::");
+const chainScan = await scanStep(THIRD_SHA, "schedule");
+const chainRows = { "app:prod": "pending", "network:dev": "pending", "site:prod": "pending" };
+good =
+  report(
+    "The scan before the chain",
+    checkFullScan(chainScan, {
+      ...afterLoop,
+      sha: THIRD_SHA,
+      actionRef: THIRD_SHA,
+      rows: { ...afterLoop.rows, ...chainRows },
+    }),
+  ) && good;
+
+async function tickAll(stacks: string[]): Promise<IssuesRun> {
+  const [dashboard] = await fake.listIssues({ label: "sluiceway", state: "open" });
+  if (!dashboard) throw new Error("There is no dashboard to tick.");
+  fake.editBody(
+    dashboard.number,
+    stacks.reduce((body, stack) => tickRow(body, stack), dashboard.body),
+    ALICE,
+  );
+  runNumber++;
+  const runId = String(runNumber);
+  fake.seedIssuesRun(WORKFLOW, { id: runId, completed: false });
+  const payload = fake.deliverEvent();
+  const resolved = await loopStep("resolve", {
+    runId,
+    sha: THIRD_SHA,
+    event: "issues",
+    payload,
+    title: `Run ${runId}: resolve, after alice ticked ${stacks.join(", ")}`,
+  });
+  return { runId, payload, resolved, matrix: matrixEntries(resolved.outputs.matrix ?? "") };
+}
+
+// The run that settle starts: its resolve job, on a dispatch.
+async function dispatchedResolve(): Promise<IssuesRun> {
+  runNumber++;
+  const runId = String(runNumber);
+  fake.seedRun(runId, { completed: false });
+  const payload = { ref: "refs/heads/main" };
+  const resolved = await loopStep("resolve", {
+    runId,
+    sha: THIRD_SHA,
+    event: "workflow_dispatch",
+    payload,
+    title: `Run ${runId}: resolve, started by settle`,
+  });
+  return { runId, payload, resolved, matrix: matrixEntries(resolved.outputs.matrix ?? "") };
+}
+
+// One layer: its apply job with the real tool, then settle.
+async function deployLayer(layer: IssuesRun, stack: string, environment: string) {
+  const problems = checkResolve(layer.resolved, {
+    stack,
+    environment,
+    ticker: ALICE.login,
+    runId: layer.runId,
+  });
+  const [entry] = layer.matrix;
+  if (!entry) return { problems, settled: undefined };
+  const applied = await applyStep(layer, entry.deployment);
+  problems.push(
+    ...checkApply(applied, { stack, deployment: entry.deployment, outcome: "deployed" }),
+  );
+  const settled = await settleStep(layer);
+  return { problems, settled };
+}
+
+const chainTick = await tickAll(["site:prod", "app:prod", "network:dev"]);
+const firstLayer = await deployLayer(chainTick, "network:dev", "network");
+good =
+  reportStep("The chain: the first layer", chainTick.resolved, [
+    ...firstLayer.problems,
+    ...checkQueued(chainTick.resolved, [
+      { stack: "app:prod", behind: ["network:dev"] },
+      { stack: "site:prod", behind: ["app:prod"] },
+    ]),
+    // app:prod and site:prod wait, and nothing of them went out yet.
+    ...checkDeploys("network:dev", await deploysOf("network", "dev"), 2),
+    ...checkDeploys("app:prod", await deploysOf("app", "prod"), 1),
+    ...checkDeploys("site:prod", await deploysOf("site", "prod"), 1),
+    ...(firstLayer.settled?.newDispatches === 1
+      ? []
+      : ["settle did not start the workflow again after the first layer."]),
+  ]) && good;
+
+const secondRun = await dispatchedResolve();
+const secondLayer = await deployLayer(secondRun, "app:prod", "sluiceway");
+good =
+  reportStep("The chain: the second layer", secondRun.resolved, [
+    ...secondLayer.problems,
+    ...checkQueued(secondRun.resolved, [{ stack: "site:prod", behind: ["app:prod"] }]),
+    ...checkDeploys("app:prod", await deploysOf("app", "prod"), 2),
+    ...checkDeploys("site:prod", await deploysOf("site", "prod"), 1),
+    ...(secondLayer.settled?.newDispatches === 1
+      ? []
+      : ["settle did not start the workflow again after the second layer."]),
+  ]) && good;
+
+const thirdRun = await dispatchedResolve();
+const thirdLayer = await deployLayer(thirdRun, "site:prod", "sluiceway");
+good =
+  reportStep("The chain: the third layer", thirdRun.resolved, [
+    ...thirdLayer.problems,
+    ...checkDeploys("site:prod", await deploysOf("site", "prod"), 2),
+    ...(thirdLayer.settled?.newDispatches === 0
+      ? []
+      : ["settle started the workflow again with nothing left in the chain."]),
+  ]) && good;
+
+const afterChain = await scanStep(THIRD_SHA, "workflow_dispatch");
+good =
+  report(
+    "The scan after the chain",
+    checkFullScan(afterChain, {
+      ...afterLoop,
+      sha: THIRD_SHA,
+      actionRef: THIRD_SHA,
+      rows: { ...afterLoop.rows, "site:prod": "in-sync" },
+    }),
+  ) && good;
 
 console.log("::group::The dashboard after the narrowed scan");
 console.log(dashboardBody(second));
