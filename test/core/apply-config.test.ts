@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyConfig, ConfigError, parseConfig } from "../../src/core/config.ts";
+import { applyConfig, ConfigError, ignoredStacks, parseConfig } from "../../src/core/config.ts";
 import type { Stack } from "../../src/core/stack.ts";
 
 const stack = (path: string, name?: string): Stack =>
@@ -171,5 +171,44 @@ describe("ignore", () => {
     expect(() =>
       applyConfig(parseConfig(undefined), [stack("apps", "web:prod"), stack("apps:web", "prod")]),
     ).toThrow('two stacks have the id "apps:web:prod"');
+  });
+});
+
+// Slice 2.20 (record 0051): the stacks an entry with a reason leaves out,
+// for the fold under In sync.
+describe("ignored stacks with a reason", () => {
+  const found = [...FOUND, stack("apps/legacy", "prod"), stack("apps/legacy", "dev")];
+
+  test("each stack an entry with a reason leaves out, with that reason, by stack id", () => {
+    const config = parseConfig(`
+ignore:
+  - glob: "apps/legacy:*"
+    reason: Deployed by the platform team
+`);
+    expect(ignoredStacks(config, found)).toEqual([
+      { stackId: "apps/legacy:dev", reason: "Deployed by the platform team" },
+      { stackId: "apps/legacy:prod", reason: "Deployed by the platform team" },
+    ]);
+    expect(applyConfig(config, found).map(({ stack: one }) => one.path)).not.toContain(
+      "apps/legacy",
+    );
+  });
+
+  test("a glob as text lists nothing, and the first entry that matches decides", () => {
+    const config = parseConfig(`
+ignore:
+  - "**/*:dev"
+  - glob: "apps/*:*"
+    reason: Not ours
+`);
+    expect(ignoredStacks(config, found)).toEqual([
+      { stackId: "apps/grafana:prod", reason: "Not ours" },
+      { stackId: "apps/legacy:prod", reason: "Not ours" },
+    ]);
+  });
+
+  test("no entry with a reason, nothing listed", () => {
+    expect(ignoredStacks(parseConfig('ignore: ["apps/legacy:*"]'), found)).toEqual([]);
+    expect(ignoredStacks(parseConfig(undefined), found)).toEqual([]);
   });
 });

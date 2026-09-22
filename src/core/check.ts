@@ -3,7 +3,7 @@
 // facts. The words are render/check.ts.
 
 import { claim } from "./claim.ts";
-import { applyConfig, type Config, type ConfiguredStack } from "./config.ts";
+import { applyConfig, type Config, type ConfiguredStack, ignoreGlob } from "./config.ts";
 import { globMatcher } from "./glob.ts";
 import { type Stack, stackId } from "./stack.ts";
 
@@ -64,7 +64,7 @@ export function checkSetup(config: Config, found: Stack[], files: string[]): Che
   );
   return {
     stacks,
-    ignore: config.ignore.map((glob) => ignoreReport(glob, found)),
+    ignore: config.ignore.map((entry) => ignoreReport(ignoreGlob(entry), found)),
     unclaimed: groups(unclaimed),
     suggested: SUGGESTIONS.filter((glob) => unclaimed.some(globMatcher([glob]))),
   };

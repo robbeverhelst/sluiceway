@@ -351,3 +351,49 @@ describe("scan.logDiff (record 0048)", () => {
     );
   });
 });
+
+// Slice 2.20 (record 0051): an exclusion can say why, so it never rots
+// out of sight.
+describe("ignore entries with a reason", () => {
+  test("an entry is a glob as text, or a mapping with a glob and a reason", () => {
+    expect(
+      parseConfig(`
+ignore:
+  - "**/*:dev"
+  - glob: "apps/legacy:*"
+    reason: Moved to the platform team's pipeline
+`).ignore,
+    ).toEqual([
+      "**/*:dev",
+      { glob: "apps/legacy:*", reason: "Moved to the platform team's pipeline" },
+    ]);
+  });
+
+  test("a mapping without a reason is an error, because the reason is the point of it", () => {
+    expect(problems('ignore:\n  - glob: "apps/legacy:*"\n')).toEqual([
+      'ignore[0].reason: is required. Say why the stack is left out, or write the glob as text: "apps/legacy:*".',
+    ]);
+  });
+
+  test("a mapping needs a glob, and neither may be empty", () => {
+    expect(problems("ignore:\n  - reason: gone\n")).toEqual([
+      "ignore[0].glob: is required. It is matched against the stack id.",
+    ]);
+    expect(problems('ignore:\n  - glob: ""\n    reason: ""\n')).toEqual([
+      "ignore[0].glob: must not be empty.",
+      "ignore[0].reason: must not be empty.",
+    ]);
+  });
+
+  test("a mapping takes no other key", () => {
+    expect(problems('ignore:\n  - glob: "a:*"\n    reason: gone\n    until: 2027\n')).toEqual([
+      'ignore[0]: unknown key "until". Known keys here: glob, reason.',
+    ]);
+  });
+
+  test("an entry that is neither text nor a mapping is refused", () => {
+    expect(problems("ignore:\n  - 3\n")).toEqual([
+      "ignore[0]: expected a glob as text, or a mapping with glob and reason, got 3.",
+    ]);
+  });
+});

@@ -37,6 +37,8 @@ tickers: maintain
 ignore:
   - "sandbox/*"      # every stack in sandbox/
   - "**/*:scratch"   # the scratch stack of every project
+  - glob: "legacy/*"
+    reason: Deployed by the platform team # listed with this under In sync
 
 scan:
   unrelated:
@@ -159,6 +161,17 @@ A stack config file with no stack in the backend is the usual reason to ignore o
 ignore:
   - "apps/web:dev"
 ```
+
+An entry can also say why. Write it as a mapping with `glob` and `reason`, and every stack it leaves out is listed with the reason in a fold of its own under the In sync heading, so an exclusion stays in sight for as long as it lasts:
+
+```yaml
+ignore:
+  - "apps/web:dev"
+  - glob: "legacy/*"
+    reason: Deployed by the platform team's pipeline until the move in March
+```
+
+A mapping without a `reason` is an error: write the glob as text instead. A stack that several entries match gets the reason of the first one in the file, and a stack whose first match is a glob as text is left out without a line. The reason is shown as text, never as Markdown.
 
 ### `scan.unrelated`
 

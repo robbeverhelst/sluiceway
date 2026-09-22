@@ -1,5 +1,7 @@
 # Push scans are narrowed by a claim rule that fails open
 
+> Amended by 0051: an `ignore` entry may be a mapping with a `glob` and a `reason`, and a stack it leaves out is listed with the reason in a fold under In sync. It still has no row.
+
 The first real user has 58 stacks, a pool of at most four self-hosted runners with 1 CPU and 4 Gi each, and about nine commits a day that arrive in bursts. Two out of three of those commits change files in one project directory only. Previewing everything on every push would keep that pool busy for most of an active day, so a scan that follows a push is a narrowed scan: it previews only the stacks that claim a changed file. A scan on schedule, on manual dispatch or from the rescan box is always a full scan.
 
 A stack claims a changed file when the file lies inside the stack's directory, or matches one of that stack's `inputs` globs. A changed file that no stack claims makes the scan a full scan. That one rule is what keeps narrowing honest in a monorepo: a shared components package, a root lockfile, a shared tsconfig or an env file all sit outside every stack directory, so changing them previews everything, without Sluiceway knowing what they are.

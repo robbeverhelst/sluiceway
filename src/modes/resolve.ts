@@ -5,7 +5,13 @@
 // no process runner, so it cannot run the tool (record 0014, promise 4).
 
 import type { Adapter } from "../adapters/adapter.ts";
-import { applyConfig, type Config, type ConfiguredStack } from "../core/config.ts";
+import {
+  applyConfig,
+  type Config,
+  type ConfiguredStack,
+  type IgnoredStack,
+  ignoredStacks,
+} from "../core/config.ts";
 import { loadConfig } from "../core/config-file.ts";
 import {
   type DeployFact,
@@ -139,6 +145,7 @@ async function resolveTicks(
   // history come from one query, so they describe one moment, and the run acts
   // on every ticked row it finds, whoever's edit woke it.
   let stacks: Map<string, ConfiguredStack> | undefined;
+  let ignored: IgnoredStack[] = [];
   let named: NamedTick[] = [];
   for (let reads = 1; ; reads++) {
     const first = await github.readEditHistory(issue.number, {
@@ -168,7 +175,7 @@ async function resolveTicks(
     // Discovery reads files only (record 0014). A stack that no file names
     // does not exist, and a tick on its row is left for the scan, which drops
     // the row.
-    stacks ??= await discover(context, config);
+    if (!stacks) ({ stacks, ignored } = await discover(context, config));
     const known = ticks.filter((tick) => {
       if (tick.kind === "rescan" || stacks?.has(tick.stackId)) return true;
       log.info(
@@ -340,6 +347,7 @@ async function resolveTicks(
           context,
           config,
           [...(stacks?.values() ?? [])],
+          ignored,
           liveBody,
           { started, dropped, clear },
           attribution,
@@ -384,12 +392,19 @@ function unverifiedMessage(unverified: TickOutcome[]): string {
   return `GitHub gave no answer about the access of ${logins}, so ${plural(unverified.length, "tick")} could not be verified. Nothing was deployed for ${unverified.length === 1 ? "it" : "them"}, and the comment on the dashboard asks for a fresh tick (record 0018).`;
 }
 
-async function discover(
-  context: ResolveContext,
-  config: Config,
-): Promise<Map<string, ConfiguredStack>> {
-  const found = applyConfig(config, await context.adapter.discover(context.root));
-  return new Map(found.map((stack) => [stackId(stack.stack), stack]));
+// The stacks that exist for Sluiceway, by id, and the ones an `ignore` entry
+// with a reason leaves out, which the body lists (record 0051).
+interface Discovered {
+  stacks: Map<string, ConfiguredStack>;
+  ignored: IgnoredStack[];
+}
+
+async function discover(context: ResolveContext, config: Config): Promise<Discovered> {
+  const found = await context.adapter.discover(context.root);
+  return {
+    stacks: new Map(applyConfig(config, found).map((stack) => [stackId(stack.stack), stack])),
+    ignored: ignoredStacks(config, found),
+  };
 }
 
 // The rescan box, and a body of another version, start a full scan by
@@ -471,6 +486,7 @@ async function swapRows(
   context: ResolveContext,
   config: Config,
   stacks: readonly ConfiguredStack[],
+  ignored: readonly IgnoredStack[],
   liveBody: string,
   swap: Swap,
   // By `scan-sha`, so the walk is made once however many tries the write takes.
@@ -607,6 +623,7 @@ async function swapRows(
       actionRef: context.actionRef,
       personality: config.dashboard.personality,
       readOnly: config.dashboard.readOnly,
+      ignored,
     },
     // A writer that swaps rows aims at the hard limit (record 0028).
     { ...context.limits?.body, target: Number.POSITIVE_INFINITY },

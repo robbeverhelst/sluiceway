@@ -1794,3 +1794,57 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 <sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
 "
 `;
+
+exports[`snapshots in sync, with stacks left out by ignore 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/in-sync-dark.svg">
+    <img alt="Sluiceway: everything is in sync" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/in-sync-light.svg">
+  </picture>
+</p>
+
+<div align="center">
+
+⚪&nbsp;**0 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;2 in sync
+
+Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
+
+</div>
+
+## Pending
+
+Gate closed, water calm. Nothing to deploy.
+
+## In sync
+
+<details><summary>2 stacks in sync</summary>
+
+- e:calm <!-- sluiceway:row stack="e:calm" state="in-sync" -->
+  <!-- /sluiceway:row -->
+- f:calm <!-- sluiceway:row stack="f:calm" state="in-sync" -->
+  <!-- /sluiceway:row -->
+
+</details>
+
+<details><summary>2 stacks left out by ignore</summary>
+
+- apps/legacy:dev · Deployed by the platform team
+- sandbox/playground · A scratch stack, never deployed from here
+
+</details>
+
+## Recently deployed
+
+- apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+
+---
+
+- [ ] Rescan all stacks <!-- sluiceway:rescan -->
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>
+"
+`;

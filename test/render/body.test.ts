@@ -632,6 +632,54 @@ describe("the in sync section", () => {
   });
 });
 
+// Slice 2.20 (record 0051): a stack left out with a reason is listed with it,
+// in a fold of its own under In sync, so an exclusion never rots out of sight.
+describe("the ignored fold", () => {
+  const IGNORED = [
+    { stackId: "apps/legacy:dev", reason: "Deployed by the platform team" },
+    { stackId: "apps/legacy:prod", reason: "Deployed by the platform team" },
+  ];
+
+  test("comes after the in sync fold, one line per stack with its reason", () => {
+    const all = paragraphs(renderBody(input([inSync("a")], { ignored: IGNORED })));
+    const at = all.indexOf("## In sync");
+    expect(all.slice(at + 1, at + 7)).toEqual([
+      "<details><summary>1 stack in sync</summary>",
+      rowBlock(inSync("a")).text,
+      "</details>",
+      "<details><summary>2 stacks left out by ignore</summary>",
+      "- apps/legacy:dev · Deployed by the platform team\n- apps/legacy:prod · Deployed by the platform team",
+      "</details>",
+    ]);
+  });
+
+  test("keeps the In sync heading when no stack is in sync", () => {
+    const all = paragraphs(renderBody(input([pending("a")], { ignored: IGNORED.slice(0, 1) })));
+    const at = all.indexOf("## In sync");
+    expect(all.slice(at + 1, at + 4)).toEqual([
+      "<details><summary>1 stack left out by ignore</summary>",
+      "- apps/legacy:dev · Deployed by the platform team",
+      "</details>",
+    ]);
+    expect(all[1]).toBeDefined();
+  });
+
+  test("changes nothing else: no count, no header state, no row", () => {
+    const without = renderBody(input([pending("a"), inSync("b")]));
+    const withIt = renderBody(input([pending("a"), inSync("b")], { ignored: IGNORED }));
+    expect(withIt.split("\n\n## In sync")[0]).toBe(without.split("\n\n## In sync")[0]);
+    expect(parseDashboard(withIt).rows.map((row) => row.stackId)).toEqual(["a", "b"]);
+    expect(renderBody(input([pending("a"), inSync("b")], { ignored: [] }))).toBe(without);
+  });
+
+  test("the reason is text from the config and never markup", () => {
+    const body = renderBody(
+      input([], { ignored: [{ stackId: "a:b", reason: "<b>see</b> [docs](x)\n- [ ] tick" }] }),
+    );
+    expect(body).toContain("- a:b · &lt;b&gt;see&lt;/b&gt; &#91;docs&#93;(x) - &#91; &#93; tick");
+  });
+});
+
 describe("recently deployed", () => {
   test("a plain list, newest first", () => {
     const all = paragraphs(
@@ -996,6 +1044,20 @@ describe("snapshots", () => {
         ...input([], { recentlyDeployed: RECENT, readOnly: true }),
         rows: DASHBOARDS.failing.map((row) => rowBlock(row, { readOnly: true })),
       })}\n`,
+    ).toMatchSnapshot();
+  });
+
+  test("in sync, with stacks left out by ignore", () => {
+    expect(
+      `${renderBody(
+        input(DASHBOARDS["in-sync"], {
+          recentlyDeployed: RECENT,
+          ignored: [
+            { stackId: "apps/legacy:dev", reason: "Deployed by the platform team" },
+            { stackId: "sandbox/playground", reason: "A scratch stack, never deployed from here" },
+          ],
+        }),
+      )}\n`,
     ).toMatchSnapshot();
   });
 

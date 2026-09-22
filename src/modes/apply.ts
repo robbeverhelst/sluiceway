@@ -8,7 +8,13 @@
 import type { Adapter, PreviewResult, ToolDiffResult } from "../adapters/adapter.ts";
 import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
-import { applyConfig, type Config, type ConfiguredStack } from "../core/config.ts";
+import {
+  applyConfig,
+  type Config,
+  type ConfiguredStack,
+  type IgnoredStack,
+  ignoredStacks,
+} from "../core/config.ts";
 import { loadConfig } from "../core/config-file.ts";
 import {
   type DeployFacts,
@@ -323,6 +329,8 @@ interface Setup {
   config: Config;
   stacks: ConfiguredStack[];
   stack: ConfiguredStack;
+  // Listed under In sync with their reasons (record 0051).
+  ignored: IgnoredStack[];
   attribution: AttributionSource;
 }
 
@@ -363,7 +371,8 @@ async function deploy(
   let setup: Setup;
   try {
     const config = loadConfig(context.root);
-    const stacks = applyConfig(config, await adapter.discover(context.root));
+    const found = await adapter.discover(context.root);
+    const stacks = applyConfig(config, found);
     const stack = stacks.find((one) => stackId(one.stack) === id);
     if (!stack) {
       const reason: DeployFailureReason = { kind: "unknown-stack" };
@@ -380,6 +389,7 @@ async function deploy(
       config,
       stacks,
       stack,
+      ignored: ignoredStacks(config, found),
       attribution: attributionSource(
         context.github,
         {
@@ -633,6 +643,7 @@ async function swapRow(
         actionRef: context.actionRef,
         personality: setup.config.dashboard.personality,
         readOnly: setup.config.dashboard.readOnly,
+        ignored: setup.ignored,
       },
       // A writer that swaps rows aims at the hard limit (record 0028).
       { ...context.limits?.body, target: Number.POSITIVE_INFINITY },

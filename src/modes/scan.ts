@@ -9,7 +9,7 @@ import type { Adapter, PreviewResult, ToolDiffResult } from "../adapters/adapter
 import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import type { Attribution } from "../core/attribution.ts";
-import { applyConfig, type ConfiguredStack } from "../core/config.ts";
+import { applyConfig, type ConfiguredStack, ignoredStacks } from "../core/config.ts";
 import { loadConfig } from "../core/config-file.ts";
 import {
   type DeployFact,
@@ -247,7 +247,9 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   // fails the job before the tool or GitHub is touched (record 0012). Every
   // scan runs discovery, a narrowed one too (record 0011).
   const config = loadConfig(context.root);
-  const stacks = applyConfig(config, await context.adapter.discover(context.root)).sort((a, b) =>
+  const found = await context.adapter.discover(context.root);
+  const ignored = ignoredStacks(config, found);
+  const stacks = applyConfig(config, found).sort((a, b) =>
     byCodeUnit(stackId(a.stack), stackId(b.stack)),
   );
   const ids = stacks.map(({ stack }) => stackId(stack));
@@ -454,6 +456,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           actionRef: context.actionRef,
           personality: config.dashboard.personality,
           readOnly: config.dashboard.readOnly,
+          ignored,
         },
         // A writer that swaps rows aims at the hard limit, because the room
         // between the target and the limit exists for that writer (0028).

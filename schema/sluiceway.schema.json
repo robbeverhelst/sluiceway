@@ -68,10 +68,34 @@
       "default": [],
       "type": "array",
       "items": {
-        "type": "string",
-        "minLength": 1
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "object",
+            "properties": {
+              "glob": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Glob matched against the stack id."
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Why these stacks are left out. Shown on the dashboard under In sync."
+              }
+            },
+            "required": [
+              "glob",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        ]
       },
-      "description": "Globs matched against the stack id. An ignored stack has no row."
+      "description": "Globs matched against the stack id. An ignored stack has no row. An entry with a reason is listed with it under In sync."
     },
     "scan": {
       "default": {},

@@ -1,6 +1,7 @@
 import { LineCounter, parseDocument } from "yaml";
 import { z } from "zod";
 import { knownStacks } from "./discovery.ts";
+import { globMatcher } from "./glob.ts";
 import { type Stack, stackId } from "./stack.ts";
 
 // Loose on purpose: old logins break today's rules, and managed accounts
@@ -19,6 +20,17 @@ const tickers = z.union([
 
 const text = z.string().min(1);
 const globs = z.array(text);
+
+// An `ignore` entry: a glob, or a glob with the reason it is there. A stack
+// left out with a reason is listed with it on the dashboard, so an exclusion
+// never rots out of sight (record 0051).
+const ignoreEntry = z.union([
+  text,
+  z.strictObject({
+    glob: text.describe("Glob matched against the stack id."),
+    reason: text.describe("Why these stacks are left out. Shown on the dashboard under In sync."),
+  }),
+]);
 
 // A person typed this path. It leaves here in the form a stack id uses (record
 // 0006): forward slashes, no leading "./", no trailing slash. The repo root
@@ -116,8 +128,11 @@ export const configSchema = z.strictObject({
       "Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.",
     )
     .default("write"),
-  ignore: globs
-    .describe("Globs matched against the stack id. An ignored stack has no row.")
+  ignore: z
+    .array(ignoreEntry)
+    .describe(
+      "Globs matched against the stack id. An ignored stack has no row. An entry with a reason is listed with it under In sync.",
+    )
     .default([]),
   scan: z
     .strictObject({
@@ -212,10 +227,33 @@ function describe(issue: Issue, raw: unknown): Problem[] {
   if (value === undefined && key === "path") {
     return problem("is required. It is the directory of the stack, relative to the repo root.");
   }
+  if (issue.path[0] === "ignore" && issue.path.length === 3) {
+    const glob = valueAt(raw, [...issue.path.slice(0, -1), "glob"]);
+    if (value === undefined && key === "reason") {
+      return problem(
+        `is required. Say why the stack is left out, or write the glob as text: ${show(glob)}.`,
+      );
+    }
+    if (value === undefined && key === "glob") {
+      return problem("is required. It is matched against the stack id.");
+    }
+  }
   if (key === "previewTimeout" && issue.code !== "custom") {
     return problem(`expected a whole number of minutes, 1 or more, got ${show(value)}.`);
   }
-  // The only union in the schema is the tick rule.
+  // An `ignore` entry is text or a mapping, and each kind has its own words.
+  if (issue.code === "invalid_union" && issue.path[0] === "ignore") {
+    const branch = typeof value === "string" ? 0 : isMapping(value) ? 1 : undefined;
+    if (branch === undefined) {
+      return problem(
+        `expected a glob as text, or a mapping with glob and reason, got ${show(value)}.`,
+      );
+    }
+    return (issue.errors[branch] ?? []).flatMap((inner) =>
+      describe({ ...inner, path: [...issue.path, ...inner.path] }, raw),
+    );
+  }
+  // The other union in the schema is the tick rule.
   if (issue.code === "invalid_union") {
     if (!Array.isArray(value)) {
       return problem(
@@ -256,6 +294,10 @@ const EXPECTED: Record<string, string> = {
   array: "a list",
   object: "a mapping",
 };
+
+function isMapping(value: unknown): boolean {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function valueAt(raw: unknown, path: PropertyKey[]): unknown {
   let value = raw;
@@ -326,15 +368,46 @@ function knownKeys(path: PropertyKey[]): string[] {
   return schema instanceof z.ZodObject ? Object.keys(schema.shape) : [];
 }
 
+// Through defaults, and into the mapping of a union that has one.
 function unwrap(schema: z.core.$ZodType): z.core.$ZodType {
   let inner = schema;
   while (inner instanceof z.ZodDefault || inner instanceof z.ZodPrefault) {
     inner = inner.def.innerType;
   }
+  if (inner instanceof z.ZodUnion) {
+    return inner.options.find((option) => option instanceof z.ZodObject) ?? inner;
+  }
   return inner;
 }
 
 export type TickRule = z.output<typeof tickers>;
+
+export type IgnoreEntry = z.output<typeof ignoreEntry>;
+
+export function ignoreGlob(entry: IgnoreEntry): string {
+  return typeof entry === "string" ? entry : entry.glob;
+}
+
+// A stack that an `ignore` entry with a reason leaves out (record 0051).
+export interface IgnoredStack {
+  stackId: string;
+  reason: string;
+}
+
+// The stacks an entry with a reason leaves out, by stack id, each with the
+// reason of the first entry in the file that matches it. A stack whose first
+// match is a glob as text has no reason to show and is not listed.
+export function ignoredStacks(config: Config, found: Stack[]): IgnoredStack[] {
+  return found
+    .map(stackId)
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    .flatMap((id) => {
+      const entry = config.ignore.find((one) => globMatcher([ignoreGlob(one)])(id));
+      return entry === undefined || typeof entry === "string"
+        ? []
+        : [{ stackId: id, reason: entry.reason }];
+    });
+}
 
 // A discovered stack with the settings that config gives it.
 export interface ConfiguredStack {
@@ -354,7 +427,7 @@ const DEFAULT_ENVIRONMENT = "sluiceway";
 // key. Inputs only ever add up (record 0010). What comes back is every stack
 // that exists for Sluiceway, so no caller can forget ignore.
 export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
-  const stacks = knownStacks(found, config.ignore);
+  const stacks = knownStacks(found, config.ignore.map(ignoreGlob));
   const problems = config.stacks.flatMap((entry, index) => {
     const inPath = stacks.filter((stack) => stack.path === entry.path);
     if (inPath.some((stack) => covers(entry, stack))) return [];

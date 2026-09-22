@@ -19,7 +19,7 @@ Finding the stacks of a repo from its files alone. It never asks a backend and n
 _Avoid_: Detection, lookup, stack listing
 
 **Ignored stack**:
-A discovered stack whose stack id matches an `ignore` glob. It has no row, is never previewed and claims nothing, and config cannot give it settings.
+A discovered stack whose stack id matches an `ignore` glob. It has no row, is never previewed and claims nothing, and config cannot give it settings. When the `ignore` entry gives a reason, the stack is listed with it in a fold under In sync, and that is all the dashboard says about it.
 _Avoid_: Excluded stack, hidden stack, skipped stack
 
 ### Scans

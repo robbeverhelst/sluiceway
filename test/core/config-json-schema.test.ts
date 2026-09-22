@@ -56,6 +56,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
     expect(found.map(([path]) => path)).toEqual([
       "root",
       "root.properties.dashboard",
+      "root.properties.ignore.items.anyOf.1",
       "root.properties.scan",
       "root.properties.stacks.items",
       "root.properties.stacks.items.properties.options",

@@ -2,6 +2,7 @@
 // of the root facts, the row blocks and the deployment records. Every writer
 // regenerates it, and nothing in it is ever patched or carried through.
 
+import type { IgnoredStack } from "../core/config.ts";
 import { destroySign } from "./destroy-sign.ts";
 import { escapeText } from "./escape.ts";
 import { type HeaderState, headerState } from "./header-state.ts";
@@ -53,6 +54,11 @@ export interface BodyInput {
   // Pending heading says why pending rows have no box. The rows themselves
   // are rendered without one by `rowBlock`.
   readOnly?: boolean | undefined;
+  // Stacks an `ignore` entry with a reason leaves out, from the config and
+  // discovery (record 0051). Listed with the reason in a fold under In sync.
+  // They have no row and no marker: every writer lists them from its own
+  // config.
+  ignored?: readonly IgnoredStack[] | undefined;
 }
 
 export const RECENTLY_DEPLOYED = 10;
@@ -262,9 +268,11 @@ export function renderBody(input: BodyInput): string {
     out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
 
   // In sync rows are calm and sit in a fold. One with a failure line is not
-  // calm: it is listed open, above the fold. Its state stays in sync.
+  // calm: it is listed open, above the fold. Its state stays in sync. The
+  // stacks left out with a reason get a fold of their own under it.
   const inSync = of("in-sync");
-  if (inSync.length > 0) {
+  const ignored = [...(input.ignored ?? [])].sort((a, b) => byCodeUnit(a.stackId, b.stackId));
+  if (inSync.length > 0 || ignored.length > 0) {
     const loud = inSync.filter((row) => row.failed);
     const quiet = inSync.filter((row) => !row.failed);
     out.push("## In sync");
@@ -275,6 +283,15 @@ export function renderBody(input: BodyInput): string {
           ? `${quiet.length} more in sync`
           : `${plural(quiet.length, "stack")} in sync`;
       out.push(`<details><summary>${summary}</summary>`, blocks(quiet), "</details>");
+    }
+    if (ignored.length > 0) {
+      out.push(
+        `<details><summary>${plural(ignored.length, "stack")} left out by ignore</summary>`,
+        ignored
+          .map(({ stackId, reason }) => `- ${escapeText(stackId)} · ${escapeText(reason)}`)
+          .join("\n"),
+        "</details>",
+      );
     }
   }
 
