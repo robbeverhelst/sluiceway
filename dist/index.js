@@ -51279,6 +51279,11 @@ function utcMinute(at) {
   const iso = at.toISOString();
   return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
 }
+function trailMinute(at, year) {
+  const iso = at.toISOString();
+  const day = at.getUTCFullYear() === year ? iso.slice(5, 10) : iso.slice(0, 10);
+  return `${day} ${iso.slice(11, 16)}`;
+}
 
 // src/render/row.ts
 var INDENT = "  ";
@@ -56614,195 +56619,6 @@ function mergeMethod(allowed, strategy) {
   return candidates.find((method) => allowed[method] !== false);
 }
 
-// src/core/deployment.ts
-var TASK_PREFIX = "sluiceway:";
-function deploymentTask(stackId2) {
-  return `${TASK_PREFIX}${stackId2}`;
-}
-function taskStackId(task) {
-  if (!task.startsWith(TASK_PREFIX) || task.length === TASK_PREFIX.length)
-    return;
-  return task.slice(TASK_PREFIX.length);
-}
-var PAYLOAD_VERSION = 1;
-function deploymentPayload(payload) {
-  return {
-    v: PAYLOAD_VERSION,
-    hash: payload.hash,
-    ticker: payload.ticker,
-    run: payload.run,
-    ...payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {},
-    ...payload.drift ? { drift: true } : {}
-  };
-}
-function mergePayload(payload) {
-  return { v: PAYLOAD_VERSION, ticker: payload.ticker, run: payload.run, merge: payload.merge };
-}
-var RUN_ID2 = /^[1-9]\d*$/;
-function readDeploymentPayload(payload) {
-  if (typeof payload !== "object" || payload === null)
-    return;
-  const { v, hash: hash2, ticker, run, behind, merge: merge3, drift } = payload;
-  if (v !== PAYLOAD_VERSION)
-    return;
-  if (merge3 !== undefined) {
-    const number4 = typeof merge3 === "number" && Number.isInteger(merge3) && merge3 > 0;
-    const plain = hash2 === undefined && behind === undefined;
-    return number4 && plain && typeof ticker === "string" && typeof run === "string" && RUN_ID2.test(run) ? { hash: "", ticker, run, merge: merge3 } : undefined;
-  }
-  if (typeof hash2 !== "string" || typeof ticker !== "string" || typeof run !== "string") {
-    return;
-  }
-  if (!RUN_ID2.test(run))
-    return;
-  const read2 = { hash: hash2, ticker, run };
-  if (drift === true)
-    read2.drift = true;
-  if (behind === undefined)
-    return read2;
-  const ids = Array.isArray(behind) ? behind : [];
-  if (ids.length === 0 || !ids.every((id) => typeof id === "string" && id !== "")) {
-    return;
-  }
-  return { ...read2, behind: ids };
-}
-var SUCCEEDED = new Set(["success", "inactive"]);
-var FAILED = new Set(["failure", "error"]);
-var NO_REASON_RECORDED = "no reason was recorded";
-var IN_SYNC_DESCRIPTION = "nothing to deploy, already in sync";
-var REHEARSED_DESCRIPTION = "rehearsed, nothing was deployed";
-function isRehearsal(status) {
-  return status?.state === "inactive" && status.description === REHEARSED_DESCRIPTION;
-}
-var HANDED_ON_DESCRIPTION = "started in a later run";
-var MERGED_DESCRIPTION = "merged, the deploy follows in a record of its own";
-function isHandedOn(status) {
-  return status?.state === "inactive" && (status.description === HANDED_ON_DESCRIPTION || status.description === MERGED_DESCRIPTION);
-}
-function isOpenStatus(status) {
-  const state = status?.state ?? "";
-  return !SUCCEEDED.has(state) && !FAILED.has(state);
-}
-function newestLast(a, b) {
-  return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id;
-}
-function factOf(record3, payload) {
-  const { ticker, run } = payload;
-  const state = record3.status?.state ?? "";
-  const at = new Date(record3.status?.createdAt ?? record3.createdAt);
-  if (SUCCEEDED.has(state)) {
-    const ended = state === "inactive" && record3.status?.succeededAt ? new Date(record3.status.succeededAt) : at;
-    const inSync = state === "success" && record3.status?.description === IN_SYNC_DESCRIPTION;
-    return {
-      kind: "succeeded",
-      ticker,
-      run,
-      at: Number.isNaN(ended.getTime()) ? at : ended,
-      hash: payload.hash,
-      ...inSync ? { inSync } : {}
-    };
-  }
-  if (FAILED.has(state)) {
-    return {
-      kind: "failed",
-      reason: record3.status?.description || NO_REASON_RECORDED,
-      ticker,
-      run,
-      at
-    };
-  }
-  return {
-    kind: "open",
-    deployment: record3.id,
-    waiting: state !== "in_progress",
-    ticker,
-    run,
-    ...payload.behind ? { behind: payload.behind } : {},
-    ...payload.merge === undefined ? {} : { merge: payload.merge }
-  };
-}
-function deployFacts(records) {
-  const facts = { byStack: new Map, succeeded: [], trail: [], unread: 0 };
-  for (const record3 of [...records].sort(newestLast)) {
-    const stackId2 = taskStackId(record3.task);
-    if (stackId2 === undefined)
-      continue;
-    const payload = readDeploymentPayload(record3.payload);
-    if (!payload) {
-      facts.unread++;
-      continue;
-    }
-    if (isHandedOn(record3.status))
-      continue;
-    const fact = factOf(record3, payload);
-    if (isRehearsal(record3.status)) {
-      const rehearsed = {
-        stackId: stackId2,
-        ticker: payload.ticker,
-        run: payload.run,
-        at: new Date(record3.status?.createdAt ?? record3.createdAt),
-        result: "rehearsed"
-      };
-      facts.succeeded.push({ ...rehearsed, sha: record3.sha });
-      facts.trail.push(rehearsed);
-      continue;
-    }
-    facts.byStack.set(stackId2, fact);
-    if (fact.kind === "succeeded") {
-      const before = lastDeployedCommit(facts, stackId2);
-      const wentOut = !fact.inSync;
-      const succeeded = {
-        stackId: stackId2,
-        ticker: fact.ticker,
-        run: fact.run,
-        at: fact.at,
-        ...fact.inSync ? { result: "in-sync" } : payload.drift ? { result: "drift-repaired" } : {}
-      };
-      facts.succeeded.push({ ...succeeded, sha: record3.sha });
-      facts.trail.push({
-        ...succeeded,
-        ...wentOut && before !== undefined ? { shipped: { from: before, to: record3.sha } } : {}
-      });
-    }
-    if (fact.kind === "failed") {
-      facts.trail.push({
-        stackId: stackId2,
-        ticker: fact.ticker,
-        run: fact.run,
-        at: fact.at,
-        result: "failed",
-        reason: fact.reason
-      });
-    }
-  }
-  return facts;
-}
-function lastDeployedCommit(facts, stackId2) {
-  return facts.succeeded.findLast((deploy) => deploy.stackId === stackId2 && deploy.result !== "rehearsed")?.sha;
-}
-function pendingAgain(fact, hash2) {
-  return fact?.kind === "succeeded" && !fact.inSync && fact.hash === hash2;
-}
-function rowAtLateRead(stack) {
-  const { previewedAt, liveState, fact } = stack;
-  if (fact?.kind === "open") {
-    const taken = fact.behind ? "queued" : "deploying";
-    return { row: "deploying", from: liveState === taken ? "live" : "record" };
-  }
-  const usableLive = liveState !== undefined && liveState !== "deploying" && liveState !== "queued";
-  if (previewedAt === undefined) {
-    if (usableLive)
-      return { row: "live" };
-    return { row: "preview-first", why: liveState === undefined ? "no-row" : "no-open-deployment" };
-  }
-  const predates = fact !== undefined && !stack.settledHere && fact.at > previewedAt;
-  if (!predates)
-    return { row: "fresh" };
-  if (usableLive)
-    return { row: "live" };
-  return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
-}
-
 // src/render/destroy-alert.ts
 function destroyAlert(rows) {
   const ids = rows.filter((row) => row.known && row.state === "pending" && row.destroys > 0).map((row) => `**${escapeText(row.stackId)}**`);
@@ -56949,6 +56765,7 @@ function shortenedNote(shortened, pending) {
 
 // src/render/body.ts
 var RECENTLY_DEPLOYED = 10;
+var TRAIL_LINE = "Times are in UTC.";
 var ACTION_REPO2 = "sluiceway/sluiceway";
 var ACTION_URL = `https://github.com/${ACTION_REPO2}`;
 var ALT = {
@@ -57059,29 +56876,28 @@ function blocks(rows) {
   return rows.map((row) => row.text).join(`
 `);
 }
-var DRIFT_REPAIRED_WORDS = "put back what changed outside the code";
 var RESULT_WORDS = {
-  "in-sync": IN_SYNC_DESCRIPTION,
-  rehearsed: REHEARSED_DESCRIPTION,
-  "drift-repaired": DRIFT_REPAIRED_WORDS
+  "in-sync": "no changes",
+  rehearsed: "rehearsed",
+  "drift-repaired": "drift fixed",
+  failed: "failed"
 };
-function recentLine(deploy, dots, short) {
-  const words = deploy.result === "failed" ? `failed: ${escapeText(deploy.reason ?? "")}` : deploy.result && RESULT_WORDS[deploy.result];
-  const result = words ? ` · ${words}` : "";
+function recentLine(deploy, dots, year, short) {
+  const result = deploy.result ? ` · ${RESULT_WORDS[deploy.result]}` : "";
   const outcome = deploy.result === undefined || deploy.result === "drift-repaired" ? "deployed" : deploy.result;
   const dot = dots ? `${RESULT_DOT[outcome]}&nbsp;` : "";
   const shipped = deploy.shipped ? `
 ${INDENT}${short ? deploy.shipped.counted : deploy.shipped.full}` : "";
-  return `- ${dot}${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)}${result} · ${utcMinute(deploy.at)} · [run](${deploy.runUrl})${shipped}`;
+  return `- ${dot}${escapeText(deploy.stackId)}${result} · ${escapeText(deploy.ticker)} · ${trailMinute(deploy.at, year)} · [run](${deploy.runUrl})${shipped}`;
 }
 function newestTrail(deploys, length) {
   return [...deploys].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit12(a.stackId, b.stackId)).slice(0, length ?? RECENTLY_DEPLOYED);
 }
-function outsideLine(deploy, repoUrl, dots) {
+function outsideLine(deploy, repoUrl, dots, year) {
   const dot = dots ? `${RESULT_DOT.deployed}&nbsp;` : "";
   const verb = deploy.kind === "destroy" ? "destroyed" : "deployed";
-  const commit = deploy.commit === undefined ? "" : `, from commit [\`${deploy.commit.slice(0, 7)}\`](${repoUrl}/commit/${urlPart(deploy.commit)})${deploy.dirty ? " with uncommitted changes" : ""}`;
-  return `- ${dot}${escapeText(deploy.stackId)} · ${verb} outside the dashboard${commit} · ${utcMinute(deploy.at)} ${outsideMarker(deploy)}`;
+  const commit = deploy.commit === undefined ? "" : `, from [\`${deploy.commit.slice(0, 7)}\`](${repoUrl}/commit/${urlPart(deploy.commit)})${deploy.dirty ? " with uncommitted changes" : ""}`;
+  return `- ${dot}${escapeText(deploy.stackId)} · ${verb} outside the dashboard${commit} · ${trailMinute(deploy.at, year)} ${outsideMarker(deploy)}`;
 }
 function version2(actionRef2) {
   return /^[0-9a-f]{40,}$/.test(actionRef2) ? `\`${actionRef2.slice(0, 7)}\`` : escapeText(actionRef2);
@@ -57147,21 +56963,23 @@ function renderBody(input2) {
     }
   }
   const outside = (input2.outsideDeploys ?? []).filter((deploy, index, all) => all.findIndex((one) => one.stackId === deploy.stackId && one.kind === deploy.kind && one.at.getTime() === deploy.at.getTime()) === index);
+  const scanAt = new Date(input2.root.scanAt ?? "");
+  const year = Number.isNaN(scanAt.getTime()) ? undefined : scanAt.getUTCFullYear();
   const entries = [
     ...input2.recentlyDeployed.map((deploy) => ({
       at: deploy.at,
       stackId: deploy.stackId,
-      line: () => recentLine(deploy, input2.personality, input2.shortTrail)
+      line: () => recentLine(deploy, input2.personality, year, input2.shortTrail)
     })),
     ...outside.map((deploy) => ({
       at: deploy.at,
       stackId: deploy.stackId,
-      line: () => outsideLine(deploy, input2.repoUrl, input2.personality)
+      line: () => outsideLine(deploy, input2.repoUrl, input2.personality, year)
     }))
   ];
   const recent = newestTrail(entries, input2.recentLength);
   if (recent.length > 0)
-    out.push("## Recently deployed", recent.map((entry3) => entry3.line()).join(`
+    out.push("## Recently deployed", TRAIL_LINE, recent.map((entry3) => entry3.line()).join(`
 `));
   out.push("---");
   if (!input2.readOnly)
@@ -57445,6 +57263,195 @@ function read2(file2) {
       throw new ConfigError(["it is not a file."]);
     throw error63;
   }
+}
+
+// src/core/deployment.ts
+var TASK_PREFIX = "sluiceway:";
+function deploymentTask(stackId2) {
+  return `${TASK_PREFIX}${stackId2}`;
+}
+function taskStackId(task) {
+  if (!task.startsWith(TASK_PREFIX) || task.length === TASK_PREFIX.length)
+    return;
+  return task.slice(TASK_PREFIX.length);
+}
+var PAYLOAD_VERSION = 1;
+function deploymentPayload(payload) {
+  return {
+    v: PAYLOAD_VERSION,
+    hash: payload.hash,
+    ticker: payload.ticker,
+    run: payload.run,
+    ...payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {},
+    ...payload.drift ? { drift: true } : {}
+  };
+}
+function mergePayload(payload) {
+  return { v: PAYLOAD_VERSION, ticker: payload.ticker, run: payload.run, merge: payload.merge };
+}
+var RUN_ID2 = /^[1-9]\d*$/;
+function readDeploymentPayload(payload) {
+  if (typeof payload !== "object" || payload === null)
+    return;
+  const { v, hash: hash2, ticker, run, behind, merge: merge3, drift } = payload;
+  if (v !== PAYLOAD_VERSION)
+    return;
+  if (merge3 !== undefined) {
+    const number4 = typeof merge3 === "number" && Number.isInteger(merge3) && merge3 > 0;
+    const plain = hash2 === undefined && behind === undefined;
+    return number4 && plain && typeof ticker === "string" && typeof run === "string" && RUN_ID2.test(run) ? { hash: "", ticker, run, merge: merge3 } : undefined;
+  }
+  if (typeof hash2 !== "string" || typeof ticker !== "string" || typeof run !== "string") {
+    return;
+  }
+  if (!RUN_ID2.test(run))
+    return;
+  const read3 = { hash: hash2, ticker, run };
+  if (drift === true)
+    read3.drift = true;
+  if (behind === undefined)
+    return read3;
+  const ids = Array.isArray(behind) ? behind : [];
+  if (ids.length === 0 || !ids.every((id) => typeof id === "string" && id !== "")) {
+    return;
+  }
+  return { ...read3, behind: ids };
+}
+var SUCCEEDED = new Set(["success", "inactive"]);
+var FAILED = new Set(["failure", "error"]);
+var NO_REASON_RECORDED = "no reason was recorded";
+var IN_SYNC_DESCRIPTION = "nothing to deploy, already in sync";
+var REHEARSED_DESCRIPTION = "rehearsed, nothing was deployed";
+function isRehearsal(status) {
+  return status?.state === "inactive" && status.description === REHEARSED_DESCRIPTION;
+}
+var HANDED_ON_DESCRIPTION = "started in a later run";
+var MERGED_DESCRIPTION = "merged, the deploy follows in a record of its own";
+function isHandedOn(status) {
+  return status?.state === "inactive" && (status.description === HANDED_ON_DESCRIPTION || status.description === MERGED_DESCRIPTION);
+}
+function isOpenStatus(status) {
+  const state = status?.state ?? "";
+  return !SUCCEEDED.has(state) && !FAILED.has(state);
+}
+function newestLast(a, b) {
+  return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id;
+}
+function factOf(record3, payload) {
+  const { ticker, run } = payload;
+  const state = record3.status?.state ?? "";
+  const at = new Date(record3.status?.createdAt ?? record3.createdAt);
+  if (SUCCEEDED.has(state)) {
+    const ended = state === "inactive" && record3.status?.succeededAt ? new Date(record3.status.succeededAt) : at;
+    const inSync = state === "success" && record3.status?.description === IN_SYNC_DESCRIPTION;
+    return {
+      kind: "succeeded",
+      ticker,
+      run,
+      at: Number.isNaN(ended.getTime()) ? at : ended,
+      hash: payload.hash,
+      ...inSync ? { inSync } : {}
+    };
+  }
+  if (FAILED.has(state)) {
+    return {
+      kind: "failed",
+      reason: record3.status?.description || NO_REASON_RECORDED,
+      ticker,
+      run,
+      at
+    };
+  }
+  return {
+    kind: "open",
+    deployment: record3.id,
+    waiting: state !== "in_progress",
+    ticker,
+    run,
+    ...payload.behind ? { behind: payload.behind } : {},
+    ...payload.merge === undefined ? {} : { merge: payload.merge }
+  };
+}
+function deployFacts(records) {
+  const facts = { byStack: new Map, succeeded: [], trail: [], unread: 0 };
+  for (const record3 of [...records].sort(newestLast)) {
+    const stackId2 = taskStackId(record3.task);
+    if (stackId2 === undefined)
+      continue;
+    const payload = readDeploymentPayload(record3.payload);
+    if (!payload) {
+      facts.unread++;
+      continue;
+    }
+    if (isHandedOn(record3.status))
+      continue;
+    const fact = factOf(record3, payload);
+    if (isRehearsal(record3.status)) {
+      const rehearsed = {
+        stackId: stackId2,
+        ticker: payload.ticker,
+        run: payload.run,
+        at: new Date(record3.status?.createdAt ?? record3.createdAt),
+        result: "rehearsed"
+      };
+      facts.succeeded.push({ ...rehearsed, sha: record3.sha });
+      facts.trail.push(rehearsed);
+      continue;
+    }
+    facts.byStack.set(stackId2, fact);
+    if (fact.kind === "succeeded") {
+      const before = lastDeployedCommit(facts, stackId2);
+      const wentOut = !fact.inSync;
+      const succeeded = {
+        stackId: stackId2,
+        ticker: fact.ticker,
+        run: fact.run,
+        at: fact.at,
+        ...fact.inSync ? { result: "in-sync" } : payload.drift ? { result: "drift-repaired" } : {}
+      };
+      facts.succeeded.push({ ...succeeded, sha: record3.sha });
+      facts.trail.push({
+        ...succeeded,
+        ...wentOut && before !== undefined ? { shipped: { from: before, to: record3.sha } } : {}
+      });
+    }
+    if (fact.kind === "failed") {
+      facts.trail.push({
+        stackId: stackId2,
+        ticker: fact.ticker,
+        run: fact.run,
+        at: fact.at,
+        result: "failed",
+        reason: fact.reason
+      });
+    }
+  }
+  return facts;
+}
+function lastDeployedCommit(facts, stackId2) {
+  return facts.succeeded.findLast((deploy) => deploy.stackId === stackId2 && deploy.result !== "rehearsed")?.sha;
+}
+function pendingAgain(fact, hash2) {
+  return fact?.kind === "succeeded" && !fact.inSync && fact.hash === hash2;
+}
+function rowAtLateRead(stack) {
+  const { previewedAt, liveState, fact } = stack;
+  if (fact?.kind === "open") {
+    const taken = fact.behind ? "queued" : "deploying";
+    return { row: "deploying", from: liveState === taken ? "live" : "record" };
+  }
+  const usableLive = liveState !== undefined && liveState !== "deploying" && liveState !== "queued";
+  if (previewedAt === undefined) {
+    if (usableLive)
+      return { row: "live" };
+    return { row: "preview-first", why: liveState === undefined ? "no-row" : "no-open-deployment" };
+  }
+  const predates = fact !== undefined && !stack.settledHere && fact.at > previewedAt;
+  if (!predates)
+    return { row: "fresh" };
+  if (usableLive)
+    return { row: "live" };
+  return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
 }
 
 // src/core/diff-hash.ts
