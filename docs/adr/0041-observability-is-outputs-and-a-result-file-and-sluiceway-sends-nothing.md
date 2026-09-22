@@ -1,5 +1,7 @@
 # Observability is outputs and a result file, and Sluiceway sends nothing
 
+> Superseded by 0078 on "Sluiceway sends nothing": opt-in notifications to Slack, Telegram and a webhook are built in, each channel an input of the step from the repo's own secret, and `notify.events` picks the events. The outputs and the result file stay exactly as this record says, and so does "metrics are pushed, never scraped".
+>
 > Amended by 0051: `outcome` of `apply` can also be `in-sync` (nothing to deploy) and `rehearsed` (`dry-run: true`). Both are green jobs, and nothing went out.
 >
 > Amended by 0055: the result file of a scan gives a stack the state `drift` and a `drift` list, both added, so its version stays 1.

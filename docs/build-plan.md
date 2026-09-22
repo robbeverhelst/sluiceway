@@ -28,7 +28,7 @@ When two sources disagree, the order is: real GitHub or tool behavior, then the 
 
 - Changing the license.
 - Adding a runtime dependency that is not on the approved list in section 5, or letting `dist/index.js` grow past 3 MB.
-- Adding any network call that is not the GitHub API or the tool's own.
+- Adding any network call that is not the GitHub API, the tool's own, or a notification channel a step names (record 0078, slice 5.13).
 - Building anything that `docs/later.md` lists, or that no record covers.
 
 Everything else is yours to decide. Decide, write down why in the pull request, and carry on.
@@ -44,7 +44,7 @@ The plan began with the core loop alone and left out drift, stack dependencies a
 - **What a row may show.** Property paths and never values, the tool diff in the job log on request, and values for the paths a repo lists (0046, 0048, 0052).
 - **Stop, rehearse, explain.** `deploys: false`, `dry-run`, an `ignore` entry with a reason, and a comment to the ticker when a change moved (0051).
 - **Merge and deploy, part 1** (0054, slice 4.2), **drift, part 1** (0055, slice 4.3) and **stack dependencies, part 1** (0056, slice 4.4).
-- **Outputs and the result file**, so a workflow can tell people. Sluiceway sends nothing (0041).
+- **Outputs and the result file**, so a workflow can chart numbers and tell people (0041), and **opt-in notifications** to Slack, Telegram and a webhook, each channel from the repo's own secret (0078, slice 5.13).
 
 Slice 4.7 adds part 2 of drift and dependencies. Everything else that was considered is in `docs/later.md`: teams in the tick rule, a bot identity of its own, more adapters, values without a list, a hosted version, and more. [docs/roadmap.md](roadmap.md) says which of it comes before 1.0 and which after.
 
@@ -69,6 +69,10 @@ Collected here so nobody has to search the records. The record in the last colum
 | `dry-run` | input | `apply` | `false` | A rehearsal: everything up to the hash check, then no deploy. The record ends as `inactive`, "rehearsed, nothing was deployed" | 0051 |
 | `backend` | input | `check` | `false` | Also ask the backend which of the discovered stacks it holds, with the credentials of the job, and give one `ignore` block for the ones it does not hold. Refused in every other mode | 0074 |
 | `deploy-timeout` | input | `apply` | none | A time limit on the deploy itself, whole minutes. The tool is interrupted and gets two minutes to stop (slice 5.9) | 0003 |
+| `slack-webhook-url` | input | `scan`, `resolve`, `apply` | none | A Slack incoming webhook address, from a secret. A warning in any other mode (slice 5.13) | 0078 |
+| `telegram-bot-token` | input | `scan`, `resolve`, `apply` | none | A Telegram bot token, from a secret. Needs `telegram-chat-id` | 0078 |
+| `telegram-chat-id` | input | `scan`, `resolve`, `apply` | none | The chat the bot posts to: an id or an `@` name | 0078 |
+| `webhook-url` | input | `scan`, `resolve`, `apply` | none | An `http` or `https` address, from a secret, that gets `{ version, event, repository, stacks, dashboard, run, text }` | 0078 |
 | `job-id` | input | `scan`, `apply` | `${{ job.check_run_id }}` | The id of the running job, for links to its log. Never set by hand | 0044 |
 | `matrix` | output | `resolve`, `scan` | `[]` | `[{ stack, environment, deployment }]`. A scan sets one entry only after a merge from the dashboard | 0035, 0054 |
 | `dashboard-url` | output | `scan`, `apply`, `settle` | none | Web address of the dashboard issue | 0041 |
@@ -116,6 +120,7 @@ The file is optional and sits at the repo root. Since slice 5.9 `sluiceway.yml` 
 | `attribution.lookback` | `100` | How many of the newest commits a job walks for attribution, 1 to 1,000, one GraphQL page per 100 (slice 5.5) | 0026, 0072 |
 | `attribution.names` | `5` | How many pull requests and direct pushes a row and a shipped line name before the rest is a count, 0 to 20 (slice 5.5) | 0026, 0072 |
 | `mergeAndDeploy.authors` | `[]` | Logins whose green pull requests are listed to merge and deploy with one tick, one deploy per stack that claims them. Empty turns it off | 0054, 0064, 0071 |
+| `notify.events` | `[pending, drift, failed, refused]` | The events a notification is sent on, to each channel the step's inputs name: `pending` (stacks newly pending after a scan), `drift` (newly drifted), `deployed`, `failed`, `refused` (a tick that deployed nothing). A channel is never a key here (slice 5.13) | 0078 |
 | `mergeAndDeploy.preview` | `false` | Preview each listed update as it would be after the merge and show the counts on its row: one extra preview per stack of each of the oldest 30 updates, never for a fork | 0071 |
 
 Rules for config loading:
@@ -218,10 +223,11 @@ The bootstrap made the directories. This is what goes in them. File names are a 
 | `src/adapters/kubectl/` | The same for Kubernetes manifests, plus the rendered set (0060) | Yes |
 | `src/render/` | Markers, rows, the body, the header state, the voice strings, the size budget, the summary, the log text of a diff | Yes |
 | `src/github/` | The port (one interface with every GitHub call Sluiceway makes), its Octokit implementation, the write loop, reading the event, the action ref, inputs and outputs, annotations | No |
+| `src/notify/` | The sender of the built-in notifications (0078): the step's channels from its inputs, the posts, the warnings. What to send is `core/notify.ts` and the words are `render/notification.ts` | No |
 | `src/modes/` | One file per mode. A mode wires core, adapter, render and the port together and holds no rules of its own | No |
 | `test/fake-github/` | An in-memory implementation of the port, and a small HTTP server around it for the e2e workflow | |
 
-"Pure" means: no import of `@actions/*`, `@octokit/*`, `src/github/**` or `src/modes/**`, and no reading of a GitHub event. The first slice adds `src/render/` to the boundary rule in `biome.json` and to `test/boundary.test.ts`, because record 0002 makes rendering the core's job and a hosted version would reuse it.
+"Pure" means: no import of `@actions/*`, `@octokit/*`, `src/github/**`, `src/modes/**` or `src/notify/**`, and no reading of a GitHub event. The first slice adds `src/render/` to the boundary rule in `biome.json` and to `test/boundary.test.ts`, because record 0002 makes rendering the core's job and a hosted version would reuse it.
 
 Four seams keep everything testable without a network or a tool:
 
@@ -363,6 +369,7 @@ Done when: ticking a box deploys exactly that stack and the dashboard returns to
 | 5.9 | Robustness, twenty one-line items from `docs/later.md` in one slice: paging past 300 compared files and 100 changed files and 1,000 open pull requests, retrying a failed permission lookup once, a renamed or deleted account told apart from a failed lookup, a cap on names in a refusal comment, `sluiceway.yml` as a second spelling, default `scan.unrelated` globs, a strict mode input, renaming the dashboard when `dashboard.title` changes, pinning on every scan, a bound on closed issues read, a limit on tool output held in memory, a preview failure row for a fault inside Sluiceway, a time limit on the deploy, the tool's output in the log while a preview runs, links to the attempt of a re-run, a job summary for `resolve`, a link to the scan the rescan box started, more failure reasons from Pulumi's exit codes, the `id:` override. Each gets its ledger line removed. No record; a note per item on the record it touches | many | Twenty rough edges gone | One test per item |
 | 5.11 | A later deploy clears the last-deploy-failed note (owner, 2026-09-22, on a real dashboard: a stack failed a ticked deploy at 15:15, was deployed outside the dashboard at 15:24 and was in sync, and its row still said `last deploy failed ... 15:15`). A row shows the failure line only when no deploy of its stack, from the dashboard or outside it (the trail's outside lines of 0073), ended after the failure. The trail keeps the failed deploy. The rule is one pure function in the core, used by the scan for every row it previews and by `apply` for the row it swaps in. Record 0076 amends 0029, 0062 and 0073 | 0029, 0062, 0073, 0051 | A row never says a failure is the last word when a later deploy says otherwise | The rule in the core (outside deploy and destroy after, before, at the same second, another stack's, a dashboard deploy after, a rehearsal after); a full scan with in sync, pending, drifted and preview failure rows, and the same with the outside deploy before the failure; a narrowed scan from the outside lines the body carries; `apply`'s rewrite after a rehearsal, with the outside deploy after and before the failure; a body snapshot of the reported case |
 | README | The README rewrite (owner, 2026-09-22): the README becomes a front door of about 120 lines around the one workflow people copy, and the manual moves to `docs/` for the docs site (`sluiceway/docs`, which pulls `docs/*.md` from a pinned tag). New pages `docs/workflow.md`, `docs/read-only-trial.md`, `docs/using-the-dashboard.md`, `docs/reference.md` and an index in `docs/README.md`. Links stay on the Markdown files until the docs site is live. No record | section 8 | A stranger finds the setup in one screen and the manual one link away | The README's sections in order and its length, its one workflow equal to the one `docs/workflow.md` explains, every test that read the README follows its content, and the link check covers the HTML links of the README |
+| 5.13 | Built-in notifications: Slack, Telegram, webhook. The owner, 2026-09-22: "idk about telegram slack being a custom step, cant we build it in? and why wouldnt we?" Opt-in inputs `slack-webhook-url`, `telegram-bot-token` with `telegram-chat-id`, and `webhook-url` on `scan`, `resolve` and `apply`, each from the user's own secret, masked, and never a key of `sluiceway.yaml`. Events `pending` (stacks newly pending after a scan, with the dashboard), `drift` (newly drifted), `deployed`, `failed` and `refused` (a refused tick in `resolve`, a refused deploy in `apply`), picked by `notify.events` with every event but `deployed` by default. Plain short messages with the stack ids and links, never a value (the `showValues` rule and the canary test). A failed send is a warning in the job log and never fails a job. `docs/notifications.md` leads with the built-in way and keeps the outputs. Ticking from Slack stays out: it needs a hosted app. Record 0078 supersedes 0041 on "sends nothing" and amends 0014 | 0041, 0014, 0013, 0018, 0021, 0022, 0023, 0040, 0052 | A team hears about what needs it without writing a step | `notify.events` defaults and errors; newly pending and newly drifted against the body a scan started from; the outcome of `apply` per event; the refused ticks of `resolve`; each channel's body; the ten-name cap; a failed, thrown or hung send is a warning with no address or token in the log, and the deploy stays green; half a Telegram channel and a wrong address are warnings; a channel on `settle`, `check` or `init` is a warning; the canary test on every byte sent, with a listed `showValues` path on the row; the examples in `docs/notifications.md` are the renderer's |
 
 ### M3: proof and the first release
 

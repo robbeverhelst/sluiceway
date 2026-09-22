@@ -114,6 +114,7 @@ Left out of v1 on purpose, and v1 was shaped so these can be added without a bre
 | A preview page for the pending row that `apply` writes after a change that moved | The row lives until the next scan, which writes the page. `apply` would need `checks: write` for it. | 0050, slice 2.18 |
 | A link from the preview page to the dashboard's own number | The page is written before the dashboard, whose number a first scan does not know. It links to the issue list with the dashboard's label instead, which holds one open issue. Writing the page after the dashboard would cost a second write of every row. | 0050, slice 2.18 |
 | `checks: write` on the scan job alone | A job's permissions replace the workflow's, so every user would repeat the whole block for one line. `resolve` and `settle` only run Sluiceway, and `apply` runs the same programs the scan does. A team that requires checks can still move it by hand. | 0050, slice 2.18 |
+| A built-in notification for a failed preview, for a scan that failed before it wrote the dashboard, and for a deploy that `settle` ended | The owner named five events. A failed preview is on the dashboard and `strict` turns the scan red for it, a scan that failed has no dashboard to link, and `settle` holds no channel. A step of your own on the outputs covers them (docs/notifications.md). | 0078 |
 
 ## Rejected on principle
 
@@ -159,7 +160,7 @@ Not planned. Bringing one of these back means reopening the decision named here,
 |---|---|
 | A hosted GitHub App with an org-wide dashboard | A control plane only. Previews and deploys always run in the user's own runners. It reuses the open source core. |
 | GitLab and Bitbucket | The UI is a GitHub issue, so this is a different product surface. |
-| A notifier built into Sluiceway (Slack, Telegram, webhooks) and a metrics endpoint | It would hold a secret and call a third party. v1 gives step outputs and a result file, and the workflow sends (0041). Native notifications and history fit a hosted version. |
+| Interactive notifications (a tick from a button in Slack) and a metrics endpoint | A button needs an app that Slack can call back, and a GitHub Action is not running when someone clicks. The built-in messages go one way (0078), and metrics are pushed from the outputs. Both fit a hosted version. |
 | A policy engine, cost estimation | Non-goals for v1 in the brief. |
 | Docs site and Marketplace launch | Part of the public launch, after the core loop is proven. |
 | Launch material: screenshots, a note on merge queues, the JSON schema in SchemaStore, the 1.0.0 tag and the `v1` moving tag | Same. Until then the moving tag is `v0`. |

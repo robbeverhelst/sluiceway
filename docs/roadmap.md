@@ -14,7 +14,7 @@ The core loop: a scan previews every stack and writes the dashboard, a person ti
 - Rows name the property paths that change, never a value. A repo can list paths whose values may show, and can print the tool's own diff in the job log.
 - A team can stop every deploy from the config, rehearse a tick, and leave a stack out with a written reason.
 - One tick can merge a routine update and deploy it, drift is shown and repaired by a tick, and a stack can wait for the stacks it depends on.
-- Step outputs and a result file, so a workflow can tell people what happened. Sluiceway itself sends nothing.
+- Opt-in messages to Slack, Telegram or a webhook of your own when stacks are pending, drift is found, a deploy fails or a tick is refused, and step outputs and a result file for anything else.
 
 The [build plan](build-plan.md) says how each of these was built and proven, and the [decision records](adr) hold the rules.
 
@@ -138,12 +138,13 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A preview page for the pending row that `apply` writes after a change that moved
 - A link from the preview page to the dashboard's own number
 - `checks: write` on the scan job alone
+- A built-in notification for a failed preview, for a scan that failed before it wrote the dashboard, and for a deploy that `settle` ended
 
 ### After 1.0, each its own plan
 
 - A hosted GitHub App with an org-wide dashboard. A control plane only. Previews and deploys always run in the user's own runners. It reuses the open source core.
 - GitLab and Bitbucket. The UI is a GitHub issue, so this is a different product surface.
-- A notifier built into Sluiceway (Slack, Telegram, webhooks) and a metrics endpoint. It would hold a secret and call a third party. v1 gives step outputs and a result file, and the workflow sends (0041). Native notifications and history fit a hosted version.
+- Interactive notifications (a tick from a button in Slack) and a metrics endpoint. A button needs an app that Slack can call back, and a GitHub Action is not running when someone clicks. The built-in messages go one way (0078), and metrics are pushed from the outputs. Both fit a hosted version.
 - A policy engine, cost estimation. Non-goals for v1 in the brief.
 
 ### Not planned
