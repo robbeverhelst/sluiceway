@@ -32,7 +32,9 @@ const FIRST_SCAN = { runId: "100", sha: "100000000000000000000000000000000000000
 const RESOLVE = "200";
 const SECOND_SCAN = "300";
 
-async function loop(options: { moveBeforeApply?: boolean; declaresInput?: boolean } = {}) {
+async function loop(
+  options: { moveBeforeApply?: boolean; declaresInput?: boolean; bothStacks?: boolean } = {},
+) {
   const table: Record<string, PreviewResult> = {
     "a:prod": inSync("a:prod"),
     "b:prod": inSync("b:prod"),
@@ -44,7 +46,8 @@ async function loop(options: { moveBeforeApply?: boolean; declaresInput?: boolea
     number: 418,
     head: HEAD,
     title: "Update Helm release odoo to v17.0.4",
-    files: ["a/values.yaml"],
+    // Two stacks claim it since slice 5.4 (record 0071).
+    files: options.bothStacks ? ["a/values.yaml", "b/values.yaml"] : ["a/values.yaml"],
   });
   github.seedOpenPullRequest({
     number: 419,
@@ -87,9 +90,10 @@ async function loop(options: { moveBeforeApply?: boolean; declaresInput?: boolea
   // The merge changed what a:prod deploys. The scan that resolve started runs
   // on the merge commit.
   table["a:prod"] = pending("a:prod", change("release"));
+  if (options.bothStacks) table["b:prod"] = pending("b:prod", change("release"));
   github.seedComparison(FIRST_SCAN.sha, merged.sha, {
     status: "ahead",
-    files: [{ path: "a/values.yaml" }],
+    files: [{ path: "a/values.yaml" }, ...(options.bothStacks ? [{ path: "b/values.yaml" }] : [])],
   });
   github.seedRun(SECOND_SCAN, { completed: false });
   const outputs = rememberingOutputs();
@@ -108,7 +112,10 @@ async function loop(options: { moveBeforeApply?: boolean; declaresInput?: boolea
     outputs,
   });
   const previewedAfterMerge = [...adapter.previewed];
-  const matrix = JSON.parse(outputs.values.matrix ?? "[]") as { deployment: number }[];
+  const matrix = JSON.parse(outputs.values.matrix ?? "[]") as {
+    stack: string;
+    deployment: number;
+  }[];
 
   if (options.moveBeforeApply) table["a:prod"] = pending("a:prod", change("release"), change("x"));
   const applyOutputs = rememberingOutputs();
@@ -185,5 +192,17 @@ describe("merge and deploy on the fake GitHub", () => {
     expect(
       parseDashboard(dashboardBody(github)).rows.find((row) => row.stackId === "a:prod")?.state,
     ).toBe("pending");
+  });
+
+  test("an update that two stacks claim merges once and hands a deploy of each to apply (slice 5.4)", async () => {
+    const { github, matrix, error, applyOutputs } = await loop({ bothStacks: true });
+
+    expect(github.merges).toHaveLength(1);
+    expect(matrix.map(({ stack }) => stack)).toEqual(["a:prod", "b:prod"]);
+    expect(error).toBeUndefined();
+    expect(applyOutputs.values.outcome).toBe("deployed");
+    expect(
+      parseDashboard(dashboardBody(github)).rows.find((row) => row.stackId === "b:prod")?.state,
+    ).toBe("deploying");
   });
 });
