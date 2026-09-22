@@ -51254,7 +51254,8 @@ var configSchema = exports_external.strictObject({
   phases: exports_external.array(phaseName).describe("Names of the phases stacks deploy in, in order. A stack in a phase depends on every stack in every earlier phase.").default([]),
   stacks: stackEntries.describe("Settings for stacks that discovery found. An entry never creates a stack.").default([]),
   mergeAndDeploy: exports_external.strictObject({
-    authors: exports_external.array(author).transform((logins) => [...new Set(logins)]).describe("Logins whose open pull requests may be merged and deployed with one tick, such as renovate[bot]. Empty turns it off.").default([])
+    authors: exports_external.array(author).transform((logins) => [...new Set(logins)]).describe("Logins whose open pull requests may be merged and deployed with one tick, such as renovate[bot]. Empty turns it off.").default([]),
+    preview: exports_external.boolean().describe("Preview the branch of each update waiting to merge, and show what it would change on its row. One extra preview per update on every scan that lists it.").default(false)
   }).prefault({})
 }).superRefine((config2, context3) => {
   const refuse = (path, message) => context3.addIssue({ code: "custom", path, message });
@@ -54787,6 +54788,7 @@ var OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!, $after: String
         baseRefName
         headRefOid
         mergeable
+        isCrossRepository
         author {
           __typename
           login
@@ -54836,7 +54838,8 @@ function toPullRequest2(node2) {
     mergeable: node2.mergeable === "MERGEABLE" ? "mergeable" : node2.mergeable === "CONFLICTING" ? "conflicting" : "unknown",
     checks: state === undefined ? "none" : CHECKS[state] ?? "failure",
     files: files.map(({ path }) => path),
-    filesComplete: files.length === node2.changedFiles && files.every(({ changeType }) => changeType !== "RENAMED")
+    filesComplete: files.length === node2.changedFiles && files.every(({ changeType }) => changeType !== "RENAMED"),
+    fromFork: node2.isCrossRepository
   };
 }
 var REFUSALS = new Set([405, 409, 422]);
@@ -54893,6 +54896,22 @@ function pullCalls(octokit, repo) {
         if (status === undefined || !REFUSALS.has(status))
           throw error63;
         return { merged: false, status, message: messageOf(error63) };
+      }
+    },
+    async readRepositoryFile({ owner, repo: name, path, ref }) {
+      try {
+        const { data } = await octokit.rest.repos.getContent({
+          owner,
+          repo: name,
+          path,
+          ...ref === undefined ? {} : { ref },
+          mediaType: { format: "raw" }
+        });
+        return typeof data === "string" ? data : undefined;
+      } catch (error63) {
+        if (statusOf(error63) === 404)
+          return;
+        throw error63;
       }
     }
   };
@@ -55070,6 +55089,106 @@ function toIssue(issue3) {
 // src/github/outputs.ts
 import { writeFileSync } from "node:fs";
 import { join as join24 } from "node:path";
+
+// src/core/claim.ts
+function inside(directory, file2) {
+  return directory === "." || file2.startsWith(`${directory}/`);
+}
+function claim2(stacks, changed, unrelated) {
+  const isUnrelated = globMatcher(unrelated);
+  const matchers = stacks.map((stack) => ({ stack, matches: globMatcher(stack.inputs) }));
+  const claims = new Map;
+  const unclaimed = [];
+  for (const file2 of new Set(changed)) {
+    if (isUnrelated(file2))
+      continue;
+    const claimants = matchers.filter(({ stack, matches }) => inside(stack.path, file2) || matches(file2));
+    if (claimants.length === 0)
+      unclaimed.push(file2);
+    for (const { stack } of claimants)
+      claims.set(stack.id, [...claims.get(stack.id) ?? [], file2]);
+  }
+  return { claims, unclaimed };
+}
+
+// src/core/merge-and-deploy.ts
+function qualify(pullRequest, options) {
+  const author2 = pullRequest.author?.toLowerCase();
+  if (author2 === undefined || !options.authors.includes(author2)) {
+    return { qualifies: false, why: "author" };
+  }
+  if (pullRequest.draft)
+    return { qualifies: false, why: "draft" };
+  if (pullRequest.base !== options.defaultBranch)
+    return { qualifies: false, why: "base" };
+  if (pullRequest.checks !== "success")
+    return { qualifies: false, why: "checks" };
+  if (pullRequest.mergeable === "conflicting")
+    return { qualifies: false, why: "conflicting" };
+  if (!pullRequest.filesComplete)
+    return { qualifies: false, why: "files-unknown" };
+  const { claims, unclaimed } = claim2(options.stacks, pullRequest.files, options.unrelated);
+  if (unclaimed.length > 0)
+    return { qualifies: false, why: "unclaimed" };
+  const stackIds = [...claims.keys()].sort(byCodeUnit9);
+  if (stackIds.length === 0)
+    return { qualifies: false, why: "no-stack" };
+  if (dependOnEachOther(stackIds, options.dependsOn)) {
+    return { qualifies: false, why: "stacks-depend" };
+  }
+  return { qualifies: true, stackIds };
+}
+function byCodeUnit9(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function dependOnEachOther(ids, dependsOn) {
+  if (!dependsOn || ids.length < 2)
+    return false;
+  const inPullRequest = new Set(ids);
+  for (const id of ids) {
+    const seen = new Set;
+    const next = [...dependsOn.get(id) ?? []];
+    while (next.length > 0) {
+      const one = next.pop() ?? "";
+      if (inPullRequest.has(one))
+        return true;
+      if (seen.has(one))
+        continue;
+      seen.add(one);
+      next.push(...dependsOn.get(one) ?? []);
+    }
+  }
+  return false;
+}
+var NOT_QUALIFIED = {
+  author: "its author is not in mergeAndDeploy.authors",
+  draft: "it is a draft",
+  base: "it does not merge into the default branch",
+  checks: "its checks are not all green",
+  conflicting: "it conflicts with its base branch",
+  "files-unknown": "not every file it changes is known",
+  unclaimed: "no stack claims some of its files",
+  "stacks-depend": "its stacks depend on each other, and one tick would deploy them side by side",
+  "no-stack": "no stack claims any of its files"
+};
+var MAX_UPDATES = 30;
+function waitingUpdates(pullRequests, options) {
+  return [...pullRequests].sort((a, b) => a.number - b.number).flatMap((pullRequest) => {
+    const qualified = qualify(pullRequest, options);
+    return qualified.qualifies ? [{ pullRequest, stackIds: qualified.stackIds }] : [];
+  });
+}
+var RENOVATE_METHODS = {
+  squash: "squash",
+  rebase: "rebase",
+  "merge-commit": "merge"
+};
+var FALLBACK = ["squash", "merge", "rebase"];
+function mergeMethod(allowed, strategy) {
+  const renovate = strategy === undefined ? undefined : RENOVATE_METHODS[strategy];
+  const candidates = renovate === undefined ? FALLBACK : [renovate, ...FALLBACK];
+  return candidates.find((method) => allowed[method] !== false);
+}
 
 // src/core/deployment.ts
 var TASK_PREFIX = "sluiceway:";
@@ -55347,7 +55466,7 @@ function rowMarker(facts) {
 function mergeMarker(facts) {
   return marker("merge", [
     ["pr", String(facts.pr)],
-    ["stack", facts.stackId],
+    ["stack", encodeIds(facts.stackIds)],
     ["head", facts.head]
   ]);
 }
@@ -55452,14 +55571,14 @@ function readMerge(line) {
     return;
   const pairs = readPairs(match[2] ?? "");
   const pr = pairs.get("pr") ?? "";
-  const stackId2 = pairs.get("stack");
+  const stack = pairs.get("stack");
   const head = pairs.get("head") ?? "";
-  if (!/^[1-9]\d*$/.test(pr) || stackId2 === undefined || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(head)) {
+  if (!/^[1-9]\d*$/.test(pr) || stack === undefined || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(head)) {
     return;
   }
   return {
     pr: Number(pr),
-    stackId: stackId2,
+    stackIds: decodeIds(stack),
     head,
     ticked: match[1] === "x" || match[1] === "X",
     text: line
@@ -55523,63 +55642,6 @@ function mascotUrl(actionRef2, file2) {
   return `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef2)}/assets/mascot/${file2}`;
 }
 
-// src/render/merge-row.ts
-var TITLE_LENGTH = 80;
-function shorten(title) {
-  const chars = [...title];
-  return chars.length <= TITLE_LENGTH ? title : `${chars.slice(0, TITLE_LENGTH - 3).join("")}...`;
-}
-function renderMergeRow(row, options = {}) {
-  const by = row.author === undefined ? "" : ` by ${escapeText(row.author)}`;
-  const parts = [
-    `**${escapeText(row.stackId)}**`,
-    ...options.redact ? [] : [escapeText(shorten(row.title))],
-    `#${row.pr}${by}`
-  ];
-  return `- [ ] ${parts.join(" · ")} ${mergeMarker(row)}`;
-}
-function mergeBlock(row, options = {}) {
-  const [block] = parseDashboard(renderMergeRow(row, options)).merges;
-  if (!block)
-    throw new Error("A rendered merge row did not read back as one.");
-  return block;
-}
-var MERGE_ORPHAN_NOTE = ":information_source: a tick on this row was not picked up. Tick again to merge.";
-var MERGE_DEPLOYING_NOTE = ":information_source: this tick merged nothing: the stack has a deploy in progress. Tick again once it is over.";
-var MERGE_DEPLOYS_OFF_NOTE = ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick merged nothing.";
-var NOTES = {
-  orphan: MERGE_ORPHAN_NOTE,
-  deploying: MERGE_DEPLOYING_NOTE,
-  "deploys-off": MERGE_DEPLOYS_OFF_NOTE
-};
-var MERGE_FOLD_AFTER = 10;
-function readBack(text6) {
-  const [row] = parseDashboard(text6).merges;
-  if (!row)
-    throw new Error("A merge row did not read back as one.");
-  return row;
-}
-function clearMergeTick(row, options = {}) {
-  if (!row.ticked)
-    return row;
-  const [first = "", ...notes] = row.text.split(`
-`);
-  const cleared = first.replace(/^- \[[xX]\] /, "- [ ] ");
-  const lines = options.note === undefined ? notes : [`  ${NOTES[options.note]}`];
-  return readBack([cleared, ...lines].join(`
-`));
-}
-function tickedMergeBlock(row) {
-  return readBack(row.text.replace(/^- \[ \] /, "- [x] "));
-}
-
-// src/render/pending-crates.ts
-var MAX_CRATES = 12;
-function pendingCrates(rows) {
-  const pending = rows.filter((row) => row.known && row.state === "pending").length;
-  return pending > MAX_CRATES ? "more" : pending;
-}
-
 // src/render/time.ts
 function utcMinute(at) {
   const iso = at.toISOString();
@@ -55588,7 +55650,7 @@ function utcMinute(at) {
 
 // src/render/row.ts
 var INDENT = "  ";
-function byCodeUnit9(a, b) {
+function byCodeUnit10(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function isDestroy(change3) {
@@ -55619,7 +55681,7 @@ function code(text6) {
   return `<code>${escapeText(text6)}</code>`;
 }
 function sortedKeys(keys4) {
-  return [...new Set(keys4)].sort(byCodeUnit9);
+  return [...new Set(keys4)].sort(byCodeUnit10);
 }
 var ROW_PATH_LENGTH = 80;
 var ROW_PATHS_PER_CHANGE = 10;
@@ -55718,19 +55780,19 @@ function driftLine(change3, options = {}) {
   return parts.join(" · ");
 }
 function sortedDrift(diff2) {
-  return [...diff2.drift ?? []].sort((a, b) => byCodeUnit9(a.address, b.address));
+  return [...diff2.drift ?? []].sort((a, b) => byCodeUnit10(a.address, b.address));
 }
 function driftLines(drift, summary2, options) {
   if (drift.length === 0)
     return [];
-  const inside = plural2(drift.length, "change");
+  const inside2 = plural2(drift.length, "change");
   if (options.redact)
     return [`Changes outside the code are listed in the ${summary2}`];
   if ((options.level ?? 0) >= 2) {
-    return [`${inside} outside the code not listed here, see the ${summary2}`];
+    return [`${inside2} outside the code not listed here, see the ${summary2}`];
   }
   return [
-    `<details><summary>${inside} outside the code</summary>`,
+    `<details><summary>${inside2} outside the code</summary>`,
     ...drift.map((change3) => `${driftLine(change3, { row: true })}<br>`),
     "</details>"
   ];
@@ -55760,7 +55822,7 @@ function driftRow(row, options) {
 }
 function pendingRow(row, options) {
   const level = options.level ?? 0;
-  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit9(a.address, b.address));
+  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit10(a.address, b.address));
   const deletes = changes.filter((change3) => change3.op === "delete");
   const replaces = changes.filter((change3) => change3.op === "replace");
   const folded = changes.filter((change3) => !isDestroy(change3));
@@ -55804,11 +55866,11 @@ function pendingRow(row, options) {
   for (const change3 of [...deletes, ...replaces])
     lines.push(`:warning: ${changeLine(change3, { row: true })}`);
   if (folded.length > 0) {
-    const inside = plural2(folded.length, destroys > 0 ? "other change" : "change");
+    const inside2 = plural2(folded.length, destroys > 0 ? "other change" : "change");
     if (level >= 2) {
-      lines.push(`${inside} not listed here, see the ${summary2}`);
+      lines.push(`${inside2} not listed here, see the ${summary2}`);
     } else {
-      lines.push(`<details><summary>${inside}</summary>`);
+      lines.push(`<details><summary>${inside2}</summary>`);
       for (const change3 of folded)
         lines.push(`${changeLine(change3, { row: true })}<br>`);
       lines.push("</details>");
@@ -55878,6 +55940,70 @@ function renderRow(row, options = {}) {
 `);
 }
 
+// src/render/merge-row.ts
+var TITLE_LENGTH = 80;
+function shorten(title) {
+  const chars = [...title];
+  return chars.length <= TITLE_LENGTH ? title : `${chars.slice(0, TITLE_LENGTH - 3).join("")}...`;
+}
+function renderMergeRow(row, options = {}) {
+  const by = row.author === undefined ? "" : ` by ${escapeText(row.author)}`;
+  const parts = [
+    row.stackIds.map((id) => `**${escapeText(id)}**`).join(", "),
+    ...options.redact ? [] : [escapeText(shorten(row.title))],
+    `#${row.pr}${by}`,
+    ...row.preview && row.preview.length > 0 ? [previewText(row.preview)] : []
+  ];
+  return `- [ ] ${parts.join(" · ")} ${mergeMarker(row)}`;
+}
+function previewText(preview5) {
+  const one = ({ changes }) => changes === undefined ? "failed, the job log says why" : changes.length === 0 ? "no changes" : counts(changes);
+  const [only] = preview5;
+  const text6 = preview5.length === 1 && only ? one(only) : preview5.map((stack) => `${escapeText(stack.stackId)} ${one(stack)}`).join("; ");
+  return `preview after the merge: ${text6}`;
+}
+function mergeBlock(row, options = {}) {
+  const [block] = parseDashboard(renderMergeRow(row, options)).merges;
+  if (!block)
+    throw new Error("A rendered merge row did not read back as one.");
+  return block;
+}
+var MERGE_ORPHAN_NOTE = ":information_source: a tick on this row was not picked up. Tick again to merge.";
+var MERGE_DEPLOYING_NOTE = ":information_source: this tick merged nothing: the stack has a deploy in progress. Tick again once it is over.";
+var MERGE_DEPLOYS_OFF_NOTE = ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick merged nothing.";
+var NOTES = {
+  orphan: MERGE_ORPHAN_NOTE,
+  deploying: MERGE_DEPLOYING_NOTE,
+  "deploys-off": MERGE_DEPLOYS_OFF_NOTE
+};
+var MERGE_FOLD_AFTER = 10;
+function readBack(text6) {
+  const [row] = parseDashboard(text6).merges;
+  if (!row)
+    throw new Error("A merge row did not read back as one.");
+  return row;
+}
+function clearMergeTick(row, options = {}) {
+  if (!row.ticked)
+    return row;
+  const [first = "", ...notes] = row.text.split(`
+`);
+  const cleared = first.replace(/^- \[[xX]\] /, "- [ ] ");
+  const lines = options.note === undefined ? notes : [`  ${NOTES[options.note]}`];
+  return readBack([cleared, ...lines].join(`
+`));
+}
+function tickedMergeBlock(row) {
+  return readBack(row.text.replace(/^- \[ \] /, "- [x] "));
+}
+
+// src/render/pending-crates.ts
+var MAX_CRATES = 12;
+function pendingCrates(rows) {
+  const pending = rows.filter((row) => row.known && row.state === "pending").length;
+  return pending > MAX_CRATES ? "more" : pending;
+}
+
 // src/render/voice.ts
 var WARM = {
   goodNews: () => "Gate closed, water calm. Nothing to deploy.",
@@ -55931,7 +56057,7 @@ var SIGNED_FACT = {
 function placed(row) {
   return row.state === "queued" ? "deploying" : row.state;
 }
-function byCodeUnit10(a, b) {
+function byCodeUnit11(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function plural3(count, word) {
@@ -56029,7 +56155,7 @@ function version2(actionRef2) {
   return /^[0-9a-f]{40,}$/.test(actionRef2) ? `\`${actionRef2.slice(0, 7)}\`` : escapeText(actionRef2);
 }
 function renderBody(input2) {
-  const rows = [...input2.rows].sort((a, b) => byCodeUnit10(a.stackId, b.stackId));
+  const rows = [...input2.rows].sort((a, b) => byCodeUnit11(a.stackId, b.stackId));
   const known = rows.filter((row) => row.known);
   const of = (state2) => known.filter((row) => row.state === state2);
   const state = headerState(rows);
@@ -56045,7 +56171,7 @@ function renderBody(input2) {
   const shortened = pending.filter((row) => row.shortened > 0).length;
   if (shortened > 0)
     out.push(shortenedNote(shortened, pending.length));
-  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) => byCodeUnit10(a.stackId, b.stackId));
+  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) => byCodeUnit11(a.stackId, b.stackId));
   if (deploying.length > 0)
     out.push("## Deploying", blocks(deploying));
   const merges = [...input2.merges ?? []].filter((merge3, index, all) => all.findIndex((one) => one.pr === merge3.pr) === index).sort((a, b) => a.pr - b.pr);
@@ -56072,7 +56198,7 @@ function renderBody(input2) {
   if (previewFailed.length > 0)
     out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
   const inSync = of("in-sync");
-  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit10(a.stackId, b.stackId));
+  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit11(a.stackId, b.stackId));
   if (inSync.length > 0 || ignored.length > 0) {
     const loud = inSync.filter((row) => row.failed);
     const quiet = inSync.filter((row) => !row.failed);
@@ -56088,7 +56214,7 @@ function renderBody(input2) {
 `), "</details>");
     }
   }
-  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit10(a.stackId, b.stackId)).slice(0, input2.recentLength ?? RECENTLY_DEPLOYED);
+  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit11(a.stackId, b.stackId)).slice(0, input2.recentLength ?? RECENTLY_DEPLOYED);
   if (recent.length > 0)
     out.push("## Recently deployed", recent.map((deploy) => recentLine(deploy, input2.personality)).join(`
 `));
@@ -56118,6 +56244,8 @@ function sizeOf(entry2, level = entry2.level) {
 function fitBody(input2, options = {}) {
   const limit = options.limit ?? BODY_LIMIT;
   const target2 = Math.min(options.target ?? BODY_TARGET, limit);
+  const allMerges = oneLinePerPullRequest(input2.merges ?? []);
+  let merges = allMerges;
   let spinning = input2.personality;
   const entries = input2.rows.map((row) => {
     const levels = row.state === "pending" || row.state === "drift" ? LEVELS : LEVELS.slice(0, 1);
@@ -56129,13 +56257,27 @@ function fitBody(input2, options = {}) {
   const blockOf = (entry2) => !spinning && entry2.still || entry2.blocks[entry2.level] || [];
   const render = () => renderBody({
     ...input2,
-    rows: [...input2.carried, ...entries.flatMap(blockOf)]
+    rows: [...input2.carried, ...entries.flatMap(blockOf)],
+    merges
   });
   const fits = () => render().length <= target2;
+  if (allMerges.length > MAX_UPDATES && !fits()) {
+    let low = 0;
+    let high = allMerges.length - MAX_UPDATES - 1;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      merges = allMerges.slice(0, MAX_UPDATES + middle);
+      if (fits())
+        low = middle;
+      else
+        high = middle - 1;
+    }
+    merges = allMerges.slice(0, MAX_UPDATES + low);
+  }
   if (spinning && !fits())
     spinning = false;
   for (const level of LEVELS.slice(1)) {
-    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit9(a.stackId, b.stackId));
+    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit10(a.stackId, b.stackId));
     for (const entry2 of biggestFirst) {
       if (fits())
         break;
@@ -56143,7 +56285,7 @@ function fitBody(input2, options = {}) {
         entry2.level = level;
     }
   }
-  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit9(a.stackId, b.stackId));
+  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit10(a.stackId, b.stackId));
   for (const entry2 of smallestFirst) {
     const reached = entry2.level;
     for (const level of LEVELS.slice(0, reached)) {
@@ -56155,7 +56297,16 @@ function fitBody(input2, options = {}) {
   }
   const body = render();
   const shortened = entries.filter((entry2) => entry2.level > 0).length;
-  return { body, size: body.length, shortened, fits: body.length <= limit };
+  return {
+    body,
+    size: body.length,
+    shortened,
+    fits: body.length <= limit,
+    mergesLeftOut: allMerges.length - merges.length
+  };
+}
+function oneLinePerPullRequest(merges) {
+  return merges.filter((merge3, index, all) => all.findIndex((one) => one.pr === merge3.pr) === index).sort((a, b) => a.pr - b.pr);
 }
 
 // src/github/write-loop.ts
@@ -56349,18 +56500,18 @@ function read2(file2) {
 
 // src/core/diff-hash.ts
 import { createHash as createHash3 } from "node:crypto";
-function byCodeUnit11(a, b) {
+function byCodeUnit12(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function sortedSet3(keys4) {
-  return [...new Set(keys4)].sort(byCodeUnit11);
+  return [...new Set(keys4)].sort(byCodeUnit12);
 }
 function canonicalJson(value) {
   if (typeof value === "string")
     return JSON.stringify(value);
   if (Array.isArray(value))
     return `[${value.map(canonicalJson).join(",")}]`;
-  const members2 = Object.keys(value).sort(byCodeUnit11).flatMap((key) => {
+  const members2 = Object.keys(value).sort(byCodeUnit12).flatMap((key) => {
     const member = value[key];
     return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
   });
@@ -56382,14 +56533,14 @@ function canonicalChange(change3) {
 function canonicalValues(values2) {
   if (values2 === undefined || values2.length === 0)
     return;
-  return [...values2].sort((a, b) => byCodeUnit11(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
+  return [...values2].sort((a, b) => byCodeUnit12(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
 }
 function canonicalDiff(diff2) {
   const drift = diff2.drift === undefined || diff2.drift.length === 0 ? "" : `"drift":[${canonicalChanges(diff2.drift).join(",")}],`;
   return `{"changes":[${canonicalChanges(diff2.changes).join(",")}],${drift}"stackId":${JSON.stringify(diff2.stackId)}}`;
 }
 function canonicalChanges(changes) {
-  return changes.map((change3) => ({ address: change3.address, text: canonicalJson(canonicalChange(change3)) })).sort((a, b) => byCodeUnit11(a.address, b.address) || byCodeUnit11(a.text, b.text)).map((change3) => change3.text);
+  return changes.map((change3) => ({ address: change3.address, text: canonicalJson(canonicalChange(change3)) })).sort((a, b) => byCodeUnit12(a.address, b.address) || byCodeUnit12(a.text, b.text)).map((change3) => change3.text);
 }
 function diffHash(diff2) {
   return createHash3("sha256").update(canonicalDiff(diff2), "utf8").digest("hex").slice(0, 16);
@@ -56431,27 +56582,6 @@ function deployFailureText(reason) {
     case "dependency-failed":
       return "a stack it depends on did not deploy";
   }
-}
-
-// src/core/claim.ts
-function inside(directory, file2) {
-  return directory === "." || file2.startsWith(`${directory}/`);
-}
-function claim2(stacks, changed, unrelated) {
-  const isUnrelated = globMatcher(unrelated);
-  const matchers = stacks.map((stack) => ({ stack, matches: globMatcher(stack.inputs) }));
-  const claims = new Map;
-  const unclaimed = [];
-  for (const file2 of new Set(changed)) {
-    if (isUnrelated(file2))
-      continue;
-    const claimants = matchers.filter(({ stack, matches }) => inside(stack.path, file2) || matches(file2));
-    if (claimants.length === 0)
-      unclaimed.push(file2);
-    for (const { stack } of claimants)
-      claims.set(stack.id, [...claims.get(stack.id) ?? [], file2]);
-  }
-  return { claims, unclaimed };
 }
 
 // src/core/attribution.ts
@@ -56609,11 +56739,11 @@ function attributionSource(github, input2, onFailure) {
 }
 
 // src/core/dependencies.ts
-function byCodeUnit12(a, b) {
+function byCodeUnit13(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function planDeploys(input2) {
-  const ids = [...new Set(input2.allowed)].sort(byCodeUnit12);
+  const ids = [...new Set(input2.allowed)].sort(byCodeUnit13);
   const going = new Set(ids);
   const refused = new Map;
   for (let changed = true;changed; ) {
@@ -56624,7 +56754,7 @@ function planDeploys(input2) {
       const waitingOn = (input2.dependsOn.get(id) ?? []).filter((dependency) => !input2.open.has(dependency) && !going.has(dependency) && (input2.pending.has(dependency) || refused.has(dependency)));
       if (waitingOn.length === 0)
         continue;
-      refused.set(id, [...waitingOn].sort(byCodeUnit12));
+      refused.set(id, [...waitingOn].sort(byCodeUnit13));
       going.delete(id);
       changed = true;
     }
@@ -56634,7 +56764,7 @@ function planDeploys(input2) {
   for (const id of ids) {
     if (refused.has(id))
       continue;
-    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit12);
+    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit13);
     if (behind.length === 0)
       start.push(id);
     else
@@ -56680,11 +56810,11 @@ function withReadDependencies(input2) {
     return walk(from);
   };
   const dropped = [];
-  for (const id of [...input2.auto].sort(byCodeUnit12)) {
+  for (const id of [...input2.auto].sort(byCodeUnit13)) {
     const list = dependsOn.get(id);
     if (list === undefined)
       continue;
-    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit12)) {
+    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit13)) {
       if (dependency === id || !dependsOn.has(dependency) || list.includes(dependency))
         continue;
       if (reaches(dependency, id))
@@ -56692,7 +56822,7 @@ function withReadDependencies(input2) {
       else
         list.push(dependency);
     }
-    list.sort(byCodeUnit12);
+    list.sort(byCodeUnit13);
   }
   return { dependsOn, dropped };
 }
@@ -56759,7 +56889,7 @@ async function settleEndedRuns(github, records, repoUrl) {
 
 // src/render/changes.ts
 function orderChanges(diff2) {
-  const changes = [...diff2.changes].sort((a, b) => byCodeUnit9(a.address, b.address));
+  const changes = [...diff2.changes].sort((a, b) => byCodeUnit10(a.address, b.address));
   return {
     deletes: changes.filter((change3) => change3.op === "delete"),
     replaces: changes.filter((change3) => change3.op === "replace"),
@@ -57110,7 +57240,7 @@ function json2(value) {
 `;
 }
 function scanResultFile(input2) {
-  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit9(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? {
+  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit10(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? {
     stack: stack.diff.stackId,
     seconds: seconds(milliseconds),
     ...diffOf(stack.diff),
@@ -57763,10 +57893,10 @@ function groups(files) {
     const slash = file2.indexOf("/");
     return slash === -1 ? "." : file2.slice(0, slash);
   };
-  const byDirectory = Map.groupBy([...files].sort(byCodeUnit13), top);
-  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit13(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
+  const byDirectory = Map.groupBy([...files].sort(byCodeUnit14), top);
+  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit14(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
 }
-function byCodeUnit13(a, b) {
+function byCodeUnit14(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -57804,7 +57934,7 @@ function readWorkflowFiles(root) {
   } catch {
     return [];
   }
-  return names.sort(byCodeUnit14).map((name) => ({
+  return names.sort(byCodeUnit15).map((name) => ({
     path: `${WORKFLOW_DIRECTORY}/${name}`,
     text: readFileSync6(join27(root, WORKFLOW_DIRECTORY, name), "utf8")
   }));
@@ -58015,7 +58145,7 @@ function listensToEdits(issues, present3) {
   const types = issues.types;
   return Array.isArray(types) ? types.includes("edited") : types === "edited";
 }
-function byCodeUnit14(a, b) {
+function byCodeUnit15(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -58388,9 +58518,9 @@ function openTofuRoots(files, read3) {
   const code2 = files.filter((file2) => /\.(tf|tofu)$/.test(file2) && !SKIPPED3.test(file2));
   const directories = [...new Set(code2.map(directoryOf))];
   const called = new Set(code2.flatMap((file2) => [...(read3(file2) ?? "").matchAll(/^\s*source\s*=\s*"(\.\.?\/[^"]*)"/gm)].map((match) => normal(posix.join(directoryOf(file2), match[1] ?? "")))));
-  return directories.filter((path) => !called.has(path) && !path.split("/").includes("modules")).sort(byCodeUnit15).map((path) => ({
+  return directories.filter((path) => !called.has(path) && !path.split("/").includes("modules")).sort(byCodeUnit16).map((path) => ({
     path,
-    varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit15)
+    varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit16)
   }));
 }
 function openTofuStacks(root) {
@@ -58418,7 +58548,7 @@ function helmCharts(files, read3) {
       return [];
     const release2 = releaseName(typeof chart.name === "string" ? chart.name : "", path);
     return release2 === undefined ? [] : [{ path, release: release2 }];
-  }).sort((a, b) => byCodeUnit15(a.path, b.path));
+  }).sort((a, b) => byCodeUnit16(a.path, b.path));
 }
 function releaseName(name, path) {
   for (const candidate of [name, posix.basename(path)]) {
@@ -58450,7 +58580,7 @@ function findForWorkflow(stacks, files, read3) {
     helm: stacks.some((stack) => tool(stack) === HELM),
     kubectl: stacks.some((stack) => tool(stack) === KUBECTL),
     node: nodePaths.length === 0 ? undefined : nodeFindings(nodePaths, files, read3),
-    otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit15(a.runtime, b.runtime)),
+    otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit16(a.runtime, b.runtime)),
     helmRepositories: helmRepositories(stacks, read3),
     envFiles: envFiles(files, read3)
   };
@@ -58481,7 +58611,7 @@ function nodeFindings(paths, files, read3) {
   const managers = new Set(installs.values());
   const manifest = yamlObject2(read3("package.json"));
   return {
-    installs: [...installs].map(([directory, manager]) => ({ directory, manager })).sort((a, b) => byCodeUnit15(a.directory, b.directory)),
+    installs: [...installs].map(([directory, manager]) => ({ directory, manager })).sort((a, b) => byCodeUnit16(a.directory, b.directory)),
     withoutLockfile,
     versionFile: [".nvmrc", ".node-version"].find((file2) => files.includes(file2)),
     yarnBerry: managers.has("yarn") && files.includes(".yarnrc.yml"),
@@ -58500,7 +58630,7 @@ function helmRepositories(stacks, read3) {
       return typeof repository === "string" && /^https?:\/\//.test(repository) ? [repository] : [];
     });
   });
-  return [...new Set(repositories)].sort(byCodeUnit15);
+  return [...new Set(repositories)].sort(byCodeUnit16);
 }
 function envFiles(files, read3) {
   const found = files.filter((file2) => /(^|\/)(\.env(\.[^/]+)?|[^/]+\.env)$/.test(file2)).filter((file2) => /^[\w./-]+$/.test(file2)).filter((file2) => (read3(file2) ?? "").split(`
@@ -58544,7 +58674,7 @@ function normal(path) {
   const joined2 = posix.normalize(path).replace(/\/$/, "");
   return joined2 === "" ? "." : joined2;
 }
-function byCodeUnit15(a, b) {
+function byCodeUnit16(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -59117,7 +59247,7 @@ function holds(dashboard, tick) {
     return dashboard.rescanTicked;
   if (tick.kind === "merge") {
     const merge3 = dashboard.merges.find((candidate) => candidate.pr === tick.pr);
-    return merge3?.ticked === true && merge3.head === tick.head && merge3.stackId === tick.stackId;
+    return merge3?.ticked === true && merge3.head === tick.head && JSON.stringify(merge3.stackIds) === JSON.stringify(tick.stackIds);
   }
   const row2 = dashboard.rows.find((candidate) => candidate.stackId === tick.stackId);
   return row2?.known === true && row2.ticked && row2.hash === tick.hash;
@@ -59140,12 +59270,12 @@ function ticksIn(body) {
     }
   }
   const merged = new Set;
-  for (const { pr, stackId: stackId2, head, ticked } of dashboard.merges) {
+  for (const { pr, stackIds, head, ticked } of dashboard.merges) {
     if (merged.has(pr))
       continue;
     merged.add(pr);
     if (ticked)
-      ticks.push({ kind: "merge", pr, stackId: stackId2, head });
+      ticks.push({ kind: "merge", pr, stackIds, head });
   }
   if (dashboard.rescanTicked)
     ticks.push({ kind: "rescan" });
@@ -59188,66 +59318,6 @@ async function nameTickers(ticks, readPage) {
     named: false,
     reason: oldest[index] ? "end-of-history" : "not-in-newest-entry"
   });
-}
-
-// src/core/merge-and-deploy.ts
-function qualify(pullRequest, options) {
-  const author2 = pullRequest.author?.toLowerCase();
-  if (author2 === undefined || !options.authors.includes(author2)) {
-    return { qualifies: false, why: "author" };
-  }
-  if (pullRequest.draft)
-    return { qualifies: false, why: "draft" };
-  if (pullRequest.base !== options.defaultBranch)
-    return { qualifies: false, why: "base" };
-  if (pullRequest.checks !== "success")
-    return { qualifies: false, why: "checks" };
-  if (pullRequest.mergeable === "conflicting")
-    return { qualifies: false, why: "conflicting" };
-  if (!pullRequest.filesComplete)
-    return { qualifies: false, why: "files-unknown" };
-  const { claims, unclaimed } = claim2(options.stacks, pullRequest.files, options.unrelated);
-  if (unclaimed.length > 0)
-    return { qualifies: false, why: "unclaimed" };
-  const [stackId2, ...others] = claims.keys();
-  if (others.length > 0)
-    return { qualifies: false, why: "two-stacks" };
-  if (stackId2 === undefined)
-    return { qualifies: false, why: "no-stack" };
-  return { qualifies: true, stackId: stackId2 };
-}
-var NOT_QUALIFIED = {
-  author: "its author is not in mergeAndDeploy.authors",
-  draft: "it is a draft",
-  base: "it does not merge into the default branch",
-  checks: "its checks are not all green",
-  conflicting: "it conflicts with its base branch",
-  "files-unknown": "not every file it changes is known",
-  unclaimed: "no stack claims some of its files",
-  "two-stacks": "more than one stack claims its files",
-  "no-stack": "no stack claims any of its files"
-};
-var MAX_UPDATES = 30;
-function waitingUpdates(pullRequests, options) {
-  const qualifying = [...pullRequests].sort((a, b) => a.number - b.number).flatMap((pullRequest) => {
-    const qualified = qualify(pullRequest, options);
-    return qualified.qualifies ? [{ pullRequest, stackId: qualified.stackId }] : [];
-  });
-  return {
-    listed: qualifying.slice(0, MAX_UPDATES),
-    more: Math.max(0, qualifying.length - MAX_UPDATES)
-  };
-}
-var RENOVATE_METHODS = {
-  squash: "squash",
-  rebase: "rebase",
-  "merge-commit": "merge"
-};
-var FALLBACK = ["squash", "merge", "rebase"];
-function mergeMethod(allowed, strategy) {
-  const renovate = strategy === undefined ? undefined : RENOVATE_METHODS[strategy];
-  const candidates = renovate === undefined ? FALLBACK : [renovate, ...FALLBACK];
-  return candidates.find((method) => allowed[method] !== false);
 }
 
 // src/core/json5.ts
@@ -59458,7 +59528,7 @@ function parse7(text6) {
   }
 }
 var INTERNAL = /^(?:[a-zA-Z]+)?:[\w.-]+$/;
-function localPreset(name, repo) {
+function repoPreset(name, repo) {
   if (INTERNAL.test(name))
     return "internal";
   let rest;
@@ -59470,6 +59540,14 @@ function localPreset(name, repo) {
     rest = name;
   else
     return;
+  let ref;
+  const hash2 = rest.indexOf("#");
+  if (hash2 >= 0) {
+    ref = rest.slice(hash2 + 1);
+    rest = rest.slice(0, hash2);
+    if (ref === "")
+      return;
+  }
   if (/[#()]/.test(rest))
     return;
   let repoName;
@@ -59486,15 +59564,17 @@ function localPreset(name, repo) {
     repoName = colon < 0 ? rest : rest.slice(0, colon);
     presetName = colon < 0 ? "default" : rest.slice(colon + 1);
   }
-  if (repoName.toLowerCase() !== `${repo.owner}/${repo.repo}`.toLowerCase())
+  const [owner = "", repoPart = "", ...extra] = repoName.split("/");
+  if (owner === "" || repoPart === "" || extra.length > 0)
     return;
+  const local = ref === undefined && repoName.toLowerCase() === `${repo.owner}/${repo.repo}`.toLowerCase();
   const [fileName = "", ...keys4] = presetName.split("/");
   if (fileName === "" || keys4.length > 2)
     return;
   const files = fileName === "default" ? [`${path}default.json`, `${path}renovate.json`] : [`${path}${/\.json[5c]?$/.test(fileName) ? fileName : `${fileName}.json`}`];
-  return { files, keys: keys4 };
+  return { owner, repo: repoPart, ref, local, files, keys: keys4 };
 }
-function renovateMergeSetting(readFile3, repo) {
+async function renovateMergeSetting(readFile3, repo, readRemote) {
   let file2;
   let config2;
   for (const name of RENOVATE_CONFIG_FILES) {
@@ -59514,7 +59594,15 @@ function renovateMergeSetting(readFile3, repo) {
   }
   const unread = [];
   const seen = new Set;
-  const strategyOf = (value, depth) => {
+  const readPreset = async (preset) => {
+    for (const path of preset.files) {
+      const text6 = preset.local ? readFile3(path) : await readRemote?.({ owner: preset.owner, repo: preset.repo, path, ref: preset.ref });
+      if (text6 !== undefined)
+        return text6;
+    }
+    return;
+  };
+  const strategyOf = async (value, depth) => {
     const object2 = objectOf2(value);
     if (!object2)
       return;
@@ -59523,18 +59611,24 @@ function renovateMergeSetting(readFile3, repo) {
     for (const name of extendsList) {
       if (typeof name !== "string")
         continue;
-      const preset = localPreset(name, repo);
+      const preset = repoPreset(name, repo);
       if (preset === "internal")
         continue;
-      if (preset === undefined || depth >= MAX_DEPTH) {
+      if (preset === undefined || depth >= MAX_DEPTH || !preset.local && !readRemote) {
         unread.push(name);
         continue;
       }
-      const key = `${preset.files[0]}#${preset.keys.join("/")}`;
+      const key = [preset.owner, preset.repo, preset.ref ?? "", preset.local, preset.files[0]].join(`
+`).toLowerCase().concat(`#${preset.keys.join("/")}`);
       if (seen.has(key))
         continue;
       seen.add(key);
-      const text6 = preset.files.map(readFile3).find((one) => one !== undefined);
+      let text6;
+      try {
+        text6 = await readPreset(preset);
+      } catch {
+        text6 = undefined;
+      }
       let inner = text6 === undefined ? undefined : parse7(text6);
       for (const part of preset.keys)
         inner = objectOf2(inner)?.[part];
@@ -59542,12 +59636,12 @@ function renovateMergeSetting(readFile3, repo) {
         unread.push(name);
         continue;
       }
-      found = strategyOf(inner, depth + 1) ?? found;
+      found = await strategyOf(inner, depth + 1) ?? found;
     }
     const own2 = object2.automergeStrategy;
     return typeof own2 === "string" ? own2 : found;
   };
-  return { strategy: strategyOf(config2, 0), file: file2, unread };
+  return { strategy: await strategyOf(config2, 0), file: file2, unread };
 }
 
 // src/core/resolve.ts
@@ -59579,8 +59673,10 @@ function judgeTick(rule, login, permission) {
 function what(target2) {
   if (target2.kind === "rescan")
     return "the rescan box";
-  const stack = `**${escapeText(target2.stackId)}**`;
-  return target2.kind === "merge" ? `the merge of #${target2.pr} for ${stack}` : stack;
+  if (target2.kind === "stack")
+    return `**${escapeText(target2.stackId)}**`;
+  const stacks = target2.stackIds.map((id) => `**${escapeText(id)}**`).join(" and ");
+  return `the merge of #${target2.pr} for ${stacks}`;
 }
 function sentence(text6) {
   const trimmed = escapeText(text6).trim();
@@ -59753,9 +59849,12 @@ async function resolveTicks(context3, handOn) {
     if (!stacks)
       ({ stacks, ignored } = await discover2(context3, config2));
     const known = ticks.filter((tick) => {
-      if (tick.kind === "rescan" || stacks?.has(tick.stackId))
+      if (tick.kind === "rescan")
         return true;
-      log.info(`${logGroupTitle(tick.stackId)} is ticked, and discovery knows no such stack. Left alone.`);
+      const unknown2 = (tick.kind === "merge" ? tick.stackIds : [tick.stackId]).filter((id) => !stacks?.has(id));
+      if (unknown2.length === 0)
+        return true;
+      log.info(`${tick.kind === "merge" ? `${tickName(tick)} is ticked, and discovery knows no stack ${unknown2.map(logGroupTitle).join(" or ")}` : `${logGroupTitle(tick.stackId)} is ticked, and discovery knows no such stack`}. Left alone.`);
       return false;
     });
     const tickers3 = await nameTickers(known, (after) => after === undefined ? Promise.resolve(first) : github.readEditHistory(issue3.number, { size: HISTORY_PAGE_SIZE, after }));
@@ -59785,7 +59884,7 @@ async function resolveTicks(context3, handOn) {
       mergeTicks.set(tick.pr, tick);
   const tickedIds = new Set([
     ...hashes.keys(),
-    ...[...mergeTicks.values()].map((one) => one.stackId)
+    ...[...mergeTicks.values()].flatMap((one) => one.stackIds)
   ]);
   const ticked = [...tickedIds].flatMap((id) => stacks?.get(id) ?? []);
   const dependencies = ticked.flatMap(({ dependsOn }) => (dependsOn ?? []).flatMap((id) => stacks?.get(id) ?? []));
@@ -59797,7 +59896,7 @@ async function resolveTicks(context3, handOn) {
   let rescanHandled = false;
   for (const { tick, ticker } of named) {
     const name = tickName(tick);
-    const fact = tick.kind === "rescan" ? undefined : open2.get(tick.stackId);
+    const fact = tick.kind === "rescan" ? undefined : tick.kind === "merge" ? tick.stackIds.map((id) => open2.get(id)).find((one) => one !== undefined) : open2.get(tick.stackId);
     if (tick.kind === "merge" && (fact || !config2.deploys)) {
       log.info(fact ? `${name} is ticked, and the stack already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. Nothing is merged and the box is cleared. Tick it again once that deploy is over.` : `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). Nothing is merged and the box is cleared.`);
       clearMerges.set(tick.pr, fact ? "deploying" : "deploys-off");
@@ -59807,10 +59906,20 @@ async function resolveTicks(context3, handOn) {
     } else if (tick.kind === "row" && !config2.deploys) {
       log.info(`${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). The box is cleared.`);
       clear.set(tick.stackId, { hash: tick.hash, note: "deploys-off" });
+    } else if (ticker.named && tick.kind === "merge") {
+      for (const id of tick.stackIds) {
+        const stack = stacks?.get(id);
+        if (!stack)
+          continue;
+        toJudge.push({
+          target: { kind: "merge", pr: tick.pr, stackIds: [id], rule: stack.tickers },
+          editor: ticker.editor
+        });
+      }
     } else if (ticker.named) {
-      const stack = tick.kind === "rescan" ? undefined : stacks?.get(tick.stackId);
+      const stack = tick.kind === "row" ? stacks?.get(tick.stackId) : undefined;
       toJudge.push({
-        target: !stack ? { kind: "rescan" } : tick.kind === "merge" ? { kind: "merge", pr: tick.pr, stackId: stackId(stack.stack), rule: stack.tickers } : { kind: "stack", stackId: stackId(stack.stack), rule: stack.tickers },
+        target: !stack ? { kind: "rescan" } : { kind: "stack", stackId: stackId(stack.stack), rule: stack.tickers },
         editor: ticker.editor
       });
     } else if (ticker.reason === "not-in-newest-entry") {
@@ -59827,7 +59936,7 @@ async function resolveTicks(context3, handOn) {
   }
   const outcomes = await judgeTicks(github, toJudge);
   const allowed = [];
-  const allowedMerges = [];
+  const mergesAllowed = new Map;
   let rescan = false;
   for (const outcome of outcomes) {
     const { target: target2, editor } = outcome.tick;
@@ -59840,11 +59949,9 @@ async function resolveTicks(context3, handOn) {
       log.info(`${name} was ticked by ${editor.login}.`);
       if (target2.kind === "stack")
         allowed.push({ stackId: target2.stackId, ticker: editor.login });
-      else if (target2.kind === "merge") {
-        const tick = mergeTicks.get(target2.pr);
-        if (tick)
-          allowedMerges.push({ tick, ticker: editor.login });
-      } else
+      else if (target2.kind === "merge")
+        mergesAllowed.set(target2.pr, editor.login);
+      else
         rescan = true;
     } else {
       log.info(outcome.outcome === "refused" ? `${name} was ticked by ${editor.login}, who may not tick it (${outcome.reason}). The box is cleared.` : `${name} was ticked by ${editor.login}, and GitHub gave no answer about their access: ${message2(outcome.error)}. The box is cleared.`);
@@ -59857,6 +59964,12 @@ async function resolveTicks(context3, handOn) {
     }
     if (target2.kind === "rescan")
       rescanHandled = true;
+  }
+  const allowedMerges = [];
+  for (const [pr, ticker] of mergesAllowed) {
+    const tick = mergeTicks.get(pr);
+    if (tick && !clearMerges.has(pr))
+      allowedMerges.push({ tick, ticker });
   }
   const { start, over } = capDeploys(allowed);
   for (const { stackId: id } of over) {
@@ -59986,29 +60099,30 @@ async function resolveTicks(context3, handOn) {
 function tickName(tick) {
   if (tick.kind === "row")
     return logGroupTitle(tick.stackId);
-  if (tick.kind === "merge")
-    return `The merge of #${tick.pr} for ${logGroupTitle(tick.stackId)}`;
+  if (tick.kind === "merge") {
+    return `The merge of #${tick.pr} for ${tick.stackIds.map(logGroupTitle).join(" and ")}`;
+  }
   return "The rescan box";
 }
 function targetName(target2) {
   if (target2.kind === "stack")
     return logGroupTitle(target2.stackId);
   if (target2.kind === "merge") {
-    return `The merge of #${target2.pr} for ${logGroupTitle(target2.stackId)}`;
+    return `The merge of #${target2.pr} for ${target2.stackIds.map(logGroupTitle).join(" and ")}`;
   }
   return "The rescan box";
 }
-function renovateStrategyOf(context3) {
+async function renovateStrategyOf(context3) {
   const [owner = "", repo = ""] = new URL(context3.repoUrl).pathname.split("/").filter(Boolean);
-  const setting = renovateMergeSetting((path) => {
+  const setting = await renovateMergeSetting((path) => {
     try {
       return readFileSync8(join29(context3.root, path), "utf8");
     } catch {
       return;
     }
-  }, { owner, repo });
+  }, { owner, repo }, (file2) => context3.github.readRepositoryFile(file2));
   const one = setting.unread.length === 1;
-  const unread = setting.unread.length === 0 ? "" : ` The ${one ? "preset" : "presets"} ${setting.unread.map(logGroupTitle).join(" and ")} ${one ? "was" : "were"} not read: only a preset in a file of this repo is.`;
+  const unread = setting.unread.length === 0 ? "" : ` The ${one ? "preset" : "presets"} ${setting.unread.map(logGroupTitle).join(" and ")} ${one ? "was" : "were"} not read: a preset is read from a GitHub repo the workflow token can read, never from npm or a web address, and never with parameters.`;
   const none = setting.file === undefined ? "No Renovate config sets automergeStrategy" : `Renovate's config ${logGroupTitle(setting.file)} sets no automergeStrategy`;
   context3.log.info(setting.strategy === undefined ? `${none}, so the method is the first the repo allows of squash, merge and rebase, as Renovate picks it.${unread}` : `Renovate's config is ${logGroupTitle(setting.file ?? "")}, and it sets automergeStrategy to ${logGroupTitle(setting.strategy)}.${unread}`);
   return setting.strategy;
@@ -60027,7 +60141,7 @@ async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
     return result;
   }
   try {
-    method = mergeMethod(await github.allowedMergeMethods(), renovateStrategyOf(context3));
+    method = mergeMethod(await github.allowedMergeMethods(), await renovateStrategyOf(context3));
   } catch (error63) {
     result.failure = `The merge settings of the repo could not be read: ${message2(error63)}. The resolve job needs the permission \`contents: write\` to merge (record 0054). Nothing was merged, and the boxes stay ticked for the next run.`;
     return result;
@@ -60037,20 +60151,21 @@ async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
     path: stack.path,
     inputs
   }));
+  const dependsOn = new Map([...stacks.values()].map((one) => [stackId(one.stack), one.dependsOn ?? []]));
   const sorted = [...ticks].sort((a, b) => a.tick.pr - b.tick.pr);
   for (const { tick, ticker } of sorted) {
     const name = tickName(tick);
     const target2 = {
       kind: "merge",
       pr: tick.pr,
-      stackId: tick.stackId,
+      stackIds: tick.stackIds,
       rule: "write"
     };
     const refuse = (reason, detail, waitsOn) => {
       result.cleared.push(tick.pr);
       result.problems.push({ target: target2, login: ticker, reason, detail, waitsOn });
     };
-    const waits = waitingOn(tick.stackId);
+    const waits = [...new Set(tick.stackIds.flatMap(waitingOn))];
     if (waits.length > 0) {
       log.info(`${name} was ticked by ${ticker}, and the stack depends on ${waits.map(logGroupTitle).join(" and ")}, which ${waits.length === 1 ? "has a change" : "have changes"} waiting. Nothing is merged.`);
       refuse("waits-on", undefined, waits);
@@ -60071,9 +60186,10 @@ async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
       authors: config2.mergeAndDeploy.authors,
       defaultBranch: open2.defaultBranch,
       stacks: claimants,
-      unrelated: config2.scan.unrelated
+      unrelated: config2.scan.unrelated,
+      dependsOn
     });
-    const why2 = !qualified.qualifies ? NOT_QUALIFIED[qualified.why] : qualified.stackId !== tick.stackId ? "its files belong to another stack" : undefined;
+    const why2 = !qualified.qualifies ? NOT_QUALIFIED[qualified.why] : JSON.stringify(qualified.stackIds) !== JSON.stringify(tick.stackIds) ? "its files belong to another stack" : undefined;
     if (why2 !== undefined) {
       log.info(`${name} was ticked by ${ticker}, and the pull request no longer qualifies: ${why2}.`);
       refuse("not-qualified", why2);
@@ -60101,27 +60217,32 @@ async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
     }
     log.info(`${name} was ticked by ${ticker} and is merged (${method}) as ${answer.sha.slice(0, 7)}.`);
     result.mergedPrs.add(tick.pr);
-    const stack = stacks.get(tick.stackId);
-    if (!stack)
-      continue;
-    try {
-      const record3 = await github.createDeployment({
-        sha: answer.sha,
-        task: deploymentTask(tick.stackId),
-        environment: stack.environment,
-        payload: mergePayload({ ticker, run: context3.runId, merge: tick.pr })
-      });
-      result.merged.push({
-        stackId: tick.stackId,
-        environment: stack.environment,
-        deployment: record3.id,
-        ticker
-      });
-      await github.createDeploymentStatus(record3.id, { state: "queued", logUrl: runUrl(context3) });
-      log.info(`${logGroupTitle(tick.stackId)}: deployment record ${record3.id} is queued and deploys after the scan of the merge.`);
-    } catch (error63) {
-      result.failure = `#${tick.pr} is merged, and the deployment record of ${logGroupTitle(tick.stackId)} could not be written: ${message2(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). Nothing deploys for it: the scan shows the stack as pending, and a tick on its row deploys it. Nothing more was merged.`;
-      return result;
+    for (const id of tick.stackIds) {
+      const stack = stacks.get(id);
+      if (!stack)
+        continue;
+      try {
+        const record3 = await github.createDeployment({
+          sha: answer.sha,
+          task: deploymentTask(id),
+          environment: stack.environment,
+          payload: mergePayload({ ticker, run: context3.runId, merge: tick.pr })
+        });
+        result.merged.push({
+          stackId: id,
+          environment: stack.environment,
+          deployment: record3.id,
+          ticker
+        });
+        await github.createDeploymentStatus(record3.id, {
+          state: "queued",
+          logUrl: runUrl(context3)
+        });
+        log.info(`${logGroupTitle(id)}: deployment record ${record3.id} is queued and deploys after the scan of the merge.`);
+      } catch (error63) {
+        result.failure = `#${tick.pr} is merged, and the deployment record of ${logGroupTitle(id)} could not be written: ${message2(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). Nothing deploys for it: the scan shows the stack as pending, and a tick on its row deploys it. Nothing more was merged.`;
+        return result;
+      }
     }
   }
   return result;
@@ -60819,7 +60940,7 @@ function fitToBudget(entries, frameCost, budget) {
     entry2.level = level;
   };
   const fits = () => frameCost(shortened) + blocks2 - 1 <= budget;
-  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit9(a.stackId, b.stackId);
+  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit10(a.stackId, b.stackId);
   for (const level of LEVELS2.slice(1)) {
     for (const entry2 of [...entries].sort(bySize((entry3) => entry3.level, -1))) {
       if (fits())
@@ -60860,7 +60981,7 @@ function toolDiffLine(options) {
   return `The tool's own diff of every pending stack, values included, is in the ${log}, in the stack's group.`;
 }
 function renderSummary(stacks, options = {}) {
-  const sorted = [...stacks].sort((a, b) => byCodeUnit9(stackIdOf2(a), stackIdOf2(b)));
+  const sorted = [...stacks].sort((a, b) => byCodeUnit10(stackIdOf2(a), stackIdOf2(b)));
   const diffs = sorted.filter((stack) => stack.kind === "diff");
   const pending = diffs.filter((stack) => stack.diff.changes.length > 0);
   const hasDrift = (stack) => (stack.diff.drift ?? []).length > 0;
@@ -60924,6 +61045,85 @@ function renderSummary(stacks, options = {}) {
 `;
   const bytes = byteLength3(text6);
   return { text: text6, bytes, shortened, fits: bytes <= (options.budget ?? SUMMARY_BUDGET) };
+}
+
+// src/modes/branch-preview.ts
+import { cp, mkdir as mkdir2, mkdtemp as mkdtemp3, realpath, rm as rm4, writeFile as writeFile3 } from "node:fs/promises";
+import { tmpdir as tmpdir3 } from "node:os";
+import { basename, dirname as dirname3, join as join30, resolve as resolve2, sep as sep5 } from "node:path";
+async function previewBranches(context3, stacks, updates) {
+  const { log } = context3;
+  const previews = new Map;
+  for (const { pullRequest, stackIds } of updates.slice(0, MAX_UPDATES)) {
+    if (pullRequest.fromFork) {
+      log.info(`#${pullRequest.number} is not previewed: its branch lives in a fork, and its code would run with the credentials of this job.`);
+      continue;
+    }
+    const configured = stackIds.flatMap((id) => stacks.find(({ stack }) => stackId(stack) === id) ?? []);
+    previews.set(pullRequest.number, await previewOne(context3, pullRequest.number, pullRequest.head, pullRequest.files, configured));
+  }
+  return previews;
+}
+async function previewOne(context3, number4, head, files, stacks) {
+  const { log, now } = context3;
+  const failedAll = (why2) => {
+    log.info(`#${number4} could not be previewed: ${why2}`);
+    return stacks.map(({ stack }) => ({ stackId: stackId(stack) }));
+  };
+  const copy = await mkdtemp3(join30(context3.env.RUNNER_TEMP || tmpdir3(), "sluiceway-branch-"));
+  try {
+    await cp(context3.root, copy, {
+      recursive: true,
+      verbatimSymlinks: true,
+      filter: (source) => basename(source) !== ".git"
+    });
+    const [owner = "", repo = ""] = new URL(context3.repoUrl).pathname.split("/").filter(Boolean);
+    const inside2 = await realpath(copy);
+    for (const path of files) {
+      const target2 = resolve2(copy, path);
+      let text6;
+      try {
+        text6 = await context3.github.readRepositoryFile({ owner, repo, path, ref: head });
+      } catch (error63) {
+        return failedAll(`${path} could not be read at its head commit: ${error63 instanceof Error ? error63.message : error63}.`);
+      }
+      await mkdir2(dirname3(target2), { recursive: true });
+      const parent = await realpath(dirname3(target2));
+      if (parent !== inside2 && !parent.startsWith(`${inside2}${sep5}`)) {
+        return failedAll(`${path} leads out of the copy of the checkout.`);
+      }
+      if (text6 === undefined)
+        await rm4(target2, { force: true, recursive: true });
+      else
+        await writeFile3(target2, text6);
+    }
+    const tool = { root: copy, env: context3.env, run: context3.run };
+    const failed = await prepareStacks({ ...tool, log, adapter: context3.adapter }, stacks, context3.previewTimeoutMinutes);
+    const previews = [];
+    for (const configured of stacks) {
+      const id = stackId(configured.stack);
+      const started = now().getTime();
+      const result = failed.get(id) ?? await context3.adapter.preview(configured.stack, {
+        ...tool,
+        timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
+        showValues: []
+      });
+      const seconds2 = ((now().getTime() - started) / 1000).toFixed(1);
+      log.info(`Previewed ${logGroupTitle(id)} after the merge of #${number4} in ${seconds2} s: ${previewOutcome(result)}`);
+      if (!result.ok && result.toolLog !== "") {
+        log.group(`${logGroupTitle(id)} after the merge of #${number4}`, [
+          "The tool's own words:",
+          ...result.toolLog.replace(/\r?\n$/, "").split(/\r?\n/)
+        ]);
+      }
+      previews.push({ stackId: id, ...result.ok ? { changes: result.diff.changes } : {} });
+    }
+    return previews;
+  } catch (error63) {
+    return failedAll(`${error63 instanceof Error ? error63.message : error63}.`);
+  } finally {
+    await rm4(copy, { recursive: true, force: true });
+  }
 }
 
 // src/modes/scan.ts
@@ -61013,7 +61213,7 @@ async function scanning(context3, report) {
   const config2 = loadConfig(context3.root);
   const found = await context3.adapter.discover(context3.root, config2);
   const ignored = ignoredStacks(config2, found);
-  const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit9(stackId(a.stack), stackId(b.stack)));
+  const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit10(stackId(a.stack), stackId(b.stack)));
   const ids = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural2(stacks.length, "stack")}.`);
   const { logDiff } = config2.scan;
@@ -61028,6 +61228,13 @@ async function scanning(context3, report) {
   const unclaimed = unclaimedFiles(plan, config2);
   let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
   const listing = await listUpdates(context3, config2, stacks);
+  let versionChecked = false;
+  let branchPreviews = new Map;
+  if (listing.kind === "listed" && config2.mergeAndDeploy.preview && listing.updates.length > 0) {
+    await checkVersion5(context3, stacks.map(({ stack }) => stack));
+    versionChecked = true;
+    branchPreviews = await previewBranches(context3, stacks, listing.updates);
+  }
   const handedOn = [];
   const attribution = attributionSource(context3.github, {
     stacks: stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
@@ -61040,7 +61247,6 @@ async function scanning(context3, report) {
   const pageUrls = new Map;
   const pages = previewPages(context3.github, context3.sha);
   let rounds = 0;
-  let versionChecked = false;
   const prepared = new Set;
   let composed;
   let written;
@@ -61054,7 +61260,7 @@ async function scanning(context3, report) {
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit9(a.id, b.id));
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit10(a.id, b.id));
     if (round.length > 0 || rounds === 0) {
       await writeSummary2(context3, all, { logDiff, unclaimed });
       report.previewed = all;
@@ -61083,7 +61289,7 @@ async function scanning(context3, report) {
         if (row2.known && row2.ticked)
           liveTicks.set(row2.stackId, row2.hash);
       }
-      const { merges, mergeTicks } = mergeRows(listing, live?.root?.version === MARKER_VERSION ? live.merges : [], waits, config2.dashboard.redact);
+      const { merges, mergeTicks } = mergeRows(listing, branchPreviews, live?.root?.version === MARKER_VERSION ? live.merges : [], waits, config2.dashboard.redact);
       const rows = [];
       const carried = [];
       const first = [];
@@ -61204,7 +61410,8 @@ async function scanning(context3, report) {
         ticks,
         mergeTicks,
         resolveWaits: waits,
-        unread: deploys.facts.unread
+        unread: deploys.facts.unread,
+        mergesLeftOut: fitted.mergesLeftOut
       };
     };
     try {
@@ -61252,7 +61459,7 @@ async function scanning(context3, report) {
     counts: dashboardCounts(parseDashboard(written.body).rows)
   };
   if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit9(a.id, b.id));
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit10(a.id, b.id));
     await writeSummary2(context3, all, { logDiff, unclaimed }, attributed);
   }
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
@@ -61616,6 +61823,10 @@ function reportDashboard(context3, written, composed) {
     log.info(`The write took ${written.tries} tries.`);
   if (shortened > 0)
     log.info(`${plural2(shortened, "row")} shortened to fit the size budget.`);
+  const left = composed?.mergesLeftOut ?? 0;
+  if (left > 0) {
+    log.info(`${plural2(left, "more pull request")} ${left === 1 ? "qualifies" : "qualify"} and ${left === 1 ? "is" : "are"} not listed: the dashboard has no room for ${left === 1 ? "it" : "them"}. They are listed as the older ones merge.`);
+  }
   if (composed && composed.carried.length > 0) {
     log.info(`Carried ${plural2(composed.carried.length, "row")} through as ${composed.carried.length === 1 ? "it was" : "they were"}, for the stacks this scan did not preview.`);
   }
@@ -61661,7 +61872,8 @@ async function listUpdates(context3, config2, stacks) {
     authors,
     defaultBranch: open2.defaultBranch,
     stacks: stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
-    unrelated: config2.scan.unrelated
+    unrelated: config2.scan.unrelated,
+    dependsOn: new Map(stacks.map((one) => [stackId(one.stack), one.dependsOn ?? []]))
   };
   for (const pullRequest of open2.pullRequests) {
     const qualified = qualify(pullRequest, options);
@@ -61669,31 +61881,29 @@ async function listUpdates(context3, config2, stacks) {
       log.info(`#${pullRequest.number} is not listed to merge: ${NOT_QUALIFIED[qualified.why]}.`);
     }
   }
-  const { listed: updates, more } = waitingUpdates(open2.pullRequests, options);
+  const updates = waitingUpdates(open2.pullRequests, options);
   log.info(updates.length === 0 ? "No pull request waits to merge." : `${plural2(updates.length, "pull request")} ${updates.length === 1 ? "waits" : "wait"} to merge: ${updates.map(({ pullRequest }) => `#${pullRequest.number}`).join(", ")}.`);
-  if (more > 0) {
-    log.info(`${plural2(more, "more pull request")} ${more === 1 ? "qualifies" : "qualify"} and ${more === 1 ? "is" : "are"} not listed: the dashboard lists the oldest ${MAX_UPDATES}.`);
-  }
   return { kind: "listed", updates };
 }
-function mergeRows(listing, live, waits, redact) {
+function mergeRows(listing, previews, live, waits, redact) {
   if (listing.kind === "off")
     return { merges: [], mergeTicks: [] };
   if (listing.kind === "failed")
     return { merges: [...live], mergeTicks: [] };
   const mergeTicks = [];
-  const merges = listing.updates.map(({ pullRequest, stackId: id }) => {
+  const merges = listing.updates.map(({ pullRequest, stackIds }) => {
     const block = mergeBlock({
       pr: pullRequest.number,
-      stackId: id,
+      stackIds,
       head: pullRequest.head,
       title: pullRequest.title,
-      author: pullRequest.author
+      author: pullRequest.author,
+      preview: previews.get(pullRequest.number)
     }, { redact });
     const ticked = live.find((one) => one.pr === block.pr);
     if (!ticked?.ticked)
       return block;
-    const same = ticked.head === block.head && ticked.stackId === block.stackId;
+    const same = ticked.head === block.head && JSON.stringify(ticked.stackIds) === JSON.stringify(block.stackIds);
     const carry = same && waits;
     mergeTicks.push({ pr: block.pr, tick: carry ? "carry" : "sweep" });
     return carry ? tickedMergeBlock(block) : clearMergeTick(tickedMergeBlock(block), { note: "orphan" });
@@ -61707,7 +61917,7 @@ function mergesWaiting(facts) {
       waiting.push({ id, fact: { ...fact, merge: fact.merge } });
     }
   }
-  return waiting.sort((a, b) => byCodeUnit9(a.id, b.id));
+  return waiting.sort((a, b) => byCodeUnit10(a.id, b.id));
 }
 async function handOffMerges(context3, config2, stacks, previewed, waiting, handedOn) {
   const { github, log } = context3;
