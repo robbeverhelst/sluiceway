@@ -71,6 +71,28 @@ const WALK = `query ($owner: String!, $repo: String!, $head: GitObjectID!, $firs
 // GraphQL gives at most 100 nodes of a connection on one page.
 const PAGE = 100;
 
+// The most files GitHub lists of one commit or one pull request. A list this
+// long may be missing files (slice 5.9).
+const FILE_LIMIT = 3_000;
+
+interface ChangedFile {
+  filename: string;
+  previous_filename?: string | undefined;
+}
+
+// A renamed file counts under both paths (record 0010).
+function paths(files: readonly ChangedFile[]): string[] {
+  return files.flatMap((file) =>
+    file.previous_filename === undefined
+      ? [file.filename]
+      : [file.filename, file.previous_filename],
+  );
+}
+
+function nextPage(link: string | undefined): string | undefined {
+  return /<([^>]+)>;\s*rel="next"/.exec(link ?? "")?.[1];
+}
+
 interface PullRequestNode {
   number: number;
   title: string;
@@ -164,30 +186,28 @@ export function attributionCalls(
     },
 
     async listPullRequestFiles(number) {
-      // One page of 100, the file cap the walk holds a pull request to: one
-      // with more counts as a change outside every stack and is never read.
-      // Seen on 2026-09-22: a renamed file has `previous_filename`.
-      const { data } = await octokit.rest.pulls.listFiles({
+      // Pages of 100 to the last one (slice 5.9). Seen on 2026-09-22: a
+      // renamed file has `previous_filename`.
+      const files = await octokit.paginate(octokit.rest.pulls.listFiles, {
         ...repo,
         pull_number: number,
         per_page: PAGE,
       });
-      return data.flatMap((file) =>
-        file.previous_filename === undefined
-          ? [file.filename]
-          : [file.filename, file.previous_filename],
-      );
+      return files.length >= FILE_LIMIT ? undefined : paths(files);
     },
 
     async listCommitFiles(sha) {
-      // Without a page size GitHub gives up to 300 files in one answer. With
-      // one it pages them (seen on 2026-09-21).
-      const { data } = await octokit.rest.repos.getCommit({ ...repo, ref: sha });
-      return (data.files ?? []).flatMap((file) =>
-        file.previous_filename === undefined
-          ? [file.filename]
-          : [file.filename, file.previous_filename],
-      );
+      // Without a page size GitHub gives up to 300 files in one answer (seen on
+      // 2026-09-21), and names the next page in the Link header, up to 3,000
+      // files. Every page is read (slice 5.9).
+      const first = await octokit.rest.repos.getCommit({ ...repo, ref: sha });
+      const files: ChangedFile[] = [...(first.data.files ?? [])];
+      for (let next = nextPage(first.headers.link); next !== undefined; ) {
+        const page = await octokit.request(`GET ${next}`);
+        files.push(...((page.data as { files?: ChangedFile[] }).files ?? []));
+        next = nextPage(page.headers.link);
+      }
+      return files.length >= FILE_LIMIT ? undefined : paths(files);
     },
   };
 }

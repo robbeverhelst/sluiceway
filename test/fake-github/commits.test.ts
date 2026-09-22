@@ -174,13 +174,33 @@ describe("the files of a commit", () => {
     expect(fake.requests).toEqual(["listCommitFiles"]);
   });
 
-  test("at most 300 files", async () => {
+  // Slice 5.9: pages of 300, each one request, up to GitHub's 3,000.
+  test("every file, one request per page of 300", async () => {
     const fake = new FakeGitHub();
     fake.seedCommit({
       sha: sha("big"),
       files: Array.from({ length: 320 }, (_, index) => `f/${index}`),
     });
-    expect(await fake.listCommitFiles(sha("big"))).toHaveLength(300);
+    expect(await fake.listCommitFiles(sha("big"))).toHaveLength(320);
+    expect(fake.requests).toEqual(["listCommitFiles", "listCommitFiles"]);
+  });
+
+  test("3,000 files or more is nothing, because files may be missing", async () => {
+    const fake = new FakeGitHub();
+    fake.seedCommit({
+      sha: sha("huge"),
+      files: Array.from({ length: 3_000 }, (_, index) => `f/${index}`),
+    });
+    expect(await fake.listCommitFiles(sha("huge"))).toBeUndefined();
+  });
+
+  test("the files of a pull request, one request per page of 100", async () => {
+    const fake = new FakeGitHub();
+    fake.seedCommit({ sha: sha("c1") });
+    const files = Array.from({ length: 140 }, (_, index) => `f/${index}`);
+    fake.seedPullRequest({ number: 7, files, commits: [sha("c1")] });
+    expect(await fake.listPullRequestFiles(7)).toEqual(files);
+    expect(fake.requests).toEqual(["listPullRequestFiles", "listPullRequestFiles"]);
   });
 
   test("a commit the repo does not have fails", async () => {
@@ -206,6 +226,19 @@ describe("over HTTP behind the real port", () => {
     const port = await served(fake);
     expect(await port.walkCommits(sha("d1"))).toEqual(await fake.walkCommits(sha("d1")));
     expect(await port.listCommitFiles(sha("d1"))).toEqual(await fake.listCommitFiles(sha("d1")));
+  });
+
+  // Slice 5.9: the pages go over the wire with GitHub's Link header.
+  test("the files of a big commit and of a big pull request come page by page", async () => {
+    const fake = new FakeGitHub();
+    const files = Array.from({ length: 450 }, (_, index) => `f/${index}`);
+    fake.seedCommit({ sha: sha("big"), files });
+    fake.seedPullRequest({ number: 7, files: files.slice(0, 250), commits: [sha("big")] });
+    const port = await served(fake);
+    expect(await port.listCommitFiles(sha("big"))).toEqual(files);
+    expect(await port.listPullRequestFiles(7)).toEqual(files.slice(0, 250));
+    expect(fake.requests.filter((request) => request === "listCommitFiles")).toHaveLength(2);
+    expect(fake.requests.filter((request) => request === "listPullRequestFiles")).toHaveLength(3);
   });
 
   test("a lookback past one page is paged, and a renamed file's old path is read", async () => {

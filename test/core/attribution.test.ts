@@ -3,6 +3,7 @@ import {
   attributor,
   type CommitWalk,
   directPushesToRead,
+  pullRequestsToRead,
   type WalkedCommit,
   type WalkedPullRequest,
 } from "../../src/core/attribution.ts";
@@ -64,12 +65,20 @@ function attribute(
   walk: CommitWalk,
   stackId: string,
   from: string | undefined,
-  rest: { pushFiles?: Record<string, string[]>; unrelated?: string[]; stacks?: Claimant[] } = {},
+  rest: {
+    pushFiles?: Record<string, string[]>;
+    pullRequestFiles?: Record<number, string[]>;
+    unrelated?: string[];
+    stacks?: Claimant[];
+  } = {},
 ) {
   const of = attributor({
     walk,
     pushFiles: new Map(
       Object.entries(rest.pushFiles ?? {}).map(([name, files]) => [sha(name), files]),
+    ),
+    pullRequestFiles: new Map(
+      Object.entries(rest.pullRequestFiles ?? {}).map(([number, files]) => [Number(number), files]),
     ),
     stacks: rest.stacks ?? STACKS,
     unrelated: rest.unrelated ?? [],
@@ -226,13 +235,15 @@ describe("a direct push", () => {
     );
   });
 
-  test("with a file list at GitHub's cap counts as outside too, because files may be missing", () => {
-    const many = Array.from({ length: 300 }, (_, index) => `apps/grafana/${index}.ts`);
+  // Slice 5.9: the glue reads every page of a commit's files, so a list of
+  // 300 or more is whole. One GitHub could not give whole is never handed in.
+  test("with 300 files or more, all read, is named like any other", () => {
+    const many = Array.from({ length: 400 }, (_, index) => `apps/grafana/${index}.ts`);
     const line = attribute(walk, "apps/grafana:prod", "c1", {
       pushFiles: { ...pushFiles, d2: many },
     }).lines.full;
     expect(line).toBe(
-      `from [d100000](${REPO_URL}/commit/${sha("d1")}), and 1 change outside this stack · ${compare("c1", "d2")}`,
+      `from [d200000](${REPO_URL}/commit/${sha("d2")}) by bob, [d100000](${REPO_URL}/commit/${sha("d1")}) · ${compare("c1", "d2")}`,
     );
   });
 });
@@ -272,7 +283,10 @@ describe("changes outside the stack", () => {
     );
   });
 
-  test("a pull request with more than 100 changed files is not paged through and counts as outside", () => {
+  // Slice 5.9: the walk holds the first 100 files of a pull request, and the
+  // glue reads the rest page by page. Only a list it could not read whole is
+  // missing, and such a pull request counts as outside, which never hides it.
+  test("a pull request with more than 100 changed files is judged by all of them once they are read", () => {
     const files = Array.from({ length: 100 }, (_, index) => `apps/grafana/${index}.ts`);
     const huge = pullRequest(30, "alice", files, { changedFiles: 101 });
     const exact = pullRequest(31, "alice", files);
@@ -281,12 +295,29 @@ describe("changes outside the stack", () => {
       commit("c2", ["c1"], { pullRequests: [huge] }),
       commit("c1", []),
     );
+    const read = { 30: [...files, "apps/grafana/100.ts"] };
+    expect(attribute(big, "apps/grafana:prod", "c1", { pullRequestFiles: read }).lines.full).toBe(
+      `from #31 by alice, #30 by alice · ${compare("c1", "c3")}`,
+    );
     expect(attribute(big, "apps/grafana:prod", "c1").lines.full).toBe(
       `from #31 by alice, and 1 change outside this stack · ${compare("c1", "c3")}`,
     );
-    expect(attribute(big, "apps/loki:prod", "c1").lines.full).toBe(
-      `from 1 change outside this stack · ${compare("c1", "c3")}`,
+  });
+
+  test("the pull requests whose files are read are the ones in range with more than the walk holds", () => {
+    const files = Array.from({ length: 100 }, (_, index) => `apps/grafana/${index}.ts`);
+    const big = walkOf(
+      commit("c4", ["c3"], {
+        pullRequests: [pullRequest(32, "alice", files, { changedFiles: 250 })],
+      }),
+      commit("c3", ["c2"], { pullRequests: [pullRequest(31, "alice", files)] }),
+      commit("c2", ["c1"], {
+        pullRequests: [pullRequest(30, "alice", files, { changedFiles: 101 })],
+      }),
+      commit("c1", []),
     );
+    expect(pullRequestsToRead(big, [sha("c1")])).toEqual([32, 30]);
+    expect(pullRequestsToRead(big, [sha("c3")])).toEqual([32]);
   });
 });
 

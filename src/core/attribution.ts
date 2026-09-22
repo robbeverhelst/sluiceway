@@ -22,10 +22,6 @@ export const NAMED_ON_A_ROW = 5;
 // a count, and the compare link shows them all.
 export const OUTSIDE_NAMED = 20;
 
-// GitHub lists at most this many files of one commit on a page. A direct push
-// with a list this long may be missing files, and is treated the same way.
-export const COMMIT_FILE_CAP = 300;
-
 // A commit id in full, SHA-1 or SHA-256. A writer that is not the scan takes
 // the `scan-sha` from the root marker, which a person can edit, and no request
 // and no link is built from text that came from outside.
@@ -190,18 +186,18 @@ export function directPushesToRead(walk: CommitWalk, from: readonly (string | Ra
     .map(({ sha }) => sha);
 }
 
-// The pull requests whose files the glue has to read over REST, one request
-// each, newest first: the ones in at least one of the ranges that renamed a
-// file (record 0072). One over the file cap already counts as a change
-// outside every stack, so it is not read.
+// The pull requests whose files the glue has to read over REST, newest first:
+// the ones in at least one of the ranges that renamed a file (record 0072),
+// or that changed more files than the walk holds, which are read page by
+// page (slice 5.9).
 export function pullRequestsToRead(walk: CommitWalk, from: readonly (string | Range)[]): number[] {
   const wanted = commitsInRanges(walk, from);
   const numbers: number[] = [];
   for (const commit of walk.commits) {
     const pullRequest = wanted.has(commit.sha) ? pullRequestOf(commit, walk) : undefined;
     if (
-      pullRequest?.renamed &&
-      pullRequest.changedFiles <= pullRequest.files.length &&
+      pullRequest &&
+      (pullRequest.renamed || pullRequest.changedFiles > pullRequest.files.length) &&
       !numbers.includes(pullRequest.number)
     )
       numbers.push(pullRequest.number);
@@ -286,9 +282,12 @@ export function attributor(input: AttributionInput): Attributor {
     const key = pullRequest ? `#${pullRequest.number}` : commit.sha;
     let merged = mergedBy.get(key);
     if (!merged && pullRequest) {
-      // The walk holds the first 100 files of a pull request. One that changed
-      // more is not paged through.
-      const known = pullRequest.changedFiles <= pullRequest.files.length;
+      // The walk holds the first 100 files of a pull request, and the glue
+      // reads every file of one that changed more (slice 5.9). One whose list
+      // could not be read whole counts as outside every stack.
+      const known =
+        input.pullRequestFiles?.get(pullRequest.number) ??
+        (pullRequest.changedFiles <= pullRequest.files.length ? pullRequest.files : undefined);
       merged = judge(
         {
           kind: "pull-request",
@@ -297,7 +296,7 @@ export function attributor(input: AttributionInput): Attributor {
           url: `${repoUrl}/pull/${pullRequest.number}`,
           ...(pullRequest.author === undefined ? {} : { author: pullRequest.author }),
         },
-        known ? (input.pullRequestFiles?.get(pullRequest.number) ?? pullRequest.files) : undefined,
+        known,
       );
     } else if (!merged) {
       const files = input.pushFiles.get(commit.sha);
@@ -309,7 +308,7 @@ export function attributor(input: AttributionInput): Attributor {
           url: `${repoUrl}/commit/${commit.sha}`,
           ...(commit.author === undefined ? {} : { author: commit.author }),
         },
-        files !== undefined && files.length < COMMIT_FILE_CAP ? files : undefined,
+        files,
       );
     }
     mergedBy.set(key, merged);

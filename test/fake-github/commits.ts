@@ -32,6 +32,38 @@ export interface SeedPullRequest {
 
 const PULL_REQUEST_FILES_PAGE = 100;
 const COMMIT_FILES_PAGE = 300;
+// The most files GitHub lists of one commit or one pull request.
+const FILE_LIMIT = 3_000;
+
+export interface ChangedFile {
+  path: string;
+  previousPath?: string;
+}
+
+function entries(
+  files: readonly (string | { path: string; previousPath: string })[],
+): ChangedFile[] {
+  return files
+    .slice(0, FILE_LIMIT)
+    .map((file) => (typeof file === "string" ? { path: file } : file));
+}
+
+function pageOf(
+  listed: ChangedFile[],
+  page: number,
+  size: number,
+): { files: ChangedFile[]; more: boolean } {
+  return { files: listed.slice((page - 1) * size, page * size), more: page * size < listed.length };
+}
+
+// The paths of a whole list, a renamed file under both. A list of 3,000
+// entries or more may be missing files, so it gives nothing.
+export function whole(files: readonly ChangedFile[]): string[] | undefined {
+  if (files.length >= FILE_LIMIT) return undefined;
+  return files.flatMap((file) =>
+    file.previousPath === undefined ? [file.path] : [file.path, file.previousPath],
+  );
+}
 
 export class FakeCommits {
   readonly defaultBranch = "main";
@@ -92,19 +124,23 @@ export class FakeCommits {
     return { defaultBranch: this.defaultBranch, commits };
   }
 
-  // The files of one pull request as REST gives them, a renamed file under
-  // both paths. Nothing for a pull request the repo lacks.
-  pullRequestFiles(number: number): string[] | undefined {
-    return this.#pullRequests
-      .find((pullRequest) => pullRequest.number === number)
-      ?.files.slice(0, PULL_REQUEST_FILES_PAGE)
-      .flatMap((file) => (typeof file === "string" ? [file] : [file.path, file.previousPath]));
+  // One page of a commit's changed files, 300 to a page as GitHub gives them
+  // without a page size, up to 3,000 (slice 5.9). A renamed file is one entry
+  // with its old path. Nothing for a commit the repo lacks.
+  commitFilesPage(sha: string, page: number): { files: ChangedFile[]; more: boolean } | undefined {
+    const commit = this.#commits.find((one) => one.sha === sha);
+    if (!commit) return undefined;
+    return pageOf(entries(commit.files), page, COMMIT_FILES_PAGE);
   }
 
-  files(sha: string): string[] | undefined {
-    const commit = this.#commits.find((one) => one.sha === sha);
-    return commit?.files
-      .slice(0, COMMIT_FILES_PAGE)
-      .flatMap((file) => (typeof file === "string" ? [file] : [file.path, file.previousPath]));
+  // One page of a pull request's changed files as REST gives them, 100 to a
+  // page. Nothing for a pull request the repo lacks.
+  pullRequestFilesPage(
+    number: number,
+    page: number,
+  ): { files: ChangedFile[]; more: boolean } | undefined {
+    const pullRequest = this.#pullRequests.find((one) => one.number === number);
+    if (!pullRequest) return undefined;
+    return pageOf(entries(pullRequest.files), page, PULL_REQUEST_FILES_PAGE);
   }
 }

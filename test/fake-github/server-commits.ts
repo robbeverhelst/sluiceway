@@ -1,4 +1,5 @@
 import type { CommitWalk } from "../../src/github/port.ts";
+import type { ChangedFile } from "./commits.ts";
 import { type FakeGitHub, FakeGitHubError } from "./fake-github.ts";
 import type { Answer, Route } from "./server.ts";
 
@@ -82,26 +83,64 @@ export async function walkQuery(fake: FakeGitHub, variables: unknown): Promise<A
   }
 }
 
-export function commitRoutes(fake: FakeGitHub, repo: string): [string, RegExp, Route][] {
+// The files of a commit or a pull request as GitHub writes them.
+function apiFiles(files: readonly ChangedFile[]): unknown[] {
+  return files.map((file) => ({
+    filename: file.path,
+    ...(file.previousPath === undefined ? {} : { previous_filename: file.previousPath }),
+  }));
+}
+
+// GitHub names the next page in a Link header, and a list without one has
+// ended (slice 5.9).
+function nextLink(
+  baseUrl: () => string,
+  path: string,
+  query: URLSearchParams,
+  page: number,
+  more: boolean,
+): Record<string, string> {
+  if (!more) return {};
+  const next = new URLSearchParams(query);
+  next.set("page", String(page + 1));
+  return { link: `<${baseUrl()}${path}?${next}>; rel="next"` };
+}
+
+function pageNumber(query: URLSearchParams): number {
+  const page = Number(query.get("page") ?? "1");
+  return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
+export function commitRoutes(
+  fake: FakeGitHub,
+  repo: string,
+  baseUrl: () => string,
+): [string, RegExp, Route][] {
   return [
     [
       "GET",
-      new RegExp(`^${repo}/pulls/(\\d+)/files$`),
-      async (_call, number) => {
-        // As in the commit route, each path is an entry of its own.
-        const paths = await fake.listPullRequestFiles(Number(number));
-        return { status: 200, json: paths.map((filename) => ({ filename })) };
+      new RegExp(`^${repo}/commits/([^/]+)$`),
+      async ({ path, query }, sha) => {
+        const page = pageNumber(query);
+        const found = fake.commitFilesPage(sha, page);
+        return {
+          status: 200,
+          json: { sha, files: apiFiles(found.files) },
+          headers: nextLink(baseUrl, path, query, page, found.more),
+        };
       },
     ],
     [
       "GET",
-      new RegExp(`^${repo}/commits/([^/]+)$`),
-      async (_call, sha) => {
-        // The fake gives a renamed file as two paths. Here each is an entry of
-        // its own, which the port reads as the same list. The entry with a
-        // `previous_filename` is pinned at the wire, in octokit-attribution.
-        const paths = await fake.listCommitFiles(sha);
-        return { status: 200, json: { sha, files: paths.map((filename) => ({ filename })) } };
+      new RegExp(`^${repo}/pulls/(\\d+)/files$`),
+      async ({ path, query }, number) => {
+        const page = pageNumber(query);
+        const found = fake.pullRequestFilesPage(Number(number), page);
+        return {
+          status: 200,
+          json: apiFiles(found.files),
+          headers: nextLink(baseUrl, path, query, page, found.more),
+        };
       },
     ],
   ];

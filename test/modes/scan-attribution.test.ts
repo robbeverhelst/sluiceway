@@ -123,6 +123,43 @@ describe("a pending row", () => {
   });
 });
 
+// Slice 5.9: a pull request that changed more files than the walk holds is
+// read page by page and judged by all of them, and so is a direct push of
+// 300 files or more.
+describe("a large change", () => {
+  test("a pull request of 140 files that its stack claims is named, for two more requests", async () => {
+    const { context, github } = harness(tableAdapter({ "a:prod": pending("a:prod", change("x")) }));
+    merged(
+      github,
+      Array.from({ length: 140 }, (_, index) => `a/${index}.ts`),
+    );
+    succeeded(github, "a:prod");
+
+    await scan(context);
+
+    expect(under(github, "a:prod")[0]).toBe(`from #3 by alice · ${COMPARE}`);
+    expect(github.requests.filter((request) => request === "listPullRequestFiles")).toHaveLength(2);
+  });
+
+  test("a direct push of 400 files that its stack claims is named", async () => {
+    const { context, github } = harness(tableAdapter({ "a:prod": pending("a:prod", change("x")) }));
+    github.seedCommit({ sha: DEPLOYED });
+    github.seedCommit({
+      sha: SHA,
+      parents: [DEPLOYED],
+      author: "bob",
+      files: Array.from({ length: 400 }, (_, index) => `a/${index}.ts`),
+    });
+    succeeded(github, "a:prod");
+
+    await scan(context);
+
+    expect(under(github, "a:prod")[0]).toBe(
+      `from [0123456](${REPO_URL}/commit/${SHA}) by bob · ${COMPARE}`,
+    );
+  });
+});
+
 describe("a direct push", () => {
   test("costs one request for its files, and only when it is in the range of a row", async () => {
     const adapter = tableAdapter({

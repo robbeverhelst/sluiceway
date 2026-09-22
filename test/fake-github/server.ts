@@ -181,7 +181,7 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
     ],
     ...deploymentRoutes(fake, REPO),
     ...runRoutes(fake, REPO),
-    ...commitRoutes(fake, REPO),
+    ...commitRoutes(fake, REPO, baseUrl),
     ...checkRoutes(fake, REPO, baseUrl),
     ...pullRoutes(fake, REPO),
     [

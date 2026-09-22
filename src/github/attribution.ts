@@ -59,6 +59,9 @@ export function attributionSource(
   let failed = false;
   const pushFiles = new Map<string, string[]>();
   const pullRequestFiles = new Map<number, string[]>();
+  // A list GitHub could not give whole is left out of the maps, which counts
+  // the change as outside every stack (slice 5.9). This remembers it was read.
+  const asked = new Set<string>();
   let reads = 0;
   const { lookback, trailLength, ...rest } = input;
 
@@ -71,14 +74,18 @@ export function attributionSource(
       if (ranges.length === 0) return true;
       walk ??= await github.walkCommits(input.scanSha, lookback ?? LOOKBACK);
       for (const sha of directPushesToRead(walk, ranges)) {
-        if (pushFiles.has(sha) || reads >= READS_PER_JOB) continue;
+        if (asked.has(sha) || reads >= READS_PER_JOB) continue;
+        asked.add(sha);
         reads++;
-        pushFiles.set(sha, await github.listCommitFiles(sha));
+        const files = await github.listCommitFiles(sha);
+        if (files !== undefined) pushFiles.set(sha, files);
       }
       for (const number of pullRequestsToRead(walk, ranges)) {
-        if (pullRequestFiles.has(number) || reads >= READS_PER_JOB) continue;
+        if (asked.has(`#${number}`) || reads >= READS_PER_JOB) continue;
+        asked.add(`#${number}`);
         reads++;
-        pullRequestFiles.set(number, await github.listPullRequestFiles(number));
+        const files = await github.listPullRequestFiles(number);
+        if (files !== undefined) pullRequestFiles.set(number, files);
       }
       return true;
     } catch (error) {

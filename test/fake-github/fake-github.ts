@@ -28,7 +28,13 @@ import type {
   Permission,
   WorkflowRun,
 } from "../../src/github/port.ts";
-import { FakeCommits, type SeedCommit, type SeedPullRequest } from "./commits.ts";
+import {
+  type ChangedFile,
+  FakeCommits,
+  type SeedCommit,
+  type SeedPullRequest,
+  whole,
+} from "./commits.ts";
 import { FakeDeployments, type FakeStatus, type SeedDeployment } from "./deployments.ts";
 import { type FakeMerge, FakePulls, type SeedOpenPullRequest } from "./pulls.ts";
 
@@ -532,18 +538,37 @@ export class FakeGitHub implements GitHubPort {
     return walk;
   }
 
-  async listPullRequestFiles(number: number): Promise<string[]> {
-    this.#count("listPullRequestFiles");
-    const files = this.#commits.pullRequestFiles(number);
-    if (!files) throw new FakeGitHubError(404, "Not Found");
-    return files;
+  // Page by page, as GitHub pages them (slice 5.9). Each page is one request.
+  async listPullRequestFiles(number: number): Promise<string[] | undefined> {
+    const files: ChangedFile[] = [];
+    for (let page = 1; ; page++) {
+      const found = this.pullRequestFilesPage(number, page);
+      files.push(...found.files);
+      if (!found.more) return whole(files);
+    }
   }
 
-  async listCommitFiles(sha: string): Promise<string[]> {
+  pullRequestFilesPage(number: number, page: number): { files: ChangedFile[]; more: boolean } {
+    this.#count("listPullRequestFiles");
+    const found = this.#commits.pullRequestFilesPage(number, page);
+    if (!found) throw new FakeGitHubError(404, "Not Found");
+    return found;
+  }
+
+  async listCommitFiles(sha: string): Promise<string[] | undefined> {
+    const files: ChangedFile[] = [];
+    for (let page = 1; ; page++) {
+      const found = this.commitFilesPage(sha, page);
+      files.push(...found.files);
+      if (!found.more) return whole(files);
+    }
+  }
+
+  commitFilesPage(sha: string, page: number): { files: ChangedFile[]; more: boolean } {
     this.#count("listCommitFiles");
-    const files = this.#commits.files(sha);
-    if (!files) throw new FakeGitHubError(422, `No commit found for SHA: ${sha}`);
-    return files;
+    const found = this.#commits.commitFilesPage(sha, page);
+    if (!found) throw new FakeGitHubError(422, `No commit found for SHA: ${sha}`);
+    return found;
   }
 
   async pinIssue(nodeId: string): Promise<void> {

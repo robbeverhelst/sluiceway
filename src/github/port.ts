@@ -201,15 +201,18 @@ export interface GitHubPort {
   // a commit GitHub does not have.
   walkCommits(head: string, lookback?: number): Promise<CommitWalk>;
 
-  // The changed files of one pull request over REST, a renamed file under
-  // both paths, the first 100 (record 0072). GraphQL gives only the new path,
-  // so attribution reads this for a pull request that renamed a file.
-  listPullRequestFiles(number: number): Promise<string[]>;
-
   // The changed files of one commit, a renamed file under both paths. The
-  // only call attribution makes per commit, and only for a direct push.
-  // GitHub gives at most 300 files.
-  listCommitFiles(sha: string): Promise<string[]>;
+  // only call attribution makes per commit, and only for a direct push. One
+  // request per page of 300 files (slice 5.9). Nothing when GitHub lists the
+  // most it gives, 3,000 files, because files may then be missing.
+  listCommitFiles(sha: string): Promise<string[] | undefined>;
+
+  // Every changed file of one pull request over REST, a renamed file under
+  // both paths, one request per page of 100. GraphQL gives only the new path,
+  // so attribution reads this for a pull request that renamed a file (record
+  // 0072), and for one that changed more files than the walk holds (slice
+  // 5.9). Nothing when GitHub lists the most it gives, 3,000 files.
+  listPullRequestFiles(number: number): Promise<string[] | undefined>;
 
   // Works with the workflow token and issues: write (issue 17). Fails when
   // the repo already has three pinned issues.

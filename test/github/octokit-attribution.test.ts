@@ -10,6 +10,8 @@ import { createOctokitPort } from "../../src/github/octokit-port.ts";
 interface Answer {
   status?: number;
   json: unknown;
+  // The Link header, for a list that goes on.
+  link?: string;
 }
 
 function portThatAnswers(answers: Answer[]) {
@@ -25,7 +27,10 @@ function portThatAnswers(answers: Answer[]) {
     if (!answer) throw new Error(`No answer left for ${init.method} ${url}`);
     return new Response(JSON.stringify(answer.json), {
       status: answer.status ?? 200,
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(answer.link === undefined ? {} : { link: answer.link }),
+      },
     });
   };
   const octokit = getOctokit("a-token", { request: { fetch } });
@@ -290,6 +295,77 @@ describe("the files of one commit", () => {
   test("a commit without files", async () => {
     const { port } = portThatAnswers([{ json: { sha: HEAD } }]);
     expect(await port.listCommitFiles(HEAD)).toEqual([]);
+  });
+
+  // Slice 5.9: past 300 files GitHub names the next page in the Link header,
+  // up to 3,000 files. The port follows it to the end.
+  test("follows the Link header past the first 300 files", async () => {
+    const next = `https://api.github.com/repositories/1/commits/${HEAD}?page=2`;
+    const first = Array.from({ length: 300 }, (_, index) => ({ filename: `a/${index}.ts` }));
+    const { port, sent } = portThatAnswers([
+      { json: { sha: HEAD, files: first }, link: `<${next}>; rel="next", <${next}>; rel="last"` },
+      { json: { sha: HEAD, files: [{ filename: "b/last.ts" }] } },
+    ]);
+
+    const files = await port.listCommitFiles(HEAD);
+
+    expect(files).toHaveLength(301);
+    expect(files?.at(-1)).toBe("b/last.ts");
+    expect(sent.map(({ path, search }) => `${path}${search}`)).toEqual([
+      `/repos/acme/infra/commits/${HEAD}`,
+      `/repositories/1/commits/${HEAD}?page=2`,
+    ]);
+  });
+
+  test("a commit with 3,000 files, the most GitHub lists, gives nothing: files may be missing", async () => {
+    const page = (from: number) =>
+      Array.from({ length: 300 }, (_, index) => ({ filename: `a/${from + index}.ts` }));
+    const answers = Array.from({ length: 10 }, (_, index) => ({
+      json: { sha: HEAD, files: page(index * 300) },
+      ...(index < 9
+        ? {
+            link: `<https://api.github.com/repositories/1/commits/${HEAD}?page=${index + 2}>; rel="next"`,
+          }
+        : {}),
+    }));
+    const { port } = portThatAnswers(answers);
+    expect(await port.listCommitFiles(HEAD)).toBeUndefined();
+  });
+});
+
+// Slice 5.9: the files of a pull request that changed more than the 100 the
+// walk holds, page by page, a renamed file under both paths.
+describe("the files of one pull request", () => {
+  test("are read 100 at a time to the last page", async () => {
+    const next = "https://api.github.com/repositories/1/pulls/30/files?per_page=100&page=2";
+    const first = Array.from({ length: 100 }, (_, index) => ({ filename: `a/${index}.ts` }));
+    const { port, sent } = portThatAnswers([
+      { json: first, link: `<${next}>; rel="next"` },
+      { json: [{ filename: "b/new.ts", previous_filename: "b/old.ts" }] },
+    ]);
+
+    const files = await port.listPullRequestFiles(30);
+
+    expect(files).toHaveLength(102);
+    expect(files?.slice(-2)).toEqual(["b/new.ts", "b/old.ts"]);
+    expect(sent[0]).toMatchObject({
+      method: "GET",
+      path: "/repos/acme/infra/pulls/30/files",
+      search: "?per_page=100",
+    });
+  });
+
+  test("a pull request with 3,000 files, the most GitHub lists, gives nothing", async () => {
+    const answers = Array.from({ length: 30 }, (_, index) => ({
+      json: Array.from({ length: 100 }, (_, one) => ({ filename: `a/${index * 100 + one}.ts` })),
+      ...(index < 29
+        ? {
+            link: `<https://api.github.com/repositories/1/pulls/30/files?per_page=100&page=${index + 2}>; rel="next"`,
+          }
+        : {}),
+    }));
+    const { port } = portThatAnswers(answers);
+    expect(await port.listPullRequestFiles(30)).toBeUndefined();
   });
 });
 
