@@ -9,6 +9,8 @@
 > Amended by 0055: the drift check's changes use two ops, `update` (a property changed outside the code) and `delete` (the object is gone), and live in `Diff.drift`, never in `changes`.
 >
 > Amended by 0058: the table from the Helm diff plugin's change types to `op`, settled from recordings of helm v3.18.0 and v4.3.0, is in that record. Helm gives no `replace` and no tracking change.
+>
+> Amended by 0060: the table from the two sides of `kubectl diff` to `op`, settled from recordings of kubectl v1.34.0 and v1.37.0, is in that record. kubectl gives `create` and `update`, never `replace` or a tracking change.
 
 The brief's diff has one `op` with four values. Both tools also emit steps that leave the real object alone and only change what the tool tracks: adopting an existing object, letting go of one that survives, renaming one in state. OpenTofu can combine these with a real change in one step, such as import and update. A flat list of seven ops was rejected because it cannot say that without inventing combined values, and because a "forget" sitting next to "delete" in one list invites a destroy warning on something that is not destroyed.
 

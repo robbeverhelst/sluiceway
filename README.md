@@ -105,7 +105,7 @@ A sluiceway is a channel with a gate. Changes queue up behind the gate, and you 
 4. Sluiceway checks that you may tick that stack, and previews it again. It deploys only if the fresh preview still matches the row.
 5. The row goes back to in sync, or says why the deploy failed, with a link to the run.
 
-The issue is a view and never the source of truth. What is pending is always worked out again from a fresh preview. It works with Pulumi, OpenTofu and Helm, side by side in one repo if you like. For OpenTofu, a tick deploys the very plan file whose diff was approved. For Helm, it deploys only what the chart rendered when the diff was checked. [CONTEXT.md](CONTEXT.md) defines the words used here and in the code.
+The issue is a view and never the source of truth. What is pending is always worked out again from a fresh preview. It works with Pulumi, OpenTofu, Helm and Kubernetes manifests, side by side in one repo if you like. For OpenTofu, a tick deploys the very plan file whose diff was approved. For Helm, it deploys only what the chart rendered when the diff was checked. For Kubernetes manifests, it deploys the very set of manifests that was diffed. [CONTEXT.md](CONTEXT.md) defines the words used here and in the code.
 
 ## Get started
 
@@ -140,7 +140,7 @@ The [releases](https://github.com/sluiceway/sluiceway/releases) page lists every
 
 ## What it does not do yet
 
-- **Pulumi, OpenTofu and Helm only.** OpenTofu stacks and Helm releases are declared in `sluiceway.yaml`, there is no zero config for them ([configuration](docs/configuration.md#stacks-and-stack-ids)). The Terraform binary, Kubernetes manifests and others can follow.
+- **Pulumi, OpenTofu, Helm and Kubernetes manifests only.** OpenTofu stacks, Helm releases and Kubernetes manifests are declared in `sluiceway.yaml`, there is no zero config for them ([configuration](docs/configuration.md#stacks-and-stack-ids)). The Terraform binary and others can follow. Kubernetes manifests are not pruned: an object taken out of them stays in the cluster.
 - **Only preview, drift check and deploy.** Destroying a stack, a refresh that writes the state and repairing state stay with your own tooling. The drift check is opt-in, Pulumi only for now, and never changes the state ([`drift.enabled`](docs/configuration.md#driftenabled)).
 - **A change to outputs alone is not shown**, and deploys from somewhere else are not detected. [Limits](#limits) says what that means for you.
 
@@ -185,6 +185,7 @@ One action, five modes, chosen with the `mode` input.
 - **Pulumi CLI 3.229.0 or newer** on the runners that preview and deploy, for Pulumi stacks. `pulumi/actions` installs it. With an older one every preview fails, and the job log says which version is needed.
 - **OpenTofu 1.11.0 or newer**, for OpenTofu stacks, installed without a wrapper ([credentials](docs/credentials.md#opentofu)). A repo with only Pulumi stacks never needs it.
 - **Helm 3.18.0 or newer and the helm-diff plugin 3.15.11 or newer**, for Helm releases, with a kubeconfig for the cluster ([credentials](docs/credentials.md#helm)). A repo without Helm releases never needs them.
+- **kubectl 1.34.0 or newer** and a kubeconfig, for Kubernetes manifests stacks ([credentials](docs/credentials.md#kubernetes-manifests)). A repo without them never needs it.
 - **Your programs' own needs:** a language runtime, dependencies, credentials. The workflow installs and loads them, the same way your own CI or laptop does.
 
 ## Setup
@@ -541,7 +542,7 @@ To see the values a tick would deploy, turn on `scan.logDiff` in `sluiceway.yaml
 - **Deploys from somewhere else are allowed and not detected.** They do not show under recently deployed, and a row they made stale stays pending until the next full scan or the rescan box. A tick on a stale row deploys nothing.
 - **Sluiceway only previews and deploys.** Destroying a stack, a refresh and repairing state stay with your own tooling.
 - **No values on the dashboard unless you list their paths.** Rows show resource types, resource names and property names. `dashboard.showValues` lets the old and new value of the paths you list appear, such as a chart's `version`, and a tick then approves that value. `dashboard.redact: true` keeps names and values out of the issue. The job log holds the tool's own values only when you turn on `scan.logDiff`.
-- **Three tools so far.** Pulumi, OpenTofu and Helm. An OpenTofu preview runs with `-refresh=false`: like Pulumi's, it compares the code with the state and never reads every real resource. A Helm preview compares the chart with the release helm stored, not with what runs in the cluster, and a chart that renders differently every time cannot be deployed from the dashboard.
+- **Four tools so far.** Pulumi, OpenTofu, Helm and Kubernetes manifests. An OpenTofu preview runs with `-refresh=false`: like Pulumi's, it compares the code with the state and never reads every real resource. A Helm preview compares the chart with the release helm stored, not with what runs in the cluster, and a chart that renders differently every time cannot be deployed from the dashboard. A Kubernetes manifests preview is a server-side dry run against the live objects, so a change made in the cluster by hand shows as pending too.
 
 [docs/later.md](docs/later.md) lists everything that was left out of this version, and why.
 

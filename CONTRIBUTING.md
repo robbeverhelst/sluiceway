@@ -93,6 +93,16 @@ mv test/fixtures/helm/fixtures-helm-*/* test/fixtures/helm/ && rmdir test/fixtur
 
 The Pulumi download pattern `fixtures-*` also matches these artifacts, so download the Pulumi ones with `--pattern 'fixtures-v*'`.
 
+Kubernetes manifests need a cluster (record 0060): `scripts/fixtures/kubectl-scenarios.ts` drives `examples/kubernetes-basic` against the cluster that `KUBECONFIG` names, and the recorder refuses to start unless its current context is a kind cluster. Every scenario deletes and makes the namespace `sluiceway-example`. `FIXTURE_KUBECTL_VERSIONS` names the two versions, and the `fixtures-kubectl` job of CI records each against a kind node of its own minor version. A recording writes the rendered set as `{plan}`. To take them from CI:
+
+```sh
+rm -rf test/fixtures/kubectl
+gh run download <run id> --pattern 'fixtures-kubectl-*' --dir test/fixtures/kubectl
+mv test/fixtures/kubectl/fixtures-kubectl-*/* test/fixtures/kubectl/ && rmdir test/fixtures/kubectl/fixtures-kubectl-*
+```
+
+To try it on your machine, make a cluster for it and nothing else: `kind create cluster --name sluiceway-fixtures`, then `bun run record:fixtures --tool kubectl --out /tmp/try`.
+
 ## Rules for code
 
 - TypeScript, strict, ESM.

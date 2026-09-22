@@ -19,7 +19,7 @@ Finding the stacks of a repo from its files alone. It never asks a backend and n
 _Avoid_: Detection, lookup, stack listing
 
 **Declared stack**:
-A stack that a `stacks` entry names with `tool`, because files alone cannot say what it is: an OpenTofu root module, with the workspace and var files the entry gives, or a Helm release in a namespace, with its chart and values files. Discovery still checks from the files that it can exist, and never starts the tool.
+A stack that a `stacks` entry names with `tool`, because files alone cannot say what it is: an OpenTofu root module, with the workspace and var files the entry gives, a Helm release in a namespace, with its chart and values files, or a directory of Kubernetes manifests or a kustomization, with the context and namespace the entry gives. Discovery still checks from the files that it can exist, and never starts the tool.
 _Avoid_: Configured stack, manual stack, custom stack
 
 **Ignored stack**:
@@ -85,6 +85,10 @@ _Avoid_: Full diff, native diff, raw diff, plan output
 **Saved plan**:
 The plan file that the fresh preview of `apply` keeps, for a tool that can save one. When its diff hash is the one the tick approved, the deploy applies that file and nothing else. It lives inside one `apply` job and is removed on every way out. Helm saves no plan: a digest of the manifests the fresh preview rendered stands in for one, kept in memory, and the deploy goes out only when a render right before it gives the same.
 _Avoid_: Plan handle, plan artifact, cached plan
+
+**Rendered set**:
+The manifests of a Kubernetes manifests stack as one file: the files of its directory, or what kustomize builds of it. The preview diffs it and the deploy applies that same file, so it is the stack's saved plan. It holds every value of the manifests, lives in a directory of its own and is removed when the preview or `apply` ends.
+_Avoid_: Bundle, rendered manifests, manifest set
 
 **Pending**:
 Deploying the stack now would change something, because the code moved.

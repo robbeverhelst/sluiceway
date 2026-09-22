@@ -65,15 +65,17 @@ jobs:
         run: bun run e2e --work-dir "$RUNNER_TEMP/e2e" --expect-version "$PULUMI_VERSION"
 
   mixed:
-    # One repo with Pulumi, OpenTofu and Helm stacks (records 0053 and 0058):
-    # the committed bundle, the real pulumi, tofu and helm with its diff
-    # plugin, a kind cluster made for this job, and the fake GitHub server. A
-    # full scan with the rows of all three tools, a deploy of an OpenTofu
-    # stack from the plan its fresh preview saved, a change that moved after
-    # its tick, a deploy of a Pulumi stack, a Helm release whose values moved
-    # after its tick and then deploys, and a last scan. tofu and helm run with
-    # the minimum versions the adapters support and the newest ones the
-    # fixtures were recorded with.
+    # One repo with Pulumi, OpenTofu, Helm and Kubernetes manifests stacks
+    # (records 0053, 0058 and 0060): the committed bundle, the real pulumi,
+    # tofu, helm with its diff plugin and kubectl, a kind cluster made for
+    # this job, and the fake GitHub server. A full scan with the rows of all
+    # four tools, a deploy of an OpenTofu stack from the plan its fresh
+    # preview saved, a change that moved after its tick, a deploy of a Pulumi
+    # stack, a Helm release whose values moved after its tick and then
+    # deploys, a kubectl stack whose manifests moved after its tick and then
+    # deploys, and a last scan. tofu, helm and kubectl run with the minimum
+    # versions the adapters support and the newest ones the fixtures were
+    # recorded with, kubectl on a node of its own minor version.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -83,9 +85,13 @@ jobs:
           - tofu: "1.11.0"
             helm: v3.18.0
             diff: v3.15.11
+            kubectl: v1.34.0
+            node: kindest/node:v1.34.11@sha256:44e222ee2132dab25ff87301682f89eb82c7880ea3a1bf543bfe9708fd08d67d
           - tofu: "1.12.6"
             helm: v4.3.0
             diff: v3.15.13
+            kubectl: v1.37.0
+            node: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -128,14 +134,18 @@ jobs:
           helm plugin install https://github.com/databus23/helm-diff --version "$DIFF_VERSION" $verify
           echo "HELM_PLUGINS=$(helm env HELM_PLUGINS)" >> "$GITHUB_ENV"
 
+      # Installs kind and this kubectl, and makes the cluster.
       - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
         with:
           cluster_name: sluiceway-e2e
+          node_image: ${{ matrix.node }}
+          kubectl_version: ${{ matrix.kubectl }}
 
       - run: bun install --frozen-lockfile
 
-      - name: Scan, tick, apply and settle a repo with three tools with the committed bundle
+      - name: Scan, tick, apply and settle a repo with four tools with the committed bundle
         env:
           TOFU_VERSION: ${{ matrix.tofu }}
           HELM_VERSION: ${{ matrix.helm }}
-        run: KUBECONFIG="$HOME/.kube/config" bun run e2e:mixed --work-dir "$RUNNER_TEMP/e2e-mixed" --expect-tofu "v$TOFU_VERSION" --expect-helm "$HELM_VERSION"
+          KUBECTL_VERSION: ${{ matrix.kubectl }}
+        run: KUBECONFIG="$HOME/.kube/config" bun run e2e:mixed --work-dir "$RUNNER_TEMP/e2e-mixed" --expect-tofu "v$TOFU_VERSION" --expect-helm "$HELM_VERSION" --expect-kubectl "$KUBECTL_VERSION"

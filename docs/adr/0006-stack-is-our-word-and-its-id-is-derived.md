@@ -3,6 +3,8 @@
 > Amended by 0053: a `stacks` entry with `tool: opentofu` declares an OpenTofu stack, because files alone cannot name one. The tool rides in the options bag, which only adapters read.
 >
 > Amended by 0058: a `stacks` entry with `tool: helm` declares a Helm release in a namespace, the same way. The chart's directory and whether it has dependencies ride in the options bag.
+>
+> Amended by 0060: a `stacks` entry with `tool: kubectl` declares a directory of Kubernetes manifests or a kustomization, the same way.
 
 The brief uses Pulumi's words, and the OpenTofu research asked whether the core needs a tool-neutral one such as "unit". We keep "stack" and define it ourselves: the smallest thing Sluiceway can preview and deploy on its own, with its own state, one row and one checkbox. A Pulumi stack is a stack. So is an OpenTofu root module with a chosen workspace and var files. A neutral word would have to be explained to every user, while "stack" already means this in Terragrunt, Spacelift, Terramate and Pulumi, and it is already in the config, the rows and the deployment record tag.
 

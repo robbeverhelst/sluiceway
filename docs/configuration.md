@@ -25,7 +25,9 @@ For OpenTofu there is no zero config. A root module and a child module look the 
 
 For Helm there is no zero config either. A chart can be installed as any number of releases, in any namespace, so files alone cannot say which release a chart is. A `stacks` entry with `tool: helm` declares one: a release in a namespace, with the chart and the values files it is installed with. `path` is the directory the chart and the values files are relative to, and the directory the stack claims. Its stack id is `path`, or `path:name`, as for OpenTofu. Discovery checks from the files that the directory is there, that a local chart holds a `Chart.yaml` and that every values file is there, and never starts helm or reaches a cluster.
 
-A repo can hold Pulumi, OpenTofu and Helm stacks side by side. They share one dashboard, one tick rule and one workflow.
+Kubernetes manifests have no zero config either: a directory of YAML says nothing about which cluster it belongs to. A `stacks` entry with `tool: kubectl` declares a directory of manifests or a kustomization as a stack, with an optional `name`, kubeconfig context and namespace. Its stack id is `path`, or `path:name`. Discovery checks from the files that the directory holds manifests (`*.yaml`, `*.yml`, `*.json`, one level deep, as `kubectl apply -f <dir>` reads them) or a kustomization, and never reaches a cluster.
+
+A repo can hold Pulumi, OpenTofu, Helm and Kubernetes manifests stacks side by side. They share one dashboard, one tick rule and one workflow.
 
 `ignore` matches stack ids. `stacks` entries point at stacks by `path` and `name`.
 
@@ -319,7 +321,7 @@ The name of the stack, the part of the stack id after the colon. Without it the 
 
 Default: none, the entry adds settings to stacks that discovery found.
 
-The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at `path`, and `options` holds that tool's options. Two tools take it in this version: `opentofu`, for an OpenTofu root module, and `helm`, for a Helm release in a namespace. Pulumi stacks are found from their files and need no `tool`.
+The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at `path`, and `options` holds that tool's options. Three tools take it in this version: `opentofu`, for an OpenTofu root module, `helm`, for a Helm release in a namespace, and `kubectl`, for a directory of Kubernetes manifests or a kustomization. Pulumi stacks are found from their files and need no `tool`.
 
 ```yaml
 stacks:
@@ -346,13 +348,26 @@ stacks:
       namespace: ingress
       chart: oci://ghcr.io/example/charts/ingress-nginx
       version: 4.11.3
+  - path: deploy/web
+    tool: kubectl
+    options:
+      context: prod
+      namespace: web
 ```
 
-An unknown tool, an unknown option or an option of the wrong kind stops every mode, with the same kind of message as any other mistake in the file, such as `stacks[0].tool: unknown tool "terraform". Known tools: opentofu, helm.`
+An unknown tool, an unknown option or an option of the wrong kind stops every mode, with the same kind of message as any other mistake in the file, such as `stacks[0].tool: unknown tool "terraform". Known tools: opentofu, helm, kubectl.`
 
 Sluiceway runs `tofu init` for every directory of the stacks it is about to preview, one directory at a time, before the first preview. Then `tofu plan -refresh=false -out` and `tofu show -json` give the preview, and a tick deploys the plan file that `apply`'s own fresh preview saved and hashed, with `tofu apply` of that file. Install `tofu` in the workflow before Sluiceway, v1.11.0 or newer ([credentials](credentials.md)).
 
 For Helm, Sluiceway runs `helm dependency build` for every local chart that has dependencies, one chart at a time, before the first preview. `helm diff upgrade --install --reset-values --dry-run=server --output=structured`, from the [helm-diff](https://github.com/databus23/helm-diff) plugin, gives the preview: the objects the release would add, change and remove, and the path of every field that changes. A tick deploys with `helm upgrade --install --reset-values --atomic`. Helm saves no plan, so `apply` renders the chart with `helm template` in its fresh preview and once more right before the deploy, and deploys only when both renders are the same. A chart that renders differently every time, such as one with a random value, is refused as a moved change and never deploys. Install helm v3.18.0 or newer and the diff plugin v3.15.11 or newer in the workflow before Sluiceway ([credentials](credentials.md)). The release's namespace must exist.
+
+For `kubectl`, Sluiceway renders the stack into one set of manifests: the files of the directory as they are, or what `kubectl kustomize` builds when the directory holds a `kustomization.yaml`. `kubectl diff --server-side` of that set is the preview: the API server runs the apply as a dry run, so a field that cannot change in place, a field another manager owns and an object the server refuses all fail the preview, before anyone ticks. A tick deploys, with `kubectl apply --server-side`, the very set `apply`'s own fresh preview diffed and hashed. Three things to know:
+
+- **Nothing is pruned.** An object taken out of the manifests stays in the cluster, and the row never shows a delete. `kubectl`'s pruning is still alpha. Delete such an object by hand.
+- **The namespace must exist**, or the preview fails. Put a `Namespace` in a stack of its own and make the others [depend on it](#stacksdependson).
+- **A kustomization that reads files outside its directory**, such as `../base`, claims only its own directory: add the other directories to `inputs`, or a change there gives a full scan.
+
+Install `kubectl` v1.34.0 or newer in the workflow before Sluiceway, and point it at the cluster with `KUBECONFIG` ([credentials](credentials.md)).
 
 ### `stacks[].environment`
 
@@ -511,9 +526,13 @@ The name of the Helm release, by helm's own rule: lower case letters, digits, `-
 
 ### `stacks[].options.namespace`
 
-Required with `tool: helm`.
+Required with `tool: helm`. With `tool: kubectl`, default: the namespace of the context.
 
-The namespace of the release, passed with `--namespace` to every command of the stack. It must exist before the first deploy: Sluiceway does not create it.
+With `tool: helm`, the namespace of the release, passed with `--namespace` to every command of the stack. It must exist before the first deploy: Sluiceway does not create it.
+
+With `tool: kubectl`, the namespace of every object that names none, passed with `--namespace` to the preview, the tool diff and the deploy. An object that names another namespace is an error of the tool, so its preview fails.
+
+For both tools a namespace is a DNS label: lower case letters, digits and `-`, at most 63 characters.
 
 ### `stacks[].options.chart`
 
@@ -532,6 +551,12 @@ The exact version of a chart reference, such as `4.11.3`, never a range: the dep
 Default: `[]`
 
 Only with `tool: helm`. Values files, relative to the directory of the stack, handed to every command with `--values` in this order, after the chart's own `values.yaml`. Every deploy starts from the chart's values and these files, with `--reset-values`, so nothing a release kept from an earlier deploy by hand stays. A values file outside the directory of the stack is not claimed by it: add it to `inputs` too.
+
+### `stacks[].options.context`
+
+Default: the current context of the kubeconfig.
+
+Only with `tool: kubectl`. The kubeconfig context of the stack, passed with `--context` to the preview, the tool diff and the deploy, so one repo can deploy to several clusters with one kubeconfig.
 
 ### `mergeAndDeploy.authors`
 

@@ -8,7 +8,7 @@ The part after 1.0 is generated from [docs/later.md](later.md), which says for e
 
 The core loop: a scan previews every stack and writes the dashboard, a person ticks a box, exactly that stack deploys, and its row returns to in sync or says why it failed. Around it:
 
-- Pulumi stacks, found from their files, and OpenTofu root modules and Helm releases, declared in `sluiceway.yaml`.
+- Pulumi stacks, found from their files, and OpenTofu root modules, Helm releases and Kubernetes manifests (a directory of YAML or a kustomization), declared in `sluiceway.yaml`.
 - Five modes: `scan`, `resolve`, `apply`, `settle`, and `check`, which validates a setup on a pull request with no credentials.
 - A push previews only the stacks it touches. Every row says which pull requests made it pending, and links to a page with that stack's diff.
 - Rows name the property paths that change, never a value. A repo can list paths whose values may show, and can print the tool's own diff in the job log.
@@ -25,7 +25,7 @@ The [build plan](build-plan.md) says how each of these was built and proven, and
 
 ## After 1.0
 
-In plain words, the larger themes: more tools (Kubernetes manifests, the Terraform binary and the tools built on it, AWS CDK), a bot with its own name and picture, teams in the tick rule, a log of deploys made outside the dashboard, and a hosted version with a dashboard for a whole organization. The previews and the deploys always stay in the user's own runners.
+In plain words, the larger themes: more tools (the Terraform binary and the tools built on it, AWS CDK), a bot with its own name and picture, teams in the tick rule, a log of deploys made outside the dashboard, and a hosted version with a dashboard for a whole organization. The previews and the deploys always stay in the user's own runners.
 
 Every item, as `docs/later.md` lists it:
 
@@ -40,7 +40,11 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A hint in the check for a directory of `.tf` files that no entry declares
 - Helm, part 2: a drift check (the diff plugin's `--three-way-merge` compares with the live objects), a `createNamespace` option, a `kubeContext` option, zero-config discovery from `Chart.yaml`, and `--take-ownership` for objects made outside the release
 - `--rollback-on-failure` in place of `--atomic` for the Helm deploy
-- A Kubernetes manifests adapter (kustomize or plain YAML, `kubectl diff` for the preview, `kubectl apply` for the deploy)
+- Pruning for Kubernetes manifests stacks: an object taken out of the manifests deleted by the deploy, and shown as a delete on the row
+- A drift check for Kubernetes manifests stacks
+- Manifests in subdirectories of a Kubernetes manifests stack (`kubectl apply -R`)
+- `forceConflicts` and `fieldManager` options for Kubernetes manifests stacks
+- Zero-config discovery of kustomizations, and a hint in the check for a directory of manifests that no entry declares
 - The Terraform family beyond OpenTofu (Terragrunt, CDK for Terraform)
 - An AWS CDK and CloudFormation adapter (change sets as the preview)
 - A preview of a pull request's branch before its merge, on the row of an update waiting to merge

@@ -40,7 +40,7 @@ v1 is the core loop and what real use asked for around it. The core loop: a scan
 The plan began with the core loop alone and left out drift, stack dependencies and a second adapter. The first real user and the owner brought parts of each back after the first release, one slice at a time. Built and released:
 
 - **The core loop** in five modes, `scan`, `resolve`, `apply`, `settle` and `check`, with narrowed scans, attribution, the size budget, the summary and a preview page per pending stack (M1, M2, 0003, 0010, 0026, 0028, 0037, 0042, 0050).
-- **Three adapters.** Pulumi, found from its files alone, and OpenTofu and Helm, declared in `sluiceway.yaml` (0001, 0053, 0058, slices 4.1 and 4.6).
+- **Four adapters.** Pulumi, found from its files alone, and OpenTofu, Helm and Kubernetes manifests, declared in `sluiceway.yaml` (0001, 0053, 0058, 0060, slices 4.1, 4.6 and 4.9).
 - **What a row may show.** Property paths and never values, the tool diff in the job log on request, and values for the paths a repo lists (0046, 0048, 0052).
 - **Stop, rehearse, explain.** `deploys: false`, `dry-run`, an `ignore` entry with a reason, and a comment to the ticker when a change moved (0051).
 - **Merge and deploy, part 1** (0054, slice 4.2), **drift, part 1** (0055, slice 4.3) and **stack dependencies, part 1** (0056, slice 4.4).
@@ -99,14 +99,14 @@ The file is optional and sits at the repo root. Unknown keys are an error, becau
 | `drift.enabled` | `false` | Check every stack for drift in each scan that a schedule starts or a person starts with Run workflow, and in a push's scan only for the stacks whose row showed drift. There is no `drift.schedule`: the loader says the cron goes in the workflow | 0055 |
 | `stacks[].path` | required per entry | Directory of the stack, relative to the repo root | 0006 |
 | `stacks[].name` | none | Name of the stack. Without it the entry covers every stack in `path` | 0006 |
-| `stacks[].tool` | none | `opentofu` or `helm`: the entry declares a stack of that tool at `path`, because files alone cannot name one | 0053, 0058 |
+| `stacks[].tool` | none | `opentofu`, `helm` or `kubectl`: the entry declares a stack of that tool at `path`, because files alone cannot name one | 0053, 0058, 0060 |
 | `stacks[].environment` | `sluiceway` | Label on the deployment record, and the GitHub Environment where one is used | 0003 |
 | `stacks[].tickers` | the top level value | Tick rule for this stack | 0018 |
 | `stacks[].inputs` | `[]` | Extra globs this stack claims | 0010 |
 | `stacks[].previewTimeout` | the input | Time limit for this stack, whole minutes | 0012, 0035 |
 | `stacks[].dependsOn` | none | Stack ids this stack depends on, or `auto`: the stacks its Pulumi program reads through stack references, read at each preview and carried on the row (slice 4.7). A tick waits while one of them is pending and not ticked, ticks in one chain deploy one layer per run (slice 4.4) | 0056, 0059 |
 | `stacks[].drift.enabled` | the top level | The drift check on or off for the stacks of this entry, in the same scans as `drift.enabled` (slice 4.7) | 0059 |
-| `stacks[].options` | `{}` | Named adapter options, only with `tool`. OpenTofu: `workspace` and `varFiles`. Helm: `release`, `namespace`, `chart`, `version` (a chart reference only) and `valuesFiles` | 0006, 0015, 0053, 0058 |
+| `stacks[].options` | `{}` | Named adapter options, only with `tool`. OpenTofu: `workspace` and `varFiles`. Helm: `release`, `namespace`, `chart`, `version` (a chart reference only) and `valuesFiles`. kubectl: `context` and `namespace` | 0006, 0015, 0053, 0058, 0060 |
 | `mergeAndDeploy.authors` | `[]` | Logins whose green pull requests that one stack claims are listed to merge and deploy with one tick. Empty turns it off | 0054 |
 
 Rules for config loading:
@@ -136,6 +136,7 @@ Rules for config loading:
 | Minimum Pulumi CLI | v3.229.0 | 0001 |
 | Minimum OpenTofu CLI | v1.11.0 | 0053 |
 | Minimum Helm CLI and diff plugin | helm v3.18.0, helm-diff v3.15.11 | 0058 |
+| Minimum kubectl CLI | v1.34.0 | 0060 |
 | Minimum self-hosted runner | v2.328.0, no ARM32 | Actions research |
 | API budget | 1,000 requests per hour per repo | 0017 |
 
@@ -203,6 +204,7 @@ The bootstrap made the directories. This is what goes in them. File names are a 
 | `src/adapters/adapter.ts` | The interface: `discover`, `preview`, `apply`, and a version check | Yes |
 | `src/adapters/pulumi/` | Discovery, the command lines, the process runner, the schema that parses tool output, folding steps into changes | Yes |
 | `src/adapters/opentofu/` | The same for OpenTofu, plus init and the saved plan (0053). `src/adapters/tools.ts` sends each stack to its tool | Yes |
+| `src/adapters/kubectl/` | The same for Kubernetes manifests, plus the rendered set (0060) | Yes |
 | `src/render/` | Markers, rows, the body, the header state, the voice strings, the size budget, the summary, the log text of a diff | Yes |
 | `src/github/` | The port (one interface with every GitHub call Sluiceway makes), its Octokit implementation, the write loop, reading the event, the action ref, inputs and outputs, annotations | No |
 | `src/modes/` | One file per mode. A mode wires core, adapter, render and the port together and holds no rules of its own | No |
@@ -227,7 +229,7 @@ Four seams keep everything testable without a network or a tool:
 |---|---|---|
 | Unit | Hash, config, claim rule, tick rule, history walk, attribution, header state, budget steps, marker encode and decode | next to the code's area under `test/` |
 | Snapshot | Every kind of row, the body in every header state, redact on and off, personality on and off, a 58 stack body, a 100 stack body over budget, the summary | `test/render/` |
-| Adapter | The schema and the folding, against recorded tool output only | `test/adapters/pulumi/`, `test/adapters/opentofu/` |
+| Adapter | The schema and the folding, against recorded tool output only | `test/adapters/pulumi/`, `test/adapters/opentofu/`, `test/adapters/kubectl/` |
 | Mode | Each mode against the fake GitHub and a replayed tool | `test/modes/` |
 | E2E | The committed bundle on a real runner, with the real CLI, the example project and the fake GitHub server. `scripts/e2e.ts` starts the bundle itself, with the inputs and the `GITHUB_*` variables a runner would build from `action.yml`, because a runner lets no step replace `GITHUB_API_URL`. The smoke job of `ci.yml` keeps a real `uses:` step, which stops at a config error before it reaches GitHub | `.github/workflows/e2e.yml`, `bun run e2e` |
 | Live | A short manual pass in a scratch repo on real GitHub before a release | `docs/acceptance.md`, part 1 |

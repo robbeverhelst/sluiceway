@@ -1,15 +1,17 @@
-// The end to end run of one repo with Pulumi, OpenTofu and Helm stacks
-// (records 0053 and 0058): the committed bundle, started the way a runner
-// starts a step, with the pulumi, tofu and helm CLIs on PATH and the fake
-// GitHub server. The repo is examples/pulumi-basic with
-// examples/opentofu-basic in infra/ and examples/helm-basic in helm/. Helm
-// needs a cluster: KUBECONFIG names one made for this, such as kind, and
-// HELM_PLUGINS the directory of the diff plugin.
+// The end to end run of one repo with Pulumi, OpenTofu, Helm and Kubernetes
+// manifests stacks (records 0053, 0058 and 0060): the committed bundle,
+// started the way a runner starts a step, with the pulumi, tofu, helm and
+// kubectl CLIs on PATH and the fake GitHub server. The repo is
+// examples/pulumi-basic with examples/opentofu-basic in infra/,
+// examples/helm-basic in helm/ and the web directory of
+// examples/kubernetes-basic in k8s/web. Helm and kubectl need a cluster:
+// KUBECONFIG names a kind cluster made for this, and HELM_PLUGINS the
+// directory of the diff plugin.
 //
 //   bun run e2e:mixed [--work-dir <dir>] [--expect-tofu v1.12.6]
-//                     [--expect-helm v4.3.0]
+//                     [--expect-helm v4.3.0] [--expect-kubectl v1.37.0]
 //
-//   1. A full scan: one dashboard with the rows of all three tools, every
+//   1. A full scan: one dashboard with the rows of all four tools, every
 //      stack pending, each OpenTofu directory initialised and the Helm chart
 //      with a dependency built before any preview.
 //   2. alice ticks infra/network:dev. resolve hands on a record, apply deploys
@@ -25,7 +27,10 @@
 //   6. A scan, and alice ticks helm/web again: apply renders the chart in its
 //      fresh preview and once more right before the deploy, and the real helm
 //      installs the release.
-//   7. A last full scan: the three deployed stacks are in sync, infra/dns is
+//   7. alice ticks k8s/web, and a manifest is added before its apply job
+//      starts: nothing reaches the cluster. She ticks the fresh row, and
+//      apply deploys the rendered set its fresh preview diffed.
+//   8. A last full scan: the four deployed stacks are in sync, infra/dns is
 //      pending with the moved change and a failure line.
 //
 // The tools only run in a copy inside the work directory, with state in local
@@ -59,6 +64,7 @@ const { values } = parseArgs({
     "work-dir": { type: "string", default: join(tmpdir(), "sluiceway-e2e-mixed") },
     "expect-tofu": { type: "string" },
     "expect-helm": { type: "string" },
+    "expect-kubectl": { type: "string" },
   },
 });
 
@@ -94,6 +100,9 @@ const jobEnvironment: Record<string, string> = {
   HELM_PLUGINS: needed("HELM_PLUGINS"),
   NO_COLOR: "1",
 };
+
+// The namespace of the kubectl stack, made anew for every run.
+const K8S_NAMESPACE = "sluiceway-e2e";
 
 const CONFIG = `ignore:
   - "playground:*"
@@ -137,6 +146,10 @@ stacks:
       namespace: sluiceway-worker
       chart: ../charts/worker
       valuesFiles: [values.yaml]
+  - path: k8s/web
+    tool: kubectl
+    options:
+      namespace: ${K8S_NAMESPACE}
 `;
 
 interface Ran {
@@ -415,11 +428,30 @@ if (values["expect-helm"] && helmVersion !== values["expect-helm"]) {
   throw new Error(`Expected helm ${values["expect-helm"]} on PATH, found ${helmVersion}.`);
 }
 
+// The kubectl on PATH, and a cluster that is a kind cluster made for this.
+const kubectlVersion = await run(["kubectl", "version", "--client", "--output=json"], REPO);
+const kubectl =
+  (JSON.parse(kubectlVersion.output) as { clientVersion?: { gitVersion?: string } }).clientVersion
+    ?.gitVersion ?? "";
+console.log(`kubectl ${kubectl}`);
+if (values["expect-kubectl"] && kubectl !== values["expect-kubectl"]) {
+  throw new Error(`Expected kubectl ${values["expect-kubectl"]} on PATH, found ${kubectl}.`);
+}
+const context = await run(["kubectl", "config", "current-context"], REPO);
+if (!context.output.trim().startsWith("kind-")) {
+  throw new Error(
+    "The current context of KUBECONFIG is not a kind cluster. The e2e only runs against one.",
+  );
+}
+
 cpSync(join(REPO, "examples/pulumi-basic"), workspace, { recursive: true });
 cpSync(join(REPO, "examples/opentofu-basic"), join(workspace, "infra"), { recursive: true });
 rmSync(join(workspace, "infra/sluiceway.yaml"));
 cpSync(join(REPO, "examples/helm-basic"), join(workspace, "helm"), { recursive: true });
 rmSync(join(workspace, "helm/sluiceway.yaml"));
+cpSync(join(REPO, "examples/kubernetes-basic/web"), join(workspace, "k8s/web"), {
+  recursive: true,
+});
 writeFileSync(join(workspace, "sluiceway.yaml"), CONFIG);
 
 // The Pulumi stacks exist in the backend. The OpenTofu workspaces do not,
@@ -443,6 +475,12 @@ for (const [release, namespace] of [
   const there = await run(["kubectl", "get", "namespace", namespace], workspace);
   if (there.exitCode !== 0) await prepare(["kubectl", "create", "namespace", namespace], ".");
 }
+// The namespace of k8s/web exists, empty: Sluiceway never makes one.
+await prepare(
+  ["kubectl", "delete", "namespace", K8S_NAMESPACE, "--ignore-not-found", "--wait"],
+  ".",
+);
+await prepare(["kubectl", "create", "namespace", K8S_NAMESPACE], ".");
 console.log("::endgroup::");
 
 // 1. The full scan.
@@ -461,6 +499,7 @@ good =
       "infra/dns": "pending",
       "infra/network:dev": "pending",
       "infra/network:prod": "pending",
+      "k8s/web": "pending",
       "network:dev": "pending",
       "network:prod": "pending",
     }),
@@ -597,7 +636,72 @@ good =
   ]) && good;
 await settled(web.run);
 
-// 7. The last full scan.
+// 7. k8s/web: a change that moved deploys nothing, then the fresh row deploys.
+// How many objects of the example the namespace holds, the one way to see
+// that a deploy really went out and that a refused one sent nothing.
+async function k8sObjects(): Promise<number> {
+  const ran = await run(
+    [
+      "kubectl",
+      "get",
+      "configmap,secret,deployment,service",
+      "--namespace",
+      K8S_NAMESPACE,
+      "-o",
+      "name",
+    ],
+    workspace,
+  );
+  if (ran.exitCode !== 0) return -1;
+  return ran.output
+    .split("\n")
+    .filter((line) => /^(configmap|secret|deployment|service)/.test(line))
+    .filter((line) => !line.includes("kube-root-ca")).length;
+}
+const k8sRun = await tick("k8s/web");
+const [k8sEntry] = k8sRun.matrix;
+if (!k8sEntry) throw new Error("resolve handed on no deploy of k8s/web.");
+// A new object changes the diff.
+writeFileSync(
+  join(workspace, "k8s/web/extra.yaml"),
+  "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: web-extra\ndata:\n  motd: hello\n",
+);
+const k8sMoved = await step("apply", {
+  inputs: { "deployment-id": String(k8sEntry.deployment) },
+  runId: k8sRun.runId,
+  event: "issues",
+  payload: k8sRun.payload,
+  title: `Run ${k8sRun.runId}: apply of k8s/web, after its manifests moved`,
+});
+good =
+  report("The moved change of k8s/web", k8sMoved, [
+    ...checkApply(k8sMoved, {
+      stack: "k8s/web",
+      deployment: k8sEntry.deployment,
+      outcome: "moved",
+      rowState: "pending",
+    }),
+    ...((await k8sObjects()) === 0
+      ? []
+      : ["The namespace of k8s/web holds objects, and its change moved before the deploy."]),
+  ]) && good;
+await settled(k8sRun);
+
+const k8s = await deployed("k8s/web", "sluiceway");
+good =
+  report("The tick of k8s/web: apply", k8s.applied, [
+    ...checkApply(k8s.applied, {
+      stack: "k8s/web",
+      deployment: k8s.entry.deployment,
+      outcome: "deployed",
+    }),
+    ...((await k8sObjects()) === 5
+      ? []
+      : ["The namespace of k8s/web does not hold the 5 objects of the rendered set."]),
+  ]) && good;
+await settled(k8s.run);
+
+// 8. The last full scan.
 const last = await scanStep("schedule");
 good =
   report("The last scan", last, [
@@ -609,18 +713,21 @@ good =
       "infra/dns": "pending",
       "infra/network:dev": "in-sync",
       "infra/network:prod": "pending",
+      "k8s/web": "in-sync",
       "network:dev": "in-sync",
       "network:prod": "pending",
     }),
     ...checkRowFacts(last.body, {
       failed: ["infra/dns"],
-      recentlyDeployed: ["helm/web", "infra/network:dev", "network:dev"],
+      recentlyDeployed: ["helm/web", "infra/network:dev", "k8s/web", "network:dev"],
     }),
   ]) && good;
 
 rmSync(work, { recursive: true, force: true });
 if (!good) {
-  console.log("The end to end run of a repo with three tools found problems.");
+  console.log("The end to end run of a repo with four tools found problems.");
   process.exit(1);
 }
-console.log("The end to end run of a repo with Pulumi, OpenTofu and Helm stacks is good.");
+console.log(
+  "The end to end run of a repo with Pulumi, OpenTofu, Helm and Kubernetes manifests stacks is good.",
+);

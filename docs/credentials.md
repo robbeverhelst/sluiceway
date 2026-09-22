@@ -181,6 +181,28 @@ Then give the job a kubeconfig for the cluster, the way your own CI does: a clou
 - **The namespace of every release must exist.** Sluiceway does not create it.
 - **The credentials need what a deploy needs.** The preview reads the release and renders with `--dry-run=server`, which the cluster answers as it would a deploy. The `scan` job and the `apply` job both need them. `check`, `resolve` and `settle` never reach the cluster.
 - **Rendered manifests hold every value in plain text.** Sluiceway keeps only a digest of the render in memory while `apply` runs, and never writes the manifests anywhere.
+### Kubernetes manifests
+
+For a stack with `tool: kubectl` (record 0060), install `kubectl` v1.34.0 or newer in a step before Sluiceway, and give it a kubeconfig. `kubectl` reads `KUBECONFIG`, or `~/.kube/config`, like on a laptop, and Sluiceway hands it the whole environment of the job, so a cloud's own login step is all it takes:
+
+```yaml
+- uses: azure/setup-kubectl@v5
+  with:
+    version: v1.37.0
+
+# For example on AWS: a role for the job, then a kubeconfig that uses it.
+- uses: aws-actions/configure-aws-credentials@v6
+  with:
+    role-to-assume: ${{ vars.AWS_PREVIEW_ROLE }}
+    aws-region: ${{ vars.AWS_REGION }}
+- run: aws eks update-kubeconfig --name prod
+```
+
+- **The kubeconfig's exec plugin runs as the tool does**, so what it needs, such as a cloud login or `kubelogin`, has to be on the runner and in the environment too.
+- **One kubeconfig can serve several clusters.** Name the context of each stack with the `context` option ([configuration](configuration.md#stacksoptionscontext)).
+- **The `scan` job needs read access and a server-side dry run**, which is the `patch` permission on every kind the manifests hold: a dry run is checked like the real request. The `apply` job needs the same permissions and does the real apply.
+- **`diff` has to be on the runner.** `kubectl diff` runs it, and it is on GitHub's hosted runners. Sluiceway sets `KUBECTL_EXTERNAL_DIFF` for the preview itself, so a value the workflow sets there only changes the tool diff of `scan.logDiff`.
+- **The rendered set holds every value of the manifests**, a Secret's too. Sluiceway keeps it in a temporary directory of its own and removes it when the preview or the deploy ends. It is never uploaded.
 
 ## What your programs fetch, the runner has to fetch
 
