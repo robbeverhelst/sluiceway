@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/sluiceway/sluiceway/compare/v0.3.0...v0.4.0) (2026-09-22)
+
+
+### Features
+
+* small polish from real use (slice 2.22) ([1d14d23](https://github.com/sluiceway/sluiceway/commit/1d14d233931f0dd3699499fecf3a53adf2523922))
+
 ## [0.3.0](https://github.com/sluiceway/sluiceway/compare/v0.2.0...v0.3.0) (2026-09-22)
 
 
