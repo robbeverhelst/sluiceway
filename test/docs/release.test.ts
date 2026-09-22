@@ -53,9 +53,13 @@ describe("the version the docs name", () => {
 describe("the README", () => {
   const notice = readme.slice(readme.indexOf("> [!IMPORTANT]"), readme.indexOf("\n\n## "));
 
-  test("the beta notice says beta, released as 0.1.1, and @v0", () => {
+  // Slice 4.8: the notice named 0.1.1 long after newer releases, so it names
+  // the series and links to the list of releases, which never goes stale.
+  test("the beta notice says beta, released as 0.x, the roadmap to 1.0, and @v0", () => {
     expect(notice).toContain("**Sluiceway is in beta.**");
-    expect(notice).toContain("(https://github.com/sluiceway/sluiceway/releases/tag/v0.1.1)");
+    expect(notice).toContain("released as [0.x](https://github.com/sluiceway/sluiceway/releases)");
+    expect(notice).not.toMatch(/releases\/tag\//);
+    expect(notice).toContain("(docs/roadmap.md)");
     expect(notice).toContain("`sluiceway/sluiceway@v0`");
     expect(notice).toContain("(#pin-a-commit)");
   });

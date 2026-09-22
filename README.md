@@ -8,7 +8,7 @@
 Sluiceway keeps one GitHub issue that shows which infrastructure stacks have changes waiting, and deploys a stack when you tick its box.
 
 > [!IMPORTANT]
-> **Sluiceway is in beta.** It works end to end and is released as [0.1.1](https://github.com/sluiceway/sluiceway/releases/tag/v0.1.1). Use `sluiceway/sluiceway@v0`, or [pin a commit](#pin-a-commit) if you want to review every update. Please report every rough edge as an [issue](https://github.com/sluiceway/sluiceway/issues/new). The [onboarding log](docs/onboarding-log.md) lists the ones found so far.
+> **Sluiceway is in beta.** It works end to end and is released as [0.x](https://github.com/sluiceway/sluiceway/releases), and the [roadmap](docs/roadmap.md) says what comes before 1.0. Use `sluiceway/sluiceway@v0`, or [pin a commit](#pin-a-commit) if you want to review every update. Please report every rough edge as an [issue](https://github.com/sluiceway/sluiceway/issues/new). The [onboarding log](docs/onboarding-log.md) lists the ones found so far.
 
 ## What it looks like
 
@@ -567,6 +567,7 @@ A tick rule protects against the wrong person ticking. On its own it does not pr
 - [docs/build-plan.md](docs/build-plan.md): what is being built, in which order, and how it is proven.
 - [docs/adr](docs/adr): the decision records. Where a record and the brief disagree, the record wins.
 - [docs/later.md](docs/later.md): what was left out of v1, and why.
+- [docs/roadmap.md](docs/roadmap.md): what comes before 1.0 and what after.
 - [docs/acceptance.md](docs/acceptance.md): the checklist that proves v1 against its first real user.
 - [docs/brief.md](docs/brief.md): the original project brief, kept as history. Do not build from it.
 

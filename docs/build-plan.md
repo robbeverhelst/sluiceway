@@ -9,7 +9,7 @@ Read in this order, and stop reading the brief for instructions.
 1. This file, for what to build next and how to prove it.
 2. [CONTEXT.md](../CONTEXT.md), for the words. Use them in code, tests, logs and docs exactly as defined. Do not use the words listed under "Avoid".
 3. [docs/adr](adr), for every rule. Each slice below names the records it implements. Read those records in full before you start the slice. Where a record carries an "Amended by" or "Superseded by" note, the newer record wins.
-4. [docs/later.md](later.md), for what is not in v1. If something you are about to build is on that list, stop.
+4. [docs/later.md](later.md), for what is not in v1. If something you are about to build is on that list and no slice below names it, stop. [docs/roadmap.md](roadmap.md) says the same in plain words, split into before and after 1.0.
 
 [docs/brief.md](brief.md) is history. It was the starting point on 2026-09-20 and about half of its detail has been corrected since. Every outdated section in it is marked. Section 4 of this file lists each correction. Never copy code, config, a workflow or a row format from the brief.
 
@@ -21,7 +21,7 @@ When two sources disagree, the order is: real GitHub or tool behavior, then the 
 - Every pull request rebuilds `dist/` and says in its description what was verified and how.
 - Write for a general product. No file in this repo names a user's setup, except [docs/acceptance.md](acceptance.md).
 - No em-dashes in docs, comments or strings. Plain, direct wording. The voice exists in two fixed lines and nowhere else (0032).
-- New glossary terms go in `CONTEXT.md` in the same pull request. A decision that is hard to reverse gets a record in `docs/adr/`, numbered after the highest one there. Anything left out of v1 gets a line in `docs/later.md` in the same change.
+- New glossary terms go in `CONTEXT.md` in the same pull request. A decision that is hard to reverse gets a record in `docs/adr/`, numbered after the highest one there. Anything left out of v1 gets a line in `docs/later.md` in the same change, and a line that a slice delivers leaves it. After any change to `docs/later.md`, run `bun run roadmap`: a test holds `docs/roadmap.md` to it.
 - Third-party actions in this repo's workflows are pinned by commit SHA with a version comment.
 
 ### Ask the owner before
@@ -35,11 +35,22 @@ Everything else is yours to decide. Decide, write down why in the pull request, 
 
 ## 2. What v1 is
 
-The core loop and nothing else: a scan previews stacks and writes the dashboard, a person ticks a box, exactly that stack deploys, and the row returns to in sync or shows why it failed.
+v1 is the core loop and what real use asked for around it. The core loop: a scan previews stacks and writes the dashboard, a person ticks a box, exactly that stack deploys, and the row returns to in sync or shows why it failed.
 
-Not in v1: drift detection, stack dependencies, a second adapter, teams in the tick rule, property values. (Drift part 1 came after them too, in slice 4.3 and record 0055. The second adapter, OpenTofu, came after the first releases, in slice 4.1 and record 0053.) `docs/later.md` has the full list. The marker format, the row states and the diff shape already leave room for them, so nothing in v1 needs a placeholder for them. Do not add empty drift or dependency code.
+The plan began with the core loop alone and left out drift, stack dependencies and a second adapter. The first real user and the owner brought parts of each back after the first release, one slice at a time. Built and released:
 
-The brief's milestone numbers change with that. M0 is merged. M1 is the scan, M2 is the tick and the deploy, M3 is proof and the first release. The brief's M3 (drift and dependencies) and M4 (launch) are not part of this plan.
+- **The core loop** in five modes, `scan`, `resolve`, `apply`, `settle` and `check`, with narrowed scans, attribution, the size budget, the summary and a preview page per pending stack (M1, M2, 0003, 0010, 0026, 0028, 0037, 0042, 0050).
+- **Two adapters.** Pulumi, found from its files alone, and OpenTofu, declared in `sluiceway.yaml` (0001, 0053, slice 4.1).
+- **What a row may show.** Property paths and never values, the tool diff in the job log on request, and values for the paths a repo lists (0046, 0048, 0052).
+- **Stop, rehearse, explain.** `deploys: false`, `dry-run`, an `ignore` entry with a reason, and a comment to the ticker when a change moved (0051).
+- **Merge and deploy, part 1** (0054, slice 4.2), **drift, part 1** (0055, slice 4.3) and **stack dependencies, part 1** (0056, slice 4.4).
+- **Outputs and the result file**, so a workflow can tell people. Sluiceway sends nothing (0041).
+
+Slices 4.6 and 4.7 add the Helm adapter and part 2 of drift and dependencies. Everything else that was considered is in `docs/later.md`: teams in the tick rule, a bot identity of its own, more adapters, values without a list, a hosted version, and more. [docs/roadmap.md](roadmap.md) says which of it comes before 1.0 and which after.
+
+The marker format, the row states and the diff shape leave room for what `docs/later.md` lists, so nothing needs a placeholder for it. Do not add empty code for anything that no slice builds.
+
+The brief's milestone numbers change with that. M0 is merged. M1 is the scan, M2 is the tick and the deploy, M3 is proof and the first release. The rows numbered 4.x in section 7 came after the first release. The brief's M3 (drift and dependencies) became slices 4.3, 4.4 and 4.7, and its M4 (launch) is the launch in `docs/roadmap.md`.
 
 ## 3. Names fixed for v1
 
@@ -142,7 +153,7 @@ Each line is something in `docs/brief.md` that must not be built as written.
 | Brief | What is true now | Record |
 |---|---|---|
 | Principle 3, "never hold credentials, only passes env through" | Five promises that can be checked | 0014 |
-| Principle 5 and section 3, "adapter interface" | `urn` is an opaque `address`, the stack name is optional, five ops plus tracking changes, `changedKeys` and `replaceKeys`, no `summary`, no `rendered`. `detectDrift` is not in v1 | 0006, 0007, 0002 |
+| Principle 5 and section 3, "adapter interface" | `urn` is an opaque `address`, the stack name is optional, five ops plus tracking changes, `changedKeys` and `replaceKeys`, no `summary`, no `rendered`. `detectDrift` is optional and came with drift part 1 | 0006, 0007, 0002, 0055 |
 | Section 2, "moving major tag (`v1`)" | First release is 0.1.0 and the first moving tag is `v0`. `v1` appears with a deliberate 1.0.0 | PR 35 |
 | Section 2, Zod "or Valibot" | Zod | section 5 |
 | Section 3, Pulumi driver spike | Done: the CLI with `--json`, minimum v3.229.0 | 0001 |
@@ -150,7 +161,7 @@ Each line is something in `docs/brief.md` that must not be built as written.
 | Section 3, discovery of `Pulumi.yaml` and `Pulumi.<stack>.yaml` | `Pulumi.yaml`, `Pulumi.yml` or `Pulumi.json`, and stack files with the same extension | Pulumi research |
 | Section 3, `docs/decisions/` | `docs/adr/` | PR 33 |
 | Section 4, "the three modes" | Four. `settle` was added | 0003 |
-| `scan` step 2, drift | Not in v1 | later.md |
+| `scan` step 2, drift | Not in the core loop. Drift came later, opt-in and on scheduled scans and scans a person starts (slice 4.3) | 0055 |
 | `scan` step 2, every stack on every push | A push gives a narrowed scan. Schedule, dispatch and rescan are full | 0010, 0011 |
 | `scan` step 3, hash of URNs, ops and keys | A canonical document of the whole diff | 0008 |
 | `scan` step 4, attribution by commits that touched the path | Pull requests the stack claims, the rest counted | 0026 |
@@ -166,8 +177,8 @@ Each line is something in `docs/brief.md` that must not be built as written.
 | `apply` step 3, "comment on the dashboard only on failure" | No comment. A failure is a failure line on the row. Sluiceway writes a comment for a refused tick, and for a change that moved since the tick | 0004, 0018, 0051 |
 | The example consumer workflow | Replaced. The one in the README is the only valid example | README, 0035 |
 | "Environments are the real approval gate. The checkbox is the trigger" | The tick is always a gate, and Environments make it a stronger one | 0020 |
-| Section 5, config keys `stack`, `approvers`, `dependsOn`, `drift` | `name`, `tickers`. `dependsOn` and `drift` are not in v1. New keys: `inputs`, `scan.unrelated`, `previewTimeout`, `dashboard.redact`, `dashboard.personality` | section 3 |
-| Section 6, the sections and the header line | Pending, Deploying, Preview failed, In sync, Recently deployed. No Drift section in v1. Failed is a line on a row, not a section | 0029 |
+| Section 5, config keys `stack`, `approvers`, `dependsOn`, `drift` | `name`, `tickers`. `dependsOn` came in slice 4.4 and a top level `drift` in slice 4.3, both in the shape section 3 gives. New keys: `inputs`, `scan.unrelated`, `previewTimeout`, `dashboard.redact`, `dashboard.personality` | section 3 |
+| Section 6, the sections and the header line | Pending, Deploying, Preview failed, In sync, Recently deployed, and Drifted since slice 4.3. Failed is a line on a row, not a section | 0029, 0055 |
 | Section 6, the row format with `+2 ~1 -0`, `from #123 by @robbe` and a marker on the second line | Word counts, the marker at the end of the first line, a closing marker, attribution on its own line with plain logins | 0009, 0026, 0027 |
 | Section 6, alert blocks on rows with a replace or delete | They do not render inside a list. Delete and replace lines sit open under the row | 0027 |
 | Section 6, "never render values the tool marks as secret" | No value is ever shown, marked or not | 0021 |
@@ -175,7 +186,7 @@ Each line is something in `docs/brief.md` that must not be built as written.
 | Section 6, root marker `<!-- sluiceway:dashboard v1 -->` | `key="value"` pairs, with the scan facts on it | 0009 |
 | Section 7, `dashboard.redact` as "summary counts only" | Names leave the issue, the summary stays full, the hash still covers everything | 0023 |
 | Section 7, "mask anything that looks like a token" | Dropped. The tool's own words never leave the job log | 0022 |
-| Section 8, M3 and M4 | Not part of v1 | later.md |
+| Section 8, M3 and M4 | Drift and dependencies came as slices 4.3, 4.4 and 4.7. The launch is in the roadmap | later.md, roadmap.md |
 | Section 9, e2e against the example | Yes, and it runs against a fake GitHub API so the whole loop can be tested without a person | section 6 |
 | Section 11, homelab details | Only in `docs/acceptance.md` | map |
 
