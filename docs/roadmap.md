@@ -60,7 +60,6 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Spreading one scan over several runners (sharding)
 - A full scan whenever `sluiceway.yaml` changes, also in a repo with a stack at the root
 - Treating the files of an ignored stack as unrelated
-- Paging past the 300 files of a comparison, or reading the files commit by commit
 - Links to the job, not the run, on the rows written from a deployment record (deploying rows, failure lines, Recently deployed)
 - A link that lands on one stack's group in the job log (`#step:<n>:<line>`)
 - The carried rows in the summary of a narrowed scan

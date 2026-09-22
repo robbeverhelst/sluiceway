@@ -185,6 +185,23 @@ export function createOctokitPort(octokit: Octokit, repo: Repo): GitHubPort {
       };
     },
 
+    async readTree(sha) {
+      // A commit id names its tree here too.
+      const { data } = await octokit.rest.git.getTree({
+        ...repo,
+        tree_sha: sha,
+        recursive: "1",
+      });
+      return {
+        entries: data.tree.flatMap((entry) =>
+          entry.path === undefined || entry.sha === undefined || entry.type === undefined
+            ? []
+            : [{ path: entry.path, sha: entry.sha, type: entry.type }],
+        ),
+        truncated: data.truncated,
+      };
+    },
+
     async compareCommits(base, head) {
       // Every file of the comparison comes on the first page whatever the page
       // size, which only counts commits. No commit is read here.

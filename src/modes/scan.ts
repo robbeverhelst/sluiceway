@@ -47,6 +47,7 @@ import { outsideDeploys, ownRuns, trailOutside } from "../core/outside-deploy.ts
 import { runPool } from "../core/pool.ts";
 import { type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import {
+  COMPARE_FILE_CAP,
   changedPaths,
   comparisonBase,
   type FullScanReason,
@@ -56,6 +57,7 @@ import {
   type PreviewWhy,
   planScan,
   type ScanPlan,
+  treeChanges,
   unclaimedToPlace,
 } from "../core/scan-plan.ts";
 import { everyPreviewFailed } from "../core/scan-result.ts";
@@ -943,11 +945,23 @@ async function makePlan(
     );
     return full({ kind: "compare-failed" });
   }
-  const changed = changedPaths(comparison);
+  let changed = changedPaths(comparison);
+  if (changed.kind === "file-cap") {
+    // Past the 300 files of a comparison the trees of the two commits say
+    // which paths changed: two requests, whatever the number of files (slice
+    // 5.9). A tree GitHub left entries out of cannot be trusted.
+    const paths = await treeDiff(context, base.from);
+    if (paths === undefined) return full(changed);
+    log.info(
+      `The comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, so the trees of the two commits were compared: ${plural(paths.length, "file")} changed.`,
+    );
+    changed = { kind: "changed", paths };
+  } else if (changed.kind === "changed") {
+    log.info(
+      `${plural(comparison.files.length, "file")} changed between ${short(base.from)}, the commit of the last scan, and ${short(context.sha)}.`,
+    );
+  }
   if (changed.kind !== "changed") return full(changed);
-  log.info(
-    `${plural(comparison.files.length, "file")} changed between ${short(base.from)}, the commit of the last scan, and ${short(context.sha)}.`,
-  );
 
   return planScan(
     stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
@@ -955,6 +969,24 @@ async function makePlan(
     config.scan.unrelated,
     live?.rows ?? [],
   );
+}
+
+// The paths the trees of the last scan's commit and the checked-out one differ
+// by, or nothing when a tree could not be read whole (slice 5.9).
+async function treeDiff(context: ScanContext, from: string): Promise<string[] | undefined> {
+  try {
+    const [base, head] = [
+      await context.github.readTree(from),
+      await context.github.readTree(context.sha),
+    ];
+    if (base.truncated || head.truncated) return undefined;
+    return treeChanges(base.entries, head.entries);
+  } catch (error) {
+    context.log.info(
+      `Reading the trees of ${short(from)} and ${short(context.sha)} failed: ${error instanceof Error ? error.message : error}`,
+    );
+    return undefined;
+  }
 }
 
 // A file name comes from outside, so it never gets a line of its own and

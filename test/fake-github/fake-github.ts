@@ -99,6 +99,10 @@ export class FakeGitHub implements GitHubPort {
   readonly #comments = new Map<number, string[]>();
   readonly #pinned: number[] = [];
   readonly #comparisons = new Map<string, Comparison>();
+  readonly #trees = new Map<
+    string,
+    { entries: { path: string; sha: string; type: string }[]; truncated: boolean }
+  >();
   // By login in lower case, because GitHub finds a login in any case.
   readonly #permissions = new Map<string, Permission>();
   readonly #failingLookups = new Map<string, number>();
@@ -154,6 +158,15 @@ export class FakeGitHub implements GitHubPort {
 
   // What the repo's history says about two commits. A pair that was never
   // seeded holds a commit the repo does not have.
+  // The tree of a commit, as `readTree` lists it (slice 5.9).
+  seedTree(
+    sha: string,
+    entries: { path: string; sha: string; type: string }[],
+    { truncated = false }: { truncated?: boolean } = {},
+  ): void {
+    this.#trees.set(sha, { entries: entries.map((entry) => ({ ...entry })), truncated });
+  }
+
   seedComparison(base: string, head: string, comparison: Comparison): void {
     this.#comparisons.set(`${base}...${head}`, comparison);
   }
@@ -457,6 +470,15 @@ export class FakeGitHub implements GitHubPort {
       status: comparison.status,
       files: comparison.files.slice(0, COMPARE_FILE_CAP).map((file) => ({ ...file })),
     };
+  }
+
+  async readTree(
+    sha: string,
+  ): Promise<{ entries: { path: string; sha: string; type: string }[]; truncated: boolean }> {
+    this.#count("readTree");
+    const tree = this.#trees.get(sha);
+    if (!tree) throw new FakeGitHubError(404, "Not Found");
+    return { entries: tree.entries.map((entry) => ({ ...entry })), truncated: tree.truncated };
   }
 
   async getPermission(login: string): Promise<Permission | undefined> {

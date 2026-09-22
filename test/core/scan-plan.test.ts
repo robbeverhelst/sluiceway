@@ -7,6 +7,7 @@ import {
   fullScanReasonText,
   oneRowPerStack,
   planScan,
+  treeChanges,
 } from "../../src/core/scan-plan.ts";
 
 const OLD = "1111111111111111111111111111111111111111";
@@ -122,6 +123,41 @@ describe("the changed paths of a comparison", () => {
   });
 });
 
+// Slice 5.9: past the 300 files of a comparison, the trees of the two
+// commits say which paths changed. A file that moved counts under both paths,
+// as a rename in a comparison does.
+describe("the paths two trees differ by", () => {
+  const blob = (path: string, sha: string) => ({ path, sha, type: "blob" });
+
+  test("a changed, an added and a removed file, never a directory, in code unit order", () => {
+    expect(
+      treeChanges(
+        [
+          blob("a/same.ts", "1"),
+          blob("a/changed.ts", "2"),
+          blob("gone.ts", "3"),
+          { path: "a", sha: "d1", type: "tree" },
+        ],
+        [
+          blob("a/same.ts", "1"),
+          blob("a/changed.ts", "9"),
+          blob("B/new.ts", "4"),
+          { path: "a", sha: "d2", type: "tree" },
+        ],
+      ),
+    ).toEqual(["B/new.ts", "a/changed.ts", "gone.ts"]);
+  });
+
+  test("a moved file counts under both paths, and a submodule that moved on counts too", () => {
+    expect(
+      treeChanges(
+        [blob("old/x.ts", "5"), { path: "vendor/lib", sha: "c1", type: "commit" }],
+        [blob("new/x.ts", "5"), { path: "vendor/lib", sha: "c2", type: "commit" }],
+      ),
+    ).toEqual(["new/x.ts", "old/x.ts", "vendor/lib"]);
+  });
+});
+
 describe("which stacks a narrowed scan previews", () => {
   const stacks = [
     claimant("app:prod", ["shared/**"]),
@@ -230,7 +266,7 @@ describe("the words for why a scan is a full scan", () => {
     ],
     [
       { kind: "file-cap" },
-      "the comparison lists 300 files, the most GitHub gives, so files may be missing from it",
+      "the comparison lists 300 files, the most GitHub gives, and the trees of the two commits could not be compared, so files may be missing from it",
     ],
     [{ kind: "unclaimed", files: ["package.json"] }, "no stack claims package.json"],
     [

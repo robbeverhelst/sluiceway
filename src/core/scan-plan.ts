@@ -88,6 +88,30 @@ export function changedPaths(
   };
 }
 
+// One entry of a commit's tree, as GitHub lists it recursively: a file
+// ("blob"), a directory ("tree") or a submodule ("commit"), with the id of
+// what it holds.
+export interface TreeEntry {
+  path: string;
+  sha: string;
+  type: string;
+}
+
+// The paths two trees differ by, in code unit order (slice 5.9): a file that
+// changed, came or went, and a submodule that moved on. Directories are left
+// out, since their files are listed. A file that moved counts under both
+// paths, as a renamed file of a comparison does (record 0010).
+export function treeChanges(base: readonly TreeEntry[], head: readonly TreeEntry[]): string[] {
+  const ids = (tree: readonly TreeEntry[]) =>
+    new Map(tree.filter(({ type }) => type !== "tree").map(({ path, sha }) => [path, sha]));
+  const before = ids(base);
+  const after = ids(head);
+  const changed = new Set<string>();
+  for (const [path, sha] of before) if (after.get(path) !== sha) changed.add(path);
+  for (const [path, sha] of after) if (before.get(path) !== sha) changed.add(path);
+  return [...changed].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
 // Why a narrowed scan previews one stack.
 export type PreviewWhy =
   | { kind: "claims"; files: string[] }
@@ -187,7 +211,7 @@ export function fullScanReasonText(reason: FullScanReason): string {
     case "not-a-straight-line":
       return `the checked-out commit does not follow the commit of the last scan in a straight line (GitHub calls it ${JSON.stringify(reason.status)}), as after a force push or a re-run of an older run`;
     case "file-cap":
-      return `the comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, so files may be missing from it`;
+      return `the comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, and the trees of the two commits could not be compared, so files may be missing from it`;
     case "unclaimed": {
       // The config file lies outside every stack, so changing it is a full
       // scan with no special case (record 0010). Only the words differ: no

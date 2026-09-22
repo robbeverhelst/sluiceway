@@ -188,11 +188,24 @@ describe("falling back to a full scan (record 0010)", () => {
     },
   );
 
-  test("the file list is at the cap of 300 files", async () => {
+  // Slice 5.9: past the cap the trees of the two commits are compared. Here
+  // GitHub has no tree for them, so the scan falls back.
+  test("the file list is at the cap of 300 files and the trees cannot be read", async () => {
     const paths = Array.from({ length: 300 }, (_, index) => `site/page${index}.ts`);
     await expectFull(
       await pushed(TABLE, ahead(...paths)),
-      "the comparison lists 300 files, the most GitHub gives, so files may be missing from it",
+      "the comparison lists 300 files, the most GitHub gives, and the trees of the two commits could not be compared, so files may be missing from it",
+    );
+  });
+
+  test("the file list is at the cap of 300 files and a tree is truncated", async () => {
+    const paths = Array.from({ length: 300 }, (_, index) => `site/page${index}.ts`);
+    const scanned = await pushed(TABLE, ahead(...paths));
+    scanned.github.seedTree(OLD, [], { truncated: true });
+    scanned.github.seedTree(SHA, []);
+    await expectFull(
+      scanned,
+      "the comparison lists 300 files, the most GitHub gives, and the trees of the two commits could not be compared, so files may be missing from it",
     );
   });
 
@@ -249,6 +262,34 @@ describe("falling back to a full scan (record 0010)", () => {
     await scan(scanned.context);
     expect(scanned.log.lines.join("\n")).not.toContain("\n::error::");
     expect(scanned.log.groups[0]?.lines[0]).toBe("unclaimed: evil ::error::x");
+  });
+});
+
+// Slice 5.9: a push of more than 300 files is narrowed by the trees of the
+// two commits, two requests whatever the number of files.
+describe("a push of more than 300 files", () => {
+  test("is narrowed by the paths the two trees differ by", async () => {
+    const paths = Array.from({ length: 450 }, (_, index) => `site/page${index}.ts`);
+    const scanned = await pushed(TABLE, ahead(...paths.slice(0, 300)), {
+      next: { "site:prod": pending("site:prod", change("page")) },
+    });
+    const blob = (path: string, sha: string) => ({ path, sha, type: "blob" });
+    scanned.github.seedTree(OLD, [
+      blob("app/Pulumi.yaml", "a"),
+      ...paths.map((path) => blob(path, "1")),
+    ]);
+    scanned.github.seedTree(SHA, [
+      blob("app/Pulumi.yaml", "a"),
+      ...paths.map((path) => blob(path, "2")),
+    ]);
+
+    await scan(scanned.context);
+
+    expect(scanned.adapter.previewed).toEqual(["site:prod"]);
+    expect(scanned.log.lines).toContain(
+      "The comparison lists 300 files, the most GitHub gives, so the trees of the two commits were compared: 450 files changed.",
+    );
+    expect(scanned.github.requests.filter((request) => request === "readTree")).toHaveLength(2);
   });
 });
 

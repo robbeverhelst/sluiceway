@@ -293,6 +293,47 @@ describe("the title and the closed issues", () => {
   });
 });
 
+// Slice 5.9: past the 300 files of a comparison.
+describe("reading a commit's tree", () => {
+  const HEAD = "2222222222222222222222222222222222222222";
+
+  test("is one recursive GET, and every entry comes back with its path, id and type", async () => {
+    const { port, sent } = portThatAnswers([
+      {
+        json: {
+          sha: "t1",
+          truncated: false,
+          tree: [
+            { path: "site", mode: "040000", type: "tree", sha: "d1" },
+            { path: "site/index.ts", mode: "100644", type: "blob", sha: "b1", size: 12 },
+          ],
+        },
+      },
+    ]);
+
+    expect(await port.readTree(HEAD)).toEqual({
+      entries: [
+        { path: "site", sha: "d1", type: "tree" },
+        { path: "site/index.ts", sha: "b1", type: "blob" },
+      ],
+      truncated: false,
+    });
+    expect(sent).toEqual([
+      {
+        method: "GET",
+        path: `/repos/acme/infra/git/trees/${HEAD}`,
+        query: { recursive: "1" },
+        body: undefined,
+      },
+    ]);
+  });
+
+  test("says when GitHub left entries out", async () => {
+    const { port } = portThatAnswers([{ json: { sha: "t1", truncated: true, tree: [] } }]);
+    expect((await port.readTree(HEAD)).truncated).toBe(true);
+  });
+});
+
 describe("comparing two commits", () => {
   const BASE = "1111111111111111111111111111111111111111";
   const HEAD = "2222222222222222222222222222222222222222";

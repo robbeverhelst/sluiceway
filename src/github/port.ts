@@ -12,7 +12,7 @@ import type { HistoryEntry, HistoryPage } from "../core/edit-history.ts";
 import type { AllowedMethods, MergeMethod, OpenPullRequest } from "../core/merge-and-deploy.ts";
 import type { IssuesRun } from "../core/orphan-tick.ts";
 import type { RemoteFile } from "../core/renovate-config.ts";
-import type { Comparison } from "../core/scan-plan.ts";
+import type { Comparison, TreeEntry } from "../core/scan-plan.ts";
 import type { Permission } from "../core/tick-rule.ts";
 import type {
   Deployment,
@@ -149,6 +149,12 @@ export interface GitHubPort {
   // files are the ones of the whole comparison, and GitHub never lists more
   // than 300. Fails when GitHub does not have a commit, as after a force push.
   compareCommits(base: string, head: string): Promise<Comparison>;
+
+  // Every entry of a commit's tree, recursively, in one request (slice 5.9).
+  // A scan reads the trees of the two commits of a comparison that lists 300
+  // files. `truncated` when GitHub left entries out, past 100,000 entries or
+  // 7 MB. Fails for a commit GitHub does not have.
+  readTree(sha: string): Promise<{ entries: TreeEntry[]; truncated: boolean }>;
 
   // What a person may do in the repo, live, as the three booleans the tick
   // rule reads (record 0018). Works with contents: read and issues: read
