@@ -238,7 +238,7 @@ const CONFIG_MESSAGES: [string, string][] = [
   ],
   [
     "stacks:\n  - path: network\n    dependsOn: [app]",
-    'stacks[0]: "dependsOn" is not in this version of Sluiceway yet. Remove it.',
+    'stacks[0].dependsOn[0]: "app" is not a stack that discovery found. Write the stack id as a row shows it, such as "app:prod".',
   ],
   ["drift: true", '"drift" is not in this version of Sluiceway yet. Remove it.'],
   [

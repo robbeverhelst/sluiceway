@@ -50,6 +50,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "tickers",
       "inputs",
       "previewTimeout",
+      "dependsOn",
       "options",
     ]);
   });

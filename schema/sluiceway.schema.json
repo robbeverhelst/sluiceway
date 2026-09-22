@@ -194,6 +194,14 @@
             "maximum": 9007199254740991,
             "description": "Time limit for one preview of this stack, in whole minutes. Default: the preview-timeout input."
           },
+          "dependsOn": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Stack ids of the stacks this stack depends on. A tick on this stack is refused while one of them has a change waiting, and when both are ticked they deploy in order."
+          },
           "options": {
             "description": "Named adapter options of the tool. Only an entry with tool takes them.",
             "type": "object",

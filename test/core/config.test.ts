@@ -93,12 +93,6 @@ describe("unknown keys", () => {
 });
 
 describe("the reserved keys", () => {
-  test("dependsOn on a stack fails and is never ignored", () => {
-    expect(problems("stacks:\n  - path: apps/a\n    dependsOn: [apps/b]\n")).toEqual([
-      'stacks[0]: "dependsOn" is not in this version of Sluiceway yet. Remove it.',
-    ]);
-  });
-
   test("drift fails at the top level and on a stack", () => {
     expect(
       problems("drift:\n  enabled: true\nstacks:\n  - path: apps/a\n    drift: true\n"),
@@ -272,8 +266,8 @@ stacks:
 
   test("the brief's old keys are unknown keys", () => {
     expect(problems("stacks:\n  - path: a\n    stack: prod\n    approvers: write\n")).toEqual([
-      'stacks[0]: unknown key "stack". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, options.',
-      'stacks[0]: unknown key "approvers". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, options.',
+      'stacks[0]: unknown key "stack". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, dependsOn, options.',
+      'stacks[0]: unknown key "approvers". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, dependsOn, options.',
     ]);
   });
 

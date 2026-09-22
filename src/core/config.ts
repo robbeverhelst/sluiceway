@@ -84,6 +84,13 @@ const stackEntry = z
         "Time limit for one preview of this stack, in whole minutes. Default: the preview-timeout input.",
       )
       .exactOptional(),
+    // Stack ids, exact, checked against discovery (record 0056).
+    dependsOn: z
+      .array(text)
+      .describe(
+        "Stack ids of the stacks this stack depends on. A tick on this stack is refused while one of them has a change waiting, and when both are ticked they deploy in order.",
+      )
+      .exactOptional(),
     // Named adapter options (records 0006, 0015). Only an entry with a tool
     // takes them, and its adapter checks their names and values (record 0053).
     options: z
@@ -386,7 +393,7 @@ function inFileOrder(problems: Problem[], raw: unknown): Problem[] {
 
 // Keys of features that are planned and not in v1. They fail with their own
 // message and are never ignored (build-plan.md, section 3).
-const RESERVED_KEYS = ["dependsOn", "drift"];
+const RESERVED_KEYS = ["drift"];
 
 // "stacks[0].path: ", or nothing for the top level.
 function where(path: PropertyKey[]): string {
@@ -458,6 +465,9 @@ export interface ConfiguredStack {
   inputs: string[];
   // Whole minutes. Absent means the time limit of the action's input.
   previewTimeout?: number;
+  // The stack ids this stack depends on, in stack id order (record 0056).
+  // Absent when it depends on none.
+  dependsOn?: string[];
 }
 
 const DEFAULT_ENVIRONMENT = "sluiceway";
@@ -476,6 +486,8 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
     return [`stacks[${index}]: ${describeMiss(entry, inPath, ignored)}`];
   });
   if (problems.length > 0) throw new ConfigError(problems);
+  const dependencyProblems = checkDependsOn(config, found, stacks);
+  if (dependencyProblems.length > 0) throw new ConfigError(dependencyProblems);
 
   return stacks.map((stack) => {
     const entries = config.stacks
@@ -489,8 +501,80 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
       tickers: entries.findLast((entry) => entry.tickers)?.tickers ?? config.tickers,
       inputs: [...new Set(entries.flatMap((entry) => entry.inputs ?? []))],
       ...(previewTimeout === undefined ? {} : { previewTimeout }),
+      ...dependsOnOf(entries),
     };
   });
+}
+
+// Like inputs, dependencies only ever add up.
+function dependsOnOf(entries: StackEntry[]): { dependsOn?: string[] } {
+  const ids = [...new Set(entries.flatMap((entry) => entry.dependsOn ?? []))].sort(byCodeUnit);
+  return ids.length === 0 ? {} : { dependsOn: ids };
+}
+
+function byCodeUnit(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// A dependency that could never hold anything back is an error, never a gate
+// that stays silent (record 0056): a stack that discovery did not find, one
+// that ignore leaves out, the stack itself, and a circle.
+function checkDependsOn(config: Config, found: Stack[], stacks: Stack[]): string[] {
+  const known = new Set(stacks.map(stackId));
+  const all = new Set(found.map(stackId));
+  const problems = config.stacks.flatMap((entry, index) =>
+    (entry.dependsOn ?? []).flatMap((id, at) => {
+      const where = `stacks[${index}].dependsOn[${at}]: ${show(id)}`;
+      if (all.has(id) && !known.has(id))
+        return [
+          `${where} is left out by ignore, so it never has a change to wait for. Remove it here, or change ignore.`,
+        ];
+      if (!known.has(id))
+        return [
+          `${where} is not a stack that discovery found. Write the stack id as a row shows it, such as ${show(stacks[0] ? stackId(stacks[0]) : "network:dev")}.`,
+        ];
+      const self = stacks.find((stack) => stackId(stack) === id);
+      if (self && covers(entry, self))
+        return [`${where} is the stack itself. A stack cannot depend on itself.`];
+      return [];
+    }),
+  );
+  if (problems.length > 0) return problems;
+
+  const edges = new Map<string, string[]>();
+  for (const stack of stacks) {
+    const entries = config.stacks.filter((entry) => covers(entry, stack));
+    edges.set(stackId(stack), dependsOnOf(entries).dependsOn ?? []);
+  }
+  return dependencyCircles(edges).map((circle) => {
+    const [first = "", ...rest] = circle;
+    const links = rest.map(
+      (id, index) => `${index === 0 ? "depends on" : "which depends on"} ${id}`,
+    );
+    return `dependsOn goes round in a circle: ${first} ${links.join(", ")}. Nothing in a circle could ever deploy first, so take one of these out.`;
+  });
+}
+
+// Every circle once, each starting at its smallest stack id, in stack id order.
+function dependencyCircles(edges: ReadonlyMap<string, readonly string[]>): string[][] {
+  const circles = new Map<string, string[]>();
+  const walk = (path: string[]) => {
+    const last = path[path.length - 1] ?? "";
+    for (const next of edges.get(last) ?? []) {
+      const at = path.indexOf(next);
+      if (at === -1) {
+        walk([...path, next]);
+        continue;
+      }
+      const circle = path.slice(at);
+      const start = circle.indexOf([...circle].sort(byCodeUnit)[0] ?? "");
+      const turned = [...circle.slice(start), ...circle.slice(0, start)];
+      const key = [...turned].sort(byCodeUnit).join("\n");
+      if (!circles.has(key)) circles.set(key, [...turned, turned[0] ?? ""]);
+    }
+  };
+  for (const id of [...edges.keys()].sort(byCodeUnit)) walk([id]);
+  return [...circles.values()].sort((a, b) => byCodeUnit(a[0] ?? "", b[0] ?? ""));
 }
 
 type StackEntry = Config["stacks"][number];
