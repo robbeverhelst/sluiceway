@@ -96,6 +96,20 @@ function driftCheck(
   };
 }
 
+// The stacks the backend holds for the project in cwd, as the check asks for
+// them with backend: true (record 0074). It reads the backend and changes
+// nothing, takes no lock and needs no passphrase.
+function stackList(cwd: string, expect: Expectation): Step {
+  return {
+    kind: "record",
+    id: "stack-ls",
+    cwd,
+    argv: ["pulumi", "stack", "ls", "--json", ...QUIET],
+    stdout: "json",
+    expect,
+  };
+}
+
 // The deploy of a row whose diff hash covers drift (record 0055): the same
 // command line as the deploy, and --refresh, so the tool reads what is real
 // first and then puts it back as the code says.
@@ -658,6 +672,17 @@ ${OUTPUTS}`,
     name: "drift-missing-stack",
     description: "The drift check of a stack that the backend does not hold.",
     steps: [driftCheck("network", "ghost", { exit: "nonzero" }, "drift", "text")],
+  },
+  {
+    name: "stack-list",
+    description:
+      "The stacks the backend holds for network/, as the check with backend: true asks for them (record 0074): network:dev was made, network:prod was not, and a stack of app/ in the same backend is not listed.",
+    steps: [init("network", "dev"), init("app", "prod"), stackList("network", { exit: "zero" })],
+  },
+  {
+    name: "stack-list-empty",
+    description: "The stacks the backend holds for a project that has none yet.",
+    steps: [stackList("network", { exit: "zero" })],
   },
   {
     name: "stack-reference",
