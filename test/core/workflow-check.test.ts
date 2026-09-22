@@ -24,8 +24,10 @@ const complete = (path: string) =>
     .map(({ text }) => text);
 const README = [...complete("docs/workflow.md"), ...complete("docs/read-only-trial.md")];
 
-// The whole workflow, to break one piece at a time.
-const WHOLE = README.find((text) => text.includes("mode: resolve")) ?? "";
+// The split workflow, to break one piece at a time. The one-step workflow
+// has tests of its own (workflow-check-auto.test.ts).
+const WHOLE =
+  complete("docs/split-workflow.md").find((text) => text.includes("mode: resolve")) ?? "";
 
 describe("the workflows the docs ship", () => {
   test("the docs have a check, the whole workflow and the read-only trial", () => {
@@ -39,10 +41,15 @@ describe("the workflows the docs ship", () => {
   });
 
   test("the docs' check and whole workflow have nothing missing", () => {
-    const report = checkWorkflows(
-      [file(README[0] ?? "", ".github/workflows/check.yml"), file(WHOLE)],
-      DEFAULTS,
-    );
+    for (const whole of [README[1] ?? "", WHOLE]) {
+      const report = checkWorkflows(
+        [file(README[0] ?? "", ".github/workflows/check.yml"), file(whole)],
+        DEFAULTS,
+      );
+      expect(report.warnings).toEqual([]);
+      expect(report.notes).toEqual([]);
+    }
+    const report = checkWorkflows([file(WHOLE)], DEFAULTS);
     expect(report.warnings).toEqual([]);
     expect(report.notes).toEqual([]);
   });

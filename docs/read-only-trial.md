@@ -24,9 +24,11 @@ permissions:
   checks: write
 
 jobs:
-  scan:
+  sluiceway:
     runs-on: ubuntu-latest
-    concurrency: sluiceway-scan
+    concurrency:
+      group: sluiceway-${{ github.event.issue.number }}
+      queue: max
     steps:
       - uses: actions/checkout@v7
       - uses: pulumi/actions@v7 # without a command this only installs the CLI
@@ -37,8 +39,6 @@ jobs:
       # environment here. Credentials that can only read are enough. Whatever
       # loads a secret must also mask it.
       - uses: sluiceway/sluiceway@v0
-        with:
-          mode: scan
 ```
 
 And tell Sluiceway that nothing acts on a box, in `sluiceway.yaml` at the repo root:
@@ -50,8 +50,8 @@ dashboard:
 
 What this does and does not do:
 
-- **Nothing can be deployed.** The workflow has no `resolve` and no `apply` job, and it does not listen to issue edits. With `dashboard.readOnly: true` the dashboard shows that: pending rows have no box, there is no rescan box, and a line under the Pending heading says the dashboard is read only. Without it the rows get boxes that do nothing, and a tick sits there until the next scan clears it. A scan only ever asks the tool for a preview. The token can read the code, write issues, read and write deployment records, and write check runs, and nothing else. A scan reads the deployment records, which is where Sluiceway keeps who deployed what and when, and with no `resolve` job there are none. `actions: read` lets it see whether a workflow run is over, and whether a run that an issue edit started is still on its way. `pull-requests: read` lets a row name the pull requests that made it pending. `checks: write` gives every pending stack its preview page.
+- **Nothing can be deployed.** The workflow does not listen to issue edits, and with `dashboard.readOnly: true` the step only ever scans, on a push, the schedule and "Run workflow" alike. The dashboard shows that too: pending rows have no box, there is no rescan box, and a line under the Pending heading says the dashboard is read only. Without it the rows get boxes that do nothing, and a tick sits there until the next scan clears it. A scan only ever asks the tool for a preview. The token can read the code, write issues, read and write deployment records, and write check runs, and nothing else. A scan reads the deployment records, which is where Sluiceway keeps who deployed what and when, and with nothing that deploys there are none. `actions: read` lets it see whether a workflow run is over, and whether a run that an issue edit started is still on its way. `pull-requests: read` lets a row name the pull requests that made it pending. `checks: write` gives every pending stack its preview page.
 - **The header image is served from an exact release tag or commit SHA.** Never from one that can move, so that a picture never changes behind a dashboard that was already written. Started from `@v0` or a branch, Sluiceway names the release tag of its own version, such as `v0.1.1`. Started from a copy inside your own repo (`uses: ./`), it names a commit that this repository does not have, and the picture is broken while the scan still works. `dashboard.personality: false` in `sluiceway.yaml` takes the picture out.
 - **A push gives a narrowed scan**: only the stacks that claim a changed file are previewed, and every other row stays as it is. The schedule and "Run workflow" give a full scan. The first scan is always full.
 
-To turn it into the whole workflow later, replace the file with [the whole workflow](workflow.md#the-workflow), change `actions: read` to `actions: write`, and take `readOnly: true` out of `sluiceway.yaml`. The change to `sluiceway.yaml` makes the next push a full scan, and every pending row gets its box back.
+To turn it into the whole workflow later, add the `issues` trigger of [the whole workflow](workflow.md#the-workflow), change `actions: read` to `actions: write`, load credentials that can deploy, and take `readOnly: true` out of `sluiceway.yaml`. The change to `sluiceway.yaml` makes the next push a full scan, and every pending row gets its box back.

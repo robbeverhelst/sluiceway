@@ -15,6 +15,7 @@ export function read(path: string): string {
 export const USER_DOCS = [
   "README.md",
   "docs/workflow.md",
+  "docs/split-workflow.md",
   "docs/read-only-trial.md",
   "docs/using-the-dashboard.md",
   "docs/reference.md",
@@ -113,6 +114,7 @@ export interface Step {
 
 export interface Job {
   if?: string;
+  needs?: unknown;
   environment?: unknown;
   permissions?: Record<string, string>;
   concurrency?: string | { group: string; queue?: string; "cancel-in-progress"?: unknown };
@@ -159,4 +161,29 @@ export function modeOf(job: Job): string | undefined {
   // No mode is auto, action.yml's default (record 0077).
   const mode = String(step.with?.mode ?? "").trim();
   return mode === "" ? "auto" : mode;
+}
+
+// A workflow that only checks: every Sluiceway job names the check, or has no
+// mode and runs only on pull requests and in a merge queue, where auto mode
+// runs the check (record 0077).
+export function isCheckWorkflow(workflow: Workflow): boolean {
+  const onlyPullRequests = Object.keys(workflow.on).every(
+    (event) => event === "pull_request" || event === "merge_group",
+  );
+  return Object.values(workflow.jobs).every((job) => {
+    const mode = modeOf(job);
+    return mode === "check" || (mode === "auto" && onlyPullRequests);
+  });
+}
+
+// The one-step workflow of record 0077: one job, one Sluiceway step with no
+// mode, and triggers beyond pull requests.
+export function isOneStep(workflow: Workflow): boolean {
+  const jobs = Object.values(workflow.jobs);
+  return (
+    jobs.length === 1 &&
+    jobs[0] !== undefined &&
+    modeOf(jobs[0]) === "auto" &&
+    !isCheckWorkflow(workflow)
+  );
 }

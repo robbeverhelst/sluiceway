@@ -93,9 +93,10 @@ describe("the one-step workflow", () => {
     ]);
   });
 
+  // Without issue edits the job only scans, as the read-only trial does.
   test("without issue edits a tick starts nothing", () => {
     expect(kinds(ONE_STEP.replace("  issues:\n    types: [edited]\n", ""))).toEqual([
-      "missing-trigger",
+      "boxes-do-nothing",
     ]);
   });
 
@@ -148,12 +149,17 @@ describe("the one-step workflow", () => {
 
   // The group's name is not checked: a fixed one works too, slower.
   test("a group of another name is fine, and one without queue: max is not", () => {
-    expect(
-      kinds(ONE_STEP.replace("sluiceway-${{ github.event.issue.number }}", "deploy")),
-    ).toEqual([]);
+    expect(kinds(ONE_STEP.replace("sluiceway-${{ github.event.issue.number }}", "deploy"))).toEqual(
+      [],
+    );
     expect(kinds(ONE_STEP.replace("      queue: max\n", ""))).toEqual(["auto-no-queue"]);
     expect(
-      kinds(ONE_STEP.replace("      queue: max\n", "      queue: max\n      cancel-in-progress: true\n")),
+      kinds(
+        ONE_STEP.replace(
+          "      queue: max\n",
+          "      queue: max\n      cancel-in-progress: true\n",
+        ),
+      ),
     ).toEqual(["auto-cancels"]);
   });
 
@@ -175,10 +181,7 @@ describe("the one-step workflow", () => {
   });
 
   test("without checks: write, a note", () => {
-    const report = checkWorkflows(
-      [file(ONE_STEP.replace("  checks: write\n", ""))],
-      DEFAULTS,
-    );
+    const report = checkWorkflows([file(ONE_STEP.replace("  checks: write\n", ""))], DEFAULTS);
     expect(report.notes.map((note) => note.kind)).toEqual(["no-preview-pages"]);
   });
 });

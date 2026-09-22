@@ -4,10 +4,11 @@ The modes of the action, its inputs and outputs, and what it needs to run. Every
 
 ## Modes
 
-One action, six modes, chosen with the `mode` input.
+One action, seven modes, chosen with the `mode` input. Leave it out, and the step is `auto`: it runs the mode the event asks for, and [the workflow](workflow.md#the-workflow) needs one job.
 
 | Mode | What it does | Runs the infrastructure tool |
 |---|---|---|
+| `auto` | The default. Reads the event of the run and runs what it asks for: `scan` on a push to the default branch and on the schedule, `resolve` and then `apply` for each stack it started and `settle` on an edit of the dashboard, `resolve` and `scan` on a dispatch, `check` on a pull request. Any other event, an edit of any other issue among them, ends with a notice. | Yes, through `scan` and `apply` |
 | `scan` | Previews stacks and brings the dashboard up to date. | Yes |
 | `resolve` | Reacts to a tick: checks who ticked, records the deploy and hands the stack to `apply`. | No |
 | `apply` | Previews the stack again and deploys it if nothing moved since the tick. | Yes |
@@ -19,19 +20,19 @@ One action, six modes, chosen with the `mode` input.
 
 | Input | Default | What it is |
 |---|---|---|
-| `mode` | required | One of `scan`, `resolve`, `apply`, `settle`, `check`, `init`. |
+| `mode` | `auto` | One of `auto`, `scan`, `resolve`, `apply`, `settle`, `check`, `init`. Leave it out for auto. The [split workflow](split-workflow.md) names one per job. |
 | `concurrency` | `4` | How many previews a scan runs at the same time. |
 | `preview-timeout` | `10` | Time limit for one preview, in minutes. `apply` uses it for the preview it runs before the deploy. The deploy itself has no time limit of Sluiceway's unless `deploy-timeout` gives it one. |
-| `strict` | `false` | `scan` only. `true` turns the job red when any preview failed, after the dashboard is written. Off by default, because a job that is red for one broken stack on every push teaches people to ignore red. |
+| `strict` | `false` | `scan` and `auto` only. `true` turns the job red when any preview failed, after the dashboard is written. Off by default, because a job that is red for one broken stack on every push teaches people to ignore red. |
 | `github-token` | the workflow token | Leave it at the default. Sluiceway always acts as the workflow's own `GITHUB_TOKEN`. A GitHub App token or a personal access token is not supported. `check` never uses it. |
-| `deployment-id` | required in `apply` | The deployment record to deploy. It comes from the `matrix` output of `resolve`. An error in every other mode. |
-| `dry-run` | `false` | `apply` only. `true` rehearses a tick: the deployment record, the fresh preview and the check that it matches the row run as for a deploy, and then nothing is deployed. The record ends as `inactive` with "rehearsed, nothing was deployed", the row is pending again and Recently deployed says `rehearsed`. Set it on the `apply` step while you try out a new workflow. |
-| `backend` | `false` | `check` only. `true` also asks the backend which of the stacks the check found it holds, with the credentials your job loads before the step, and gives a ready-to-paste `ignore` block for the ones it does not hold. It runs the tool for that one question. An error in every other mode. See [the check](workflow.md#check-your-setup). |
-| `deploy-timeout` | none | `apply` only. A time limit on the deploy itself, in whole minutes. When it runs out the tool is interrupted and gets two minutes to stop by itself, and the deploy fails with "the deploy ran out of its time limit of N minutes and the tool was stopped". The stack may then be half deployed, and the row shows what is left. Without it the job's own `timeout-minutes` is the limit. |
-| `slack-webhook-url` | none | `scan`, `resolve` and `apply`. The address of a Slack incoming webhook, from a secret. Sluiceway posts a short message there on the events `notify.events` lists ([notifications](notifications.md)). |
-| `telegram-bot-token` | none | `scan`, `resolve` and `apply`. The token of a Telegram bot, from a secret. Needs `telegram-chat-id` too. |
+| `deployment-id` | required in `apply` | The deployment record to deploy. It comes from the `matrix` output of `resolve`. An error in every other mode, `auto` too, which deploys what `resolve` hands on in the same step. |
+| `dry-run` | `false` | `apply` and `auto` only. `true` rehearses a tick: the deployment record, the fresh preview and the check that it matches the row run as for a deploy, and then nothing is deployed. The record ends as `inactive` with "rehearsed, nothing was deployed", the row is pending again and Recently deployed says `rehearsed`. Set it on the Sluiceway step while you try out a new workflow. |
+| `backend` | `false` | `check` and `auto` only. `true` also asks the backend which of the stacks the check found it holds, with the credentials your job loads before the step, and gives a ready-to-paste `ignore` block for the ones it does not hold. It runs the tool for that one question. An error in every other mode. See [the check](workflow.md#check-your-setup). |
+| `deploy-timeout` | none | `apply` and `auto` only. A time limit on the deploy itself, in whole minutes. When it runs out the tool is interrupted and gets two minutes to stop by itself, and the deploy fails with "the deploy ran out of its time limit of N minutes and the tool was stopped". The stack may then be half deployed, and the row shows what is left. Without it the job's own `timeout-minutes` is the limit. |
+| `slack-webhook-url` | none | `scan`, `resolve`, `apply` and `auto`. The address of a Slack incoming webhook, from a secret. Sluiceway posts a short message there on the events `notify.events` lists ([notifications](notifications.md)). |
+| `telegram-bot-token` | none | `scan`, `resolve`, `apply` and `auto`. The token of a Telegram bot, from a secret. Needs `telegram-chat-id` too. |
 | `telegram-chat-id` | none | The chat the Telegram bot posts to: a chat id or the `@` name of a public channel. |
-| `webhook-url` | none | `scan`, `resolve` and `apply`. An `http` or `https` address, from a secret, that gets a small JSON message on the same events. |
+| `webhook-url` | none | `scan`, `resolve`, `apply` and `auto`. An `http` or `https` address, from a secret, that gets a small JSON message on the same events. |
 | `job-id` | the id of the running job | Leave it at the default. GitHub gives a step its job's id in no other way, and it needs no permission. A row's link to a failed preview uses it to land on the job's log. |
 
 ## Outputs
@@ -40,7 +41,7 @@ One action, six modes, chosen with the `mode` input.
 |---|---|---|
 | `matrix` | `resolve`, `scan` | A JSON list with one `{ stack, environment, deployment }` entry per deploy that was started, or `[]`. A scan starts one only after a merge from the dashboard ([Merge and deploy](workflow.md#merge-and-deploy)). |
 
-`scan` and `apply` also set outputs and write a result file, so a step after Sluiceway can chart numbers or send anything the built-in notifications do not. [Notifications](notifications.md) lists them, next to the built-in Slack, Telegram and webhook messages.
+`auto` sets what the modes it ran set. `scan` and `apply` also set outputs and write a result file, so a step after Sluiceway can chart numbers or send anything the built-in notifications do not. [Notifications](notifications.md) lists them, next to the built-in Slack, Telegram and webhook messages.
 
 ## Requirements
 

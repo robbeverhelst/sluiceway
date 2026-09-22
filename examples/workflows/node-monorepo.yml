@@ -25,10 +25,14 @@ permissions:
   checks: write
 
 jobs:
-  scan:
-    if: github.event_name != 'issues'
+  sluiceway:
     runs-on: ubuntu-latest
-    concurrency: sluiceway-scan
+    timeout-minutes: 60
+    # One run at a time, and none is dropped. An edit of any other issue gets
+    # a group of its own, so it never waits for a scan or a deploy.
+    concurrency:
+      group: sluiceway-${{ github.event.issue.number }}
+      queue: max
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -46,71 +50,8 @@ jobs:
           path: ~/.pulumi/plugins
           key: pulumi-plugins-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
       # The credentials sit on this step only, so the install scripts of npm ci
-      # never see them. A preview needs no more than read access, where your
-      # backend and cloud offer credentials that can only read.
+      # never see them. They preview and deploy, so they must be able to change
+      # things.
       - uses: sluiceway/sluiceway@v0
         env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_READ_TOKEN }}
-        with:
-          mode: scan
-
-  resolve:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'sluiceway'))
-    runs-on: ubuntu-latest
-    concurrency: sluiceway-resolve
-    outputs:
-      matrix: ${{ steps.resolve.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v7
-      - id: resolve
-        uses: sluiceway/sluiceway@v0
-        with:
-          mode: resolve
-
-  apply:
-    needs: resolve
-    if: ${{ !cancelled() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJson(needs.resolve.outputs.matrix) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    concurrency:
-      group: sluiceway-apply-${{ matrix.stack }}
-      queue: max
-    environment:
-      name: ${{ matrix.environment }}
-      deployment: false
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - uses: pulumi/actions@v7
-        with:
-          pulumi-version: ^3.229.0
-      - uses: actions/cache/restore@v6
-        with:
-          path: ~/.pulumi/plugins
-          key: pulumi-plugins-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
-      # A secret of the environment above: only a job that names the
-      # environment, on a branch the environment allows, can read it.
-      - uses: sluiceway/sluiceway@v0
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_DEPLOY_TOKEN }}
-        with:
-          mode: apply
-          deployment-id: ${{ matrix.deployment }}
-
-  settle:
-    needs: [resolve, apply]
-    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: sluiceway/sluiceway@v0
-        with:
-          mode: settle
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}

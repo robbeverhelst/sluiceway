@@ -85,19 +85,12 @@ Every file is claimed by a stack, covered by scan.unrelated, or one of the docs 
 
 | Workflow | Job | Mode | Action ref |
 |---|---|---|---|
-| .github/workflows/deploy-dashboard.yml | scan | scan | at main, which is not a release |
-| .github/workflows/deploy-dashboard.yml | resolve | resolve | at main, which is not a release |
-| .github/workflows/deploy-dashboard.yml | apply | apply | at main, which is not a release |
-| .github/workflows/deploy-dashboard.yml | settle | settle | at main, which is not a release |
+| .github/workflows/deploy-dashboard.yml | sluiceway | auto | at main, which is not a release |
 
-- .github/workflows/deploy-dashboard.yml, job scan: sluiceway/sluiceway@main is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.
-- .github/workflows/deploy-dashboard.yml, job resolve: sluiceway/sluiceway@main is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.
-- .github/workflows/deploy-dashboard.yml, job apply: sluiceway/sluiceway@main is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.
-- .github/workflows/deploy-dashboard.yml, job settle: sluiceway/sluiceway@main is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.
-- .github/workflows/deploy-dashboard.yml runs on pull&#95;request. A scan would write the dashboard from code that is not on the default branch yet. Only the workflow of the check may run on pull requests or in a merge queue.
+- .github/workflows/deploy-dashboard.yml, job sluiceway: sluiceway/sluiceway@main is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.
+- .github/workflows/deploy-dashboard.yml runs on pull&#95;request, and its Sluiceway job loads the credentials of your stacks before it. On pull&#95;request those steps would run code that is not on the default branch yet. Keep the check in a workflow of its own, which needs no credentials.
 - .github/workflows/deploy-dashboard.yml has no workflow&#95;dispatch trigger. The rescan box and settle start a scan through it.
-- .github/workflows/deploy-dashboard.yml, job resolve: resolve needs actions: write. A job's own permissions replace the workflow's.
-- .github/workflows/deploy-dashboard.yml, job settle: settle needs actions: write. A job's own permissions replace the workflow's.
+- .github/workflows/deploy-dashboard.yml, job sluiceway: the modes it runs need actions: write. A job's own permissions replace the workflow's.
 
 The check reads the workflow files as text. The repo's default token permissions, the rules of an environment and what GitHub itself validates live elsewhere and do not show here.
 

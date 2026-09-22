@@ -115,7 +115,7 @@ describe("the setup pages", () => {
             value !== null &&
             ["permissions", "needs", "outputs"].some((key) => key in value),
         );
-        return !job && !["jobs", "on", "environment"].some((key) => key in parsed);
+        return !job && !["jobs", "on", "environment", "permissions"].some((key) => key in parsed);
       });
     expect(configs.length).toBeGreaterThanOrEqual(1);
     for (const config of configs) expect(() => parseConfig(config.text)).not.toThrow();

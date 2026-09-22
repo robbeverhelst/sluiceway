@@ -47,28 +47,30 @@ It fits a single owner, or a small team that trusts its members. The credentials
 Needs GitHub Environments with a branch limit, and a protected default branch.
 
 - Store the credentials that change things as secrets of an environment that only the default branch may use. With OIDC, trust the role for that environment only.
-- Give the stacks that environment in `sluiceway.yaml` and name it on the `apply` job, with `deployment: false` ([with GitHub Environments](workflow.md#with-github-environments)).
+- Name it on the job, with `deployment: false` ([with GitHub Environments](workflow.md#with-github-environments)). In the [split workflow](split-workflow.md#with-github-environments), give the stacks that environment in `sluiceway.yaml` and name it on the `apply` job.
 - Protect the default branch so that changes need a review.
-- Give `scan` credentials that can only read.
+- In the split workflow, give `scan` credentials that can only read.
 
 A workflow on a side branch can no longer reach the credentials that change things, and nobody can change the workflow, `sluiceway.yaml` or its `tickers` alone, because each of those is a reviewed change on the default branch. Now the tick rules can be relied on.
 
 ### 3. Where required reviewers exist: a second person approves
 
-Needs required reviewers on the environment.
+Needs required reviewers on the environment, and the [split workflow](split-workflow.md): in one job, every run would wait for a reviewer, a scan and an edit of any issue too.
 
 Add required reviewers to the environment of setup 2. The ticker asks, and a reviewer approves the waiting `apply` job in GitHub's own interface. Sluiceway adds nothing and waits: the row says deploying and the deployment record stays open for as long as the approval takes. A rejected job is ended by `settle`, and the row gets a failure line.
 
 Sluiceway has no second approval of its own, a second person who also ticks, for plans without reviewers. By the limit above it would not be real protection on exactly those repos, because the credentials would still be within reach of anyone with write access.
 
-## The job an issue edit starts
+## The run an issue edit starts
 
-Anyone who can edit the dashboard can start the `resolve` job. It is built to be harmless:
+GitHub cannot start a workflow for one issue only, so anyone who can edit an issue of the repo starts a run of [the workflow](workflow.md#the-workflow). On a public repo that is anyone who opens an issue. It is built to be harmless:
 
-- **It holds no infrastructure credentials and never runs the tool.** Only `scan` and `apply` load credentials ([credentials](credentials.md)).
+- **It runs only code of the default branch.** An `issues` event always runs the workflow and the checkout of the default branch. Nothing from the issue reaches a step, unless a step of yours puts `${{ github.event.issue.* }}` into a script, which no Sluiceway example does.
+- **It loads your credentials and uses them for nothing but a tick.** The job loads them before Sluiceway reads the event. When the edited issue is not the dashboard, Sluiceway ends the run with a notice before it reads the dashboard, and the tool never runs. The cost is the runner minute and one load from wherever your credentials live, per edit.
 - **It acts as the workflow's own token**, with the permissions of the workflow's block and nothing else. Edits by that token start no workflow, so Sluiceway cannot start itself.
-- **Every deploy it hands on is a deployment record it created after it checked the ticker.** `apply` deploys only a record that is still open, from its own run. A re-run deploys nothing.
-- **An edit of an ordinary issue does not start a runner**, because of the label check in the job's `if:`.
+- **Every deploy it starts is a deployment record it created after it checked the ticker.** A deploy runs only on a record that is still open, from its own run. A re-run deploys nothing.
+
+The [split workflow](split-workflow.md) keeps this run smaller: its `resolve` job holds no infrastructure credentials and never runs the tool, and an edit of an ordinary issue starts no runner at all, because of the label check in the job's `if:`. Use it where issue edits are many or come from people you do not know.
 
 ## What reaches the issue
 
@@ -105,7 +107,7 @@ The preview pages need `checks: write` in the workflow's permissions. With it, t
 - create a check run on any commit of the repository, under any name and with any result, `success` included, from the same source as your CI jobs;
 - rewrite the output of any check run that GitHub Actions made, other workflows' jobs included.
 
-It cannot change the result of a job that Actions runs. Sluiceway only ever writes `neutral` check runs named `sluiceway / <stack id>`. But the scan job also runs your programs, so if your branch protection requires checks, anything that runs in this workflow could write a passing check under a required name. Require checks from a workflow that does not have `checks: write`, or accept that. Without `checks: write` Sluiceway works as before and `preview` opens the run's summary.
+It cannot change the result of a job that Actions runs. Sluiceway only ever writes `neutral` check runs named `sluiceway / <stack id>`. But the job that scans also runs your programs, so if your branch protection requires checks, anything that runs in this workflow could write a passing check under a required name. Require checks from a workflow that does not have `checks: write`, or accept that. Without `checks: write` Sluiceway works as before and `preview` opens the run's summary.
 
 ## What Sluiceway sends
 

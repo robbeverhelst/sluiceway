@@ -79,14 +79,18 @@ describe("the README as the front door", () => {
     expect(yaml.length).toBe(1);
     const inReadme = workflows().filter(({ where }) => where.startsWith("README.md"));
     expect(inReadme.length).toBe(1);
+    // One job with one step that picks its own mode (record 0077).
     const modes = Object.values(inReadme[0]?.workflow.jobs ?? {}).map(modeOf);
-    expect(modes).toEqual(["scan", "resolve", "apply", "settle"]);
+    expect(modes).toEqual(["auto"]);
   });
 
   test("shows the same workflow as docs/workflow.md explains", () => {
     const full = (path: string) =>
       fences(read(path)).find(
-        (fence) => fence.language === "yaml" && fence.text.includes("mode: settle"),
+        (fence) =>
+          fence.language === "yaml" &&
+          fence.text.includes("sluiceway/sluiceway@v0") &&
+          fence.text.includes("issues:"),
       )?.text;
     expect(full("README.md")).toBeDefined();
     expect(full("README.md")).toBe(full("docs/workflow.md"));
@@ -157,6 +161,8 @@ describe("the manual in docs/", () => {
     ["docs/workflow.md", "## With GitHub Environments"],
     ["docs/workflow.md", "## Merge and deploy"],
     ["docs/workflow.md", "## Stack dependencies"],
+    ["docs/workflow.md", "## What one job gives up"],
+    ["docs/split-workflow.md", "# The split workflow"],
     ["docs/read-only-trial.md", "# Start read only"],
     ["docs/using-the-dashboard.md", "## Reading the job log"],
     ["docs/using-the-dashboard.md", "## Limits"],

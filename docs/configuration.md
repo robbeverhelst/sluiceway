@@ -85,14 +85,14 @@ The title of the dashboard issue. Sluiceway finds the issue by its label, never 
 
 Default: `sluiceway`
 
-The label the dashboard issue is found by. A scan that finds no open or closed issue of Sluiceway's with this label creates a new dashboard, so when you change the label on a repo that has a dashboard, put the new label on the existing issue as well. Change the `if:` of the `resolve` job in the workflow too, because that line keeps an edit of an ordinary issue from starting a runner:
+The label the dashboard issue is found by. A scan that finds no open or closed issue of Sluiceway's with this label creates a new dashboard, so when you change the label on a repo that has a dashboard, put the new label on the existing issue as well. The workflow names no label: Sluiceway reads this one to tell an edit of the dashboard from an edit of any other issue.
 
 ```yaml
 dashboard:
   label: deploys
 ```
 
-Then the `resolve` job reads `contains(github.event.issue.labels.*.name, 'deploys')`.
+In the [split workflow](split-workflow.md), change the `if:` of the `resolve` job too: `contains(github.event.issue.labels.*.name, 'deploys')`.
 
 ### `dashboard.pin`
 
@@ -120,7 +120,7 @@ Default: `false`
 
 Draw a dashboard that nothing can be deployed from: pending rows have no box, there is no rescan box, and the line under the Pending heading says that the dashboard is read only. Everything else is the same: the rows, the diffs, the counts, the links and the summary.
 
-Turn it on for a workflow that only scans, such as the [read-only trial](read-only-trial.md). Such a workflow has no `resolve` job, so a box would look live and do nothing. Sluiceway cannot see that from inside a scan, which is why it is a setting.
+Turn it on for a workflow that only scans, such as the [read-only trial](read-only-trial.md). Such a workflow does not listen to issue edits, so a box would look live and do nothing. Sluiceway cannot see that from inside a scan, which is why it is a setting. With it on, a step with no mode only ever scans: it acts on no issue edit and on a dispatch it scans and does nothing else.
 
 ```yaml
 dashboard:
@@ -216,7 +216,7 @@ deploys: false
 ```
 
 - `resolve` clears every ticked box, puts a note on the row that says deploys are turned off, and starts nothing. No deployment record is made, nobody's access is looked up and no comment is written, because nothing could go out whoever ticked. The rescan box still works: a scan deploys nothing.
-- A deploy that was ticked before the switch was merged and whose `apply` job starts after it ends before the tool runs. Its deployment record ends as `failure` with the reason "deploys are turned off in sluiceway.yaml", which the row shows as its failure line, the `outcome` output is `refused` and the job is red.
+- A deploy that was ticked before the switch was merged and that starts after it ends before the tool runs. Its deployment record ends as `failure` with the reason "deploys are turned off in sluiceway.yaml", which the row shows as its failure line, the `outcome` output is `refused` and the job is red.
 - Scans go on as before, so the dashboard keeps showing what is pending.
 
 Setting it back to `true` (or taking the line out) is all it takes to deploy again. A tick that was cleared needs a fresh tick.
@@ -449,7 +449,7 @@ The entry must cover exactly one stack, so give it a `name` when the directory h
 
 Default: `sluiceway`
 
-The environment name on the stack's deployment records, and the GitHub Environment the `apply` job names when you use the feature. On its own it is only a label. The records work on every plan, and GitHub lists an environment for every name the records use, so your repo settings show one named `sluiceway` even when you never use the feature.
+The environment name on the stack's deployment records, and the GitHub Environment the `apply` job of the [split workflow](split-workflow.md#with-github-environments) names when you use the feature. On its own it is only a label. The records work on every plan, and GitHub lists an environment for every name the records use, so your repo settings show one named `sluiceway` even when you never use the feature.
 
 Give stacks their own environment when the credentials that change things should be locked into a GitHub Environment ([security](security.md)). Stacks can share an environment.
 
@@ -502,7 +502,7 @@ The stack ids of the stacks this stack depends on, such as a network stack that 
 - **A tick waits for a change upstream.** A tick on this stack is refused while a stack it depends on has a pending row that nobody ticked: the box is cleared, and a note on the row names that stack. The job stays green. Only a pending row holds a tick back, because only a change that has not gone out can change what this stack reads. A stack that is in sync, or whose preview failed, holds nothing back.
 - **Ticks in one chain go out in order.** Tick both and the one it depends on deploys first. The other gets the row `queued behind <stack>` and a deployment record of its own, and deploys once that stack went out. If that deploy fails, the queued stack does not deploy and its row gets a failure line. The same happens when you tick this stack while a stack it depends on is deploying.
 
-Each layer of a chain runs in a workflow run of its own. The `settle` job starts the workflow again when a layer went out, and the `resolve` job of that run starts the next layer, so the `resolve` job has to run on `workflow_dispatch` as well as on `issues`. [The workflow](workflow.md#stack-dependencies) does.
+Each layer of a chain runs in a workflow run of its own. Sluiceway starts the workflow again when a layer went out, and `resolve` in that run starts the next layer, so the workflow has to run on `workflow_dispatch` as well as on `issues`. [The workflow](workflow.md#stack-dependencies) does.
 
 A stack waits only on the stacks it names, not on theirs. Entries add up, like `inputs`: an entry without a name gives its list to every stack in its path.
 
@@ -784,7 +784,7 @@ With `true`, every scan that lists updates waiting to merge also previews each o
 
 The preview runs in a copy of the checkout, in the runner's temporary directory, with the files the pull request changes as they are at its head commit, read through the GitHub API. The copy is removed after. So it previews the pull request on top of the code the scan checked out, which is what the merge would give. It costs one extra preview per stack of each update on every such scan, and one request per changed file.
 
-The preview runs the pull request's code with the scan job's credentials, the way the scan after the merge would. That is why only the authors on the list are previewed, and a pull request whose branch lives in a fork never is. The preview is for reading: the tick still merges the commit the row showed, and what deploys is the diff the scan after the merge previews.
+The preview runs the pull request's code with the credentials of the job that scans, the way the scan after the merge would. That is why only the authors on the list are previewed, and a pull request whose branch lives in a fork never is. The preview is for reading: the tick still merges the commit the row showed, and what deploys is the diff the scan after the merge previews.
 
 ```yaml
 mergeAndDeploy:

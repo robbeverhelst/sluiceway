@@ -23,82 +23,29 @@ permissions:
   actions: write
   pull-requests: read
   checks: write
+  id-token: write
 
 jobs:
-  scan:
-    if: github.event_name != 'issues'
-    runs-on: ubuntu-latest
-    concurrency: sluiceway-scan
-    # A job's permissions replace the workflow's, so the whole block is here
-    # again, with id-token: write added for this job only.
-    permissions:
-      contents: read
-      issues: write
-      deployments: write
-      actions: write
-      pull-requests: read
-      checks: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pulumi/actions@v7
-        with:
-          pulumi-version: ^3.229.0
-      # A role that can only read, trusted for this repo's default branch.
-      - uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_PREVIEW_ROLE }}
-          aws-region: ${{ vars.AWS_REGION }}
-      - uses: sluiceway/sluiceway@v0
-        env:
-          PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
-          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
-        with:
-          mode: scan
-
-  resolve:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'sluiceway'))
-    runs-on: ubuntu-latest
-    concurrency: sluiceway-resolve
-    outputs:
-      matrix: ${{ steps.resolve.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v7
-      - id: resolve
-        uses: sluiceway/sluiceway@v0
-        with:
-          mode: resolve
-
-  apply:
-    needs: resolve
-    if: ${{ !cancelled() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJson(needs.resolve.outputs.matrix) }}
+  sluiceway:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # One run at a time, and none is dropped. An edit of any other issue gets
+    # a group of its own, so it never waits for a scan or a deploy.
     concurrency:
-      group: sluiceway-apply-${{ matrix.stack }}
+      group: sluiceway-${{ github.event.issue.number }}
       queue: max
+    # An environment that only the default branch may use. The role's trust
+    # policy names it (the `environment:<name>` subject), so no other branch
+    # can assume the role.
     environment:
-      name: ${{ matrix.environment }}
+      name: sluiceway
       deployment: false
-    permissions:
-      contents: read
-      issues: write
-      deployments: write
-      actions: write
-      pull-requests: read
-      checks: write
-      id-token: write
     steps:
       - uses: actions/checkout@v7
       - uses: pulumi/actions@v7
         with:
           pulumi-version: ^3.229.0
-      # A role that can change things. Its trust policy names the environment
-      # (the `environment:<name>` subject), so no other job can assume it.
+      # A role that previews and deploys, so it can change things.
       - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
@@ -107,16 +54,3 @@ jobs:
         env:
           PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
-        with:
-          mode: apply
-          deployment-id: ${{ matrix.deployment }}
-
-  settle:
-    needs: [resolve, apply]
-    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: sluiceway/sluiceway@v0
-        with:
-          mode: settle

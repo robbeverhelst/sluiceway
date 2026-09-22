@@ -10,8 +10,8 @@ Sluiceway runs your infrastructure tool, but it never loads a credential. Your w
 
 Then:
 
-- **Only the `scan` and `apply` jobs load credentials.** `resolve` and `settle` never run the tool. The job that an issue edit starts, the one thing anybody with issue access can cause, holds no infrastructure secrets. Keep it that way: never add a loading step to `resolve` or `settle`.
-- **`scan` needs no more than read access.** A preview never changes anything. Where your backend and cloud offer credentials that can only read, give those to `scan`, and keep the ones that change things for `apply`.
+- **In [the workflow](workflow.md#the-workflow), the one job loads them on every run**, before Sluiceway reads the event. They preview and deploy, so they must be able to change things. The run an edit of any issue starts loads them too, runs only code of the default branch, and ends with a notice when the issue is not the dashboard.
+- **The [split workflow](split-workflow.md) loads them only in the `scan` and `apply` jobs.** `resolve` and `settle` never run the tool, so the job an issue edit starts, the one thing anybody with issue access can cause, holds no infrastructure secrets. A preview never changes anything, so `scan` can get credentials that only read, and only `apply` the ones that change things. Use it where that matters more than one short file.
 - **Load once per job, with one bulk call.** A scan previews every stack in one job, so one load serves them all. Sluiceway has no command wrapper and no hook per stack on purpose: resolving your secrets again for every preview is slow and, on a repo with many stacks, runs into the rate limits of a secret manager.
 - **The GitHub token never reaches the tool.** GitHub hands an action its inputs as `INPUT_*` variables, the token among them. Sluiceway removes every one of them from the tool's environment, so a program or one of its dependencies cannot edit the dashboard.
 
@@ -41,15 +41,13 @@ The simplest source. Put the secrets on Sluiceway's step, not on the job, so tha
       - uses: sluiceway/sluiceway@v0
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-        with:
-          mode: scan
 ```
 
-For the credentials that change things, use a secret of a GitHub Environment where your plan has them, and name the environment on the `apply` job. Only a job that names the environment, on a branch the environment allows, can read its secrets. The [security page](security.md) has the setups.
+For the credentials that change things, use a secret of a GitHub Environment where your plan has them, and name the environment on the job ([with GitHub Environments](workflow.md#with-github-environments)). Only a job that names the environment, on a branch the environment allows, can read its secrets. The [security page](security.md) has the setups.
 
 ### A cloud through OIDC
 
-No cloud key is stored anywhere: the job asks GitHub for a short-lived token and trades it for cloud credentials. The job needs `id-token: write`. A job's `permissions:` replace the workflow's, so repeat the whole block of the workflow and add the one line, on `scan` and `apply` only:
+No cloud key is stored anywhere: the job asks GitHub for a short-lived token and trades it for cloud credentials. The job needs `id-token: write`. A job's `permissions:` replace the workflow's, so repeat the whole block of the workflow and add the one line on the job (in the split workflow, on `scan` and `apply` only):
 
 ```yaml
     permissions:
@@ -64,11 +62,11 @@ No cloud key is stored anywhere: the job asks GitHub for a short-lived token and
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_PREVIEW_ROLE }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
           aws-region: ${{ vars.AWS_REGION }}
 ```
 
-Every large cloud has an official action that does this: `google-github-actions/auth` for Google Cloud, `azure/login` for Azure. Trust the role that can only read for the default branch of your repo, and the role that changes things for the environment of the `apply` job only (for AWS, a subject of the form `repo:<owner>/<repo>:environment:<name>`), so that no other workflow and no other branch can assume it.
+Every large cloud has an official action that does this: `google-github-actions/auth` for Google Cloud, `azure/login` for Azure. Trust the role for the default branch of your repo only, or for the environment the job names (for AWS, a subject of the form `repo:<owner>/<repo>:environment:<name>`), so that no other branch can assume it. The split workflow gives the scan a role that can only read and `apply` the one that changes things.
 
 ### A secret manager
 
@@ -84,8 +82,8 @@ Many repos keep one env file of secret references next to the code, which the te
       - uses: 1password/install-cli-action@v4
       - name: Load the environment
         env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_PREVIEW_TOKEN }}
-        run: op run --env-file=ci/preview.env --no-masking -- bash .github/scripts/export-env.sh ci/preview.env
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        run: op run --env-file=ci/deploy.env --no-masking -- bash .github/scripts/export-env.sh ci/deploy.env
 ```
 
 `.github/scripts/export-env.sh`, which is also in this repo as [examples/workflows/export-env.sh](../examples/workflows/export-env.sh) and is tested there with fake values:
@@ -194,7 +192,7 @@ For Helm releases (record 0058), install helm v3.18.0 or newer and the [helm-dif
 Then give the job a kubeconfig for the cluster, the way your own CI does: a cloud's own login action writes one for EKS, GKE or AKS through OIDC, and `KUBECONFIG` can point at a file a step writes from a secret. Sluiceway hands helm the whole environment, `KUBECONFIG`, `HELM_*` and the plugin's `HELM_DIFF_*` included, and sets nothing. A chart reference needs its repository: add it with `helm repo add` in a step before Sluiceway, or log in to an OCI registry with `helm registry login` (see below).
 
 - **The namespace of every release must exist**, unless the stack turns on [`createNamespace`](configuration.md#stacksoptionscreatenamespace). Then the deploy's credentials need to create namespaces too.
-- **The credentials need what a deploy needs.** The preview reads the release and renders with `--dry-run=server`, which the cluster answers as it would a deploy. The `scan` job and the `apply` job both need them. `check`, `resolve` and `settle` never reach the cluster.
+- **The credentials need what a deploy needs.** The preview reads the release and renders with `--dry-run=server`, which the cluster answers as it would a deploy. The job needs them for the preview and for the deploy. `check`, `resolve` and `settle` never reach the cluster.
 - **The drift check sends a dry-run patch of every object** of the release, which changes nothing and needs `patch` on those objects ([record 0069](adr/0069-helm-drift-is-the-three-way-diff-beyond-the-plain-one-and-the-deploy-flags-follow-helm.md)). With read access only, the diff plugin v3.15.13 and newer merges locally instead and says so in the job log, and older plugins fail the check.
 - **Rendered manifests hold every value in plain text.** Sluiceway keeps only a digest of the render in memory while `apply` runs, and never writes the manifests anywhere.
 ### Kubernetes manifests
@@ -209,14 +207,14 @@ For a stack with `tool: kubectl` (record 0060), install `kubectl` v1.34.0 or new
 # For example on AWS: a role for the job, then a kubeconfig that uses it.
 - uses: aws-actions/configure-aws-credentials@v6
   with:
-    role-to-assume: ${{ vars.AWS_PREVIEW_ROLE }}
+    role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
     aws-region: ${{ vars.AWS_REGION }}
 - run: aws eks update-kubeconfig --name prod
 ```
 
 - **The kubeconfig's exec plugin runs as the tool does**, so what it needs, such as a cloud login or `kubelogin`, has to be on the runner and in the environment too.
 - **One kubeconfig can serve several clusters.** Name the context of each stack with the `context` option ([configuration](configuration.md#stacksoptionscontext)).
-- **The `scan` job needs read access and a server-side dry run**, which is the `patch` permission on every kind the manifests hold: a dry run is checked like the real request. The `apply` job needs the same permissions and does the real apply.
+- **A preview needs read access and a server-side dry run**, which is the `patch` permission on every kind the manifests hold: a dry run is checked like the real request. A deploy needs the same permissions and does the real apply.
 - **`prune` needs a few more rights** (record 0070): to get and patch the stack's inventory ConfigMap in its namespace (a server-side apply creates and changes it with a patch), and to get and delete every kind the stack deploys.
 - **`diff` has to be on the runner.** `kubectl diff` runs it, and it is on GitHub's hosted runners. Sluiceway sets `KUBECTL_EXTERNAL_DIFF` for the preview itself, so a value the workflow sets there only changes the tool diff of `scan.logDiff`.
 - **The rendered set holds every value of the manifests**, a Secret's too. Sluiceway keeps it in a temporary directory of its own and removes it when the preview or the deploy ends. It is never uploaded.
@@ -235,7 +233,7 @@ The job has to be able to reach, and log in to:
 
 Self-hosted runners behind a firewall need outbound access to all of them.
 
-Log in in a step before Sluiceway, in the `scan` and `apply` jobs, with the same care as any other credential. A registry login writes a credentials file under the home directory, so the tool picks it up without any variable. Two common cases:
+Log in in a step before Sluiceway, with the same care as any other credential. A registry login writes a credentials file under the home directory, so the tool picks it up without any variable. Two common cases:
 
 ```yaml
       # Private npm packages: the install step reads the token, nothing else does.

@@ -464,9 +464,7 @@ describe("Kubernetes manifests stacks that sluiceway.yaml declares", () => {
     expect(config).toBe(readFileSync(join(ROOT, "examples/kubernetes-basic", CONFIG), "utf8"));
     expect(workflow).toContain(KUBECTL_STEPS.join("\n"));
     expect(read("docs/credentials.md")).toContain(KUBECTL_STEPS.map((l) => l.slice(6)).join("\n"));
-    expect(log.groups[1]?.lines.join("\n")).toContain(
-      "The job needs a kubeconfig for the cluster",
-    );
+    expect(log.groups[1]?.lines.join("\n")).toContain("The job needs a kubeconfig for the cluster");
     expect((await checked(root)).warnings).toEqual([]);
   });
 

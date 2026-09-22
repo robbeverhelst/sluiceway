@@ -6,19 +6,18 @@ It also hands your workflow step outputs and a JSON result file, so a step of yo
 
 ## Built-in notifications
 
-Give the `scan`, `resolve` and `apply` steps the channels you want, each from a secret. A step with no channel sends nothing.
+Give the Sluiceway step of [the workflow](workflow.md#the-workflow) the channels you want, each from a secret. A step with no channel sends nothing.
 
 ```yaml
       - uses: sluiceway/sluiceway@v0
         with:
-          mode: scan
           slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           telegram-bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           telegram-chat-id: ${{ secrets.TELEGRAM_CHAT_ID }}
           webhook-url: ${{ secrets.SLUICEWAY_WEBHOOK_URL }}
 ```
 
-Name the same inputs on the `resolve` step and on the `apply` step of [the workflow](workflow.md#the-workflow). Which step sends which event:
+That one step scans, resolves a tick and deploys, so it sends every event. In the [split workflow](split-workflow.md) the same inputs go on the `scan`, the `resolve` and the `apply` step, and `settle`, `check` and `init` send nothing: a channel on one of those steps is a warning. Which mode sends which event:
 
 | Event | Sent by | When |
 |---|---|---|
@@ -107,7 +106,9 @@ Two things work with nothing from Sluiceway at all, because every deploy is a Gi
 | `outcome` | `apply` | `deployed`, `in-sync` (the fresh preview had nothing to deploy, so nothing went out and the job is green), `rehearsed` (`dry-run: true`, nothing went out and the job is green), `refused` (the change moved since the tick, the deployment record was not one this job may deploy, or `deploys: false`) or `failed` |
 | `stack` | `apply` | The stack id the job handled. Empty when it never learned it |
 | `result-file` | `scan`, `apply` | The path of the result file |
-| `matrix` | `resolve`, `scan` | The hand-off to the `apply` job. A scan sets it only after a merge from the dashboard. Not for notifications |
+| `matrix` | `resolve`, `scan` | The deploys that were started, one `{ stack, environment, deployment }` each. In the split workflow the hand-off to the `apply` job. Not for notifications |
+
+In [the workflow](workflow.md#the-workflow), the one Sluiceway step sets the outputs of every mode it ran. A run that deploys more than one stack sets `outcome`, `stack` and `result-file` once per deploy, so they describe the last one, and the step is red when any of them failed. `matrix` lists every deploy the step started. An edit of any other issue sets no output at all. The [split workflow](split-workflow.md) has one `apply` job per stack, and so one set of outputs per deploy.
 
 The three counts are the counts line of the dashboard as this scan left it, so they include the rows of stacks a narrowed scan did not preview. A scan that fails before it writes the dashboard, for example on a broken `sluiceway.yaml`, sets them to `0` and `dashboard-changed` to `false`, so check the outcome of the step too.
 
@@ -154,13 +155,11 @@ Resource names, types and property paths are in the file, as they are on the das
 
 ## Steps of your own
 
-Every step below is one more step in a job of [the workflow](workflow.md#the-workflow). Give the Sluiceway step an `id` so the next step can read its outputs:
+Every step below is one more step after the Sluiceway step of [the workflow](workflow.md#the-workflow). Give that step an `id` so the next step can read its outputs:
 
 ```yaml
       - id: sluiceway
         uses: sluiceway/sluiceway@v0
-        with:
-          mode: scan
 ```
 
 The secret of a step is in the `env` of that one step and nowhere else. The outputs reach the script through `env` as well, never pasted into the script with `${{ }}`, so nothing in them can be read as a command. `jq` and `curl` are on GitHub's hosted runners.
@@ -199,7 +198,7 @@ The built-in webhook sends a short message. For everything a run found, send the
             --data-binary @"$RESULT_FILE" "$WEBHOOK_URL"
 ```
 
-In the `apply` job, use `if: always() && steps.sluiceway.outputs['result-file'] != '' && (steps.sluiceway.outcome == 'failure' || steps.sluiceway.outputs.outcome == 'failed' || steps.sluiceway.outputs.outcome == 'refused')`.
+For a deploy, use `if: always() && steps.sluiceway.outputs['result-file'] != '' && (steps.sluiceway.outcome == 'failure' || steps.sluiceway.outputs.outcome == 'failed' || steps.sluiceway.outputs.outcome == 'refused')`.
 
 ### A Pushgateway push
 

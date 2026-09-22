@@ -297,9 +297,10 @@ function sluicewayJob(
 function autoRuns(on: Record<string, unknown>, config: Config): Mode[] {
   const called = "workflow_call" in on;
   const scans = called || "push" in on || "schedule" in on || "workflow_dispatch" in on;
+  // Without issue edits nothing is ever ticked, so the file only scans, and a
+  // dispatch finds nothing to resolve.
   const resolves =
-    !config.dashboard.readOnly &&
-    (called || "workflow_dispatch" in on || listensToEdits(on.issues, "issues" in on));
+    !config.dashboard.readOnly && (called || listensToEdits(on.issues, "issues" in on));
   const checks = "pull_request" in on || "merge_group" in on;
   return [
     ...(scans ? (["scan"] as const) : []),
@@ -405,8 +406,7 @@ function checkOne(path: string, workflow: Parsed, config: Config, report: Workfl
       if (!(trigger in workflow.on)) warnings.push({ kind: "missing-trigger", path, trigger });
     }
   }
-  const needsEdits = runs("resolve") || (autoDeploys && !config.dashboard.readOnly);
-  if (!called && needsEdits && !listensToEdits(workflow.on.issues, "issues" in workflow.on)) {
+  if (!called && runs("resolve") && !listensToEdits(workflow.on.issues, "issues" in workflow.on)) {
     warnings.push({ kind: "missing-trigger", path, trigger: "issues" });
   }
   if (runs("resolve") || runs("apply") || runs("settle")) {

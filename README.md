@@ -118,7 +118,7 @@ The issue is a view and never the source of truth. What is pending is always wor
 
 **Check your setup.** A check on every pull request reads your files and says which stacks Sluiceway found and whether its settings are valid. It needs no credentials, no tool and no write access, so start with it before anything can deploy. [The check](docs/workflow.md#check-your-setup) has the workflow file. To see your dashboard first with nothing that can deploy, [start read only](docs/read-only-trial.md).
 
-**Add the workflow.** This is the whole loop. It goes in `.github/workflows/deploy-dashboard.yml` on the default branch, and the comments mark where your own steps go. [The workflow](docs/workflow.md) explains every part, and what merge and deploy, stack dependencies, self-hosted runners and GitHub Environments add. [Example workflows](docs/example-workflows.md) has it complete for common setups, and [init](docs/init.md) writes a first version from what it finds in your repo.
+**Add the workflow.** This is the whole loop: one job with one Sluiceway step, and no `if:` anywhere. The step reads the event of the run and does what it asks for: a push or the schedule scans, a tick deploys, an edit of any other issue ends with a notice. It goes in `.github/workflows/deploy-dashboard.yml` on the default branch, and the comments mark where your own steps go. [The workflow](docs/workflow.md) explains every part, and what merge and deploy, stack dependencies, self-hosted runners and GitHub Environments add. [Example workflows](docs/example-workflows.md) has it complete for common setups, and [init](docs/init.md) writes a first version from what it finds in your repo.
 
 ```yaml
 name: deploy-dashboard
@@ -142,10 +142,13 @@ permissions:
   checks: write
 
 jobs:
-  scan:
-    if: github.event_name != 'issues'
+  sluiceway:
     runs-on: ubuntu-latest
-    concurrency: sluiceway-scan
+    # One run at a time, and none is dropped. An edit of any other issue gets
+    # a group of its own, so it never waits for a scan or a deploy.
+    concurrency:
+      group: sluiceway-${{ github.event.issue.number }}
+      queue: max
     steps:
       - uses: actions/checkout@v7
       - uses: pulumi/actions@v7 # without a command this only installs the CLI
@@ -153,63 +156,15 @@ jobs:
           pulumi-version: ^3.229.0
       # Install what your programs need, once, for example: npm ci
       # Load your credentials and your state backend settings into the job
-      # environment here. Sluiceway passes the environment to the tool and
-      # never looks inside. Whatever loads a secret must also mask it.
+      # environment here. They preview and deploy, so they must be able to
+      # change things. Sluiceway passes the environment to the tool and never
+      # looks inside. Whatever loads a secret must also mask it.
       - uses: sluiceway/sluiceway@v0
-        with:
-          mode: scan
-
-  resolve:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'sluiceway'))
-    runs-on: ubuntu-latest
-    concurrency: sluiceway-resolve
-    outputs:
-      matrix: ${{ steps.resolve.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v7
-      # No tool and no credentials in this job. It never runs the tool.
-      - id: resolve
-        uses: sluiceway/sluiceway@v0
-        with:
-          mode: resolve
-
-  apply:
-    needs: resolve
-    if: ${{ !cancelled() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJson(needs.resolve.outputs.matrix) }}
-    runs-on: ubuntu-latest
-    concurrency:
-      group: sluiceway-apply-${{ matrix.stack }}
-      queue: max
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pulumi/actions@v7
-        with:
-          pulumi-version: ^3.229.0
-      # Same install and credential steps as in the scan job. These
-      # credentials must be able to change things.
-      - uses: sluiceway/sluiceway@v0
-        with:
-          mode: apply
-          deployment-id: ${{ matrix.deployment }}
-
-  settle:
-    needs: [resolve, apply]
-    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: sluiceway/sluiceway@v0
-        with:
-          mode: settle
 ```
 
 **Tell it about your stacks.** Optional. Without `sluiceway.yaml` every stack that discovery finds gets a row, and anyone with write access can tick. The file at the repo root says who may tick which stack, which stacks to leave out and which files outside a stack's directory it reads. [Configuration](docs/configuration.md) has every key.
 
-**Load your credentials.** The workflow puts what the tool needs into the job environment, in steps before Sluiceway, and only in the `scan` and `apply` jobs. Sluiceway passes that environment to the tool as it is and never reads a credential by name. [Credentials](docs/credentials.md) has recipes for GitHub secrets, a cloud with OIDC, a secret manager and private registries.
+**Load your credentials.** The workflow puts what the tool needs into the job environment, in steps before Sluiceway. Sluiceway passes that environment to the tool as it is and never reads a credential by name. [Credentials](docs/credentials.md) has recipes for GitHub secrets, a cloud with OIDC, a secret manager and private registries.
 
 ## What it promises
 
