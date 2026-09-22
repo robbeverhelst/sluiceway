@@ -55,6 +55,9 @@ export type DeployFailureReason =
   // `deploys: false` in sluiceway.yaml (record 0051). `apply` checks it
   // before the tool runs.
   | { kind: "deploys-off" }
+  // A queued record whose dependency did not go out (record 0056). It never
+  // reached `apply`.
+  | { kind: "upstream-failed" }
   // Anything else that stopped `apply` before the tool ran, such as a
   // broken `sluiceway.yaml`. The job log says what.
   | { kind: "not-started" };
@@ -79,5 +82,7 @@ export function deployFailureText(reason: DeployFailureReason): string {
       return "deploys are turned off in sluiceway.yaml";
     case "not-started":
       return "the deploy stopped before the tool ran";
+    case "upstream-failed":
+      return "a stack it depends on did not deploy";
   }
 }

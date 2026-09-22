@@ -199,6 +199,11 @@ export class FakeGitHub implements GitHubPort {
     return this.#deployments.record(id);
   }
 
+  // Every record of an environment, oldest first. Not a request.
+  deploymentsOf(environment: string): DeploymentRecord[] {
+    return this.#deployments.all(environment);
+  }
+
   deploymentStatuses(id: number): DeploymentStatus[] {
     return this.#deployments.statuses(id);
   }

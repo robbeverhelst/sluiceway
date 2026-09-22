@@ -1,6 +1,7 @@
 // Reading deployment records for a render, and ending the ones whose run is
 // over (record 0003). Every mode that renders the body will use both.
 
+import { queueState } from "../core/dependencies.ts";
 import {
   type DeploymentRecord,
   deployFacts,
@@ -63,27 +64,48 @@ export interface Settled {
 // for days. It lives as long as its workflow run: any render that meets an
 // open deployment whose run is over gives it the result `error` (record
 // 0003). A run GitHub no longer has is over too.
+//
+// A queued record (record 0056) outlives its run on purpose: it waits for the
+// stacks it depends on, and a later `resolve` starts it under a record of its
+// own run. It is ended only when one of them did not go out, with that reason
+// and as `failure`, after the records of runs that are over got theirs.
 export async function settleEndedRuns(
   github: GitHubPort,
   records: readonly DeploymentRecord[],
   repoUrl: string,
 ): Promise<Settled> {
   const settled: Settled = { records: [...records], stackIds: [] };
-  for (const [stackId, fact] of deployFacts(records).byStack) {
-    if (fact.kind !== "open") continue;
-    const run = await github.getWorkflowRun(fact.run);
-    if (run && !run.completed) continue;
-    const status = await github.createDeploymentStatus(fact.deployment, {
-      state: "error",
-      description: deployFailureText({ kind: "run-ended" }),
-      logUrl: `${repoUrl}/actions/runs/${fact.run}`,
+  const end = async (stackId: string, deployment: number, run: string, dead: boolean) => {
+    const status = await github.createDeploymentStatus(deployment, {
+      state: dead ? "failure" : "error",
+      description: deployFailureText({ kind: dead ? "upstream-failed" : "run-ended" }),
+      logUrl: `${repoUrl}/actions/runs/${run}`,
     });
     settled.records = settled.records.map((record) =>
-      record.id === fact.deployment && taskStackId(record.task) === stackId
+      record.id === deployment && taskStackId(record.task) === stackId
         ? { ...record, status }
         : record,
     );
     settled.stackIds.push(stackId);
+  };
+  for (const [stackId, fact] of deployFacts(records).byStack) {
+    if (fact.kind !== "open" || fact.behind) continue;
+    const run = await github.getWorkflowRun(fact.run);
+    if (run && !run.completed) continue;
+    await end(stackId, fact.deployment, fact.run, false);
+  }
+  // In stack id order, again and again, so a chain ends from its first stack on.
+  for (let ended = true; ended; ) {
+    ended = false;
+    const queued = [...deployFacts(settled.records).byStack].sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
+    for (const [stackId, fact] of queued) {
+      if (fact.kind !== "open" || !fact.behind) continue;
+      if (queueState(fact.behind, settled.records) !== "dead") continue;
+      await end(stackId, fact.deployment, fact.run, true);
+      ended = true;
+    }
   }
   return settled;
 }

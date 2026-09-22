@@ -13,12 +13,15 @@ import {
   ignoredStacks,
 } from "../core/config.ts";
 import { loadConfig } from "../core/config-file.ts";
+import { planDeploys, queueState } from "../core/dependencies.ts";
 import {
   type DeployFact,
   deployFacts,
   deploymentPayload,
   deploymentTask,
+  HANDED_ON_DESCRIPTION,
   lastDeployedCommit,
+  readDeploymentPayload,
   taskStackId,
 } from "../core/deployment.ts";
 import {
@@ -32,7 +35,7 @@ import {
 import { capDeploys, type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import { stackId } from "../core/stack.ts";
 import { type AttributionSource, attributionSource } from "../github/attribution.ts";
-import { isBotIssueWithRootMarker } from "../github/dashboard.ts";
+import { findDashboard, isBotIssueWithRootMarker } from "../github/dashboard.ts";
 import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts";
 import { editedIssue } from "../github/event.ts";
 import type { JobLog } from "../github/job-log.ts";
@@ -95,12 +98,14 @@ interface NamedTick {
   ticker: Ticker;
 }
 
-// A deploy this run started: the record exists.
+// A deploy this run started: the record exists. With `behind` it is queued
+// behind those stacks and not handed on (record 0056).
 interface Started {
   stackId: string;
   environment: string;
   deployment: number;
   ticker: string;
+  behind?: string[] | undefined;
 }
 
 // A box this run clears, on the row that is still ticked at this hash.
@@ -128,7 +133,7 @@ async function resolveTicks(
   // broken `sluiceway.yaml` never turns an edit of an ordinary issue red.
   const issue = editedIssue(context.event);
   if (!issue) {
-    log.info("The event that started this job is not about an issue. Nothing to do.");
+    await startQueued(context, handOn);
     return;
   }
   const notTheDashboard = `Issue #${issue.number} is not the open dashboard. Nothing to do.`;
@@ -148,12 +153,14 @@ async function resolveTicks(
   let stacks: Map<string, ConfiguredStack> | undefined;
   let ignored: IgnoredStack[] = [];
   let named: NamedTick[] = [];
+  let liveRows: ParsedRow[] = [];
   for (let reads = 1; ; reads++) {
     const first = await github.readEditHistory(issue.number, {
       size: HISTORY_PAGE_SIZE,
       after: undefined,
     });
-    const { root } = parseDashboard(first.body);
+    const { root, rows } = parseDashboard(first.body);
+    liveRows = rows;
     if (!root) {
       log.info(`The body of #${issue.number} has no root marker any more. Nothing to do.`);
       return;
@@ -205,7 +212,12 @@ async function resolveTicks(
   const hashes = new Map<string, string>();
   for (const { tick } of named) if (tick.kind === "row") hashes.set(tick.stackId, tick.hash);
   const ticked = [...hashes.keys()].flatMap((id) => stacks?.get(id) ?? []);
-  const open = await openDeployments(context, ticked);
+  // The stacks they depend on too: a tick waits behind one that is deploying
+  // (record 0056).
+  const dependencies = ticked.flatMap(({ dependsOn }) =>
+    (dependsOn ?? []).flatMap((id) => stacks?.get(id) ?? []),
+  );
+  const open = await openDeployments(context, [...ticked, ...dependencies]);
 
   const dropped: string[] = [];
   const clear = new Map<string, Clear>();
@@ -293,6 +305,34 @@ async function resolveTicks(
     );
   }
 
+  // Dependencies (record 0056): a tick whose dependency has a change waiting
+  // that nobody ticked starts nothing, and ticks in one chain go out one layer
+  // at a time. The rest get a queued record that waits behind the stacks
+  // before them, and a later `resolve` starts them.
+  const plan = planDeploys({
+    allowed: start.map(({ stackId: id }) => id),
+    dependsOn: new Map(
+      [...(stacks?.values() ?? [])].map((one) => [stackId(one.stack), one.dependsOn ?? []]),
+    ),
+    pending: new Set(
+      liveRows.flatMap((row) => (row.known && row.state === "pending" ? [row.stackId] : [])),
+    ),
+    open: new Set(open.keys()),
+  });
+  for (const { stackId: id, waitingOn } of plan.refused) {
+    const one = waitingOn.length === 1;
+    log.info(
+      `${logGroupTitle(id)} is ticked, and it depends on ${waitingOn.map(logGroupTitle).join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`,
+    );
+    const hash = hashes.get(id);
+    if (hash !== undefined) clear.set(id, { hash, note: { dependsOn: waitingOn } });
+  }
+  const tickers = new Map(start.map(({ stackId: id, ticker }) => [id, ticker]));
+  const toCreate = [
+    ...plan.start.map((id) => ({ id, behind: undefined })),
+    ...plan.queued.map(({ stackId: id, behind }) => ({ id, behind })),
+  ];
+
   // From here on a failure does not stop the run: what was started is handed
   // on and shown first, and the job goes red at the end.
   const failures: string[] = [];
@@ -301,20 +341,31 @@ async function resolveTicks(
   // is taken. A record without a status is an open deployment too, so one
   // whose status failed is still handed on.
   const started: Started[] = [];
-  for (const { stackId: id, ticker } of start) {
+  for (const { id, behind } of toCreate) {
     const stack = stacks?.get(id);
     const hash = hashes.get(id);
-    if (!stack || hash === undefined) continue;
+    const ticker = tickers.get(id);
+    if (!stack || hash === undefined || ticker === undefined) continue;
     try {
       const record = await github.createDeployment({
         sha: context.sha,
         task: deploymentTask(id),
         environment: stack.environment,
-        payload: deploymentPayload({ hash, ticker, run: context.runId }),
+        payload: deploymentPayload({ hash, ticker, run: context.runId, behind }),
       });
-      started.push({ stackId: id, environment: stack.environment, deployment: record.id, ticker });
+      started.push({
+        stackId: id,
+        environment: stack.environment,
+        deployment: record.id,
+        ticker,
+        behind,
+      });
       await github.createDeploymentStatus(record.id, { state: "queued", logUrl: runUrl(context) });
-      log.info(`${logGroupTitle(id)}: deployment record ${record.id} is queued.`);
+      log.info(
+        behind
+          ? `${logGroupTitle(id)}: deployment record ${record.id} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.`
+          : `${logGroupTitle(id)}: deployment record ${record.id} is queued.`,
+      );
     } catch (error) {
       failures.push(
         `The deployment record of ${logGroupTitle(id)} could not be written: ${message(error)}. The resolve job needs the permission \`deployments: write\` (record 0003). No further deploy was started, and the ticks that are left stay for the next run.`,
@@ -326,11 +377,9 @@ async function resolveTicks(
   // Directly after the records and before the body write, so a failed body
   // write does not lose the hand-off (record 0035).
   handOn(
-    started.map(({ stackId: stack, environment, deployment }) => ({
-      stack,
-      environment,
-      deployment,
-    })),
+    started.flatMap(({ stackId: stack, environment, deployment, behind }) =>
+      behind ? [] : [{ stack, environment, deployment }],
+    ),
   );
 
   if (rescan) {
@@ -564,6 +613,7 @@ async function swapRows(
     waiting: true,
     destroys,
     attribution: lines.get(one.stackId)?.lines,
+    behind: one.behind,
   });
 
   const rows: Row[] = [];
@@ -598,6 +648,7 @@ async function swapRows(
         waiting: fact.waiting,
         destroys,
         attribution: lines.get(row.stackId)?.lines,
+        behind: fact.behind,
       });
     } else if (wanted && row.ticked && row.hash === wanted.hash) {
       carried.push(clearTick(row, { note: wanted.note }));
@@ -643,4 +694,133 @@ async function swapRows(
     );
   }
   return fitted.body;
+}
+
+// A `resolve` that no issue edit started: the one `settle` starts, and any
+// other dispatch of the workflow (record 0056). It starts every queued stack
+// whose dependencies went out, under a record of its own run, because `apply`
+// deploys only a record of the run it is part of (record 0035). The approved
+// hash and the ticker go on unchanged: the ticker was checked when the tick
+// was made, as for any record `apply` takes. The old record ends as
+// `inactive`, "started in a later run", which is no deploy fact.
+async function startQueued(
+  context: ResolveContext,
+  handOn: (entries: readonly MatrixEntry[]) => void,
+): Promise<void> {
+  const { log, github } = context;
+  const config = loadConfig(context.root);
+  if (!config.stacks.some(({ dependsOn }) => dependsOn !== undefined)) {
+    log.info(
+      "The event that started this job is not about an issue, and no stack has dependsOn. Nothing to do.",
+    );
+    return;
+  }
+  const { stacks, ignored } = await discover(context, config);
+  const all = [...stacks.values()];
+  const involved = all.filter(
+    ({ stack, dependsOn }) =>
+      dependsOn !== undefined ||
+      all.some((other) => other.dependsOn?.includes(stackId(stack)) === true),
+  );
+  const settled = await settleEndedRuns(
+    github,
+    await readRecords(
+      context,
+      all.map(({ environment }) => environment),
+      involved,
+    ),
+    context.repoUrl,
+  );
+  for (const id of settled.stackIds) {
+    log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
+  }
+  const ready = [...deployFacts(settled.records).byStack]
+    .flatMap(([id, fact]) =>
+      fact.kind === "open" &&
+      fact.behind &&
+      stacks.has(id) &&
+      queueState(fact.behind, settled.records) === "ready"
+        ? [{ stackId: id, fact }]
+        : [],
+    )
+    .sort((a, b) => (a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0));
+  if (ready.length === 0) {
+    log.info("No queued stack is ready to start. Nothing to do.");
+    return;
+  }
+
+  const failures: string[] = [];
+  const started: Started[] = [];
+  for (const { stackId: id, fact } of capDeploys(ready).start) {
+    const stack = stacks.get(id);
+    const old = settled.records.find((record) => record.id === fact.deployment);
+    const payload = old && readDeploymentPayload(old.payload);
+    if (!stack || !payload) continue;
+    try {
+      // The new record first: a stack is never without an open one.
+      const record = await github.createDeployment({
+        sha: context.sha,
+        task: deploymentTask(id),
+        environment: stack.environment,
+        payload: deploymentPayload({
+          hash: payload.hash,
+          ticker: payload.ticker,
+          run: context.runId,
+        }),
+      });
+      started.push({
+        stackId: id,
+        environment: stack.environment,
+        deployment: record.id,
+        ticker: payload.ticker,
+      });
+      await github.createDeploymentStatus(record.id, { state: "queued", logUrl: runUrl(context) });
+      await github.createDeploymentStatus(fact.deployment, {
+        state: "inactive",
+        description: HANDED_ON_DESCRIPTION,
+        logUrl: runUrl(context),
+      });
+      log.info(
+        `${logGroupTitle(id)}: what it waited behind went out, so it starts now. Deployment record ${record.id} is queued and takes over from record ${fact.deployment}.`,
+      );
+    } catch (error) {
+      failures.push(
+        `The deployment record of ${logGroupTitle(id)} could not be written: ${message(error)}. The resolve job needs the permission \`deployments: write\` (record 0003). No further deploy was started, and the queued stacks that are left wait for the next run.`,
+      );
+      break;
+    }
+  }
+  handOn(
+    started.map(({ stackId: stack, environment, deployment }) => ({
+      stack,
+      environment,
+      deployment,
+    })),
+  );
+
+  const dashboard =
+    started.length > 0 ? await findDashboard(github, config.dashboard.label) : undefined;
+  if (dashboard) {
+    try {
+      const result = await writeBody(github, dashboard.number, (liveBody) =>
+        swapRows(
+          context,
+          config,
+          all,
+          ignored,
+          liveBody,
+          { started, dropped: [], clear: new Map() },
+          new Map(),
+        ),
+      );
+      log.info(
+        result.written
+          ? `Wrote the dashboard (#${dashboard.number}).`
+          : `The dashboard (#${dashboard.number}) already says all of this. Nothing was written.`,
+      );
+    } catch (error) {
+      failures.push(message(error));
+    }
+  }
+  if (failures.length > 0) throw new Error(failures.join("\n"));
 }

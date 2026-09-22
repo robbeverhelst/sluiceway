@@ -118,6 +118,14 @@ export class FakeDeployments {
     };
   }
 
+  // Every record of an environment, oldest first, for a test to look at.
+  all(environment: string): DeploymentRecord[] {
+    return this.#newestFirst()
+      .filter(({ deployment }) => deployment.environment === environment)
+      .reverse()
+      .map(({ deployment }) => this.record(deployment.id));
+  }
+
   newestOfTask(task: string): Deployment | undefined {
     const found = this.#newestFirst().find(({ deployment }) => deployment.task === task);
     return found && structuredClone(found.deployment);
