@@ -141,6 +141,67 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  fixtures-helm:
+    # The same for Helm (record 0058): the recorder with the real helm and its
+    # diff plugin, the minimum versions the adapter supports and the newest
+    # ones the fixtures were recorded with. Helm compares a chart with a
+    # release in a cluster, so the job makes a kind cluster of its own, and
+    # helm only ever reaches that one, with a copy of examples/helm-basic.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - helm: v3.18.0
+            diff: v3.15.11
+          - helm: v4.3.0
+            diff: v3.15.13
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ matrix.helm }}
+
+      # Helm 4 checks a plugin's signature unless told not to, and helm 3
+      # knows no such flag.
+      - name: Install the diff plugin
+        env:
+          HELM_VERSION: ${{ matrix.helm }}
+          DIFF_VERSION: ${{ matrix.diff }}
+        run: |
+          verify=""
+          case "$HELM_VERSION" in v4.*) verify="--verify=false" ;; esac
+          helm plugin install https://github.com/databus23/helm-diff --version "$DIFF_VERSION" $verify
+          echo "HELM_PLUGINS=$(helm env HELM_PLUGINS)" >> "$GITHUB_ENV"
+
+      - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
+        with:
+          cluster_name: sluiceway-fixtures
+
+      - run: bun install --frozen-lockfile
+
+      - name: Record the fixtures
+        env:
+          HELM_VERSION: ${{ matrix.helm }}
+        run: KUBECONFIG="$HOME/.kube/config" bun run record:fixtures --tool helm --out "$RUNNER_TEMP/fixtures" --expect-version "$HELM_VERSION"
+
+      # The fixtures in the repo come from here. See CONTRIBUTING.md.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: fixtures-helm-${{ matrix.helm }}
+          path: ${{ runner.temp }}/fixtures
+          retention-days: 7
+          if-no-files-found: error
+
   smoke:
     # Runs the committed bundle the way a consumer would: a `uses:` step, read
     # through action.yml, on the runner's own node24. The e2e workflow proves

@@ -65,19 +65,27 @@ jobs:
         run: bun run e2e --work-dir "$RUNNER_TEMP/e2e" --expect-version "$PULUMI_VERSION"
 
   mixed:
-    # One repo with Pulumi and OpenTofu stacks (record 0053): the committed
-    # bundle, the real pulumi and the real tofu, and the fake GitHub server.
-    # A full scan with the rows of both tools, a deploy of an OpenTofu stack
-    # from the plan its fresh preview saved, a change that moved after its
-    # tick, a deploy of a Pulumi stack, and a last scan. tofu runs with the
-    # minimum version the adapter supports and the newest one the fixtures
-    # were recorded with.
+    # One repo with Pulumi, OpenTofu and Helm stacks (records 0053 and 0058):
+    # the committed bundle, the real pulumi, tofu and helm with its diff
+    # plugin, a kind cluster made for this job, and the fake GitHub server. A
+    # full scan with the rows of all three tools, a deploy of an OpenTofu
+    # stack from the plan its fresh preview saved, a change that moved after
+    # its tick, a deploy of a Pulumi stack, a Helm release whose values moved
+    # after its tick and then deploys, and a last scan. tofu and helm run with
+    # the minimum versions the adapters support and the newest ones the
+    # fixtures were recorded with.
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        tofu: ["1.11.0", "1.12.6"]
+        include:
+          - tofu: "1.11.0"
+            helm: v3.18.0
+            diff: v3.15.11
+          - tofu: "1.12.6"
+            helm: v4.3.0
+            diff: v3.15.13
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -104,9 +112,30 @@ jobs:
           tofu_version: ${{ matrix.tofu }}
           tofu_wrapper: false
 
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ matrix.helm }}
+
+      # Helm 4 checks a plugin's signature unless told not to, and helm 3
+      # knows no such flag.
+      - name: Install the diff plugin
+        env:
+          HELM_VERSION: ${{ matrix.helm }}
+          DIFF_VERSION: ${{ matrix.diff }}
+        run: |
+          verify=""
+          case "$HELM_VERSION" in v4.*) verify="--verify=false" ;; esac
+          helm plugin install https://github.com/databus23/helm-diff --version "$DIFF_VERSION" $verify
+          echo "HELM_PLUGINS=$(helm env HELM_PLUGINS)" >> "$GITHUB_ENV"
+
+      - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
+        with:
+          cluster_name: sluiceway-e2e
+
       - run: bun install --frozen-lockfile
 
-      - name: Scan, tick, apply and settle a repo with both tools with the committed bundle
+      - name: Scan, tick, apply and settle a repo with three tools with the committed bundle
         env:
           TOFU_VERSION: ${{ matrix.tofu }}
-        run: bun run e2e:mixed --work-dir "$RUNNER_TEMP/e2e-mixed" --expect-tofu "v$TOFU_VERSION"
+          HELM_VERSION: ${{ matrix.helm }}
+        run: KUBECONFIG="$HOME/.kube/config" bun run e2e:mixed --work-dir "$RUNNER_TEMP/e2e-mixed" --expect-tofu "v$TOFU_VERSION" --expect-helm "$HELM_VERSION"

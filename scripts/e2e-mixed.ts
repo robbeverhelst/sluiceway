@@ -1,12 +1,17 @@
-// The end to end run of one repo with Pulumi and OpenTofu stacks (record
-// 0053): the committed bundle, started the way a runner starts a step, with
-// the pulumi and tofu CLIs on PATH and the fake GitHub server. The repo is
-// examples/pulumi-basic with examples/opentofu-basic in infra/.
+// The end to end run of one repo with Pulumi, OpenTofu and Helm stacks
+// (records 0053 and 0058): the committed bundle, started the way a runner
+// starts a step, with the pulumi, tofu and helm CLIs on PATH and the fake
+// GitHub server. The repo is examples/pulumi-basic with
+// examples/opentofu-basic in infra/ and examples/helm-basic in helm/. Helm
+// needs a cluster: KUBECONFIG names one made for this, such as kind, and
+// HELM_PLUGINS the directory of the diff plugin.
 //
 //   bun run e2e:mixed [--work-dir <dir>] [--expect-tofu v1.12.6]
+//                     [--expect-helm v4.3.0]
 //
-//   1. A full scan: one dashboard with the rows of both tools, every stack
-//      pending, and each OpenTofu directory initialised before any preview.
+//   1. A full scan: one dashboard with the rows of all three tools, every
+//      stack pending, each OpenTofu directory initialised and the Helm chart
+//      with a dependency built before any preview.
 //   2. alice ticks infra/network:dev. resolve hands on a record, apply deploys
 //      the plan its fresh preview saved and hashed, with the real tofu, and
 //      settle finds nothing open.
@@ -15,7 +20,12 @@
 //      deployed and the record ends as error.
 //   4. alice ticks network:dev, a Pulumi stack of the same repo, which deploys
 //      with the real pulumi.
-//   5. A last full scan: the two deployed stacks are in sync, infra/dns is
+//   5. alice ticks helm/web, and its values move before its apply job starts:
+//      nothing is deployed and the release is not installed.
+//   6. A scan, and alice ticks helm/web again: apply renders the chart in its
+//      fresh preview and once more right before the deploy, and the real helm
+//      installs the release.
+//   7. A last full scan: the three deployed stacks are in sync, infra/dns is
 //      pending with the moved change and a failure line.
 //
 // The tools only run in a copy inside the work directory, with state in local
@@ -48,6 +58,7 @@ const { values } = parseArgs({
   options: {
     "work-dir": { type: "string", default: join(tmpdir(), "sluiceway-e2e-mixed") },
     "expect-tofu": { type: "string" },
+    "expect-helm": { type: "string" },
   },
 });
 
@@ -56,9 +67,20 @@ const workspace = join(work, "repo");
 const backend = join(work, "backend");
 const temp = join(work, "temp");
 
-// What the workflow of a real repo prepares for the job: both tools on PATH, a
-// backend and a passphrase for Pulumi, a provider cache for OpenTofu. Only
-// PATH comes from whoever runs this.
+// Helm reaches the cluster and finds its plugin through these, which whoever
+// runs this has to give.
+function needed(name: string): string {
+  const value = process.env[name];
+  if (value === undefined || value === "") {
+    throw new Error(`The end to end run of a repo with Helm stacks needs ${name}.`);
+  }
+  return value;
+}
+
+// What the workflow of a real repo prepares for the job: the tools on PATH, a
+// backend and a passphrase for Pulumi, a provider cache for OpenTofu, and a
+// kubeconfig and the diff plugin for Helm. Only PATH, KUBECONFIG and
+// HELM_PLUGINS come from whoever runs this.
 const jobEnvironment: Record<string, string> = {
   PATH: process.env.PATH ?? "",
   HOME: join(work, "home"),
@@ -68,6 +90,8 @@ const jobEnvironment: Record<string, string> = {
   PULUMI_CONFIG_PASSPHRASE: EXAMPLE_PASSPHRASE,
   PULUMI_SKIP_UPDATE_CHECK: "true",
   TF_PLUGIN_CACHE_DIR: join(work, "plugin-cache"),
+  KUBECONFIG: needed("KUBECONFIG"),
+  HELM_PLUGINS: needed("HELM_PLUGINS"),
   NO_COLOR: "1",
 };
 
@@ -95,6 +119,24 @@ stacks:
       varFiles: [prod.tfvars]
   - path: infra/dns
     tool: opentofu
+  - path: helm/web
+    tool: helm
+    inputs:
+      - helm/charts/web/**
+    options:
+      release: web
+      namespace: sluiceway-web
+      chart: ../charts/web
+      valuesFiles: [values.yaml]
+  - path: helm/worker
+    tool: helm
+    inputs:
+      - helm/charts/**
+    options:
+      release: worker
+      namespace: sluiceway-worker
+      chart: ../charts/worker
+      valuesFiles: [values.yaml]
 `;
 
 interface Ran {
@@ -340,6 +382,13 @@ async function tofuResources(dir: string, workspaceName?: string): Promise<numbe
     : 0;
 }
 
+// Whether helm holds the release, the one way to see that a deploy really
+// went out and that a refused one sent nothing.
+async function installed(release: string, namespace: string): Promise<boolean> {
+  const ran = await run(["helm", "status", release, `--namespace=${namespace}`], work);
+  return ran.exitCode === 0;
+}
+
 rmSync(work, { recursive: true, force: true });
 for (const dir of [
   backend,
@@ -358,9 +407,19 @@ if (values["expect-tofu"] && tofu !== values["expect-tofu"]) {
   throw new Error(`Expected tofu ${values["expect-tofu"]} on PATH, found ${tofu}.`);
 }
 
+// The helm on PATH, and its diff plugin.
+const helmVersion = (await run(["helm", "version", "--template={{.Version}}"], REPO)).output.trim();
+const diffVersion = (await run(["helm", "diff", "version"], REPO)).output.trim();
+console.log(`helm ${helmVersion}, helm-diff ${diffVersion}`);
+if (values["expect-helm"] && helmVersion !== values["expect-helm"]) {
+  throw new Error(`Expected helm ${values["expect-helm"]} on PATH, found ${helmVersion}.`);
+}
+
 cpSync(join(REPO, "examples/pulumi-basic"), workspace, { recursive: true });
 cpSync(join(REPO, "examples/opentofu-basic"), join(workspace, "infra"), { recursive: true });
 rmSync(join(workspace, "infra/sluiceway.yaml"));
+cpSync(join(REPO, "examples/helm-basic"), join(workspace, "helm"), { recursive: true });
+rmSync(join(workspace, "helm/sluiceway.yaml"));
 writeFileSync(join(workspace, "sluiceway.yaml"), CONFIG);
 
 // The Pulumi stacks exist in the backend. The OpenTofu workspaces do not,
@@ -371,18 +430,34 @@ const QUIET = ["--non-interactive", "--color", "never"];
 await prepare(["pulumi", "stack", "init", "dev", ...QUIET], "network");
 await prepare(["pulumi", "stack", "init", "prod", ...QUIET], "network");
 await prepare(["pulumi", "stack", "init", "prod", ...QUIET], "app");
+// A release needs its namespace, which the workflow of a real repo, or the
+// cluster, holds already. The cluster may hold the releases of an earlier run.
+for (const [release, namespace] of [
+  ["web", "sluiceway-web"],
+  ["worker", "sluiceway-worker"],
+] as const) {
+  await prepare(
+    ["helm", "uninstall", release, `--namespace=${namespace}`, "--ignore-not-found", "--wait"],
+    ".",
+  );
+  const there = await run(["kubectl", "get", "namespace", namespace], workspace);
+  if (there.exitCode !== 0) await prepare(["kubectl", "create", "namespace", namespace], ".");
+}
 console.log("::endgroup::");
 
 // 1. The full scan.
 const first = await scanStep("workflow_dispatch");
 const firstLog = first.log.split("\n");
 const preparedAt = firstLog.findIndex((line) => line.includes("Prepared infra/network"));
+const builtAt = firstLog.findIndex((line) => line.includes("Prepared helm/charts/worker"));
 const previewedAt = firstLog.findIndex((line) => line.startsWith("Previewed "));
 good =
   report("The first scan", first, [
     ...(first.exitCode === 0 ? [] : [`The scan ended with exit code ${first.exitCode}.`]),
     ...expectRows(first.body, {
       "app:prod": "pending",
+      "helm/web": "pending",
+      "helm/worker": "pending",
       "infra/dns": "pending",
       "infra/network:dev": "pending",
       "infra/network:prod": "pending",
@@ -392,6 +467,9 @@ good =
     ...(preparedAt >= 0 && previewedAt > preparedAt
       ? []
       : ["The job log does not show infra/network prepared before the first preview."]),
+    ...(builtAt >= 0 && previewedAt > builtAt
+      ? []
+      : ["The job log does not show helm/charts/worker built before the first preview."]),
   ]) && good;
 
 // 2. infra/network:dev deploys its saved plan.
@@ -463,13 +541,71 @@ good =
   ) && good;
 await settled(pulumiStack.run);
 
-// 5. The last full scan.
+// 5. helm/web moves after its tick, so nothing goes out.
+const webRun = await tick("helm/web");
+const [webEntry] = webRun.matrix;
+if (!webEntry) throw new Error("resolve handed on no deploy of helm/web.");
+const webValues = join(workspace, "helm/web/values.yaml");
+// A new object changes the diff. A new value of a field the row names would
+// not: the hash covers what the row shows (record 0008).
+writeFileSync(webValues, `${readFileSync(webValues, "utf8")}extra:\n  enabled: true\n`);
+const webMoved = await step("apply", {
+  inputs: { "deployment-id": String(webEntry.deployment) },
+  runId: webRun.runId,
+  event: "issues",
+  payload: webRun.payload,
+  title: `Run ${webRun.runId}: apply of helm/web, after its values moved`,
+});
+good =
+  report("The moved change of helm/web", webMoved, [
+    ...checkApply(webMoved, {
+      stack: "helm/web",
+      deployment: webEntry.deployment,
+      outcome: "moved",
+      rowState: "pending",
+    }),
+    ...((await installed("web", "sluiceway-web"))
+      ? ["The release web is installed, and its change moved before the deploy."]
+      : []),
+  ]) && good;
+await settled(webRun);
+
+// 6. A scan shows the fresh diff, and a fresh tick deploys it with the real
+// helm, held to the render of its fresh preview.
+const rescanned = await scanStep("workflow_dispatch");
+good =
+  report(
+    "The scan after the moved change of helm/web",
+    rescanned,
+    rescanned.exitCode === 0 ? [] : [`The scan ended with exit code ${rescanned.exitCode}.`],
+  ) && good;
+const web = await deployed("helm/web", "sluiceway");
+const webLog = web.applied.log.split("\n");
+good =
+  report("The tick of helm/web: apply", web.applied, [
+    ...checkApply(web.applied, {
+      stack: "helm/web",
+      deployment: web.entry.deployment,
+      outcome: "deployed",
+    }),
+    ...((await installed("web", "sluiceway-web"))
+      ? []
+      : ["The release web is not installed after its deploy."]),
+    ...(webLog.some((line) => line.includes("helm upgrade") || line.includes("STATUS: deployed"))
+      ? []
+      : ["The job log does not show the words of the deploy."]),
+  ]) && good;
+await settled(web.run);
+
+// 7. The last full scan.
 const last = await scanStep("schedule");
 good =
   report("The last scan", last, [
     ...(last.exitCode === 0 ? [] : [`The scan ended with exit code ${last.exitCode}.`]),
     ...expectRows(last.body, {
       "app:prod": "pending",
+      "helm/web": "in-sync",
+      "helm/worker": "pending",
       "infra/dns": "pending",
       "infra/network:dev": "in-sync",
       "infra/network:prod": "pending",
@@ -478,13 +614,13 @@ good =
     }),
     ...checkRowFacts(last.body, {
       failed: ["infra/dns"],
-      recentlyDeployed: ["infra/network:dev", "network:dev"],
+      recentlyDeployed: ["helm/web", "infra/network:dev", "network:dev"],
     }),
   ]) && good;
 
 rmSync(work, { recursive: true, force: true });
 if (!good) {
-  console.log("The end to end run of a repo with both tools found problems.");
+  console.log("The end to end run of a repo with three tools found problems.");
   process.exit(1);
 }
-console.log("The end to end run of a repo with Pulumi and OpenTofu stacks is good.");
+console.log("The end to end run of a repo with Pulumi, OpenTofu and Helm stacks is good.");
