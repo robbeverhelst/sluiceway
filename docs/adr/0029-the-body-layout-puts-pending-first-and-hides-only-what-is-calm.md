@@ -55,3 +55,7 @@ Pending comes first because ticking is what a person opens the dashboard for. Pu
 - The scan line leaves out `last full scan` when the root marker does not hold it, and leaves out a time that does not parse. Writers other than the scan take these facts from the live body, which a person can edit.
 
 Prototype: the variant B issue in the private lab repo, generated from the `prototype/dashboard` branch.
+
+## Settled while building (slice 4.5)
+
+- Under a header, each line of Recently deployed starts with the dot of its result and a non-breaking space: 🟢 went out, ⚪ nothing to deploy, 🟣 rehearsed. A failed deploy is still not listed. The rest of the line does not change, and without a header the list is as above. Record 0040 holds the colours and why.

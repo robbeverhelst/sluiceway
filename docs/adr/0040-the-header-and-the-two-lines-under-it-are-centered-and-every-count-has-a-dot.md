@@ -37,3 +37,15 @@ This amends 0029 and the markup of 0033. The wording of both lines, what they co
 - With `dashboard.personality: false` (0034) there is no header, no centering and no dots. The two lines are exactly what 0029 made them, left-aligned, so nothing changes for those dashboards.
 - Same input still gives the same bytes (0004). The dots and the centering are a pure function of the header state, the counts and the personality switch.
 - The shortened-rows note (0028) stays directly under the scan line, outside the centered block.
+
+## Settled while building (slice 4.5)
+
+The owner asked for the result of a deploy to be visible at a glance (2026-09-22). The dots of this record now also mark results, in three places and nowhere else:
+
+- **The recently deployed list** (0029): each line starts with a result dot and a non-breaking space, 🟢 for a deploy that went out, ⚪ for one that found nothing to deploy (0051) and 🟣 for a rehearsal. Like the count dots, they are shown exactly when there is a header: with `dashboard.personality: false` the list is what 0029 made it.
+- **The headlines of the job log**: the scan's line that wrote the dashboard takes the dot of the header state it wrote (🔴 failing, 🔵 deploying, 🟡 pending, 🟠 drift, ⚪ first run, 🟢 in sync), a preview failure 🔴, the line of `apply` that says how the deployment record ended takes the dot of its `outcome` (🟢 deployed, 🔴 failed, 🟡 refused, ⚪ in sync, 🟣 rehearsed), and `settle` 🔴 for a record it ended and ⚪ when it had nothing to end. The log has no personality switch, so these are always shown.
+- **The notification recipes** (0041): the message starts with the dot of its result.
+
+The colours are the counts line's own. Green went out, red failed, white is nothing went out, as a count of 0 is. A refused deploy is yellow, the pending dot, because nothing went out and the stack is pending again. Orange was the first choice for refused and is taken by drift (0055). A rehearsal is purple, the one result the counts line has no colour for. The set that the earlier internal dashboard used, a check mark for a deploy and a test tube for a rehearsal, was set aside: it is a second set of symbols next to the dots, for the same facts.
+
+Never on a row, never in a voiced line (0032), and never on any other log line, comment, summary or error message. The dots are signals and carry no voice: the words next to a dot always say what it means.

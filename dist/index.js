@@ -53967,6 +53967,32 @@ function destroySign(rows) {
   return rows.some((row) => row.known && (row.state === "pending" || isDeployingState(row.state)) && row.destroys > 0);
 }
 
+// src/render/dots.ts
+var COUNT_DOT = {
+  pending: "\uD83D\uDFE1",
+  drift: "\uD83D\uDFE0",
+  deploying: "\uD83D\uDD35",
+  "preview-failed": "\uD83D\uDD34",
+  "in-sync": "\uD83D\uDFE2",
+  failed: "\uD83D\uDD34"
+};
+var DOT_AT_ZERO = "⚪";
+var RESULT_DOT = {
+  deployed: "\uD83D\uDFE2",
+  failed: "\uD83D\uDD34",
+  refused: COUNT_DOT.pending,
+  "in-sync": DOT_AT_ZERO,
+  rehearsed: "\uD83D\uDFE3"
+};
+var HEADER_DOT = {
+  failing: COUNT_DOT.failed,
+  deploying: COUNT_DOT.deploying,
+  pending: COUNT_DOT.pending,
+  drift: COUNT_DOT.drift,
+  "first-run": DOT_AT_ZERO,
+  "in-sync": COUNT_DOT["in-sync"]
+};
+
 // src/render/escape.ts
 var NAMED = {
   "&": "&amp;",
@@ -54351,18 +54377,9 @@ function picture(state, crates, sign, actionRef2) {
     "</p>"
   ];
 }
-var DOT = {
-  pending: "\uD83D\uDFE1",
-  drift: "\uD83D\uDFE0",
-  deploying: "\uD83D\uDD35",
-  "preview-failed": "\uD83D\uDD34",
-  "in-sync": "\uD83D\uDFE2",
-  failed: "\uD83D\uDD34"
-};
-var DOT_AT_ZERO = "⚪";
 function countsLine(rows, dots) {
   const of = (state) => rows.filter((row) => placed(row) === state).length;
-  const dot = (kind, count) => dots ? `${count === 0 ? DOT_AT_ZERO : DOT[kind]}&nbsp;` : "";
+  const dot = (kind, count) => dots ? `${count === 0 ? DOT_AT_ZERO : COUNT_DOT[kind]}&nbsp;` : "";
   const destroying = rows.filter((row) => row.state === "pending" && row.destroys > 0).length;
   const failed = rows.filter((row) => row.failed).length;
   const parts = [
@@ -54418,9 +54435,11 @@ var RESULT_WORDS = {
   rehearsed: REHEARSED_DESCRIPTION,
   "drift-repaired": DRIFT_REPAIRED_WORDS
 };
-function recentLine(deploy) {
+function recentLine(deploy, dots) {
   const result = deploy.result === undefined ? "" : ` · ${RESULT_WORDS[deploy.result]}`;
-  return `- ${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)}${result} · ${utcMinute(deploy.at)} · [run](${deploy.runUrl})`;
+  const outcome = deploy.result === undefined || deploy.result === "drift-repaired" ? "deployed" : deploy.result;
+  const dot = dots ? `${RESULT_DOT[outcome]}&nbsp;` : "";
+  return `- ${dot}${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)}${result} · ${utcMinute(deploy.at)} · [run](${deploy.runUrl})`;
 }
 function version2(actionRef2) {
   return /^[0-9a-f]{40,}$/.test(actionRef2) ? `\`${actionRef2.slice(0, 7)}\`` : escapeText(actionRef2);
@@ -54478,7 +54497,7 @@ function renderBody(input2) {
   }
   const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit6(a.stackId, b.stackId)).slice(0, RECENTLY_DEPLOYED);
   if (recent.length > 0)
-    out.push("## Recently deployed", recent.map(recentLine).join(`
+    out.push("## Recently deployed", recent.map((deploy) => recentLine(deploy, input2.personality)).join(`
 `));
   out.push("---");
   if (!input2.readOnly)
@@ -55669,7 +55688,7 @@ ${ALREADY_ENDED}
       logUrl: runUrl
     });
     ended = true;
-    log.info(`Deployment record ${id} ended as ${attempt.state}.`);
+    log.info(`${RESULT_DOT[report.outcome]} Deployment record ${id} ended as ${attempt.state}.`);
   } catch (error63) {
     failures.push(`Deployment record ${id} of ${name} could not be given its result (${attempt.state}): ${message(error63)}. The \`settle\` job of this run ends it. ${RECORD_PERMISSIONS}`);
   }
@@ -58437,7 +58456,7 @@ function logResults(context3, previewed) {
   }
   for (const { id, result, drift } of previewed) {
     if (!result.ok) {
-      log.warning(`The preview of ${logGroupTitle(id)} failed: ${previewFailureText(result.reason)}.`, "Preview failed");
+      log.warning(`${COUNT_DOT["preview-failed"]} The preview of ${logGroupTitle(id)} failed: ${previewFailureText(result.reason)}.`, "Preview failed");
     }
     if (drift !== undefined && !drift.ok) {
       log.warning(`The drift check of ${logGroupTitle(id)} failed: ${previewFailureText(drift.reason)}. Its row shows the preview alone.`, "Drift check failed");
@@ -58524,7 +58543,8 @@ function reportDashboard(context3, written, composed) {
   const { log } = context3;
   const shortened = composed?.shortened ?? 0;
   const size = `${written.body.length.toLocaleString("en-US")} of ${BODY_LIMIT.toLocaleString("en-US")} characters`;
-  log.info(`${FOUND[written.found]}: ${context3.repoUrl}/issues/${written.number} (${size}).`);
+  const dot = HEADER_DOT[headerState(parseDashboard(written.body).rows)];
+  log.info(`${dot} ${FOUND[written.found]}: ${context3.repoUrl}/issues/${written.number} (${size}).`);
   if (written.tries > 1)
     log.info(`The write took ${written.tries} tries.`);
   if (shortened > 0)
@@ -58784,7 +58804,7 @@ async function settle2(context3) {
       continue;
     await end(id, stack, false);
     ended++;
-    log.info(`Ended the open deployment of ${logGroupTitle(stack)} (record ${id}): this run ended without a result for it.`);
+    log.info(`${RESULT_DOT.failed} Ended the open deployment of ${logGroupTitle(stack)} (record ${id}): this run ended without a result for it.`);
   }
   for (let more = true;more; ) {
     more = false;
@@ -58796,7 +58816,7 @@ async function settle2(context3) {
       await end(id, stack, true);
       ended++;
       more = true;
-      log.info(`Ended the queued deployment of ${logGroupTitle(stack)} (record ${id}): a stack it depends on did not deploy.`);
+      log.info(`${RESULT_DOT.failed} Ended the queued deployment of ${logGroupTitle(stack)} (record ${id}): a stack it depends on did not deploy.`);
     }
   }
   const ready = [...deployFacts(records).byStack].flatMap(([stack, fact]) => fact.kind === "open" && fact.behind && queueState(fact.behind, records) === "ready" ? [stack] : []);
@@ -58804,7 +58824,7 @@ async function settle2(context3) {
     log.info(`${logGroupTitle(stack)} can start now: what it waited behind went out. Started the workflow again, and its resolve job starts it.`);
   }
   if (ended === 0 && ready.length === 0) {
-    log.info(open2.length === 0 ? "No deployment record of this run is open. Every deploy it started reported a result." : "Every deploy this run started reported a result, and what is queued still waits.");
+    log.info(open2.length === 0 ? `${DOT_AT_ZERO} No deployment record of this run is open. Every deploy it started reported a result.` : `${DOT_AT_ZERO} Every deploy this run started reported a result, and what is queued still waits.`);
     return;
   }
   await dispatchScan2(context3);

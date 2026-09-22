@@ -32,3 +32,7 @@ Considered and rejected: a built-in Slack or webhook notifier (the promises abov
 ## Settled while building (slice 2.22)
 
 - The recipes for the `apply` job send when `outcome` is `failed` or `refused`, or when the step failed before it set one, and stay quiet for `deployed`, `in-sync` and `rehearsed` (slice 2.20 noted the noise). A change that moved since the tick is `refused`: there is no `moved` outcome. A test evaluates every such condition in `docs/notifications.md` for each outcome.
+
+## Settled while building (slice 4.5)
+
+- The Slack and Telegram recipes start their message with the dot of its result, the dots of record 0040: 🔴 for a failed preview, a failed deploy or a failed step, 🟡 for pending stacks and for a refused deploy. A test runs each recipe's script with `curl` stubbed and checks the dot.

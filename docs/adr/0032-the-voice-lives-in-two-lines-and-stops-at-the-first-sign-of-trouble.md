@@ -1,5 +1,7 @@
 # The voice lives in two lines and stops at the first sign of trouble
 
+> Clarified in slice 4.5: a dot of record 0040 is a signal, not the voice. The job log's headlines and the recently deployed list start with one, and the words stay plain.
+>
 > Amended by 0043: there is no `plain` state any more, so its row in the second table and its mentions are void. A delete or replace no longer turns the header plain. It still keeps the voice out: the two voiced lines cannot show while a row is pending or deploying, and the destroy sign adds no words.
 
 The map allows playful copy in good-news and empty states only, and none on anything involving a delete or replace. Three levels were tried on the same two lines: dry (no water words), warm (one water image, then the fact) and full pun (jokes, first person). Warm won. A dashboard is read every day, and a line has to survive being read for the 200th time. The fact is always in the line, so a reader who ignores the image loses nothing.

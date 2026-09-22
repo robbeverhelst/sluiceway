@@ -365,8 +365,12 @@ How the failing header state is drawn: the gate stuck half open over a log, with
 _Avoid_: Broken gate, angry gate, crash
 
 **Count dot**:
-The coloured dot in front of a count on the counts line: yellow pending, blue deploying, red preview failed and failed deploys, green in sync, white for a count of 0. Shown whenever there is a header.
+The coloured dot in front of a count on the counts line: yellow pending, orange drifted, blue deploying, red preview failed and failed deploys, green in sync, white for a count of 0. Shown whenever there is a header.
 _Avoid_: Badge, status light, bullet
+
+**Result dot**:
+A count dot's colour in front of a result, so a person sees it at a glance: on a line of the recently deployed list (only under a header), on a headline of the job log, and in a notification recipe's message. Green went out, red failed, yellow refused, white nothing went out, purple rehearsed. The scan's headline takes the dot of the header state it wrote. Never on a row and never in a voiced line: it is a signal, not the voice.
+_Avoid_: Status emoji, icon, badge
 
 **Voice**:
 Wording with a water image in it. It is allowed in exactly two lines, the good-news line and the first-run line. Everything else Sluiceway writes is plain.

@@ -85,6 +85,10 @@ describe("settle after a layer", () => {
         state: "failure",
         description: "a stack it depends on did not deploy",
       });
+      // The red dot of a failed deploy in front (slice 4.5).
+      expect(h.log.lines).toContain(
+        `🔴 Ended the queued deployment of ${stack} (record ${recordOf(h, stack).id}): a stack it depends on did not deploy.`,
+      );
     }
     // The full scan that writes the rows again with their failure line.
     expect(h.github.dispatches).toHaveLength(1);
