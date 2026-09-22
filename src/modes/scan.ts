@@ -71,7 +71,17 @@ import { everyPreviewFailed } from "../core/scan-result.ts";
 import { shownValues } from "../core/show-values.ts";
 import { type Stack, stackId } from "../core/stack.ts";
 import { attributionSource } from "../github/attribution.ts";
-import { type DashboardResult, findDashboard, writeDashboard } from "../github/dashboard.ts";
+import { type DashboardResult, findDashboard } from "../github/dashboard.ts";
+import {
+  type DashboardWriter,
+  fitScan,
+  type LiveDashboard,
+  liveDashboard,
+  type ScanAnswer,
+  type ScanRows,
+  type Written,
+  writeScan,
+} from "../github/dashboard-write.ts";
 import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts";
 import type { JobLog } from "../github/job-log.ts";
 import { dashboardUrl, type StepOutputs, writeResultFile } from "../github/outputs.ts";
@@ -82,14 +92,8 @@ import {
   previewPages,
 } from "../github/preview-pages.ts";
 import type { Notifier } from "../notify/send.ts";
-import {
-  BODY_LIMIT,
-  type BudgetOptions,
-  bodyDoesNotFitMessage,
-  fitBody,
-} from "../render/budget.ts";
+import { BODY_LIMIT, type BudgetOptions, bodyDoesNotFitMessage } from "../render/budget.ts";
 import { whereFilesBelong } from "../render/check.ts";
-import { dashboardFacts } from "../render/dashboard-facts.ts";
 import { COUNT_DOT, HEADER_DOT } from "../render/dots.ts";
 import { dashboardSearchUrl, type RunLinks, runLinks, runUrl } from "../render/links.ts";
 import {
@@ -113,7 +117,7 @@ import {
 } from "../render/merge-row.ts";
 import { renderPreviewPage } from "../render/preview-page.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
-import { type DashboardCounts, dashboardCounts, scanResultFile } from "../render/result-file.ts";
+import { type DashboardCounts, scanResultFile } from "../render/result-file.ts";
 import {
   type AttributionLines,
   byCodeUnit,
@@ -217,11 +221,7 @@ interface Previewed {
 // previewed before the dashboard can be written. The scan previews them and
 // returns to its late read (record 0011).
 class PreviewFirst extends Error {
-  constructor(
-    readonly stacks: { id: string; why: LateWhy }[],
-    // Set when the scan falls back to a full scan as a whole.
-    readonly why?: FullScanReason,
-  ) {
+  constructor(readonly stacks: { id: string; why: LateWhy }[]) {
     super("More stacks have to be previewed before the dashboard can be written.");
     this.name = "PreviewFirst";
   }
@@ -305,7 +305,7 @@ function reportOutputs(context: ScanContext, report: ScanReport): void {
   }
   if (!previewed || !startedAt) return;
   const text = scanResultFile({
-    run: runUrlOf(context, context.runId),
+    run: runUrl(context.repoUrl, context.runId, undefined),
     commit: context.sha,
     milliseconds: context.now().getTime() - startedAt.getTime(),
     dashboard,
@@ -397,7 +397,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   // The stacks whose preparation worked in an earlier round (record 0053).
   const prepared = new Set<string>();
   let composed: Composed | undefined;
-  let written: DashboardResult;
+  let written: Written & DashboardResult;
   let startedFrom: string | undefined;
   // Stacks this scan previewed a second time for a deploy that ended under it.
   const again = new Set<string>();
@@ -444,43 +444,39 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
     // body and the deployment records (record 0004). A fresh row for every
     // previewed stack, the live row block for every other, byte for byte
     // (record 0011), and at every stack the scan defers to fresher facts.
-    const compose = (
-      liveBody: string | undefined,
+    // A full scan is a scan that previews every stack, whatever row each
+    // stack then gets.
+    const full = ids.every((id) => previewed.has(id));
+    const place = (
+      live: LiveDashboard,
       deploys: LateDeploys,
       // A run that an issue edit started is queued or in progress.
       waits: boolean,
       lines: Attributed,
       // What each deploy of the trail shipped (record 0072).
       shipped: ReadonlyMap<TrailEntry, AttributionLines> = new Map(),
-    ): Composed => {
-      const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
+    ): { rows: ScanRows; composed: Composed } => {
       // Rows under a root marker that is missing or of another version are not
       // rows this version can carry. Every stack then counts as having none,
-      // which makes the scan a full one by itself (record 0011).
-      const liveRows = new Map<string, ParsedRow>();
-      if (live?.root?.version === MARKER_VERSION) {
-        // One row per stack: of two blocks with one stack id the first stays.
-        for (const row of live.rows) if (!liveRows.has(row.stackId)) liveRows.set(row.stackId, row);
-      }
+      // which makes the scan a full one by itself (record 0011). One row per
+      // stack: of two blocks with one stack id the first stays.
+      const liveRows: ReadonlyMap<string, ParsedRow> = live.current ? live.first : new Map();
       const { dropped } = oneRowPerStack(ids, new Set(previewed.keys()), [...liveRows.keys()]);
       // A tick is read whatever the version of the body: a scan that writes
       // the body again in its own version clears the ticks it meets with the
       // note (record 0009). Of two blocks for one stack the first counts.
       const liveTicks = new Map<string, string | undefined>();
-      const seen = new Set<string>();
       // On a read-only dashboard no row has a box, so a tick left from before
       // the switch goes with the box, with no note and nobody asked (slice
       // 2.17). The switch changes the config file, so this scan is full.
-      for (const row of config.dashboard.readOnly ? [] : (live?.rows ?? [])) {
-        if (seen.has(row.stackId)) continue;
-        seen.add(row.stackId);
-        if (row.known && row.ticked) liveTicks.set(row.stackId, row.hash);
+      for (const [id, row] of config.dashboard.readOnly ? [] : live.first) {
+        if (row.known && row.ticked) liveTicks.set(id, row.hash);
       }
 
       const { merges, mergeTicks } = mergeRows(
         listing,
         branchPreviews,
-        live?.root?.version === MARKER_VERSION ? live.merges : [],
+        live.current ? live.merges : [],
         waits,
         config.dashboard.redact,
       );
@@ -496,11 +492,11 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
             outsideDeploys(id, history, deploys.runs.get(id)),
           ]),
         ),
-        live?.root?.version === MARKER_VERSION ? live.outside : [],
+        live.current ? live.outside : [],
       );
 
-      const rows: Row[] = [];
-      const carried: ParsedRow[] = [];
+      const rows = new Map<string, Row>();
+      const carried = new Map<string, ParsedRow>();
       const first: { id: string; why: LateWhy }[] = [];
       const deploying: string[] = [];
       const deferred: string[] = [];
@@ -542,7 +538,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
                 }
               : fresh;
           if (!ticked) {
-            rows.push(row);
+            rows.set(id, row);
             continue;
           }
           // Only a pending or a drifted row has a box, for a tick or for the
@@ -555,18 +551,21 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
               resolveOnItsWay: waits,
             }) === "carry";
           ticks.push({ id, tick: carry ? "carry" : "sweep", box });
-          rows.push(!box ? row : carry ? { ...row, ticked: true } : { ...row, orphanTick: true });
+          rows.set(
+            id,
+            !box ? row : carry ? { ...row, ticked: true } : { ...row, orphanTick: true },
+          );
         } else if (
           decided.row === "deploying" &&
           decided.from === "record" &&
           fact?.kind === "open"
         ) {
           deploying.push(id);
-          rows.push({
+          rows.set(id, {
             state: "deploying",
             stackId: id,
             ticker: fact.ticker,
-            runUrl: runUrlOf(context, fact.run, fact.attempt),
+            runUrl: runUrl(context.repoUrl, fact.run, fact.attempt),
             waiting: fact.waiting,
             destroys: destroysOf(mine, liveRow),
             deletes: deletesOf(mine, liveRow),
@@ -588,73 +587,49 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           }
           if (decided.row === "deploying") deploying.push(id);
           else if (mine) deferred.push(id);
-          carried.push(liveRow);
+          carried.set(id, liveRow);
         }
       }
       if (first.length > 0) throw new PreviewFirst(first);
 
-      // A full scan is a scan that previews every stack, whatever row each
-      // stack then gets.
-      const full = ids.every((id) => previewed.has(id));
-      const fitted = fitBody(
-        {
+      return {
+        rows: {
           root: {
             scanSha: context.sha,
             scanRun: context.runId,
             scanAt: at,
             // Written by a full scan, carried through by every other writer.
-            fullScanAt: full ? at : live?.root?.fullScanAt,
-            fullScanRun: full ? context.runId : live?.root?.fullScanRun,
+            fullScanAt: full ? at : live.root?.fullScanAt,
+            fullScanRun: full ? context.runId : live.root?.fullScanRun,
           },
+          facts: deploys.facts,
+          shipped,
           rows,
           carried,
-          redact: config.dashboard.redact,
-          recentlyDeployed: deploys.facts.trail.map((entry) => ({
-            stackId: entry.stackId,
-            result: entry.result,
-            reason: entry.reason,
-            ticker: entry.ticker,
-            at: entry.at,
-            runUrl: runUrlOf(context, entry.run, entry.attempt),
-            shipped: shipped.get(entry),
-          })),
-          repoUrl: context.repoUrl,
-          actionRef: context.actionRef,
-          recentLength: config.dashboard.recentlyDeployed,
-          personality: config.dashboard.personality,
-          readOnly: config.dashboard.readOnly,
-          ignored,
           merges,
-          outsideDeploys: outside,
+          outside,
         },
-        // A writer that swaps rows aims at the hard limit, because the room
-        // between the target and the limit exists for that writer (0028).
-        full ? context.limits?.body : { ...context.limits?.body, target: Number.POSITIVE_INFINITY },
-      );
-      if (!fitted.fits) {
-        // A body over the hard limit is never handed to a writer (record
-        // 0028). Only a fresh row can be shortened, so a scan that carries
-        // rows previews those too and can then shorten everything.
-        if (full) throw new ScanFailedError(bodyDoesNotFitMessage(fitted.size));
-        throw new PreviewFirst(
-          ids.filter((id) => !previewed.has(id)).map((id) => ({ id, why: "no-row" })),
-          { kind: "does-not-fit", carried: carried.length },
-        );
-      }
-      return {
-        body: fitted.body,
-        shortened: fitted.shortened,
-        full,
-        carried: carried.map((row) => row.stackId).filter((id) => !previewed.has(id)),
-        dropped,
-        deploying,
-        deferred,
-        ticks,
-        mergeTicks,
-        resolveWaits: waits,
-        unread: deploys.facts.unread,
-        mergesLeftOut: fitted.mergesLeftOut,
+        composed: {
+          carried: [...carried.keys()].filter((id) => !previewed.has(id)),
+          carriedBlocks: carried.size,
+          dropped,
+          deploying,
+          deferred,
+          ticks,
+          mergeTicks,
+          resolveWaits: waits,
+          unread: deploys.facts.unread,
+        },
       };
+    };
+    const writer: DashboardWriter = {
+      github: context.github,
+      log,
+      repoUrl: context.repoUrl,
+      actionRef: context.actionRef,
+      dashboard: config.dashboard,
+      ignored,
+      budget: context.limits?.body,
     };
 
     // Only a full scan reads the tools' histories: after every preview, once,
@@ -664,17 +639,22 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       histories = await readHistories(context, stacks, config.dashboard.recentlyDeployed);
     }
 
+    let answer: ScanAnswer;
     try {
       // With a fresh row for every stack the body depends on the live one only
       // through the deployment records, which change a few lines. A body that
       // does not fit on its own fails the scan before any request.
-      if (previewed.size === ids.length) compose(undefined, NO_DEPLOYS, false, new Map());
-      written = await writeDashboard(context.github, config.dashboard, async (liveBody) => {
+      if (full) {
+        const alone = place(liveDashboard(""), NO_DEPLOYS, false, new Map()).rows;
+        const fitted = fitScan(writer, full, alone);
+        if (!fitted.fits) throw new ScanFailedError(bodyDoesNotFitMessage(fitted.size));
+      }
+      answer = await writeScan(writer, full, async (live) => {
         // The body this scan started from, for the notifications: the first
         // late read, "" for a new dashboard. A retry reads the scan's own
         // body back, which is no news.
-        startedFrom ??= liveBody;
-        let deploys = await lateDeploys(context, stacks, previewed, liveBody);
+        startedFrom ??= live.body;
+        let deploys = await lateDeploys(context, stacks, previewed, live);
         // A merge that waits for this scan (record 0054). Its stack has to be
         // previewed first, and then the fresh diff goes to a record of its
         // own. Once handed on, the records are read again, so the row is made
@@ -689,35 +669,43 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           // Before the body, so a failed write does not lose the hand-off
           // (record 0035).
           context.outputs?.set("matrix", matrixOutput(handedOn));
-          if (ended) deploys = await lateDeploys(context, stacks, previewed, liveBody);
+          if (ended) deploys = await lateDeploys(context, stacks, previewed, live);
         }
         attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
         const shipped = await attribution.ship(deploys.facts.trail);
-        composed = compose(
-          liveBody,
+        const placed = place(
+          live,
           deploys,
-          !config.dashboard.readOnly && (await resolveWaits(context, liveBody, deploys)),
+          !config.dashboard.readOnly && (await resolveWaits(context, live, deploys)),
           attributed,
           shipped,
         );
-        return composed.body;
+        composed = placed.composed;
+        return placed.rows;
       });
-      break;
     } catch (error) {
       if (!(error instanceof PreviewFirst)) throw error;
       const late = new Set(error.stacks.map(({ id }) => id));
       next = stacks.filter(({ stack }) => late.has(stackId(stack)));
-      if (error.why) {
-        log.info(
-          `This scan falls back to a full scan: ${fullScanReasonText(error.why)}. Previewing the other ${plural(next.length, "stack")} now.`,
-        );
-      } else {
-        for (const { id, why } of error.stacks) {
-          if (why === "deploy-ended") again.add(id);
-          log.info(`${logGroupTitle(id)} ${PREVIEW_FIRST[why]}`);
-        }
+      for (const { id, why } of error.stacks) {
+        if (why === "deploy-ended") again.add(id);
+        log.info(`${logGroupTitle(id)} ${PREVIEW_FIRST[why]}`);
       }
+      continue;
     }
+    if (answer.fits) {
+      written = answer;
+      break;
+    }
+    // A body over the hard limit is never handed to a writer (record 0028).
+    // Only a fresh row can be shortened, so a scan that carries rows previews
+    // those too and can then shorten everything.
+    if (full) throw new ScanFailedError(bodyDoesNotFitMessage(answer.size));
+    const why: FullScanReason = { kind: "does-not-fit", carried: composed?.carriedBlocks ?? 0 };
+    next = stacks.filter(({ stack }) => !previewed.has(stackId(stack)));
+    log.info(
+      `This scan falls back to a full scan: ${fullScanReasonText(why)}. Previewing the other ${plural(next.length, "stack")} now.`,
+    );
   }
 
   reportDashboard(context, written, composed);
@@ -726,7 +714,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
     url: dashboardUrl(context.repoUrl, written.number),
     changed: written.written,
     // The counts line of the body as written, from its row markers.
-    counts: dashboardCounts(parseDashboard(written.body).rows),
+    counts: written.counts,
   };
   // Before anything can turn the job red, so a red scan still tells. A send
   // never throws (record 0078).
@@ -769,13 +757,12 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   }
 }
 
-// What the builder of the body made on its last try.
+// What the late read placed on its last try, besides the rows.
 interface Composed {
-  body: string;
-  shortened: number;
-  full: boolean;
   // Stacks this scan did not preview, whose live row stays as it is.
   carried: string[];
+  // Every live row block the scan carried, previewed or not.
+  carriedBlocks: number;
   dropped: string[];
   // Stacks with an open deployment.
   deploying: string[];
@@ -791,9 +778,6 @@ interface Composed {
   resolveWaits: boolean;
   // Deployment records with a payload this version cannot read.
   unread: number;
-  // Updates waiting to merge past the oldest thirty the body had no room for
-  // (record 0071).
-  mergesLeftOut: number;
 }
 
 const PREVIEW_FIRST: Record<LateWhy, string> = {
@@ -843,10 +827,6 @@ function startingCommits(
 
 // A link to a run lands on the attempt that created the record, when the
 // record says (slice 5.9).
-function runUrlOf(context: ScanContext, run: string, attempt?: string | undefined): string {
-  return runUrl(context.repoUrl, run, attempt);
-}
-
 // A deploy fact from the deployment record, never from the old row. It
 // stands while no deploy of the stack ended after it, outside the dashboard
 // included (record 0076).
@@ -862,7 +842,7 @@ function failureLine(
     reason: fact.reason,
     ticker: fact.ticker,
     at: fact.at,
-    runUrl: runUrlOf(context, fact.run, fact.attempt),
+    runUrl: runUrl(context.repoUrl, fact.run, fact.attempt),
   };
 }
 
@@ -892,12 +872,10 @@ async function lateDeploys(
   context: ScanContext,
   stacks: ConfiguredStack[],
   previewed: ReadonlyMap<string, Previewed>,
-  liveBody: string,
+  live: LiveDashboard,
 ): Promise<LateDeploys> {
   const { log, github } = context;
-  const liveStates = new Map(
-    parseDashboard(liveBody).rows.map((row) => [row.stackId, row.state] as const),
-  );
+  const liveStates = new Map(live.rows.map((row) => [row.stackId, row.state] as const));
   // In sync stacks need no lookup (record 0003). A pending stack does, and so
   // does a stack whose live row says deploying.
   const fallBack = stacks
@@ -942,10 +920,9 @@ async function lateDeploys(
 // lookup, which is one request.
 async function resolveWaits(
   context: ScanContext,
-  liveBody: string,
+  live: LiveDashboard,
   deploys: LateDeploys,
 ): Promise<boolean> {
-  const live = parseDashboard(liveBody);
   const met =
     live.rows.some(
       (row) => row.known && row.ticked && deploys.facts.byStack.get(row.stackId)?.kind !== "open",
@@ -1477,21 +1454,21 @@ const FOUND: Record<DashboardResult["found"], string> = {
 
 function reportDashboard(
   context: ScanContext,
-  written: DashboardResult,
+  written: Written & DashboardResult,
   composed: Composed | undefined,
 ): void {
   const { log } = context;
-  const shortened = composed?.shortened ?? 0;
+  const { shortened } = written;
   const size = `${written.body.length.toLocaleString("en-US")} of ${BODY_LIMIT.toLocaleString("en-US")} characters`;
   // The headline of the scan starts with the dot of the header state it wrote,
   // so a person scanning the log sees the result at once (slice 4.5).
-  const dot = HEADER_DOT[dashboardFacts(parseDashboard(written.body).rows).headerState];
+  const dot = HEADER_DOT[written.header];
   log.info(
     `${dot} ${FOUND[written.found]}: ${context.repoUrl}/issues/${written.number} (${size}).`,
   );
   if (written.tries > 1) log.info(`The write took ${written.tries} tries.`);
   if (shortened > 0) log.info(`${plural(shortened, "row")} shortened to fit the size budget.`);
-  const left = composed?.mergesLeftOut ?? 0;
+  const left = written.mergesLeftOut;
   if (left > 0) {
     log.info(
       `${plural(left, "more pull request")} ${left === 1 ? "qualifies" : "qualify"} and ${left === 1 ? "is" : "are"} not listed: the dashboard has no room for ${left === 1 ? "it" : "them"}. They are listed as the older ones merge.`,
@@ -1687,7 +1664,7 @@ async function handOffMerges(
   handedOn: MatrixEntry[],
 ): Promise<boolean> {
   const { github, log } = context;
-  const logUrl = runUrlOf(context, context.runId, context.runAttempt);
+  const logUrl = runUrl(context.repoUrl, context.runId, context.runAttempt);
   let ended = false;
   for (const { id, fact } of waiting) {
     const name = logGroupTitle(id);
