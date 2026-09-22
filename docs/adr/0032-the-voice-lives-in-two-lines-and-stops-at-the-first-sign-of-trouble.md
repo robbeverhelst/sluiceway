@@ -1,5 +1,7 @@
 # The voice lives in two lines and stops at the first sign of trouble
 
+> Amended by 0075: the warm good-news line is one of three, picked by the UTC day of the scan on the root marker, so the same scan day gives the same body. The dry line and the first-run line do not change.
+>
 > Clarified in slice 4.5: a dot of record 0040 is a signal, not the voice. The job log's headlines and the recently deployed list start with one, and the words stay plain.
 >
 > Amended by 0043: there is no `plain` state any more, so its row in the second table and its mentions are void. A delete or replace no longer turns the header plain. It still keeps the voice out: the two voiced lines cannot show while a row is pending or deploying, and the destroy sign adds no words.

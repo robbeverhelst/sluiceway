@@ -1,5 +1,7 @@
 # The failing and deploying pictures show one crate per pending stack too
 
+> Amended by 0075: queued has one picture per crate count as well, the counts run to 20, and the sign files are `-deletes`, `-replaces` and `-deletes-replaces`. 702 header files.
+
 Record 0047 gave pending one picture per crate count, and kept failing and deploying at one picture each: the jam with two crates floating behind it, and the open gate with three crates passing through. On 2026-09-22 the owner saw a dashboard with nine pending stacks and one failed preview, and the jam showed two crates: "on failed preview there should also be the versions with the correct amount of packages" (onboarding log, hurdle 26). Build plan slice 4.15 brings the count to every state.
 
 This amends 0033, 0043, 0047, 0055 and 0059.

@@ -1,5 +1,7 @@
 # The header always shows the real state, and a destroy adds a sign to the same picture
 
+> Amended by 0075: the triangle is now the replace sign, and a delete has a sign of its own under it on the same pole, an amber diamond with a cross. The files end in `-deletes`, `-replaces` or `-deletes-replaces` in place of `-destroys`, and a queued row counts like a deploying one.
+>
 > Amended by 0047: the sign stands on a pole in the water right of the wordmark, and it is added to the thirteen pending pictures of 0047, which makes 62 files. The pending alt text says the number of stacks.
 >
 > Amended by 0055: the drift state takes the low downstream space this record kept free. Sixty-four files.

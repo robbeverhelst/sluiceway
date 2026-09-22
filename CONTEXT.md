@@ -363,7 +363,7 @@ A change whose op is replace or delete: a real object goes away. Destroys are li
 _Avoid_: Destructive change, dangerous change, removal
 
 **Destroy alert**:
-The one caution block right above the pending list that names every pending stack with a destroy. It is an index to the delete and replace lines, which stay open under each row. It is computed from the row markers and decides nothing, and it shows under redact and without personality too.
+The one caution block right above the pending list that names every pending stack with a destroy, and in a paragraph of its own every drifted stack with a resource gone outside the code. It is an index to the delete and replace lines, which stay open under each row. It is computed from the row markers and decides nothing, and it shows under redact and without personality too.
 _Avoid_: Destroy warning (that is the line on the row and on the counts line), destroy banner, danger box
 
 ### Personality
@@ -381,23 +381,23 @@ The exact release tag of the running action, or its commit SHA. Never a moving t
 _Avoid_: Action version, image tag, release
 
 **Header state**:
-Which of six states the header shows: failing, deploying, pending, drift, first run or in sync. The first that applies wins, in that order. It is computed from the row markers and decides nothing. A destroy does not change it. Pending has thirteen pictures and failing and deploying fourteen each, one per crate count, so there are forty-four pictures for six states, and forty-one of them exist once more with the destroy sign. Drift is water seeping through the closed gate.
+Which of seven states the header shows: failing, deploying, queued, pending, drift, first run or in sync. The first that applies wins, in that order. It is computed from the row markers and decides nothing. A destroy does not change it. Pending has twenty-one pictures and failing, deploying and queued twenty-two each, one per crate count, so there are ninety pictures for seven states, and eighty-seven of them exist three more times with the destroy signs. Drift is water seeping through the closed gate. Queued is the closed gate with the ticked crate tied up at it, while a queued stack waits and nothing deploys.
 _Avoid_: Mood, dashboard status, health
 
 **Destroy sign**:
-The amber warning triangle on a pole in the water in the header, right of the wordmark. The pending, failing and deploying pictures carry it whenever a pending or deploying row has a destroy. It does not move, and the rest of the picture is unchanged. It is computed from the row markers and decides nothing. It took the place of a grey header state called plain.
+One of two signs on a pole in the water in the header, right of the wordmark: the replace sign, an amber warning triangle, and under it the delete sign, an amber diamond with a cross. The pending, failing, deploying and queued pictures carry the replace sign whenever a pending, deploying or queued row has a replace, and the delete sign whenever one has a delete. They do not move, and the rest of the picture is unchanged. They are computed from the row markers and decide nothing. They took the place of a grey header state called plain.
 _Avoid_: Plain, careful state, warning header, danger state, alarm
 
 **Crate count**:
-How many crates the pending, failing or deploying picture shows: the number of pending rows, from 0 to 12, or `more` above 12. The same count picks the file in all three states, and a pending header always has at least 1. It is computed from the row markers and decides nothing. It replaced the pending level.
+How many crates the pending, failing, deploying or queued picture shows: the number of pending rows, from 0 to 20, or `more` above 20. The same count picks the file in all four states, and a pending header always has at least 1. It is computed from the row markers and decides nothing. It replaced the pending level.
 _Avoid_: Pending level, tier, severity, load
 
 **Water step**:
-How high the water stands upstream in a pending or failing picture, one of five: 1 or 2 pending, 3 or 4, 5 to 7, 8 to 10, 11 or more. The gauge on the wall has one amber mark per step. It follows from the crate count. The failing picture with 0 crates has the lowest water. The deploying picture keeps one level at every count, because the open gate lets the water run.
+How high the water stands upstream in a pending, failing or queued picture, one of five: 1 or 2 pending, 3 or 4, 5 to 7, 8 to 10, 11 or more. The gauge on the wall has one amber mark per step. It follows from the crate count. The failing picture with 0 crates has the lowest water. The deploying picture keeps one level at every count, because the open gate lets the water run.
 _Avoid_: Pending level, water level (for the count)
 
 **Overflow**:
-The pending, failing or deploying picture past the maximum of 12 crates: the row runs on with a half crate cut by the left edge, which reads as more than 12.
+The pending, failing, deploying or queued picture past the maximum of 20 crates: the row runs on with a half crate cut by the left edge, which reads as more than 20.
 _Avoid_: Cap picture, max picture
 
 **Upstream and downstream**:
@@ -405,7 +405,7 @@ The two sides of Penny in the header. Upstream is on the left, where water and c
 _Avoid_: Before and after, input and output, left and right side
 
 **Crate**:
-A box floating upstream in the header. One crate stands for one pending stack. Up to 12 the picture shows exactly as many crates as there are pending rows, some stacked on two others. Above 12 it shows the overflow.
+A box floating upstream in the header. One crate stands for one pending stack. Up to 20 the picture shows exactly as many crates as there are pending rows, some stacked on two others. Above 20 it shows the overflow.
 _Avoid_: Package, box per stack, queue item
 
 **Jam**:
@@ -429,7 +429,7 @@ Wording with a water image in it. It is allowed in exactly two lines, the good-n
 _Avoid_: Tone, copy, humour
 
 **Good-news line**:
-The line under the Pending heading when nothing is pending.
+The line under the Pending heading when nothing is pending. With personality it is one of three warm lines, picked by the day of the scan, so the same scan day always gives the same line.
 _Avoid_: Empty state, all clear message
 
 **First-run line**:

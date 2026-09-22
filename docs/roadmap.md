@@ -92,15 +92,11 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Allowing for a runner clock that differs from GitHub's
 - A shortening level that also drops a row's links, for more than about 100 stacks pending at once
 - A link to the summary in the note about shortened rows
-- Drifted rows in the destroy alert
 - A finer personality switch (the header without the voice, or the reverse)
 - A custom header image, or a palette setting
-- A rotating set of good-news lines
-- A header state for queued stacks
 - A drift picture with crates, or drift above pending in the header
 - Levels for deploying or failing (how many are deploying, how much failed)
-- A sign of its own for a delete, next to the one for a replace
-- More than 12 exact crates
+- More than 20 exact crates
 - The destroy sign painted on the wall right of the wordmark, or on a pole at the far right
 - The overflow as a pile running off the edge
 - Count dots as small images in the brand colours

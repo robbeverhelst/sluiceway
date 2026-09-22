@@ -1,5 +1,7 @@
 # Pending shows one crate per pending stack up to twelve, and the destroy sign stands on a pole
 
+> Amended by 0075: the maximum is 20 crates, then the overflow. Crates 13 to 20 go on a second and a third tier. The water keeps its five steps.
+>
 > Amended, 2026-09-22: small fish swim upstream of Penny, one per water step up to four, and two in the deploying picture.
 >
 > Amended by 0066: failing and deploying show one crate per pending stack too, from 0 to 12 and more, each with and without the sign. Deploying is no longer one picture.
