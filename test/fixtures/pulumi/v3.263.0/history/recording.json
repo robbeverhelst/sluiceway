@@ -1,0 +1,69 @@
+{
+  "scenario": "history",
+  "description": "The tool's history of network:dev (record 0073): read before any update, then after a deploy from a laptop, Sluiceway's own deploy and a deploy from another workflow inside GitHub Actions, a deploy that changed nothing, a refresh, a failed deploy and a destroy from a tree with uncommitted changes. The stack has a plain config value that holds the canary value.",
+  "cliVersion": "v3.263.0",
+  "commands": [
+    {
+      "id": "history-before",
+      "argv": [
+        "pulumi",
+        "stack",
+        "history",
+        "--json",
+        "--page-size",
+        "10",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "history-before.stdout",
+      "stderr": "history-before.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "up-failed",
+      "argv": [
+        "pulumi",
+        "up",
+        "--yes",
+        "--skip-preview",
+        "--suppress-outputs",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "exitCode": 1,
+      "stdout": "up-failed.stdout",
+      "stderr": "up-failed.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "history",
+      "argv": [
+        "pulumi",
+        "stack",
+        "history",
+        "--json",
+        "--page-size",
+        "10",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "dev"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "history.stdout",
+      "stderr": "history.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

@@ -1,0 +1,355 @@
+[
+  {
+    "version": 0,
+    "kind": "destroy",
+    "startTime": "2026-09-22T13:19:49.000Z",
+    "message": "A third commit",
+    "environment": {
+      "exec.kind": "cli",
+      "git.author": "Ada Author",
+      "git.author.email": "ada@example.invalid",
+      "git.committer": "Ada Author",
+      "git.committer.email": "ada@example.invalid",
+      "git.dirty": "true",
+      "git.head": "e66374d4bc2c1f41ac1a638ebedf0820be827f5e",
+      "git.headName": "refs/heads/master",
+      "pulumi.arch": "arm64",
+      "pulumi.env.PULUMI_BACKEND_URL": "set",
+      "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
+      "pulumi.env.PULUMI_HOME": "set",
+      "pulumi.env.PULUMI_SKIP_UPDATE_CHECK": "true",
+      "pulumi.flag.color": "set",
+      "pulumi.flag.non-interactive": "true",
+      "pulumi.flag.skip-preview": "true",
+      "pulumi.flag.stack": "set",
+      "pulumi.flag.yes": "true",
+      "pulumi.os": "darwin",
+      "pulumi.version": "v3.229.0",
+      "stack.environments": "[]",
+      "updatePlan": "false"
+    },
+    "config": {
+      "network:plain": {
+        "value": "CANARY-VALUE",
+        "secret": false
+      },
+      "network:token": {
+        "secret": true
+      },
+      "network:zone": {
+        "value": "dev-a",
+        "secret": false
+      }
+    },
+    "result": "succeeded",
+    "endTime": "2026-09-22T13:19:50.000Z",
+    "resourceChanges": {
+      "delete": 6
+    }
+  },
+  {
+    "version": 0,
+    "kind": "update",
+    "startTime": "2026-09-22T13:19:48.000Z",
+    "message": "A third commit",
+    "environment": {
+      "exec.kind": "cli",
+      "git.author": "Ada Author",
+      "git.author.email": "ada@example.invalid",
+      "git.committer": "Ada Author",
+      "git.committer.email": "ada@example.invalid",
+      "git.dirty": "true",
+      "git.head": "e66374d4bc2c1f41ac1a638ebedf0820be827f5e",
+      "git.headName": "refs/heads/master",
+      "pulumi.arch": "arm64",
+      "pulumi.env.PULUMI_BACKEND_URL": "set",
+      "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
+      "pulumi.env.PULUMI_HOME": "set",
+      "pulumi.env.PULUMI_SKIP_UPDATE_CHECK": "true",
+      "pulumi.flag.color": "set",
+      "pulumi.flag.non-interactive": "true",
+      "pulumi.flag.skip-preview": "true",
+      "pulumi.flag.stack": "set",
+      "pulumi.flag.suppress-outputs": "true",
+      "pulumi.flag.yes": "true",
+      "pulumi.os": "darwin",
+      "pulumi.version": "v3.229.0",
+      "runtime.name": "yaml",
+      "stack.environments": "[]",
+      "updatePlan": "false"
+    },
+    "config": {
+      "network:plain": {
+        "value": "CANARY-VALUE",
+        "secret": false
+      },
+      "network:token": {
+        "secret": true
+      },
+      "network:zone": {
+        "value": "dev-a",
+        "secret": false
+      }
+    },
+    "result": "failed",
+    "endTime": "2026-09-22T13:19:48.000Z",
+    "resourceChanges": {
+      "same": 5
+    }
+  },
+  {
+    "version": 0,
+    "kind": "refresh",
+    "startTime": "2026-09-22T13:19:46.000Z",
+    "message": "A third commit",
+    "environment": {
+      "exec.kind": "cli",
+      "git.author": "Ada Author",
+      "git.author.email": "ada@example.invalid",
+      "git.committer": "Ada Author",
+      "git.committer.email": "ada@example.invalid",
+      "git.dirty": "false",
+      "git.head": "e66374d4bc2c1f41ac1a638ebedf0820be827f5e",
+      "git.headName": "refs/heads/master",
+      "pulumi.arch": "arm64",
+      "pulumi.env.PULUMI_BACKEND_URL": "set",
+      "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
+      "pulumi.env.PULUMI_HOME": "set",
+      "pulumi.env.PULUMI_SKIP_UPDATE_CHECK": "true",
+      "pulumi.flag.color": "set",
+      "pulumi.flag.non-interactive": "true",
+      "pulumi.flag.stack": "set",
+      "pulumi.flag.yes": "true",
+      "pulumi.os": "darwin",
+      "pulumi.version": "v3.229.0",
+      "stack.environments": "[]",
+      "updatePlan": "false"
+    },
+    "config": {
+      "network:plain": {
+        "value": "CANARY-VALUE",
+        "secret": false
+      },
+      "network:token": {
+        "secret": true
+      },
+      "network:zone": {
+        "value": "dev-a",
+        "secret": false
+      }
+    },
+    "result": "succeeded",
+    "endTime": "2026-09-22T13:19:47.000Z",
+    "resourceChanges": {
+      "same": 6
+    }
+  },
+  {
+    "version": 0,
+    "kind": "update",
+    "startTime": "2026-09-22T13:19:45.000Z",
+    "message": "A third commit",
+    "environment": {
+      "exec.kind": "cli",
+      "git.author": "Ada Author",
+      "git.author.email": "ada@example.invalid",
+      "git.committer": "Ada Author",
+      "git.committer.email": "ada@example.invalid",
+      "git.dirty": "false",
+      "git.head": "e66374d4bc2c1f41ac1a638ebedf0820be827f5e",
+      "git.headName": "refs/heads/master",
+      "pulumi.arch": "arm64",
+      "pulumi.env.PULUMI_BACKEND_URL": "set",
+      "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
+      "pulumi.env.PULUMI_HOME": "set",
+      "pulumi.env.PULUMI_SKIP_UPDATE_CHECK": "true",
+      "pulumi.flag.color": "set",
+      "pulumi.flag.non-interactive": "true",
+      "pulumi.flag.skip-preview": "true",
+      "pulumi.flag.stack": "set",
+      "pulumi.flag.yes": "true",
+      "pulumi.os": "darwin",
+      "pulumi.version": "v3.229.0",
+      "runtime.name": "yaml",
+      "stack.environments": "[]",
+      "updatePlan": "false"
+    },
+    "config": {
+      "network:plain": {
+        "value": "CANARY-VALUE",
+        "secret": false
+      },
+      "network:token": {
+        "secret": true
+      },
+      "network:zone": {
+        "value": "dev-a",
+        "secret": false
+      }
+    },
+    "result": "succeeded",
+    "endTime": "2026-09-22T13:19:45.000Z",
+    "resourceChanges": {
+      "same": 6
+    }
+  },
+  {
+    "version": 0,
+    "kind": "update",
+    "startTime": "2026-09-22T13:19:44.000Z",
+    "message": "A third commit",
+    "environment": {
+      "ci.build.id": "1234567890",
+      "ci.build.number": "42",
+      "ci.build.type": "workflow_dispatch",
+      "ci.build.url": "https://github.com/example-org/example-repo/actions/runs/1234567890",
+      "ci.system": "GitHub Actions",
+      "exec.kind": "cli",
+      "git.author": "Ada Author",
+      "git.author.email": "ada@example.invalid",
+      "git.committer": "Ada Author",
+      "git.committer.email": "ada@example.invalid",
+      "git.dirty": "false",
+      "git.head": "e66374d4bc2c1f41ac1a638ebedf0820be827f5e",
+      "git.headName": "refs/heads/master",
+      "pulumi.arch": "arm64",
+      "pulumi.env.PULUMI_BACKEND_URL": "set",
+      "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
+      "pulumi.env.PULUMI_HOME": "set",
+      "pulumi.env.PULUMI_SKIP_UPDATE_CHECK": "true",
+      "pulumi.flag.color": "set",
+      "pulumi.flag.non-interactive": "true",
+      "pulumi.flag.skip-preview": "true",
+      "pulumi.flag.stack": "set",
+      "pulumi.flag.yes": "true",
+      "pulumi.os": "darwin",
+      "pulumi.version": "v3.229.0",
+      "runtime.name": "yaml",
+      "stack.environments": "[]",
+      "updatePlan": "false"
+    },
+    "config": {
+      "network:plain": {
+        "value": "CANARY-VALUE",
+        "secret": false
+      },
+      "network:token": {
+        "secret": true
+      },
+      "network:zone": {
+        "value": "dev-a",
+        "secret": false
+      }
+    },
+    "result": "succeeded",
+    "endTime": "2026-09-22T13:19:44.000Z",
+    "resourceChanges": {
+      "create": 1,
+      "same": 5
+    }
+  },
+  {
+    "version": 0,
+    "kind": "update",
+    "startTime": "2026-09-22T13:19:43.000Z",
+    "message": "A second commit",
+    "environment": {
+      "ci.build.id": "9876543210",
+      "ci.build.number": "42",
+      "ci.build.type": "workflow_dispatch",
+      "ci.build.url": "https://github.com/example-org/example-repo/actions/runs/9876543210",
+      "ci.system": "GitHub Actions",
+      "exec.kind": "cli",
+      "git.author": "Ada Author",
+      "git.author.email": "ada@example.invalid",
+      "git.committer": "Ada Author",
+      "git.committer.email": "ada@example.invalid",
+      "git.dirty": "false",
+      "git.head": "e3f01f07f5c1aae592fa33baeaa66b2408395746",
+      "git.headName": "refs/heads/master",
+      "pulumi.arch": "arm64",
+      "pulumi.env.PULUMI_BACKEND_URL": "set",
+      "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
+      "pulumi.env.PULUMI_HOME": "set",
+      "pulumi.env.PULUMI_SKIP_UPDATE_CHECK": "true",
+      "pulumi.flag.color": "set",
+      "pulumi.flag.non-interactive": "true",
+      "pulumi.flag.skip-preview": "true",
+      "pulumi.flag.stack": "set",
+      "pulumi.flag.yes": "true",
+      "pulumi.os": "darwin",
+      "pulumi.version": "v3.229.0",
+      "runtime.name": "yaml",
+      "stack.environments": "[]",
+      "updatePlan": "false"
+    },
+    "config": {
+      "network:plain": {
+        "value": "CANARY-VALUE",
+        "secret": false
+      },
+      "network:token": {
+        "secret": true
+      },
+      "network:zone": {
+        "value": "dev-a",
+        "secret": false
+      }
+    },
+    "result": "succeeded",
+    "endTime": "2026-09-22T13:19:43.000Z",
+    "resourceChanges": {
+      "replace": 1,
+      "same": 4
+    }
+  },
+  {
+    "version": 0,
+    "kind": "update",
+    "startTime": "2026-09-22T13:19:28.000Z",
+    "message": "CANARY-VALUE in a commit title",
+    "environment": {
+      "exec.kind": "cli",
+      "git.author": "Ada Author",
+      "git.author.email": "ada@example.invalid",
+      "git.committer": "Ada Author",
+      "git.committer.email": "ada@example.invalid",
+      "git.dirty": "false",
+      "git.head": "9c0f8b0a7cb9aa7a9099036bbd19da83fca751a7",
+      "git.headName": "refs/heads/master",
+      "pulumi.arch": "arm64",
+      "pulumi.env.PULUMI_BACKEND_URL": "set",
+      "pulumi.env.PULUMI_CONFIG_PASSPHRASE": "set",
+      "pulumi.env.PULUMI_HOME": "set",
+      "pulumi.env.PULUMI_SKIP_UPDATE_CHECK": "true",
+      "pulumi.flag.color": "set",
+      "pulumi.flag.non-interactive": "true",
+      "pulumi.flag.skip-preview": "true",
+      "pulumi.flag.stack": "set",
+      "pulumi.flag.yes": "true",
+      "pulumi.os": "darwin",
+      "pulumi.version": "v3.229.0",
+      "runtime.name": "yaml",
+      "stack.environments": "[]",
+      "updatePlan": "false"
+    },
+    "config": {
+      "network:plain": {
+        "value": "CANARY-VALUE",
+        "secret": false
+      },
+      "network:token": {
+        "secret": true
+      },
+      "network:zone": {
+        "value": "dev-a",
+        "secret": false
+      }
+    },
+    "result": "succeeded",
+    "endTime": "2026-09-22T13:19:43.000Z",
+    "resourceChanges": {
+      "create": 5
+    }
+  }
+]

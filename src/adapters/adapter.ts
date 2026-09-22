@@ -98,6 +98,35 @@ export type DriftResult = (
   toolLog: string;
 };
 
+// One deploy that the tool's own history holds for a stack (record 0073): a
+// deploy that went out and changed something, by whoever ran it. It has no
+// field that could hold a value, a message or a person.
+export interface ToolDeploy {
+  kind: "deploy" | "destroy";
+  // When it ended, by the clock of the machine that ran it, in whole seconds.
+  endedAt: Date;
+  // The commit that was checked out, and whether the tree held changes that
+  // are in no commit. Absent when the tool recorded none.
+  commit?: { sha: string; dirty: boolean };
+  // The GitHub Actions run it ran in, when it ran in one. Sluiceway's own
+  // deploys are told apart by it.
+  runId?: string;
+}
+
+export interface HistoryOptions extends ToolContext {
+  timeoutMinutes: number;
+  // The newest entries of the history to read, deploys or not.
+  limit: number;
+}
+
+export type DeployHistoryResult = (
+  | { ok: true; deploys: ToolDeploy[] }
+  | { ok: false; reason: PreviewFailureReason; detail: string[] }
+) & {
+  // The tool's own words, for the job log only (record 0022).
+  toolLog: string;
+};
+
 export interface ApplyOptions {
   // The diff hash the tick approved covers drift (record 0055): the deploy
   // reads what is real first, so it puts the drift back as the code says.
@@ -219,6 +248,13 @@ export interface Adapter {
   // it out, or answers undefined for a stack it cannot check, and that stack
   // is never checked for drift.
   detectDrift?(stack: Stack, options: PreviewOptions): Promise<DriftResult | undefined>;
+
+  // Reads the tool's own history of the stack: its deploys, newest first,
+  // whoever ran them (record 0073). It reads and changes nothing else and
+  // always resolves. An adapter whose tool keeps no such history leaves it
+  // out, or answers undefined for a stack it cannot read, and deploys of that
+  // stack made outside the dashboard are not listed.
+  deployHistory?(stack: Stack, options: HistoryOptions): Promise<DeployHistoryResult | undefined>;
 
   // Deploys the stack as the code is now. `apply` calls it only right after a
   // fresh preview gave the diff hash the tick approved (record 0008), and the

@@ -1,0 +1,28 @@
+{
+  "scenario": "history-missing-stack",
+  "description": "The tool's history of a stack that the backend does not hold.",
+  "cliVersion": "v3.263.0",
+  "commands": [
+    {
+      "id": "history",
+      "argv": [
+        "pulumi",
+        "stack",
+        "history",
+        "--json",
+        "--page-size",
+        "10",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "ghost"
+      ],
+      "cwd": "network",
+      "exitCode": 6,
+      "stdout": "history.stdout",
+      "stderr": "history.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

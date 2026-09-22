@@ -47,6 +47,8 @@ export function replay(version: string, scenario: string, root = ROOT): Replay {
         Object.entries(command.env ?? {}).every(([name, value]) => asked.env[name] === value),
     );
     const [command] = index < 0 ? [] : waiting.splice(index, 1);
+    const history = command === undefined ? unrecordedHistory(version, asked) : undefined;
+    if (history) return history;
     if (command === undefined) {
       throw new Error(
         `${version}/${scenario} holds no recording of "${asked.argv.join(" ")}" in ${asked.cwd}.`,
@@ -60,6 +62,25 @@ export function replay(version: string, scenario: string, root = ROOT): Replay {
     };
   };
   return { run, runs };
+}
+
+// A full scan reads the tool's history of every stack (record 0073). A
+// scenario that did not record one is answered with what the real CLI printed
+// for a stack that was never deployed, from the history scenario of the same
+// version, so a test about something else sees no deploy made outside.
+export function unrecordedHistory(version: string, asked: Run): RunResult | undefined {
+  if (asked.argv[1] !== "stack" || asked.argv[2] !== "history") return undefined;
+  const command = readRecording(version, "history").commands.find(
+    ({ id }) => id === "history-before",
+  );
+  if (command === undefined) throw new Error(`${version}/history holds no history-before.`);
+  const dir = join(FIXTURES, version, "history");
+  return {
+    status: "exited",
+    exitCode: command.exitCode,
+    stdout: readFileSync(join(dir, command.stdout), "utf8"),
+    stderr: readFileSync(join(dir, command.stderr), "utf8"),
+  };
 }
 
 // A runner that gives one fixed answer, for what a recording cannot hold: a

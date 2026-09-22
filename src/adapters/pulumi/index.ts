@@ -4,6 +4,7 @@ import { findInBackend } from "./backend.ts";
 import { discover } from "./discover.ts";
 import { detectDrift } from "./drift.ts";
 import { readsFiles } from "./file-references.ts";
+import { deployHistory } from "./history.ts";
 import { previewWithReferences } from "./preview.ts";
 import { readDependencies } from "./references.ts";
 import { toolDiff } from "./tool-diff.ts";
@@ -30,6 +31,7 @@ export const pulumi: Adapter = {
   preview,
   toolDiff,
   detectDrift,
+  deployHistory,
   apply,
   readsFiles,
   findInBackend,

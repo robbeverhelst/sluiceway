@@ -57,6 +57,9 @@ export const tools: Adapter = {
   // Only Pulumi can check drift (record 0055). A stack of another tool is
   // never checked.
   detectDrift: async (stack, options) => adapterOf(stack).detectDrift?.(stack, options),
+  // Only Pulumi keeps a history of its deploys (record 0073). A stack of
+  // another tool is never read, and the scan says so.
+  deployHistory: async (stack, options) => adapterOf(stack).deployHistory?.(stack, options),
   apply: (stack, context, plan, options) => adapterOf(stack).apply(stack, context, plan, options),
 
   // Each tool that can list its stacks is asked about its own (record 0074).

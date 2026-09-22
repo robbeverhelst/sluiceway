@@ -134,6 +134,79 @@ function repair(cwd: string, stack: string, expect: Expectation): Step {
   };
 }
 
+// The tool's history of a stack as the adapter reads it (record 0073): the
+// newest entries, as many as the trail lists by default. `--json`, not
+// `--output json`, which v3.229.0 does not know.
+export const HISTORY_PAGE = 10;
+
+function history(cwd: string, stack: string, expect: Expectation, id = "history"): Step {
+  return {
+    kind: "record",
+    id,
+    cwd,
+    argv: [
+      "pulumi",
+      "stack",
+      "history",
+      "--json",
+      "--page-size",
+      String(HISTORY_PAGE),
+      ...QUIET,
+      "--stack",
+      stack,
+    ],
+    stdout: "text",
+    expect,
+  };
+}
+
+// A git repo around the copy of the example, so the tool writes the commit
+// into its history, with a made-up author whose name and address no test
+// result may hold. The commit title holds the canary value: the tool keeps it
+// as the message of an update that has no -m.
+export const HISTORY_AUTHOR = { name: "Ada Author", email: "ada@example.invalid" };
+
+function git(...args: string[]): Step {
+  return {
+    kind: "setup",
+    cwd: ".",
+    argv: [
+      "git",
+      "-c",
+      `user.name=${HISTORY_AUTHOR.name}`,
+      "-c",
+      `user.email=${HISTORY_AUTHOR.email}`,
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ],
+  };
+}
+
+function commit(title: string): Step[] {
+  return [git("add", "-A"), git("commit", "-q", "-m", title)];
+}
+
+// An update run inside GitHub Actions, as the tool sees it from the
+// environment: Sluiceway's own deploys carry the run id of their workflow
+// run, and so does a deploy from another workflow of the same repo.
+export const OWN_RUN = "9876543210";
+export const OTHER_RUN = "1234567890";
+
+function upInActions(cwd: string, stack: string, runId: string): Step {
+  return {
+    ...up(cwd, stack),
+    env: {
+      GITHUB_ACTIONS: "true",
+      GITHUB_RUN_ID: runId,
+      GITHUB_RUN_NUMBER: "42",
+      GITHUB_EVENT_NAME: "workflow_dispatch",
+      GITHUB_REPOSITORY: "example-org/example-repo",
+      GITHUB_SERVER_URL: "https://github.com",
+    },
+  } as Step;
+}
+
 const NETWORK = "network/Pulumi.yaml";
 
 // A file the network stack manages, written by its deploy. Removing it is a
@@ -707,5 +780,47 @@ ${OUTPUTS}`,
       init("generated/many", "big"),
       preview("generated/many", "big", { exit: "zero", ops: ["create"] }),
     ],
+  },
+  {
+    name: "history",
+    description:
+      "The tool's history of network:dev (record 0073): read before any update, then after a deploy from a laptop, Sluiceway's own deploy and a deploy from another workflow inside GitHub Actions, a deploy that changed nothing, a refresh, a failed deploy and a destroy from a tree with uncommitted changes. The stack has a plain config value that holds the canary value.",
+    steps: [
+      init("network", "dev"),
+      {
+        kind: "setup",
+        cwd: "network",
+        argv: ["pulumi", "config", "set", "plain", "CANARY-VALUE", ...QUIET, "--stack", "dev"],
+      },
+      git("init", "-q"),
+      ...commit("CANARY-VALUE in a commit title"),
+      history("network", "dev", { exit: "zero" }, "history-before"),
+      up("network", "dev"),
+      changedPrefix,
+      ...commit("A second commit"),
+      upInActions("network", "dev", OWN_RUN),
+      addedResource,
+      ...commit("A third commit"),
+      upInActions("network", "dev", OTHER_RUN),
+      up("network", "dev"),
+      {
+        kind: "setup",
+        cwd: "network",
+        argv: ["pulumi", "refresh", "--yes", ...QUIET, "--stack", "dev"],
+      },
+      edit("      create: echo network ready\n", "      create: exit 1\n"),
+      deploy("network", "dev", { exit: "nonzero" }, "up-failed"),
+      {
+        kind: "setup",
+        cwd: "network",
+        argv: ["pulumi", "destroy", "--yes", "--skip-preview", ...QUIET, "--stack", "dev"],
+      },
+      history("network", "dev", { exit: "zero" }),
+    ],
+  },
+  {
+    name: "history-missing-stack",
+    description: "The tool's history of a stack that the backend does not hold.",
+    steps: [history("network", "ghost", { exit: "nonzero" })],
   },
 ];
