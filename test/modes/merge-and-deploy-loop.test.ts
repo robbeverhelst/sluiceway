@@ -161,7 +161,7 @@ describe("merge and deploy on the fake GitHub", () => {
     // The other update still waits: every writer carries the section.
     expect(parsed.merges.map(({ pr }) => pr)).toEqual([419]);
     expect(dashboardBody(github)).toMatch(
-      /## Recently deployed\n\n- 🟢&nbsp;a:prod · ticked by alice · /,
+      /## Recently deployed\n\nTimes are in UTC\.\n\n- 🟢&nbsp;a:prod · alice · /,
     );
   });
 

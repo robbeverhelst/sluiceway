@@ -23,9 +23,10 @@ describe("the deploy apply finished", () => {
 
     await runApply(h);
 
-    const trail = h.github.issue(h.number).body.split("## Recently deployed\n\n")[1] ?? "";
+    const trail =
+      h.github.issue(h.number).body.split("## Recently deployed\n\nTimes are in UTC.\n\n")[1] ?? "";
     expect(trail.split("\n").slice(0, 2)).toEqual([
-      expect.stringContaining("a:prod · ticked by alice"),
+      expect.stringContaining("a:prod · alice · "),
       `  shipped #9 by carol · [compare](${REPO_URL}/compare/111111111111...0123456789ab)`,
     ]);
   });

@@ -28,7 +28,7 @@ function input(overrides: Partial<BodyInput> = {}): BodyInput {
 function trail(body: string): string[] {
   const all = body.split("\n\n");
   const at = all.indexOf("## Recently deployed");
-  return at === -1 ? [] : (all[at + 1]?.split("\n") ?? []);
+  return at === -1 ? [] : (all[at + 2]?.split("\n") ?? []);
 }
 
 const deploy = (stackId: string, day: number, over: Partial<RecentDeploy> = {}): RecentDeploy => ({
@@ -40,7 +40,7 @@ const deploy = (stackId: string, day: number, over: Partial<RecentDeploy> = {}):
 });
 
 describe("a failed deploy in the trail", () => {
-  test("is listed with its failure reason, in its place by time", () => {
+  test("is listed as failed, in its place by time", () => {
     const body = renderBody(
       input({
         recentlyDeployed: [
@@ -53,16 +53,20 @@ describe("a failed deploy in the trail", () => {
       }),
     );
     expect(trail(body)).toEqual([
-      `- apps/auth:prod · ticked by alice · failed: the tool exited with an error · 2026-09-21 09:41 UTC · [run](${REPO_URL}/actions/runs/21)`,
-      `- apps/auth:prod · ticked by alice · 2026-09-20 09:41 UTC · [run](${REPO_URL}/actions/runs/20)`,
+      `- apps/auth:prod · failed · alice · 09-21 09:41 · [run](${REPO_URL}/actions/runs/21)`,
+      `- apps/auth:prod · alice · 09-20 09:41 · [run](${REPO_URL}/actions/runs/20)`,
     ]);
   });
 
-  test("a reason is never trusted as markup", () => {
+  // Slice 5.10: the reason stays on the row's failure line, so the trail
+  // line fits on one line.
+  test("the reason is not on the line", () => {
     const body = renderBody(
       input({ recentlyDeployed: [deploy("a", 21, { result: "failed", reason: "<b>*x*</b>" })] }),
     );
-    expect(trail(body)[0]).toContain("failed: &lt;b&gt;&#42;x&#42;&lt;/b&gt; ·");
+    expect(trail(body)[0]).toBe(
+      `- a · failed · alice · 09-21 09:41 · [run](${REPO_URL}/actions/runs/21)`,
+    );
   });
 });
 
@@ -101,7 +105,7 @@ describe("the length of the trail", () => {
       ),
     );
     expect(lines).toEqual([
-      `- b · ticked by alice · failed: the deploy failed · 2026-09-02 09:41 UTC · [run](${REPO_URL}/actions/runs/2)`,
+      `- b · failed · alice · 09-02 09:41 · [run](${REPO_URL}/actions/runs/2)`,
     ]);
   });
 });
@@ -115,7 +119,7 @@ test("under a header a failed deploy gets the red dot", () => {
     }),
   );
   expect(trail(body)).toEqual([
-    `- 🔴&nbsp;a · ticked by alice · failed: the deploy failed · 2026-09-02 09:41 UTC · [run](${REPO_URL}/actions/runs/2)`,
+    `- 🔴&nbsp;a · failed · alice · 09-02 09:41 · [run](${REPO_URL}/actions/runs/2)`,
   ]);
 });
 
@@ -134,9 +138,9 @@ describe("what a deploy shipped", () => {
       }),
     );
     expect(trail(body)).toEqual([
-      `- apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](${REPO_URL}/actions/runs/21)`,
+      `- apps/auth:prod · alice · 09-21 09:41 · [run](${REPO_URL}/actions/runs/21)`,
       "  shipped #102 by dave, #101 by carol · [compare](compare-url)",
-      `- apps/web:prod · ticked by alice · 2026-09-20 09:41 UTC · [run](${REPO_URL}/actions/runs/20)`,
+      `- apps/web:prod · alice · 09-20 09:41 · [run](${REPO_URL}/actions/runs/20)`,
     ]);
   });
 

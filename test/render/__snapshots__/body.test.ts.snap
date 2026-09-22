@@ -55,9 +55,11 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 
 ## Recently deployed
 
-- 🟢&nbsp;apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- 🟢&nbsp;apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- 🟢&nbsp;platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+Times are in UTC.
+
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
 
 ---
 
@@ -111,9 +113,11 @@ Tick a box to deploy that stack exactly as its row shows it.
 
 ## Recently deployed
 
-- 🟢&nbsp;apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- 🟢&nbsp;apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- 🟢&nbsp;platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+Times are in UTC.
+
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
 
 ---
 
@@ -162,9 +166,11 @@ Tick a box to deploy that stack exactly as its row shows it.
 
 ## Recently deployed
 
-- 🟢&nbsp;apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- 🟢&nbsp;apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- 🟢&nbsp;platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+Times are in UTC.
+
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
 
 ---
 
@@ -217,9 +223,11 @@ Real infrastructure changed outside the code. Deploying a stack puts it back as 
 
 ## Recently deployed
 
-- 🟢&nbsp;apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- 🟢&nbsp;apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- 🟢&nbsp;platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+Times are in UTC.
+
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
 
 ---
 
@@ -253,9 +261,11 @@ The channel is dry. Add a stack to \`sluiceway.yaml\` and the next scan fills it
 
 ## Recently deployed
 
-- 🟢&nbsp;apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- 🟢&nbsp;apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- 🟢&nbsp;platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+Times are in UTC.
+
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
 
 ---
 
@@ -300,9 +310,11 @@ Gate closed, water calm. Nothing to deploy.
 
 ## Recently deployed
 
-- 🟢&nbsp;apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- 🟢&nbsp;apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- 🟢&nbsp;platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+Times are in UTC.
+
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
 
 ---
 
@@ -1480,9 +1492,11 @@ Tick a box to deploy that stack exactly as its row shows it.
 
 ## Recently deployed
 
-- 🟢&nbsp;apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- 🟢&nbsp;apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- 🟢&nbsp;platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+Times are in UTC.
+
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
 
 ---
 
@@ -1547,9 +1561,11 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 
 ## Recently deployed
 
-- 🟢&nbsp;apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- 🟢&nbsp;apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- 🟢&nbsp;platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+Times are in UTC.
+
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
 
 ---
 
@@ -1599,9 +1615,11 @@ Gate closed, water calm. Nothing to deploy.
 
 ## Recently deployed
 
-- 🟢&nbsp;apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- 🟢&nbsp;apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- 🟢&nbsp;platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+Times are in UTC.
+
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
 
 ---
 
@@ -1704,9 +1722,11 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 
 ## Recently deployed
 
-- apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+Times are in UTC.
+
+- apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
 
 ---
 
@@ -2112,9 +2132,11 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 
 ## Recently deployed
 
-- 🟢&nbsp;apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- 🟢&nbsp;apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- 🟢&nbsp;platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+Times are in UTC.
+
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
 
 ---
 
@@ -2311,9 +2333,11 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 
 ## Recently deployed
 
-- 🟢&nbsp;apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- 🟢&nbsp;apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- 🟢&nbsp;platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+Times are in UTC.
+
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
 
 ---
 

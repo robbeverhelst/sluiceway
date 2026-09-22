@@ -29,7 +29,7 @@ function input(overrides: Partial<BodyInput> = {}): BodyInput {
 function trail(body: string): string[] {
   const all = body.split("\n\n");
   const at = all.indexOf("## Recently deployed");
-  return at === -1 ? [] : (all[at + 1]?.split("\n") ?? []);
+  return at === -1 ? [] : (all[at + 2]?.split("\n") ?? []);
 }
 
 const outside = (day: number, over: Partial<OutsideDeploy> = {}): OutsideDeploy => ({
@@ -51,14 +51,14 @@ describe("a deploy made outside the dashboard", () => {
   test("says so, links the commit, and carries its facts in a marker", () => {
     const body = renderBody(input({ outsideDeploys: [outside(21)] }));
     expect(trail(body)).toEqual([
-      `- network:dev · deployed outside the dashboard, from commit [\`59ff6e7\`](${REPO_URL}/commit/${SHA}) · 2026-09-21 18:11 UTC <!-- sluiceway:outside stack="network:dev" kind="deploy" at="2026-09-21T18:11:10.000Z" commit="${SHA}" -->`,
+      `- network:dev · deployed outside the dashboard, from [\`59ff6e7\`](${REPO_URL}/commit/${SHA}) · 09-21 18:11 <!-- sluiceway:outside stack="network:dev" kind="deploy" at="2026-09-21T18:11:10.000Z" commit="${SHA}" -->`,
     ]);
   });
 
   test("a tree with changes in no commit says so", () => {
     const [line] = trail(renderBody(input({ outsideDeploys: [outside(21, { dirty: true })] })));
     expect(line).toContain(
-      `from commit [\`59ff6e7\`](${REPO_URL}/commit/${SHA}) with uncommitted changes · `,
+      `from [\`59ff6e7\`](${REPO_URL}/commit/${SHA}) with uncommitted changes · `,
     );
     expect(line).toContain(' dirty="true" -->');
   });
@@ -71,16 +71,18 @@ describe("a deploy made outside the dashboard", () => {
         }),
       ),
     );
-    expect(lines[0]).toStartWith("- network:dev · destroyed outside the dashboard, from commit ");
+    expect(lines[0]).toStartWith("- network:dev · destroyed outside the dashboard, from ");
     expect(lines[1]).toStartWith(
-      "- network:dev · deployed outside the dashboard · 2026-09-20 18:11 UTC <!-- sluiceway:outside ",
+      "- network:dev · deployed outside the dashboard · 09-20 18:11 <!-- sluiceway:outside ",
     );
   });
 
   test("never names anybody", () => {
-    expect(trail(renderBody(input({ outsideDeploys: [outside(21)] })))[0]).not.toContain(
-      "ticked by",
+    const lines = trail(
+      renderBody(input({ recentlyDeployed: [own(20)], outsideDeploys: [outside(21)] })),
     );
+    expect(lines[0]).toContain("outside the dashboard");
+    expect(lines[0]).not.toContain("alice");
   });
 
   test("sits in its place by time among the dashboard's own, and counts toward the length", () => {
@@ -94,9 +96,9 @@ describe("a deploy made outside the dashboard", () => {
       ),
     );
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toContain("ticked by alice · 2026-09-22");
+    expect(lines[0]).toContain(" · alice · 09-22 ");
     expect(lines[1]).toContain("outside the dashboard");
-    expect(lines[2]).toContain("ticked by alice · 2026-09-20");
+    expect(lines[2]).toContain(" · alice · 09-20 ");
   });
 
   test("under a header it has the green dot of a deploy that went out", () => {

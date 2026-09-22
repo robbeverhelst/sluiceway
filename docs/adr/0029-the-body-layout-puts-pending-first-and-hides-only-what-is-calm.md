@@ -65,3 +65,7 @@ Prototype: the variant B issue in the private lab repo, generated from the `prot
 ## Settled while building (slice 4.5)
 
 - Under a header, each line of Recently deployed starts with the dot of its result and a non-breaking space: 🟢 went out, ⚪ nothing to deploy, 🟣 rehearsed, and since record 0062 🔴 for a failed deploy. The rest of the line does not change, and without a header the list is as above. Record 0040 holds the colours and why.
+
+## Settled while building (slice 5.10)
+
+- A line of Recently deployed fits on one line at GitHub's issue width for a stack id of about 40 characters (owner, 2026-09-22, on a real dashboard where every line took two). The stack id stays whole. The line is `stack id · result word · login · time · [run](url)`: a result word only when the deploy was not a plain one (`drift fixed`, `no changes`, `rehearsed`, `failed`), the ticker's login without `ticked by`, and the time without `UTC` and without the year when it is the year of the scan, which the scan line shows in full. A time of another year keeps it: `2025-12-31 23:59`. The heading has one line under it, `Times are in UTC.` The rule that every time is absolute, in UTC, to the minute, holds. Every other time on the dashboard keeps `UTC` and its year.

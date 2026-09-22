@@ -714,9 +714,7 @@ good =
       failed: [],
       recentlyDeployed: ["network:dev", "site:prod"],
     }),
-    ...(dashboardBody(last).includes(
-      "- ⚪&nbsp;site:prod · ticked by alice · nothing to deploy, already in sync · ",
-    )
+    ...(dashboardBody(last).includes("- ⚪&nbsp;site:prod · no changes · alice · ")
       ? []
       : ["Recently deployed does not say that site:prod had nothing to deploy."]),
   ]) && good;

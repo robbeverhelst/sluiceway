@@ -288,7 +288,7 @@ export function checkRehearsal(
   const row = rows(step.body).get(stack);
   if (row?.ticked) problems.push(`The box of ${stack} is still ticked.`);
   // The purple dot of a rehearsal (slice 4.5).
-  const trail = `- 🟣&nbsp;${stack} · ticked by ${ticker} · rehearsed, nothing was deployed · `;
+  const trail = `- 🟣&nbsp;${stack} · rehearsed · ${ticker} · `;
   if (!step.body.split("\n").some((line) => line.startsWith(trail))) {
     problems.push(`Recently deployed does not say that ${stack} was rehearsed.`);
   }

@@ -47,7 +47,9 @@ Tick a box to deploy that stack exactly as its row shows it.
 
 ## Recently deployed
 
-- 🟢&nbsp;apps/web:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121)
+Times are in UTC.
+
+- 🟢&nbsp;apps/web:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034455121)
 
 ---
 
@@ -97,7 +99,9 @@ Tick a box to deploy that stack exactly as its row shows it.
 
 ## Recently deployed
 
-- 🟢&nbsp;apps/web:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121)
+Times are in UTC.
+
+- 🟢&nbsp;apps/web:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034455121)
 
 ---
 

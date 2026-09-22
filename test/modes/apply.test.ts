@@ -25,8 +25,9 @@ describe("a deploy that goes out", () => {
     // Every other row is carried byte for byte (record 0004).
     expect(rows(h)["b:prod"]).toBe(before);
     // Recently deployed names the deploy and the run that made it.
-    const recently = h.github.issue(h.number).body.split("## Recently deployed\n\n")[1] ?? "";
-    expect(recently.split("\n")[0]).toStartWith("- 🟢&nbsp;a:prod · ticked by alice · ");
+    const recently =
+      h.github.issue(h.number).body.split("## Recently deployed\n\nTimes are in UTC.\n\n")[1] ?? "";
+    expect(recently.split("\n")[0]).toStartWith("- 🟢&nbsp;a:prod · alice · ");
     expect(recently.split("\n")[0]).toEndWith(` · [run](${RESOLVE_RUN_URL})`);
   });
 });

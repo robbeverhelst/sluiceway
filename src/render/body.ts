@@ -3,7 +3,6 @@
 // regenerates it, and nothing in it is ever patched or carried through.
 
 import type { IgnoredStack } from "../core/config.ts";
-import { IN_SYNC_DESCRIPTION, REHEARSED_DESCRIPTION } from "../core/deployment.ts";
 import type { OutsideDeploy } from "../core/outside-deploy.ts";
 import { destroyAlert } from "./destroy-alert.ts";
 import { destroySign } from "./destroy-sign.ts";
@@ -23,7 +22,7 @@ import {
 import { MERGE_FOLD_AFTER } from "./merge-row.ts";
 import { type Crates, MAX_CRATES, pendingCrates } from "./pending-crates.ts";
 import { type AttributionLines, INDENT, type Row, type RowOptions, renderRow } from "./row.ts";
-import { utcMinute } from "./time.ts";
+import { trailMinute, utcMinute } from "./time.ts";
 import {
   DRIFTED_LINE,
   DRY,
@@ -48,7 +47,8 @@ export interface RecentDeploy {
   // too, and says so (record 0059). "failed" for a deploy that failed (record
   // 0062).
   result?: "in-sync" | "rehearsed" | "drift-repaired" | "failed" | undefined;
-  // The failure reason of a failed deploy, as its failure line shows it.
+  // The failure reason of a failed deploy, as its failure line shows it. The
+  // trail no longer shows it, to stay on one line (slice 5.10).
   reason?: string | undefined;
   // What a deploy that went out shipped (record 0072), worked out by the
   // core as a row's attribution is. Absent when there is nothing to say.
@@ -96,6 +96,10 @@ export interface BodyInput {
 }
 
 export const RECENTLY_DEPLOYED = 10;
+
+// The one line under the Recently deployed heading (slice 5.10): the lines
+// leave `UTC` out, so it is said once here.
+const TRAIL_LINE = "Times are in UTC.";
 
 const ACTION_REPO = "sluiceway/sluiceway";
 const ACTION_URL = `https://github.com/${ACTION_REPO}`;
@@ -248,28 +252,30 @@ function blocks(rows: readonly ParsedRow[]): string {
   return rows.map((row) => row.text).join("\n");
 }
 
-// The trail of record 0051: a line whose record found nothing to deploy, or
-// was a rehearsal, says so. So does a deploy that put drift back (record
-// 0059), in the words the Drifted section uses.
-const DRIFT_REPAIRED_WORDS = "put back what changed outside the code";
-
+// The trail fits on one line at GitHub's issue width for a stack id of about
+// 40 characters (slice 5.10). The stack id is written whole, so the rest is
+// short: one result word, none for a plain deploy, and the dot under a header
+// already says the rest. A drift repair (record 0059), an empty fresh preview
+// and a rehearsal (record 0051), and a failed deploy (record 0062), whose
+// reason stays on the row's failure line and in the run's log.
 const RESULT_WORDS = {
-  "in-sync": IN_SYNC_DESCRIPTION,
-  rehearsed: REHEARSED_DESCRIPTION,
-  "drift-repaired": DRIFT_REPAIRED_WORDS,
+  "in-sync": "no changes",
+  rehearsed: "rehearsed",
+  "drift-repaired": "drift fixed",
+  failed: "failed",
 } as const;
 
 // Under a header each line starts with the dot of its result (slice 4.5), as
 // every count does (record 0040): green went out, white nothing to deploy,
-// purple rehearsed, and red for a failed deploy (record 0062).
-function recentLine(deploy: RecentDeploy, dots: boolean, short?: boolean): string {
-  // A failed deploy says so with its reason, as its failure line does (record
-  // 0062). The reason is display text from the record, never trusted.
-  const words =
-    deploy.result === "failed"
-      ? `failed: ${escapeText(deploy.reason ?? "")}`
-      : deploy.result && RESULT_WORDS[deploy.result];
-  const result = words ? ` · ${words}` : "";
+// purple rehearsed, and red for a failed deploy (record 0062). Then the
+// ticker's login alone and the time without the year of the scan.
+function recentLine(
+  deploy: RecentDeploy,
+  dots: boolean,
+  year: number | undefined,
+  short?: boolean,
+): string {
+  const result = deploy.result ? ` · ${RESULT_WORDS[deploy.result]}` : "";
   // A drift repair went out, so it is green like any deploy (record 0059).
   const outcome =
     deploy.result === undefined || deploy.result === "drift-repaired" ? "deployed" : deploy.result;
@@ -277,8 +283,9 @@ function recentLine(deploy: RecentDeploy, dots: boolean, short?: boolean): strin
   const shipped = deploy.shipped
     ? `\n${INDENT}${short ? deploy.shipped.counted : deploy.shipped.full}`
     : "";
-  return `- ${dot}${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)}${result} · ${utcMinute(
+  return `- ${dot}${escapeText(deploy.stackId)}${result} · ${escapeText(deploy.ticker)} · ${trailMinute(
     deploy.at,
+    year,
   )} · [run](${deploy.runUrl})${shipped}`;
 }
 
@@ -298,17 +305,23 @@ export function newestTrail<T extends { at: Date; stackId: string }>(
 // behind the commit are not the person who deployed it. Green, because it
 // went out. Its facts ride on the marker at the end, so every writer can
 // draw the line again.
-function outsideLine(deploy: OutsideDeploy, repoUrl: string, dots: boolean): string {
+function outsideLine(
+  deploy: OutsideDeploy,
+  repoUrl: string,
+  dots: boolean,
+  year: number | undefined,
+): string {
   const dot = dots ? `${RESULT_DOT.deployed}&nbsp;` : "";
   const verb = deploy.kind === "destroy" ? "destroyed" : "deployed";
   const commit =
     deploy.commit === undefined
       ? ""
-      : `, from commit [\`${deploy.commit.slice(0, 7)}\`](${repoUrl}/commit/${urlPart(deploy.commit)})${
+      : `, from [\`${deploy.commit.slice(0, 7)}\`](${repoUrl}/commit/${urlPart(deploy.commit)})${
           deploy.dirty ? " with uncommitted changes" : ""
         }`;
-  return `- ${dot}${escapeText(deploy.stackId)} · ${verb} outside the dashboard${commit} · ${utcMinute(
+  return `- ${dot}${escapeText(deploy.stackId)} · ${verb} outside the dashboard${commit} · ${trailMinute(
     deploy.at,
+    year,
   )} ${outsideMarker(deploy)}`;
 }
 
@@ -433,21 +446,25 @@ export function renderBody(input: BodyInput): string {
           one.at.getTime() === deploy.at.getTime(),
       ) === index,
   );
+  // A time of the scan's year leaves its year out (slice 5.10). The scan
+  // line shows the year, and one that does not parse leaves every year in.
+  const scanAt = new Date(input.root.scanAt ?? "");
+  const year = Number.isNaN(scanAt.getTime()) ? undefined : scanAt.getUTCFullYear();
   const entries = [
     ...input.recentlyDeployed.map((deploy) => ({
       at: deploy.at,
       stackId: deploy.stackId,
-      line: () => recentLine(deploy, input.personality, input.shortTrail),
+      line: () => recentLine(deploy, input.personality, year, input.shortTrail),
     })),
     ...outside.map((deploy) => ({
       at: deploy.at,
       stackId: deploy.stackId,
-      line: () => outsideLine(deploy, input.repoUrl, input.personality),
+      line: () => outsideLine(deploy, input.repoUrl, input.personality, year),
     })),
   ];
   const recent = newestTrail(entries, input.recentLength);
   if (recent.length > 0)
-    out.push("## Recently deployed", recent.map((entry) => entry.line()).join("\n"));
+    out.push("## Recently deployed", TRAIL_LINE, recent.map((entry) => entry.line()).join("\n"));
 
   // The rescan box needs a `resolve` job as much as a row's box does.
   out.push("---");

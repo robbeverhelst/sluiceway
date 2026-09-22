@@ -33,3 +33,7 @@ This amends 0016 (outside deploys are now listed, and still legal and never stop
 - **Reading the history on every scan, or only for stacks whose `lastUpdate` moved.** The first costs a backend call per stack on every push. The second needs a value stored per stack and a second command, for a saving the research could not measure on a real bucket.
 - **Matching by time.** One second of precision, a clock Sluiceway does not control, and two deploys in one window cannot be told apart.
 - **An adapter method on OpenTofu that reports the state serial.** It says that the state changed, not that something was deployed, when, or from which commit.
+
+## Settled while building (slice 5.10)
+
+- The line drops the word `commit` and takes the short time of the trail (0029): `- network:dev · deployed outside the dashboard, from 59ff6e7 · 09-21 18:11`. With a stack id of 40 characters that fits on one line at GitHub's issue width, and with `commit` it did not. A line with `with uncommitted changes` after the commit still takes two lines at that length; no shorter words said it as plainly.

@@ -35,7 +35,9 @@ function section(body: string, heading: string): string {
   if (from < 0) return "";
   const rest = body.slice(from + heading.length + 3);
   const to = rest.search(/\n(## |---)/);
-  return (to < 0 ? rest : rest.slice(0, to)).trim();
+  // The line under the Recently deployed heading (slice 5.10) is not a line
+  // of the list.
+  return (to < 0 ? rest : rest.slice(0, to)).trim().replace(/^Times are in UTC\.\n\n/, "");
 }
 
 describe("a stack with an open deployment", () => {
@@ -245,10 +247,10 @@ describe("recently deployed", () => {
     const list = section(dashboardBody(github), "Recently deployed").split("\n");
     expect(list).toHaveLength(10);
     expect(list[0]).toBe(
-      `- 🔴&nbsp;failed:prod · ticked by alice · failed: no reason was recorded · 2026-09-21 05:31 UTC · [run](${REPO_URL}/actions/runs/4242)`,
+      `- 🔴&nbsp;failed:prod · failed · alice · 09-21 05:31 · [run](${REPO_URL}/actions/runs/4242)`,
     );
     expect(list[1]).toBe(
-      `- 🟢&nbsp;s11:prod · ticked by alice · 2026-09-21 05:11 UTC · [run](${REPO_URL}/actions/runs/111)`,
+      `- 🟢&nbsp;s11:prod · alice · 09-21 05:11 · [run](${REPO_URL}/actions/runs/111)`,
     );
     expect(list.at(-1)).toContain("- 🟢&nbsp;s03:prod · ");
   });
@@ -299,7 +301,7 @@ describe("recently deployed", () => {
     const body = dashboardBody(github);
     // At the time it went out, not the time GitHub superseded it (record 0062).
     expect(section(body, "Recently deployed")).toContain(
-      "- 🟢&nbsp;a:prod · ticked by alice · 2026-09-21 05:11 UTC · ",
+      "- 🟢&nbsp;a:prod · alice · 09-21 05:11 · ",
     );
     expect(body).not.toContain("last deploy failed");
   });

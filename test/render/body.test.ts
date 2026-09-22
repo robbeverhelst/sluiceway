@@ -635,7 +635,7 @@ describe("the count dots", () => {
   test("the dots are nowhere but on the counts line and the recently deployed list", () => {
     for (const [, rows] of NAMED_DASHBOARDS) {
       const all = paragraphs(renderBody(input(rows, { recentlyDeployed: RECENT })));
-      const trail = all.indexOf("## Recently deployed") + 1;
+      const trail = all.indexOf("## Recently deployed") + 2;
       const rest = all.filter((_, index) => index !== 3 && index !== trail).join("\n");
       expect(rest).not.toMatch(/🟡|🔵|🔴|🟢|⚪|🟠|🟣|&nbsp;/u);
     }
@@ -856,11 +856,11 @@ describe("recently deployed", () => {
     const all = paragraphs(
       renderBody(input(DASHBOARDS["in-sync"], { recentlyDeployed: [...RECENT].reverse() })),
     );
-    expect(all[all.indexOf("## Recently deployed") + 1]).toBe(
+    expect(all[all.indexOf("## Recently deployed") + 2]).toBe(
       [
-        `- 🟢&nbsp;apps/auth:prod · ticked by alice · 2026-09-21 09:41 UTC · [run](${REPO_URL}/actions/runs/17034388102)`,
-        `- 🟢&nbsp;apps/auth:staging · ticked by alice · 2026-09-21 09:12 UTC · [run](${REPO_URL}/actions/runs/17034120455)`,
-        `- 🟢&nbsp;platform/external-dns:prod · ticked by carol · 2026-09-20 17:30 UTC · [run](${REPO_URL}/actions/runs/17029910331)`,
+        `- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](${REPO_URL}/actions/runs/17034388102)`,
+        `- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](${REPO_URL}/actions/runs/17034120455)`,
+        `- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](${REPO_URL}/actions/runs/17029910331)`,
       ].join("\n"),
     );
   });
@@ -880,7 +880,7 @@ describe("recently deployed", () => {
         }),
       ),
     );
-    const lines = all[all.indexOf("## Recently deployed") + 1]?.split("\n") ?? [];
+    const lines = all[all.indexOf("## Recently deployed") + 2]?.split("\n") ?? [];
     expect(lines).toHaveLength(5);
     for (const line of lines) expect(line).toMatch(/^- [a-z]/);
   });
@@ -893,7 +893,7 @@ describe("recently deployed", () => {
       runUrl: "run-url",
     }));
     const all = paragraphs(renderBody(input([], { recentlyDeployed: many })));
-    const lines = all[all.indexOf("## Recently deployed") + 1]?.split("\n") ?? [];
+    const lines = all[all.indexOf("## Recently deployed") + 2]?.split("\n") ?? [];
     expect(lines).toHaveLength(10);
     expect(lines[0]).toStartWith("- 🟢&nbsp;stack-11 ·");
     expect(lines[9]).toStartWith("- 🟢&nbsp;stack-2 ·");
@@ -910,7 +910,7 @@ describe("recently deployed", () => {
   test("a stack id and a login are never trusted as markup", () => {
     const hostile = [{ stackId: "a*b", ticker: "<x>", at: new Date(0), runUrl: "u" }];
     expect(renderBody(input([], { recentlyDeployed: hostile }))).toContain(
-      "- 🟢&nbsp;a&#42;b · ticked by &lt;x&gt; · 1970-01-01 00:00 UTC · [run](u)",
+      "- 🟢&nbsp;a&#42;b · &lt;x&gt; · 1970-01-01 00:00 · [run](u)",
     );
   });
 
@@ -923,8 +923,8 @@ describe("recently deployed", () => {
         }),
       ),
     );
-    expect(all[all.indexOf("## Recently deployed") + 1]).toBe(
-      "- 🟣&nbsp;apps/auth:prod · ticked by alice · rehearsed, nothing was deployed · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
+    expect(all[all.indexOf("## Recently deployed") + 2]).toBe(
+      "- 🟣&nbsp;apps/auth:prod · rehearsed · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
     );
   });
 
@@ -937,8 +937,8 @@ describe("recently deployed", () => {
         }),
       ),
     );
-    expect(all[all.indexOf("## Recently deployed") + 1]).toBe(
-      "- 🟢&nbsp;apps/auth:prod · ticked by alice · put back what changed outside the code · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
+    expect(all[all.indexOf("## Recently deployed") + 2]).toBe(
+      "- 🟢&nbsp;apps/auth:prod · drift fixed · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
     );
   });
 
@@ -950,8 +950,8 @@ describe("recently deployed", () => {
         }),
       ),
     );
-    expect(all[all.indexOf("## Recently deployed") + 1]).toBe(
-      "- ⚪&nbsp;apps/auth:prod · ticked by alice · nothing to deploy, already in sync · 2026-09-21 09:41 UTC · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
+    expect(all[all.indexOf("## Recently deployed") + 2]).toBe(
+      "- ⚪&nbsp;apps/auth:prod · no changes · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)",
     );
   });
 });
@@ -1027,7 +1027,7 @@ describe("dashboard.personality: false", () => {
         renderBody(input(rows, { recentlyDeployed: RECENT, personality: false })),
       );
       const voiced = on.indexOf("## Pending") + 1;
-      const trail = on.indexOf("## Recently deployed") + 1;
+      const trail = on.indexOf("## Recently deployed") + 2;
       expect(on[1]).toStartWith('<p align="center">\n  <picture>');
       const undotted = on
         .map((text, index) => (index === trail ? text.replaceAll(/^- 🟢&nbsp;/gmu, "- ") : text))

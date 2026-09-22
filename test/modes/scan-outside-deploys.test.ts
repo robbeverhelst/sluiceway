@@ -68,7 +68,7 @@ const ok = (...deploys: ToolDeploy[]): DeployHistoryResult => ({ ok: true, deplo
 function trail(body: string): string[] {
   const all = body.split("\n\n");
   const at = all.indexOf("## Recently deployed");
-  return at === -1 ? [] : (all[at + 1]?.split("\n") ?? []);
+  return at === -1 ? [] : (all[at + 2]?.split("\n") ?? []);
 }
 
 function seedOwnDeploy(github: ReturnType<typeof harness>["github"], run: string) {
@@ -91,9 +91,9 @@ describe("a full scan", () => {
     const lines = trail(dashboardBody(github));
     expect(lines).toHaveLength(2);
     expect(lines[0]).toBe(
-      `- 🟢&nbsp;network:dev · deployed outside the dashboard, from commit [\`59ff6e7\`](${REPO_URL}/commit/${COMMIT}) · 2026-09-20 18:11 UTC <!-- sluiceway:outside stack="network:dev" kind="deploy" at="2026-09-20T18:11:10.000Z" commit="${COMMIT}" -->`,
+      `- 🟢&nbsp;network:dev · deployed outside the dashboard, from [\`59ff6e7\`](${REPO_URL}/commit/${COMMIT}) · 09-20 18:11 <!-- sluiceway:outside stack="network:dev" kind="deploy" at="2026-09-20T18:11:10.000Z" commit="${COMMIT}" -->`,
     );
-    expect(lines[1]).toContain("network:dev · ticked by alice");
+    expect(lines[1]).toContain("network:dev · alice · ");
   });
 
   test("reads as many entries as the trail lists, and none when it lists none", async () => {

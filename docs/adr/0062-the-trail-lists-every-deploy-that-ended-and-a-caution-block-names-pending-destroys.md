@@ -24,3 +24,7 @@ Record 0029 made Recently deployed a log of what went out: the newest 10 success
 - A body written before this version has no caution block and no failed lines. The next writer of any mode regenerates both, as it does everything outside the row blocks (0009).
 
 This record amends 0003 (the port reads the success under an `inactive`, and the time of a superseded deploy), 0027 (the caution block, beside the open lines) and 0029 (failed deploys in the list and its length).
+
+## Settled while building (slice 5.10)
+
+- A failed deploy's line says `failed` and no longer its failure reason, so the line fits on one line (0029, slice 5.10). The reason stays on the row's failure line while the stack's last deploy is the failed one, and in the run's log behind the line's link. That drops "a person reading one should not need the other" for the reason itself: the trail says what happened, the row says why.

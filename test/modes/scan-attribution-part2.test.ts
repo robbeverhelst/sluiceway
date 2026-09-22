@@ -27,7 +27,7 @@ function under(github: FakeGitHub, stackId: string): string[] {
 function trail(github: FakeGitHub): string[] {
   const all = dashboardBody(github).split("\n\n");
   const at = all.indexOf("## Recently deployed");
-  return at === -1 ? [] : (all[at + 1]?.split("\n") ?? []);
+  return at === -1 ? [] : (all[at + 2]?.split("\n") ?? []);
 }
 
 function succeeded(github: FakeGitHub, stackId: string, sha: string, createdAt: string): void {
@@ -77,12 +77,12 @@ describe("the trail", () => {
     await scan(context);
 
     const lines = trail(github);
-    expect(lines[0]).toStartWith("- a:prod · ticked by");
+    expect(lines[0]).toStartWith("- a:prod · alice · ");
     expect(lines[1]).toBe(
       `  shipped #5 by carol, and 1 change outside this stack · [compare](${REPO_URL}/compare/111111111111...222222222222)`,
     );
     // The first success in the records read has nothing before it to count from.
-    expect(lines[2]).toStartWith("- a:prod · ticked by");
+    expect(lines[2]).toStartWith("- a:prod · alice · ");
     expect(lines).toHaveLength(3);
   });
 

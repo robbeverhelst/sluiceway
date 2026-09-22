@@ -47,9 +47,7 @@ describe("a rehearsal", () => {
     const row = parseDashboard(body).rows.find((one) => one.stackId === "a:prod");
     expect(row).toMatchObject({ state: "pending", ticked: false, failed: false });
     expect(body).toContain("- [ ] **a:prod**");
-    expect(body).toContain(
-      "- 🟣&nbsp;a:prod · ticked by alice · rehearsed, nothing was deployed · ",
-    );
+    expect(body).toContain("- 🟣&nbsp;a:prod · rehearsed · alice · ");
     // The row never said deploying for a deploy that was never going to run.
     expect(h.github.comments(h.number)).toEqual([]);
   });

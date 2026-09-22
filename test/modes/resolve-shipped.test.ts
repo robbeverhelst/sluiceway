@@ -30,7 +30,8 @@ describe("the trail resolve writes", () => {
 
     await wake(h);
 
-    const trail = h.github.issue(h.number).body.split("## Recently deployed\n\n")[1] ?? "";
+    const trail =
+      h.github.issue(h.number).body.split("## Recently deployed\n\nTimes are in UTC.\n\n")[1] ?? "";
     expect(trail.split("\n")[1]).toBe(
       `  shipped #4 by dave · [compare](${REPO_URL}/compare/111111111111...222222222222)`,
     );
