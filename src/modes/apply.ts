@@ -15,6 +15,7 @@ import type {
 import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import type { Config, ConfiguredStack, IgnoredStack } from "../core/config.ts";
+import { applyOutcome, deployEnd, deployGate, unplannedEnd } from "../core/deploy-gate.ts";
 import {
   type DeployFacts,
   type DeploymentPayload,
@@ -24,7 +25,6 @@ import {
   recordStatus,
   standingFailure,
 } from "../core/deployment.ts";
-import { diffHash } from "../core/diff-hash.ts";
 import {
   type DeployFailureReason,
   deployFailureText,
@@ -297,26 +297,17 @@ async function applying(context: ApplyContext, repo: Repo, report: ApplyReport):
   try {
     attempt = await deploy(context, repo, id_, payload, runUrl, progress);
   } catch (error) {
-    const reason: DeployFailureReason = progress.deploying
-      ? { kind: "tool-error", exitCode: null }
-      : { kind: "not-started" };
+    const end = unplannedEnd(progress.deploying);
     attempt = {
-      end: { kind: "failed", reason },
-      failed: `${name} was not deployed: ${deployFailureText(reason)}. ${message(error)}`,
+      end,
+      failed: `${name} was not deployed: ${deployFailureText(end.reason)}. ${message(error)}`,
     };
   }
   const reason = reasonOf(attempt);
   const state = recordStatus(attempt.end).state;
   // A deploy that went out is deployed, also when its record could not be
   // given the result. The job is red then, and says why.
-  report.outcome =
-    attempt.summary?.kind === "in-sync" || attempt.summary?.kind === "rehearsed"
-      ? attempt.summary.kind
-      : attempt.end.kind === "deployed"
-        ? "deployed"
-        : reason?.kind === "moved" || reason?.kind === "deploys-off"
-          ? "refused"
-          : "failed";
+  report.outcome = applyOutcome(attempt.end);
   report.reason = reason && deployFailureText(reason);
   report.applied = attempt.summary;
   if (progress.milliseconds !== undefined) report.deployMilliseconds = progress.milliseconds;
@@ -553,6 +544,12 @@ async function afterFreshPreview(
   const name = logGroupTitle(id);
   const notDeployed = (reason: DeployFailureReason, why = ""): string =>
     `${name} was not deployed: ${deployFailureText(reason)}.${why}`;
+  const notDeployedSummary = (reason: DeployFailureReason, checked: PreviewResult) =>
+    ({
+      kind: "not-deployed",
+      reason: deployFailureText(reason),
+      checked: applied(checked),
+    }) as const;
   const tool = { root: context.root, env: context.env, run: context.run };
   const preview = () => adapter.preview(setup.stack.stack, options);
   // With `scan.logDiff` on, the tool's own diff of the fresh preview goes to
@@ -566,93 +563,81 @@ async function afterFreshPreview(
     logDiff && previewed.ok && previewed.diff.changes.length > 0
       ? await adapter.toolDiff(setup.stack.stack, options)
       : undefined;
-  // A hash that covers drift is compared with fresh drift too (records 0009
-  // and 0055), so drift that moved after the tick stops the deploy.
-  const drift =
-    payload.drift && previewed.ok ? await checkDriftAgain(context, setup, options, id) : undefined;
-  if (drift !== undefined && !drift.ok) {
-    logPreview(context, id, "The fresh preview", previewed, toolDiff);
-    const reason: DeployFailureReason = { kind: "preview-failed", reason: drift.reason };
-    return {
-      end: { kind: "failed", reason },
-      failed: notDeployed(
-        reason,
-        " The drift check failed, and the diff hash the tick approved covers drift.",
-      ),
-      summary: {
-        kind: "not-deployed",
-        reason: deployFailureText(reason),
-        checked: applied(previewed),
-      },
-      setup,
-    };
+  const asked = deployGate({
+    approved: payload,
+    fresh: previewed,
+    dryRun: context.dryRun === true,
+  });
+  const gate =
+    asked.kind === "check-drift"
+      ? asked.withDrift(await checkDriftAgain(context, setup, options, id))
+      : asked;
+  logPreview(context, id, "The fresh preview", gate.checked, toolDiff);
+  const toolDiffInLog = toolDiff !== undefined;
+  switch (gate.kind) {
+    case "drift-failed":
+      return {
+        end: gate.end,
+        failed: notDeployed(
+          gate.end.reason,
+          " The drift check failed, and the diff hash the tick approved covers drift.",
+        ),
+        summary: notDeployedSummary(gate.end.reason, gate.checked),
+        setup,
+      };
+    case "preview-failed":
+      return {
+        end: gate.end,
+        failed: notDeployed(gate.end.reason),
+        row: gate.checked,
+        summary: notDeployedSummary(gate.end.reason, gate.checked),
+        setup,
+      };
+    case "in-sync":
+      // Most likely a deploy outside the dashboard, which is legal (record
+      // 0016). The tool deploys nothing.
+      log.info(
+        `The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`,
+      );
+      return {
+        end: gate.end,
+        row: gate.checked,
+        toolDiffInLog,
+        summary: { kind: "in-sync" },
+        setup,
+      };
+    case "moved":
+      // Nothing goes out, and the row shows the fresh diff, which a fresh
+      // tick can approve.
+      return {
+        end: gate.end,
+        failed: notDeployed(
+          gate.end.reason,
+          ` The fresh preview gives diff hash ${gate.hash} and the tick approved ${payload.hash}. The row on the dashboard shows the fresh diff. Tick it again to deploy that.`,
+        ),
+        row: gate.checked,
+        toolDiffInLog,
+        summary: notDeployedSummary(gate.end.reason, gate.checked),
+        setup,
+      };
+    case "rehearsed":
+      // The row is the fresh preview, pending with its box, and it never
+      // said deploying.
+      log.info(
+        `The fresh preview gives diff hash ${gate.hash}, the one the tick approved. This is a rehearsal (dry-run: true), so nothing is deployed.`,
+      );
+      return {
+        end: gate.end,
+        row: gate.checked,
+        toolDiffInLog,
+        summary: { kind: "rehearsed", diff: gate.checked.diff },
+        setup,
+      };
+    case "deploy":
+      break;
   }
-  const fresh: PreviewResult =
-    previewed.ok && drift?.ok && drift.drift.length > 0
-      ? { ...previewed, diff: { ...previewed.diff, drift: drift.drift } }
-      : previewed;
-  logPreview(context, id, "The fresh preview", fresh, toolDiff);
-  if (!fresh.ok) {
-    const reason: DeployFailureReason = { kind: "preview-failed", reason: fresh.reason };
-    return {
-      end: { kind: "failed", reason },
-      failed: notDeployed(reason),
-      row: fresh,
-      summary: { kind: "not-deployed", reason: deployFailureText(reason), checked: applied(fresh) },
-      setup,
-    };
-  }
-
-  // Nothing to deploy: the stack is already as its code says, most likely
-  // from a deploy outside the dashboard, which is legal (record 0016). That is
-  // no moved change and no failure (record 0051). The record ends as success
-  // with fixed words, the row is in sync, and the tool deploys nothing.
-  if (fresh.diff.changes.length === 0 && (fresh.diff.drift ?? []).length === 0) {
-    log.info(
-      `The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`,
-    );
-    return {
-      end: { kind: "in-sync" },
-      row: fresh,
-      toolDiffInLog: toolDiff !== undefined,
-      summary: { kind: "in-sync" },
-      setup,
-    };
-  }
-
-  const hash = diffHash(fresh.diff);
-  if (hash !== payload.hash) {
-    // The change moved since the tick (record 0008). Nothing goes out, and
-    // the row shows the fresh diff, which a fresh tick can approve.
-    const reason: DeployFailureReason = { kind: "moved" };
-    return {
-      end: { kind: "failed", reason },
-      failed: notDeployed(
-        reason,
-        ` The fresh preview gives diff hash ${hash} and the tick approved ${payload.hash}. The row on the dashboard shows the fresh diff. Tick it again to deploy that.`,
-      ),
-      row: fresh,
-      toolDiffInLog: toolDiff !== undefined,
-      summary: { kind: "not-deployed", reason: deployFailureText(reason), checked: applied(fresh) },
-      setup,
-    };
-  }
-  if (context.dryRun) {
-    // A rehearsal stops here (record 0051): everything a deploy checks was
-    // checked, and nothing goes out. The row is the fresh preview, pending
-    // with its box, and it never said deploying.
-    log.info(
-      `The fresh preview gives diff hash ${hash}, the one the tick approved. This is a rehearsal (dry-run: true), so nothing is deployed.`,
-    );
-    return {
-      end: { kind: "rehearsed" },
-      row: fresh,
-      toolDiffInLog: toolDiff !== undefined,
-      summary: { kind: "rehearsed", diff: fresh.diff },
-      setup,
-    };
-  }
-  log.info(`The fresh preview gives diff hash ${hash}, the one the tick approved. Deploying.`);
+  const fresh = gate.checked;
+  log.info(`The fresh preview gives diff hash ${gate.hash}, the one the tick approved. Deploying.`);
 
   // The row says deploying, no longer waiting to start (record 0027), for as
   // long as the deploy takes. A failure here never stops the deploy.
@@ -672,9 +657,6 @@ async function afterFreshPreview(
   }
 
   progress.deploying = true;
-  // The deploy reads what is real first when the hash covers drift, which
-  // puts the drift back as the code says (record 0055).
-  const repairDrift = (fresh.diff.drift ?? []).length > 0;
   const deployStarted = context.now();
   const limit = deployLimit(tool.run, context.deployTimeoutMinutes);
   let deployed: Awaited<ReturnType<Adapter["apply"]>>;
@@ -683,71 +665,55 @@ async function afterFreshPreview(
       setup.stack.stack,
       { ...tool, run: limit.run },
       previewed.ok ? previewed.plan : undefined,
-      repairDrift ? { repairDrift } : undefined,
+      gate.repairDrift ? { repairDrift: true } : undefined,
     );
   } finally {
     progress.milliseconds = context.now().getTime() - deployStarted.getTime();
   }
-  // Every adapter reads a run that ran out of time as a tool error without an
-  // exit code. The mode knows it was the limit, and says so.
-  const result: DeployResult =
-    !deployed.ok && deployed.reason.kind === "tool-error" && limit.ranOut()
-      ? {
-          ok: false,
-          reason: { kind: "timed-out", minutes: context.deployTimeoutMinutes ?? 0 },
-          toolLog: deployed.toolLog,
-        }
-      : deployed;
-  const words = lines(result.toolLog);
+  const result = deployEnd(deployed, limit.ranOut(), context.deployTimeoutMinutes);
+  const words = lines(deployed.toolLog);
   context.log.group(`${name}: the deploy`, [
-    result.ok ? "deployed" : `deploy failed: ${deployFailureText(result.reason)}`,
+    result.kind === "deployed"
+      ? "deployed"
+      : `deploy failed: ${deployFailureText(result.end.reason)}`,
     ...(words.length > 0 ? ["The tool's own words:", ...words] : []),
   ]);
-  if (result.ok) {
-    return {
-      end: { kind: "deployed" },
-      row: { ok: true, diff: { stackId: id, changes: [] }, toolLog: "" },
-      summary: { kind: "deployed", diff: fresh.diff },
-      setup,
-    };
+  switch (result.kind) {
+    case "deployed":
+      return {
+        end: result.end,
+        row: { ok: true, diff: { stackId: id, changes: [] }, toolLog: "" },
+        summary: { kind: "deployed", diff: fresh.diff },
+        setup,
+      };
+    case "moved":
+      // What would go out is no longer what the fresh preview saw (record
+      // 0058). Nothing went out, and the row is pending.
+      return {
+        end: result.end,
+        failed: notDeployed(
+          result.end.reason,
+          " What the deploy would install changed after the fresh preview, so nothing was deployed. The job log says what.",
+        ),
+        row: fresh,
+        toolDiffInLog,
+        summary: notDeployedSummary(result.end.reason, fresh),
+        setup,
+      };
+    case "failed": {
+      // The stack may be half deployed, so the row comes from a preview of
+      // what is left. A second tick then deploys the rest.
+      const after = await preview();
+      logPreview(context, id, "The preview after the failed deploy", after);
+      return {
+        end: result.end,
+        failed: notDeployed(result.end.reason, " The job log holds the tool's own words."),
+        row: after,
+        summary: { ...notDeployedSummary(result.end.reason, fresh), after: applied(after) },
+        setup,
+      };
+    }
   }
-  if (result.reason.kind === "moved") {
-    // The adapter found, before its tool deployed anything, that what would
-    // go out is no longer what the fresh preview saw (record 0058). That is a
-    // moved change like any other: nothing went out, and the row is pending.
-    return {
-      end: { kind: "failed", reason: result.reason },
-      failed: notDeployed(
-        result.reason,
-        " What the deploy would install changed after the fresh preview, so nothing was deployed. The job log says what.",
-      ),
-      row: fresh,
-      toolDiffInLog: toolDiff !== undefined,
-      summary: {
-        kind: "not-deployed",
-        reason: deployFailureText(result.reason),
-        checked: applied(fresh),
-      },
-      setup,
-    };
-  }
-
-  // The stack may be half deployed, so the row comes from a preview of what
-  // is left. A second tick then deploys the rest.
-  const after = await preview();
-  logPreview(context, id, "The preview after the failed deploy", after);
-  return {
-    end: { kind: "failed", reason: result.reason },
-    failed: notDeployed(result.reason, " The job log holds the tool's own words."),
-    row: after,
-    summary: {
-      kind: "not-deployed",
-      reason: deployFailureText(result.reason),
-      checked: applied(fresh),
-      after: applied(after),
-    },
-    setup,
-  };
 }
 
 // The drift check that `apply` runs again for a tick whose hash covers drift
@@ -878,12 +844,6 @@ async function swapRow(
   );
   return dashboard.number;
 }
-
-// What a deploy ended with, the reason of a deploy that ran out of time
-// included (slice 5.9).
-type DeployResult =
-  | Awaited<ReturnType<Adapter["apply"]>>
-  | { ok: false; reason: { kind: "timed-out"; minutes: number }; toolLog: string };
 
 // How long the tool gets to stop by itself when the deploy ran out of time.
 // Longer than a preview's: a tool that is interrupted finishes what it is
