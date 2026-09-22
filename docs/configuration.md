@@ -23,11 +23,13 @@ Every stack has a **stack id**, derived from where it lives and what it is calle
 
 For OpenTofu there is no zero config. A root module and a child module look the same on disk, and a workspace lives in the backend, so files alone cannot say what a stack is. A `stacks` entry with `tool: opentofu` declares one: the root module in `path`, with an optional `name`, workspace and var files. Its stack id is `path`, or `path:name` when the entry gives a name, so one directory in two workspaces is two stacks, such as `infra/network:dev` and `infra/network:prod`. Discovery checks from the files that the directory holds OpenTofu files and that every var file is there, and still never starts the tool.
 
+The Terraform family runs through the same adapter and reads the same plan JSON. `tool: terraform` declares a root module that `terraform` plans and deploys, exactly as `tool: opentofu` does with `tofu`. A Terragrunt unit is declared with the tool that Terragrunt runs and `wrapper: terragrunt`: the stack is the unit's directory, its stack id is `path`, and Sluiceway runs the tool there through `terragrunt run`, one unit at a time, never `run --all`. A stack of a CDK for Terraform app is declared with `wrapper: cdktf` at the app's directory, with the name the app gives the stack: `cdktf synth` writes every stack of the app, and the entry's name picks the one it deploys, so its stack id is always `path:name`. Discovery checks from the files that the directory holds `.tf` files for Terraform, a `terragrunt.hcl` for a unit, or a `cdktf.json` for an app.
+
 For Helm there is no zero config either. A chart can be installed as any number of releases, in any namespace, so files alone cannot say which release a chart is. A `stacks` entry with `tool: helm` declares one: a release in a namespace, with the chart and the values files it is installed with. `path` is the directory the chart and the values files are relative to, and the directory the stack claims. Its stack id is `path`, or `path:name`, as for OpenTofu. Discovery checks from the files that the directory is there, that a local chart holds a `Chart.yaml` and that every values file is there, and never starts helm or reaches a cluster.
 
 Kubernetes manifests have no zero config either: a directory of YAML says nothing about which cluster it belongs to. A `stacks` entry with `tool: kubectl` declares a directory of manifests or a kustomization as a stack, with an optional `name`, kubeconfig context and namespace. Its stack id is `path`, or `path:name`. Discovery checks from the files that the directory holds manifests (`*.yaml`, `*.yml`, `*.json`, one level deep, as `kubectl apply -f <dir>` reads them) or a kustomization, and never reaches a cluster.
 
-A repo can hold Pulumi, OpenTofu, Helm and Kubernetes manifests stacks side by side. They share one dashboard, one tick rule and one workflow.
+A repo can hold Pulumi, OpenTofu, Terraform, Terragrunt, CDK for Terraform, Helm and Kubernetes manifests stacks side by side. They share one dashboard, one tick rule and one workflow.
 
 `ignore` matches stack ids. `stacks` entries point at stacks by `path` and `name`.
 
@@ -344,7 +346,7 @@ The name of the stack, the part of the stack id after the colon. Without it the 
 
 Default: none, the entry adds settings to stacks that discovery found.
 
-The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at `path`, and `options` holds that tool's options. Three tools take it in this version: `opentofu`, for an OpenTofu root module, `helm`, for a Helm release in a namespace, and `kubectl`, for a directory of Kubernetes manifests or a kustomization. Pulumi stacks are found from their files and need no `tool`.
+The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at `path`, and `options` holds that tool's options. Four tools take it in this version: `opentofu`, for an OpenTofu root module, `terraform`, for a Terraform root module, `helm`, for a Helm release in a namespace, and `kubectl`, for a directory of Kubernetes manifests or a kustomization. With [`wrapper`](#stacksoptionswrapper), an `opentofu` or `terraform` entry declares a Terragrunt unit or a stack of a CDK for Terraform app instead. Pulumi stacks are found from their files and need no `tool`.
 
 ```yaml
 stacks:
@@ -356,6 +358,18 @@ stacks:
       varFiles: [prod.tfvars]
   - path: infra/dns
     tool: opentofu
+  - path: legacy/vpc
+    tool: terraform
+  - path: live/prod/app
+    tool: opentofu
+    inputs: [modules/app/**, root.hcl]
+    options:
+      wrapper: terragrunt
+  - path: cdk
+    name: prod
+    tool: terraform
+    options:
+      wrapper: cdktf
   - path: apps/web
     tool: helm
     inputs: [charts/web/**]
@@ -378,9 +392,9 @@ stacks:
       namespace: web
 ```
 
-An unknown tool, an unknown option or an option of the wrong kind stops every mode, with the same kind of message as any other mistake in the file, such as `stacks[0].tool: unknown tool "terraform". Known tools: opentofu, helm, kubectl.`
+An unknown tool, an unknown option or an option of the wrong kind stops every mode, with the same kind of message as any other mistake in the file, such as `stacks[0].tool: unknown tool "pulumi". Known tools: opentofu, terraform, helm, kubectl.`
 
-Sluiceway runs `tofu init` for every directory of the stacks it is about to preview, one directory at a time, before the first preview. Then `tofu plan -refresh=false -out` and `tofu show -json` give the preview, and a tick deploys the plan file that `apply`'s own fresh preview saved and hashed, with `tofu apply` of that file. Install `tofu` in the workflow before Sluiceway, v1.11.0 or newer ([credentials](credentials.md)).
+Sluiceway runs `tofu init` for every directory of the stacks it is about to preview, one directory at a time, before the first preview. Then `tofu plan -refresh=false -out` and `tofu show -json` give the preview, and a tick deploys the plan file that `apply`'s own fresh preview saved and hashed, with `tofu apply` of that file. Install `tofu` in the workflow before Sluiceway, v1.11.0 or newer ([credentials](credentials.md)). A `terraform` stack runs the same commands with `terraform`, v1.14.0 or newer: Terraform and OpenTofu write the same plan JSON, and a recording of each gives the same diff. The stacks of one directory share its init, so they name the same tool and wrapper.
 
 For Helm, Sluiceway runs `helm dependency build` for every local chart that has dependencies, one chart at a time, before the first preview. `helm diff upgrade --install --reset-values --dry-run=server --output=structured`, from the [helm-diff](https://github.com/databus23/helm-diff) plugin, gives the preview: the objects the release would add, change and remove, and the path of every field that changes. A tick deploys with `helm upgrade --install --reset-values --atomic`. Helm saves no plan, so `apply` renders the chart with `helm template` in its fresh preview and once more right before the deploy, and deploys only when both renders are the same. A chart that renders differently every time, such as one with a random value, is refused as a moved change and never deploys. Install helm v3.18.0 or newer and the diff plugin v3.15.11 or newer in the workflow before Sluiceway ([credentials](credentials.md)). The release's namespace must exist.
 
@@ -587,7 +601,7 @@ sluiceway.yaml is not valid:
 
 Default: the workspace the job's environment selects, which is `default`.
 
-Only with `tool: opentofu`. The workspace of the stack. Sluiceway sets `TF_WORKSPACE` to it for every command of this stack: the plan, the plan's JSON, the tool diff and the deploy. A workspace that the backend does not hold is not an error for every backend: the local backend plans every resource as a create. The row then says so, before anyone ticks.
+Only with `tool: opentofu` or `tool: terraform`. The workspace of the stack. Sluiceway sets `TF_WORKSPACE` to it for every command of this stack: the plan, the plan's JSON, the tool diff and the deploy. A workspace that the backend does not hold is not an error for every backend: the local backend plans every resource as a create. The row then says so, before anyone ticks.
 
 Named options are the only way to change the tool's command line. Sluiceway never passes free-form arguments to the tool (record 0015). A stack found from its files, such as a Pulumi stack, takes no options.
 
@@ -595,7 +609,30 @@ Named options are the only way to change the tool's command line. Sluiceway neve
 
 Default: `[]`
 
-Only with `tool: opentofu`. Var files, relative to the directory of the stack, handed to every plan with `-var-file` in this order. `terraform.tfvars` and `*.auto.tfvars` are read by the tool without being listed. A var file outside the directory of the stack is not claimed by it: add it to `inputs` too, or a change to it gives a full scan.
+Only with `tool: opentofu` or `tool: terraform`, and not with a `wrapper`. Var files, relative to the directory of the stack, handed to every plan with `-var-file` in this order. `terraform.tfvars` and `*.auto.tfvars` are read by the tool without being listed. A var file outside the directory of the stack is not claimed by it: add it to `inputs` too, or a change to it gives a full scan.
+
+### `stacks[].options.wrapper`
+
+Default: none, the tool runs by itself in the directory of the stack.
+
+Only with `tool: opentofu` or `tool: terraform`. What stands in front of the tool:
+
+- **`terragrunt`**: `path` is one Terragrunt unit, a directory with `terragrunt.hcl` or `terragrunt.hcl.json`. Every command runs as `terragrunt run --tf-forward-stdout --no-color --no-auto-init --tf-path <tofu or terraform> -- <command>` in that directory: `--tf-path` names the entry's tool, whatever `TG_TF_PATH` says, `--tf-forward-stdout` keeps the plan JSON as the tool printed it, and `--no-auto-init` leaves every init to the one Sluiceway runs before the previews. The unit's var files and inputs are in its `terragrunt.hcl`, so the entry takes no `varFiles`. Its code usually lives elsewhere, such as a `modules/` directory and a shared `root.hcl`: add them to `inputs`, or a change there gives a full scan. Sluiceway never runs `terragrunt run --all`, and a `dependency` block does not make a Sluiceway dependency: name it in [`dependsOn`](#stacksdependson). Install terragrunt v1.0.0 or newer.
+- **`cdktf`**: `path` is a CDK for Terraform app, a directory with `cdktf.json`, and `name` is required: the name the app gives the stack. Before the previews Sluiceway runs `cdktf synth --output cdktf.out` in the app's directory, once for all its stacks, and then the tool's init in `cdktf.out/stacks/<name>` of each stack at hand. The plan, the tool diff and the deploy run in that directory. The app sets its variables in code, so the entry takes no `varFiles`. The workflow installs cdktf v0.21.0 and whatever the app's language needs, such as `npm ci`. HashiCorp archived CDK for Terraform in December 2025, and v0.21.0 is its last release.
+
+```yaml
+stacks:
+  - path: live/prod/app
+    tool: opentofu
+    inputs: [modules/app/**, root.hcl]
+    options:
+      wrapper: terragrunt
+  - path: cdk
+    name: prod
+    tool: terraform
+    options:
+      wrapper: cdktf
+```
 
 ### `stacks[].options.release`
 

@@ -218,7 +218,7 @@ jobs:
 ## What it does
 
 - **Pulumi**, with stacks found from their files alone ([configuration](docs/configuration.md#stacks-and-stack-ids)).
-- **OpenTofu**, with stacks declared in `sluiceway.yaml`. A tick deploys the very plan file whose diff was approved ([`stacks[].tool`](docs/configuration.md#stackstool)).
+- **OpenTofu and Terraform**, also behind Terragrunt or CDK for Terraform, with stacks declared in `sluiceway.yaml`. A tick deploys the very plan file whose diff was approved ([`stacks[].tool`](docs/configuration.md#stackstool)).
 - **Helm**, with a release in a namespace declared in `sluiceway.yaml`. A tick deploys only what the chart rendered when the diff was checked ([`stacks[].tool`](docs/configuration.md#stackstool)).
 - **Kubernetes manifests**, with a directory of manifests or a kustomization declared in `sluiceway.yaml`. A tick deploys the very set of manifests that was diffed ([`stacks[].tool`](docs/configuration.md#stackstool)).
 - **Tick to deploy.** One box per stack with changes waiting, checked against who may tick ([using the dashboard](docs/using-the-dashboard.md)).

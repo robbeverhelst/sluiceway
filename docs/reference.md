@@ -42,6 +42,7 @@ One action, six modes, chosen with the `mode` input.
 - **GitHub Actions runners with runner version 2.328.0 or newer.** Hosted runners qualify. Self-hosted runners need that version at least, and ARM32 is not supported.
 - **Pulumi CLI 3.229.0 or newer** on the runners that preview and deploy, for Pulumi stacks. `pulumi/actions` installs it. With an older one every preview fails, and the job log says which version is needed.
 - **OpenTofu 1.11.0 or newer**, for OpenTofu stacks, installed without a wrapper ([credentials](credentials.md#opentofu)). A repo with only Pulumi stacks never needs it.
+- **Terraform 1.14.0 or newer**, for Terraform stacks, installed without a wrapper, **Terragrunt 1.0.0 or newer** for Terragrunt units, and **cdktf 0.21.0** for the stacks of a CDK for Terraform app ([credentials](credentials.md#terraform-terragrunt-and-cdk-for-terraform)). A repo without them never needs them.
 - **Helm 3.18.0 or newer and the helm-diff plugin 3.15.11 or newer**, for Helm releases, with a kubeconfig for the cluster ([credentials](credentials.md#helm)). A repo without Helm releases never needs them.
 - **kubectl 1.34.0 or newer** and a kubeconfig, for Kubernetes manifests stacks ([credentials](credentials.md#kubernetes-manifests)). A repo without them never needs it.
 - **Your programs' own needs:** a language runtime, dependencies, credentials. The workflow installs and loads them, the same way your own CI or laptop does.

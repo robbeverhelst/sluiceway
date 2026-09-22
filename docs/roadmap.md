@@ -25,7 +25,7 @@ The [build plan](build-plan.md) says how each of these was built and proven, and
 
 ## After 1.0
 
-In plain words, the larger themes: more tools (Kubernetes manifests, the Terraform binary and the tools built on it, AWS CDK), a bot with its own name and picture, teams in the tick rule, a log of deploys made outside the dashboard, and a hosted version with a dashboard for a whole organization. The previews and the deploys always stay in the user's own runners.
+In plain words, the larger themes: more tools (AWS CDK), a bot with its own name and picture, teams in the tick rule, a log of deploys made outside the dashboard, and a hosted version with a dashboard for a whole organization. The previews and the deploys always stay in the user's own runners.
 
 Every item, as `docs/later.md` lists it:
 
@@ -34,7 +34,9 @@ Every item, as `docs/later.md` lists it:
 
 No date and no order. Each waits for a user who asks, and none of them needs a breaking change. [docs/later.md](later.md#deferred-door-left-open) says why each one waited and where that was decided.
 
-- The Terraform binary behind the OpenTofu adapter
+- `init` for the Terraform family: declaring Terraform root modules, Terragrunt units and the stacks of a CDK for Terraform app, and their setup steps (setup-terraform, terragrunt, cdktf)
+- `dependsOn: auto` from a Terragrunt unit's `dependency` blocks, and zero-config discovery of Terragrunt units from `terragrunt.hcl`
+- `varFiles` on a Terragrunt unit or a CDK for Terraform stack
 - Zero-config discovery for OpenTofu (a directory with a backend block or a lock file as a stack)
 - A `backendConfig` option for OpenTofu (`tofu init -backend-config`)
 - A hint in the check for a directory of `.tf` files that no entry declares
@@ -47,7 +49,6 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Zero-config discovery of kustomizations, and a hint in the check for a directory of manifests that no entry declares
 - `init`, part 2: a credential step for a secret manager other than 1Password's env file of references or for a cloud through OIDC, a setup action for languages other than Node, a check workflow next to the starter workflow, adding to a `sluiceway.yaml` that is there, and Kubernetes manifests stacks (slice 4.9 landed while this slice was built)
 - `init` as an npm package or a command of its own (`npx sluiceway init`)
-- The Terraform family beyond OpenTofu (Terragrunt, CDK for Terraform)
 - An AWS CDK and CloudFormation adapter (change sets as the preview)
 - A branch preview of updates past the oldest 30, and a branch preview carried over by a scan that did not preview its stack
 - Reading Renovate presets from npm, a web address or another platform, presets with parameters, and `packageRules`, for the merge method

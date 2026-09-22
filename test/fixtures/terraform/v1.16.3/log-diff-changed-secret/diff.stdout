@@ -8,7 +8,7 @@ Terraform will perform the following actions:
 
   # null_resource.trigger must be replaced
 -/+ resource "null_resource" "trigger" {
-      ~ id       = "3886289063571042206" -> (known after apply)
+      ~ id       = "898693371691985383" -> (known after apply)
       ~ triggers = { # forces replacement
           ~ "secret" = (sensitive value)
         }
@@ -16,7 +16,7 @@ Terraform will perform the following actions:
 
   # terraform_data.config will be updated in-place
   ~ resource "terraform_data" "config" {
-        id     = "6deda1b2-4bef-74f2-5c85-abd29c52822c"
+        id     = "115538b3-e06c-37b9-ed78-7f4cd0d2909f"
       ~ input  = {
           ~ secret   = (sensitive value)
             # (2 unchanged attributes hidden)

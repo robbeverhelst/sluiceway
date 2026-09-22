@@ -1,9 +1,9 @@
-15:54:42.207 INFO   Downloading Terraform configurations from ../../modules/notes into ./.terragrunt-cache/NKV9eliZiegscnq5sMRWwMHuhs4/cSrOgjgrqn2TBpGaAR6TdgWSANk
-15:54:42.209 WARN   Detected that init is needed, but Auto-Init is disabled. Continuing with further actions, but subsequent terraform commands may fail.
-15:54:42.261 INFO   TIP (debugging-docs): For help troubleshooting errors, visit https://docs.terragrunt.com/troubleshooting/debugging
-15:54:42.261 ERROR  error occurred:
+14:05:05.052 INFO   Downloading Terraform configurations from ../../modules/notes into ./.terragrunt-cache/ObJlsGpdru1OfkHciF55Wtsm7yo/0q8LA9FCIrdgILDbYbnr6Mh2HfI
+14:05:05.053 WARN   Detected that init is needed, but Auto-Init is disabled. Continuing with further actions, but subsequent terraform commands may fail.
+14:05:05.080 INFO   TIP (debugging-docs): For help troubleshooting errors, visit https://docs.terragrunt.com/troubleshooting/debugging
+14:05:05.080 ERROR  error occurred:
 
-* Failed to execute "tofu plan -input=false -refresh=false -json -out=/private/tmp/claude-501/-Users-robbe-orca-workspaces-sluiceway-m5-1-terraform-family/6ebc45a8-3c19-47d3-afe6-191ca63d3dfd/scratchpad/work/scenarios/program-error/plan/tfplan -no-color" in ./.terragrunt-cache/NKV9eliZiegscnq5sMRWwMHuhs4/cSrOgjgrqn2TBpGaAR6TdgWSANk
+* Failed to execute "tofu plan -input=false -refresh=false -json -out=/tmp/sluiceway-fixtures/scenarios/program-error/plan/tfplan -no-color" in ./.terragrunt-cache/ObJlsGpdru1OfkHciF55Wtsm7yo/0q8LA9FCIrdgILDbYbnr6Mh2HfI
   
   exit status 1
 

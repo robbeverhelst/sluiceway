@@ -7,7 +7,7 @@ Sluiceway keeps one GitHub issue, the dashboard, that shows which infrastructure
 ### Stacks
 
 **Stack**:
-The smallest thing Sluiceway can preview and deploy on its own. It has its own state, one row on the dashboard and one checkbox. This is Sluiceway's word, not a tool's: a Pulumi stack is a stack, and so is an OpenTofu root module with a chosen workspace and var files, and a Helm release in a namespace. Not every stack is a Pulumi stack.
+The smallest thing Sluiceway can preview and deploy on its own. It has its own state, one row on the dashboard and one checkbox. This is Sluiceway's word, not a tool's: a Pulumi stack is a stack, and so is an OpenTofu or Terraform root module with a chosen workspace and var files, a Terragrunt unit, a stack of a CDK for Terraform app, and a Helm release in a namespace. Not every stack is a Pulumi stack.
 _Avoid_: Unit, project, workspace, module, target
 
 **Stack id**:
@@ -19,8 +19,12 @@ Finding the stacks of a repo from its files alone. It never asks a backend and n
 _Avoid_: Detection, lookup, stack listing
 
 **Declared stack**:
-A stack that a `stacks` entry names with `tool`, because files alone cannot say what it is: an OpenTofu root module, with the workspace and var files the entry gives, a Helm release in a namespace, with its chart and values files, or a directory of Kubernetes manifests or a kustomization, with the context and namespace the entry gives. Discovery still checks from the files that it can exist, and never starts the tool.
+A stack that a `stacks` entry names with `tool`, because files alone cannot say what it is: an OpenTofu or Terraform root module, with the workspace and var files the entry gives, or with a wrapper in front of the tool a Terragrunt unit or the stack of a CDK for Terraform app the entry names, a Helm release in a namespace, with its chart and values files, or a directory of Kubernetes manifests or a kustomization, with the context and namespace the entry gives. Discovery still checks from the files that it can exist, and never starts the tool.
 _Avoid_: Configured stack, manual stack, custom stack
+
+**Wrapper**:
+A tool that stands in front of OpenTofu or Terraform for one stack: Terragrunt, which runs the tool in one unit, or CDK for Terraform, whose synth writes the code the tool runs. The stack's `tool` still names the binary, and the plan is the binary's own.
+_Avoid_: Driver, frontend, orchestrator
 
 **Ignored stack**:
 A discovered stack whose stack id matches an `ignore` glob. It has no row, is never previewed and claims nothing, and config cannot give it settings. When the `ignore` entry gives a reason, the stack is listed with it in a fold under In sync, and that is all the dashboard says about it.
@@ -53,7 +57,7 @@ What a scan decides before it previews anything: a full scan with the reason for
 _Avoid_: Strategy, scan mode, selection
 
 **Preparation**:
-A step a tool needs before it can preview a stack, such as OpenTofu's init of a directory, or Helm's build of a chart's dependencies. A scan runs every preparation one at a time and before the pool, and a failed one is a preview failure of each stack that needs it.
+A step a tool needs before it can preview a stack, such as OpenTofu's init of a directory, CDK for Terraform's synth of an app, or Helm's build of a chart's dependencies. A scan runs every preparation one at a time and before the pool, and a failed one is a preview failure of each stack that needs it.
 _Avoid_: Setup, init step, pre-hook
 
 **Check**:

@@ -1,14 +1,18 @@
-// The end to end run of one repo with Pulumi, OpenTofu, Helm and Kubernetes
-// manifests stacks (records 0053, 0058 and 0060): the committed bundle,
-// started the way a runner starts a step, with the pulumi, tofu, helm and
-// kubectl CLIs on PATH and the fake GitHub server. The repo is
-// examples/pulumi-basic with examples/opentofu-basic in infra/,
+// The end to end run of one repo with Pulumi, OpenTofu, Terraform,
+// Terragrunt, CDK for Terraform, Helm and Kubernetes manifests stacks
+// (records 0053, 0058, 0060 and 0068): the committed bundle, started the way
+// a runner starts a step, with the pulumi, tofu, terraform, terragrunt,
+// cdktf, helm and kubectl CLIs on PATH and the fake GitHub server. The repo
+// is examples/pulumi-basic with examples/opentofu-basic in infra/, its
+// network directory once more in tf/network for terraform,
+// examples/terragrunt-basic in tg/, examples/cdktf-basic in cdk/,
 // examples/helm-basic in helm/ and the web directory of
 // examples/kubernetes-basic in k8s/web. Helm and kubectl need a cluster:
 // KUBECONFIG names a kind cluster made for this, and HELM_PLUGINS the
 // directory of the diff plugin.
 //
 //   bun run e2e:mixed [--work-dir <dir>] [--expect-tofu v1.12.6]
+//                     [--expect-terraform v1.16.3] [--expect-terragrunt v1.1.6]
 //                     [--expect-helm v4.3.0] [--expect-kubectl v1.37.0]
 //
 //   1. A full scan: one dashboard with the rows of all four tools, every
@@ -21,7 +25,9 @@
 //      job starts. The fresh preview gives another hash, so nothing is
 //      deployed and the record ends as error.
 //   4. alice ticks network:dev, a Pulumi stack of the same repo, which deploys
-//      with the real pulumi.
+//      with the real pulumi. Then tf/network:dev, which deploys its saved
+//      plan with the real terraform, tg/live/dev, the same through
+//      terragrunt, and cdk:dev, the stack dev that cdktf synth wrote.
 //   5. alice ticks helm/web, and its values move before its apply job starts:
 //      nothing is deployed and the release is not installed.
 //   6. A scan, and alice ticks helm/web again: apply renders the chart in its
@@ -30,7 +36,7 @@
 //   7. alice ticks k8s/web, and a manifest is added before its apply job
 //      starts: nothing reaches the cluster. She ticks the fresh row, and
 //      apply deploys the rendered set its fresh preview diffed.
-//   8. A last full scan: the four deployed stacks are in sync, infra/dns is
+//   8. A last full scan: the seven deployed stacks are in sync, infra/dns is
 //      pending with the moved change and a failure line.
 //
 // The tools only run in a copy inside the work directory, with state in local
@@ -63,6 +69,8 @@ const { values } = parseArgs({
   options: {
     "work-dir": { type: "string", default: join(tmpdir(), "sluiceway-e2e-mixed") },
     "expect-tofu": { type: "string" },
+    "expect-terraform": { type: "string" },
+    "expect-terragrunt": { type: "string" },
     "expect-helm": { type: "string" },
     "expect-kubectl": { type: "string" },
   },
@@ -96,6 +104,8 @@ const jobEnvironment: Record<string, string> = {
   PULUMI_CONFIG_PASSPHRASE: EXAMPLE_PASSPHRASE,
   PULUMI_SKIP_UPDATE_CHECK: "true",
   TF_PLUGIN_CACHE_DIR: join(work, "plugin-cache"),
+  // No update check or telemetry from cdktf, as a workflow may choose.
+  CHECKPOINT_DISABLE: "1",
   KUBECONFIG: needed("KUBECONFIG"),
   HELM_PLUGINS: needed("HELM_PLUGINS"),
   NO_COLOR: "1",
@@ -128,6 +138,24 @@ stacks:
       varFiles: [prod.tfvars]
   - path: infra/dns
     tool: opentofu
+  - path: tf/network
+    name: dev
+    tool: terraform
+    options:
+      workspace: dev
+      varFiles: [dev.tfvars]
+  - path: tg/live/dev
+    tool: opentofu
+    inputs:
+      - tg/modules/**
+      - tg/root.hcl
+    options:
+      wrapper: terragrunt
+  - path: cdk
+    name: dev
+    tool: opentofu
+    options:
+      wrapper: cdktf
   - path: helm/web
     tool: helm
     inputs:
@@ -384,15 +412,33 @@ function expectRows(body: string, expected: Record<string, string>): string[] {
 
 // How many resources the tool's own state holds, the one way to see that a
 // deploy really went out and that a refused one sent nothing.
-async function tofuResources(dir: string, workspaceName?: string): Promise<number> {
+async function tofuResources(
+  dir: string,
+  workspaceName?: string,
+  binary = "tofu",
+): Promise<number> {
   const env = workspaceName === undefined ? {} : { TF_WORKSPACE: workspaceName };
-  const ran = await run(["tofu", "state", "list"], join(workspace, dir), {
+  const ran = await run([binary, "state", "list"], join(workspace, dir), {
     ...jobEnvironment,
     ...env,
   });
   return ran.exitCode === 0
     ? ran.output.split("\n").filter((line) => line.trim() !== "").length
     : 0;
+}
+
+// How many resources a state file of the local backend holds, for the stacks
+// whose state sits in a file of their own: a Terragrunt unit and a stack of a
+// CDK for Terraform app.
+function stateResources(file: string): number {
+  try {
+    const state = JSON.parse(readFileSync(join(workspace, file), "utf8")) as {
+      resources?: unknown[];
+    };
+    return state.resources?.length ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
 // Whether helm holds the release, the one way to see that a deploy really
@@ -419,6 +465,25 @@ console.log(`tofu ${tofu}`);
 if (values["expect-tofu"] && tofu !== values["expect-tofu"]) {
   throw new Error(`Expected tofu ${values["expect-tofu"]} on PATH, found ${tofu}.`);
 }
+
+// The terraform on PATH.
+const terraformVersion = await run(["terraform", "version", "-json"], REPO);
+const terraform = `v${(JSON.parse(terraformVersion.output) as { terraform_version: string }).terraform_version}`;
+console.log(`terraform ${terraform}`);
+if (values["expect-terraform"] && terraform !== values["expect-terraform"]) {
+  throw new Error(`Expected terraform ${values["expect-terraform"]} on PATH, found ${terraform}.`);
+}
+
+// The terragrunt and the cdktf on PATH.
+const terragrunt =
+  /v\d+\.\d+\.\d+/.exec((await run(["terragrunt", "--version"], REPO)).output)?.[0] ?? "";
+console.log(`terragrunt ${terragrunt}`);
+if (values["expect-terragrunt"] && terragrunt !== values["expect-terragrunt"]) {
+  throw new Error(
+    `Expected terragrunt ${values["expect-terragrunt"]} on PATH, found ${terragrunt}.`,
+  );
+}
+console.log(`cdktf v${(await run(["cdktf", "--version"], REPO)).output.trim()}`);
 
 // The helm on PATH, and its diff plugin.
 const helmVersion = (await run(["helm", "version", "--template={{.Version}}"], REPO)).output.trim();
@@ -447,6 +512,16 @@ if (!context.output.trim().startsWith("kind-")) {
 cpSync(join(REPO, "examples/pulumi-basic"), workspace, { recursive: true });
 cpSync(join(REPO, "examples/opentofu-basic"), join(workspace, "infra"), { recursive: true });
 rmSync(join(workspace, "infra/sluiceway.yaml"));
+cpSync(join(REPO, "examples/opentofu-basic/network"), join(workspace, "tf/network"), {
+  recursive: true,
+});
+cpSync(join(REPO, "examples/terragrunt-basic"), join(workspace, "tg"), { recursive: true });
+rmSync(join(workspace, "tg/sluiceway.yaml"));
+cpSync(join(REPO, "examples/cdktf-basic"), join(workspace, "cdk"), {
+  recursive: true,
+  filter: (source) => !source.includes("node_modules"),
+});
+rmSync(join(workspace, "cdk/sluiceway.yaml"));
 cpSync(join(REPO, "examples/helm-basic"), join(workspace, "helm"), { recursive: true });
 rmSync(join(workspace, "helm/sluiceway.yaml"));
 cpSync(join(REPO, "examples/kubernetes-basic/web"), join(workspace, "k8s/web"), {
@@ -462,6 +537,8 @@ const QUIET = ["--non-interactive", "--color", "never"];
 await prepare(["pulumi", "stack", "init", "dev", ...QUIET], "network");
 await prepare(["pulumi", "stack", "init", "prod", ...QUIET], "network");
 await prepare(["pulumi", "stack", "init", "prod", ...QUIET], "app");
+// The packages of the CDK for Terraform app, which its workflow installs.
+await prepare(["npm", "ci", "--no-audit", "--no-fund"], "cdk");
 // A release needs its namespace, which the workflow of a real repo, or the
 // cluster, holds already. The cluster may hold the releases of an earlier run.
 for (const [release, namespace] of [
@@ -494,6 +571,7 @@ good =
     ...(first.exitCode === 0 ? [] : [`The scan ended with exit code ${first.exitCode}.`]),
     ...expectRows(first.body, {
       "app:prod": "pending",
+      "cdk:dev": "pending",
       "helm/web": "pending",
       "helm/worker": "pending",
       "infra/dns": "pending",
@@ -502,6 +580,8 @@ good =
       "k8s/web": "pending",
       "network:dev": "pending",
       "network:prod": "pending",
+      "tf/network:dev": "pending",
+      "tg/live/dev": "pending",
     }),
     ...(preparedAt >= 0 && previewedAt > preparedAt
       ? []
@@ -579,6 +659,28 @@ good =
     }),
   ) && good;
 await settled(pulumiStack.run);
+
+// A Terraform stack, a Terragrunt unit and a stack of a CDK for Terraform
+// app, each deployed from the plan its fresh preview saved (record 0068).
+for (const [stack, resources, expected] of [
+  ["tf/network:dev", () => tofuResources("tf/network", "dev", "terraform"), 4],
+  ["tg/live/dev", async () => stateResources("tg/live/dev/terraform.tfstate"), 2],
+  ["cdk:dev", async () => stateResources("cdk/terraform.dev.tfstate"), 1],
+] as const) {
+  const one = await deployed(stack, "sluiceway");
+  good =
+    report(`The tick of ${stack}: apply`, one.applied, [
+      ...checkApply(one.applied, {
+        stack,
+        deployment: one.entry.deployment,
+        outcome: "deployed",
+      }),
+      ...((await resources()) === expected
+        ? []
+        : [`The state of ${stack} does not hold the ${expected} resources of the plan.`]),
+    ]) && good;
+  await settled(one.run);
+}
 
 // 5. helm/web moves after its tick, so nothing goes out.
 const webRun = await tick("helm/web");
@@ -708,6 +810,7 @@ good =
     ...(last.exitCode === 0 ? [] : [`The scan ended with exit code ${last.exitCode}.`]),
     ...expectRows(last.body, {
       "app:prod": "pending",
+      "cdk:dev": "in-sync",
       "helm/web": "in-sync",
       "helm/worker": "pending",
       "infra/dns": "pending",
@@ -716,18 +819,28 @@ good =
       "k8s/web": "in-sync",
       "network:dev": "in-sync",
       "network:prod": "pending",
+      "tf/network:dev": "in-sync",
+      "tg/live/dev": "in-sync",
     }),
     ...checkRowFacts(last.body, {
       failed: ["infra/dns"],
-      recentlyDeployed: ["helm/web", "infra/network:dev", "k8s/web", "network:dev"],
+      recentlyDeployed: [
+        "cdk:dev",
+        "helm/web",
+        "infra/network:dev",
+        "k8s/web",
+        "network:dev",
+        "tf/network:dev",
+        "tg/live/dev",
+      ],
     }),
   ]) && good;
 
 rmSync(work, { recursive: true, force: true });
 if (!good) {
-  console.log("The end to end run of a repo with four tools found problems.");
+  console.log("The end to end run of a repo with seven tools found problems.");
   process.exit(1);
 }
 console.log(
-  "The end to end run of a repo with Pulumi, OpenTofu, Helm and Kubernetes manifests stacks is good.",
+  "The end to end run of a repo with Pulumi, OpenTofu, Terraform, Terragrunt, CDK for Terraform, Helm and Kubernetes manifests stacks is good.",
 );

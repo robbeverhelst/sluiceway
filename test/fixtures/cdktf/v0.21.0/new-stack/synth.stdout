@@ -1,4 +1,4 @@
-[32m[2026-09-22T15:55:39.528] [INFO] default - [39mUnable to determine Terraform version: Error: Terraform CLI not present - Please install a current version https://learn.hashicorp.com/terraform/getting-started/install.html
+[32m[2026-09-22T14:06:31.969] [INFO] default - [39mUnable to determine Terraform version: Error: Terraform CLI not present - Please install a current version https://learn.hashicorp.com/terraform/getting-started/install.html
 
 ⠋  Starting
 [2K[1A[2K[1A[2K[G
@@ -10,14 +10,6 @@
 [2K[1A[2K[1A[2K[G
 ⠸  Synthesizing
 [2K[1A[2K[1A[2K[G
-⠼  Synthesizing
-[2K[1A[2K[1A[2K[G
-⠴  Synthesizing
-[2K[1A[2K[1A[2K[G
-⠦  Synthesizing
-[2K[1A[2K[1A[2K[G
-⠧  Synthesizing
-[2K[1A[2K[1A[2K[G
-⠧  Processing
+⠸  Processing
 [2K[1A[2K[1A[2K[G
 Generated Terraform code for the stacks: dev, prod

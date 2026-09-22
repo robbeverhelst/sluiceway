@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import {
   FIXTURE_CDKTF_VERSIONS,
   FIXTURE_TERRAFORM_VERSIONS,
@@ -9,7 +10,7 @@ import {
 import type { PreviewResult } from "../../../src/adapters/adapter.ts";
 import { opentofu } from "../../../src/adapters/opentofu/index.ts";
 import type { Stack } from "../../../src/core/stack.ts";
-import { ROOT, readRecording, replay, scenarioNames } from "./replay.ts";
+import { answering, ROOT, readRecording, replay, scenarioNames } from "./replay.ts";
 import { DEV, PROD } from "./stacks.ts";
 
 // The Terraform family behind the OpenTofu adapter (record 0068), replayed
@@ -266,4 +267,28 @@ describe("the cdktf wrapper", () => {
       });
     });
   }
+});
+
+describe("a plan terraform could not finish", () => {
+  // Terraform writes `complete: false` when it deferred changes it could not
+  // plan yet (its docs, "JSON Output Format"). Such a plan shows part of
+  // what a deploy would change, so it is never a diff, and never in sync.
+  test("is output Sluiceway cannot read", async () => {
+    const recorded = readFileSync(
+      join(TERRAFORM, FIXTURE_TERRAFORM_VERSIONS.newest, "update", "show.stdout"),
+      "utf8",
+    );
+    const partial = JSON.stringify({ ...JSON.parse(recorded), complete: false });
+    const { run } = answering(
+      { status: "exited", exitCode: 0, stdout: "", stderr: "" },
+      { status: "exited", exitCode: 0, stdout: partial, stderr: "" },
+    );
+    const result = await opentofu.preview(terraform(DEV), { ...context(run), timeoutMinutes: 3 });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toEqual({ kind: "unreadable-output" });
+    expect(result.detail).toEqual([
+      "The tool's output, at complete: expected a plan that holds every change, not one with changes left for later.",
+    ]);
+  });
 });

@@ -1,3 +1,3 @@
-{"@level":"info","@message":"Terraform 1.14.0","@module":"terraform.ui","@timestamp":"2026-09-22T15:46:21.663462+02:00","terraform":"1.14.0","type":"version","ui":"1.2"}
-{"@level":"info","@message":"Plan: 0 to add, 0 to change, 0 to destroy.","@module":"terraform.ui","@timestamp":"2026-09-22T15:46:22.421872+02:00","changes":{"add":0,"change":0,"import":0,"remove":0,"action_invocation":0,"operation":"plan"},"type":"change_summary"}
-{"@level":"info","@message":"Outputs: 2","@module":"terraform.ui","@timestamp":"2026-09-22T15:46:22.421903+02:00","outputs":{"greeting":{"sensitive":false,"action":"create"},"pet":{"sensitive":false,"action":"noop"}},"type":"outputs"}
+{"@level":"info","@message":"Terraform 1.14.0","@module":"terraform.ui","@timestamp":"2026-09-22T14:05:42.086388Z","terraform":"1.14.0","type":"version","ui":"1.2"}
+{"@level":"info","@message":"Plan: 0 to add, 0 to change, 0 to destroy.","@module":"terraform.ui","@timestamp":"2026-09-22T14:05:42.483183Z","changes":{"add":0,"change":0,"import":0,"remove":0,"action_invocation":0,"operation":"plan"},"type":"change_summary"}
+{"@level":"info","@message":"Outputs: 2","@module":"terraform.ui","@timestamp":"2026-09-22T14:05:42.483223Z","outputs":{"greeting":{"sensitive":false,"action":"create"},"pet":{"sensitive":false,"action":"noop"}},"type":"outputs"}

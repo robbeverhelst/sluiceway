@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=../../schema/sluiceway.schema.json
+#
+# A CDK for Terraform app holds its stacks in code, so each entry with
+# wrapper: cdktf names one of them. cdktf synth writes them all to
+# cdktf.out/stacks/, and Sluiceway runs tofu in the directory of the stack an
+# entry names. Their stack ids are .:dev and .:prod.
+
+stacks:
+  - path: .
+    name: dev
+    tool: opentofu
+    options:
+      wrapper: cdktf
+  - path: .
+    name: prod
+    tool: opentofu
+    options:
+      wrapper: cdktf

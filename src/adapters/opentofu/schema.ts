@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 // The plan JSON that `tofu show -json <plan file>` prints (OpenTofu docs,
-// "JSON Output Format") holds every value of the configuration, the state and
+// "JSON Output Format"), and `terraform show -json` in the same format
+// (record 0068), holds every value of the configuration, the state and
 // the plan in plain text, sensitive ones included (record 0021). This schema
 // names the few fields the adapter needs. Zod drops every other key, so
 // `variables`, `prior_state`, `configuration`, `planned_values`,
@@ -41,10 +42,13 @@ const resourceChange = z.object({
 });
 
 // A plan that failed half way says so, and cannot be applied. Its changes are
-// never shown as a diff.
+// never shown as a diff. Terraform also says whether the plan holds every
+// change (record 0068): with changes deferred to a later plan it shows only
+// part of what a deploy would do. OpenTofu writes no such field.
 const planDocument = z.object({
   format_version: formatVersion,
   errored: z.literal(false).optional(),
+  complete: z.literal(true).optional(),
   resource_changes: z.array(resourceChange).default([]),
 });
 
@@ -81,6 +85,9 @@ function problem(issue: z.core.$ZodIssue): string {
     return `The tool's output, at format_version: expected a plan format version 1.x, which Sluiceway reads.`;
   }
   if (at === "errored") return "The tool's output, at errored: expected a plan that did not fail.";
+  if (at === "complete") {
+    return "The tool's output, at complete: expected a plan that holds every change, not one with changes left for later.";
+  }
   const expected = issue.code === "invalid_type" ? EXPECTED[issue.expected] : undefined;
   return `The tool's output, at ${at}: expected ${expected ?? "something else"}.`;
 }

@@ -2,6 +2,8 @@
 
 > Amended by 0058: a deploy may end as `moved` when the adapter finds, before its tool deploys, that what would go out is not what the fresh preview saw. Helm does, and its preparation is one dependency build per chart.
 
+> Amended by 0068: `tool: terraform` runs the same commands with `terraform`, v1.14.0 or newer, and a Terraform plan must be complete. The named option `wrapper` puts Terragrunt or CDK for Terraform in front of the tool. The name of a CDK for Terraform entry picks the stack it deploys.
+
 The build plan's slice 4.1 adds a second adapter, so that Sluiceway is an IaC dashboard and not a Pulumi dashboard. The adapter research (`docs/research/opentofu-adapter-fit.md`) showed the interface survives OpenTofu, and records 0006, 0007, 0015 and 0021 were already written with it in mind. This record settles what the research left open and what the build found with the real tool, v1.11.0 and v1.12.6, on 2026-09-22.
 
 ## Decision

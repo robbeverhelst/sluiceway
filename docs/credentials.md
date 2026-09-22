@@ -164,6 +164,21 @@ Then load the backend's and the providers' credentials into the environment as f
 - **`TF_CLI_ARGS` reaches the tool too.** Whatever it adds to a plan is in the plan file, and a tick deploys exactly that file, so the deploy never differs from the row. Prefer the named options.
 - **The plan file holds every value in plain text.** Sluiceway keeps it in a temporary directory of its own and removes it when the preview or the deploy ends. It is never uploaded.
 
+### Terraform, Terragrunt and CDK for Terraform
+
+The Terraform family runs through the same adapter (record 0068), so everything above holds for it. For `tool: terraform`, install `terraform` v1.14.0 or newer without its wrapper:
+
+```yaml
+- uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+  with:
+    terraform_version: 1.16.3
+    terraform_wrapper: false
+```
+
+For `wrapper: terragrunt`, install terragrunt v1.0.0 or newer next to the tool it runs. Every `TG_*` variable of the job reaches it, such as `TG_PROVIDER_CACHE` or `TG_NON_INTERACTIVE`, but the binary is the one the entry's `tool` names: Sluiceway passes `--tf-path`, which wins over `TG_TF_PATH`.
+
+For `wrapper: cdktf`, install cdktf v0.21.0 and what the app needs to run, such as Node and `npm ci` in the app's directory. `cdktf synth` runs the app, so the app gets the same environment as the tool. Set `CHECKPOINT_DISABLE=1` for the job to turn off cdktf's update check and telemetry.
+
 ### Helm
 
 For Helm releases (record 0058), install helm v3.18.0 or newer and the [helm-diff](https://github.com/databus23/helm-diff) plugin v3.15.11 or newer in steps before Sluiceway. Helm 4 checks a plugin's signature unless told not to, and Helm 3 knows no such flag:

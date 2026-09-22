@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../schema/sluiceway.schema.json
+#
+# One Terragrunt unit is one stack. terragrunt run --all is never used: each
+# entry with wrapper: terragrunt declares one unit, and Sluiceway runs tofu
+# there through terragrunt.
+
+stacks:
+  # The unit's own directory holds only terragrunt.hcl. Its code and the
+  # shared root.hcl live elsewhere, so the entry claims them with inputs.
+  - path: live/dev
+    tool: opentofu
+    inputs:
+      - modules/**
+      - root.hcl
+    options:
+      wrapper: terragrunt
+  - path: live/prod
+    tool: opentofu
+    inputs:
+      - modules/**
+      - root.hcl
+    options:
+      wrapper: terragrunt

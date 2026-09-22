@@ -7,7 +7,7 @@ OpenTofu will perform the following actions:
 
   # terraform_data.config will be updated in-place
   ~ resource "terraform_data" "config" {
-        id     = "a38c5146-f95d-0906-e5c8-55241578c4c7"
+        id     = "6b1a7a52-1cc9-bd7a-19cf-531797fe5d78"
       ~ input  = {
           ~ secret   = (sensitive value)
             # (2 unchanged attributes hidden)
