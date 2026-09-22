@@ -58,7 +58,13 @@ import { join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { type FakeCheckRun, FakeGitHub } from "../test/fake-github/fake-github.ts";
 import { startFakeGitHubServer } from "../test/fake-github/server.ts";
-import { checkFullScan, checkNarrowedScan, type Expected, type Observed } from "./e2e/checks.ts";
+import {
+  checkFullScan,
+  checkNarrowedScan,
+  checkOutsideDeploys,
+  type Expected,
+  type Observed,
+} from "./e2e/checks.ts";
 import {
   checkApply,
   checkHandOff,
@@ -357,7 +363,12 @@ fake.seedPullRequest({
 });
 
 const first = await scanStep(FIRST_SHA);
-let good = report("The full scan", checkFullScan(first, expected));
+let good = report("The full scan", [
+  ...checkFullScan(first, expected),
+  // network:prod was deployed by hand above, so the tool's history holds a
+  // deploy that no deployment record ran (record 0073).
+  ...checkOutsideDeploys(first, ["network:prod"]),
+]);
 
 // Someone deploys app:prod by hand and then pushes a change to the file it
 // reads. The push is what the fake knows about the two commits.

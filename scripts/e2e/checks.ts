@@ -216,6 +216,20 @@ function checkScan(observed: Observed, expected: Expected, previewed: string[]):
   return problems;
 }
 
+// The stacks the trail lists as deployed outside the dashboard (record 0073),
+// read from the markers of the dashboard's lines.
+export function checkOutsideDeploys(observed: Observed, stacks: string[]): string[] {
+  const body = observed.issues[0]?.body ?? "";
+  const found = [...body.matchAll(/<!-- sluiceway:outside stack="([^"]*)"/g)].map(
+    (match) => match[1] ?? "",
+  );
+  return JSON.stringify(found.sort()) === JSON.stringify([...stacks].sort())
+    ? []
+    : [
+        `expected outside deploys of ${stacks.join(", ") || "no stack"} on the trail, found ${found.join(", ") || "none"}.`,
+      ];
+}
+
 export function checkFullScan(observed: Observed, expected: Expected): string[] {
   const stacks = Object.keys(expected.rows);
   return [
