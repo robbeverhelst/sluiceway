@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/sluiceway/sluiceway/compare/v0.2.0...v0.3.0) (2026-09-22)
+
+
+### Features
+
+* **apply:** a change that moved since the tick is told to the ticker in one comment (slice 2.20, part 4) ([a8ff4a8](https://github.com/sluiceway/sluiceway/commit/a8ff4a8ecd409a6eed06a8e09af765920ac7b1fb))
+* **apply:** an empty fresh preview ends as success, nothing to deploy (slice 2.20, part 3) ([84fa132](https://github.com/sluiceway/sluiceway/commit/84fa132d1c32aa74a664c7b82063e46d5400e16b))
+* **apply:** dry-run rehearses a tick and deploys nothing (slice 2.20, part 5) ([34311b2](https://github.com/sluiceway/sluiceway/commit/34311b2b16c6e5f50521f5519428360b181d0cc5))
+* **config:** an ignore entry may give a reason, listed under In sync (slice 2.20, part 1) ([7ae4999](https://github.com/sluiceway/sluiceway/commit/7ae499956ad5b2cb9a4cbe9a9345292651776ada))
+* **config:** deploys: false stops every deploy (slice 2.20, part 2) ([373b130](https://github.com/sluiceway/sluiceway/commit/373b1306920de7e0220e16635a18ed03801859e9))
+* dashboard.showValues, an allowlist of paths whose values may appear (slice 2.19) ([2ea116c](https://github.com/sluiceway/sluiceway/commit/2ea116c03d4304ccf803c597737a80858c168054))
+* slice 2.21, two checks: the UI tick event and stdout diagnostics on a failed preview ([2d3fc3a](https://github.com/sluiceway/sluiceway/commit/2d3fc3ad7e708e01279e3b90c1e9e464195429e6))
+* the diff hash covers the values a row shows (record 0052) ([947f115](https://github.com/sluiceway/sluiceway/commit/947f1151205c81382e85386b085324c9695826f0))
+
 ## [0.2.0](https://github.com/sluiceway/sluiceway/compare/v0.1.1...v0.2.0) (2026-09-22)
 
 
