@@ -1,6 +1,8 @@
 // The marker format of record 0009: HTML comments in one namespace,
 // `sluiceway:<kind>`, with key="value" pairs.
 
+import type { OutsideDeploy } from "../core/outside-deploy.ts";
+
 // Percent-encodes what could close the quote or the comment, and nothing else,
 // so an id such as `apps/grafana:prod` reads as itself in the raw body. Every
 // character in the set is one UTF-8 byte.
@@ -158,6 +160,20 @@ export function mergeMarker(facts: MergeFacts): string {
   ]);
 }
 
+// A deploy made outside the dashboard, at the end of its line of the trail
+// (record 0073). Only a full scan reads the tool's history, so every other
+// writer takes these facts from the live body.
+export function outsideMarker(deploy: OutsideDeploy): string {
+  const pairs: [string, string][] = [
+    ["stack", deploy.stackId],
+    ["kind", deploy.kind],
+    ["at", deploy.at.toISOString()],
+  ];
+  if (deploy.commit !== undefined) pairs.push(["commit", deploy.commit]);
+  if (deploy.dirty) pairs.push(["dirty", "true"]);
+  return marker("outside", pairs);
+}
+
 export interface ParsedRoot {
   // A writer that meets a version other than its own does not touch the body.
   version: number;
@@ -207,6 +223,8 @@ export interface ParsedDashboard {
   // In body order. Of two lines for one pull request both are here: the
   // readers take the first.
   merges: ParsedMerge[];
+  // The outside deploys on the trail, in body order (record 0073).
+  outside: OutsideDeploy[];
   rescanTicked: boolean;
 }
 
@@ -216,6 +234,7 @@ const ROOT_LINE = new RegExp(`^<!-- sluiceway:dashboard${PAIRS} -->[ \\t]*$`);
 // marker at the end. The visible text between them is never parsed.
 const ROW_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:row${PAIRS} -->[ \\t]*$`);
 const MERGE_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:merge${PAIRS} -->[ \\t]*$`);
+const OUTSIDE_LINE = new RegExp(`^- .*<!-- sluiceway:outside${PAIRS} -->[ \\t]*$`);
 const RESCAN_LINE = /^- \[[xX]\] .*<!-- sluiceway:rescan -->[ \t]*$/;
 
 function readPairs(payload: string): Map<string, string> {
@@ -250,11 +269,17 @@ export function parseDashboard(body: string): ParsedDashboard {
   const lines = body.replace(/\r\n?/g, "\n").split("\n");
   const rows: ParsedRow[] = [];
   const merges: ParsedMerge[] = [];
+  const outside: OutsideDeploy[] = [];
   let rescanTicked = false;
 
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index] ?? "";
     if (RESCAN_LINE.test(line)) rescanTicked = true;
+    const deploy = readOutside(line);
+    if (deploy) {
+      outside.push(deploy);
+      continue;
+    }
     const merge = readMerge(line);
     if (merge) {
       // A merge row is its line and the indented note lines under it (record
@@ -308,7 +333,7 @@ export function parseDashboard(body: string): ParsedDashboard {
     });
   }
 
-  return { root: readRoot(lines[0] ?? ""), rows, merges, rescanTicked };
+  return { root: readRoot(lines[0] ?? ""), rows, merges, outside, rescanTicked };
 }
 
 // A merge line whose marker lacks a number, a stack or a whole commit id is
@@ -333,5 +358,33 @@ function readMerge(line: string): ParsedMerge | undefined {
     head,
     ticked: match[1] === "x" || match[1] === "X",
     text: line,
+  };
+}
+
+// A line whose marker lacks a stack, a kind this version knows or a time, or
+// names something that is not a whole commit id, is not one. A person can
+// edit the body, so nothing else of the line is read.
+function readOutside(line: string): OutsideDeploy | undefined {
+  const match = OUTSIDE_LINE.exec(line);
+  if (!match) return undefined;
+  const pairs = readPairs(match[1] ?? "");
+  const stackId = pairs.get("stack");
+  const kind = pairs.get("kind");
+  const at = new Date(pairs.get("at") ?? "");
+  const commit = pairs.get("commit");
+  if (
+    stackId === undefined ||
+    (kind !== "deploy" && kind !== "destroy") ||
+    Number.isNaN(at.getTime()) ||
+    (commit !== undefined && !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit))
+  ) {
+    return undefined;
+  }
+  return {
+    stackId,
+    kind,
+    at,
+    ...(commit === undefined ? {} : { commit }),
+    ...(pairs.get("dirty") === "true" ? { dirty: true } : {}),
   };
 }

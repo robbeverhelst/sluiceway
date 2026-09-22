@@ -4,6 +4,7 @@
 
 import type { IgnoredStack } from "../core/config.ts";
 import { IN_SYNC_DESCRIPTION, REHEARSED_DESCRIPTION } from "../core/deployment.ts";
+import type { OutsideDeploy } from "../core/outside-deploy.ts";
 import { destroyAlert } from "./destroy-alert.ts";
 import { destroySign } from "./destroy-sign.ts";
 import { COUNT_DOT, DOT_AT_ZERO, RESULT_DOT } from "./dots.ts";
@@ -11,6 +12,7 @@ import { escapeText } from "./escape.ts";
 import { type HeaderState, headerState } from "./header-state.ts";
 import { mascotUrl, urlPart } from "./images.ts";
 import {
+  outsideMarker,
   type ParsedMerge,
   type ParsedRow,
   parseDashboard,
@@ -58,6 +60,10 @@ export interface BodyInput {
   rows: readonly ParsedRow[];
   // Deployment records that ended, in any order. The newest are listed.
   recentlyDeployed: readonly RecentDeploy[];
+  // Deploys made outside the dashboard (record 0073), in any order. A full
+  // scan finds them in the tool's history, and every other writer carries
+  // them as `parseDashboard` read them. They share the list and its length.
+  outsideDeploys?: readonly OutsideDeploy[] | undefined;
   // How many lines Recently deployed lists, `dashboard.recentlyDeployed`
   // (record 0062). 0 leaves the section out. Ten when not given.
   recentLength?: number | undefined;
@@ -267,6 +273,25 @@ function recentLine(deploy: RecentDeploy, dots: boolean): string {
   )} · [run](${deploy.runUrl})`;
 }
 
+// A deploy made outside the dashboard (record 0073): when and from which
+// commit, never who. The tool's history does not say who, and the people
+// behind the commit are not the person who deployed it. Green, because it
+// went out. Its facts ride on the marker at the end, so every writer can
+// draw the line again.
+function outsideLine(deploy: OutsideDeploy, repoUrl: string, dots: boolean): string {
+  const dot = dots ? `${RESULT_DOT.deployed}&nbsp;` : "";
+  const verb = deploy.kind === "destroy" ? "destroyed" : "deployed";
+  const commit =
+    deploy.commit === undefined
+      ? ""
+      : `, from commit [\`${deploy.commit.slice(0, 7)}\`](${repoUrl}/commit/${urlPart(deploy.commit)})${
+          deploy.dirty ? " with uncommitted changes" : ""
+        }`;
+  return `- ${dot}${escapeText(deploy.stackId)} · ${verb} outside the dashboard${commit} · ${utcMinute(
+    deploy.at,
+  )} ${outsideMarker(deploy)}`;
+}
+
 // A `v1.2.3` tag reads as itself, a commit SHA as its first seven characters.
 function version(actionRef: string): string {
   return /^[0-9a-f]{40,}$/.test(actionRef) ? `\`${actionRef.slice(0, 7)}\`` : escapeText(actionRef);
@@ -377,14 +402,33 @@ export function renderBody(input: BodyInput): string {
     }
   }
 
-  const recent = [...input.recentlyDeployed]
+  // The dashboard's own deploys and the ones made outside it, in one list by
+  // time (record 0073). Of two lines for one outside deploy the first stays.
+  const outside = (input.outsideDeploys ?? []).filter(
+    (deploy, index, all) =>
+      all.findIndex(
+        (one) =>
+          one.stackId === deploy.stackId &&
+          one.kind === deploy.kind &&
+          one.at.getTime() === deploy.at.getTime(),
+      ) === index,
+  );
+  const recent = [
+    ...input.recentlyDeployed.map((deploy) => ({
+      at: deploy.at,
+      stackId: deploy.stackId,
+      line: () => recentLine(deploy, input.personality),
+    })),
+    ...outside.map((deploy) => ({
+      at: deploy.at,
+      stackId: deploy.stackId,
+      line: () => outsideLine(deploy, input.repoUrl, input.personality),
+    })),
+  ]
     .sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit(a.stackId, b.stackId))
     .slice(0, input.recentLength ?? RECENTLY_DEPLOYED);
   if (recent.length > 0)
-    out.push(
-      "## Recently deployed",
-      recent.map((deploy) => recentLine(deploy, input.personality)).join("\n"),
-    );
+    out.push("## Recently deployed", recent.map((entry) => entry.line()).join("\n"));
 
   // The rescan box needs a `resolve` job as much as a row's box does.
   out.push("---");

@@ -59,6 +59,7 @@ describe("reading a body", () => {
         },
       ],
       merges: [],
+      outside: [],
       rescanTicked: false,
     });
   });
