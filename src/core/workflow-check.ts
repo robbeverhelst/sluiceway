@@ -35,7 +35,7 @@ export function readWorkflowFiles(root: string): WorkflowFile[] {
   }));
 }
 
-const MODES = ["scan", "resolve", "apply", "settle", "check"] as const;
+const MODES = ["scan", "resolve", "apply", "settle", "check", "init"] as const;
 type Mode = (typeof MODES)[number];
 
 // How a step names the version of the action it runs.
@@ -79,7 +79,7 @@ export type WorkflowWarning =
   // branch yet.
   | { kind: "forbidden-trigger"; path: string; trigger: string }
   // All four jobs stay in one file (slice 2.7, records 0009 and 0035).
-  | { kind: "missing-job"; path: string; mode: Exclude<Mode, "check"> }
+  | { kind: "missing-job"; path: string; mode: Exclude<Mode, "check" | "init"> }
   // A scan with no `resolve` in its file draws boxes that nothing acts on
   // (record 0045).
   | { kind: "boxes-do-nothing"; path: string }
@@ -136,6 +136,9 @@ function needs(mode: Mode, config: Config): Record<string, Level> {
     case "settle":
       return { contents: "read", issues: "read", deployments: "write", actions: "write" };
     case "check":
+    // init reads the files of the checkout and writes into it, nowhere else
+    // (record 0065).
+    case "init":
       return { contents: "read" };
   }
 }
@@ -267,7 +270,9 @@ function checkOne(path: string, workflow: Parsed, config: Config, report: Workfl
   if (called) notes.push({ kind: "called", path });
   const modes = new Set(found.map(({ step }) => step.mode));
   const runs = (mode: Mode) => modes.has(mode);
-  const deploys = [...modes].some((mode) => mode !== undefined && mode !== "check");
+  const deploys = [...modes].some(
+    (mode) => mode !== undefined && mode !== "check" && mode !== "init",
+  );
 
   if (!called && deploys) {
     for (const trigger of ["pull_request", "pull_request_target", "merge_group"]) {

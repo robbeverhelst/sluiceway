@@ -1,0 +1,749 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`what init writes, whole the Pulumi example 1`] = `
+{
+  "config": 
+"# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json
+#
+# Written by sluiceway init from the files of this repo. Review it before
+# you commit it: docs/configuration.md explains every key.
+
+# Files that look like docs and tooling. A push that changes only these
+# previews nothing. Take out any that one of your programs reads.
+scan:
+  unrelated:
+    - "**/*.md"
+    - ".github/**"
+
+# No stack claims the files in these directories, so a push that changes
+# one of them previews every stack:
+#   shared/
+# When a stack reads one, name it under inputs in that stack's entry:
+#
+#   stacks:
+#     - path: app
+#       inputs:
+#         - "shared/**"
+"
+,
+  "groups": [
+    {
+      "lines": [
+        "app:prod",
+        "network:dev",
+        "network:prod",
+        "playground:dev",
+        "site:prod",
+      ],
+      "title": "Stacks",
+    },
+    {
+      "lines": [
+        "- Load the credentials and the state backend settings of your stacks in the scan and apply jobs, where the comments in the workflow say. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.",
+        "- The workflow scans after a push to main: init could not read the default branch. Change it if yours is another.",
+        "- Every job runs on ubuntu-latest. For self-hosted runners change runs-on of scan and apply, with runner 2.328.0 or newer. resolve and settle hold no credentials and can stay on hosted runners.",
+        "- apply deploys in the GitHub Environment of each stack, sluiceway unless sluiceway.yaml names another. Put the credentials that change things there, or remove the environment block where your plan has no environments.",
+        "- Review the files, run the check (mode: check) in a pull request, and commit them. init commits nothing.",
+      ],
+      "title": "Still to do by a person:",
+    },
+  ],
+  "lines": [
+    "Found 5 stacks.",
+    "Wrote .github/workflows/deploy-dashboard.yml.",
+    "Wrote sluiceway.yaml.",
+  ],
+  "workflow": 
+"# Written by sluiceway init from the files of this repo. Review every step
+# before you commit it: docs/example-workflows.md says what to change, and
+# init printed what it could not know.
+#
+# \`@v0\` follows every release until 1.0.0. To review every update yourself,
+# pin a full commit SHA instead, as the README's "Pin a commit" says.
+name: deploy-dashboard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+  issues:
+    types: [edited]
+
+permissions:
+  contents: read
+  issues: write
+  deployments: write
+  actions: write
+  pull-requests: read
+  checks: write
+
+jobs:
+  scan:
+    if: github.event_name != 'issues'
+    runs-on: ubuntu-latest
+    concurrency: sluiceway-scan
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+      # Once for every program in the repo, not once per stack.
+      - run: npm ci
+        working-directory: site
+      - uses: pulumi/actions@v7 # without a command this only installs the CLI
+        with:
+          pulumi-version: ^3.229.0
+      # The providers the programs use. The first run fills the cache.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.pulumi/plugins
+          key: pulumi-plugins-\${{ runner.os }}-\${{ hashFiles('**/package-lock.json') }}
+      # Load your credentials and your state backend settings into the job
+      # environment here. Sluiceway passes the environment to the tool and
+      # never looks inside. Whatever loads a secret must also mask it.
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: scan
+
+  resolve:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'sluiceway'))
+    runs-on: ubuntu-latest
+    concurrency: sluiceway-resolve
+    outputs:
+      matrix: \${{ steps.resolve.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      # No tool and no credentials in this job. It never runs the tool.
+      - id: resolve
+        uses: sluiceway/sluiceway@v0
+        with:
+          mode: resolve
+
+  apply:
+    needs: resolve
+    if: \${{ !cancelled() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: \${{ fromJson(needs.resolve.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: sluiceway-apply-\${{ matrix.stack }}
+      queue: max
+    environment:
+      name: \${{ matrix.environment }}
+      deployment: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+      - run: npm ci
+        working-directory: site
+      - uses: pulumi/actions@v7 # without a command this only installs the CLI
+        with:
+          pulumi-version: ^3.229.0
+      - uses: actions/cache/restore@v6
+        with:
+          path: ~/.pulumi/plugins
+          key: pulumi-plugins-\${{ runner.os }}-\${{ hashFiles('**/package-lock.json') }}
+      # Same credential steps as in the scan job. These credentials must be
+      # able to change things.
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: apply
+          deployment-id: \${{ matrix.deployment }}
+
+  settle:
+    needs: [resolve, apply]
+    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: settle
+"
+,
+}
+`;
+
+exports[`what init writes, whole the OpenTofu example 1`] = `
+{
+  "config": 
+"# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json
+#
+# Written by sluiceway init from the files of this repo. Review it before
+# you commit it: docs/configuration.md explains every key.
+
+stacks:
+  # An OpenTofu root module.
+  - path: dns
+    tool: opentofu
+  # An OpenTofu root module with a var file per stack, each in a workspace of its name.
+  - path: network
+    name: dev
+    tool: opentofu
+    options:
+      workspace: dev
+      varFiles: [dev.tfvars]
+  - path: network
+    name: prod
+    tool: opentofu
+    options:
+      workspace: prod
+      varFiles: [prod.tfvars]
+
+# Files that look like docs and tooling. A push that changes only these
+# previews nothing. Take out any that one of your programs reads.
+scan:
+  unrelated:
+    - "**/*.md"
+    - ".github/**"
+    - "**/.gitignore"
+"
+,
+  "groups": [
+    {
+      "lines": [
+        "dns",
+        "network:dev",
+        "network:prod",
+      ],
+      "title": "Stacks",
+    },
+    {
+      "lines": [
+        "- Load the credentials and the state backend settings of your stacks in the scan and apply jobs, where the comments in the workflow say. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.",
+        "- network: one stack per var file, each in a workspace of the same name. Change workspace where yours is named otherwise.",
+        "- The workflow scans after a push to main: init could not read the default branch. Change it if yours is another.",
+        "- Every job runs on ubuntu-latest. For self-hosted runners change runs-on of scan and apply, with runner 2.328.0 or newer. resolve and settle hold no credentials and can stay on hosted runners.",
+        "- apply deploys in the GitHub Environment of each stack, sluiceway unless sluiceway.yaml names another. Put the credentials that change things there, or remove the environment block where your plan has no environments.",
+        "- Review the files, run the check (mode: check) in a pull request, and commit them. init commits nothing.",
+      ],
+      "title": "Still to do by a person:",
+    },
+  ],
+  "lines": [
+    "Found 3 stacks.",
+    "Wrote .github/workflows/deploy-dashboard.yml.",
+    "Wrote sluiceway.yaml.",
+  ],
+  "workflow": 
+"# Written by sluiceway init from the files of this repo. Review every step
+# before you commit it: docs/example-workflows.md says what to change, and
+# init printed what it could not know.
+#
+# \`@v0\` follows every release until 1.0.0. To review every update yourself,
+# pin a full commit SHA instead, as the README's "Pin a commit" says.
+name: deploy-dashboard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+  issues:
+    types: [edited]
+
+permissions:
+  contents: read
+  issues: write
+  deployments: write
+  actions: write
+  pull-requests: read
+  checks: write
+
+jobs:
+  scan:
+    if: github.event_name != 'issues'
+    runs-on: ubuntu-latest
+    concurrency: sluiceway-scan
+    steps:
+      - uses: actions/checkout@v7
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+      # Load your credentials and your state backend settings into the job
+      # environment here. Sluiceway passes the environment to the tool and
+      # never looks inside. Whatever loads a secret must also mask it.
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: scan
+
+  resolve:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'sluiceway'))
+    runs-on: ubuntu-latest
+    concurrency: sluiceway-resolve
+    outputs:
+      matrix: \${{ steps.resolve.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      # No tool and no credentials in this job. It never runs the tool.
+      - id: resolve
+        uses: sluiceway/sluiceway@v0
+        with:
+          mode: resolve
+
+  apply:
+    needs: resolve
+    if: \${{ !cancelled() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: \${{ fromJson(needs.resolve.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: sluiceway-apply-\${{ matrix.stack }}
+      queue: max
+    environment:
+      name: \${{ matrix.environment }}
+      deployment: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+      # Same credential steps as in the scan job. These credentials must be
+      # able to change things.
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: apply
+          deployment-id: \${{ matrix.deployment }}
+
+  settle:
+    needs: [resolve, apply]
+    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: settle
+"
+,
+}
+`;
+
+exports[`what init writes, whole the Helm example 1`] = `
+{
+  "config": 
+"# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json
+#
+# Written by sluiceway init from the files of this repo. Review it before
+# you commit it: docs/configuration.md explains every key.
+
+stacks:
+  # A local chart. Set the release and the namespace it runs as, and its
+  # values files: init named both after the chart.
+  - path: charts/web
+    tool: helm
+    options:
+      release: web
+      namespace: web
+      chart: .
+  # A local chart. Set the release and the namespace it runs as, and its
+  # values files: init named both after the chart.
+  - path: charts/worker
+    tool: helm
+    options:
+      release: worker
+      namespace: worker
+      chart: .
+
+# Files that look like docs and tooling. A push that changes only these
+# previews nothing. Take out any that one of your programs reads.
+scan:
+  unrelated:
+    - "**/*.md"
+    - ".github/**"
+    - "**/.gitignore"
+
+# No stack claims the files in these directories, so a push that changes
+# one of them previews every stack:
+#   web/
+#   worker/
+# When a stack reads one, name it under inputs in that stack's entry:
+#
+#   stacks:
+#     - path: charts/web
+#       inputs:
+#         - "web/**"
+"
+,
+  "groups": [
+    {
+      "lines": [
+        "charts/web",
+        "charts/worker",
+      ],
+      "title": "Stacks",
+    },
+    {
+      "lines": [
+        "- Load the credentials and the state backend settings of your stacks in the scan and apply jobs, where the comments in the workflow say. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.",
+        "- The scan and apply jobs need a kubeconfig for the cluster of the Helm releases (docs/credentials.md, Helm).",
+        "- sluiceway.yaml names each Helm release and its namespace after the chart: charts/web, charts/worker. Set both to where the release runs, and add its values files. The namespace must exist.",
+        "- The workflow scans after a push to main: init could not read the default branch. Change it if yours is another.",
+        "- Every job runs on ubuntu-latest. For self-hosted runners change runs-on of scan and apply, with runner 2.328.0 or newer. resolve and settle hold no credentials and can stay on hosted runners.",
+        "- apply deploys in the GitHub Environment of each stack, sluiceway unless sluiceway.yaml names another. Put the credentials that change things there, or remove the environment block where your plan has no environments.",
+        "- Review the files, run the check (mode: check) in a pull request, and commit them. init commits nothing.",
+      ],
+      "title": "Still to do by a person:",
+    },
+  ],
+  "lines": [
+    "Found 2 stacks.",
+    "Wrote .github/workflows/deploy-dashboard.yml.",
+    "Wrote sluiceway.yaml.",
+  ],
+  "workflow": 
+"# Written by sluiceway init from the files of this repo. Review every step
+# before you commit it: docs/example-workflows.md says what to change, and
+# init printed what it could not know.
+#
+# \`@v0\` follows every release until 1.0.0. To review every update yourself,
+# pin a full commit SHA instead, as the README's "Pin a commit" says.
+name: deploy-dashboard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+  issues:
+    types: [edited]
+
+permissions:
+  contents: read
+  issues: write
+  deployments: write
+  actions: write
+  pull-requests: read
+  checks: write
+
+jobs:
+  scan:
+    if: github.event_name != 'issues'
+    runs-on: ubuntu-latest
+    concurrency: sluiceway-scan
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
+      - name: Install the diff plugin
+        run: helm plugin install https://github.com/databus23/helm-diff --version v3.15.13 --verify=false
+      # Load your credentials and your state backend settings into the job
+      # environment here. Sluiceway passes the environment to the tool and
+      # never looks inside. Whatever loads a secret must also mask it.
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: scan
+
+  resolve:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'sluiceway'))
+    runs-on: ubuntu-latest
+    concurrency: sluiceway-resolve
+    outputs:
+      matrix: \${{ steps.resolve.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      # No tool and no credentials in this job. It never runs the tool.
+      - id: resolve
+        uses: sluiceway/sluiceway@v0
+        with:
+          mode: resolve
+
+  apply:
+    needs: resolve
+    if: \${{ !cancelled() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: \${{ fromJson(needs.resolve.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: sluiceway-apply-\${{ matrix.stack }}
+      queue: max
+    environment:
+      name: \${{ matrix.environment }}
+      deployment: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
+      - name: Install the diff plugin
+        run: helm plugin install https://github.com/databus23/helm-diff --version v3.15.13 --verify=false
+      # Same credential steps as in the scan job. These credentials must be
+      # able to change things.
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: apply
+          deployment-id: \${{ matrix.deployment }}
+
+  settle:
+    needs: [resolve, apply]
+    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: settle
+"
+,
+}
+`;
+
+exports[`what init writes, whole the three examples in one repo 1`] = `
+{
+  "config": 
+"# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json
+#
+# Written by sluiceway init from the files of this repo. Review it before
+# you commit it: docs/configuration.md explains every key.
+
+stacks:
+  # An OpenTofu root module.
+  - path: tofu/dns
+    tool: opentofu
+  # An OpenTofu root module with a var file per stack, each in a workspace of its name.
+  - path: tofu/network
+    name: dev
+    tool: opentofu
+    options:
+      workspace: dev
+      varFiles: [dev.tfvars]
+  - path: tofu/network
+    name: prod
+    tool: opentofu
+    options:
+      workspace: prod
+      varFiles: [prod.tfvars]
+  # A local chart. Set the release and the namespace it runs as, and its
+  # values files: init named both after the chart.
+  - path: helm/charts/web
+    tool: helm
+    options:
+      release: web
+      namespace: web
+      chart: .
+  # A local chart. Set the release and the namespace it runs as, and its
+  # values files: init named both after the chart.
+  - path: helm/charts/worker
+    tool: helm
+    options:
+      release: worker
+      namespace: worker
+      chart: .
+
+# Files that look like docs and tooling. A push that changes only these
+# previews nothing. Take out any that one of your programs reads.
+scan:
+  unrelated:
+    - "**/*.md"
+    - ".github/**"
+    - "**/.gitignore"
+
+# No stack claims the files in these directories, so a push that changes
+# one of them previews every stack:
+#   helm/web/
+#   helm/worker/
+#   pulumi/shared/
+# When a stack reads one, name it under inputs in that stack's entry:
+#
+#   stacks:
+#     - path: helm/charts/web
+#       inputs:
+#         - "helm/web/**"
+"
+,
+  "groups": [
+    {
+      "lines": [
+        "helm/charts/web",
+        "helm/charts/worker",
+        "pulumi/app:prod",
+        "pulumi/network:dev",
+        "pulumi/network:prod",
+        "pulumi/playground:dev",
+        "pulumi/site:prod",
+        "tofu/dns",
+        "tofu/network:dev",
+        "tofu/network:prod",
+      ],
+      "title": "Stacks",
+    },
+    {
+      "lines": [
+        "- Load the credentials and the state backend settings of your stacks in the scan and apply jobs, where the comments in the workflow say. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.",
+        "- The scan and apply jobs need a kubeconfig for the cluster of the Helm releases (docs/credentials.md, Helm).",
+        "- sluiceway.yaml names each Helm release and its namespace after the chart: helm/charts/web, helm/charts/worker. Set both to where the release runs, and add its values files. The namespace must exist.",
+        "- tofu/network: one stack per var file, each in a workspace of the same name. Change workspace where yours is named otherwise.",
+        "- The workflow scans after a push to main: init could not read the default branch. Change it if yours is another.",
+        "- Every job runs on ubuntu-latest. For self-hosted runners change runs-on of scan and apply, with runner 2.328.0 or newer. resolve and settle hold no credentials and can stay on hosted runners.",
+        "- apply deploys in the GitHub Environment of each stack, sluiceway unless sluiceway.yaml names another. Put the credentials that change things there, or remove the environment block where your plan has no environments.",
+        "- Review the files, run the check (mode: check) in a pull request, and commit them. init commits nothing.",
+      ],
+      "title": "Still to do by a person:",
+    },
+  ],
+  "lines": [
+    "Found 10 stacks.",
+    "Wrote .github/workflows/deploy-dashboard.yml.",
+    "Wrote sluiceway.yaml.",
+  ],
+  "workflow": 
+"# Written by sluiceway init from the files of this repo. Review every step
+# before you commit it: docs/example-workflows.md says what to change, and
+# init printed what it could not know.
+#
+# \`@v0\` follows every release until 1.0.0. To review every update yourself,
+# pin a full commit SHA instead, as the README's "Pin a commit" says.
+name: deploy-dashboard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+  issues:
+    types: [edited]
+
+permissions:
+  contents: read
+  issues: write
+  deployments: write
+  actions: write
+  pull-requests: read
+  checks: write
+
+jobs:
+  scan:
+    if: github.event_name != 'issues'
+    runs-on: ubuntu-latest
+    concurrency: sluiceway-scan
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+      # Once for every program in the repo, not once per stack.
+      - run: npm ci
+        working-directory: pulumi/site
+      - uses: pulumi/actions@v7 # without a command this only installs the CLI
+        with:
+          pulumi-version: ^3.229.0
+      # The providers the programs use. The first run fills the cache.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.pulumi/plugins
+          key: pulumi-plugins-\${{ runner.os }}-\${{ hashFiles('**/package-lock.json') }}
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
+      - name: Install the diff plugin
+        run: helm plugin install https://github.com/databus23/helm-diff --version v3.15.13 --verify=false
+      # Load your credentials and your state backend settings into the job
+      # environment here. Sluiceway passes the environment to the tool and
+      # never looks inside. Whatever loads a secret must also mask it.
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: scan
+
+  resolve:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'sluiceway'))
+    runs-on: ubuntu-latest
+    concurrency: sluiceway-resolve
+    outputs:
+      matrix: \${{ steps.resolve.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      # No tool and no credentials in this job. It never runs the tool.
+      - id: resolve
+        uses: sluiceway/sluiceway@v0
+        with:
+          mode: resolve
+
+  apply:
+    needs: resolve
+    if: \${{ !cancelled() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: \${{ fromJson(needs.resolve.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: sluiceway-apply-\${{ matrix.stack }}
+      queue: max
+    environment:
+      name: \${{ matrix.environment }}
+      deployment: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+      - run: npm ci
+        working-directory: pulumi/site
+      - uses: pulumi/actions@v7 # without a command this only installs the CLI
+        with:
+          pulumi-version: ^3.229.0
+      - uses: actions/cache/restore@v6
+        with:
+          path: ~/.pulumi/plugins
+          key: pulumi-plugins-\${{ runner.os }}-\${{ hashFiles('**/package-lock.json') }}
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
+      - name: Install the diff plugin
+        run: helm plugin install https://github.com/databus23/helm-diff --version v3.15.13 --verify=false
+      # Same credential steps as in the scan job. These credentials must be
+      # able to change things.
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: apply
+          deployment-id: \${{ matrix.deployment }}
+
+  settle:
+    needs: [resolve, apply]
+    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: settle
+"
+,
+}
+`;

@@ -11,7 +11,7 @@ branding:
 inputs:
   mode:
     description: >-
-      What this step does. One of: scan, resolve, apply, settle, check.
+      What this step does. One of: scan, resolve, apply, settle, check, init.
     required: true
   concurrency:
     description: >-

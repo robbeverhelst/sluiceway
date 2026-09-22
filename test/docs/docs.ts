@@ -22,6 +22,7 @@ export const USER_DOCS = [
   "docs/credentials.md",
   "docs/security.md",
   "docs/example-workflows.md",
+  "docs/init.md",
 ];
 
 // The complete workflows that sit next to the docs as files, ready to copy.

@@ -2,11 +2,12 @@ import * as core from "@actions/core";
 import { type GetInput, refuseDeploymentId } from "./github/inputs.ts";
 import { runApply } from "./modes/apply-job.ts";
 import { runCheck } from "./modes/check-job.ts";
+import { runInit } from "./modes/init-job.ts";
 import { runResolve } from "./modes/resolve-job.ts";
 import { runScan } from "./modes/scan-job.ts";
 import { runSettle } from "./modes/settle-job.ts";
 
-export const MODES = ["scan", "resolve", "apply", "settle", "check"] as const;
+export const MODES = ["scan", "resolve", "apply", "settle", "check", "init"] as const;
 
 export type Mode = (typeof MODES)[number];
 
@@ -40,6 +41,7 @@ const handlers: Record<Mode, Handler> = {
   apply: runApply,
   settle: runSettle,
   check: runCheck,
+  init: runInit,
 };
 
 export async function run(

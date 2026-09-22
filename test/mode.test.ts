@@ -20,13 +20,13 @@ describe("parseMode", () => {
 
   test("names the valid modes when the input is empty", () => {
     expect(() => parseMode("")).toThrow(
-      'The "mode" input is required. Use one of: scan, resolve, apply, settle, check.',
+      'The "mode" input is required. Use one of: scan, resolve, apply, settle, check, init.',
     );
   });
 
   test("names the valid modes when the input is unknown", () => {
     expect(() => parseMode("deploy")).toThrow(
-      'Unknown mode "deploy". Use one of: scan, resolve, apply, settle, check.',
+      'Unknown mode "deploy". Use one of: scan, resolve, apply, settle, check, init.',
     );
   });
 
@@ -37,9 +37,9 @@ describe("parseMode", () => {
 
 describe("run", () => {
   // Every mode is wired: the scan (slice 1.11), resolve (slice 2.4), apply
-  // (slice 2.5), settle (slice 2.6) and the check (slice 2.12) have their own
-  // tests under test/modes/.
-  const wired: string[] = ["scan", "resolve", "apply", "settle", "check"];
+  // (slice 2.5), settle (slice 2.6), the check (slice 2.12) and init (slice
+  // 4.14) have their own tests under test/modes/.
+  const wired: string[] = ["scan", "resolve", "apply", "settle", "check", "init"];
   test("no mode is a stub any more", () => {
     expect([...MODES].filter((mode) => !wired.includes(mode))).toEqual([]);
   });

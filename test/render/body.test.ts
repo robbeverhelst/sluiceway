@@ -1277,8 +1277,12 @@ describe("snapshots", () => {
 describe("the image urls in the snapshots", () => {
   const SNAPSHOTS = resolve(import.meta.dir, "..");
   const MASCOT = resolve(import.meta.dir, "../../assets/mascot");
+  // The schema line of the sluiceway.yaml that init writes (record 0065) is
+  // the one address that is not a picture.
   const urls = (text: string) =>
-    [...text.matchAll(/https:\/\/raw\.githubusercontent\.com\/[^"\s)]+/g)].map((match) => match[0]);
+    [...text.matchAll(/https:\/\/raw\.githubusercontent\.com\/[^"\s)]+/g)]
+      .map((match) => match[0])
+      .filter((url) => !url.endsWith("/schema/sluiceway.schema.json"));
 
   const found = [...new Bun.Glob("**/__snapshots__/*.snap").scanSync(SNAPSHOTS)]
     .sort()
