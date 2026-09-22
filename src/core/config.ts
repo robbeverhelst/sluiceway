@@ -50,6 +50,9 @@ const ignoreEntry = z.union([
 // named.
 const phaseName = text.regex(PHASE_NAME);
 
+// What an `id` a person gives a stack may hold (slice 5.9).
+const STACK_ID = /^[A-Za-z0-9][A-Za-z0-9._/:@+-]*$/;
+
 // A person typed this path. It leaves here in the form a stack id uses (record
 // 0006): forward slashes, no leading "./", no trailing slash. The repo root
 // itself is ".".
@@ -81,6 +84,14 @@ const stackEntry = z
     tool: text
       .describe(
         "The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at path. See the configuration reference for the tools.",
+      )
+      .exactOptional(),
+    // The id of the one stack this entry covers, in place of the derived one
+    // (slice 5.9). Plain, so it is safe on a row and in a deployment task.
+    id: text
+      .regex(STACK_ID, "must be letters, digits and . _ / : @ + -, starting with a letter or digit")
+      .describe(
+        "The id of the one stack this entry covers, in place of the one derived from its path and name. A stack that moved keeps its row and its deploys under it. Unique among every stack id.",
       )
       .exactOptional(),
     environment: text
@@ -156,7 +167,11 @@ const stackEntry = z
 const stackEntries = z.array(stackEntry).superRefine((entries, context) => {
   const seen = new Map<string, number>();
   entries.forEach((entry, index) => {
-    const id = stackId(entry);
+    // The derived id of what the entry points at, not the id it may give.
+    const id = stackId({
+      path: entry.path,
+      ...(entry.name === undefined ? {} : { name: entry.name }),
+    });
     const first = seen.get(id);
     if (first === undefined) seen.set(id, index);
     else
@@ -658,6 +673,47 @@ export function ignoredStacks(config: Config, found: Stack[]): IgnoredStack[] {
         ? []
         : [{ stackId: id, reason: entry.reason }];
     });
+}
+
+// The stacks discovery found, with the id a `stacks` entry gives one of them
+// (slice 5.9). An entry gives an id to exactly one stack, and every stack id
+// stays unique, derived or given. Runs right after discovery, so ignore,
+// dependsOn, the rows and the deployment records all see the id it gives.
+export function withIds(config: Config, found: Stack[]): Stack[] {
+  const given = new Map<Stack, string>();
+  const problems: string[] = [];
+  config.stacks.forEach((entry, index) => {
+    if (entry.id === undefined) return;
+    const at = `stacks[${index}].id`;
+    const covered = found.filter((stack) => covers(entry, stack));
+    const [only] = covered;
+    if (only === undefined) {
+      problems.push(`${at}: the entry covers no stack, so there is nothing to name ${entry.id}.`);
+    } else if (covered.length > 1) {
+      problems.push(
+        `${at}: the entry covers ${covered.length} stacks (${covered.map(stackId).join(", ")}), and an id names one. Give the entry a name.`,
+      );
+    } else if (given.has(only)) {
+      problems.push(`${at}: ${stackId(only)} already has the id ${given.get(only)}.`);
+    } else {
+      given.set(only, entry.id);
+    }
+  });
+  const taken = new Set(found.filter((stack) => !given.has(stack)).map(stackId));
+  config.stacks.forEach((entry, index) => {
+    if (entry.id === undefined || ![...given.values()].includes(entry.id)) return;
+    if (taken.has(entry.id)) {
+      problems.push(
+        `stacks[${index}].id: ${JSON.stringify(entry.id)} is the id of another stack already. Every stack id is unique.`,
+      );
+    }
+    taken.add(entry.id);
+  });
+  if (problems.length > 0) throw new ConfigError([...new Set(problems)]);
+  return found.map((stack) => {
+    const id = given.get(stack);
+    return id === undefined ? stack : { ...stack, id };
+  });
 }
 
 // A discovered stack with the settings that config gives it.

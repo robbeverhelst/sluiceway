@@ -207,6 +207,12 @@
             ],
             "description": "The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at path. opentofu and terraform: a root module, or with the wrapper option a Terragrunt unit or a CDK for Terraform app. helm: a release in a namespace. kubectl: a directory of Kubernetes manifests or a kustomization."
           },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._/:@+-]*$",
+            "description": "The id of the one stack this entry covers, in place of the one derived from its path and name. A stack that moved keeps its row and its deploys under it. Unique among every stack id."
+          },
           "environment": {
             "type": "string",
             "minLength": 1,

@@ -10,10 +10,15 @@ export interface Stack {
   // entry points at, when the file holds it as text (record 0067). Nothing
   // else of the file leaves discovery.
   phaseKeys?: Readonly<Record<string, string>>;
+  // The id a `stacks` entry gives the stack, in place of the derived one
+  // (slice 5.9). Only config sets it, after discovery.
+  id?: string;
 }
 
-// The stack id is derived, never chosen. Nothing splits it back apart: the
-// adapter gets path and name as separate fields.
-export function stackId(stack: Pick<Stack, "path" | "name">): string {
+// The stack id is derived, unless a `stacks` entry gives the stack one with
+// `id` (slice 5.9). Nothing splits it back apart: the adapter gets path and
+// name as separate fields.
+export function stackId(stack: Pick<Stack, "path" | "name" | "id">): string {
+  if (stack.id !== undefined) return stack.id;
   return stack.name === undefined ? stack.path : `${stack.path}:${stack.name}`;
 }

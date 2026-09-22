@@ -1,5 +1,5 @@
 import type { Config } from "../core/config.ts";
-import { ConfigError, DEPENDS_ON_AUTO } from "../core/config.ts";
+import { ConfigError, DEPENDS_ON_AUTO, withIds } from "../core/config.ts";
 import { DiscoveryError } from "../core/discovery.ts";
 import type { Stack } from "../core/stack.ts";
 import { discoverHelm } from "./helm/discover.ts";
@@ -68,9 +68,13 @@ export async function discoverAll(root: string, config: Config): Promise<Stack[]
   }
   const declared = [...tofu.stacks, ...charts.stacks, ...manifests.stacks];
   const discovered = await discoverPulumi(root, config);
-  if (declared.length === 0) return discovered;
-  return [...discovered, ...declared].sort(
-    (a, b) => compare(a.path, b.path) || compare(a.name ?? "", b.name ?? ""),
+  // The id an entry gives a stack is its id from here on (slice 5.9).
+  if (declared.length === 0) return withIds(config, discovered);
+  return withIds(
+    config,
+    [...discovered, ...declared].sort(
+      (a, b) => compare(a.path, b.path) || compare(a.name ?? "", b.name ?? ""),
+    ),
   );
 }
 

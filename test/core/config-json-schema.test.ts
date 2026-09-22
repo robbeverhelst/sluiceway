@@ -55,6 +55,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "path",
       "name",
       "tool",
+      "id",
       "environment",
       "tickers",
       "inputs",

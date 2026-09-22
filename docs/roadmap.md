@@ -79,7 +79,6 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Sweeping an orphan tick off a row without previewing its stack
 - The orphan tick sweep in a repo that keeps `scan` and `resolve` in two workflow files
 - A real `uses:` step against the fake GitHub server in the e2e workflow
-- An `id:` override for a stack in `sluiceway.yaml`
 - Starting a deploy without a person ticking (unattended deploys of chosen stacks)
 - Telling authors that their merge is waiting for a deploy
 - The files of each change outside a stack, in the fold that names them

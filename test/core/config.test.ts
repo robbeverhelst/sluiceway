@@ -316,8 +316,8 @@ stacks:
 
   test("the brief's old keys are unknown keys", () => {
     expect(problems("stacks:\n  - path: a\n    stack: prod\n    approvers: write\n")).toEqual([
-      'stacks[0]: unknown key "stack". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, dependsOn, phase, drift, options.',
-      'stacks[0]: unknown key "approvers". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, dependsOn, phase, drift, options.',
+      'stacks[0]: unknown key "stack". Known keys here: path, name, tool, id, environment, tickers, inputs, previewTimeout, dependsOn, phase, drift, options.',
+      'stacks[0]: unknown key "approvers". Known keys here: path, name, tool, id, environment, tickers, inputs, previewTimeout, dependsOn, phase, drift, options.',
     ]);
   });
 

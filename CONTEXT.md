@@ -11,7 +11,7 @@ The smallest thing Sluiceway can preview and deploy on its own. It has its own s
 _Avoid_: Unit, project, workspace, module, target
 
 **Stack id**:
-The one string that names a stack everywhere: on its row, on its deployment records and in config. It is derived from where the stack lives and what it is called, never chosen, so a stack that is moved or renamed is a new stack.
+The one string that names a stack everywhere: on its row, on its deployment records and in config. It is derived from where the stack lives and what it is called, so a stack that is moved or renamed is a new stack, unless a `stacks` entry gives it the id it had with `id`.
 _Avoid_: Stack name, slug, key
 
 **Discovery**:

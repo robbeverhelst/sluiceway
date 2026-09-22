@@ -104,6 +104,7 @@ The file is optional and sits at the repo root. Since slice 5.9 `sluiceway.yml` 
 | `stacks[].path` | required per entry | Directory of the stack, relative to the repo root | 0006 |
 | `stacks[].name` | none | Name of the stack. Without it the entry covers every stack in `path` | 0006 |
 | `stacks[].tool` | none | `opentofu`, `terraform`, `helm` or `kubectl`: the entry declares a stack of that tool at `path`, because files alone cannot name one | 0053, 0058, 0060, 0068 |
+| `stacks[].id` | the derived id | The id of the one stack the entry covers, in place of the one derived from its path and name, so a stack that moved keeps its row and its deploys. Unique among every stack id (slice 5.9) | 0006 |
 | `stacks[].environment` | `sluiceway` | Label on the deployment record, and the GitHub Environment where one is used | 0003 |
 | `stacks[].tickers` | the top level value | Tick rule for this stack | 0018 |
 | `stacks[].inputs` | `[]` | Extra globs this stack claims | 0010 |

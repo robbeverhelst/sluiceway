@@ -430,6 +430,21 @@ For `kubectl`, Sluiceway renders the stack into one set of manifests: the files 
 
 Install `kubectl` v1.34.0 or newer in the workflow before Sluiceway, and point it at the cluster with `KUBECONFIG` ([credentials](credentials.md)).
 
+### `stacks[].id`
+
+Default: the id derived from `path` and `name`
+
+The id of the one stack the entry covers, in place of the derived one. Every place that names the stack uses it: its row, its deployment records, `ignore`, `dependsOn` and the job log. Use it when a stack moves: give the stack at its new path the id it had, and its row, its deploys and its trail stay with it instead of starting over as a new stack.
+
+```yaml
+stacks:
+  - path: platform/network   # moved here from network/
+    name: prod
+    id: network:prod
+```
+
+The entry must cover exactly one stack, so give it a `name` when the directory holds more than one. The id is letters, digits and `. _ / : @ + -`, and it must differ from every other stack id, derived or given.
+
 ### `stacks[].environment`
 
 Default: `sluiceway`
