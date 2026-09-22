@@ -11,8 +11,14 @@ branding:
 inputs:
   mode:
     description: >-
-      What this step does. One of: scan, resolve, apply, settle, check, init.
-    required: true
+      What this step does. One of: auto, scan, resolve, apply, settle, check, init. Leave it out
+      for auto, which reads the event of the run and does what it asks for, so one job with this
+      one step runs the whole loop: a push to the default branch and the schedule scan, an edit of
+      the dashboard resolves the ticks, deploys what it started and settles, a dispatch resolves
+      and scans, a pull request runs the check, and any other event ends with a notice. Set
+      another mode for the split workflow, where each mode is a job of its own.
+    required: false
+    default: auto
   concurrency:
     description: >-
       How many previews a scan runs at the same time. It belongs to the runner, not to the repo,
@@ -137,3 +143,8 @@ outputs:
 runs:
   using: node24
   main: dist/index.js
+  # Only after auto mode: a run that was stopped after it handed a deploy on
+  # and before it settled gets its deploys settled here. Otherwise it does
+  # nothing.
+  post: dist/post.js
+  post-if: always()

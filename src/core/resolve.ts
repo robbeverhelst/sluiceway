@@ -33,3 +33,25 @@ export function capDeploys<T extends { stackId: string }>(
   );
   return { start: sorted.slice(0, MAX_DEPLOYS_PER_RUN), over: sorted.slice(MAX_DEPLOYS_PER_RUN) };
 }
+
+// `matrix` read back, for auto mode, which deploys what `resolve` and the scan
+// hand on in the step that set it (record 0077). An entry without a whole
+// number as its deployment is left out: nothing Sluiceway writes has one.
+export function parseMatrixOutput(text: string): MatrixEntry[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.flatMap((entry: unknown) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const { stack, environment, deployment } = entry as Record<string, unknown>;
+    return typeof stack === "string" &&
+      typeof environment === "string" &&
+      Number.isSafeInteger(deployment)
+      ? [{ stack, environment, deployment: deployment as number }]
+      : [];
+  });
+}

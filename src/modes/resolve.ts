@@ -46,7 +46,7 @@ import { WORKFLOW_DIRECTORY } from "../core/workflow-check.ts";
 import { type AttributionSource, attributionSource } from "../github/attribution.ts";
 import { findDashboard, isBotIssueWithRootMarker } from "../github/dashboard.ts";
 import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts";
-import { editedIssue } from "../github/event.ts";
+import { type EventIssue, editedIssue } from "../github/event.ts";
 import type { JobLog } from "../github/job-log.ts";
 import { dashboardUrl } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
@@ -134,6 +134,17 @@ export async function resolve(context: ResolveContext): Promise<void> {
   }
 }
 
+// The cheap check of record 0017, as one line for the job log, or nothing
+// when the edited issue is the dashboard. The half that needs no config comes
+// first, so a broken `sluiceway.yaml` never turns an edit of an ordinary issue
+// red. Auto mode asks the same question before it starts `resolve` (record
+// 0077).
+export function notTheDashboardText(issue: EventIssue, root: string): string | undefined {
+  const text = `Issue #${issue.number} is not the open dashboard. Nothing to do.`;
+  if (issue.state !== "open" || !isBotIssueWithRootMarker(issue)) return text;
+  return issue.labels.includes(loadConfig(root).dashboard.label) ? undefined : text;
+}
+
 // What goes on the job summary of `resolve` (slice 5.9).
 interface RunReport {
   // The run got as far as a dashboard, or as the records it may start.
@@ -210,16 +221,12 @@ async function resolveTicks(
     await startQueued(context, handOn);
     return;
   }
-  const notTheDashboard = `Issue #${issue.number} is not the open dashboard. Nothing to do.`;
-  if (issue.state !== "open" || !isBotIssueWithRootMarker(issue)) {
+  const notTheDashboard = notTheDashboardText(issue, context.root);
+  if (notTheDashboard !== undefined) {
     log.info(notTheDashboard);
     return;
   }
   const config = loadConfig(context.root);
-  if (!issue.labels.includes(config.dashboard.label)) {
-    log.info(notTheDashboard);
-    return;
-  }
   report.acting = true;
 
   // Nothing else is taken from the payload (record 0025). The body and the

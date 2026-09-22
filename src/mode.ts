@@ -1,6 +1,7 @@
 import * as core from "@actions/core";
 import { type GetInput, refuseDeploymentId, unusedNotifyInputs } from "./github/inputs.ts";
 import { runApply } from "./modes/apply-job.ts";
+import { HANDED_ON_STATE, runAuto, SETTLED_STATE } from "./modes/auto-job.ts";
 import { backendContext } from "./modes/check-backend.ts";
 import { runCheck } from "./modes/check-job.ts";
 import { runInit } from "./modes/init-job.ts";
@@ -8,7 +9,7 @@ import { runResolve } from "./modes/resolve-job.ts";
 import { runScan } from "./modes/scan-job.ts";
 import { runSettle } from "./modes/settle-job.ts";
 
-export const MODES = ["scan", "resolve", "apply", "settle", "check", "init"] as const;
+export const MODES = ["auto", "scan", "resolve", "apply", "settle", "check", "init"] as const;
 
 export type Mode = (typeof MODES)[number];
 
@@ -22,9 +23,8 @@ export class NotImplementedError extends Error {
 export function parseMode(input: string): Mode {
   const mode = input.trim();
   if (isMode(mode)) return mode;
-  if (mode === "") {
-    throw new Error(`The "mode" input is required. Use one of: ${MODES.join(", ")}.`);
-  }
+  // No mode is auto mode: the step picks from the event (record 0077).
+  if (mode === "") return "auto";
   throw new Error(`Unknown mode "${mode}". Use one of: ${MODES.join(", ")}.`);
 }
 
@@ -37,10 +37,11 @@ function isMode(value: string): value is Mode {
 type Handler = (directory: string) => Promise<void>;
 
 const handlers: Record<Mode, Handler> = {
+  auto: runAuto,
   scan: runScan,
   resolve: runResolve,
   apply: runApply,
-  settle: runSettle,
+  settle: () => runSettle(),
   // The check starts no tool unless backend: true (record 0074).
   check: () => runCheck(backendContext),
   init: runInit,
@@ -64,4 +65,20 @@ export async function run(
     );
   }
   return handlers[mode](directory);
+}
+
+// The post step of action.yml (record 0077). The split workflow ends the
+// records of a cancelled deploy in a settle job with if: always(). One job
+// has no job after it, so an auto step that handed a deploy on and was
+// stopped before it settled settles here. The states come from the main
+// step. Where the runner kept none, nothing runs, and the next render ends
+// an open record whose run is over (record 0003).
+export async function post(
+  mode: Mode,
+  getState: (name: string) => string,
+  settle: () => Promise<void>,
+): Promise<void> {
+  if (mode !== "auto") return;
+  if (getState(HANDED_ON_STATE) !== "true" || getState(SETTLED_STATE) === "true") return;
+  await settle();
 }

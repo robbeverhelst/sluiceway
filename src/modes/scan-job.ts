@@ -20,14 +20,16 @@ import { createOctokitPort } from "../github/octokit-port.ts";
 import { actionsOutputs } from "../github/outputs.ts";
 import { countRequests } from "../github/request-count.ts";
 import { stepNotifier } from "../notify/step.ts";
+import type { AutoStep } from "./auto.ts";
 import { scan } from "./scan.ts";
 
-export async function runScan(directory: string): Promise<void> {
+// Auto mode hands in the log and the outputs of its one step (record 0077).
+export async function runScan(directory: string, step?: AutoStep): Promise<void> {
   // The one read of the environment (build plan, section 5).
   const env = process.env;
   const inputs = readScanInputs(core.getInput);
   const job = readJob(env);
-  const log = actionsLog();
+  const log = step?.log ?? actionsLog();
   const octokit = getOctokit(inputs.token);
   const payload = readEventPayload(env, (path) => readFileSync(path, "utf8"));
   await scan({
@@ -55,7 +57,7 @@ export async function runScan(directory: string): Promise<void> {
     // here with its own message. It means the action's own files are broken,
     // and a dashboard without its version line would hide that.
     actionRef: readActionRef(env, directory, (path) => readFileSync(path, "utf8")),
-    outputs: actionsOutputs(env.RUNNER_TEMP),
+    outputs: step?.outputs ?? actionsOutputs(env.RUNNER_TEMP),
     notifier: stepNotifier(core.getInput, log, core.setSecret),
     publicRepo: publicRepo(payload),
     startedByPerson: startedByPerson(payload),

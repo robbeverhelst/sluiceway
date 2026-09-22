@@ -14,9 +14,11 @@ import { actionsLog } from "../github/job-log.ts";
 import { createOctokitPort } from "../github/octokit-port.ts";
 import { actionsOutputs } from "../github/outputs.ts";
 import { readWorkflowRef } from "../github/workflow-ref.ts";
+import type { AutoStep } from "./auto.ts";
 import { settle } from "./settle.ts";
 
-export async function runSettle(): Promise<void> {
+// Auto mode hands in the log and the outputs of its one step (record 0077).
+export async function runSettle(step?: AutoStep): Promise<void> {
   // The one read of the environment (build plan, section 5).
   const env = process.env;
   const token = readToken(core.getInput);
@@ -26,11 +28,11 @@ export async function runSettle(): Promise<void> {
     // Every tool, each stack to the adapter of its own (record 0053).
     adapter: tools,
     github: createOctokitPort(getOctokit(token), { owner: job.owner, repo: job.repo }),
-    log: actionsLog(),
+    log: step?.log ?? actionsLog(),
     repoUrl: job.repoUrl,
     runId: job.runId,
     event: readEventPayload(env, (path) => readFileSync(path, "utf8")),
     workflow: readWorkflowRef(env),
-    outputs: actionsOutputs(env.RUNNER_TEMP),
+    outputs: step?.outputs ?? actionsOutputs(env.RUNNER_TEMP),
   });
 }

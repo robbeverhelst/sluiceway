@@ -1,0 +1,283 @@
+import { describe, expect, test } from "bun:test";
+import type { MatrixEntry } from "../../src/core/resolve.ts";
+import type { OutputName } from "../../src/github/outputs.ts";
+import { apply } from "../../src/modes/apply.ts";
+import { type AutoContext, type AutoStep, auto } from "../../src/modes/auto.ts";
+import { resolve } from "../../src/modes/resolve.ts";
+import { scan } from "../../src/modes/scan.ts";
+import { settle } from "../../src/modes/settle.ts";
+import { parseDashboard } from "../../src/render/marker.ts";
+import {
+  ACTION_REF,
+  change,
+  failing,
+  harness,
+  pending,
+  rememberingLog,
+  SHA,
+  steppingClock,
+} from "./harness.ts";
+import { rememberingOutputs } from "./outputs-harness.ts";
+import {
+  ALICE,
+  RESOLVE_RUN,
+  type ResolveHarness,
+  scanned,
+  tick,
+  WORKFLOW,
+} from "./resolve-harness.ts";
+
+// Auto mode (slice 5.12, record 0077): one step with no mode runs what the
+// event asks for. An edit of the dashboard resolves, deploys every stack it
+// handed on and settles, in that one step, which the workflow used to spread
+// over three jobs joined by if: and needs:.
+
+const TABLE = {
+  "a:prod": pending("a:prod", change("logs")),
+  "b:prod": pending("b:prod", change("db")),
+};
+
+interface Wired {
+  context: AutoContext;
+  notices: string[];
+  outputs: ReturnType<typeof rememberingOutputs>;
+  log: ReturnType<typeof rememberingLog>;
+  // What auto started, in order.
+  ran: string[];
+  // Set when auto says a deploy was handed on, and when it settled.
+  marks: string[];
+}
+
+// Auto on the fake, with the real modes behind it, in the run of the event.
+function wired(h: ResolveHarness, eventName: string, event: unknown): Wired {
+  const notices: string[] = [];
+  const ran: string[] = [];
+  const marks: string[] = [];
+  const outputs = rememberingOutputs();
+  const log = rememberingLog();
+  const context: AutoContext = {
+    root: h.context.root,
+    eventName,
+    event,
+    log,
+    notice: (line) => void notices.push(line),
+    outputs,
+    handedOn: () => void marks.push("handed on"),
+    settled: () => void marks.push("settled"),
+    run: {
+      scan: async (step) => {
+        ran.push("scan");
+        const { context: scanContext } = harness(h.adapter);
+        await scan({
+          ...scanContext,
+          root: h.context.root,
+          github: h.github,
+          runId: RESOLVE_RUN,
+          event: eventName,
+          log: step.log,
+          outputs: step.outputs,
+        });
+      },
+      resolve: async (step) => {
+        ran.push("resolve");
+        await resolve({
+          ...h.context,
+          event,
+          log: step.log,
+          setOutput: (name, value) => step.outputs.set(name as OutputName, value),
+        });
+      },
+      apply: async (deploymentId, step) => {
+        ran.push(`apply ${deploymentId}`);
+        await apply({
+          root: h.context.root,
+          env: { PATH: "/usr/bin" },
+          adapter: h.adapter,
+          run: async () => {
+            throw new Error("The table adapter starts no process.");
+          },
+          github: h.github,
+          log: step.log,
+          previewTimeoutMinutes: 10,
+          now: steppingClock(),
+          repoUrl: h.context.repoUrl,
+          runId: RESOLVE_RUN,
+          runAttempt: "1",
+          sha: SHA,
+          actionRef: ACTION_REF,
+          deploymentId,
+          event,
+          outputs: step.outputs,
+        });
+      },
+      settle: async (step) => {
+        ran.push("settle");
+        await settle({
+          root: h.context.root,
+          adapter: h.adapter,
+          github: h.github,
+          log: step.log,
+          repoUrl: h.context.repoUrl,
+          runId: RESOLVE_RUN,
+          event,
+          workflow: WORKFLOW,
+          outputs: step.outputs,
+        });
+      },
+      check: async () => {
+        ran.push("check");
+      },
+    },
+  };
+  return { context, notices, outputs, log, ran, marks };
+}
+
+function rows(h: ResolveHarness): Record<string, string> {
+  return Object.fromEntries(
+    parseDashboard(h.github.issue(h.number).body).rows.map((row) => [row.stackId, row.state]),
+  );
+}
+
+describe("auto mode on an edit of the dashboard", () => {
+  test("resolves, deploys every ticked stack and settles, in one step", async () => {
+    const h = await scanned(TABLE);
+    tick(h, ALICE, ["a:prod", "b:prod"]);
+    const w = wired(h, "issues", h.github.deliverEvent());
+    await auto(w.context);
+
+    expect(w.ran).toEqual(["resolve", "apply 1", "apply 2", "settle"]);
+    expect(h.adapter.applied).toEqual(["a:prod", "b:prod"]);
+    expect(h.github.deploymentStatuses(1).at(-1)?.state).toBe("success");
+    expect(h.github.deploymentStatuses(2).at(-1)?.state).toBe("success");
+    expect(rows(h)).toEqual({ "a:prod": "in-sync", "b:prod": "in-sync" });
+    expect(w.notices).toEqual([]);
+    expect(w.marks).toEqual(["handed on", "settled"]);
+    // Every deploy the step started, for a step after it.
+    const matrix = JSON.parse(w.outputs.values.matrix ?? "") as MatrixEntry[];
+    expect(matrix.map(({ stack, deployment }) => [stack, deployment])).toEqual([
+      ["a:prod", 1],
+      ["b:prod", 2],
+    ]);
+  });
+
+  test("a deploy that fails does not stop the next one, settle still runs, and the step ends red", async () => {
+    const h = await scanned(TABLE, {
+      deploys: {
+        "a:prod": { ok: false, reason: { kind: "tool-error", exitCode: 1 }, toolLog: "" },
+      },
+    });
+    tick(h, ALICE, ["a:prod", "b:prod"]);
+    const w = wired(h, "issues", h.github.deliverEvent());
+
+    await expect(auto(w.context)).rejects.toThrow("a:prod");
+    expect(w.ran).toEqual(["resolve", "apply 1", "apply 2", "settle"]);
+    expect(h.adapter.applied).toEqual(["a:prod", "b:prod"]);
+    expect(h.github.deploymentStatuses(2).at(-1)?.state).toBe("success");
+    expect(w.marks).toEqual(["handed on", "settled"]);
+  });
+
+  test("a tick nobody may make hands nothing on, so nothing deploys and nothing settles", async () => {
+    const h = await scanned(TABLE);
+    tick(h, { login: "mallory", type: "User" }, ["a:prod"]);
+    h.github.seedPermission("mallory", { push: false, maintain: false, admin: false });
+    const w = wired(h, "issues", h.github.deliverEvent());
+    await auto(w.context);
+
+    expect(w.ran).toEqual(["resolve"]);
+    expect(h.adapter.applied).toEqual([]);
+    expect(w.marks).toEqual([]);
+    expect(w.outputs.values.matrix).toBe("[]");
+  });
+
+  // Every mode writes the summary of its own part; one step keeps them all.
+  test("the step's summary holds the summary of every mode it ran", async () => {
+    const h = await scanned(TABLE);
+    tick(h, ALICE, ["a:prod"]);
+    const w = wired(h, "issues", h.github.deliverEvent());
+    await auto(w.context);
+
+    const last = w.log.summaries.at(-1) ?? "";
+    expect(last).toContain("a:prod");
+    // resolve's summary, then apply's, in the order they ran.
+    expect(w.log.summaries.length).toBeGreaterThan(1);
+    expect(last.startsWith(w.log.summaries[0] ?? "-")).toBe(true);
+  });
+});
+
+describe("auto mode on an event that is not its own", () => {
+  test("an edit of another issue ends with one notice, green, and asks GitHub nothing", async () => {
+    const h = await scanned(TABLE);
+    const other = h.github.seedIssue({
+      title: "A bug",
+      body: "It is broken.",
+      labels: [],
+      author: ALICE,
+    }).number;
+    h.github.editBody(other, "It is still broken.", ALICE);
+    const w = wired(h, "issues", h.github.deliverEvent());
+    h.github.requests.length = 0;
+    await auto(w.context);
+
+    expect(w.ran).toEqual([]);
+    expect(w.notices).toEqual([`Issue #${other} is not the open dashboard. Nothing to do.`]);
+    expect(h.github.requests).toEqual([]);
+  });
+
+  test("a push to a branch that is not the default ends with one notice", async () => {
+    const h = await scanned(TABLE);
+    const w = wired(h, "push", {
+      ref: "refs/heads/feature",
+      repository: { default_branch: "main" },
+    });
+    await auto(w.context);
+    expect(w.ran).toEqual([]);
+    expect(w.notices.length).toBe(1);
+  });
+});
+
+describe("auto mode on its other events", () => {
+  test("a push to the default branch scans and nothing else", async () => {
+    const h = await scanned(TABLE);
+    const w = wired(h, "push", { ref: "refs/heads/main", repository: { default_branch: "main" } });
+    await auto(w.context);
+    expect(w.ran).toEqual(["scan"]);
+    expect(w.outputs.values.pending).toBe("2");
+  });
+
+  test("a dispatch resolves, then scans", async () => {
+    const h = await scanned(TABLE);
+    const w = wired(h, "workflow_dispatch", { ref: "refs/heads/main" });
+    await auto(w.context);
+    expect(w.ran).toEqual(["resolve", "scan"]);
+  });
+
+  test("a read-only dashboard's dispatch only scans", async () => {
+    const h = await scanned(TABLE, { config: "dashboard:\n  readOnly: true\n" });
+    const w = wired(h, "workflow_dispatch", { ref: "refs/heads/main" });
+    await auto(w.context);
+    expect(w.ran).toEqual(["scan"]);
+  });
+
+  test("a pull request runs the check", async () => {
+    const h = await scanned(TABLE);
+    const w = wired(h, "pull_request", { number: 3 });
+    await auto(w.context);
+    expect(w.ran).toEqual(["check"]);
+  });
+
+  test("a scan that fails still ends the step red, after it ran", async () => {
+    const h = await scanned({ "a:prod": failing() });
+    const w = wired(h, "schedule", {});
+    const strict: AutoContext = {
+      ...w.context,
+      run: {
+        ...w.context.run,
+        scan: async (step: AutoStep) => {
+          await w.context.run.scan(step);
+          throw new Error("A preview failed, and strict is on.");
+        },
+      },
+    };
+    await expect(auto(strict)).rejects.toThrow("A preview failed");
+  });
+});

@@ -15,13 +15,22 @@ import { createOctokitPort } from "../github/octokit-port.ts";
 import { actionsOutputs } from "../github/outputs.ts";
 import { stepNotifier } from "../notify/step.ts";
 import { apply } from "./apply.ts";
+import type { AutoStep } from "./auto.ts";
 
-export async function runApply(directory: string): Promise<void> {
+// Auto mode hands in the record resolve or the scan handed on, and the log
+// and the outputs of its one step (record 0077). Every other input is the
+// step's own, dry-run and deploy-timeout included.
+export async function runApply(
+  directory: string,
+  handed?: { deploymentId: number; step: AutoStep },
+): Promise<void> {
   // The one read of the environment (build plan, section 5).
   const env = process.env;
-  const inputs = readApplyInputs(core.getInput);
+  const inputs = readApplyInputs((name) =>
+    handed && name === "deployment-id" ? String(handed.deploymentId) : core.getInput(name),
+  );
   const job = readJob(env);
-  const log = actionsLog();
+  const log = handed?.step.log ?? actionsLog();
   await apply({
     root: job.root,
     env,
@@ -42,7 +51,7 @@ export async function runApply(directory: string): Promise<void> {
     deploymentId: inputs.deploymentId,
     dryRun: inputs.dryRun,
     event: readEventPayload(env, (path) => readFileSync(path, "utf8")),
-    outputs: actionsOutputs(env.RUNNER_TEMP),
+    outputs: handed?.step.outputs ?? actionsOutputs(env.RUNNER_TEMP),
     notifier: stepNotifier(core.getInput, log, core.setSecret),
   });
 }

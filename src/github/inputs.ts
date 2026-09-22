@@ -142,10 +142,19 @@ export function refuseDeploymentId(mode: string, getInput: GetInput): void {
     );
   // `strict: true` belongs to a scan the same way (slice 5.9), and
   // `backend: true` to the check.
-  if (mode !== "check" && getInput("backend").trim() === "true") throw only("backend", "check");
-  if (mode !== "scan" && getInput("strict").trim() === "true") throw only("strict", "scan");
+  // Auto mode may run every mode but init, so it takes their inputs, and
+  // only deployment-id is wrong there: it deploys what resolve and the scan
+  // of the same step hand on (record 0077).
+  const auto = mode === "auto";
+  if (!auto && mode !== "check" && getInput("backend").trim() === "true") {
+    throw only("backend", "check");
+  }
+  if (!auto && mode !== "scan" && getInput("strict").trim() === "true") {
+    throw only("strict", "scan");
+  }
   if (mode === "apply") return;
   if (getInput("deployment-id").trim() !== "") throw only("deployment-id");
+  if (auto) return;
   if (getInput("deploy-timeout").trim() !== "") throw only("deploy-timeout");
   if (getInput("dry-run").trim() === "true") throw only("dry-run");
 }
@@ -218,8 +227,9 @@ export function readNotifyTargets(getInput: GetInput): NotifyInputs {
 }
 
 // `settle`, `check` and `init` send nothing, so a channel there is a mistake
-// worth a warning, and never an error.
+// worth a warning, and never an error. Auto mode runs scan, resolve and
+// apply, which do send (record 0077).
 export function unusedNotifyInputs(mode: string, getInput: GetInput): string[] {
-  if (mode === "scan" || mode === "resolve" || mode === "apply") return [];
+  if (mode === "auto" || mode === "scan" || mode === "resolve" || mode === "apply") return [];
   return NOTIFY_INPUTS.filter((name) => getInput(name).trim() !== "");
 }

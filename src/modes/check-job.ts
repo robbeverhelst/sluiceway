@@ -8,7 +8,7 @@ import * as core from "@actions/core";
 import { discoverAll } from "../adapters/discover-all.ts";
 import { readsFiles } from "../adapters/file-references.ts";
 import { readBackend } from "../github/inputs.ts";
-import { actionsLog } from "../github/job-log.ts";
+import { actionsLog, type JobLog } from "../github/job-log.ts";
 import { type CheckContext, check } from "./check.ts";
 
 // What asks the backend, built from the environment of the job.
@@ -16,7 +16,9 @@ export type BackendFactory = (
   env: Record<string, string | undefined>,
 ) => NonNullable<CheckContext["backend"]>;
 
-export async function runCheck(makeBackend?: BackendFactory): Promise<void> {
+// Auto mode hands in the log of its one step, whose summary it shares with
+// nothing else on a pull request (record 0077).
+export async function runCheck(makeBackend?: BackendFactory, log?: JobLog): Promise<void> {
   const root = process.env.GITHUB_WORKSPACE;
   if (!root) {
     throw new Error(
@@ -34,6 +36,6 @@ export async function runCheck(makeBackend?: BackendFactory): Promise<void> {
     // Of every tool the check uses discovery and what its files name as read,
     // and nothing that starts it (records 0042, 0053 and 0074).
     adapter: { discover: discoverAll, readsFiles },
-    log: actionsLog(),
+    log: log ?? actionsLog(),
   });
 }

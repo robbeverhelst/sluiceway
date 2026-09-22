@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { readScanInputs } from "../src/github/inputs.ts";
 import { MODES } from "../src/mode.ts";
@@ -9,7 +9,7 @@ const ROOT = resolve(import.meta.dir, "..");
 type ActionMetadata = {
   inputs: Record<string, { description: string; required?: boolean; default?: string }>;
   outputs: Record<string, { description: string }>;
-  runs: { using: string; main: string };
+  runs: { using: string; main: string; post?: string; "post-if"?: string };
   branding?: { icon?: string; color?: string };
 };
 
@@ -19,6 +19,16 @@ describe("action.yml", () => {
   test("runs the committed bundle on node24", () => {
     expect(action.runs.using).toBe("node24");
     expect(existsSync(resolve(ROOT, action.runs.main))).toBe(true);
+  });
+
+  // Record 0077: a cancelled one-job run settles in the post step. The file
+  // is written by hand and loads the one bundle.
+  test("has a post step that runs always and loads the same bundle", () => {
+    expect(action.runs.post).toBe("dist/post.js");
+    expect(action.runs["post-if"]).toBe("always()");
+    const post = readFileSync(resolve(ROOT, "dist/post.js"), "utf8");
+    expect(post).toContain("globalThis.sluicewayPost = true;");
+    expect(post).toContain('await import("./index.js");');
   });
 
   // The line of the build plan, section 5. Growing past it is a question for
@@ -46,8 +56,10 @@ describe("action.yml", () => {
     expect(action.inputs["job-id"]?.required).toBe(false);
   });
 
-  test("requires the mode input and names every mode", () => {
-    expect(action.inputs.mode?.required).toBe(true);
+  // Slice 5.12 (record 0077): a step without a mode picks its own.
+  test("the mode input is optional, auto by default, and names every mode", () => {
+    expect(action.inputs.mode?.required).toBe(false);
+    expect(action.inputs.mode?.default).toBe("auto");
     for (const mode of MODES) {
       expect(action.inputs.mode?.description).toContain(mode);
     }
