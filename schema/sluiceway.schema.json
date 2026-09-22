@@ -162,9 +162,10 @@
           "tool": {
             "type": "string",
             "enum": [
-              "opentofu"
+              "opentofu",
+              "helm"
             ],
-            "description": "The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at path. opentofu: a root module."
+            "description": "The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at path. opentofu: a root module. helm: a release in a namespace."
           },
           "environment": {
             "type": "string",
@@ -243,7 +244,7 @@
               "workspace": {
                 "type": "string",
                 "minLength": 1,
-                "description": "The workspace of the stack, selected with TF_WORKSPACE for every command. Without it, the one the environment selects, which is default."
+                "description": "opentofu: The workspace of the stack, selected with TF_WORKSPACE for every command. Without it, the one the environment selects, which is default."
               },
               "varFiles": {
                 "default": [],
@@ -252,7 +253,42 @@
                   "type": "string",
                   "minLength": 1
                 },
-                "description": "Var files, relative to the directory of the stack, passed with -var-file in this order to every plan."
+                "description": "opentofu: Var files, relative to the directory of the stack, passed with -var-file in this order to every plan."
+              },
+              "release": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 53,
+                "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$",
+                "description": "helm: The name of the Helm release. Helm's rule: lower case letters, digits, - and ."
+              },
+              "namespace": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+                "description": "helm: The namespace of the release, passed with --namespace to every command."
+              },
+              "chart": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^\\.\\.?(\\/|$)|^(oci:\\/\\/|https?:\\/\\/)[^\\s]+$|^[A-Za-z0-9][\\w.-]*\\/[\\w.-]+$",
+                "description": "helm: The chart: a path relative to the directory of the stack that starts with \"./\" or \"../\", or a chart reference such as repo/name or oci://registry/name."
+              },
+              "version": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^v?\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$",
+                "description": "helm: The exact version of a chart reference. A local chart takes none."
+              },
+              "valuesFiles": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "helm: Values files, relative to the directory of the stack, passed with --values in this order to every command."
               }
             },
             "additionalProperties": false

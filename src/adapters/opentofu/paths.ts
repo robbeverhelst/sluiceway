@@ -135,7 +135,7 @@ export function replacePath(
 
 // Letters, digits and underscores are written plainly, after a dot unless the
 // segment comes first. Any other key is quoted (record 0046).
-function segment(key: string, top: boolean): string {
+export function segment(key: string, top: boolean): string {
   if (/^[\p{L}_][\p{L}\p{Nd}_]*$/u.test(key)) return top ? key : `.${key}`;
   return `["${key.replaceAll('"', '\\"')}"]`;
 }

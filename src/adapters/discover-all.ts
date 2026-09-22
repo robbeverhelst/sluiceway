@@ -1,6 +1,9 @@
 import type { Config } from "../core/config.ts";
 import { ConfigError, DEPENDS_ON_AUTO } from "../core/config.ts";
+import { DiscoveryError } from "../core/discovery.ts";
 import type { Stack } from "../core/stack.ts";
+import { discoverHelm } from "./helm/discover.ts";
+import { HELM } from "./helm/options.ts";
 import { discoverOpenTofu } from "./opentofu/discover.ts";
 import { OPENTOFU } from "./opentofu/options.ts";
 import { discover as discoverPulumi } from "./pulumi/discover.ts";
@@ -8,11 +11,12 @@ import { discover as discoverPulumi } from "./pulumi/discover.ts";
 // Discovery of every tool, on its own so that the check job reaches files and
 // nothing that starts a tool (record 0042). Pulumi stacks are found from their
 // files, as before. OpenTofu stacks come from `stacks` entries with
-// `tool: opentofu` (record 0053). A repo with only Pulumi stacks gets exactly
+// `tool: opentofu` (record 0053), and Helm releases from entries with
+// `tool: helm` (record 0058). A repo with only Pulumi stacks gets exactly
 // what the Pulumi adapter finds.
 
 // The tools a `stacks` entry may name.
-export const TOOLS = [OPENTOFU] as const;
+export const TOOLS = [OPENTOFU, HELM] as const;
 
 export async function discoverAll(root: string, config: Config): Promise<Stack[]> {
   const toolProblems = config.stacks.flatMap((entry, index) => {
@@ -30,14 +34,40 @@ export async function discoverAll(root: string, config: Config): Promise<Stack[]
         ]
       : [];
   });
-  const { stacks: declared, optionProblems } = discoverOpenTofu(root, config);
-  const problems = [...toolProblems, ...optionProblems];
+  // Both tools' option problems come before either tool's file problems,
+  // so a config problem is always reported as one.
+  const tofu = tryDiscover(() => discoverOpenTofu(root, config));
+  const charts = tryDiscover(() => discoverHelm(root, config));
+  const problems = [...toolProblems, ...tofu.optionProblems, ...charts.optionProblems];
   if (problems.length > 0) throw new ConfigError(problems.sort(byEntry));
+  const errors = [tofu.error, charts.error].filter((error) => error !== undefined);
+  const other = errors.find((error) => !(error instanceof DiscoveryError));
+  if (other !== undefined) throw other;
+  if (errors.length > 0) {
+    throw new DiscoveryError(
+      errors.flatMap((error) => (error as DiscoveryError).problems).sort(byEntry),
+    );
+  }
+  const declared = [...tofu.stacks, ...charts.stacks];
   const discovered = await discoverPulumi(root);
   if (declared.length === 0) return discovered;
   return [...discovered, ...declared].sort(
     (a, b) => compare(a.path, b.path) || compare(a.name ?? "", b.name ?? ""),
   );
+}
+
+// A tool's discovery throws what is wrong with the files only when its
+// options are fine, so the error waits until every tool's options are known.
+function tryDiscover(discover: () => { stacks: Stack[]; optionProblems: string[] }): {
+  stacks: Stack[];
+  optionProblems: string[];
+  error?: unknown;
+} {
+  try {
+    return discover();
+  } catch (error) {
+    return { stacks: [], optionProblems: [], error };
+  }
 }
 
 // Problems of one entry together, in the order of the file.
