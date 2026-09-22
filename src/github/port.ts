@@ -112,6 +112,10 @@ export interface GitHubPort {
   // requests are left out.
   listIssues(query: { label: string; state: "open" | "closed" }): Promise<Issue[]>;
 
+  // The 100 closed issues with the label that changed last, newest first, in
+  // one request (slice 5.9). Where a closed dashboard is looked for.
+  listRecentlyClosedIssues(label: string): Promise<Issue[]>;
+
   getIssue(number: number): Promise<Issue>;
 
   // GitHub refuses a body over 65,536 characters here (issue 17).
@@ -121,6 +125,9 @@ export interface GitHubPort {
   // body over 262,144 bytes is answered with success and dropped (issue 17).
   // Only the write loop calls this, because it reads back what it wrote.
   updateIssueBody(number: number, body: string): Promise<Issue>;
+
+  // Only the title (slice 5.9).
+  updateIssueTitle(number: number, title: string): Promise<void>;
 
   closeIssue(number: number): Promise<void>;
 
@@ -207,6 +214,11 @@ export interface GitHubPort {
   // Works with the workflow token and issues: write (issue 17). Fails when
   // the repo already has three pinned issues.
   pinIssue(nodeId: string): Promise<void>;
+
+  // The numbers of the pinned issues of the repo, at most three, in one
+  // GraphQL query (slice 5.9). A scan reads them before it pins a dashboard
+  // that exists, so a pinned one costs no second request.
+  listPinnedIssues(): Promise<number[]>;
 
   // The newest check run of each name on one commit (`filter=latest`), of
   // every app, the jobs of every workflow included. One request per page of

@@ -27,6 +27,24 @@ interface ApiIssue {
   pull_request?: unknown;
 }
 
+const PINNED_ISSUES = `query ($owner: String!, $repo: String!) {
+  repository(owner: $owner, name: $repo) {
+    pinnedIssues(first: 3) {
+      nodes {
+        issue {
+          number
+        }
+      }
+    }
+  }
+}`;
+
+interface PinnedIssues {
+  repository: {
+    pinnedIssues: { nodes: ({ issue: { number: number } | null } | null)[] | null } | null;
+  } | null;
+}
+
 const PIN_ISSUE = `mutation ($issueId: ID!) {
   pinIssue(input: {issueId: $issueId}) {
     issue {
@@ -106,6 +124,24 @@ export function createOctokitPort(octokit: Octokit, repo: Repo): GitHubPort {
     async createIssue({ title, body, labels }) {
       const { data } = await octokit.rest.issues.create({ ...repo, title, body, labels });
       return toIssue(data);
+    },
+
+    async listRecentlyClosedIssues(label) {
+      // One page, the ones that changed last: a dashboard that was closed is
+      // among them, however many closed issues the label has (slice 5.9).
+      const { data } = await octokit.rest.issues.listForRepo({
+        ...repo,
+        labels: label,
+        state: "closed",
+        sort: "updated",
+        direction: "desc",
+        per_page: 100,
+      });
+      return data.filter((issue) => !issue.pull_request).map(toIssue);
+    },
+
+    async updateIssueTitle(number, title) {
+      await octokit.rest.issues.update({ ...repo, issue_number: number, title });
     },
 
     async updateIssueBody(number, body) {
@@ -203,6 +239,13 @@ export function createOctokitPort(octokit: Octokit, repo: Repo): GitHubPort {
 
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
+    },
+
+    async listPinnedIssues() {
+      const data = await octokit.graphql<PinnedIssues>(PINNED_ISSUES, { ...repo });
+      return (data.repository?.pinnedIssues?.nodes ?? []).flatMap((node) =>
+        node?.issue ? [node.issue.number] : [],
+      );
     },
 
     async dispatchWorkflow(workflow, ref, inputs) {

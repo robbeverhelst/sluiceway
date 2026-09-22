@@ -12,7 +12,7 @@
           "default": "Sluiceway dashboard",
           "type": "string",
           "minLength": 1,
-          "description": "Title of the dashboard issue."
+          "description": "Title of the dashboard issue. Every scan puts it back when it differs."
         },
         "label": {
           "default": "sluiceway",
@@ -23,7 +23,7 @@
         "pin": {
           "default": true,
           "type": "boolean",
-          "description": "Pin the dashboard issue, best effort."
+          "description": "Pin the dashboard issue on every scan when it is not pinned, best effort. false keeps it unpinned."
         },
         "redact": {
           "default": false,

@@ -25,7 +25,11 @@ export interface DashboardResult extends WriteResult {
   number: number;
   found: "open" | "reopened" | "created";
   closedDuplicates: number[];
-  pin: "not-tried" | "pinned" | "failed";
+  // "already": pinned before this scan (slice 5.9).
+  pin: "not-tried" | "pinned" | "already" | "failed";
+  // Set when the title was not `dashboard.title` and was set to it, with the
+  // title it had (slice 5.9).
+  renamed?: { from: string } | undefined;
 }
 
 // Label, root marker and author together (record 0009). A person can put the
@@ -65,12 +69,14 @@ export async function writeDashboard(
       await github.createComment(duplicate.number, duplicateComment(dashboard.number));
       await github.closeIssue(duplicate.number);
     }
+    const renamed = await keepTitle(github, dashboard, settings.title);
     const written = await writeBody(github, dashboard.number, build);
     return {
       number: dashboard.number,
       found: "open",
       closedDuplicates: duplicates.map((duplicate) => duplicate.number),
-      pin: "not-tried",
+      pin: settings.pin ? await keepPinned(github, dashboard) : "not-tried",
+      renamed,
       ...written,
     };
   }
@@ -79,12 +85,14 @@ export async function writeDashboard(
   const closed = await newestClosedMatch(github, settings.label);
   if (closed) {
     await github.reopenIssue(closed.number);
+    const renamed = await keepTitle(github, closed, settings.title);
     const written = await writeBody(github, closed.number, build);
     return {
       number: closed.number,
       found: "reopened",
       closedDuplicates: [],
-      pin: "not-tried",
+      pin: settings.pin ? await keepPinned(github, closed) : "not-tried",
+      renamed,
       ...written,
     };
   }
@@ -115,10 +123,34 @@ function duplicateComment(dashboard: number): string {
   return `Sluiceway found more than one dashboard in this repo. The dashboard is #${dashboard}, the one with the lowest number, so this one was closed.`;
 }
 
-// Only a new dashboard is pinned. One that exists is left as it is, so a
-// person who unpins it does not find it pinned again after the next scan.
-// Best effort: a repo holds three pinned issues, and a failed pin is no reason
-// to fail a scan.
+// The title of sluiceway.yaml is the dashboard's, also after it changed, and
+// a title a person changed by hand is put back (slice 5.9). One request, and
+// only when the title differs.
+async function keepTitle(
+  github: GitHubPort,
+  issue: Issue,
+  title: string,
+): Promise<{ from: string } | undefined> {
+  if (issue.title === title) return undefined;
+  await github.updateIssueTitle(issue.number, title);
+  return { from: issue.title };
+}
+
+// A dashboard that exists is pinned on every scan when it is not pinned
+// already (slice 5.9): one request reads the pinned issues, and a second pins.
+// A person who wants it unpinned for good sets `dashboard.pin: false`. Best
+// effort, as for a new one.
+async function keepPinned(github: GitHubPort, issue: Issue): Promise<DashboardResult["pin"]> {
+  try {
+    if ((await github.listPinnedIssues()).includes(issue.number)) return "already";
+  } catch {
+    return "failed";
+  }
+  return tryPin(github, issue);
+}
+
+// Best effort: a repo holds three pinned issues, and a failed pin is no
+// reason to fail a scan.
 async function tryPin(github: GitHubPort, issue: Issue): Promise<"pinned" | "failed"> {
   try {
     await github.pinIssue(issue.nodeId);
@@ -130,8 +162,11 @@ async function tryPin(github: GitHubPort, issue: Issue): Promise<"pinned" | "fai
 
 // "Newest" is the one closed last. By number, a duplicate that a scan closed
 // long ago would win over the real dashboard that a person closed yesterday.
+// Only the closed issues that changed last are read, one request however many
+// the label has (slice 5.9). A closed dashboard is among them unless 100
+// other issues with its label changed after it was closed.
 async function newestClosedMatch(github: GitHubPort, label: string): Promise<Issue | undefined> {
-  const closed = await github.listIssues({ label, state: "closed" });
+  const closed = await github.listRecentlyClosedIssues(label);
   return closed
     .filter((issue) => isDashboard(issue, label))
     .sort((a, b) => compare(b.closedAt ?? "", a.closedAt ?? "") || b.number - a.number)[0];

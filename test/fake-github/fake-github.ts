@@ -356,6 +356,27 @@ export class FakeGitHub implements GitHubPort {
     };
   }
 
+  // One request: the closed issues with the label, closed last first. The fake
+  // keeps no time of the last change, and the close is the last one here.
+  async listRecentlyClosedIssues(label: string): Promise<Issue[]> {
+    this.#count("listRecentlyClosedIssues");
+    return [...this.#issues.values()]
+      .filter((issue) => issue.state === "closed" && issue.labels.includes(label))
+      .sort((a, b) => (b.closedAt ?? "").localeCompare(a.closedAt ?? "") || b.number - a.number)
+      .slice(0, PAGE_SIZE)
+      .map(copy);
+  }
+
+  async updateIssueTitle(number: number, title: string): Promise<void> {
+    this.#count("updateIssueTitle");
+    this.#find(number).title = title;
+  }
+
+  async listPinnedIssues(): Promise<number[]> {
+    this.#count("listPinnedIssues");
+    return [...this.#pinned];
+  }
+
   async getIssue(number: number): Promise<Issue> {
     this.#count("getIssue");
     return copy(this.#find(number));
@@ -695,7 +716,7 @@ export class FakeGitHub implements GitHubPort {
       nodeId: `I_fake${number}`,
       state: issue.state ?? "open",
       closedAt: issue.closedAt ?? (issue.state === "closed" ? this.#now() : null),
-      title: issue.title ?? "",
+      title: issue.title ?? "Sluiceway dashboard",
       body: issue.body ?? "",
       labels: [...(issue.labels ?? [])],
       author: { ...(issue.author ?? BOT) },

@@ -85,9 +85,9 @@ The file is optional and sits at the repo root. Since slice 5.9 `sluiceway.yml` 
 
 | Key | Default | Meaning | Record |
 |---|---|---|---|
-| `dashboard.title` | `Sluiceway dashboard` | Issue title | brief |
+| `dashboard.title` | `Sluiceway dashboard` | Issue title, set again by every scan when it differs (slice 5.9) | brief |
 | `dashboard.label` | `sluiceway` | Label the dashboard is found by | 0009, 0017 |
-| `dashboard.pin` | `true` | Pin the issue, best effort | Actions research |
+| `dashboard.pin` | `true` | Pin the issue on every scan when it is not pinned, best effort (slice 5.9) | Actions research |
 | `dashboard.redact` | `false` | Keep names out of the issue | 0023 |
 | `dashboard.personality` | `true` | Header image and the voice | 0034 |
 | `dashboard.readOnly` | `false` | No boxes: pending rows have none, there is no rescan box, and the line under the Pending heading says so. For a workflow that only scans (onboarding log, hurdle 16) | 0045 |

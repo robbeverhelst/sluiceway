@@ -446,6 +446,8 @@ describe("the reads are bounded", () => {
       // The scan line moved, so the body is written and read back.
       "updateIssueBody",
       "getIssue",
+      // Slice 5.9: the dashboard is pinned already, so no pin.
+      "listPinnedIssues",
     ]);
   });
 

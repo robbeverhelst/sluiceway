@@ -42,3 +42,7 @@ Research:
 - https://github.com/sluiceway/sluiceway/blob/research/github-actions-behaviors/docs/research/github-actions-behaviors.md
 - https://github.com/sluiceway/sluiceway/blob/research/renovate-dashboard-mechanics/docs/research/renovate-dashboard-mechanics.md
 - Observed payloads: https://github.com/sluiceway/sluiceway/issues/17
+
+## Settled while building (slice 5.9)
+
+- Slice 5.9 adds three calls to the budget. A scan gives a dashboard that exists the title of `dashboard.title` when it has another, one request and only then, so a change of the key renames the dashboard and a title changed by hand is put back. With `dashboard.pin` on, a scan reads the pinned issues (one GraphQL query) and pins the dashboard when it is not among them, so a dashboard that exists costs one request per scan and a second only when it was unpinned. A person who wants it unpinned for good sets `dashboard.pin: false`: the key is the one place that decides, where slice 1.10 had let an unpin stand. A pin that fails on a dashboard that exists is a line of the log, not a warning on every run. When no open dashboard exists, the closed issues with the label are read as one page, the 100 that changed last, newest first, where slice 1.10 read every page: a closed dashboard is among them unless 100 other issues with its label changed after it was closed.

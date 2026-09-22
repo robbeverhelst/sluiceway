@@ -667,7 +667,7 @@ describe("the job of a narrowed scan", () => {
     expect(scanned.log.warnings).toHaveLength(1);
   });
 
-  test("costs nine requests: the first read, the comparison, the preview page of its pending stack, and the write loop with its list and its late read of the deployment records", async () => {
+  test("costs ten requests: the first read, the comparison, the preview page of its pending stack, the write loop with its list and its late read of the deployment records, and the read of the pinned issues", async () => {
     const scanned = await pushed(TABLE, ahead("site/index.ts"), {
       next: { "site:prod": pending("site:prod", change("page")) },
     });
@@ -684,6 +684,8 @@ describe("the job of a narrowed scan", () => {
       "listNewestDeployments",
       "updateIssueBody",
       "getIssue",
+      // Slice 5.9: the dashboard is pinned already, so no pin.
+      "listPinnedIssues",
     ]);
   });
 });

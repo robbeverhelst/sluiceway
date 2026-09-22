@@ -39,7 +39,9 @@ describe("a repo with a dashboard", () => {
     const github = new FakeGitHub();
     const { number } = github.seedIssue({ labels: ["sluiceway"], body: body("old rows") });
 
-    const result = await writeDashboard(github, SETTINGS, (live) => live.replace("old", "new"));
+    const result = await writeDashboard(github, { ...SETTINGS, pin: false }, (live) =>
+      live.replace("old", "new"),
+    );
 
     expect(result).toEqual({
       number,
@@ -58,7 +60,7 @@ describe("a repo with a dashboard", () => {
     const github = new FakeGitHub();
     github.seedIssue({ labels: ["sluiceway"], body: body("rows") });
 
-    const result = await writeDashboard(github, SETTINGS, (live) => live);
+    const result = await writeDashboard(github, { ...SETTINGS, pin: false }, (live) => live);
 
     expect(result.written).toBe(false);
     expect(github.requests).toEqual(["listIssues", "getIssue"]);
@@ -172,7 +174,6 @@ describe("no open dashboard, and a closed one", () => {
     expect(result).toMatchObject({ number: closed.number, found: "reopened", written: true });
     expect(github.issue(closed.number)).toMatchObject({ state: "open", body: body("fresh") });
     expect(github.requests).not.toContain("createIssue");
-    expect(github.requests).not.toContain("pinIssue");
   });
 
   test("of several, the one closed last is reopened, not the one with the highest number", async () => {
@@ -224,7 +225,7 @@ describe("no open dashboard, and a closed one", () => {
 
     await writeDashboard(github, SETTINGS, (live) => live);
 
-    expect(github.requests).toEqual(["listIssues", "getIssue"]);
+    expect(github.requests).toEqual(["listIssues", "getIssue", "listPinnedIssues", "pinIssue"]);
   });
 });
 
@@ -238,7 +239,7 @@ describe("pinning", () => {
     expect(result).toMatchObject({ found: "created", pin: "pinned", written: true, tries: 1 });
     expect(github.requests).toEqual([
       "listIssues",
-      "listIssues",
+      "listRecentlyClosedIssues",
       "createIssue",
       "pinIssue",
       "getIssue",
@@ -265,14 +266,124 @@ describe("pinning", () => {
     expect(github.pinned).toEqual([1, 2, 3]);
   });
 
-  test("a dashboard that exists is not pinned again, so a person can unpin it for good", async () => {
+  // Slice 5.9: a dashboard that exists is pinned on every scan, when it is not
+  // pinned already. One request reads the pinned issues, and a second pins.
+  // A person who wants it unpinned for good sets dashboard.pin: false.
+  test("a dashboard that exists and is not pinned is pinned", async () => {
     const github = new FakeGitHub();
-    github.seedIssue({ labels: ["sluiceway"], body: body("rows") });
+    const { number } = github.seedIssue({ labels: ["sluiceway"], body: body("rows") });
 
     const result = await writeDashboard(github, SETTINGS, () => body("fresh"));
 
+    expect(result.pin).toBe("pinned");
+    expect(github.pinned).toEqual([number]);
+    expect(github.requests).toEqual([
+      "listIssues",
+      "getIssue",
+      "updateIssueBody",
+      "getIssue",
+      "listPinnedIssues",
+      "pinIssue",
+    ]);
+  });
+
+  test("a dashboard that is pinned already costs one read and no pin", async () => {
+    const github = new FakeGitHub();
+    const { number, nodeId } = github.seedIssue({ labels: ["sluiceway"], body: body("rows") });
+    await github.pinIssue(nodeId);
+    github.requests.length = 0;
+
+    const result = await writeDashboard(github, SETTINGS, (live) => live);
+
+    expect(result.pin).toBe("already");
+    expect(github.pinned).toEqual([number]);
+    expect(github.requests).toEqual(["listIssues", "getIssue", "listPinnedIssues"]);
+  });
+
+  test("a dashboard that exists is left alone with pin: false", async () => {
+    const github = new FakeGitHub();
+    github.seedIssue({ labels: ["sluiceway"], body: body("rows") });
+
+    const result = await writeDashboard(github, { ...SETTINGS, pin: false }, () => body("fresh"));
+
     expect(result.pin).toBe("not-tried");
     expect(github.pinned).toEqual([]);
+    expect(github.requests).not.toContain("listPinnedIssues");
+  });
+
+  test("a reopened dashboard is pinned too", async () => {
+    const github = new FakeGitHub();
+    const closed = github.seedIssue({ labels: ["sluiceway"], body: body("old"), state: "closed" });
+
+    const result = await writeDashboard(github, SETTINGS, () => body("fresh"));
+
+    expect(result).toMatchObject({ found: "reopened", pin: "pinned" });
+    expect(github.pinned).toEqual([closed.number]);
+  });
+});
+
+// Slice 5.9: the title of sluiceway.yaml is the title of the dashboard, also
+// after it changed. A title a person changed by hand is put back.
+describe("the title", () => {
+  test("a dashboard whose title is not dashboard.title gets it", async () => {
+    const github = new FakeGitHub();
+    const { number } = github.seedIssue({
+      labels: ["sluiceway"],
+      body: body("rows"),
+      title: "Old title",
+    });
+
+    const result = await writeDashboard(github, { ...SETTINGS, pin: false }, (live) => live);
+
+    expect(result.renamed).toEqual({ from: "Old title" });
+    expect(github.issue(number).title).toBe("Sluiceway dashboard");
+    expect(github.requests).toEqual(["listIssues", "updateIssueTitle", "getIssue"]);
+  });
+
+  test("a dashboard with the right title is not touched", async () => {
+    const github = new FakeGitHub();
+    github.seedIssue({ labels: ["sluiceway"], body: body("rows"), title: "Sluiceway dashboard" });
+
+    const result = await writeDashboard(github, { ...SETTINGS, pin: false }, (live) => live);
+
+    expect(result.renamed).toBeUndefined();
+    expect(github.requests).toEqual(["listIssues", "getIssue"]);
+  });
+
+  test("a reopened dashboard gets the title too", async () => {
+    const github = new FakeGitHub();
+    const closed = github.seedIssue({
+      labels: ["sluiceway"],
+      body: body("old"),
+      state: "closed",
+      title: "Old title",
+    });
+
+    await writeDashboard(github, { ...SETTINGS, pin: false }, () => body("fresh"));
+
+    expect(github.issue(closed.number).title).toBe("Sluiceway dashboard");
+  });
+});
+
+// Slice 5.9: looking for a closed dashboard reads one page, the 100 issues
+// with the label that changed last, however many closed issues the label has.
+describe("the closed issues read", () => {
+  test("are one request, the ones that changed last", async () => {
+    const github = new FakeGitHub();
+    for (let i = 0; i < 250; i++) {
+      github.seedIssue({ labels: ["sluiceway"], body: "not a dashboard", state: "closed" });
+    }
+    const dashboard = github.seedIssue({ labels: ["sluiceway"], body: body("old") });
+    await github.closeIssue(dashboard.number);
+    github.requests.length = 0;
+
+    const result = await writeDashboard(github, { ...SETTINGS, pin: false }, () => body("fresh"));
+
+    expect(result).toMatchObject({ number: dashboard.number, found: "reopened" });
+    expect(github.requests.filter((request) => request.startsWith("list"))).toEqual([
+      "listIssues",
+      "listRecentlyClosedIssues",
+    ]);
   });
 });
 

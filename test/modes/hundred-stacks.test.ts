@@ -168,8 +168,9 @@ function worstCase(count: number) {
 // deployment records with its fall back, the walk and the files of direct
 // pushes, write, read back. A later try starts from that read back, and the
 // walk and the files are kept for the job, so it pays only for the records,
-// the write and the read back.
-const FIRST_TRY = 2 + 1 + 2 * 99 + 1 + LOOKBACK + 2;
+// the write and the read back. After the loop, one read of the pinned issues
+// (slice 5.9).
+const FIRST_TRY = 2 + 1 + 2 * 99 + 1 + LOOKBACK + 2 + 1;
 const EVERY_OTHER_TRY = 1 + 2 * 99 + 2;
 // The preview pages, once per scan and before the write loop (record 0050):
 // one list of the commit's check runs, which holds 100 here, and one update
@@ -217,20 +218,22 @@ describe("the requests of a scan, counted against the API budget (record 0017)",
     // reads the deployment records (record 0004).
     expect(firstOf100).toEqual([
       "listIssues",
-      "listIssues",
+      "listRecentlyClosedIssues",
       "listNewestDeployments",
       "createIssue",
       "pinIssue",
       "getIssue",
       "listNewestDeployments",
     ]);
-    // Every scan after it: find, read, one page of records, write, read back.
+    // Every scan after it: find, read, one page of records, write, read back,
+    // and the read of the pinned issues (slice 5.9).
     expect(laterOf100).toEqual([
       "listIssues",
       "getIssue",
       "listNewestDeployments",
       "updateIssueBody",
       "getIssue",
+      "listPinnedIssues",
     ]);
   });
 

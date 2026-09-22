@@ -231,6 +231,66 @@ describe("pinning", () => {
 
     await expect(port.pinIssue("I_kwDOabc")).rejects.toThrow("Maximum 3 pinned issues");
   });
+
+  // Slice 5.9: read before a dashboard that exists is pinned.
+  test("the pinned issues are one GraphQL query, and come back as numbers", async () => {
+    const { port, sent } = portThatAnswers([
+      {
+        json: {
+          data: {
+            repository: { pinnedIssues: { nodes: [{ issue: { number: 4 } }, { issue: null }] } },
+          },
+        },
+      },
+    ]);
+
+    expect(await port.listPinnedIssues()).toEqual([4]);
+    expect(sent[0]?.body).toMatchObject({
+      variables: { owner: "acme", repo: "infra" },
+      query: expect.stringContaining("pinnedIssues(first: 3)"),
+    });
+  });
+});
+
+// Slice 5.9: the title, and the closed issues a missing dashboard is looked
+// for among.
+describe("the title and the closed issues", () => {
+  test("a title is set on its own", async () => {
+    const { port, sent } = portThatAnswers([{ json: apiIssue({ number: 3 }) }]);
+
+    await port.updateIssueTitle(3, "Infrastructure");
+
+    expect(sent).toEqual([
+      {
+        method: "PATCH",
+        path: "/repos/acme/infra/issues/3",
+        query: {},
+        body: { title: "Infrastructure" },
+      },
+    ]);
+  });
+
+  test("the closed issues are one page, the ones that changed last", async () => {
+    const { port, sent } = portThatAnswers([{ json: [apiIssue({ number: 9, state: "closed" })] }]);
+
+    const issues = await port.listRecentlyClosedIssues("sluiceway");
+
+    expect(issues.map((issue) => issue.number)).toEqual([9]);
+    expect(sent).toEqual([
+      {
+        method: "GET",
+        path: "/repos/acme/infra/issues",
+        query: {
+          labels: "sluiceway",
+          state: "closed",
+          sort: "updated",
+          direction: "desc",
+          per_page: "100",
+        },
+        body: undefined,
+      },
+    ]);
+  });
 });
 
 describe("comparing two commits", () => {

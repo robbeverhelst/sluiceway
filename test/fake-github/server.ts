@@ -65,6 +65,11 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
       new RegExp(`^${REPO}/issues$`),
       async ({ path, query }) => {
         const state = query.get("state") === "closed" ? "closed" : "open";
+        // The one page of closed issues that changed last (slice 5.9).
+        if (state === "closed" && query.get("sort") === "updated") {
+          const closed = await fake.listRecentlyClosedIssues(query.get("labels") ?? "");
+          return { status: 200, json: closed.map(apiIssue) };
+        }
         const perPage = Math.min(wholeNumber(query.get("per_page"), 30), 100);
         const page = wholeNumber(query.get("page"), 1);
         const found = await fake.listIssuesPage(
@@ -108,7 +113,11 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
       "PATCH",
       new RegExp(`^${REPO}/issues/(\\d+)$`),
       async ({ body }, number) => {
-        // The port sends a body, or a state, never both.
+        // The port sends a body, a title or a state, never two.
+        if (typeof body.title === "string") {
+          await fake.updateIssueTitle(Number(number), body.title);
+          return { status: 200, json: apiIssue(fake.issue(Number(number))) };
+        }
         if (typeof body.body === "string") {
           return {
             status: 200,
@@ -198,6 +207,19 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
         const variables = body.variables as { issueId?: unknown } | undefined;
         if (text(body.query).includes("userContentEdits("))
           return editHistory(fake, body.variables);
+        if (text(body.query).includes("pinnedIssues(")) {
+          const numbers = await fake.listPinnedIssues();
+          return {
+            status: 200,
+            json: {
+              data: {
+                repository: {
+                  pinnedIssues: { nodes: numbers.map((number) => ({ issue: { number } })) },
+                },
+              },
+            },
+          };
+        }
         if (!text(body.query).includes("pinIssue(")) {
           return {
             status: 200,

@@ -79,7 +79,7 @@ stacks:
 
 Default: `Sluiceway dashboard`
 
-The title the dashboard issue gets when Sluiceway creates it. Sluiceway finds the issue by its label, never by its title, so after that you can rename the issue by hand and a change of this key does nothing to an issue that exists.
+The title of the dashboard issue. Sluiceway finds the issue by its label, never by its title, and every scan gives the issue this title when it has another one: change the key to rename the dashboard. A title changed by hand in the issue is put back by the next scan.
 
 ### `dashboard.label`
 
@@ -98,7 +98,7 @@ Then the `resolve` job reads `contains(github.event.issue.labels.*.name, 'deploy
 
 Default: `true`
 
-Pin the dashboard issue to the top of the repo's issue list when Sluiceway creates it. Best effort: when GitHub will not pin it, for example because the repo has as many pinned issues as GitHub allows, the scan goes on and the job stays green. An issue that exists is left as it is, so a dashboard you unpin stays unpinned.
+Pin the dashboard issue to the top of the repo's issue list. Every scan pins it when it is not pinned, so a dashboard you unpin is pinned again by the next scan: set `false` to keep it unpinned. Best effort: when GitHub will not pin it, for example because the repo has as many pinned issues as GitHub allows, the scan goes on and the job stays green. With `true` a scan makes one more request, to read which issues are pinned.
 
 ### `dashboard.redact`
 

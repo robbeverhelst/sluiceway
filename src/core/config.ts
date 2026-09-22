@@ -184,9 +184,16 @@ export const configSchema = z
   .strictObject({
     dashboard: z
       .strictObject({
-        title: text.describe("Title of the dashboard issue.").default("Sluiceway dashboard"),
+        title: text
+          .describe("Title of the dashboard issue. Every scan puts it back when it differs.")
+          .default("Sluiceway dashboard"),
         label: text.describe("Label the dashboard issue is found by.").default("sluiceway"),
-        pin: z.boolean().describe("Pin the dashboard issue, best effort.").default(true),
+        pin: z
+          .boolean()
+          .describe(
+            "Pin the dashboard issue on every scan when it is not pinned, best effort. false keeps it unpinned.",
+          )
+          .default(true),
         redact: z
           .boolean()
           .describe(

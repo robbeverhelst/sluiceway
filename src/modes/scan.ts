@@ -1446,7 +1446,24 @@ function reportDashboard(
   for (const duplicate of written.closedDuplicates) {
     log.info(`Closed #${duplicate}, a second dashboard.`);
   }
-  if (written.pin === "failed") {
+  if (written.renamed) {
+    log.info(
+      `Renamed the dashboard from ${JSON.stringify(written.renamed.from)} to the dashboard.title of sluiceway.yaml.`,
+    );
+  }
+  if (written.pin === "pinned" && written.found !== "created") {
+    log.info(
+      "Pinned the dashboard. Set dashboard.pin: false in sluiceway.yaml to keep it unpinned.",
+    );
+  }
+  // A dashboard that exists is pinned on every scan (slice 5.9), so a pin that
+  // fails there is a line of the log, not a warning on every run.
+  if (written.pin === "failed" && written.found !== "created") {
+    log.info(
+      `The dashboard (#${written.number}) could not be pinned. A repo holds at most three pinned issues. Set dashboard.pin: false in sluiceway.yaml to stop trying.`,
+    );
+  }
+  if (written.pin === "failed" && written.found === "created") {
     log.warning(
       `The new dashboard (#${written.number}) could not be pinned. A repo holds at most three pinned issues. Pin it by hand if you want it at the top of the issue list.`,
       "Dashboard not pinned",
