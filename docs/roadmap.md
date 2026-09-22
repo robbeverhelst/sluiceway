@@ -96,9 +96,7 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - The old path of a file that a pull request renamed
 - Looking past a failed record for an older success to start attribution from
 - Attribution for a scan of a commit that is not on the default branch
-- Failed deploys in the recently deployed list
-- A configurable length for recently deployed
-- The real time of a deploy that was later superseded, under recently deployed
+- A recently deployed list longer than 50 lines
 - Reading a deployment record whose payload has another version
 - Finding a stack's records after its `environment` label changed
 - `settle` writing the row of a stack whose record it ended
@@ -106,7 +104,7 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Allowing for a runner clock that differs from GitHub's
 - A shortening level that also drops a row's links, for more than about 100 stacks pending at once
 - A link to the summary in the note about shortened rows
-- One alert block above the pending list that names the stacks with a delete or replace
+- Drifted rows in the destroy alert
 - A finer personality switch (the header without the voice, or the reverse)
 - A custom header image, or a palette setting
 - A rotating set of good-news lines

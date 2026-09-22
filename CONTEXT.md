@@ -262,6 +262,10 @@ _Avoid_: Error row, broken stack, failed stack
 The note on a stack's row saying its last deploy failed. It rides on the row wherever the row sits and is not a row state.
 _Avoid_: Failed row, failed state, error row
 
+**Trail**:
+The Recently deployed list at the bottom of the dashboard: every deploy from the dashboard that ended, newest first, with who ticked it and when it went out. A deploy that found nothing to deploy, a rehearsal and a failed deploy say so on their line. Its length is `dashboard.recentlyDeployed`. It is built from the deployment records and decides nothing.
+_Avoid_: History, audit log, deploy log, changelog
+
 **Pending-again line**:
 The note on a pending row whose newest deployment record is a deploy that went out with the same diff hash the row has now: the deploy did not bring the stack in sync. It suggests that a value in the program differs on every run, and points at the tool diff when the job log holds one. It explains a row and decides nothing.
 _Avoid_: Flapping, drift, stuck row
@@ -317,6 +321,10 @@ _Avoid_: Private mode, mask, hide
 **Destroy**:
 A change whose op is replace or delete: a real object goes away. Destroys are listed first, cut last, and always carry a warning, also on a redacted dashboard.
 _Avoid_: Destructive change, dangerous change, removal
+
+**Destroy alert**:
+The one caution block right above the pending list that names every pending stack with a destroy. It is an index to the delete and replace lines, which stay open under each row. It is computed from the row markers and decides nothing, and it shows under redact and without personality too.
+_Avoid_: Destroy warning (that is the line on the row and on the counts line), destroy banner, danger box
 
 ### Personality
 
