@@ -54186,34 +54186,6 @@ var tools = {
   apply: (stack, context3, plan, options) => adapterOf(stack).apply(stack, context3, plan, options)
 };
 
-// src/core/merge-scan.ts
-var MERGE_SCAN_INPUT = "sluiceway-merged";
-function mergeScanInputs(pullRequests) {
-  return { [MERGE_SCAN_INPUT]: pullRequests.join(",") };
-}
-function readMergeScanInput(value) {
-  if (typeof value !== "string")
-    return [];
-  const parts = value.split(",").map((part) => part.trim());
-  if (parts.some((part) => !/^[1-9]\d*$/.test(part)))
-    return [];
-  return parts.map(Number);
-}
-function objectOf(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
-}
-function declaresMergeScanInput(workflowText) {
-  let workflow;
-  try {
-    workflow = $parse(workflowText);
-  } catch {
-    return false;
-  }
-  const triggers = objectOf(objectOf(workflow)?.on);
-  const inputs = objectOf(objectOf(triggers?.workflow_dispatch)?.inputs);
-  return inputs !== undefined && Object.hasOwn(inputs, MERGE_SCAN_INPUT);
-}
-
 // src/github/event.ts
 function record2(value) {
   return typeof value === "object" && value !== null ? value : undefined;
@@ -54255,11 +54227,6 @@ function publicRepo(payload) {
 }
 function startedByPerson(payload) {
   return record2(record2(payload)?.sender)?.type === "User";
-}
-function mergedBeforeDispatch(payload) {
-  if (startedByPerson(payload))
-    return [];
-  return readMergeScanInput(record2(record2(payload)?.inputs)?.[MERGE_SCAN_INPUT]);
 }
 
 // src/github/job.ts
@@ -54590,16 +54557,12 @@ function deploymentCalls(octokit, repo) {
 }
 
 // src/github/octokit-pulls.ts
-var OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!, $after: String) {
+var OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!) {
   repository(owner: $owner, name: $repo) {
     defaultBranchRef {
       name
     }
-    pullRequests(states: OPEN, first: 100, after: $after, orderBy: {field: CREATED_AT, direction: ASC}) {
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
+    pullRequests(states: OPEN, first: 100, orderBy: {field: CREATED_AT, direction: ASC}) {
       nodes {
         number
         title
@@ -54631,7 +54594,6 @@ var OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!, $after: String
     }
   }
 }`;
-var MAX_PAGES = 10;
 function present2(nodes) {
   return (nodes ?? []).filter((node2) => node2 !== null);
 }
@@ -54674,22 +54636,14 @@ function messageOf(error63) {
 function pullCalls(octokit, repo) {
   return {
     async listOpenPullRequests() {
-      let defaultBranch;
-      const pullRequests = [];
-      let after = null;
-      for (let page = 0;page < MAX_PAGES; page++) {
-        const data = await octokit.graphql(OPEN_PULL_REQUESTS, { ...repo, after });
-        defaultBranch ??= data.repository?.defaultBranchRef?.name;
-        const list = data.repository?.pullRequests;
-        pullRequests.push(...present2(list?.nodes).map(toPullRequest2));
-        const next = list?.pageInfo;
-        if (!next?.hasNextPage || !next.endCursor)
-          break;
-        after = next.endCursor;
-      }
+      const data = await octokit.graphql(OPEN_PULL_REQUESTS, repo);
+      const defaultBranch = data.repository?.defaultBranchRef?.name;
       if (defaultBranch === undefined)
         throw new Error("GitHub named no default branch.");
-      return { defaultBranch, pullRequests };
+      return {
+        defaultBranch,
+        pullRequests: present2(data.repository?.pullRequests.nodes).map(toPullRequest2)
+      };
     },
     async allowedMergeMethods() {
       const { data } = await octokit.rest.repos.get(repo);
@@ -54857,13 +54811,8 @@ function createOctokitPort(octokit, repo) {
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     },
-    async dispatchWorkflow(workflow, ref, inputs) {
-      await octokit.rest.actions.createWorkflowDispatch({
-        ...repo,
-        workflow_id: workflow,
-        ref,
-        ...inputs ? { inputs } : {}
-      });
+    async dispatchWorkflow(workflow, ref) {
+      await octokit.rest.actions.createWorkflowDispatch({ ...repo, workflow_id: workflow, ref });
     }
   };
 }
@@ -55213,15 +55162,8 @@ function parseDashboard(body) {
     if (RESCAN_LINE.test(line))
       rescanTicked = true;
     const merge3 = readMerge(line);
-    if (merge3) {
-      let end2 = index;
-      while (/^ {2}\S/.test(lines[end2 + 1] ?? ""))
-        end2++;
-      merges.push({ ...merge3, text: lines.slice(index, end2 + 1).join(`
-`) });
-      index = end2;
-      continue;
-    }
+    if (merge3)
+      merges.push(merge3);
     const match = ROW_LINE.exec(line);
     if (!match)
       continue;
@@ -55341,56 +55283,6 @@ function urlPart(text6) {
 }
 function mascotUrl(actionRef2, file2) {
   return `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef2)}/assets/mascot/${file2}`;
-}
-
-// src/render/merge-row.ts
-var TITLE_LENGTH = 80;
-function shorten(title) {
-  const chars = [...title];
-  return chars.length <= TITLE_LENGTH ? title : `${chars.slice(0, TITLE_LENGTH - 3).join("")}...`;
-}
-function renderMergeRow(row, options = {}) {
-  const by = row.author === undefined ? "" : ` by ${escapeText(row.author)}`;
-  const parts = [
-    `**${escapeText(row.stackId)}**`,
-    ...options.redact ? [] : [escapeText(shorten(row.title))],
-    `#${row.pr}${by}`
-  ];
-  return `- [ ] ${parts.join(" · ")} ${mergeMarker(row)}`;
-}
-function mergeBlock(row, options = {}) {
-  const [block] = parseDashboard(renderMergeRow(row, options)).merges;
-  if (!block)
-    throw new Error("A rendered merge row did not read back as one.");
-  return block;
-}
-var MERGE_ORPHAN_NOTE = ":information_source: a tick on this row was not picked up. Tick again to merge.";
-var MERGE_DEPLOYING_NOTE = ":information_source: this tick merged nothing: the stack has a deploy in progress. Tick again once it is over.";
-var MERGE_DEPLOYS_OFF_NOTE = ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick merged nothing.";
-var NOTES = {
-  orphan: MERGE_ORPHAN_NOTE,
-  deploying: MERGE_DEPLOYING_NOTE,
-  "deploys-off": MERGE_DEPLOYS_OFF_NOTE
-};
-var MERGE_FOLD_AFTER = 10;
-function readBack(text6) {
-  const [row] = parseDashboard(text6).merges;
-  if (!row)
-    throw new Error("A merge row did not read back as one.");
-  return row;
-}
-function clearMergeTick(row, options = {}) {
-  if (!row.ticked)
-    return row;
-  const [first = "", ...notes] = row.text.split(`
-`);
-  const cleared = first.replace(/^- \[[xX]\] /, "- [ ] ");
-  const lines = options.note === undefined ? notes : [`  ${NOTES[options.note]}`];
-  return readBack([cleared, ...lines].join(`
-`));
-}
-function tickedMergeBlock(row) {
-  return readBack(row.text.replace(/^- \[ \] /, "- [x] "));
 }
 
 // src/render/pending-crates.ts
@@ -55841,14 +55733,8 @@ function renderBody(input2) {
     out.push("## Deploying", blocks(deploying));
   const merges = [...input2.merges ?? []].filter((merge3, index, all) => all.findIndex((one) => one.pr === merge3.pr) === index).sort((a, b) => a.pr - b.pr);
   if (merges.length > 0) {
-    out.push("## Updates waiting to merge", MERGE_LINE2);
-    out.push(merges.slice(0, MERGE_FOLD_AFTER).map((merge3) => merge3.text).join(`
+    out.push("## Updates waiting to merge", MERGE_LINE2, merges.map((merge3) => merge3.text).join(`
 `));
-    const folded = merges.slice(MERGE_FOLD_AFTER);
-    if (folded.length > 0) {
-      out.push(`<details><summary>${folded.length} more ${folded.length === 1 ? "update" : "updates"} waiting to merge</summary>`, folded.map((merge3) => merge3.text).join(`
-`), "</details>");
-    }
   }
   out.push("## Pending", pendingLine(input2, state, pending.length));
   const alert = destroyAlert(pending);
@@ -57599,7 +57485,7 @@ function readWorkflowFiles(root) {
     text: readFileSync6(join27(root, WORKFLOW_DIRECTORY, name), "utf8")
   }));
 }
-var MODES = ["scan", "resolve", "apply", "settle", "check"];
+var MODES = ["scan", "resolve", "apply", "settle", "check", "init"];
 function needs(mode, config2) {
   switch (mode) {
     case "scan":
@@ -57628,6 +57514,7 @@ function needs(mode, config2) {
     case "settle":
       return { contents: "read", issues: "read", deployments: "write", actions: "write" };
     case "check":
+    case "init":
       return { contents: "read" };
   }
 }
@@ -57748,7 +57635,7 @@ function checkOne(path, workflow, config2, report) {
     notes.push({ kind: "called", path });
   const modes = new Set(found.map(({ step: step2 }) => step2.mode));
   const runs = (mode) => modes.has(mode);
-  const deploys = [...modes].some((mode) => mode !== undefined && mode !== "check");
+  const deploys = [...modes].some((mode) => mode !== undefined && mode !== "check" && mode !== "init");
   if (!called && deploys) {
     for (const trigger of ["pull_request", "pull_request_target", "merge_group"]) {
       if (trigger in workflow.on)
@@ -58112,8 +57999,698 @@ async function runCheck() {
   });
 }
 
+// src/modes/init.ts
+import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync7, statSync as statSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { dirname as dirname2, join as join28 } from "node:path";
+
+// src/adapters/init-findings.ts
+import { posix } from "node:path";
+var SKIPPED3 = /(^|\/)(\.terraform|node_modules|\.git)(\/|$)/;
+function findDeclarable(files, read3, taken) {
+  const used = new Set(taken);
+  const opentofu2 = openTofuRoots(files, read3).filter(({ path }) => !used.has(path));
+  for (const { path } of opentofu2)
+    used.add(path);
+  const helm2 = helmCharts(files, read3).filter(({ path }) => !used.has(path));
+  return { opentofu: opentofu2, helm: helm2 };
+}
+function openTofuRoots(files, read3) {
+  const code2 = files.filter((file2) => /\.(tf|tofu)$/.test(file2) && !SKIPPED3.test(file2));
+  const directories = [...new Set(code2.map(directoryOf))];
+  const called = new Set(code2.flatMap((file2) => [...(read3(file2) ?? "").matchAll(/^\s*source\s*=\s*"(\.\.?\/[^"]*)"/gm)].map((match) => normal(posix.join(directoryOf(file2), match[1] ?? "")))));
+  return directories.filter((path) => !called.has(path) && !path.split("/").includes("modules")).sort(byCodeUnit14).map((path) => ({
+    path,
+    varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit14)
+  }));
+}
+function openTofuStacks(root) {
+  if (root.varFiles.length === 0)
+    return [{}];
+  const [only] = root.varFiles;
+  if (root.varFiles.length === 1 && only !== undefined)
+    return [{ varFile: only }];
+  return root.varFiles.map((varFile) => ({ name: varFileName(varFile), varFile }));
+}
+function varFileName(file2) {
+  return file2.replace(/\.tfvars(\.json)?$/, "");
+}
+function helmCharts(files, read3) {
+  const charts = files.filter((file2) => /(^|\/)Chart\.yaml$/.test(file2) && !SKIPPED3.test(file2));
+  const chartDirectories = new Set(charts.map(directoryOf));
+  return charts.flatMap((file2) => {
+    const path = directoryOf(file2);
+    const parent = directoryOf(path);
+    if (posix.basename(parent) === "charts" && chartDirectories.has(directoryOf(parent))) {
+      return [];
+    }
+    const chart = yamlObject2(read3(file2));
+    if (chart === undefined || chart.type === "library")
+      return [];
+    const release2 = releaseName(typeof chart.name === "string" ? chart.name : "", path);
+    return release2 === undefined ? [] : [{ path, release: release2 }];
+  }).sort((a, b) => byCodeUnit14(a.path, b.path));
+}
+function releaseName(name, path) {
+  for (const candidate of [name, posix.basename(path)]) {
+    const cleaned = candidate.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 53).replace(/-+$/, "");
+    if (cleaned !== "")
+      return cleaned;
+  }
+  return;
+}
+var LOCKFILES = [
+  ["package-lock.json", "npm"],
+  ["pnpm-lock.yaml", "pnpm"],
+  ["yarn.lock", "yarn"],
+  ["bun.lock", "bun"],
+  ["bun.lockb", "bun"]
+];
+var SECRET_REFERENCE = "op://";
+function findForWorkflow(stacks, files, read3) {
+  const tool = (stack) => stack.options.tool;
+  const pulumiPaths = [
+    ...new Set(stacks.filter((stack) => tool(stack) === undefined).map((s) => s.path))
+  ];
+  const runtimes = pulumiPaths.map((path) => ({ path, runtime: pulumiRuntime(path, files, read3) }));
+  const nodePaths = runtimes.filter(({ runtime }) => runtime === "nodejs").map((p) => p.path);
+  const other = Map.groupBy(runtimes.filter(({ runtime }) => runtime !== "nodejs" && runtime !== "yaml"), ({ runtime }) => runtime);
+  return {
+    pulumi: pulumiPaths.length > 0,
+    opentofu: stacks.some((stack) => tool(stack) === OPENTOFU),
+    helm: stacks.some((stack) => tool(stack) === HELM),
+    node: nodePaths.length === 0 ? undefined : nodeFindings(nodePaths, files, read3),
+    otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit14(a.runtime, b.runtime)),
+    helmRepositories: helmRepositories(stacks, read3),
+    envFiles: envFiles(files, read3)
+  };
+}
+function pulumiRuntime(path, files, read3) {
+  const file2 = ["Pulumi.yaml", "Pulumi.yml", "Pulumi.json"].map((name) => path === "." ? name : `${path}/${name}`).find((candidate) => files.includes(candidate));
+  const project = file2 === undefined ? undefined : yamlObject2(read3(file2));
+  const runtime = project?.runtime;
+  if (typeof runtime === "string")
+    return runtime;
+  if (typeof runtime === "object" && runtime !== null && "name" in runtime) {
+    return typeof runtime.name === "string" ? runtime.name : "yaml";
+  }
+  return "yaml";
+}
+function nodeFindings(paths, files, read3) {
+  const lockfile = (directory) => LOCKFILES.find(([name]) => files.includes(directory === "." ? name : `${directory}/${name}`));
+  const installs = new Map;
+  const withoutLockfile = [];
+  for (const path of paths) {
+    const directory = ancestors(path).find((candidate) => lockfile(candidate) !== undefined);
+    const found = directory === undefined ? undefined : lockfile(directory);
+    if (directory === undefined || found === undefined)
+      withoutLockfile.push(path);
+    else
+      installs.set(directory, found[1]);
+  }
+  const managers = new Set(installs.values());
+  const manifest = yamlObject2(read3("package.json"));
+  return {
+    installs: [...installs].map(([directory, manager]) => ({ directory, manager })).sort((a, b) => byCodeUnit14(a.directory, b.directory)),
+    withoutLockfile,
+    versionFile: [".nvmrc", ".node-version"].find((file2) => files.includes(file2)),
+    yarnBerry: managers.has("yarn") && files.includes(".yarnrc.yml"),
+    pnpmWithoutVersion: managers.has("pnpm") && !(typeof manifest?.packageManager === "string" && manifest.packageManager.startsWith("pnpm@"))
+  };
+}
+function helmRepositories(stacks, read3) {
+  const repositories = stacks.flatMap((stack) => {
+    const chartDir = stack.options.tool === HELM ? stack.options.chartDir : undefined;
+    if (typeof chartDir !== "string")
+      return [];
+    const chart = yamlObject2(read3(chartDir === "." ? "Chart.yaml" : `${chartDir}/Chart.yaml`));
+    const dependencies = Array.isArray(chart?.dependencies) ? chart.dependencies : [];
+    return dependencies.flatMap((dependency) => {
+      const repository = dependency?.repository;
+      return typeof repository === "string" && /^https?:\/\//.test(repository) ? [repository] : [];
+    });
+  });
+  return [...new Set(repositories)].sort(byCodeUnit14);
+}
+function envFiles(files, read3) {
+  const found = files.filter((file2) => /(^|\/)(\.env(\.[^/]+)?|[^/]+\.env)$/.test(file2)).filter((file2) => /^[\w./-]+$/.test(file2)).filter((file2) => (read3(file2) ?? "").split(`
+`).some((line2) => /^\s*(export\s+)?[A-Za-z_]\w*\s*=/.test(line2) && line2.includes(SECRET_REFERENCE)));
+  if (found.length === 0)
+    return;
+  const named = (pattern) => found.find((file2) => pattern.test(posix.basename(file2)));
+  const deploy2 = named(/deploy|apply|write/i);
+  const preview5 = named(/preview|read|scan|plan/i);
+  const [first] = found;
+  const pair = deploy2 !== undefined && preview5 !== undefined && deploy2 !== preview5 ? { preview: preview5, deploy: deploy2 } : { preview: first, deploy: first };
+  return {
+    ...pair,
+    others: found.filter((file2) => file2 !== pair.preview && file2 !== pair.deploy)
+  };
+}
+function yamlObject2(text6) {
+  if (text6 === undefined)
+    return;
+  try {
+    const value = $parse(text6, { uniqueKeys: false });
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
+  } catch {
+    return;
+  }
+}
+function ancestors(path) {
+  const found = [path];
+  let current = path;
+  while (current !== ".") {
+    current = directoryOf(current);
+    found.push(current);
+  }
+  return found;
+}
+function directoryOf(file2) {
+  const directory = posix.dirname(file2);
+  return directory === "" ? "." : directory;
+}
+function normal(path) {
+  const joined2 = posix.normalize(path).replace(/\/$/, "");
+  return joined2 === "" ? "." : joined2;
+}
+function byCodeUnit14(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// examples/workflows/export-env.sh
+var export_env_default = `#!/usr/bin/env bash
+# Loads an env file of secret references into the job environment, masked.
+# Run it inside your secret manager's \`run\` command, which resolves every
+# reference of the file into this process's environment, for example:
+#
+#   op run --env-file=ci.env --no-masking -- bash export-env.sh ci.env
+#
+# It prints nothing but ::add-mask:: commands. Never add \`set -x\` or an echo.
+set -euo pipefail
+file="$1"
+# A line whose value holds this is a secret. Every other line is a plain value.
+reference="\${SECRET_REFERENCE:-op://}"
+
+while IFS= read -r raw || [ -n "$raw" ]; do
+  raw="\${raw%$'\\r'}"
+  # Take NAME from lines like \`NAME=...\`, \`NAME = ...\` or \`export NAME=...\`.
+  [[ "$raw" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*= ]] || continue
+  name="\${BASH_REMATCH[2]}"
+  # The secret manager's own token and settings stay on this step, and the
+  # runner does not let a step set its own names.
+  case "$name" in OP_* | GITHUB_* | RUNNER_*) continue ;; esac
+  value="\${!name-}"
+  [ -n "$value" ] || continue
+
+  # Mask first, every line on its own, because the log is matched line by line.
+  if [[ "$raw" == *"$reference"* ]]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="\${line%$'\\r'}"
+      [ -n "$line" ] || continue
+      printf '::add-mask::%s\\n' "\${line//%/%25}"
+    done <<<"$value"
+  fi
+
+  # Then write, in the delimiter form so that newlines survive.
+  delimiter="ghadelimiter_$(od -An -N16 -tx1 /dev/urandom | tr -d ' \\n')"
+  if [[ "$value" == *"$delimiter"* ]]; then
+    echo "The value of $name holds the delimiter. Run the step again." >&2
+    exit 1
+  fi
+  printf '%s<<%s\\n%s\\n%s\\n' "$name" "$delimiter" "$value" "$delimiter" >>"$GITHUB_ENV"
+done <"$file"
+`;
+
+// src/render/init.ts
+var WORKFLOW_FILE = ".github/workflows/deploy-dashboard.yml";
+var EXPORT_ENV_FILE = ".github/scripts/export-env.sh";
+var EXPORT_ENV = export_env_default;
+var DEFAULT_BRANCH = "main";
+var RUNS_ON = "ubuntu-latest";
+function starterWorkflow(options) {
+  const { findings, label } = options;
+  const branch = options.branch ?? DEFAULT_BRANCH;
+  const lines3 = [
+    "# Written by sluiceway init from the files of this repo. Review every step",
+    "# before you commit it: docs/example-workflows.md says what to change, and",
+    "# init printed what it could not know.",
+    "#",
+    "# `@v0` follows every release until 1.0.0. To review every update yourself,",
+    `# pin a full commit SHA instead, as the README's "Pin a commit" says.`,
+    "name: deploy-dashboard",
+    "",
+    "on:",
+    "  push:",
+    `    branches: [${quotedIfNeeded(branch)}]`,
+    "  schedule:",
+    '    - cron: "0 6 * * *"',
+    "  workflow_dispatch:",
+    "  issues:",
+    "    types: [edited]",
+    "",
+    "permissions:",
+    `  contents: ${options.merges ? "write" : "read"}`,
+    "  issues: write",
+    "  deployments: write",
+    "  actions: write",
+    "  pull-requests: read",
+    "  checks: write",
+    "",
+    "jobs:",
+    "  scan:",
+    "    if: github.event_name != 'issues'",
+    `    runs-on: ${RUNS_ON}`,
+    "    concurrency: sluiceway-scan",
+    "    steps:",
+    "      - uses: actions/checkout@v7",
+    ...toolSteps(findings, "scan"),
+    ...credentialSteps(findings.envFiles, "scan"),
+    "      - uses: sluiceway/sluiceway@v0",
+    "        with:",
+    "          mode: scan",
+    "",
+    "  resolve:",
+    `    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, ${quoted(label)}))`,
+    `    runs-on: ${RUNS_ON}`,
+    "    concurrency: sluiceway-resolve",
+    "    outputs:",
+    "      matrix: ${{ steps.resolve.outputs.matrix }}",
+    "    steps:",
+    "      - uses: actions/checkout@v7",
+    "      # No tool and no credentials in this job. It never runs the tool.",
+    "      - id: resolve",
+    "        uses: sluiceway/sluiceway@v0",
+    "        with:",
+    "          mode: resolve",
+    "",
+    "  apply:",
+    "    needs: resolve",
+    "    if: ${{ !cancelled() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]' }}",
+    "    strategy:",
+    "      fail-fast: false",
+    "      matrix:",
+    "        include: ${{ fromJson(needs.resolve.outputs.matrix) }}",
+    `    runs-on: ${RUNS_ON}`,
+    "    timeout-minutes: 60",
+    "    concurrency:",
+    "      group: sluiceway-apply-${{ matrix.stack }}",
+    "      queue: max",
+    "    environment:",
+    "      name: ${{ matrix.environment }}",
+    "      deployment: false",
+    "    steps:",
+    "      - uses: actions/checkout@v7",
+    ...toolSteps(findings, "apply"),
+    ...credentialSteps(findings.envFiles, "apply"),
+    "      - uses: sluiceway/sluiceway@v0",
+    "        with:",
+    "          mode: apply",
+    "          deployment-id: ${{ matrix.deployment }}",
+    "",
+    "  settle:",
+    "    needs: [resolve, apply]",
+    "    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'",
+    `    runs-on: ${RUNS_ON}`,
+    "    steps:",
+    "      - uses: actions/checkout@v7",
+    "      - uses: sluiceway/sluiceway@v0",
+    "        with:",
+    "          mode: settle"
+  ];
+  return `${lines3.join(`
+`)}
+`;
+}
+function toolSteps(findings, job) {
+  return [
+    ...findings.node === undefined ? [] : nodeSteps(findings.node, job),
+    ...findings.pulumi ? pulumiSteps(findings, job) : [],
+    ...findings.opentofu ? OPENTOFU_STEPS : [],
+    ...findings.helm ? helmSteps(findings.helmRepositories) : []
+  ];
+}
+var LOCKFILE = {
+  npm: "package-lock.json",
+  pnpm: "pnpm-lock.yaml",
+  yarn: "yarn.lock",
+  bun: "bun.lock"
+};
+function nodeSteps(node2, job) {
+  const managers = [...new Set(node2.installs.map(({ manager }) => manager))];
+  const [only] = managers;
+  const cache = managers.length === 1 && only !== undefined && only !== "bun" ? only : undefined;
+  const nested = node2.installs.some(({ directory }) => directory !== ".");
+  const steps = [
+    ...node2.yarnBerry ? ["      - run: corepack enable"] : [],
+    ...managers.includes("pnpm") ? ["      - uses: pnpm/action-setup@v6"] : [],
+    "      - uses: actions/setup-node@v7",
+    "        with:",
+    node2.versionFile === undefined ? "          node-version: lts/*" : `          node-version-file: ${node2.versionFile}`,
+    ...cache === undefined ? [] : [`          cache: ${cache}`],
+    ...cache !== undefined && nested ? [`          cache-dependency-path: ${quoted(`**/${LOCKFILE[cache]}`)}`] : [],
+    ...managers.includes("bun") ? ["      - uses: oven-sh/setup-bun@v2"] : []
+  ];
+  const installs = node2.installs.flatMap(({ directory, manager }) => [
+    `      - run: ${installCommand(manager, node2.yarnBerry)}`,
+    ...directory === "." ? [] : [`        working-directory: ${directory}`]
+  ]);
+  if (installs.length === 0)
+    return steps;
+  const comment = job === "scan" ? ["      # Once for every program in the repo, not once per stack."] : [];
+  return [...steps, ...comment, ...installs];
+}
+function installCommand(manager, yarnBerry) {
+  switch (manager) {
+    case "npm":
+      return "npm ci";
+    case "pnpm":
+      return "pnpm install --frozen-lockfile";
+    case "yarn":
+      return yarnBerry ? "yarn install --immutable" : "yarn install --frozen-lockfile";
+    case "bun":
+      return "bun install --frozen-lockfile";
+  }
+}
+function pulumiSteps(findings, job) {
+  const managers = [...new Set(findings.node?.installs.map(({ manager }) => manager) ?? [])];
+  const keyFiles = managers.length > 0 ? managers.map((manager) => `'**/${LOCKFILE[manager]}'`) : ["'**/Pulumi.yaml'", "'**/Pulumi.yml'", "'**/Pulumi.json'"];
+  const others = findings.otherRuntimes.flatMap(({ runtime, paths }) => [
+    `      # The packages of the ${runtime} programs, with the ${runtime} the runner has.`,
+    ...paths.flatMap((path) => [
+      "      - run: pulumi install",
+      ...path === "." ? [] : [`        working-directory: ${path}`]
+    ])
+  ]);
+  return [
+    "      - uses: pulumi/actions@v7 # without a command this only installs the CLI",
+    "        with:",
+    "          pulumi-version: ^3.229.0",
+    ...job === "scan" ? [
+      "      # The providers the programs use. The first run fills the cache.",
+      "      - uses: actions/cache@v6"
+    ] : ["      - uses: actions/cache/restore@v6"],
+    "        with:",
+    "          path: ~/.pulumi/plugins",
+    `          key: pulumi-plugins-\${{ runner.os }}-\${{ hashFiles(${keyFiles.join(", ")}) }}`,
+    ...others
+  ];
+}
+var OPENTOFU_STEPS = [
+  "      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2",
+  "        with:",
+  "          tofu_version: 1.12.6",
+  "          tofu_wrapper: false"
+];
+var HELM_STEPS = [
+  "      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1",
+  "        with:",
+  "          version: v4.3.0",
+  "      - name: Install the diff plugin",
+  "        run: helm plugin install https://github.com/databus23/helm-diff --version v3.15.13 --verify=false"
+];
+function helmSteps(repositories) {
+  if (repositories.length === 0)
+    return HELM_STEPS;
+  return [
+    ...HELM_STEPS,
+    "      # The repositories the dependencies of the local charts come from.",
+    "      - name: Add the chart repositories",
+    "        run: |",
+    ...repositories.map((repository, index) => `          helm repo add dependency-${index + 1} ${repository}`)
+  ];
+}
+var PREVIEW_TOKEN = "OP_PREVIEW_TOKEN";
+var DEPLOY_TOKEN = "OP_DEPLOY_TOKEN";
+function credentialSteps(envFiles2, job) {
+  if (envFiles2 === undefined) {
+    return job === "scan" ? [
+      "      # Load your credentials and your state backend settings into the job",
+      "      # environment here. Sluiceway passes the environment to the tool and",
+      "      # never looks inside. Whatever loads a secret must also mask it."
+    ] : [
+      "      # Same credential steps as in the scan job. These credentials must be",
+      "      # able to change things."
+    ];
+  }
+  const file2 = job === "scan" ? envFiles2.preview : envFiles2.deploy;
+  const token = job === "scan" ? PREVIEW_TOKEN : DEPLOY_TOKEN;
+  return [
+    "      # Leave this out when op is part of your runner image.",
+    "      - uses: 1password/install-cli-action@v4",
+    ...job === "scan" ? [
+      "      # One `op run` resolves the whole file. The service account of this job",
+      "      # should see only the credentials that read."
+    ] : [
+      "      # The token that reaches the credentials that change things is a secret",
+      "      # of the environment above."
+    ],
+    "      - name: Load the environment",
+    "        env:",
+    `          OP_SERVICE_ACCOUNT_TOKEN: \${{ secrets.${token} }}`,
+    `        run: op run --env-file=${file2} --no-masking -- bash ${EXPORT_ENV_FILE} ${file2}`
+  ];
+}
+var HINTED = 10;
+var SCHEMA = "# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json";
+function starterConfig({ declarable, unrelated, unclaimed }) {
+  const { opentofu: opentofu2, helm: helm2 } = declarable;
+  const lines3 = [
+    SCHEMA,
+    "#",
+    "# Written by sluiceway init from the files of this repo. Review it before",
+    "# you commit it: docs/configuration.md explains every key."
+  ];
+  if (opentofu2.length + helm2.length > 0) {
+    lines3.push("", "stacks:");
+    for (const root of opentofu2) {
+      const stacks = openTofuStacks(root);
+      lines3.push(stacks.length > 1 ? `  # An OpenTofu root module with a var file per stack, each in a workspace of its name.` : "  # An OpenTofu root module.");
+      for (const { name, varFile } of stacks) {
+        lines3.push(`  - path: ${quotedIfNeeded(root.path)}`);
+        if (name !== undefined)
+          lines3.push(`    name: ${quotedIfNeeded(name)}`);
+        lines3.push("    tool: opentofu");
+        if (varFile !== undefined) {
+          lines3.push("    options:");
+          if (name !== undefined)
+            lines3.push(`      workspace: ${quotedIfNeeded(name)}`);
+          lines3.push(`      varFiles: [${quotedIfNeeded(varFile)}]`);
+        }
+      }
+    }
+    for (const chart of helm2) {
+      lines3.push("  # A local chart. Set the release and the namespace it runs as, and its", "  # values files: init named both after the chart.", `  - path: ${quotedIfNeeded(chart.path)}`, "    tool: helm", "    options:", `      release: ${chart.release}`, `      namespace: ${chart.release}`, "      chart: .");
+    }
+  }
+  if (unrelated.length > 0) {
+    lines3.push("", "# Files that look like docs and tooling. A push that changes only these", "# previews nothing. Take out any that one of your programs reads.", "scan:", "  unrelated:", ...unrelated.map((glob) => `    - ${JSON.stringify(glob)}`));
+  }
+  if (unclaimed !== undefined) {
+    const [first] = unclaimed.directories;
+    lines3.push("", "# No stack claims the files in these directories, so a push that changes", "# one of them previews every stack:", ...unclaimed.directories.slice(0, HINTED).map((directory) => `#   ${directory}/`), ...unclaimed.directories.length > HINTED ? [`#   and ${unclaimed.directories.length - HINTED} more, which the check lists`] : [], "# When a stack reads one, name it under inputs in that stack's entry:", "#", "#   stacks:", `#     - path: ${unclaimed.stack}`, "#       inputs:", `#         - "${first}/**"`);
+  }
+  return `${lines3.join(`
+`)}
+`;
+}
+var NOT_A_REPO_ROOT = "This is not the root of a git repo. Run init in the top directory of your checkout.";
+function noStacksText() {
+  return "init found no stack to set up: no Pulumi project, no OpenTofu root module and no Helm chart. It wrote nothing.";
+}
+function workflowExistsText(paths) {
+  return `A workflow runs Sluiceway already: ${paths.join(", ")}. init never overwrites one, and wrote nothing. Run the check (mode: check) to see what it lacks.`;
+}
+function wroteText(file2) {
+  return `Wrote ${file2}.`;
+}
+var KEPT_CONFIG = "Kept sluiceway.yaml as it is, and set the workflow up from it.";
+var NEEDS_A_PERSON = "Still to do by a person:";
+function needsText({ findings, declarable, branchGuessed }) {
+  const needs2 = [];
+  const { envFiles: envFiles2, node: node2 } = findings;
+  if (envFiles2 === undefined) {
+    needs2.push("Load the credentials and the state backend settings of your stacks in the scan and apply jobs, where the comments in the workflow say. init writes no credential step it did not find in the repo. docs/credentials.md has recipes.");
+  } else {
+    needs2.push(`Create the secret ${PREVIEW_TOKEN}, a 1Password service account token that resolves ${envFiles2.preview} and reads only, and ${DEPLOY_TOKEN}, one that resolves ${envFiles2.deploy}, as a secret of the environment of each stack.`);
+    if (envFiles2.preview === envFiles2.deploy) {
+      needs2.push(`Both jobs load ${envFiles2.preview}. The scan needs credentials that read and nothing more: give it an env file of its own.`);
+    }
+    if (envFiles2.others.length > 0) {
+      needs2.push(`init did not use these env files of secret references: ${envFiles2.others.join(", ")}.`);
+    }
+  }
+  if (findings.helm) {
+    needs2.push("The scan and apply jobs need a kubeconfig for the cluster of the Helm releases (docs/credentials.md, Helm).");
+  }
+  if (declarable.helm.length > 0) {
+    needs2.push(`sluiceway.yaml names each Helm release and its namespace after the chart: ${declarable.helm.map(({ path }) => path).join(", ")}. Set both to where the release runs, and add its values files. The namespace must exist.`);
+  }
+  if (findings.helmRepositories.length > 0) {
+    needs2.push("The workflow adds the chart repositories the local charts depend on. Log in to any that is private before that step.");
+  }
+  const workspaces = declarable.opentofu.filter(({ varFiles }) => varFiles.length > 1);
+  if (workspaces.length > 0) {
+    needs2.push(`${workspaces.map(({ path }) => path).join(", ")}: one stack per var file, each in a workspace of the same name. Change workspace where yours is named otherwise.`);
+  }
+  if (node2 !== undefined && node2.withoutLockfile.length > 0) {
+    needs2.push(`No lockfile for the Node programs in ${node2.withoutLockfile.join(", ")}: add one, or install their packages in the workflow yourself.`);
+  }
+  if (node2?.pnpmWithoutVersion) {
+    needs2.push("pnpm/action-setup reads the pnpm version from packageManager in package.json, which names none. Add it there, or set version on the step.");
+  }
+  for (const { runtime } of findings.otherRuntimes) {
+    needs2.push(`The ${runtime} programs run on the ${runtime} the runner has. Add its setup action before pulumi install to pin a version.`);
+  }
+  if (branchGuessed) {
+    needs2.push(`The workflow scans after a push to ${DEFAULT_BRANCH}: init could not read the default branch. Change it if yours is another.`);
+  }
+  needs2.push(`Every job runs on ${RUNS_ON}. For self-hosted runners change runs-on of scan and apply, with runner 2.328.0 or newer. resolve and settle hold no credentials and can stay on hosted runners.`, "apply deploys in the GitHub Environment of each stack, sluiceway unless sluiceway.yaml names another. Put the credentials that change things there, or remove the environment block where your plan has no environments.", "Review the files, run the check (mode: check) in a pull request, and commit them. init commits nothing.");
+  return needs2;
+}
+function quoted(text6) {
+  return `'${text6.replaceAll("'", "''")}'`;
+}
+function quotedIfNeeded(text6) {
+  return /^[A-Za-z0-9_][\w./-]*$/.test(text6) && !/^(true|false|null|yes|no|on|off|~)$/i.test(text6) ? text6 : JSON.stringify(text6);
+}
+
+// src/modes/init.ts
+async function init(context3) {
+  const { root, log } = context3;
+  if (!existsSync4(join28(root, ".git")))
+    throw new Error(NOT_A_REPO_ROOT);
+  const configKept = hasConfigFile(root);
+  const existing = loadConfig(root);
+  const running = checkWorkflows(readWorkflowFiles(root), existing).workflows.filter(({ jobs }) => jobs.some(({ mode }) => mode !== "check" && mode !== "init")).map(({ path }) => path);
+  const taken = [...new Set([...running, ...exists2(root, WORKFLOW_FILE) ? [WORKFLOW_FILE] : []])];
+  if (taken.length > 0)
+    throw new Error(workflowExistsText(taken.sort()));
+  const files = await repoFiles(root);
+  const read3 = (file2) => {
+    try {
+      return readFileSync7(join28(root, file2), "utf8");
+    } catch {
+      return;
+    }
+  };
+  const found = await context3.adapter.discover(root, existing);
+  const declarable = configKept ? { opentofu: [], helm: [] } : findDeclarable(files, read3, found.map(({ path }) => path));
+  let config2 = existing;
+  let configText;
+  let stacks = found;
+  if (!configKept) {
+    const declared = starterConfig({ declarable, unrelated: [], unclaimed: undefined });
+    config2 = parseConfig(declared);
+    stacks = await context3.adapter.discover(root, config2);
+  }
+  if (stacks.length === 0)
+    throw new Error(noStacksText());
+  const findings = findForWorkflow(stacks, files, read3);
+  const written = [
+    WORKFLOW_FILE,
+    ...configKept ? [] : [CONFIG_FILE],
+    ...findings.envFiles !== undefined && !exists2(root, EXPORT_ENV_FILE) ? [EXPORT_ENV_FILE] : []
+  ];
+  if (!configKept) {
+    const report = checkSetup(config2, stacks, [...new Set([...files, ...written])].sort());
+    const unrelated = report.suggested;
+    const covered = checkSetup(parseConfig(starterConfig({ declarable, unrelated, unclaimed: undefined })), stacks, files);
+    const directories = [
+      ...new Set(covered.unclaimed.flatMap(({ files: unclaimed }) => unclaimed.map((file2) => dirname2(file2)).filter((directory) => directory !== ".")))
+    ].sort();
+    const [first] = directories;
+    configText = starterConfig({
+      declarable,
+      unrelated,
+      unclaimed: first === undefined ? undefined : {
+        directories,
+        stack: nearest(first, stacks.map(({ path }) => path))
+      }
+    });
+    config2 = parseConfig(configText);
+    stacks = await context3.adapter.discover(root, config2);
+  }
+  const branch = defaultBranch(root);
+  const workflow = starterWorkflow({
+    findings,
+    branch,
+    label: config2.dashboard.label,
+    merges: config2.mergeAndDeploy.authors.length > 0
+  });
+  write(root, WORKFLOW_FILE, workflow);
+  if (configText !== undefined)
+    write(root, CONFIG_FILE, configText);
+  if (written.includes(EXPORT_ENV_FILE))
+    write(root, EXPORT_ENV_FILE, EXPORT_ENV);
+  log.info(foundText(stacks.length));
+  log.group("Stacks", stacks.map((stack) => stackId(stack)));
+  for (const file2 of written)
+    log.info(wroteText(file2));
+  if (configKept)
+    log.info(KEPT_CONFIG);
+  log.group(NEEDS_A_PERSON, needsText({ findings, declarable, branchGuessed: branch === undefined }).map((need) => `- ${need}`));
+}
+function nearest(directory, paths) {
+  const shared = (path) => {
+    const a = directory.split("/");
+    const b = path.split("/");
+    let count3 = 0;
+    while (count3 < a.length && a[count3] === b[count3])
+      count3++;
+    return count3;
+  };
+  return paths.reduce((best, path) => shared(path) > shared(best) ? path : best);
+}
+function exists2(root, file2) {
+  return existsSync4(join28(root, file2));
+}
+function write(root, file2, text6) {
+  mkdirSync(dirname2(join28(root, file2)), { recursive: true });
+  writeFileSync2(join28(root, file2), text6, { flag: "wx" });
+}
+function defaultBranch(root) {
+  const file2 = join28(root, ".git", "refs", "remotes", "origin", "HEAD");
+  try {
+    if (!statSync3(join28(root, ".git")).isDirectory())
+      return;
+    const match = /^ref: refs\/remotes\/origin\/(\S+)\s*$/.exec(readFileSync7(file2, "utf8"));
+    return match?.[1];
+  } catch {
+    return;
+  }
+}
+
+// src/modes/init-job.ts
+async function runInit() {
+  refuseOldNode(process.versions.node);
+  const root = process.env.GITHUB_WORKSPACE || process.cwd();
+  await init({
+    root,
+    adapter: { discover: discoverAll },
+    log: process.env.GITHUB_ACTIONS === "true" ? actionsLog() : terminalLog()
+  });
+}
+function refuseOldNode(version3) {
+  const major = Number(version3.split(".")[0]);
+  if (major < 22) {
+    throw new Error(`init needs Node 22 or newer, and this is Node ${version3}.`);
+  }
+}
+function terminalLog(write2 = console.log) {
+  return {
+    info: write2,
+    group(title, lines3) {
+      write2(title);
+      for (const line2 of lines3)
+        write2(`  ${line2}`);
+    },
+    warning: (message2, title) => write2(`${title}: ${message2}`),
+    writeSummary: async () => {}
+  };
+}
+
 // src/modes/resolve-job.ts
-import { readFileSync as readFileSync8 } from "node:fs";
+import { readFileSync as readFileSync9 } from "node:fs";
 
 // src/github/workflow-ref.ts
 function readWorkflowRef(env) {
@@ -58127,8 +58704,8 @@ function readWorkflowRef(env) {
 }
 
 // src/modes/resolve.ts
-import { readFileSync as readFileSync7 } from "node:fs";
-import { join as join28 } from "node:path";
+import { readFileSync as readFileSync8 } from "node:fs";
+import { join as join29 } from "node:path";
 
 // src/core/edit-history.ts
 var HISTORY_CAP = 100;
@@ -58248,327 +58825,43 @@ var NOT_QUALIFIED = {
   "two-stacks": "more than one stack claims its files",
   "no-stack": "no stack claims any of its files"
 };
-var MAX_UPDATES = 30;
+var MAX_UPDATES = 10;
 function waitingUpdates(pullRequests, options) {
-  const qualifying = [...pullRequests].sort((a, b) => a.number - b.number).flatMap((pullRequest) => {
+  return [...pullRequests].sort((a, b) => a.number - b.number).flatMap((pullRequest) => {
     const qualified = qualify(pullRequest, options);
     return qualified.qualifies ? [{ pullRequest, stackId: qualified.stackId }] : [];
-  });
-  return {
-    listed: qualifying.slice(0, MAX_UPDATES),
-    more: Math.max(0, qualifying.length - MAX_UPDATES)
-  };
+  }).slice(0, MAX_UPDATES);
 }
 var RENOVATE_METHODS = {
   squash: "squash",
   rebase: "rebase",
+  "fast-forward": "rebase",
   "merge-commit": "merge"
 };
-var FALLBACK = ["squash", "merge", "rebase"];
+var FALLBACK = ["squash", "rebase", "merge"];
 function mergeMethod(allowed, strategy) {
   const renovate = strategy === undefined ? undefined : RENOVATE_METHODS[strategy];
   const candidates = renovate === undefined ? FALLBACK : [renovate, ...FALLBACK];
   return candidates.find((method) => allowed[method] !== false);
 }
-
-// src/core/json5.ts
-class Json5Error extends Error {
-  constructor(message2, at) {
-    super(`${message2} at character ${at + 1}.`);
-    this.name = "Json5Error";
-  }
-}
-var ESCAPES = {
-  b: "\b",
-  f: "\f",
-  n: `
-`,
-  r: "\r",
-  t: "\t",
-  v: "\v",
-  "0": "\x00"
-};
-var LINE_BREAKS = new Set([`
-`, "\r", "\u2028", "\u2029"]);
-var LITERALS = [
-  ["true", true],
-  ["false", false],
-  ["null", null]
-];
-var IDENTIFIER_START = /[\p{L}\p{Nl}$_]/u;
-var IDENTIFIER_PART = /[\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$_\u200c\u200d]/u;
-function parseJson5(text6) {
-  let at = 0;
-  const fail = (message2) => {
-    throw new Json5Error(message2, at);
-  };
-  const skip = () => {
-    for (;; ) {
-      const char = text6[at];
-      if (char === undefined)
-        return;
-      if (/\s/.test(char) || char === "\uFEFF") {
-        at++;
-      } else if (text6.startsWith("//", at)) {
-        while (at < text6.length && !LINE_BREAKS.has(text6[at] ?? ""))
-          at++;
-      } else if (text6.startsWith("/*", at)) {
-        const end = text6.indexOf("*/", at + 2);
-        if (end < 0)
-          fail("A comment is not closed");
-        at = end + 2;
-      } else {
-        return;
-      }
-    }
-  };
-  const hex3 = (length) => {
-    const digits = text6.slice(at, at + length);
-    if (!new RegExp(`^[0-9a-fA-F]{${length}}$`).test(digits))
-      fail("A bad escape");
-    at += length;
-    return String.fromCharCode(Number.parseInt(digits, 16));
-  };
-  const string4 = () => {
-    const quote = text6[at];
-    at++;
-    let out = "";
-    for (;; ) {
-      const char = text6[at];
-      if (char === undefined || char === `
-` || char === "\r")
-        fail("A string is not closed");
-      at++;
-      if (char === quote)
-        return out;
-      if (char !== "\\") {
-        out += char;
-        continue;
-      }
-      const escaped = text6[at] ?? "";
-      at++;
-      if (escaped === "u")
-        out += hex3(4);
-      else if (escaped === "x")
-        out += hex3(2);
-      else if (escaped === "\r") {
-        if (text6[at] === `
-`)
-          at++;
-      } else if (LINE_BREAKS.has(escaped)) {} else if (/[1-9]/.test(escaped))
-        fail("A bad escape");
-      else
-        out += ESCAPES[escaped] ?? escaped;
-    }
-  };
-  const number4 = () => {
-    const match = /^[+-]?(?:Infinity|NaN|0[xX][0-9a-fA-F]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/.exec(text6.slice(at));
-    if (!match)
-      return fail("Unexpected text");
-    at += match[0].length;
-    const raw = match[0];
-    const sign = raw.startsWith("-") ? -1 : 1;
-    const body = raw.replace(/^[+-]/, "");
-    if (body === "Infinity")
-      return sign * Number.POSITIVE_INFINITY;
-    if (body === "NaN")
-      return Number.NaN;
-    if (/^0[xX]/.test(body))
-      return sign * Number.parseInt(body.slice(2), 16);
-    return sign * Number(body);
-  };
-  const identifier = () => {
-    let out = "";
-    const first = text6[at] ?? "";
-    if (!IDENTIFIER_START.test(first))
-      fail("A key is not a name or a string");
-    while (at < text6.length && IDENTIFIER_PART.test(text6[at] ?? ""))
-      out += text6[at++];
-    return out;
-  };
-  const value = () => {
-    skip();
-    const char = text6[at];
-    if (char === "{")
-      return object2();
-    if (char === "[")
-      return array2();
-    if (char === '"' || char === "'")
-      return string4();
-    const literal2 = LITERALS.find(([name]) => text6.startsWith(name, at));
-    if (literal2) {
-      at += literal2[0].length;
-      return literal2[1];
-    }
-    return number4();
-  };
-  const object2 = () => {
-    at++;
-    const out = {};
-    for (;; ) {
-      skip();
-      if (text6[at] === "}") {
-        at++;
-        return out;
-      }
-      const key = text6[at] === '"' || text6[at] === "'" ? string4() : identifier();
-      skip();
-      if (text6[at] !== ":")
-        fail("A colon is missing");
-      at++;
-      Object.defineProperty(out, key, {
-        value: value(),
-        enumerable: true,
-        writable: true,
-        configurable: true
-      });
-      skip();
-      if (text6[at] === ",")
-        at++;
-      else if (text6[at] !== "}")
-        fail("A comma is missing");
-    }
-  };
-  const array2 = () => {
-    at++;
-    const out = [];
-    for (;; ) {
-      skip();
-      if (text6[at] === "]") {
-        at++;
-        return out;
-      }
-      out.push(value());
-      skip();
-      if (text6[at] === ",")
-        at++;
-      else if (text6[at] !== "]")
-        fail("A comma is missing");
-    }
-  };
-  const result = value();
-  skip();
-  if (at < text6.length)
-    fail("Unexpected text after the value");
-  return result;
-}
-
-// src/core/renovate-config.ts
 var RENOVATE_CONFIG_FILES = [
   "renovate.json",
-  "renovate.jsonc",
-  "renovate.json5",
   ".github/renovate.json",
-  ".github/renovate.jsonc",
-  ".github/renovate.json5",
+  ".gitlab/renovate.json",
   ".renovaterc",
-  ".renovaterc.json",
-  ".renovaterc.jsonc",
-  ".renovaterc.json5",
-  "package.json"
+  ".renovaterc.json"
 ];
-var MAX_DEPTH = 10;
-function objectOf2(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
-}
-function parse7(text6) {
+function renovateStrategy(text6) {
+  let config2;
   try {
-    return parseJson5(text6);
+    config2 = JSON.parse(text6);
   } catch {
     return;
   }
-}
-var INTERNAL = /^(?:[a-zA-Z]+)?:[\w.-]+$/;
-function localPreset(name, repo) {
-  if (INTERNAL.test(name))
-    return "internal";
-  let rest;
-  if (name.startsWith("github>"))
-    rest = name.slice("github>".length);
-  else if (name.startsWith("local>"))
-    rest = name.slice("local>".length);
-  else if (!name.startsWith("@") && !name.includes(">") && !/^[./]/.test(name) && name.includes("/") && !name.includes("://"))
-    rest = name;
-  else
+  if (typeof config2 !== "object" || config2 === null || Array.isArray(config2))
     return;
-  if (/[#()]/.test(rest))
-    return;
-  let repoName;
-  let path = "";
-  let presetName;
-  const slashes = rest.indexOf("//");
-  if (slashes >= 0) {
-    repoName = rest.slice(0, slashes);
-    const inner = rest.slice(slashes + 2).split("/");
-    presetName = inner.pop() ?? "";
-    path = inner.length > 0 ? `${inner.join("/")}/` : "";
-  } else {
-    const colon = rest.indexOf(":");
-    repoName = colon < 0 ? rest : rest.slice(0, colon);
-    presetName = colon < 0 ? "default" : rest.slice(colon + 1);
-  }
-  if (repoName.toLowerCase() !== `${repo.owner}/${repo.repo}`.toLowerCase())
-    return;
-  const [fileName = "", ...keys4] = presetName.split("/");
-  if (fileName === "" || keys4.length > 2)
-    return;
-  const files = fileName === "default" ? [`${path}default.json`, `${path}renovate.json`] : [`${path}${/\.json[5c]?$/.test(fileName) ? fileName : `${fileName}.json`}`];
-  return { files, keys: keys4 };
-}
-function renovateMergeSetting(readFile3, repo) {
-  let file2;
-  let config2;
-  for (const name of RENOVATE_CONFIG_FILES) {
-    const text6 = readFile3(name);
-    if (text6 === undefined)
-      continue;
-    if (name === "package.json") {
-      const inner = objectOf2(parse7(text6))?.renovate;
-      if (inner === undefined)
-        continue;
-      config2 = inner;
-    } else {
-      config2 = parse7(text6);
-    }
-    file2 = name;
-    break;
-  }
-  const unread = [];
-  const seen = new Set;
-  const strategyOf = (value, depth) => {
-    const object2 = objectOf2(value);
-    if (!object2)
-      return;
-    let found;
-    const extendsList = Array.isArray(object2.extends) ? object2.extends : [];
-    for (const name of extendsList) {
-      if (typeof name !== "string")
-        continue;
-      const preset = localPreset(name, repo);
-      if (preset === "internal")
-        continue;
-      if (preset === undefined || depth >= MAX_DEPTH) {
-        unread.push(name);
-        continue;
-      }
-      const key = `${preset.files[0]}#${preset.keys.join("/")}`;
-      if (seen.has(key))
-        continue;
-      seen.add(key);
-      const text6 = preset.files.map(readFile3).find((one) => one !== undefined);
-      let inner = text6 === undefined ? undefined : parse7(text6);
-      for (const part of preset.keys)
-        inner = objectOf2(inner)?.[part];
-      if (objectOf2(inner) === undefined) {
-        unread.push(name);
-        continue;
-      }
-      found = strategyOf(inner, depth + 1) ?? found;
-    }
-    const own2 = object2.automergeStrategy;
-    return typeof own2 === "string" ? own2 : found;
-  };
-  return { strategy: strategyOf(config2, 0), file: file2, unread };
+  const strategy = config2.automergeStrategy;
+  return typeof strategy === "string" ? strategy : undefined;
 }
 
 // src/core/resolve.ts
@@ -58711,6 +59004,42 @@ function clearTick(row2, options = {}) {
   return cleared;
 }
 
+// src/render/merge-row.ts
+var TITLE_LENGTH = 80;
+function shorten(title) {
+  const chars = [...title];
+  return chars.length <= TITLE_LENGTH ? title : `${chars.slice(0, TITLE_LENGTH - 3).join("")}...`;
+}
+function renderMergeRow(row2, options = {}) {
+  const by2 = row2.author === undefined ? "" : ` by ${escapeText(row2.author)}`;
+  const parts = [
+    `**${escapeText(row2.stackId)}**`,
+    ...options.redact ? [] : [escapeText(shorten(row2.title))],
+    `#${row2.pr}${by2}`
+  ];
+  return `- [ ] ${parts.join(" · ")} ${mergeMarker(row2)}`;
+}
+function mergeBlock(row2, options = {}) {
+  const [block] = parseDashboard(renderMergeRow(row2, options)).merges;
+  if (!block)
+    throw new Error("A rendered merge row did not read back as one.");
+  return block;
+}
+function clearMergeTick(row2) {
+  if (!row2.ticked)
+    return row2;
+  const [cleared] = parseDashboard(row2.text.replace(/^- \[[xX]\] /, "- [ ] ")).merges;
+  if (!cleared)
+    throw new Error("A merge row did not read back as one.");
+  return cleared;
+}
+function tickedMergeBlock(row2) {
+  const [ticked] = parseDashboard(row2.text.replace(/^- \[ \] /, "- [x] ")).merges;
+  if (!ticked)
+    throw new Error("A merge row did not read back as one.");
+  return ticked;
+}
+
 // src/modes/resolve.ts
 async function resolve(context3) {
   let handedOn = false;
@@ -58813,7 +59142,7 @@ async function resolveTicks(context3, handOn) {
   const open2 = await openDeployments(context3, [...ticked, ...dependencies]);
   const dropped = [];
   const clear = new Map;
-  const clearMerges = new Map;
+  const clearMerges = new Set;
   const toJudge = [];
   let rescanHandled = false;
   for (const { tick, ticker } of named) {
@@ -58821,7 +59150,7 @@ async function resolveTicks(context3, handOn) {
     const fact = tick.kind === "rescan" ? undefined : open2.get(tick.stackId);
     if (tick.kind === "merge" && (fact || !config2.deploys)) {
       log.info(fact ? `${name} is ticked, and the stack already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. Nothing is merged and the box is cleared. Tick it again once that deploy is over.` : `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). Nothing is merged and the box is cleared.`);
-      clearMerges.set(tick.pr, fact ? "deploying" : "deploys-off");
+      clearMerges.add(tick.pr);
     } else if (tick.kind === "row" && fact) {
       dropped.push(tick.stackId);
       log.info(`${name} is ticked and already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. The tick is dropped.`);
@@ -58841,7 +59170,7 @@ async function resolveTicks(context3, handOn) {
       if (tick.kind === "row")
         clear.set(tick.stackId, { hash: tick.hash, note: true });
       else if (tick.kind === "merge")
-        clearMerges.set(tick.pr, "orphan");
+        clearMerges.add(tick.pr);
       else
         rescanHandled = true;
     }
@@ -58874,7 +59203,7 @@ async function resolveTicks(context3, handOn) {
         clear.set(target2.stackId, { hash: hash2, note: false });
       }
       if (target2.kind === "merge")
-        clearMerges.set(target2.pr, undefined);
+        clearMerges.add(target2.pr);
     }
     if (target2.kind === "rescan")
       rescanHandled = true;
@@ -58948,14 +59277,12 @@ async function resolveTicks(context3, handOn) {
   if (merging.failure !== undefined)
     failures.push(merging.failure);
   for (const pr of merging.cleared)
-    clearMerges.set(pr, undefined);
+    clearMerges.add(pr);
   const merged = merging.merged;
   if (rescan || merging.mergedPrs.size > 0) {
-    const prs = [...merging.mergedPrs].sort((a, b) => a - b);
-    const narrow = !rescan && declaresMergeScanInput(workflowText(context3));
     try {
-      await dispatchScan(context3, narrow ? mergeScanInputs(prs) : undefined);
-      log.info(rescan ? "Started a full scan for the rescan box." : narrow ? `Started the scan after the merge of ${prs.map((pr) => `#${pr}`).join(", ")}. It previews what changed since the last scan and hands the merged change to apply.` : `Started a full scan, which previews the merged change and hands it to apply. It is narrowed to the merged change when ${logGroupTitle(context3.workflow?.file ?? "the workflow")} declares the workflow_dispatch input ${MERGE_SCAN_INPUT} (record 0064).`);
+      await dispatchScan(context3);
+      log.info(rescan ? "Started a full scan for the rescan box." : "Started a full scan, which previews the merged change and hands it to apply.");
     } catch (error63) {
       failures.push(message2(error63));
     }
@@ -59005,20 +59332,17 @@ function targetName(target2) {
   }
   return "The rescan box";
 }
-function renovateStrategyOf(context3) {
-  const [owner = "", repo = ""] = new URL(context3.repoUrl).pathname.split("/").filter(Boolean);
-  const setting = renovateMergeSetting((path) => {
+function renovateStrategyOf(root) {
+  for (const file2 of RENOVATE_CONFIG_FILES) {
+    let text6;
     try {
-      return readFileSync7(join28(context3.root, path), "utf8");
+      text6 = readFileSync8(join29(root, file2), "utf8");
     } catch {
-      return;
+      continue;
     }
-  }, { owner, repo });
-  const one = setting.unread.length === 1;
-  const unread = setting.unread.length === 0 ? "" : ` The ${one ? "preset" : "presets"} ${setting.unread.map(logGroupTitle).join(" and ")} ${one ? "was" : "were"} not read: only a preset in a file of this repo is.`;
-  const none = setting.file === undefined ? "No Renovate config sets automergeStrategy" : `Renovate's config ${logGroupTitle(setting.file)} sets no automergeStrategy`;
-  context3.log.info(setting.strategy === undefined ? `${none}, so the method is the first the repo allows of squash, merge and rebase, as Renovate picks it.${unread}` : `Renovate's config is ${logGroupTitle(setting.file ?? "")}, and it sets automergeStrategy to ${logGroupTitle(setting.strategy)}.${unread}`);
-  return setting.strategy;
+    return renovateStrategy(text6);
+  }
+  return;
 }
 async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
   const { github, log } = context3;
@@ -59034,7 +59358,7 @@ async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
     return result;
   }
   try {
-    method = mergeMethod(await github.allowedMergeMethods(), renovateStrategyOf(context3));
+    method = mergeMethod(await github.allowedMergeMethods(), renovateStrategyOf(context3.root));
   } catch (error63) {
     result.failure = `The merge settings of the repo could not be read: ${message2(error63)}. The resolve job needs the permission \`contents: write\` to merge (record 0054). Nothing was merged, and the boxes stay ticked for the next run.`;
     return result;
@@ -59152,21 +59476,12 @@ async function discover2(context3, config2) {
     ignored: ignoredStacks(config2, found)
   };
 }
-function workflowText(context3) {
-  if (!context3.workflow)
-    return "";
-  try {
-    return readFileSync7(join28(context3.root, WORKFLOW_DIRECTORY, context3.workflow.file), "utf8");
-  } catch {
-    return "";
-  }
-}
-async function dispatchScan(context3, inputs) {
+async function dispatchScan(context3) {
   if (!context3.workflow) {
     throw new Error("A full scan could not be started: GITHUB_WORKFLOW_REF is not set, so this job does not know which workflow it belongs to.");
   }
   try {
-    await context3.github.dispatchWorkflow(context3.workflow.file, context3.workflow.ref, inputs);
+    await context3.github.dispatchWorkflow(context3.workflow.file, context3.workflow.ref);
   } catch (error63) {
     throw new Error(`A full scan could not be started: ${message2(error63)}. The resolve job needs the permission \`actions: write\`, and the workflow (${context3.workflow.file}) needs a \`workflow_dispatch\` trigger that runs the scan (record 0017).`);
   }
@@ -59269,7 +59584,7 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
   for (const merge3 of live.merges) {
     if (swap.merges?.merged.has(merge3.pr) || merges.some((one) => one.pr === merge3.pr))
       continue;
-    merges.push(swap.merges?.clear.has(merge3.pr) ? clearMergeTick(merge3, { note: swap.merges.clear.get(merge3.pr) }) : merge3);
+    merges.push(swap.merges?.clear.has(merge3.pr) ? clearMergeTick(merge3) : merge3);
   }
   const fitted = fitBody({
     root: {
@@ -59405,7 +59720,7 @@ async function startQueued(context3, handOn) {
 // src/modes/resolve-job.ts
 async function runResolve(directory) {
   const env = process.env;
-  const read3 = (path) => readFileSync8(path, "utf8");
+  const read3 = (path) => readFileSync9(path, "utf8");
   const token = readToken(getInput);
   const job = readJob(env);
   await resolve({
@@ -59424,7 +59739,7 @@ async function runResolve(directory) {
 }
 
 // src/modes/scan-job.ts
-import { readFileSync as readFileSync9 } from "node:fs";
+import { readFileSync as readFileSync10 } from "node:fs";
 
 // src/github/request-count.ts
 function countRequests(octokit) {
@@ -59476,11 +59791,11 @@ async function runPool(items, size, work) {
 // src/core/scan-plan.ts
 var COMPARE_FILE_CAP = 300;
 var COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-function narrowsOn(event, afterMerge = []) {
-  return event === "push" || event === "workflow_dispatch" && afterMerge.length > 0;
+function narrowsOn(event) {
+  return event === "push";
 }
-function comparisonBase(event, dashboard, markerVersion, afterMerge = []) {
-  if (!narrowsOn(event, afterMerge))
+function comparisonBase(event, dashboard, markerVersion) {
+  if (!narrowsOn(event))
     return { kind: "event", event };
   if (dashboard === undefined)
     return { kind: "no-dashboard" };
@@ -59541,7 +59856,7 @@ function noClaimant(files) {
 function fullScanReasonText(reason) {
   switch (reason.kind) {
     case "event":
-      return `the event is ${reason.event}, and only a push, or the scan resolve starts after a merge, gives a narrowed scan`;
+      return `the event is ${reason.event}, and only a push gives a narrowed scan`;
     case "no-dashboard":
       return "there is no dashboard yet";
     case "no-root-marker":
@@ -60341,17 +60656,12 @@ async function resolveWaits(context3, liveBody, deploys) {
 async function makePlan(context3, config2, stacks, knownDrift) {
   const { log } = context3;
   const full = (why2) => ({ kind: "full", why: why2 });
-  const afterMerge = context3.afterMerge ?? [];
-  const narrows = narrowsOn(context3.event, afterMerge);
-  if (narrows && context3.event !== "push") {
-    log.info(`This scan follows the merge of ${afterMerge.map((pr) => `#${pr}`).join(", ")} from the dashboard.`);
-  }
-  const dashboard = narrows ? await findDashboard(context3.github, config2.dashboard.label) : undefined;
+  const dashboard = narrowsOn(context3.event) ? await findDashboard(context3.github, config2.dashboard.label) : undefined;
   const live = dashboard && parseDashboard(dashboard.body);
   for (const row2 of live?.rows ?? [])
     if (row2.known && row2.drift)
       knownDrift.add(row2.stackId);
-  const base = comparisonBase(context3.event, live, MARKER_VERSION, afterMerge);
+  const base = comparisonBase(context3.event, live, MARKER_VERSION);
   if (base.kind !== "compare")
     return full(base);
   let comparison;
@@ -60403,7 +60713,7 @@ function logPlan(context3, plan, stackCount) {
       return;
     }
     const safe = why2.kind === "unclaimed" ? { kind: "unclaimed", files: why2.files.map(fileName) } : why2;
-    log.info(`This is a full scan. ${context3.event === "push" ? "A push" : "The scan after a merge"} gives a narrowed scan, and this one fell back to a full scan: ${fullScanReasonText(safe)}.`);
+    log.info(`This is a full scan. A push gives a narrowed scan, and this one fell back to a full scan: ${fullScanReasonText(safe)}.`);
     const toPlace = why2.kind === "unclaimed" ? unclaimedToPlace(why2.files) : [];
     if (toPlace.length > 0) {
       log.group("Changed files that no stack claims", [
@@ -60676,11 +60986,8 @@ async function listUpdates(context3, config2, stacks) {
       log.info(`#${pullRequest.number} is not listed to merge: ${NOT_QUALIFIED[qualified.why]}.`);
     }
   }
-  const { listed: updates, more } = waitingUpdates(open2.pullRequests, options);
+  const updates = waitingUpdates(open2.pullRequests, options);
   log.info(updates.length === 0 ? "No pull request waits to merge." : `${plural2(updates.length, "pull request")} ${updates.length === 1 ? "waits" : "wait"} to merge: ${updates.map(({ pullRequest }) => `#${pullRequest.number}`).join(", ")}.`);
-  if (more > 0) {
-    log.info(`${plural2(more, "more pull request")} ${more === 1 ? "qualifies" : "qualify"} and ${more === 1 ? "is" : "are"} not listed: the dashboard lists the oldest ${MAX_UPDATES}.`);
-  }
   return { kind: "listed", updates };
 }
 function mergeRows(listing, live, waits, redact) {
@@ -60703,7 +61010,7 @@ function mergeRows(listing, live, waits, redact) {
     const same = ticked.head === block.head && ticked.stackId === block.stackId;
     const carry = same && waits;
     mergeTicks.push({ pr: block.pr, tick: carry ? "carry" : "sweep" });
-    return carry ? tickedMergeBlock(block) : clearMergeTick(tickedMergeBlock(block), { note: "orphan" });
+    return carry ? tickedMergeBlock(block) : block;
   });
   return { merges, mergeTicks };
 }
@@ -60802,7 +61109,7 @@ async function runScan(directory) {
   const inputs = readScanInputs(getInput);
   const job = readJob(env);
   const octokit = getOctokit(inputs.token);
-  const payload = readEventPayload(env, (path) => readFileSync9(path, "utf8"));
+  const payload = readEventPayload(env, (path) => readFileSync10(path, "utf8"));
   await scan({
     root: job.root,
     env,
@@ -60820,9 +61127,8 @@ async function runScan(directory) {
     jobId: readJobId(getInput),
     sha: job.sha,
     event: job.event,
-    afterMerge: mergedBeforeDispatch(payload),
     workflow: job.workflow,
-    actionRef: readActionRef(env, directory, (path) => readFileSync9(path, "utf8")),
+    actionRef: readActionRef(env, directory, (path) => readFileSync10(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),
     publicRepo: publicRepo(payload),
     startedByPerson: startedByPerson(payload)
@@ -60830,7 +61136,7 @@ async function runScan(directory) {
 }
 
 // src/modes/settle-job.ts
-import { readFileSync as readFileSync10 } from "node:fs";
+import { readFileSync as readFileSync11 } from "node:fs";
 
 // src/core/settle.ts
 function openRecordsOfRun(records, runId) {
@@ -60949,14 +61255,14 @@ async function runSettle() {
     log: actionsLog(),
     repoUrl: job.repoUrl,
     runId: job.runId,
-    event: readEventPayload(env, (path) => readFileSync10(path, "utf8")),
+    event: readEventPayload(env, (path) => readFileSync11(path, "utf8")),
     workflow: readWorkflowRef(env),
     outputs: actionsOutputs(env.RUNNER_TEMP)
   });
 }
 
 // src/mode.ts
-var MODES2 = ["scan", "resolve", "apply", "settle", "check"];
+var MODES2 = ["scan", "resolve", "apply", "settle", "check", "init"];
 function parseMode(input2) {
   const mode = input2.trim();
   if (isMode(mode))
@@ -60974,7 +61280,8 @@ var handlers = {
   resolve: runResolve,
   apply: runApply,
   settle: runSettle,
-  check: runCheck
+  check: runCheck,
+  init: runInit
 };
 async function run(mode, directory, getInput2 = getInput) {
   refuseDeploymentId(mode, getInput2);
