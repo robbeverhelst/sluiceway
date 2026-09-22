@@ -16,7 +16,7 @@ const HEAD = "0123456789abcdef0123456789abcdef01234567";
 
 const UPDATE = {
   pr: 418,
-  stackId: "apps/odoo:prod",
+  stackIds: ["apps/odoo:prod"],
   head: HEAD,
   title: "Update Helm release odoo to v17.0.4",
   author: "renovate[bot]",
@@ -50,11 +50,22 @@ describe("a merge row", () => {
     const block = mergeBlock(UPDATE);
     expect(block).toEqual({
       pr: 418,
-      stackId: "apps/odoo:prod",
+      stackIds: ["apps/odoo:prod"],
       head: HEAD,
       ticked: false,
       text: renderMergeRow(UPDATE),
     });
+  });
+
+  test("of a pull request that two stacks claim names both, and its marker lists both (slice 5.4)", () => {
+    const row = renderMergeRow({ ...UPDATE, stackIds: ["apps/odoo:prod", "apps/odoo,old:prod"] });
+    expect(row).toBe(
+      `- [ ] **apps/odoo:prod**, **apps/odoo,old:prod** · Update Helm release odoo to v17.0.4 · #418 by renovate&#91;bot&#93; <!-- sluiceway:merge pr="418" stack="apps/odoo:prod,apps/odoo%252Cold:prod" head="${HEAD}" -->`,
+    );
+    expect(parseDashboard(row).merges[0]?.stackIds).toEqual([
+      "apps/odoo:prod",
+      "apps/odoo,old:prod",
+    ]);
   });
 
   test("a ticked one is read as ticked, and is not a row of a stack", () => {
@@ -237,7 +248,7 @@ test("a whole body with updates waiting to merge under the header", () => {
       mergeBlock({
         ...UPDATE,
         pr: 421,
-        stackId: "network:prod",
+        stackIds: ["network:prod"],
         title: "Update dependency @pulumi/aws to v7.9.0",
       }),
     ],

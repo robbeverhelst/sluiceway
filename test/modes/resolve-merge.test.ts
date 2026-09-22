@@ -35,10 +35,10 @@ const TABLE = {
 };
 const CONFIG = "mergeAndDeploy:\n  authors:\n    - renovate[bot]\n";
 
-function update(stackId = "a:prod", pr = 418) {
+function update(stackIds = ["a:prod"], pr = 418) {
   return {
     pr,
-    stackId,
+    stackIds,
     head: HEAD,
     title: "Update Helm release odoo to v17.0.4",
     author: "renovate[bot]",
@@ -168,7 +168,27 @@ describe("a tick on an update waiting to merge", () => {
 
     expect(h.github.merges).toMatchObject([{ method: "merge" }]);
     expect(h.log.lines).toContain(
-      "Renovate's config is .github/renovate.json5, and it sets automergeStrategy to merge-commit. The preset github>acme/shared was not read: only a preset in a file of this repo is.",
+      "Renovate's config is .github/renovate.json5, and it sets automergeStrategy to merge-commit. The preset github>acme/shared was not read: a preset is read from a GitHub repo the workflow token can read, never from npm or a web address, and never with parameters.",
+    );
+  });
+
+  test("reads a preset in another repo through the GitHub API (slice 5.4)", async () => {
+    const h = await ready();
+    writeFileSync(
+      join(h.context.root, "renovate.json"),
+      '{ "extends": ["config:recommended", "github>acme/renovate-config:merging#v2"] }',
+    );
+    h.github.seedRepositoryFile(
+      { owner: "acme", repo: "renovate-config", path: "merging.json", ref: "v2" },
+      '{ "automergeStrategy": "rebase" }',
+    );
+    tickMerge(h);
+
+    await wake(h);
+
+    expect(h.github.merges).toMatchObject([{ method: "rebase" }]);
+    expect(h.log.lines).toContain(
+      "Renovate's config is renovate.json, and it sets automergeStrategy to rebase.",
     );
   });
 
@@ -246,7 +266,7 @@ describe("a merge that does not happen", () => {
 
   test("a marker that names a stack the pull request does not belong to is not merged", async () => {
     const h = await ready();
-    tickMerge(h, ALICE, update("b:prod"));
+    tickMerge(h, ALICE, update(["b:prod"]));
 
     await wake(h);
 
@@ -366,5 +386,93 @@ describe("merge ticks next to row ticks", () => {
 
     expect((matrix(h) as { stack: string }[]).map(({ stack }) => stack)).toEqual(["b:prod"]);
     expect(h.github.merges).toHaveLength(1);
+  });
+});
+
+// Slice 5.4 (record 0071): a pull request that two stacks claim qualifies, and
+// one tick merges it and deploys each stack on its own record.
+describe("a tick on an update that two stacks claim", () => {
+  const BOTH = ["a:prod", "b:prod"];
+
+  async function readyBoth(config = CONFIG): Promise<ResolveHarness> {
+    const h = await scanned({ "a:prod": inSync("a:prod"), "b:prod": inSync("b:prod") }, { config });
+    h.github.seedOpenPullRequest({
+      number: 418,
+      head: HEAD,
+      files: ["a/values.yaml", "b/values.yaml"],
+    });
+    return h;
+  }
+
+  test("merges once and opens a record for each stack on the merge commit, and one scan", async () => {
+    const h = await readyBoth();
+    tickMerge(h, ALICE, update(BOTH));
+
+    await wake(h);
+
+    expect(h.github.merges).toHaveLength(1);
+    const [merged] = h.github.merges;
+    expect([h.github.deployment(1), h.github.deployment(2)]).toMatchObject([
+      { task: "sluiceway:a:prod", sha: merged?.sha, payload: { ticker: "alice", merge: 418 } },
+      { task: "sluiceway:b:prod", sha: merged?.sha, payload: { ticker: "alice", merge: 418 } },
+    ]);
+    expect(h.github.dispatches).toHaveLength(1);
+    expect(matrix(h)).toEqual([]);
+    expect(merges(h)).toEqual([]);
+    expect(rowsOf(h)["a:prod"]).toContain('state="deploying"');
+    expect(rowsOf(h)["b:prod"]).toContain('state="deploying"');
+  });
+
+  test("is judged by the tick rule of every stack, and a refusal names the stack whose rule refused", async () => {
+    const h = await readyBoth(`${CONFIG}stacks:\n  - path: b\n    tickers: admin\n`);
+    tickMerge(h, ALICE, update(BOTH));
+
+    await wake(h);
+
+    expect(h.github.merges).toEqual([]);
+    expect(merges(h).map(({ ticked }) => ticked)).toEqual([false]);
+    expect(h.github.comments(h.number)).toEqual([
+      "@alice ticked the merge of #418 for **b:prod**. The tick was refused: the tick rule of this stack is `admin`, which takes admin access to this repository. Nothing was started and the box is cleared.",
+    ]);
+  });
+
+  test("merges nothing while one of the stacks is deploying", async () => {
+    const h = await readyBoth();
+    h.github.seedDeployment({
+      task: "sluiceway:b:prod",
+      payload: { v: 1, hash: "2b44350653e84a11", ticker: "bob", run: "9999" },
+      status: { state: "in_progress" },
+    });
+    h.github.seedRun("9999", { completed: false });
+    tickMerge(h, ALICE, update(BOTH));
+
+    await wake(h);
+
+    expect(h.github.merges).toEqual([]);
+    expect(merges(h)[0]?.text.split("\n")[1]).toBe(`  ${MERGE_DEPLOYING_NOTE}`);
+  });
+
+  test("merges nothing when the row names only one of the stacks the files belong to", async () => {
+    const h = await readyBoth();
+    tickMerge(h, ALICE, update(["a:prod"]));
+
+    await wake(h);
+
+    expect(h.github.requests).not.toContain("mergePullRequest");
+    expect(h.github.comments(h.number)[0]).toContain(
+      "The pull request no longer qualifies: its files belong to another stack.",
+    );
+  });
+
+  test("merges nothing when one of its stacks depends on the other", async () => {
+    const h = await readyBoth(`${CONFIG}stacks:\n  - path: b\n    dependsOn:\n      - a:prod\n`);
+    tickMerge(h, ALICE, update(BOTH));
+
+    await wake(h);
+
+    expect(h.github.merges).toEqual([]);
+    expect(h.github.comments(h.number)).toEqual([
+      "@alice ticked the merge of #418 for **a:prod** and **b:prod**. The pull request no longer qualifies: its stacks depend on each other, and one tick would deploy them side by side. Nothing was started and the box is cleared.",
+    ]);
   });
 });

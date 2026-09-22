@@ -79,10 +79,11 @@ describe("the updates waiting to merge", () => {
 
     await scan(context);
 
-    expect(parseDashboard(dashboardBody(github)).merges).toEqual([]);
-    expect(dashboardBody(github)).not.toContain("Updates waiting to merge");
+    // #2 qualifies since slice 5.4, with both stacks.
+    expect(
+      parseDashboard(dashboardBody(github)).merges.map(({ pr, stackIds }) => [pr, stackIds]),
+    ).toEqual([[2, ["a:prod", "b:prod"]]]);
     expect(log.lines).toContain("#1 is not listed to merge: its checks are not all green.");
-    expect(log.lines).toContain("#2 is not listed to merge: more than one stack claims its files.");
     expect(log.lines).toContain("#4 is not listed to merge: no stack claims some of its files.");
     // A pull request by someone who is not on the list is not worth a line.
     expect(log.lines.filter((line) => line.startsWith("#3 "))).toEqual([]);
@@ -107,19 +108,37 @@ describe("the updates waiting to merge", () => {
     expect(folded.trim().endsWith("</details>")).toBe(true);
   });
 
-  test("lists the oldest thirty, and the job log counts the rest", async () => {
-    const { context, github, log } = harness(tableAdapter(TABLE), { config: CONFIG });
-    for (let number = 401; number <= 433; number++) {
+  test("lists every update past thirty while the body has room (slice 5.4)", async () => {
+    const { context, github } = harness(tableAdapter(TABLE), { config: CONFIG });
+    for (let number = 401; number <= 445; number++) {
       github.seedOpenPullRequest({ number, files: ["a/values.yaml"] });
     }
 
     await scan(context);
 
     const merges = parseDashboard(dashboardBody(github)).merges;
-    expect(merges).toHaveLength(30);
-    expect(merges.at(-1)?.pr).toBe(430);
+    expect(merges).toHaveLength(45);
+    expect(dashboardBody(github)).toContain(
+      "<details><summary>35 more updates waiting to merge</summary>",
+    );
+  });
+
+  test("leaves the newest out when the body has no room, and the job log counts them (slice 5.4)", async () => {
+    const { context, github, log } = harness(tableAdapter(TABLE), { config: CONFIG });
+    for (let number = 401; number <= 460; number++) {
+      github.seedOpenPullRequest({ number, files: ["a/values.yaml"] });
+    }
+    context.limits = { body: { target: 9_000 } };
+
+    await scan(context);
+
+    const merges = parseDashboard(dashboardBody(github)).merges;
+    expect(merges.length).toBeGreaterThanOrEqual(30);
+    expect(merges.length).toBeLessThan(60);
+    expect(merges.at(-1)?.pr).toBe(400 + merges.length);
+    const left = 60 - merges.length;
     expect(log.lines).toContain(
-      "3 more pull requests qualify and are not listed: the dashboard lists the oldest 30.",
+      `${left} more pull requests qualify and are not listed: the dashboard has no room for them. They are listed as the older ones merge.`,
     );
   });
 
@@ -484,7 +503,7 @@ test("a merge row the bot ticked is carried like any other while a run is on its
   await scan(context);
   const line = renderMergeRow({
     pr: 418,
-    stackId: "a:prod",
+    stackIds: ["a:prod"],
     head: HEAD,
     title: "Update something (#418)",
     author: "renovate[bot]",

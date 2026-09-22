@@ -2,8 +2,9 @@
 // before pending rows are shortened. An issue body that is too large is dropped
 // without an error, so a body over the hard limit is never handed to a writer.
 
+import { MAX_UPDATES } from "../core/merge-and-deploy.ts";
 import { type BodyInput, renderBody, rowBlock } from "./body.ts";
-import type { ParsedRow } from "./marker.ts";
+import type { ParsedMerge, ParsedRow } from "./marker.ts";
 import { byCodeUnit, type Row, type RowLevel } from "./row.ts";
 
 export interface BudgetInput extends Omit<BodyInput, "rows"> {
@@ -26,6 +27,9 @@ export interface FittedBody {
   // False when the body is over the hard limit with every row of the writer
   // cut as far as it goes. Such a body is never written.
   fits: boolean;
+  // How many updates waiting to merge past the oldest thirty the body had no
+  // room for (record 0071).
+  mergesLeftOut: number;
 }
 
 export interface BudgetOptions {
@@ -71,6 +75,12 @@ function sizeOf(entry: Entry, level = entry.level): number {
 export function fitBody(input: BudgetInput, options: BudgetOptions = {}): FittedBody {
   const limit = options.limit ?? BODY_LIMIT;
   const target = Math.min(options.target ?? BODY_TARGET, limit);
+  // The updates waiting to merge, oldest first and one line per pull request,
+  // as the body lists them. The oldest thirty always stay. The newer ones are
+  // the first thing to go when the body is over its target: they only offer
+  // a merge, and are listed as the older ones merge (record 0071).
+  const allMerges = oneLinePerPullRequest(input.merges ?? []);
+  let merges = allMerges;
   // The spinner of a deploying or queued row is an image, like the header, so
   // it goes with it (record 0063). It is the first thing to go when the body
   // does not fit: every one of them, before any pending row is shortened.
@@ -91,8 +101,21 @@ export function fitBody(input: BudgetInput, options: BudgetOptions = {}): Fitted
     renderBody({
       ...input,
       rows: [...input.carried, ...entries.flatMap(blockOf)],
+      merges,
     });
   const fits = () => render().length <= target;
+  if (allMerges.length > MAX_UPDATES && !fits()) {
+    // The most of the newer ones that fit, found by halving.
+    let low = 0;
+    let high = allMerges.length - MAX_UPDATES - 1;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      merges = allMerges.slice(0, MAX_UPDATES + middle);
+      if (fits()) low = middle;
+      else high = middle - 1;
+    }
+    merges = allMerges.slice(0, MAX_UPDATES + low);
+  }
   if (spinning && !fits()) spinning = false;
 
   for (const level of LEVELS.slice(1)) {
@@ -124,5 +147,18 @@ export function fitBody(input: BudgetInput, options: BudgetOptions = {}): Fitted
 
   const body = render();
   const shortened = entries.filter((entry) => entry.level > 0).length;
-  return { body, size: body.length, shortened, fits: body.length <= limit };
+  return {
+    body,
+    size: body.length,
+    shortened,
+    fits: body.length <= limit,
+    mergesLeftOut: allMerges.length - merges.length,
+  };
+}
+
+// Of two lines for one pull request the first stays, as the body keeps it.
+function oneLinePerPullRequest(merges: readonly ParsedMerge[]): ParsedMerge[] {
+  return merges
+    .filter((merge, index, all) => all.findIndex((one) => one.pr === merge.pr) === index)
+    .sort((a, b) => a.pr - b.pr);
 }

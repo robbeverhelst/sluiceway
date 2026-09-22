@@ -30,8 +30,9 @@ export interface RefusedTick {
 
 function what(target: TickTarget): string {
   if (target.kind === "rescan") return "the rescan box";
-  const stack = `**${escapeText(target.stackId)}**`;
-  return target.kind === "merge" ? `the merge of #${target.pr} for ${stack}` : stack;
+  if (target.kind === "stack") return `**${escapeText(target.stackId)}**`;
+  const stacks = target.stackIds.map((id) => `**${escapeText(id)}**`).join(" and ");
+  return `the merge of #${target.pr} for ${stacks}`;
 }
 
 // GitHub's words end in a full stop or not. The sentence gets one.

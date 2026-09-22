@@ -8,6 +8,7 @@ import {
   fitBody,
 } from "../../src/render/budget.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
+import { mergeBlock } from "../../src/render/merge-row.ts";
 import type { DriftRow, PendingRow, Row, RowLevel } from "../../src/render/row.ts";
 
 const REPO_URL = "https://github.com/example-org/infra";
@@ -427,5 +428,52 @@ describe("a drifted row", () => {
     const [row] = parseDashboard(fitted.body).rows;
     expect(row).toMatchObject({ state: "drift", shortened: 2, drift: true });
     expect(fitted.body).toContain("400 changes outside the code not listed here");
+  });
+});
+
+// Slice 5.4 (record 0071): every update that qualifies is listed, past the
+// oldest thirty as far as the body has room at its target.
+describe("updates waiting to merge past thirty", () => {
+  const merges = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      mergeBlock({
+        pr: 1000 + index,
+        stackIds: ["apps/odoo:prod"],
+        head: "0123456789abcdef0123456789abcdef01234567",
+        title: `Update dependency number ${index} to v1.0.0`,
+        author: "renovate[bot]",
+      }),
+    );
+  const listed = (body: string) => parseDashboard(body).merges.map(({ pr }) => pr);
+
+  test("are all listed when the body has room", () => {
+    const fitted = fitBody(input([pending("a:prod")], { merges: merges(45) }));
+    expect(listed(fitted.body)).toHaveLength(45);
+    expect(fitted.mergesLeftOut).toBe(0);
+  });
+
+  test("go newest first, before any row is shortened, and the oldest thirty always stay", () => {
+    const rows = [pending("a:prod"), pending("b:prod")];
+    const full = fitBody(input(rows, { merges: merges(30) }));
+    // Room for the rows in full, the oldest thirty and about five more.
+    const target = full.size + 5 * 130;
+    const fitted = fitBody(input(rows, { merges: merges(60) }), { target });
+    const kept = listed(fitted.body);
+    expect(kept.slice(0, 30)).toEqual(Array.from({ length: 30 }, (_, index) => 1000 + index));
+    expect(kept.length).toBeGreaterThan(30);
+    expect(kept.length).toBeLessThan(40);
+    expect(kept).toEqual(Array.from({ length: kept.length }, (_, index) => 1000 + index));
+    expect(fitted.mergesLeftOut).toBe(60 - kept.length);
+    expect(fitted.shortened).toBe(0);
+    expect(fitted.size).toBeLessThanOrEqual(target);
+  });
+
+  test("are all left out before rows are shortened, and the oldest thirty are never", () => {
+    const rows = [pending("a:prod"), pending("b:prod")];
+    const full = fitBody(input(rows, { merges: merges(30) }));
+    const fitted = fitBody(input(rows, { merges: merges(50) }), { target: full.size - 500 });
+    expect(listed(fitted.body)).toHaveLength(30);
+    expect(fitted.mergesLeftOut).toBe(20);
+    expect(fitted.shortened).toBeGreaterThan(0);
   });
 });

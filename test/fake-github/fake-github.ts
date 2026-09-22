@@ -1,4 +1,5 @@
 import { HISTORY_CAP } from "../../src/core/edit-history.ts";
+import type { RemoteFile } from "../../src/core/renovate-config.ts";
 import type {
   AllowedMethods,
   CheckRun,
@@ -110,6 +111,7 @@ export class FakeGitHub implements GitHubPort {
   readonly #commits = new FakeCommits();
   readonly #pulls = new FakePulls();
   #contentsWrite = true;
+  readonly #repositoryFiles = new Map<string, string>();
   #nextNumber = 1;
   // The fake's clock. It moves one second each time it is read, so two things
   // never happen at the same time and every run gives the same times.
@@ -173,6 +175,16 @@ export class FakeGitHub implements GitHubPort {
 
   setAllowedMergeMethods(allowed: AllowedMethods): void {
     this.#pulls.allowed = allowed;
+  }
+
+  // A file of a repo at a ref, or on its default branch without one (record
+  // 0071). Any other file is not there, which is also what GitHub answers
+  // for a private repo the workflow token may not read.
+  seedRepositoryFile(
+    file: { owner: string; repo: string; path: string; ref?: string },
+    text: string,
+  ): void {
+    this.#repositoryFiles.set(repositoryFileKey({ ...file, ref: file.ref }), text);
   }
 
   // The workflow token without `contents: write`.
@@ -576,6 +588,11 @@ export class FakeGitHub implements GitHubPort {
     return this.#contentsWrite ? { ...this.#pulls.allowed } : {};
   }
 
+  async readRepositoryFile(file: RemoteFile): Promise<string | undefined> {
+    this.#count("readRepositoryFile");
+    return this.#repositoryFiles.get(repositoryFileKey(file));
+  }
+
   async mergePullRequest(
     number: number,
     { head, method }: { head: string; method: MergeMethod },
@@ -708,4 +725,9 @@ function checkedOutput(output: CheckRunOutput): CheckRunOutput {
 
 function copy(issue: Issue): Issue {
   return { ...issue, labels: [...issue.labels], author: { ...issue.author } };
+}
+
+// GitHub's owner and repo names are not case sensitive. Paths and refs are.
+function repositoryFileKey(file: RemoteFile): string {
+  return `${file.owner}/${file.repo}`.toLowerCase().concat(`@${file.ref ?? ""}:${file.path}`);
 }

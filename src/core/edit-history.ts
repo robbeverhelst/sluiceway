@@ -41,7 +41,7 @@ export interface HistoryPage {
 // changes nothing about who ticked, only what `apply` checks again.
 export type Tick =
   | { kind: "row"; stackId: string; hash: string; drift?: true }
-  | { kind: "merge"; pr: number; stackId: string; head: string }
+  | { kind: "merge"; pr: number; stackIds: string[]; head: string }
   | { kind: "rescan" };
 
 // Why the history names nobody for a tick.
@@ -81,7 +81,11 @@ function holds(dashboard: ParsedDashboard, tick: Tick): boolean {
   if (tick.kind === "rescan") return dashboard.rescanTicked;
   if (tick.kind === "merge") {
     const merge = dashboard.merges.find((candidate) => candidate.pr === tick.pr);
-    return merge?.ticked === true && merge.head === tick.head && merge.stackId === tick.stackId;
+    return (
+      merge?.ticked === true &&
+      merge.head === tick.head &&
+      JSON.stringify(merge.stackIds) === JSON.stringify(tick.stackIds)
+    );
   }
   const row = dashboard.rows.find((candidate) => candidate.stackId === tick.stackId);
   return row?.known === true && row.ticked && row.hash === tick.hash;
@@ -110,10 +114,10 @@ export function ticksIn(body: string): Tick[] {
     }
   }
   const merged = new Set<number>();
-  for (const { pr, stackId, head, ticked } of dashboard.merges) {
+  for (const { pr, stackIds, head, ticked } of dashboard.merges) {
     if (merged.has(pr)) continue;
     merged.add(pr);
-    if (ticked) ticks.push({ kind: "merge", pr, stackId, head });
+    if (ticked) ticks.push({ kind: "merge", pr, stackIds, head });
   }
   if (dashboard.rescanTicked) ticks.push({ kind: "rescan" });
   return ticks;

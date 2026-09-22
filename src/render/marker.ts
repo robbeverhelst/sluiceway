@@ -102,8 +102,10 @@ function decodeIds(value: string): string[] {
 // an older version does not see it at all.
 export interface MergeFacts {
   pr: number;
-  // The stack its files are claimed by. A tick is judged by that stack's rule.
-  stackId: string;
+  // The stacks its files are claimed by, in code unit order: one, or since
+  // record 0071 several, with one deploy each. A tick is judged by the rule
+  // of every one of them.
+  stackIds: string[];
   // The commit at the head of the pull request. A tick approves merging
   // exactly that commit.
   head: string;
@@ -149,7 +151,9 @@ export function rowMarker(facts: RowFacts): string {
 export function mergeMarker(facts: MergeFacts): string {
   return marker("merge", [
     ["pr", String(facts.pr)],
-    ["stack", facts.stackId],
+    // One id reads as itself. Several are a list, which an older parser reads
+    // as one id that no stack has, so it merges nothing (record 0071).
+    ["stack", encodeIds(facts.stackIds)],
     ["head", facts.head],
   ]);
 }
@@ -314,18 +318,18 @@ function readMerge(line: string): ParsedMerge | undefined {
   if (!match) return undefined;
   const pairs = readPairs(match[2] ?? "");
   const pr = pairs.get("pr") ?? "";
-  const stackId = pairs.get("stack");
+  const stack = pairs.get("stack");
   const head = pairs.get("head") ?? "";
   if (
     !/^[1-9]\d*$/.test(pr) ||
-    stackId === undefined ||
+    stack === undefined ||
     !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(head)
   ) {
     return undefined;
   }
   return {
     pr: Number(pr),
-    stackId,
+    stackIds: decodeIds(stack),
     head,
     ticked: match[1] === "x" || match[1] === "X",
     text: line,

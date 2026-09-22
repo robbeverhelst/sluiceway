@@ -11,6 +11,7 @@ import type { CommitWalk } from "../core/attribution.ts";
 import type { HistoryEntry, HistoryPage } from "../core/edit-history.ts";
 import type { AllowedMethods, MergeMethod, OpenPullRequest } from "../core/merge-and-deploy.ts";
 import type { IssuesRun } from "../core/orphan-tick.ts";
+import type { RemoteFile } from "../core/renovate-config.ts";
 import type { Comparison } from "../core/scan-plan.ts";
 import type { Permission } from "../core/tick-rule.ts";
 import type {
@@ -242,4 +243,12 @@ export interface GitHubPort {
     number: number,
     merge: { head: string; method: MergeMethod },
   ): Promise<MergeAnswer>;
+
+  // One file of a GitHub repo as text, at `ref` or on its default branch, or
+  // nothing when it is not there (record 0071). `contents: read` covers this
+  // repo. Another repo answers when it is public. Fails for any other answer,
+  // such as a private repo the workflow token cannot read. `resolve` reads a
+  // Renovate preset outside the checkout with it, and the scan the files of
+  // the branch of an update it previews.
+  readRepositoryFile(file: RemoteFile): Promise<string | undefined>;
 }

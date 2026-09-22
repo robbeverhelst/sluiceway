@@ -8,7 +8,7 @@ type Octokit = ReturnType<typeof getOctokit>;
 // octokit-port.ts, each is one call and a translation.
 export type PullCalls = Pick<
   GitHubPort,
-  "listOpenPullRequests" | "allowedMergeMethods" | "mergePullRequest"
+  "listOpenPullRequests" | "allowedMergeMethods" | "mergePullRequest" | "readRepositoryFile"
 >;
 
 // A page of the open pull requests, oldest first, with what the qualification
@@ -194,6 +194,24 @@ export function pullCalls(octokit: Octokit, repo: { owner: string; repo: string 
         const status = statusOf(error);
         if (status === undefined || !REFUSALS.has(status)) throw error;
         return { merged: false, status, message: messageOf(error) };
+      }
+    },
+
+    async readRepositoryFile({ owner, repo: name, path, ref }) {
+      // The raw file, so one past the 1 MB that the JSON answer holds reads
+      // too.
+      try {
+        const { data } = await octokit.rest.repos.getContent({
+          owner,
+          repo: name,
+          path,
+          ...(ref === undefined ? {} : { ref }),
+          mediaType: { format: "raw" },
+        });
+        return typeof data === "string" ? data : undefined;
+      } catch (error) {
+        if (statusOf(error) === 404) return undefined;
+        throw error;
       }
     },
   };

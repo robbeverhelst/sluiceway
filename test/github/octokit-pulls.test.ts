@@ -208,3 +208,41 @@ describe("merging a pull request", () => {
     );
   });
 });
+
+// Slice 5.4 (record 0071): a file of a GitHub repo, for a Renovate preset
+// outside the checkout and for the branch of an update waiting to merge.
+describe("reading a file of a repo", () => {
+  test("asks for the raw file at the ref, in the repo named", async () => {
+    const { port, sent } = portThatAnswers([{ json: '{ "automergeStrategy": "rebase" }' }]);
+    const text = await port.readRepositoryFile({
+      owner: "acme",
+      repo: "renovate-config",
+      path: "presets/merge.json",
+      ref: "v1",
+    });
+    expect(text).toBe('{ "automergeStrategy": "rebase" }');
+    expect(sent.map(({ method, path }) => [method, path])).toEqual([
+      // Octokit encodes the slash of the path, which GitHub reads as one.
+      ["GET", "/repos/acme/renovate-config/contents/presets%2Fmerge.json"],
+    ]);
+  });
+
+  test("gives nothing for a file that is not there", async () => {
+    const { port } = portThatAnswers([{ status: 404, json: { message: "Not Found" } }]);
+    expect(
+      await port.readRepositoryFile({
+        owner: "acme",
+        repo: "infra",
+        path: "gone.json",
+        ref: undefined,
+      }),
+    ).toBeUndefined();
+  });
+
+  test("fails for any other answer", async () => {
+    const { port } = portThatAnswers([{ status: 403, json: { message: "Forbidden" } }]);
+    await expect(
+      port.readRepositoryFile({ owner: "acme", repo: "infra", path: "a.json", ref: undefined }),
+    ).rejects.toThrow();
+  });
+});

@@ -411,7 +411,7 @@ describe("a tick on an update waiting to merge", () => {
   function merge(box: Box, head = HEAD, stack = "stack-a"): string {
     return `- [${box}] **${stack}** · Update x · #418 <!-- sluiceway:merge pr="418" stack="${stack}" head="${head}" -->`;
   }
-  const M = { kind: "merge", pr: 418, stackId: "stack-a", head: HEAD } as const satisfies Tick;
+  const M = { kind: "merge", pr: 418, stackIds: ["stack-a"], head: HEAD } as const satisfies Tick;
 
   test("is read after the rows and before the rescan box", () => {
     const text = `${body(row("stack-b", "x", B.hash), merge("x"))}\n- [x] Rescan all stacks <!-- sluiceway:rescan -->\n`;

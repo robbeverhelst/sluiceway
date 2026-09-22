@@ -200,9 +200,13 @@ async function resolveTicks(
     // the row.
     if (!stacks) ({ stacks, ignored } = await discover(context, config));
     const known = ticks.filter((tick) => {
-      if (tick.kind === "rescan" || stacks?.has(tick.stackId)) return true;
+      if (tick.kind === "rescan") return true;
+      const unknown = (tick.kind === "merge" ? tick.stackIds : [tick.stackId]).filter(
+        (id) => !stacks?.has(id),
+      );
+      if (unknown.length === 0) return true;
       log.info(
-        `${logGroupTitle(tick.stackId)} is ticked, and discovery knows no such stack. Left alone.`,
+        `${tick.kind === "merge" ? `${tickName(tick)} is ticked, and discovery knows no stack ${unknown.map(logGroupTitle).join(" or ")}` : `${logGroupTitle(tick.stackId)} is ticked, and discovery knows no such stack`}. Left alone.`,
       );
       return false;
     });
@@ -241,7 +245,7 @@ async function resolveTicks(
   for (const { tick } of named) if (tick.kind === "merge") mergeTicks.set(tick.pr, tick);
   const tickedIds = new Set([
     ...hashes.keys(),
-    ...[...mergeTicks.values()].map((one) => one.stackId),
+    ...[...mergeTicks.values()].flatMap((one) => one.stackIds),
   ]);
   const ticked = [...tickedIds].flatMap((id) => stacks?.get(id) ?? []);
   // The stacks they depend on too: a tick waits behind one that is deploying
@@ -262,7 +266,12 @@ async function resolveTicks(
   let rescanHandled = false;
   for (const { tick, ticker } of named) {
     const name = tickName(tick);
-    const fact = tick.kind === "rescan" ? undefined : open.get(tick.stackId);
+    const fact =
+      tick.kind === "rescan"
+        ? undefined
+        : tick.kind === "merge"
+          ? tick.stackIds.map((id) => open.get(id)).find((one) => one !== undefined)
+          : open.get(tick.stackId);
     if (tick.kind === "merge" && (fact || !config.deploys)) {
       // Nothing is merged for a stack that is taken, or while deploys are off
       // (record 0054). Nobody gets a comment, so the row gets a note (record
@@ -285,14 +294,23 @@ async function resolveTicks(
         `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). The box is cleared.`,
       );
       clear.set(tick.stackId, { hash: tick.hash, note: "deploys-off" });
+    } else if (ticker.named && tick.kind === "merge") {
+      // Judged by the rule of every stack it deploys (record 0071): one
+      // target per stack, and it merges only when each one allows it.
+      for (const id of tick.stackIds) {
+        const stack = stacks?.get(id);
+        if (!stack) continue;
+        toJudge.push({
+          target: { kind: "merge", pr: tick.pr, stackIds: [id], rule: stack.tickers },
+          editor: ticker.editor,
+        });
+      }
     } else if (ticker.named) {
-      const stack = tick.kind === "rescan" ? undefined : stacks?.get(tick.stackId);
+      const stack = tick.kind === "row" ? stacks?.get(tick.stackId) : undefined;
       toJudge.push({
         target: !stack
           ? { kind: "rescan" }
-          : tick.kind === "merge"
-            ? { kind: "merge", pr: tick.pr, stackId: stackId(stack.stack), rule: stack.tickers }
-            : { kind: "stack", stackId: stackId(stack.stack), rule: stack.tickers },
+          : { kind: "stack", stackId: stackId(stack.stack), rule: stack.tickers },
         editor: ticker.editor,
       });
     } else if (ticker.reason === "not-in-newest-entry") {
@@ -311,7 +329,8 @@ async function resolveTicks(
 
   const outcomes = await judgeTicks(github, toJudge);
   const allowed: { stackId: string; ticker: string }[] = [];
-  const allowedMerges: { tick: MergeTick; ticker: string }[] = [];
+  // Merge ticks by pull request whose every stack allowed them so far.
+  const mergesAllowed = new Map<number, string>();
   let rescan = false;
   for (const outcome of outcomes) {
     const { target, editor } = outcome.tick;
@@ -327,10 +346,8 @@ async function resolveTicks(
     if (outcome.outcome === "allowed") {
       log.info(`${name} was ticked by ${editor.login}.`);
       if (target.kind === "stack") allowed.push({ stackId: target.stackId, ticker: editor.login });
-      else if (target.kind === "merge") {
-        const tick = mergeTicks.get(target.pr);
-        if (tick) allowedMerges.push({ tick, ticker: editor.login });
-      } else rescan = true;
+      else if (target.kind === "merge") mergesAllowed.set(target.pr, editor.login);
+      else rescan = true;
     } else {
       log.info(
         outcome.outcome === "refused"
@@ -344,6 +361,12 @@ async function resolveTicks(
       if (target.kind === "merge") clearMerges.set(target.pr, undefined);
     }
     if (target.kind === "rescan") rescanHandled = true;
+  }
+  // A merge tick goes ahead when no stack of it refused (record 0071).
+  const allowedMerges: { tick: MergeTick; ticker: string }[] = [];
+  for (const [pr, ticker] of mergesAllowed) {
+    const tick = mergeTicks.get(pr);
+    if (tick && !clearMerges.has(pr)) allowedMerges.push({ tick, ticker });
   }
 
   // A workflow run holds at most 256 matrix jobs (record 0035).
@@ -561,14 +584,16 @@ type MergeTick = Extract<BodyTick, { kind: "merge" }>;
 
 function tickName(tick: BodyTick): string {
   if (tick.kind === "row") return logGroupTitle(tick.stackId);
-  if (tick.kind === "merge") return `The merge of #${tick.pr} for ${logGroupTitle(tick.stackId)}`;
+  if (tick.kind === "merge") {
+    return `The merge of #${tick.pr} for ${tick.stackIds.map(logGroupTitle).join(" and ")}`;
+  }
   return "The rescan box";
 }
 
 function targetName(target: Tick["target"]): string {
   if (target.kind === "stack") return logGroupTitle(target.stackId);
   if (target.kind === "merge") {
-    return `The merge of #${target.pr} for ${logGroupTitle(target.stackId)}`;
+    return `The merge of #${target.pr} for ${target.stackIds.map(logGroupTitle).join(" and ")}`;
   }
   return "The rescan box";
 }
@@ -592,9 +617,9 @@ interface Merging {
 // The method Renovate would use, read from its config in the checkout as
 // Renovate reads it on GitHub (record 0064). The job log says where it came
 // from, and names the presets that were not read.
-function renovateStrategyOf(context: ResolveContext): string | undefined {
+async function renovateStrategyOf(context: ResolveContext): Promise<string | undefined> {
   const [owner = "", repo = ""] = new URL(context.repoUrl).pathname.split("/").filter(Boolean);
-  const setting = renovateMergeSetting(
+  const setting = await renovateMergeSetting(
     (path) => {
       try {
         return readFileSync(join(context.root, path), "utf8");
@@ -603,12 +628,15 @@ function renovateStrategyOf(context: ResolveContext): string | undefined {
       }
     },
     { owner, repo },
+    // A preset outside the checkout is read through the GitHub API (record
+    // 0071).
+    (file) => context.github.readRepositoryFile(file),
   );
   const one = setting.unread.length === 1;
   const unread =
     setting.unread.length === 0
       ? ""
-      : ` The ${one ? "preset" : "presets"} ${setting.unread.map(logGroupTitle).join(" and ")} ${one ? "was" : "were"} not read: only a preset in a file of this repo is.`;
+      : ` The ${one ? "preset" : "presets"} ${setting.unread.map(logGroupTitle).join(" and ")} ${one ? "was" : "were"} not read: a preset is read from a GitHub repo the workflow token can read, never from npm or a web address, and never with parameters.`;
   const none =
     setting.file === undefined
       ? "No Renovate config sets automergeStrategy"
@@ -646,7 +674,7 @@ async function mergeAll(
     return result;
   }
   try {
-    method = mergeMethod(await github.allowedMergeMethods(), renovateStrategyOf(context));
+    method = mergeMethod(await github.allowedMergeMethods(), await renovateStrategyOf(context));
   } catch (error) {
     result.failure = `The merge settings of the repo could not be read: ${message(error)}. The resolve job needs the permission \`contents: write\` to merge (record 0054). Nothing was merged, and the boxes stay ticked for the next run.`;
     return result;
@@ -657,20 +685,23 @@ async function mergeAll(
     path: stack.path,
     inputs,
   }));
+  const dependsOn = new Map(
+    [...stacks.values()].map((one) => [stackId(one.stack), one.dependsOn ?? []] as const),
+  );
   const sorted = [...ticks].sort((a, b) => a.tick.pr - b.tick.pr);
   for (const { tick, ticker } of sorted) {
     const name = tickName(tick);
     const target = {
       kind: "merge" as const,
       pr: tick.pr,
-      stackId: tick.stackId,
+      stackIds: tick.stackIds,
       rule: "write" as const,
     };
     const refuse = (reason: RefusedTick["reason"], detail?: string, waitsOn?: string[]) => {
       result.cleared.push(tick.pr);
       result.problems.push({ target, login: ticker, reason, detail, waitsOn });
     };
-    const waits = waitingOn(tick.stackId);
+    const waits = [...new Set(tick.stackIds.flatMap(waitingOn))];
     if (waits.length > 0) {
       log.info(
         `${name} was ticked by ${ticker}, and the stack depends on ${waits.map(logGroupTitle).join(" and ")}, which ${waits.length === 1 ? "has a change" : "have changes"} waiting. Nothing is merged.`,
@@ -696,10 +727,11 @@ async function mergeAll(
       defaultBranch: open.defaultBranch,
       stacks: claimants,
       unrelated: config.scan.unrelated,
+      dependsOn,
     });
     const why = !qualified.qualifies
       ? NOT_QUALIFIED[qualified.why]
-      : qualified.stackId !== tick.stackId
+      : JSON.stringify(qualified.stackIds) !== JSON.stringify(tick.stackIds)
         ? "its files belong to another stack"
         : undefined;
     if (why !== undefined) {
@@ -735,30 +767,36 @@ async function mergeAll(
     );
     result.mergedPrs.add(tick.pr);
 
-    // The record is written on the merge commit and waits for the scan after
-    // the merge. It is not handed to `apply`: nothing was previewed yet.
-    const stack = stacks.get(tick.stackId);
-    if (!stack) continue;
-    try {
-      const record = await github.createDeployment({
-        sha: answer.sha,
-        task: deploymentTask(tick.stackId),
-        environment: stack.environment,
-        payload: mergePayload({ ticker, run: context.runId, merge: tick.pr }),
-      });
-      result.merged.push({
-        stackId: tick.stackId,
-        environment: stack.environment,
-        deployment: record.id,
-        ticker,
-      });
-      await github.createDeploymentStatus(record.id, { state: "queued", logUrl: runUrl(context) });
-      log.info(
-        `${logGroupTitle(tick.stackId)}: deployment record ${record.id} is queued and deploys after the scan of the merge.`,
-      );
-    } catch (error) {
-      result.failure = `#${tick.pr} is merged, and the deployment record of ${logGroupTitle(tick.stackId)} could not be written: ${message(error)}. The resolve job needs the permission \`deployments: write\` (record 0003). Nothing deploys for it: the scan shows the stack as pending, and a tick on its row deploys it. Nothing more was merged.`;
-      return result;
+    // One record per stack, written on the merge commit, which waits for the
+    // scan after the merge. It is not handed to `apply`: nothing was
+    // previewed yet (records 0054 and 0071).
+    for (const id of tick.stackIds) {
+      const stack = stacks.get(id);
+      if (!stack) continue;
+      try {
+        const record = await github.createDeployment({
+          sha: answer.sha,
+          task: deploymentTask(id),
+          environment: stack.environment,
+          payload: mergePayload({ ticker, run: context.runId, merge: tick.pr }),
+        });
+        result.merged.push({
+          stackId: id,
+          environment: stack.environment,
+          deployment: record.id,
+          ticker,
+        });
+        await github.createDeploymentStatus(record.id, {
+          state: "queued",
+          logUrl: runUrl(context),
+        });
+        log.info(
+          `${logGroupTitle(id)}: deployment record ${record.id} is queued and deploys after the scan of the merge.`,
+        );
+      } catch (error) {
+        result.failure = `#${tick.pr} is merged, and the deployment record of ${logGroupTitle(id)} could not be written: ${message(error)}. The resolve job needs the permission \`deployments: write\` (record 0003). Nothing deploys for it: the scan shows the stack as pending, and a tick on its row deploys it. Nothing more was merged.`;
+        return result;
+      }
     }
   }
   return result;

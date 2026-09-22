@@ -37,6 +37,9 @@ export interface QualifyOptions {
   stacks: Claimant[];
   // `scan.unrelated`.
   unrelated: string[];
+  // What each stack depends on, as far as the caller knows (record 0056). Two
+  // stacks of one pull request where one waits on the other do not qualify.
+  dependsOn?: ReadonlyMap<string, readonly string[]> | undefined;
 }
 
 export type NotQualified =
@@ -47,18 +50,20 @@ export type NotQualified =
   | "conflicting"
   | "files-unknown"
   | "unclaimed"
-  | "two-stacks"
+  | "stacks-depend"
   | "no-stack";
 
 export type Qualified =
-  | { qualifies: true; stackId: string }
-  | { qualifies: false; why: NotQualified };
+  // In code unit order. More than one when more than one stack claims its
+  // files (record 0071).
+  { qualifies: true; stackIds: string[] } | { qualifies: false; why: NotQualified };
 
 // A pull request qualifies when its author is on the list, it is ready and
-// green, and the claim rule of record 0010 gives every file it changes to one
-// and the same stack. That is exactly a change whose push gives a narrowed
-// scan of one stack. A file `scan.unrelated` matches claims nothing and
-// forces nothing, so it is left out, as it is for a push.
+// green, and the claim rule of record 0010 gives every file it changes to a
+// stack. A file `scan.unrelated` matches claims nothing and forces nothing, so
+// it is left out, as it is for a push. Since record 0071 a pull request that
+// several stacks claim qualifies too, with one deploy per stack, unless one of
+// its stacks depends on another: one tick would deploy them side by side.
 export function qualify(pullRequest: OpenPullRequest, options: QualifyOptions): Qualified {
   const author = pullRequest.author?.toLowerCase();
   if (author === undefined || !options.authors.includes(author)) {
@@ -71,10 +76,38 @@ export function qualify(pullRequest: OpenPullRequest, options: QualifyOptions): 
   if (!pullRequest.filesComplete) return { qualifies: false, why: "files-unknown" };
   const { claims, unclaimed } = claim(options.stacks, pullRequest.files, options.unrelated);
   if (unclaimed.length > 0) return { qualifies: false, why: "unclaimed" };
-  const [stackId, ...others] = claims.keys();
-  if (others.length > 0) return { qualifies: false, why: "two-stacks" };
-  if (stackId === undefined) return { qualifies: false, why: "no-stack" };
-  return { qualifies: true, stackId };
+  const stackIds = [...claims.keys()].sort(byCodeUnit);
+  if (stackIds.length === 0) return { qualifies: false, why: "no-stack" };
+  if (dependOnEachOther(stackIds, options.dependsOn)) {
+    return { qualifies: false, why: "stacks-depend" };
+  }
+  return { qualifies: true, stackIds };
+}
+
+function byCodeUnit(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// Whether one of the stacks waits on another of them, directly or through
+// stacks in between.
+function dependOnEachOther(
+  ids: readonly string[],
+  dependsOn: ReadonlyMap<string, readonly string[]> | undefined,
+): boolean {
+  if (!dependsOn || ids.length < 2) return false;
+  const inPullRequest = new Set(ids);
+  for (const id of ids) {
+    const seen = new Set<string>();
+    const next = [...(dependsOn.get(id) ?? [])];
+    while (next.length > 0) {
+      const one = next.pop() ?? "";
+      if (inPullRequest.has(one)) return true;
+      if (seen.has(one)) continue;
+      seen.add(one);
+      next.push(...(dependsOn.get(one) ?? []));
+    }
+  }
+  return false;
 }
 
 // Why a pull request is not listed, for the job log.
@@ -86,37 +119,32 @@ export const NOT_QUALIFIED: Record<NotQualified, string> = {
   conflicting: "it conflicts with its base branch",
   "files-unknown": "not every file it changes is known",
   unclaimed: "no stack claims some of its files",
-  "two-stacks": "more than one stack claims its files",
+  "stacks-depend": "its stacks depend on each other, and one tick would deploy them side by side",
   "no-stack": "no stack claims any of its files",
 };
 
 export interface WaitingUpdate {
   pullRequest: OpenPullRequest;
-  stackId: string;
+  stackIds: string[];
 }
 
-// The dashboard lists at most this many, and folds all but the first ten
-// (record 0064). A line is about 250 characters at most, so thirty stay under
-// an eighth of the body's target size (record 0028). The rest wait for a
-// merge of the first.
+// The oldest this many are always listed, and the fold holds all after the
+// first ten (record 0064). A line is about 250 characters at most, so thirty
+// stay under an eighth of the body's target size (record 0028). Since record
+// 0071 the newer ones are listed too, as far as the size budget has room.
 export const MAX_UPDATES = 30;
 
-// The qualifying pull requests, oldest first, and how many more qualify than
-// are listed.
+// The qualifying pull requests, oldest first.
 export function waitingUpdates(
   pullRequests: readonly OpenPullRequest[],
   options: QualifyOptions,
-): { listed: WaitingUpdate[]; more: number } {
-  const qualifying = [...pullRequests]
+): WaitingUpdate[] {
+  return [...pullRequests]
     .sort((a, b) => a.number - b.number)
     .flatMap((pullRequest) => {
       const qualified = qualify(pullRequest, options);
-      return qualified.qualifies ? [{ pullRequest, stackId: qualified.stackId }] : [];
+      return qualified.qualifies ? [{ pullRequest, stackIds: qualified.stackIds }] : [];
     });
-  return {
-    listed: qualifying.slice(0, MAX_UPDATES),
-    more: Math.max(0, qualifying.length - MAX_UPDATES),
-  };
 }
 
 export type MergeMethod = "squash" | "rebase" | "merge";

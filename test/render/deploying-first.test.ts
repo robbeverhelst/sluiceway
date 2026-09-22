@@ -147,7 +147,7 @@ describe("the order of the sections", () => {
     const merge = mergeBlock({
       pr: 12,
       title: "chore(deps): update chart to v1.2.4",
-      stackId: "apps/api:prod",
+      stackIds: ["apps/api:prod"],
       head: "0123456789abcdef0123456789abcdef01234567",
       author: "renovate[bot]",
     });

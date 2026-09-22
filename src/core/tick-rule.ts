@@ -22,11 +22,12 @@ export interface Editor {
 
 // What a box belongs to. The rescan box has no rule of its own: it needs only
 // the first half of the test, a person with write access.
-// A merge tick is judged by the rule of the stack its pull request belongs to
-// (record 0054): it ends in a deploy of that stack.
+// A merge tick is judged by the rule of the stacks its pull request belongs to
+// (records 0054 and 0071): it ends in a deploy of each. `resolve` judges it
+// once per stack, with one id in `stackIds`.
 export type TickTarget =
   | { kind: "stack"; stackId: string; rule: TickRule }
-  | { kind: "merge"; pr: number; stackId: string; rule: TickRule }
+  | { kind: "merge"; pr: number; stackIds: string[]; rule: TickRule }
   | { kind: "rescan" };
 
 // Why a tick is refused. "unverified" is not one of these: a lookup that

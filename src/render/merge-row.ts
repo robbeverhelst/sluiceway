@@ -31,7 +31,7 @@ function shorten(title: string): string {
 export function renderMergeRow(row: MergeRow, options: MergeRowOptions = {}): string {
   const by = row.author === undefined ? "" : ` by ${escapeText(row.author)}`;
   const parts = [
-    `**${escapeText(row.stackId)}**`,
+    row.stackIds.map((id) => `**${escapeText(id)}**`).join(", "),
     ...(options.redact ? [] : [escapeText(shorten(row.title))]),
     `#${row.pr}${by}`,
   ];

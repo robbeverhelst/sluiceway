@@ -34,7 +34,6 @@ import {
 import { diffHash } from "../core/diff-hash.ts";
 import { deployFailureText, previewFailureText } from "../core/failure-reason.ts";
 import {
-  MAX_UPDATES,
   NOT_QUALIFIED,
   qualify,
   type WaitingUpdate,
@@ -585,6 +584,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         mergeTicks,
         resolveWaits: waits,
         unread: deploys.facts.unread,
+        mergesLeftOut: fitted.mergesLeftOut,
       };
     };
 
@@ -685,6 +685,9 @@ interface Composed {
   resolveWaits: boolean;
   // Deployment records with a payload this version cannot read.
   unread: number;
+  // Updates waiting to merge past the oldest thirty the body had no room for
+  // (record 0071).
+  mergesLeftOut: number;
 }
 
 const PREVIEW_FIRST: Record<LateWhy, string> = {
@@ -1291,6 +1294,12 @@ function reportDashboard(
   );
   if (written.tries > 1) log.info(`The write took ${written.tries} tries.`);
   if (shortened > 0) log.info(`${plural(shortened, "row")} shortened to fit the size budget.`);
+  const left = composed?.mergesLeftOut ?? 0;
+  if (left > 0) {
+    log.info(
+      `${plural(left, "more pull request")} ${left === 1 ? "qualifies" : "qualify"} and ${left === 1 ? "is" : "are"} not listed: the dashboard has no room for ${left === 1 ? "it" : "them"}. They are listed as the older ones merge.`,
+    );
+  }
   if (composed && composed.carried.length > 0) {
     log.info(
       `Carried ${plural(composed.carried.length, "row")} through as ${composed.carried.length === 1 ? "it was" : "they were"}, for the stacks this scan did not preview.`,
@@ -1368,6 +1377,9 @@ async function listUpdates(
     defaultBranch: open.defaultBranch,
     stacks: stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
     unrelated: config.scan.unrelated,
+    // As the config says it. `resolve` also knows what the rows read from
+    // stack references, and judges again before it merges (record 0071).
+    dependsOn: new Map(stacks.map((one) => [stackId(one.stack), one.dependsOn ?? []] as const)),
   };
   // A pull request by someone who is not on the list is an ordinary one and
   // gets no line.
@@ -1377,17 +1389,12 @@ async function listUpdates(
       log.info(`#${pullRequest.number} is not listed to merge: ${NOT_QUALIFIED[qualified.why]}.`);
     }
   }
-  const { listed: updates, more } = waitingUpdates(open.pullRequests, options);
+  const updates = waitingUpdates(open.pullRequests, options);
   log.info(
     updates.length === 0
       ? "No pull request waits to merge."
       : `${plural(updates.length, "pull request")} ${updates.length === 1 ? "waits" : "wait"} to merge: ${updates.map(({ pullRequest }) => `#${pullRequest.number}`).join(", ")}.`,
   );
-  if (more > 0) {
-    log.info(
-      `${plural(more, "more pull request")} ${more === 1 ? "qualifies" : "qualify"} and ${more === 1 ? "is" : "are"} not listed: the dashboard lists the oldest ${MAX_UPDATES}.`,
-    );
-  }
   return { kind: "listed", updates };
 }
 
@@ -1404,11 +1411,11 @@ function mergeRows(
   if (listing.kind === "off") return { merges: [], mergeTicks: [] };
   if (listing.kind === "failed") return { merges: [...live], mergeTicks: [] };
   const mergeTicks: Composed["mergeTicks"] = [];
-  const merges = listing.updates.map(({ pullRequest, stackId: id }) => {
+  const merges = listing.updates.map(({ pullRequest, stackIds }) => {
     const block = mergeBlock(
       {
         pr: pullRequest.number,
-        stackId: id,
+        stackIds,
         head: pullRequest.head,
         title: pullRequest.title,
         author: pullRequest.author,
@@ -1417,7 +1424,9 @@ function mergeRows(
     );
     const ticked = live.find((one) => one.pr === block.pr);
     if (!ticked?.ticked) return block;
-    const same = ticked.head === block.head && ticked.stackId === block.stackId;
+    const same =
+      ticked.head === block.head &&
+      JSON.stringify(ticked.stackIds) === JSON.stringify(block.stackIds);
     const carry = same && waits;
     mergeTicks.push({ pr: block.pr, tick: carry ? "carry" : "sweep" });
     // A tick swept away gets the orphan note, as a stack's row does (record
