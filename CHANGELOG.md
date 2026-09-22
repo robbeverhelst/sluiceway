@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/sluiceway/sluiceway/compare/v0.4.0...v0.5.0) (2026-09-22)
+
+
+### Features
+
+* **header:** small fish upstream of Penny, more as the water rises ([9155a60](https://github.com/sluiceway/sluiceway/commit/9155a600fa1d9b3d450f492c25d5d353d8c3776a))
+* OpenTofu stacks are declared in sluiceway.yaml and found from their files (record 0053) ([757a9ae](https://github.com/sluiceway/sluiceway/commit/757a9aedde4997168ed510dc14a3b6b0f8756c64))
+* the adapter interface grows preparations and a saved plan (record 0053) ([cb3e13f](https://github.com/sluiceway/sluiceway/commit/cb3e13f20b50e2fbf0fd7e05944304fdba648c3c))
+* the OpenTofu preview, tofu plan -out and show -json folded into a diff (record 0053) ([2b25bdc](https://github.com/sluiceway/sluiceway/commit/2b25bdc5cb945f56d6dc358ffdff21b0bd8b61af))
+* tofu init before the pool, the deploy of exactly the saved plan, and the tool diff (record 0053) ([644b07e](https://github.com/sluiceway/sluiceway/commit/644b07ec7676ceb78ab012ac089a7524b3dd4708))
+
 ## [0.4.0](https://github.com/sluiceway/sluiceway/compare/v0.3.0...v0.4.0) (2026-09-22)
 
 
