@@ -244,16 +244,36 @@ stacks:
     ]);
   });
 
-  test("no adapter option exists in this version, so any option is an error", () => {
+  test("a stack that discovery finds from its files takes no options", () => {
     expect(problems("stacks:\n  - path: a\n    options:\n      refresh: true\n")).toEqual([
-      'stacks[0].options: unknown option "refresh". No adapter options exist in this version.',
+      'stacks[0].options: unknown option "refresh". A stack that discovery finds from its files takes no options. Only an entry with tool takes them.',
+    ]);
+  });
+
+  test("an entry with tool keeps the tool and its options for the adapter to check (record 0053)", () => {
+    const config = parseConfig(
+      "stacks:\n  - path: infra\n    name: prod\n    tool: opentofu\n    options:\n      workspace: prod\n      varFiles: [prod.tfvars]\n",
+    );
+    expect(config.stacks).toEqual([
+      {
+        path: "infra",
+        name: "prod",
+        tool: "opentofu",
+        options: { workspace: "prod", varFiles: ["prod.tfvars"] },
+      },
+    ]);
+  });
+
+  test("tool must not be empty", () => {
+    expect(problems('stacks:\n  - path: a\n    tool: ""\n')).toEqual([
+      "stacks[0].tool: must not be empty.",
     ]);
   });
 
   test("the brief's old keys are unknown keys", () => {
     expect(problems("stacks:\n  - path: a\n    stack: prod\n    approvers: write\n")).toEqual([
-      'stacks[0]: unknown key "stack". Known keys here: path, name, environment, tickers, inputs, previewTimeout, options.',
-      'stacks[0]: unknown key "approvers". Known keys here: path, name, environment, tickers, inputs, previewTimeout, options.',
+      'stacks[0]: unknown key "stack". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, options.',
+      'stacks[0]: unknown key "approvers". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, options.',
     ]);
   });
 

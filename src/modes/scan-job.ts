@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import * as core from "@actions/core";
 import { getOctokit } from "@actions/github";
 import { runProcess } from "../adapters/process.ts";
-import { pulumi } from "../adapters/pulumi/index.ts";
+import { tools } from "../adapters/tools.ts";
 import { readActionRef } from "../github/action-ref.ts";
 import { publicRepo, readEventPayload } from "../github/event.ts";
 import { readJobId, readScanInputs } from "../github/inputs.ts";
@@ -25,8 +25,8 @@ export async function runScan(directory: string): Promise<void> {
   await scan({
     root: job.root,
     env,
-    // The only adapter of v1.
-    adapter: pulumi,
+    // Every tool, each stack to the adapter of its own (record 0053).
+    adapter: tools,
     run: runProcess,
     github: createOctokitPort(octokit, { owner: job.owner, repo: job.repo }),
     requests: countRequests(octokit),

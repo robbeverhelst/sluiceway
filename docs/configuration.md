@@ -21,6 +21,10 @@ Discovery finds the stacks from files alone. For Pulumi, a directory with `Pulum
 
 Every stack has a **stack id**, derived from where it lives and what it is called: `<path>:<name>`, where the path is the directory relative to the repo root, with forward slashes. A stack `prod` in `apps/web` is `apps/web:prod`. A stack at the repo root is `.:prod`. The id is never chosen, so moving a directory or renaming a stack makes a new stack with no deploy history.
 
+For OpenTofu there is no zero config. A root module and a child module look the same on disk, and a workspace lives in the backend, so files alone cannot say what a stack is. A `stacks` entry with `tool: opentofu` declares one: the root module in `path`, with an optional `name`, workspace and var files. Its stack id is `path`, or `path:name` when the entry gives a name, so one directory in two workspaces is two stacks, such as `infra/network:dev` and `infra/network:prod`. Discovery checks from the files that the directory holds OpenTofu files and that every var file is there, and still never starts the tool.
+
+A repo can hold Pulumi and OpenTofu stacks side by side. They share one dashboard, one tick rule and one workflow.
+
 `ignore` matches stack ids. `stacks` entries point at stacks by `path` and `name`.
 
 ## An example
@@ -269,13 +273,35 @@ Required in every entry.
 
 The directory of the stack, relative to the repo root, with forward slashes. `.` is the repo root. A leading `./` and a trailing slash are dropped. An absolute path, a backslash and `..` are errors.
 
-A `stacks` entry adds settings to stacks that discovery found. **It never creates a stack.** An entry that matches no stack, or only stacks that `ignore` leaves out, is an error, so a typo cannot pass quietly. Two entries with the same path and name are an error too: put the settings in one entry.
+A `stacks` entry adds settings to stacks that discovery found. **It never creates a stack**, except an entry with `tool`, which declares one. An entry that matches no stack, or only stacks that `ignore` leaves out, is an error, so a typo cannot pass quietly. Two entries with the same path and name are an error too: put the settings in one entry.
 
 ### `stacks[].name`
 
 Default: every stack in the path.
 
 The name of the stack, the part of the stack id after the colon. Without it the entry covers every stack in `path`. When an entry with a name and an entry without one both cover a stack, the entry with the name wins key by key, and `inputs` add up.
+
+### `stacks[].tool`
+
+Default: none, the entry adds settings to stacks that discovery found.
+
+The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at `path`, and `options` holds that tool's options. One tool takes it in this version: `opentofu`, for an OpenTofu root module. Pulumi stacks are found from their files and need no `tool`.
+
+```yaml
+stacks:
+  - path: infra/network
+    name: prod
+    tool: opentofu
+    options:
+      workspace: prod
+      varFiles: [prod.tfvars]
+  - path: infra/dns
+    tool: opentofu
+```
+
+An unknown tool, an unknown option or an option of the wrong kind stops every mode, with the same kind of message as any other mistake in the file, such as `stacks[0].tool: unknown tool "terraform". Known tools: opentofu.`
+
+Sluiceway runs `tofu init` for every directory of the stacks it is about to preview, one directory at a time, before the first preview. Then `tofu plan -refresh=false -out` and `tofu show -json` give the preview, and a tick deploys the plan file that `apply`'s own fresh preview saved and hashed, with `tofu apply` of that file. Install `tofu` in the workflow before Sluiceway, v1.11.0 or newer ([credentials](credentials.md)).
 
 ### `stacks[].environment`
 
@@ -325,11 +351,19 @@ sluiceway.yaml is not valid:
 - stacks[0].previewTimeout: expected a whole number of minutes, 1 or more, got 2.5.
 ```
 
-### `stacks[].options`
+### `stacks[].options.workspace`
 
-Default: `{}`
+Default: the workspace the job's environment selects, which is `default`.
 
-Named options for the tool's adapter. None exist in this version, so the only valid value is an empty mapping. Sluiceway never passes free-form arguments to the tool.
+Only with `tool: opentofu`. The workspace of the stack. Sluiceway sets `TF_WORKSPACE` to it for every command of this stack: the plan, the plan's JSON, the tool diff and the deploy. A workspace that the backend does not hold is not an error for every backend: the local backend plans every resource as a create. The row then says so, before anyone ticks.
+
+Named options are the only way to change the tool's command line. Sluiceway never passes free-form arguments to the tool (record 0015). A stack found from its files, such as a Pulumi stack, takes no options.
+
+### `stacks[].options.varFiles`
+
+Default: `[]`
+
+Only with `tool: opentofu`. Var files, relative to the directory of the stack, handed to every plan with `-var-file` in this order. `terraform.tfvars` and `*.auto.tfvars` are read by the tool without being listed. A var file outside the directory of the stack is not claimed by it: add it to `inputs` too, or a change to it gives a full scan.
 
 ## What the file does not hold
 

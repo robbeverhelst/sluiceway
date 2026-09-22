@@ -147,6 +147,13 @@
             "minLength": 1,
             "description": "Name of the stack. Without it the entry covers every stack in path."
           },
+          "tool": {
+            "type": "string",
+            "enum": [
+              "opentofu"
+            ],
+            "description": "The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at path. opentofu: a root module."
+          },
           "environment": {
             "type": "string",
             "minLength": 1,
@@ -188,10 +195,25 @@
             "description": "Time limit for one preview of this stack, in whole minutes. Default: the preview-timeout input."
           },
           "options": {
+            "description": "Named adapter options of the tool. Only an entry with tool takes them.",
             "type": "object",
-            "properties": {},
-            "additionalProperties": false,
-            "description": "Named adapter options. None exist in this version."
+            "properties": {
+              "workspace": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The workspace of the stack, selected with TF_WORKSPACE for every command. Without it, the one the environment selects, which is default."
+              },
+              "varFiles": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Var files, relative to the directory of the stack, passed with -var-file in this order to every plan."
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [

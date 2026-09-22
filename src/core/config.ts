@@ -49,36 +49,58 @@ const stackPath = text
     return segments.length === 0 ? "." : segments.join("/");
   });
 
-// An entry adds settings to stacks that discovery found. It never creates one.
-const stackEntry = z.strictObject({
-  path: stackPath.describe("Directory of the stack, relative to the repo root."),
-  name: text
-    .describe("Name of the stack. Without it the entry covers every stack in path.")
-    .exactOptional(),
-  environment: text
-    .describe(
-      "Label on the deployment record, and the GitHub Environment where one is used. Default: sluiceway.",
-    )
-    .exactOptional(),
-  tickers: tickers
-    .describe("Tick rule for this stack. Default: the top level tickers.")
-    .exactOptional(),
-  inputs: globs
-    .describe("Extra globs this stack claims, relative to the repo root.")
-    .exactOptional(),
-  previewTimeout: z
-    .int()
-    .min(1)
-    .describe(
-      "Time limit for one preview of this stack, in whole minutes. Default: the preview-timeout input.",
-    )
-    .exactOptional(),
-  // Named adapter options (records 0006, 0015). None exist in v1.
-  options: z
-    .strictObject({})
-    .describe("Named adapter options. None exist in this version.")
-    .exactOptional(),
-});
+// An entry adds settings to stacks that discovery found. It never creates one,
+// except an entry that names a tool, which declares its stack (record 0053).
+const stackEntry = z
+  .strictObject({
+    path: stackPath.describe("Directory of the stack, relative to the repo root."),
+    name: text
+      .describe("Name of the stack. Without it the entry covers every stack in path.")
+      .exactOptional(),
+    // A tool whose stacks no file names, so the entry declares the stack
+    // instead of adding settings to one (record 0053). Which tools exist and
+    // what options each takes is for the adapters to say, so no tool word is
+    // written here (record 0006). Discovery checks both.
+    tool: text
+      .describe(
+        "The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at path. See the configuration reference for the tools.",
+      )
+      .exactOptional(),
+    environment: text
+      .describe(
+        "Label on the deployment record, and the GitHub Environment where one is used. Default: sluiceway.",
+      )
+      .exactOptional(),
+    tickers: tickers
+      .describe("Tick rule for this stack. Default: the top level tickers.")
+      .exactOptional(),
+    inputs: globs
+      .describe("Extra globs this stack claims, relative to the repo root.")
+      .exactOptional(),
+    previewTimeout: z
+      .int()
+      .min(1)
+      .describe(
+        "Time limit for one preview of this stack, in whole minutes. Default: the preview-timeout input.",
+      )
+      .exactOptional(),
+    // Named adapter options (records 0006, 0015). Only an entry with a tool
+    // takes them, and its adapter checks their names and values (record 0053).
+    options: z
+      .record(z.string(), z.unknown())
+      .describe("Named adapter options of the tool. Only an entry with tool takes them.")
+      .exactOptional(),
+  })
+  .superRefine((entry, context) => {
+    if (entry.tool !== undefined) return;
+    for (const name of Object.keys(entry.options ?? {})) {
+      context.addIssue({
+        code: "custom",
+        path: ["options"],
+        message: `unknown option ${show(name)}. A stack that discovery finds from its files takes no options. Only an entry with tool takes them.`,
+      });
+    }
+  });
 
 const stackEntries = z.array(stackEntry).superRefine((entries, context) => {
   const seen = new Map<string, number>();
@@ -236,8 +258,6 @@ function describe(issue: Issue, raw: unknown): Problem[] {
     const unknown = (name: string): string => {
       if (RESERVED_KEYS.includes(name))
         return `"${name}" is not in this version of Sluiceway yet. Remove it.`;
-      if (key === "options")
-        return `unknown option "${name}". No adapter options exist in this version.`;
       return `unknown key "${name}". Known keys here: ${known.join(", ")}.`;
     };
     return issue.keys.map((name) => ({

@@ -2,7 +2,7 @@
 // process runner and no GitHub port (record 0042): the check takes no token,
 // and a test proves this file cannot reach the code that builds either.
 
-import { pulumi } from "../adapters/pulumi/index.ts";
+import { tools } from "../adapters/tools.ts";
 import { actionsLog } from "../github/job-log.ts";
 import { check } from "./check.ts";
 
@@ -13,6 +13,10 @@ export async function runCheck(): Promise<void> {
       "GITHUB_WORKSPACE is not set. Sluiceway runs as a step of a GitHub Actions job.",
     );
   }
-  // The only adapter of v1. The check uses its discovery and nothing else.
-  await check({ root, adapter: pulumi, log: actionsLog() });
+  await check({
+    root,
+    // Of every tool the check uses discovery and nothing else (record 0053).
+    adapter: tools,
+    log: actionsLog(),
+  });
 }

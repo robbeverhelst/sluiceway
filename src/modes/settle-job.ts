@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import * as core from "@actions/core";
 import { getOctokit } from "@actions/github";
-import { pulumi } from "../adapters/pulumi/index.ts";
+import { tools } from "../adapters/tools.ts";
 import { readEventPayload } from "../github/event.ts";
 import { readToken } from "../github/inputs.ts";
 import { readJob } from "../github/job.ts";
@@ -23,8 +23,8 @@ export async function runSettle(): Promise<void> {
   const job = readJob(env);
   await settle({
     root: job.root,
-    // The only adapter of v1. Only its discovery is used, which reads files.
-    adapter: pulumi,
+    // Every tool, each stack to the adapter of its own (record 0053).
+    adapter: tools,
     github: createOctokitPort(getOctokit(token), { owner: job.owner, repo: job.repo }),
     log: actionsLog(),
     repoUrl: job.repoUrl,

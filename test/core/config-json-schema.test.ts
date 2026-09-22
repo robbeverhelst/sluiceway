@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { configJsonSchema } from "../../src/core/config-json-schema.ts";
+import { sluicewayJsonSchema } from "../../src/adapters/config-schema.ts";
 
 type Json = { [key: string]: Json } & { properties?: Record<string, Json>; items?: Json };
 
-const schema = configJsonSchema() as Json;
+const schema = sluicewayJsonSchema() as Json;
 
 // Every object schema in the document, with the path that leads to it.
 function objects(node: Json, path = "root"): [string, Json][] {
@@ -45,6 +45,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
     expect(Object.keys(schema.properties?.stacks?.items?.properties ?? {})).toEqual([
       "path",
       "name",
+      "tool",
       "environment",
       "tickers",
       "inputs",
@@ -75,6 +76,6 @@ describe("the JSON schema of sluiceway.yaml", () => {
 
   test("the committed file is what the generator writes now", () => {
     const file = resolve(import.meta.dir, "../../schema/sluiceway.schema.json");
-    expect(readFileSync(file, "utf8")).toBe(`${JSON.stringify(configJsonSchema(), null, 2)}\n`);
+    expect(readFileSync(file, "utf8")).toBe(`${JSON.stringify(sluicewayJsonSchema(), null, 2)}\n`);
   });
 });

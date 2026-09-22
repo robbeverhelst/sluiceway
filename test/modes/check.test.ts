@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { pulumi } from "../../src/adapters/pulumi/index.ts";
+import { tools } from "../../src/adapters/tools.ts";
 import { ConfigError } from "../../src/core/config.ts";
 import { DiscoveryError } from "../../src/core/discovery.ts";
 import { check } from "../../src/modes/check.ts";
@@ -14,6 +14,7 @@ type Files = Record<string, string>;
 function repo(files: Files): string {
   const root = mkdtempSync(join(tmpdir(), "sluiceway-check-"));
   for (const [file, text] of Object.entries(files)) {
+    if (text === undefined) continue;
     mkdirSync(dirname(join(root, file)), { recursive: true });
     writeFileSync(join(root, file), text);
   }
@@ -59,12 +60,79 @@ const FIXTURE: Files = {
 
 async function run(files: Files) {
   const log = rememberingLog();
-  const result = await check({ root: repo(files), adapter: pulumi, log }).then(
+  const result = await check({ root: repo(files), adapter: tools, log }).then(
     () => undefined,
     (error: unknown) => error,
   );
   return { log, error: result, summary: log.summaries.at(-1) ?? "" };
 }
+
+// Record 0053: OpenTofu stacks are the roots a `stacks` entry names with
+// `tool: opentofu`, and the check lists them next to the Pulumi stacks.
+describe("a repo with OpenTofu roots", () => {
+  const files: Files = {
+    ...FIXTURE,
+    "sluiceway.yaml": [
+      "ignore:",
+      "  - playground:*",
+      "stacks:",
+      "  - path: infra/network",
+      "    name: prod",
+      "    tool: opentofu",
+      "    options:",
+      "      workspace: prod",
+      "      varFiles: [prod.tfvars]",
+      "  - path: infra/dns",
+      "    tool: opentofu",
+      "",
+    ].join("\n"),
+    "infra/network/main.tf": "",
+    "infra/network/prod.tfvars": "",
+    "infra/dns/main.tofu": "",
+    "infra/modules/vpc/main.tf": "",
+  };
+
+  test("lists every configured root as a stack, and a module no entry names as a file", async () => {
+    const { log, error } = await run(files);
+    expect(error).toBeUndefined();
+    expect(log.lines).toContain("Found 5 stacks.");
+    expect(log.groups.find((group) => group.title === "Stacks")?.lines).toEqual([
+      "app:prod: environment sluiceway, tickers write, no inputs",
+      "infra/dns: environment sluiceway, tickers write, no inputs",
+      "infra/network:prod: environment sluiceway, tickers write, no inputs",
+      "network:dev: environment sluiceway, tickers write, no inputs",
+      "network:prod: environment sluiceway, tickers write, no inputs",
+    ]);
+    expect(
+      log.groups.find((group) => group.title === "Files that no stack claims")?.lines,
+    ).toContain("infra/modules/vpc/main.tf");
+  });
+
+  test("a root with a var file that is not there fails the check", async () => {
+    const { error, summary } = await run({
+      ...files,
+      "infra/network/prod.tfvars": undefined as never,
+    });
+    expect(error).toBeInstanceOf(DiscoveryError);
+    expect(summary).toContain(
+      escapeText('stacks[0].options.varFiles[0]: "prod.tfvars" is not a file in "infra/network".'),
+    );
+  });
+
+  test("an unknown option fails the check as a config problem", async () => {
+    const { error, summary } = await run({
+      ...files,
+      "sluiceway.yaml":
+        "stacks:\n  - path: infra/dns\n    tool: opentofu\n    options: { refresh: true }\n",
+    });
+    expect(error).toBeInstanceOf(ConfigError);
+    expect(summary).toContain(
+      escapeText(
+        'stacks[0].options: unknown option "refresh". Known options for opentofu: workspace, varFiles.',
+      ),
+    );
+  });
+});
 
 describe("a valid setup", () => {
   test("the summary", async () => {
@@ -208,7 +276,7 @@ const CONFIG_MESSAGES: [string, string][] = [
   ],
   [
     "stacks:\n  - path: network\n    options:\n      refresh: true",
-    'stacks[0].options: unknown option "refresh". No adapter options exist in this version.',
+    'stacks[0].options: unknown option "refresh". A stack that discovery finds from its files takes no options. Only an entry with tool takes them.',
   ],
   [
     "stacks:\n  - path: network\n    name: prod\n  - path: network\n    name: prod",
