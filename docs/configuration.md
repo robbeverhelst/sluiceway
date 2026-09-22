@@ -263,7 +263,7 @@ scan:
     - "docs/**"
 ```
 
-Keep `sluiceway.yaml` itself off the list, and lockfiles and package manifests too. A change to one of them should preview every stack, and it does, with a line in the job log that says why, as long as no glob here covers it.
+Keep `sluiceway.yaml` itself off the list, and lockfiles and package manifests too. A change to one of them should preview every stack, and it does, with a line in the job log that says why, as long as no glob here covers it. The check and the summary of a push leave `sluiceway.yaml` out of the files that no stack claims, and name the lockfiles and package manifests they list as ones to keep off this list.
 
 ### `scan.logDiff`
 

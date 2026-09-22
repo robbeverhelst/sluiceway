@@ -139,6 +139,7 @@ What to know about it:
 - **It masks before it writes**, masks each line of a multi-line value on its own, and writes each value with a random delimiter so a value cannot end its own entry.
 - **It skips `OP_*`, `GITHUB_*` and `RUNNER_*` names.** The manager's token and settings stay on the loading step, and the runner does not let a step set its own names.
 - **The token of the secret manager sits on the loading step only.** It never reaches Sluiceway or the tool. The values written to `$GITHUB_ENV` reach every later step of the job.
+- **So the loading step comes after every install step.** Any step after it sees the credentials, the install scripts of your package manager included. Run `npm ci`, a build and anything else that installs before the loading step, and put the loading step right before Sluiceway's. With GitHub secrets on Sluiceway's step this order does not matter, which is why that recipe puts them there.
 - **Measure what one load costs once.** How a secret manager counts one `run` over many references is often not documented. With 1Password, run `op service-account ratelimit` before and after one `op run --env-file=ci.env -- true` and compare. A per-account daily limit is shared by every service account of the account.
 
 ### State backends

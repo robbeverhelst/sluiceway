@@ -25,9 +25,25 @@ The dependencies are installed once, with one `npm ci` at the root, before the s
 
 The credentials sit on the Sluiceway step only, so the install scripts of your dependencies never see them.
 
+A push previews only the stacks that claim a changed file, and a stack claims the files in its own directory. Two things in a monorepo lie outside every stack:
+
+- **A shared package**, such as `packages/ui`, that several programs import. A push that changes only the package gives a full scan, because no stack claims it. List it under the [`inputs`](configuration.md#stacksinputs) of the stacks that use it, and such a push previews only those:
+
+  ```yaml
+  stacks:
+    - path: apps/web
+      inputs:
+        - packages/ui/**
+        - config/web.json
+  ```
+
+- **The root lockfile and `package.json`.** No stack claims them, so every push that changes a dependency previews every stack. That is on purpose: a new version of a package can change any program, and Sluiceway cannot tell which. Keep them off [`scan.unrelated`](configuration.md#scanunrelated). The check, and the summary of a push that fell back to a full scan, list them among the files that no stack claims and say to keep them off that list.
+
 ## The secret manager
 
 The job resolves one env file of references with one `op run`, and [export-env.sh](../examples/workflows/export-env.sh) masks the secrets and writes every value to the job environment. [credentials.md](credentials.md#an-env-file-of-secret-references) explains the script and what it does not do. The service account's token is a secret of the environment, and the account sees only the vault with the credentials the stacks need.
+
+Every step after the loading step sees the credentials, because they are in the job environment from then on. Put every install step before it: `npm ci`, a build, anything that runs the install scripts of your dependencies. When you combine this example with the monorepo one, the order is checkout, the installs, the tool, then the loading step, then Sluiceway. The example has no install step, so it loads right before Sluiceway.
 
 ## The cloud
 
