@@ -1,7 +1,7 @@
 import type { PreviewFailureReason } from "../../core/failure-reason.ts";
 import { type Stack, stackId } from "../../core/stack.ts";
 import type { PreviewOptions, PreviewResult } from "../adapter.ts";
-import { stripAnsi } from "../pulumi/tool-log.ts";
+import { runTool, stripAnsi } from "../tool-run.ts";
 import { command, planArgs, showArgs, workingDirectory } from "./commands.ts";
 import { optionsOf, tofuEnvironment } from "./environment.ts";
 import { foldChanges } from "./fold.ts";
@@ -36,11 +36,11 @@ async function planAndShow(
   plan: PlanFile,
 ): Promise<PreviewResult> {
   const run = (argv: string[]) =>
-    options.run({
+    runTool(options.run, {
       argv: command(stack, argv),
       cwd: workingDirectory(options.root, stack),
       env: tofuEnvironment(options.env, stack),
-      timeoutMs: options.timeoutMinutes * 60_000,
+      timeoutMinutes: options.timeoutMinutes,
     });
   const failed = (
     reason: PreviewFailureReason,
@@ -48,30 +48,18 @@ async function planAndShow(
     detail: string[] = [],
   ): PreviewResult => ({ ok: false, reason, detail, toolLog });
 
-  const planned = await run(planArgs(plan.path, optionsOf(stack).varFiles));
-  if (planned.status === "not-started") return failed({ kind: "tool-error", exitCode: null }, "");
-  // The plan's JSON log holds its diagnostics and no values (record 0022).
-  const planWords = stripAnsi(planned.stderr) + jsonLogWords(planned.stdout);
-  if (planned.status === "timed-out") {
-    return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, planWords);
-  }
   // The reason comes from the exit code alone, never from the tool's words
   // (record 0022 as amended). A workspace the backend does not hold gives no
   // exit code of its own, so there is no "stack not found" here.
-  if (planned.exitCode !== 0) {
-    return failed({ kind: "tool-error", exitCode: planned.exitCode }, planWords);
-  }
+  const planned = await run(planArgs(plan.path, optionsOf(stack).varFiles));
+  // The plan's JSON log holds its diagnostics and no values (record 0022).
+  const planWords = stripAnsi(planned.stderr) + jsonLogWords(planned.stdout);
+  if (!planned.ok) return failed(planned.reason, planWords);
 
   const shown = await run(showArgs(plan.path));
-  if (shown.status === "not-started") {
-    return failed({ kind: "tool-error", exitCode: null }, planWords);
-  }
   // Never stdout: it is the plan, values and all (record 0021).
   const log = planWords + stripAnsi(shown.stderr);
-  if (shown.status === "timed-out") {
-    return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, log);
-  }
-  if (shown.exitCode !== 0) return failed({ kind: "tool-error", exitCode: shown.exitCode }, log);
+  if (!shown.ok) return failed(shown.reason, log);
 
   const parsed = parsePlan(shown.stdout);
   if (!parsed.ok) return failed({ kind: "unreadable-output" }, log, parsed.problems);

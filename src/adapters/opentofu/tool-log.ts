@@ -1,4 +1,4 @@
-import { stripAnsi } from "../pulumi/tool-log.ts";
+import { stripAnsi } from "../tool-run.ts";
 
 // The words of a command run with -json (OpenTofu docs, "Machine-Readable UI"):
 // one JSON message per line. Kept for the job log (record 0022): the text of

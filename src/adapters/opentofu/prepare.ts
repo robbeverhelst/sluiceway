@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { Stack } from "../../core/stack.ts";
 import type { Preparation, PrepareResult, ToolContext } from "../adapter.ts";
-import { stripAnsi } from "../pulumi/tool-log.ts";
+import { runTool, stripAnsi } from "../tool-run.ts";
 import { command, initArgs, synthCommand, workingDirectory } from "./commands.ts";
 import { optionsOf, tofuEnvironment } from "./environment.ts";
 import { CDKTF } from "./options.ts";
@@ -55,25 +55,16 @@ async function step(
   argv: string[],
   cwd: string,
 ): Promise<PrepareResult> {
-  const result = await context.run({
+  const result = await runTool(context.run, {
     argv,
     cwd,
     env: tofuEnvironment(context.env),
-    timeoutMs: context.timeoutMinutes * 60_000,
+    timeoutMinutes: context.timeoutMinutes,
   });
-  if (result.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-  }
   // What init and synth print names providers, modules and stacks, and no
   // value.
   const toolLog = stripAnsi(result.stdout + result.stderr);
-  if (result.status === "timed-out") {
-    return { ok: false, reason: { kind: "timed-out", minutes: context.timeoutMinutes }, toolLog };
-  }
-  if (result.exitCode !== 0) {
-    return { ok: false, reason: { kind: "tool-error", exitCode: result.exitCode }, toolLog };
-  }
-  return { ok: true, toolLog };
+  return result.ok ? { ok: true, toolLog } : { ok: false, reason: result.reason, toolLog };
 }
 
 function byCodeUnit(a: string, b: string): number {

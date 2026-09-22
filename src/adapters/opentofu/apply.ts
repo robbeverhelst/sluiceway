@@ -1,6 +1,6 @@
 import { type Stack, stackId } from "../../core/stack.ts";
 import type { ApplyResult, SavedPlan, ToolContext } from "../adapter.ts";
-import { stripAnsi } from "../pulumi/tool-log.ts";
+import { runDeploy, stripAnsi } from "../tool-run.ts";
 import { applyArgs, command, workingDirectory } from "./commands.ts";
 import { tofuEnvironment } from "./environment.ts";
 import { PlanFile } from "./plan-file.ts";
@@ -20,19 +20,14 @@ export async function apply(
   if (!(plan instanceof PlanFile) || plan.stackId !== stackId(stack)) {
     throw new Error("An OpenTofu stack deploys only the plan its fresh preview saved.");
   }
-  const result = await context.run({
+  const result = await runDeploy(context.run, {
     argv: command(stack, applyArgs(plan.path)),
     cwd: workingDirectory(context.root, stack),
     // The same workspace the plan was made in.
     env: tofuEnvironment(context.env, stack),
   });
-  if (result.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-  }
   // The JSON log's progress and diagnostics, without the outputs, which can
   // be secrets (record 0021).
   const toolLog = stripAnsi(result.stderr) + jsonLogWords(result.stdout);
-  if (result.status === "exited" && result.exitCode === 0) return { ok: true, toolLog };
-  const exitCode = result.status === "exited" ? result.exitCode : null;
-  return { ok: false, reason: { kind: "tool-error", exitCode }, toolLog };
+  return result.ok ? { ok: true, toolLog } : { ok: false, reason: result.reason, toolLog };
 }

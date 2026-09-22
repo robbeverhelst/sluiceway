@@ -1,6 +1,6 @@
 import type { Stack } from "../../core/stack.ts";
 import type { PreviewOptions, ToolDiffResult } from "../adapter.ts";
-import { stripAnsi } from "../pulumi/tool-log.ts";
+import { runTool, stripAnsi } from "../tool-run.ts";
 import { command, toolDiffArgs, workingDirectory } from "./commands.ts";
 import { optionsOf, tofuEnvironment } from "./environment.ts";
 
@@ -11,25 +11,14 @@ import { optionsOf, tofuEnvironment } from "./environment.ts";
 // log-diff-changed-secret shows: terraform_data copies a sensitive input to
 // its output unmarked. That is the risk a repo takes on with scan.logDiff.
 export async function toolDiff(stack: Stack, options: PreviewOptions): Promise<ToolDiffResult> {
-  const result = await options.run({
+  const result = await runTool(options.run, {
     argv: command(stack, toolDiffArgs(optionsOf(stack).varFiles)),
     cwd: workingDirectory(options.root, stack),
     env: tofuEnvironment(options.env, stack),
-    timeoutMs: options.timeoutMinutes * 60_000,
+    timeoutMinutes: options.timeoutMinutes,
   });
-  if (result.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-  }
-  const words = stripAnsi(result.stdout + result.stderr);
-  if (result.status === "timed-out") {
-    return {
-      ok: false,
-      reason: { kind: "timed-out", minutes: options.timeoutMinutes },
-      toolLog: words,
-    };
-  }
-  if (result.exitCode !== 0) {
-    return { ok: false, reason: { kind: "tool-error", exitCode: result.exitCode }, toolLog: words };
+  if (!result.ok) {
+    return { ok: false, reason: result.reason, toolLog: stripAnsi(result.stdout + result.stderr) };
   }
   return { ok: true, text: stripAnsi(result.stdout), toolLog: stripAnsi(result.stderr) };
 }
