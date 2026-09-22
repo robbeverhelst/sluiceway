@@ -301,6 +301,7 @@ drift:
 - **It costs one more tool run per stack** in those scans, in the same pool slot and with the same time limit as the stack's preview. For Pulumi it is `pulumi refresh --preview-only`, which changes neither the state nor anything real, and from v3.229.0 takes no stack lock, so it never blocks a deploy. For Helm it is two runs: the preview's diff once more, and the same diff with the plugin's `--three-way-merge --no-hooks`, which compares the chart with the live objects. What the second finds beyond the first is drift: a field changed with kubectl, or an object deleted ([record 0069](adr/0069-helm-drift-is-the-three-way-diff-beyond-the-plain-one-and-the-deploy-flags-follow-helm.md)).
 - **The deploy of a row with drift reads what is real first.** For Pulumi it runs `pulumi up --refresh`. Helm merges the chart into the live objects on every deploy, and on Helm 4 a release it applies server-side gets `--force-conflicts`, so a field changed with kubectl is taken back. `apply` checks the drift again before it compares the diff hash, so drift that changed after the tick stops the deploy, as a moved change does.
 - **What counts as drift is up to the tool.** A resource whose provider cannot read it back never drifts. A field a Helm chart does not set, such as a label added by hand, stays after a deploy and is no drift. OpenTofu stacks are not checked yet.
+- **A Kubernetes manifests stack is checked only with [`prune`](#stacksoptionsprune) or [`forceConflicts`](#stacksoptionsforceconflicts).** Its preview compares with the live objects already, so a change made outside the code is on the row anyway: a create for an object someone deleted, a change for a field someone set, or a failed preview for a field another field manager took. The check says which of them came from outside the code: an object the stack's inventory lists that is gone, and, with `forceConflicts`, the fields another field manager set since the deploy. The deploy puts both back and needs nothing more ([record 0070](adr/0070-kubernetes-manifests-stacks-prune-from-an-inventory-of-their-own-and-read-drift-from-the-managed-fields.md)).
 - **A drift check that fails** leaves the row as the preview made it, with a warning on the run and the tool's words in the job log.
 - **A stack entry can turn it on or off** for its own stacks, with [`stacks[].drift.enabled`](#stacksdriftenabled).
 - **A drifted row's `preview` link** opens a preview page that lists the drift, as a pending row's lists its changes. Without `checks: write` it opens the summary.
@@ -422,9 +423,9 @@ Sluiceway runs `tofu init` for every directory of the stacks it is about to prev
 
 For Helm, Sluiceway runs `helm dependency build` for every local chart that has dependencies, one chart at a time, before the first preview. That includes the local charts a chart depends on through a `file://` repository, each built before the chart that depends on it: helm leaves out the objects of a subchart whose own dependencies were not built, and says nothing. `helm diff upgrade --install --reset-values --dry-run=server --output=structured`, from the [helm-diff](https://github.com/databus23/helm-diff) plugin, gives the preview: the objects the release would add, change and remove, and the path of every field that changes. A tick deploys with `helm upgrade --install --reset-values`, and `--rollback-on-failure` on Helm 4 or `--atomic` on Helm 3, whichever the installed helm knows. Helm saves no plan, so `apply` renders the chart with `helm template` in its fresh preview and once more right before the deploy, and deploys only when both renders are the same. A chart that renders differently every time, such as one with a random value, is refused as a moved change and never deploys. Install helm v3.18.0 or newer and the diff plugin v3.15.11 or newer in the workflow before Sluiceway ([credentials](credentials.md)). The release's namespace must exist, unless [`createNamespace`](#stacksoptionscreatenamespace) lets the deploy make it.
 
-For `kubectl`, Sluiceway renders the stack into one set of manifests: the files of the directory as they are, or what `kubectl kustomize` builds when the directory holds a `kustomization.yaml`. `kubectl diff --server-side` of that set is the preview: the API server runs the apply as a dry run, so a field that cannot change in place, a field another manager owns and an object the server refuses all fail the preview, before anyone ticks. A tick deploys, with `kubectl apply --server-side`, the very set `apply`'s own fresh preview diffed and hashed. Three things to know:
+For `kubectl`, Sluiceway renders the stack into one set of manifests: the files of the directory as they are (and of its subdirectories with [`recursive`](#stacksoptionsrecursive)), or what `kubectl kustomize` builds when the directory holds a `kustomization.yaml`. `kubectl diff --server-side` of that set is the preview: the API server runs the apply as a dry run, so a field that cannot change in place, a field another manager owns and an object the server refuses all fail the preview, before anyone ticks. A tick deploys, with `kubectl apply --server-side`, the very set `apply`'s own fresh preview diffed and hashed. Three things to know:
 
-- **Nothing is pruned.** An object taken out of the manifests stays in the cluster, and the row never shows a delete. `kubectl`'s pruning is still alpha. Delete such an object by hand.
+- **Nothing is pruned unless you ask.** Without [`prune`](#stacksoptionsprune), an object taken out of the manifests stays in the cluster, and the row never shows a delete.
 - **The namespace must exist**, or the preview fails. Put a `Namespace` in a stack of its own and make the others [depend on it](#stacksdependson).
 - **A kustomization that reads files outside its directory**, such as `../base`, claims only its own directory: add the other directories to `inputs`, or a change there gives a full scan.
 
@@ -703,6 +704,38 @@ Only with `tool: helm`. With `true`, the deploy passes `--create-namespace`, so 
 Default: the current context of the kubeconfig.
 
 Only with `tool: kubectl`. The kubeconfig context of the stack, passed with `--context` to the preview, the tool diff and the deploy, so one repo can deploy to several clusters with one kubeconfig.
+
+### `stacks[].options.recursive`
+
+Default: `false`
+
+Only with `tool: kubectl`, for a directory of manifests. `true` reads the manifests of every subdirectory too, the files `kubectl apply -R -f <dir>` reads, in the order it reads them. A kustomization lists its own files, so `recursive` on a kustomization is an error, and so is a kustomization in a subdirectory: `kubectl -R` would read it as a manifest. Declare such a directory as a stack of its own.
+
+### `stacks[].options.prune`
+
+Default: `false`
+
+Only with `tool: kubectl`. `true` deletes an object taken out of the manifests when the stack deploys, and shows it as a delete on the row before anyone ticks, in the destroy caution block like any other delete.
+
+`kubectl`'s own pruning cannot do this for a server-side apply (it is alpha and refuses such objects), so Sluiceway keeps a list of what the stack deployed: its inventory, one ConfigMap named `sluiceway-` and 16 hex characters, labelled `app.kubernetes.io/managed-by: sluiceway` and annotated with the stack id, in the stack's namespace. It lists every object of the stack by API group, kind, namespace and name, and holds no value. It goes out with every deploy as part of the set, and never shows on the row.
+
+- The preview reads the inventory, and an object it lists that the manifests no longer hold, that is still in the cluster and that the stack's own field manager applied, is a delete. An object that another field manager took over since is left alone.
+- The deploy applies the set first and deletes after, so an object that moves to a new name is never missing in between. The inventory keeps listing an object until a preview no longer finds it, so a delete that failed is tried again by the next deploy.
+- The first deploy with `prune` writes the first inventory, so an object taken out before then is never pruned: delete it by hand.
+- The kubeconfig needs to get and patch the ConfigMap in the stack's namespace (a server-side apply creates and changes it with a patch), and to get and delete every kind the stack deploys.
+- Changing the stack's `namespace` or its stack id starts a new inventory, and what the old one listed is never pruned.
+
+### `stacks[].options.forceConflicts`
+
+Default: `false`
+
+Only with `tool: kubectl`. `true` passes `--force-conflicts` to the preview and the deploy, so the deploy takes a field that another field manager holds, such as the replicas `kubectl scale` set by hand. Without it, such a field fails the preview with the conflict, as the deploy would fail. With it, the row shows the field as a change, and every deploy takes it back, from a person and from a controller alike: a Deployment whose replicas an autoscaler sets should not set them in its manifest.
+
+### `stacks[].options.fieldManager`
+
+Default: kubectl's own, `kubectl`.
+
+Only with `tool: kubectl`. The field manager of the preview and the deploy, passed with `--field-manager`: letters, digits, `.`, `_` and `-`, at most 128 characters. A name of the stack's own, such as `sluiceway-web`, keeps a `kubectl apply --server-side` run by hand from counting as the stack's own change, and tells pruning and the drift check which objects and fields are the stack's. On a stack that was deployed with another field manager, the old one keeps holding every field it set, so a later change of such a field fails the preview with a conflict until `forceConflicts` takes it over.
 
 ### `mergeAndDeploy.authors`
 

@@ -98,6 +98,10 @@ _Avoid_: Plan handle, plan artifact, cached plan
 The manifests of a Kubernetes manifests stack as one file: the files of its directory, or what kustomize builds of it. The preview diffs it and the deploy applies that same file, so it is the stack's saved plan. It holds every value of the manifests, lives in a directory of its own and is removed when the preview or `apply` ends.
 _Avoid_: Bundle, rendered manifests, manifest set
 
+**Inventory**:
+The list of objects a Kubernetes manifests stack with `prune` deployed, kept by Sluiceway as one ConfigMap in the cluster next to them: API group, kind, namespace and name of each, never a value. It is the last object of the stack's rendered set. An object it lists that the manifests no longer hold is pruned: a delete on the row, and deleted by the deploy.
+_Avoid_: ApplySet, manifest list, tracking ConfigMap
+
 **Pending**:
 Deploying the stack now would change something, because the code moved.
 _Avoid_: Out of sync, dirty, changed

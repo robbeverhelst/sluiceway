@@ -41,10 +41,7 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A `backendConfig` option for OpenTofu (`tofu init -backend-config`)
 - A hint in the check for a directory of `.tf` files that no entry declares
 - Helm, part 3: a `kubeContext` option, zero-config discovery from `Chart.yaml`, and `--take-ownership` for objects made outside the release
-- Pruning for Kubernetes manifests stacks: an object taken out of the manifests deleted by the deploy, and shown as a delete on the row
-- A drift check for Kubernetes manifests stacks
-- Manifests in subdirectories of a Kubernetes manifests stack (`kubectl apply -R`)
-- `forceConflicts` and `fieldManager` options for Kubernetes manifests stacks
+- Pruning of a Kubernetes manifests stack through kubectl's own ApplySet, and drift in fields its manifests do not set
 - Zero-config discovery of kustomizations, and a hint in the check for a directory of manifests that no entry declares
 - `init`, part 2: a credential step for a secret manager other than 1Password's env file of references or for a cloud through OIDC, a setup action for languages other than Node, a check workflow next to the starter workflow, adding to a `sluiceway.yaml` that is there, and Kubernetes manifests stacks (slice 4.9 landed while this slice was built)
 - `init` as an npm package or a command of its own (`npx sluiceway init`)

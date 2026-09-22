@@ -1,5 +1,7 @@
 # Kubernetes manifests are declared in sluiceway.yaml, diffed server-side, and deployed as the one rendered set the preview saw
 
+> Amended by 0070: four more options, `recursive`, `prune`, `forceConflicts` and `fieldManager`. With `prune` the rendered set ends with the stack's inventory, a prune file sits next to it, and the deploy deletes what the row showed as deletes. kubectl's own `--prune` does not work for a server-side apply, which is more than "still alpha".
+
 The build plan's slice 4.9 adds an adapter for plain Kubernetes manifests and kustomizations (issue 100), so that a repo that deploys with `kubectl apply` gets the dashboard. Record 0053 set the pattern for a tool whose stacks files cannot name, and record 0058 fitted Helm to it. This record settles the same questions for kubectl, from kubectl's reference on kubernetes.io, its source (`staging/src/k8s.io/kubectl/pkg/cmd/diff/diff.go` and `apply/apply.go`), and what kubectl v1.34.0 and v1.37.0 printed against kind clusters of 1.34 and 1.37 on 2026-09-22.
 
 ## Decision
