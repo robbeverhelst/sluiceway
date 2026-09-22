@@ -7,6 +7,8 @@ import { type DeploymentRecord, deployFacts, taskStackId } from "./deployment.ts
 export interface OpenRecordOfRun {
   id: number;
   stackId: string;
+  // A queued record waits behind these stacks (record 0056).
+  behind?: string[];
 }
 
 // Each record is read on its own, so a record of this run is found whether or
@@ -22,7 +24,11 @@ export function openRecordsOfRun(
     if (stackId === undefined) continue;
     const fact = deployFacts([record]).byStack.get(stackId);
     if (fact?.kind !== "open" || fact.run !== runId) continue;
-    found.set(record.id, { id: record.id, stackId });
+    found.set(record.id, {
+      id: record.id,
+      stackId,
+      ...(fact.behind ? { behind: fact.behind } : {}),
+    });
   }
   return [...found.values()].sort((a, b) => a.id - b.id);
 }
