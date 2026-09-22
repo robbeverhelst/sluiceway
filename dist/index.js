@@ -58590,6 +58590,121 @@ function stepNotifier(getInput2, log, mask) {
   return createNotifier(targets, { fetch: (url2, init) => fetch(url2, init), log });
 }
 
+// src/core/diff-hash.ts
+import { createHash as createHash4 } from "node:crypto";
+function byCodeUnit14(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function sortedSet3(keys4) {
+  return [...new Set(keys4)].sort(byCodeUnit14);
+}
+function canonicalJson(value) {
+  if (typeof value === "string")
+    return JSON.stringify(value);
+  if (Array.isArray(value))
+    return `[${value.map(canonicalJson).join(",")}]`;
+  const members2 = Object.keys(value).sort(byCodeUnit14).flatMap((key) => {
+    const member = value[key];
+    return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
+  });
+  return `{${members2.join(",")}}`;
+}
+function canonicalChange(change3) {
+  return {
+    address: change3.address,
+    type: change3.type,
+    name: change3.name,
+    op: change3.op,
+    tracking: change3.tracking,
+    previousAddress: change3.previousAddress,
+    changedKeys: sortedSet3(change3.changedKeys),
+    replaceKeys: sortedSet3(change3.replaceKeys),
+    values: canonicalValues(change3.values)
+  };
+}
+function canonicalValues(values2) {
+  if (values2 === undefined || values2.length === 0)
+    return;
+  return [...values2].sort((a, b) => byCodeUnit14(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
+}
+function canonicalDiff(diff2) {
+  const drift = diff2.drift === undefined || diff2.drift.length === 0 ? "" : `"drift":[${canonicalChanges(diff2.drift).join(",")}],`;
+  return `{"changes":[${canonicalChanges(diff2.changes).join(",")}],${drift}"stackId":${JSON.stringify(diff2.stackId)}}`;
+}
+function canonicalChanges(changes) {
+  return changes.map((change3) => ({ address: change3.address, text: canonicalJson(canonicalChange(change3)) })).sort((a, b) => byCodeUnit14(a.address, b.address) || byCodeUnit14(a.text, b.text)).map((change3) => change3.text);
+}
+function diffHash(diff2) {
+  return createHash4("sha256").update(canonicalDiff(diff2), "utf8").digest("hex").slice(0, 16);
+}
+
+// src/core/deploy-gate.ts
+function deployGate(input2) {
+  const { approved, fresh } = input2;
+  if (approved.drift && fresh.ok) {
+    return { kind: "check-drift", withDrift: (drift) => decide(input2, drift) };
+  }
+  return decide(input2, undefined);
+}
+function decide(input2, drift) {
+  const { approved, fresh: previewed, dryRun } = input2;
+  if (drift !== undefined && !drift.ok) {
+    return {
+      kind: "drift-failed",
+      end: failed2({ kind: "preview-failed", reason: drift.reason }),
+      checked: previewed
+    };
+  }
+  if (!previewed.ok) {
+    return {
+      kind: "preview-failed",
+      end: failed2({ kind: "preview-failed", reason: previewed.reason }),
+      checked: previewed
+    };
+  }
+  const fresh = drift?.ok && drift.drift.length > 0 ? { ...previewed, diff: { ...previewed.diff, drift: drift.drift } } : previewed;
+  const drifted = (fresh.diff.drift ?? []).length > 0;
+  if (fresh.diff.changes.length === 0 && !drifted) {
+    return { kind: "in-sync", end: { kind: "in-sync" }, checked: fresh };
+  }
+  const hash2 = diffHash(fresh.diff);
+  if (hash2 !== approved.hash) {
+    return { kind: "moved", end: failed2({ kind: "moved" }), hash: hash2, checked: fresh };
+  }
+  if (dryRun)
+    return { kind: "rehearsed", end: { kind: "rehearsed" }, hash: hash2, checked: fresh };
+  return { kind: "deploy", hash: hash2, checked: fresh, repairDrift: drifted };
+}
+function deployEnd(result, ranOut, timeoutMinutes) {
+  if (result.ok)
+    return { kind: "deployed", end: { kind: "deployed" } };
+  if (result.reason.kind === "moved")
+    return { kind: "moved", end: failed2(result.reason) };
+  if (result.reason.kind === "tool-error" && ranOut) {
+    return { kind: "failed", end: failed2({ kind: "timed-out", minutes: timeoutMinutes ?? 0 }) };
+  }
+  return { kind: "failed", end: failed2(result.reason) };
+}
+function unplannedEnd(deploying) {
+  return failed2(deploying ? { kind: "tool-error", exitCode: null } : { kind: "not-started" });
+}
+function applyOutcome(end) {
+  switch (end.kind) {
+    case "deployed":
+    case "in-sync":
+    case "rehearsed":
+      return end.kind;
+    case "failed":
+      return end.reason.kind === "moved" || end.reason.kind === "deploys-off" ? "refused" : "failed";
+    case "handed-on":
+    case "merged":
+      return "failed";
+  }
+}
+function failed2(reason) {
+  return { kind: "failed", reason };
+}
+
 // src/core/failure-reason.ts
 function previewFailureText(reason) {
   switch (reason.kind) {
@@ -58872,54 +58987,6 @@ function rowAtLateRead(stack) {
   return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
 }
 
-// src/core/diff-hash.ts
-import { createHash as createHash4 } from "node:crypto";
-function byCodeUnit14(a, b) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-function sortedSet3(keys4) {
-  return [...new Set(keys4)].sort(byCodeUnit14);
-}
-function canonicalJson(value) {
-  if (typeof value === "string")
-    return JSON.stringify(value);
-  if (Array.isArray(value))
-    return `[${value.map(canonicalJson).join(",")}]`;
-  const members2 = Object.keys(value).sort(byCodeUnit14).flatMap((key) => {
-    const member = value[key];
-    return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
-  });
-  return `{${members2.join(",")}}`;
-}
-function canonicalChange(change3) {
-  return {
-    address: change3.address,
-    type: change3.type,
-    name: change3.name,
-    op: change3.op,
-    tracking: change3.tracking,
-    previousAddress: change3.previousAddress,
-    changedKeys: sortedSet3(change3.changedKeys),
-    replaceKeys: sortedSet3(change3.replaceKeys),
-    values: canonicalValues(change3.values)
-  };
-}
-function canonicalValues(values2) {
-  if (values2 === undefined || values2.length === 0)
-    return;
-  return [...values2].sort((a, b) => byCodeUnit14(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
-}
-function canonicalDiff(diff2) {
-  const drift = diff2.drift === undefined || diff2.drift.length === 0 ? "" : `"drift":[${canonicalChanges(diff2.drift).join(",")}],`;
-  return `{"changes":[${canonicalChanges(diff2.changes).join(",")}],${drift}"stackId":${JSON.stringify(diff2.stackId)}}`;
-}
-function canonicalChanges(changes) {
-  return changes.map((change3) => ({ address: change3.address, text: canonicalJson(canonicalChange(change3)) })).sort((a, b) => byCodeUnit14(a.address, b.address) || byCodeUnit14(a.text, b.text)).map((change3) => change3.text);
-}
-function diffHash(diff2) {
-  return createHash4("sha256").update(canonicalDiff(diff2), "utf8").digest("hex").slice(0, 16);
-}
-
 // src/core/config-file.ts
 import { existsSync as existsSync3, readFileSync as readFileSync5 } from "node:fs";
 import { join as join29 } from "node:path";
@@ -59005,7 +59072,7 @@ function byCodeUnit15(a, b) {
 var READS_PER_JOB = 100;
 function attributionSource(github, input2, onFailure) {
   let walk3;
-  let failed2 = false;
+  let failed3 = false;
   const pushFiles = new Map;
   const pullRequestFiles = new Map;
   const asked = new Set;
@@ -59013,7 +59080,7 @@ function attributionSource(github, input2, onFailure) {
   const { lookback, trailLength, ...rest } = input2;
   const read3 = async (ranges) => {
     try {
-      if (failed2)
+      if (failed3)
         return false;
       if (!isCommitId(input2.scanSha))
         throw new Error("the scanned commit is no commit id");
@@ -59040,7 +59107,7 @@ function attributionSource(github, input2, onFailure) {
       }
       return true;
     } catch (error63) {
-      failed2 = true;
+      failed3 = true;
       const words = error63 instanceof Error ? error63.message : String(error63);
       onFailure(words.replace(/\.+$/, ""));
       return false;
@@ -59936,9 +60003,9 @@ function previewOutcome(result) {
 
 // src/modes/prepare.ts
 async function prepareStacks(context3, stacks, defaultTimeoutMinutes) {
-  const failed2 = new Map;
+  const failed3 = new Map;
   if (stacks.length === 0 || context3.adapter.prepare === undefined)
-    return failed2;
+    return failed3;
   const timeouts = new Map(stacks.map((one) => [stackId(one.stack), one.previewTimeout ?? defaultTimeoutMinutes]));
   const tool = { root: context3.root, env: context3.env, run: context3.run };
   for (const preparation of context3.adapter.prepare(stacks.map(({ stack }) => stack))) {
@@ -59960,7 +60027,7 @@ async function prepareStacks(context3, stacks, defaultTimeoutMinutes) {
       ...told
     ]);
     for (const id of ids2) {
-      failed2.set(id, {
+      failed3.set(id, {
         ok: false,
         reason: result.reason,
         detail: [
@@ -59970,7 +60037,7 @@ async function prepareStacks(context3, stacks, defaultTimeoutMinutes) {
       });
     }
   }
-  return failed2;
+  return failed3;
 }
 function lines(text6) {
   const all = text6.split(/\r?\n/);
@@ -60094,15 +60161,15 @@ ${ALREADY_ENDED}
   try {
     attempt = await deploy(context3, repo, id_, payload, runUrl2, progress);
   } catch (error63) {
-    const reason2 = progress.deploying ? { kind: "tool-error", exitCode: null } : { kind: "not-started" };
+    const end = unplannedEnd(progress.deploying);
     attempt = {
-      end: { kind: "failed", reason: reason2 },
-      failed: `${name} was not deployed: ${deployFailureText(reason2)}. ${message(error63)}`
+      end,
+      failed: `${name} was not deployed: ${deployFailureText(end.reason)}. ${message(error63)}`
     };
   }
   const reason = reasonOf(attempt);
   const state = recordStatus(attempt.end).state;
-  report.outcome = attempt.summary?.kind === "in-sync" || attempt.summary?.kind === "rehearsed" ? attempt.summary.kind : attempt.end.kind === "deployed" ? "deployed" : reason?.kind === "moved" || reason?.kind === "deploys-off" ? "refused" : "failed";
+  report.outcome = applyOutcome(attempt.end);
   report.reason = reason && deployFailureText(reason);
   report.applied = attempt.summary;
   if (progress.milliseconds !== undefined)
@@ -60239,6 +60306,11 @@ async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup
   const { log, adapter } = context3;
   const name = logGroupTitle(id);
   const notDeployed = (reason, why = "") => `${name} was not deployed: ${deployFailureText(reason)}.${why}`;
+  const notDeployedSummary = (reason, checked) => ({
+    kind: "not-deployed",
+    reason: deployFailureText(reason),
+    checked: applied(checked)
+  });
   const tool = { root: context3.root, env: context3.env, run: context3.run };
   const preview5 = () => adapter.preview(setup.stack.stack, options);
   const { logDiff } = setup.config.scan;
@@ -60246,66 +60318,62 @@ async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup
     log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
   }
   const toolDiff5 = logDiff && previewed.ok && previewed.diff.changes.length > 0 ? await adapter.toolDiff(setup.stack.stack, options) : undefined;
-  const drift = payload.drift && previewed.ok ? await checkDriftAgain(context3, setup, options, id) : undefined;
-  if (drift !== undefined && !drift.ok) {
-    logPreview(context3, id, "The fresh preview", previewed, toolDiff5);
-    const reason = { kind: "preview-failed", reason: drift.reason };
-    return {
-      end: { kind: "failed", reason },
-      failed: notDeployed(reason, " The drift check failed, and the diff hash the tick approved covers drift."),
-      summary: {
-        kind: "not-deployed",
-        reason: deployFailureText(reason),
-        checked: applied(previewed)
-      },
-      setup
-    };
+  const asked = deployGate({
+    approved: payload,
+    fresh: previewed,
+    dryRun: context3.dryRun === true
+  });
+  const gate = asked.kind === "check-drift" ? asked.withDrift(await checkDriftAgain(context3, setup, options, id)) : asked;
+  logPreview(context3, id, "The fresh preview", gate.checked, toolDiff5);
+  const toolDiffInLog = toolDiff5 !== undefined;
+  switch (gate.kind) {
+    case "drift-failed":
+      return {
+        end: gate.end,
+        failed: notDeployed(gate.end.reason, " The drift check failed, and the diff hash the tick approved covers drift."),
+        summary: notDeployedSummary(gate.end.reason, gate.checked),
+        setup
+      };
+    case "preview-failed":
+      return {
+        end: gate.end,
+        failed: notDeployed(gate.end.reason),
+        row: gate.checked,
+        summary: notDeployedSummary(gate.end.reason, gate.checked),
+        setup
+      };
+    case "in-sync":
+      log.info(`The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`);
+      return {
+        end: gate.end,
+        row: gate.checked,
+        toolDiffInLog,
+        summary: { kind: "in-sync" },
+        setup
+      };
+    case "moved":
+      return {
+        end: gate.end,
+        failed: notDeployed(gate.end.reason, ` The fresh preview gives diff hash ${gate.hash} and the tick approved ${payload.hash}. The row on the dashboard shows the fresh diff. Tick it again to deploy that.`),
+        row: gate.checked,
+        toolDiffInLog,
+        summary: notDeployedSummary(gate.end.reason, gate.checked),
+        setup
+      };
+    case "rehearsed":
+      log.info(`The fresh preview gives diff hash ${gate.hash}, the one the tick approved. This is a rehearsal (dry-run: true), so nothing is deployed.`);
+      return {
+        end: gate.end,
+        row: gate.checked,
+        toolDiffInLog,
+        summary: { kind: "rehearsed", diff: gate.checked.diff },
+        setup
+      };
+    case "deploy":
+      break;
   }
-  const fresh = previewed.ok && drift?.ok && drift.drift.length > 0 ? { ...previewed, diff: { ...previewed.diff, drift: drift.drift } } : previewed;
-  logPreview(context3, id, "The fresh preview", fresh, toolDiff5);
-  if (!fresh.ok) {
-    const reason = { kind: "preview-failed", reason: fresh.reason };
-    return {
-      end: { kind: "failed", reason },
-      failed: notDeployed(reason),
-      row: fresh,
-      summary: { kind: "not-deployed", reason: deployFailureText(reason), checked: applied(fresh) },
-      setup
-    };
-  }
-  if (fresh.diff.changes.length === 0 && (fresh.diff.drift ?? []).length === 0) {
-    log.info(`The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`);
-    return {
-      end: { kind: "in-sync" },
-      row: fresh,
-      toolDiffInLog: toolDiff5 !== undefined,
-      summary: { kind: "in-sync" },
-      setup
-    };
-  }
-  const hash2 = diffHash(fresh.diff);
-  if (hash2 !== payload.hash) {
-    const reason = { kind: "moved" };
-    return {
-      end: { kind: "failed", reason },
-      failed: notDeployed(reason, ` The fresh preview gives diff hash ${hash2} and the tick approved ${payload.hash}. The row on the dashboard shows the fresh diff. Tick it again to deploy that.`),
-      row: fresh,
-      toolDiffInLog: toolDiff5 !== undefined,
-      summary: { kind: "not-deployed", reason: deployFailureText(reason), checked: applied(fresh) },
-      setup
-    };
-  }
-  if (context3.dryRun) {
-    log.info(`The fresh preview gives diff hash ${hash2}, the one the tick approved. This is a rehearsal (dry-run: true), so nothing is deployed.`);
-    return {
-      end: { kind: "rehearsed" },
-      row: fresh,
-      toolDiffInLog: toolDiff5 !== undefined,
-      summary: { kind: "rehearsed", diff: fresh.diff },
-      setup
-    };
-  }
-  log.info(`The fresh preview gives diff hash ${hash2}, the one the tick approved. Deploying.`);
+  const fresh = gate.checked;
+  log.info(`The fresh preview gives diff hash ${gate.hash}, the one the tick approved. Deploying.`);
   try {
     await swapRow(context3, setup, id, (_facts, attribution) => ({
       state: "deploying",
@@ -60321,61 +60389,49 @@ async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup
     log.info(`The dashboard could not be written before the deploy: ${message(error63)}`);
   }
   progress.deploying = true;
-  const repairDrift = (fresh.diff.drift ?? []).length > 0;
   const deployStarted = context3.now();
   const limit = deployLimit(tool.run, context3.deployTimeoutMinutes);
   let deployed;
   try {
-    deployed = await adapter.apply(setup.stack.stack, { ...tool, run: limit.run }, previewed.ok ? previewed.plan : undefined, repairDrift ? { repairDrift } : undefined);
+    deployed = await adapter.apply(setup.stack.stack, { ...tool, run: limit.run }, previewed.ok ? previewed.plan : undefined, gate.repairDrift ? { repairDrift: true } : undefined);
   } finally {
     progress.milliseconds = context3.now().getTime() - deployStarted.getTime();
   }
-  const result = !deployed.ok && deployed.reason.kind === "tool-error" && limit.ranOut() ? {
-    ok: false,
-    reason: { kind: "timed-out", minutes: context3.deployTimeoutMinutes ?? 0 },
-    toolLog: deployed.toolLog
-  } : deployed;
-  const words = lines2(result.toolLog);
+  const result = deployEnd(deployed, limit.ranOut(), context3.deployTimeoutMinutes);
+  const words = lines2(deployed.toolLog);
   context3.log.group(`${name}: the deploy`, [
-    result.ok ? "deployed" : `deploy failed: ${deployFailureText(result.reason)}`,
+    result.kind === "deployed" ? "deployed" : `deploy failed: ${deployFailureText(result.end.reason)}`,
     ...words.length > 0 ? ["The tool's own words:", ...words] : []
   ]);
-  if (result.ok) {
-    return {
-      end: { kind: "deployed" },
-      row: { ok: true, diff: { stackId: id, changes: [] }, toolLog: "" },
-      summary: { kind: "deployed", diff: fresh.diff },
-      setup
-    };
+  switch (result.kind) {
+    case "deployed":
+      return {
+        end: result.end,
+        row: { ok: true, diff: { stackId: id, changes: [] }, toolLog: "" },
+        summary: { kind: "deployed", diff: fresh.diff },
+        setup
+      };
+    case "moved":
+      return {
+        end: result.end,
+        failed: notDeployed(result.end.reason, " What the deploy would install changed after the fresh preview, so nothing was deployed. The job log says what."),
+        row: fresh,
+        toolDiffInLog,
+        summary: notDeployedSummary(result.end.reason, fresh),
+        setup
+      };
+    case "failed": {
+      const after = await preview5();
+      logPreview(context3, id, "The preview after the failed deploy", after);
+      return {
+        end: result.end,
+        failed: notDeployed(result.end.reason, " The job log holds the tool's own words."),
+        row: after,
+        summary: { ...notDeployedSummary(result.end.reason, fresh), after: applied(after) },
+        setup
+      };
+    }
   }
-  if (result.reason.kind === "moved") {
-    return {
-      end: { kind: "failed", reason: result.reason },
-      failed: notDeployed(result.reason, " What the deploy would install changed after the fresh preview, so nothing was deployed. The job log says what."),
-      row: fresh,
-      toolDiffInLog: toolDiff5 !== undefined,
-      summary: {
-        kind: "not-deployed",
-        reason: deployFailureText(result.reason),
-        checked: applied(fresh)
-      },
-      setup
-    };
-  }
-  const after = await preview5();
-  logPreview(context3, id, "The preview after the failed deploy", after);
-  return {
-    end: { kind: "failed", reason: result.reason },
-    failed: notDeployed(result.reason, " The job log holds the tool's own words."),
-    row: after,
-    summary: {
-      kind: "not-deployed",
-      reason: deployFailureText(result.reason),
-      checked: applied(fresh),
-      after: applied(after)
-    },
-    setup
-  };
 }
 async function checkDriftAgain(context3, setup, options, id) {
   const name = logGroupTitle(id);
@@ -63273,14 +63329,14 @@ async function runPool(items, size, work) {
   }
   const results = new Array(items.length);
   let next = 0;
-  let failed2 = false;
+  let failed3 = false;
   const slot = async () => {
-    while (!failed2 && next < items.length) {
+    while (!failed3 && next < items.length) {
       const index = next++;
       try {
         results[index] = await work(items[index]);
       } catch (error63) {
-        failed2 = true;
+        failed3 = true;
         throw error63;
       }
     }
@@ -63515,8 +63571,8 @@ function waitingLines(listing, live, redact) {
 }
 
 // src/core/scan-result.ts
-function everyPreviewFailed(attempted, failed2) {
-  return attempted > 1 && failed2 === attempted;
+function everyPreviewFailed(attempted, failed3) {
+  return attempted > 1 && failed3 === attempted;
 }
 
 // src/render/preview-page.ts
@@ -63819,11 +63875,11 @@ function renderSummary(stacks, options = {}) {
   const hasDrift = (stack) => (stack.diff.drift ?? []).length > 0;
   const drifted = diffs.filter((stack) => stack.diff.changes.length === 0 && hasDrift(stack));
   const inSync = diffs.filter((stack) => stack.diff.changes.length === 0 && !hasDrift(stack));
-  const failed2 = sorted.filter((stack) => stack.kind === "preview-failed");
+  const failed3 = sorted.filter((stack) => stack.kind === "preview-failed");
   const counted2 = stacks.length === 0 ? "No stacks previewed." : `${plural2(stacks.length, "stack")} previewed: ${[
     pending.length && `${pending.length} pending`,
     drifted.length && `${drifted.length} drifted`,
-    failed2.length && `${failed2.length} preview failed`,
+    failed3.length && `${failed3.length} preview failed`,
     inSync.length && `${inSync.length} in sync`
   ].filter(Boolean).join(", ")}.`;
   const tail = [];
@@ -63835,8 +63891,8 @@ function renderSummary(stacks, options = {}) {
 `));
     }
   }
-  if (failed2.length > 0) {
-    tail.push("### Preview failed", failed2.map((stack) => failedLine(stack, options)).join(`
+  if (failed3.length > 0) {
+    tail.push("### Preview failed", failed3.map((stack) => failedLine(stack, options)).join(`
 `));
   }
   if (inSync.length > 0) {
@@ -63849,7 +63905,7 @@ function renderSummary(stacks, options = {}) {
   const index = [
     pending.length > 0 && `- Pending: ${pending.map((stack) => indexLink(stack.diff.stackId)).join(" · ")}`,
     drifted.length > 0 && `- Drifted: ${drifted.map((stack) => indexLink(stack.diff.stackId)).join(" · ")}`,
-    failed2.length > 0 && `- Preview failed: ${failed2.map((stack) => indexLink(stack.stackId)).join(" · ")}`
+    failed3.length > 0 && `- Preview failed: ${failed3.map((stack) => indexLink(stack.stackId)).join(" · ")}`
   ].filter((line3) => line3 !== false);
   const frame = (shortened2) => [
     "## Sluiceway scan",
@@ -63930,12 +63986,12 @@ async function previewOne(context3, number4, head, files, stacks) {
         await writeFile4(target2, text7);
     }
     const tool = { root: copy, env: context3.env, run: context3.run };
-    const failed2 = await prepareStacks({ ...tool, log, adapter: context3.adapter }, stacks, context3.previewTimeoutMinutes);
+    const failed3 = await prepareStacks({ ...tool, log, adapter: context3.adapter }, stacks, context3.previewTimeoutMinutes);
     const previews = [];
     for (const configured of stacks) {
       const id = stackId(configured.stack);
       const started = now().getTime();
-      const result = failed2.get(id) ?? await context3.adapter.preview(configured.stack, {
+      const result = failed3.get(id) ?? await context3.adapter.preview(configured.stack, {
         ...tool,
         timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
         showValues: []
@@ -64260,17 +64316,17 @@ async function scanning(context3, report) {
     const all = [...previewed.values()].sort((a, b) => byCodeUnit(a.id, b.id));
     await writeSummary2(context3, all, { logDiff, unclaimed }, attributed);
   }
-  const failed2 = [...previewed.values()].filter(({ result }) => !result.ok);
-  const faults = failed2.filter(({ result }) => !result.ok && result.reason.kind === "internal-error").map(({ id }) => id).sort(byCodeUnit);
+  const failed3 = [...previewed.values()].filter(({ result }) => !result.ok);
+  const faults = failed3.filter(({ result }) => !result.ok && result.reason.kind === "internal-error").map(({ id }) => id).sort(byCodeUnit);
   if (faults.length > 0) {
     throw new ScanFailedError(`The preview of ${faults.join(", ")} failed inside Sluiceway, which is a bug. The dashboard was written first and shows ${faults.length === 1 ? "it" : "them"} as a preview failure. The job log holds the error in the group of the stack. Please report it at https://github.com/sluiceway/sluiceway/issues.`);
   }
-  if (everyPreviewFailed(previewed.size, failed2.length)) {
-    throw new ScanFailedError(`Every preview failed (${failed2.length} of ${previewed.size}). That nearly always means the environment is broken, such as missing credentials or a backend that cannot be reached. The dashboard was written first and shows a preview failure on every row of a previewed stack, which is true: nothing can be deployed either. The job log holds what the tool printed, in the group of each stack.`);
+  if (everyPreviewFailed(previewed.size, failed3.length)) {
+    throw new ScanFailedError(`Every preview failed (${failed3.length} of ${previewed.size}). That nearly always means the environment is broken, such as missing credentials or a backend that cannot be reached. The dashboard was written first and shows a preview failure on every row of a previewed stack, which is true: nothing can be deployed either. The job log holds what the tool printed, in the group of each stack.`);
   }
-  if (context3.strict && failed2.length > 0) {
-    const ids3 = failed2.map(({ id }) => id).sort(byCodeUnit);
-    throw new ScanFailedError(`${plural2(failed2.length, "preview")} failed (${ids3.join(", ")}), and the strict input turns the job red on any preview failure. The dashboard was written first and shows ${failed2.length === 1 ? "it" : "them"}.`);
+  if (context3.strict && failed3.length > 0) {
+    const ids3 = failed3.map(({ id }) => id).sort(byCodeUnit);
+    throw new ScanFailedError(`${plural2(failed3.length, "preview")} failed (${ids3.join(", ")}), and the strict input turns the job red on any preview failure. The dashboard was written first and shows ${failed3.length === 1 ? "it" : "them"}.`);
   }
 }
 var PREVIEW_FIRST = {
@@ -64450,16 +64506,16 @@ async function previewAll(context3, stacks, logDiff, showValues, prepared, check
     return [];
   const tool = { root: context3.root, env: context3.env, run: context3.run };
   const unprepared = stacks.filter(({ stack }) => !prepared.has(stackId(stack)));
-  const failed2 = await prepareStacks({ ...tool, log, adapter }, unprepared, context3.previewTimeoutMinutes);
+  const failed3 = await prepareStacks({ ...tool, log, adapter }, unprepared, context3.previewTimeoutMinutes);
   for (const { stack } of unprepared) {
-    if (!failed2.has(stackId(stack)))
+    if (!failed3.has(stackId(stack)))
       prepared.add(stackId(stack));
   }
   const unpreparedFailures = stacks.flatMap(({ stack }) => {
-    const result = failed2.get(stackId(stack));
+    const result = failed3.get(stackId(stack));
     return result === undefined ? [] : [{ id: stackId(stack), result, startedAt: now(), milliseconds: 0 }];
   });
-  stacks = stacks.filter(({ stack }) => !failed2.has(stackId(stack)));
+  stacks = stacks.filter(({ stack }) => !failed3.has(stackId(stack)));
   if (stacks.length === 0)
     return unpreparedFailures;
   log.info(`Previewing ${plural2(stacks.length, "stack")} with a pool of ${context3.concurrency} and a time limit of ${minutes(context3.previewTimeoutMinutes)} for each preview.`);
