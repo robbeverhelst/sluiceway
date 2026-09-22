@@ -58078,6 +58078,7 @@ function findForWorkflow(stacks, files, read3) {
     pulumi: pulumiPaths.length > 0,
     opentofu: stacks.some((stack) => tool(stack) === OPENTOFU),
     helm: stacks.some((stack) => tool(stack) === HELM),
+    kubectl: stacks.some((stack) => tool(stack) === KUBECTL),
     node: nodePaths.length === 0 ? undefined : nodeFindings(nodePaths, files, read3),
     otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit14(a.runtime, b.runtime)),
     helmRepositories: helmRepositories(stacks, read3),
@@ -58326,7 +58327,8 @@ function toolSteps(findings, job) {
     ...findings.node === undefined ? [] : nodeSteps(findings.node, job),
     ...findings.pulumi ? pulumiSteps(findings, job) : [],
     ...findings.opentofu ? OPENTOFU_STEPS : [],
-    ...findings.helm ? helmSteps(findings.helmRepositories) : []
+    ...findings.helm ? helmSteps(findings.helmRepositories) : [],
+    ...findings.kubectl ? KUBECTL_STEPS : []
   ];
 }
 var LOCKFILE = {
@@ -58407,6 +58409,11 @@ var HELM_STEPS = [
   "          version: v4.3.0",
   "      - name: Install the diff plugin",
   "        run: helm plugin install https://github.com/databus23/helm-diff --version v3.15.13 --verify=false"
+];
+var KUBECTL_STEPS = [
+  "      - uses: azure/setup-kubectl@v5",
+  "        with:",
+  "          version: v1.37.0"
 ];
 function helmSteps(repositories) {
   if (repositories.length === 0)
@@ -58519,8 +58526,8 @@ function needsText({ findings, declarable, branchGuessed }) {
       needs2.push(`init did not use these env files of secret references: ${envFiles2.others.join(", ")}.`);
     }
   }
-  if (findings.helm) {
-    needs2.push("The scan and apply jobs need a kubeconfig for the cluster of the Helm releases (docs/credentials.md, Helm).");
+  if (findings.helm || findings.kubectl) {
+    needs2.push("The scan and apply jobs need a kubeconfig for the cluster (docs/credentials.md, Helm and Kubernetes manifests).");
   }
   if (declarable.helm.length > 0) {
     needs2.push(`sluiceway.yaml names each Helm release and its namespace after the chart: ${declarable.helm.map(({ path }) => path).join(", ")}. Set both to where the release runs, and add its values files. The namespace must exist.`);
