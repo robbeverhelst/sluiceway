@@ -63,3 +63,18 @@ describe("the deployment-id input (record 0035)", () => {
     );
   });
 });
+
+// Slice 5.13 (record 0078): only scan, resolve and apply send.
+describe("a notification input on a step that sends nothing", () => {
+  test("is a warning that names it, and never an error about it", async () => {
+    const warnings: string[] = [];
+    const inputs = (name: string) =>
+      name === "slack-webhook-url" ? "https://hooks.slack.com/services/SECRET" : "";
+    const result = run("settle", ACTION, inputs, (message) => void warnings.push(message));
+    // Outside a job, settle stops at the runner's environment.
+    await expect(result).rejects.not.toThrow("slack");
+    expect(warnings).toEqual([
+      '"slack-webhook-url" is set on a step in settle mode, which sends no notification. Only scan, resolve and apply do. Take it out of this step.',
+    ]);
+  });
+});

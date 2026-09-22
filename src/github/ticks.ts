@@ -112,6 +112,19 @@ export async function commentOnRefusedTicks(
   outcomes: TickOutcome[],
   merges: readonly RefusedTick[] = [],
 ): Promise<boolean> {
+  const refused = refusedTicks(outcomes, merges);
+  if (refused.length === 0) return false;
+  await github.createComment(dashboard, refusedTicksComment(refused));
+  return true;
+}
+
+// Every tick of the run that the comment is about: refused, not verified, or
+// a merge that started nothing. The refused notification is about the same
+// ticks (record 0078).
+export function refusedTicks(
+  outcomes: readonly TickOutcome[],
+  merges: readonly RefusedTick[] = [],
+): RefusedTick[] {
   const judged = outcomes.flatMap((outcome): RefusedTick[] => {
     if (outcome.outcome !== "refused" && outcome.outcome !== "unverified") return [];
     return [
@@ -122,8 +135,5 @@ export async function commentOnRefusedTicks(
       },
     ];
   });
-  const refused = [...judged, ...merges];
-  if (refused.length === 0) return false;
-  await github.createComment(dashboard, refusedTicksComment(refused));
-  return true;
+  return [...judged, ...merges];
 }

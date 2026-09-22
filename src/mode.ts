@@ -1,5 +1,5 @@
 import * as core from "@actions/core";
-import { type GetInput, refuseDeploymentId } from "./github/inputs.ts";
+import { type GetInput, refuseDeploymentId, unusedNotifyInputs } from "./github/inputs.ts";
 import { runApply } from "./modes/apply-job.ts";
 import { backendContext } from "./modes/check-backend.ts";
 import { runCheck } from "./modes/check-job.ts";
@@ -50,7 +50,18 @@ export async function run(
   mode: Mode,
   directory: string,
   getInput: GetInput = core.getInput,
+  warn: (message: string, title: string) => void = (message, title) =>
+    core.warning(message, { title }),
 ): Promise<void> {
   refuseDeploymentId(mode, getInput);
+  // Only scan, resolve and apply send (record 0078). A channel on another
+  // step is a warning, never an error, and its value is never read out.
+  const unused = unusedNotifyInputs(mode, getInput);
+  if (unused.length > 0) {
+    warn(
+      `${unused.map((name) => `"${name}"`).join(", ")} ${unused.length === 1 ? "is" : "are"} set on a step in ${mode} mode, which sends no notification. Only scan, resolve and apply do. Take ${unused.length === 1 ? "it" : "them"} out of this step.`,
+      "Notification input not used",
+    );
+  }
   return handlers[mode](directory);
 }

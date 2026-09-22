@@ -78,7 +78,8 @@ describe("action.yml", () => {
     }
   });
 
-  // Record 0035: the five inputs of v1, and `job-id` of record 0044.
+  // Record 0035: the five inputs of v1, `job-id` of record 0044, and the four
+  // channels of record 0078.
   test("declares only the inputs the decision records fix", () => {
     expect(Object.keys(action.inputs).sort()).toEqual([
       "backend",
@@ -90,7 +91,11 @@ describe("action.yml", () => {
       "job-id",
       "mode",
       "preview-timeout",
+      "slack-webhook-url",
       "strict",
+      "telegram-bot-token",
+      "telegram-chat-id",
+      "webhook-url",
     ]);
   });
 

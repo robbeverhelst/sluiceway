@@ -5,6 +5,7 @@ import { CANARY_SECRET, CANARY_VALUE } from "../../scripts/fixtures/example.ts";
 import type { ProcessRunner } from "../../src/adapters/process.ts";
 import { pulumi } from "../../src/adapters/pulumi/index.ts";
 import { scan } from "../../src/modes/scan.ts";
+import { createNotifier, type Fetch } from "../../src/notify/send.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
 import { FIXTURES, readRecording, unrecordedHistory, VERSIONS } from "../adapters/pulumi/replay.ts";
 import { dashboardBody, harness, SHA } from "./harness.ts";
@@ -211,6 +212,30 @@ describe.each(VERSIONS)("a full scan of the example project, replayed from %s", 
     ].join("\n");
     for (const forbidden of [CANARY_VALUE, CANARY_SECRET, "CANARY", "[secret]"]) {
       expect(written).not.toContain(forbidden);
+    }
+  });
+
+  // Slice 5.13 (record 0078): the canary test on the built-in notifications,
+  // every byte each channel was sent.
+  test("no value reaches a notification", async () => {
+    const sent: string[] = [];
+    const fetch: Fetch = async (url, init) => {
+      sent.push(url, init.body);
+      return { ok: true, status: 200 };
+    };
+    const { context, log } = harness(pulumi, { root: ROOT, run: replayedTool(version) });
+    context.notifier = createNotifier(
+      {
+        slack: "https://hooks.slack.com/x",
+        telegram: { token: "1:a", chatId: "1" },
+        webhook: "https://x",
+      },
+      { fetch, log },
+    );
+    await scan(context);
+    expect(sent.length).toBeGreaterThan(0);
+    for (const forbidden of [CANARY_VALUE, CANARY_SECRET, "CANARY", "[secret]"]) {
+      expect(sent.join("\n")).not.toContain(forbidden);
     }
   });
 });

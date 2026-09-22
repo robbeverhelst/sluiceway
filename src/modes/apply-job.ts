@@ -13,6 +13,7 @@ import { readJob } from "../github/job.ts";
 import { actionsLog } from "../github/job-log.ts";
 import { createOctokitPort } from "../github/octokit-port.ts";
 import { actionsOutputs } from "../github/outputs.ts";
+import { stepNotifier } from "../notify/step.ts";
 import { apply } from "./apply.ts";
 
 export async function runApply(directory: string): Promise<void> {
@@ -20,6 +21,7 @@ export async function runApply(directory: string): Promise<void> {
   const env = process.env;
   const inputs = readApplyInputs(core.getInput);
   const job = readJob(env);
+  const log = actionsLog();
   await apply({
     root: job.root,
     env,
@@ -27,7 +29,7 @@ export async function runApply(directory: string): Promise<void> {
     adapter: tools,
     run: runProcess,
     github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),
-    log: actionsLog(),
+    log,
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
     deployTimeoutMinutes: inputs.deployTimeoutMinutes,
     now: () => new Date(),
@@ -41,5 +43,6 @@ export async function runApply(directory: string): Promise<void> {
     dryRun: inputs.dryRun,
     event: readEventPayload(env, (path) => readFileSync(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),
+    notifier: stepNotifier(core.getInput, log, core.setSecret),
   });
 }

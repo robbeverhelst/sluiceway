@@ -65,6 +65,28 @@ inputs:
       so. The stack may then be half deployed. Empty by default: no limit of Sluiceway's, and the
       job's own timeout-minutes is the limit.
     required: false
+  slack-webhook-url:
+    description: >-
+      scan, resolve and apply. The address of a Slack incoming webhook, from a secret of the repo.
+      Sluiceway posts a short message there on the events notify.events in sluiceway.yaml lists.
+      Empty by default: nothing is sent.
+    required: false
+  telegram-bot-token:
+    description: >-
+      scan, resolve and apply. The token of a Telegram bot, from a secret. Needs telegram-chat-id
+      too. Empty by default: nothing is sent.
+    required: false
+  telegram-chat-id:
+    description: >-
+      scan, resolve and apply. The chat the Telegram bot posts to: a chat id or the @ name of a
+      public channel. Empty by default.
+    required: false
+  webhook-url:
+    description: >-
+      scan, resolve and apply. An http or https address, from a secret, that gets a small JSON
+      message on the same events: the event, the repository, the stack ids and the links. Empty
+      by default: nothing is sent.
+    required: false
   job-id:
     description: >-
       Leave it at the default. The id of the running job, which GitHub gives no step in any other

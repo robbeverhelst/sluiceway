@@ -19,6 +19,7 @@ import { actionsLog } from "../github/job-log.ts";
 import { createOctokitPort } from "../github/octokit-port.ts";
 import { actionsOutputs } from "../github/outputs.ts";
 import { countRequests } from "../github/request-count.ts";
+import { stepNotifier } from "../notify/step.ts";
 import { scan } from "./scan.ts";
 
 export async function runScan(directory: string): Promise<void> {
@@ -26,6 +27,7 @@ export async function runScan(directory: string): Promise<void> {
   const env = process.env;
   const inputs = readScanInputs(core.getInput);
   const job = readJob(env);
+  const log = actionsLog();
   const octokit = getOctokit(inputs.token);
   const payload = readEventPayload(env, (path) => readFileSync(path, "utf8"));
   await scan({
@@ -36,7 +38,7 @@ export async function runScan(directory: string): Promise<void> {
     run: runProcess,
     github: createOctokitPort(octokit, { owner: job.owner, repo: job.repo }),
     requests: countRequests(octokit),
-    log: actionsLog(),
+    log,
     now: () => new Date(),
     concurrency: inputs.concurrency,
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
@@ -54,6 +56,7 @@ export async function runScan(directory: string): Promise<void> {
     // and a dashboard without its version line would hide that.
     actionRef: readActionRef(env, directory, (path) => readFileSync(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),
+    notifier: stepNotifier(core.getInput, log, core.setSecret),
     publicRepo: publicRepo(payload),
     startedByPerson: startedByPerson(payload),
   });

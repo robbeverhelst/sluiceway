@@ -37,6 +37,7 @@ import {
 } from "../core/edit-history.ts";
 import { type MergeMethod, mergeMethod, NOT_QUALIFIED, qualify } from "../core/merge-and-deploy.ts";
 import { declaresMergeScanInput, MERGE_SCAN_INPUT, mergeScanInputs } from "../core/merge-scan.ts";
+import { repositoryOf } from "../core/notify.ts";
 import { waitsByPhase } from "../core/phases.ts";
 import { renovateMergeSetting } from "../core/renovate-config.ts";
 import { capDeploys, type MatrixEntry, matrixOutput } from "../core/resolve.ts";
@@ -47,10 +48,18 @@ import { findDashboard, isBotIssueWithRootMarker } from "../github/dashboard.ts"
 import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts";
 import { editedIssue } from "../github/event.ts";
 import type { JobLog } from "../github/job-log.ts";
+import { dashboardUrl } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
-import { commentOnRefusedTicks, judgeTicks, type Tick, type TickOutcome } from "../github/ticks.ts";
+import {
+  commentOnRefusedTicks,
+  judgeTicks,
+  refusedTicks,
+  type Tick,
+  type TickOutcome,
+} from "../github/ticks.ts";
 import type { WorkflowRef } from "../github/workflow-ref.ts";
 import { writeBody } from "../github/write-loop.ts";
+import type { Notifier } from "../notify/send.ts";
 import { BODY_LIMIT, type BudgetOptions, fitBody } from "../render/budget.ts";
 import { type ClearTickOptions, clearTick } from "../render/clear-tick.ts";
 import { runUrl as runUrlOf } from "../render/links.ts";
@@ -64,7 +73,7 @@ import {
 import { clearMergeTick, type MergeNote } from "../render/merge-row.ts";
 import type { RefusedTick } from "../render/refused-ticks.ts";
 import { resolveSummary } from "../render/resolve-summary.ts";
-import { type DeployingRow, plural, type Row } from "../render/row.ts";
+import { byCodeUnit, type DeployingRow, plural, type Row } from "../render/row.ts";
 
 export interface ResolveContext {
   // The directory of the checked-out repo.
@@ -89,6 +98,9 @@ export interface ResolveContext {
   // say which one this is.
   workflow: WorkflowRef | undefined;
   setOutput: (name: string, value: string) => void;
+  // The built-in notifications (record 0078). None when the step names no
+  // channel.
+  notifier?: Notifier | undefined;
   // Only a test has a reason to set this.
   limits?: { body?: BudgetOptions } | undefined;
 }
@@ -627,6 +639,23 @@ async function resolveTicks(
     } catch (error) {
       failures.push(`The comment about the refused ticks could not be written: ${message(error)}.`);
     }
+    // The same ticks the comment is about, in one message (record 0078). A
+    // send never throws.
+    const refused = refusedTicks(outcomes, merging.problems);
+    if (refused.length > 0) {
+      await context.notifier?.send(
+        [
+          {
+            event: "refused",
+            repository: repositoryOf(context.repoUrl),
+            stacks: refusedStacks(refused),
+            dashboardUrl: dashboardUrl(context.repoUrl, issue.number),
+            runUrl: `${context.repoUrl}/actions/runs/${context.runId}`,
+          },
+        ],
+        config.notify.events,
+      );
+    }
   }
 
   // An unverified tick fails closed and turns the job red (record 0018).
@@ -636,6 +665,15 @@ async function resolveTicks(
 }
 
 type MergeTick = Extract<BodyTick, { kind: "merge" }>;
+
+// The stacks of the refused ticks, each once, in code unit order. The rescan
+// box has none.
+function refusedStacks(refused: readonly RefusedTick[]): string[] {
+  const ids = refused.flatMap(({ target }) =>
+    target.kind === "stack" ? [target.stackId] : target.kind === "merge" ? target.stackIds : [],
+  );
+  return [...new Set(ids)].sort(byCodeUnit);
+}
 
 function tickName(tick: BodyTick): string {
   if (tick.kind === "row") return logGroupTitle(tick.stackId);

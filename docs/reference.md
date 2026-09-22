@@ -28,6 +28,10 @@ One action, six modes, chosen with the `mode` input.
 | `dry-run` | `false` | `apply` only. `true` rehearses a tick: the deployment record, the fresh preview and the check that it matches the row run as for a deploy, and then nothing is deployed. The record ends as `inactive` with "rehearsed, nothing was deployed", the row is pending again and Recently deployed says `rehearsed`. Set it on the `apply` step while you try out a new workflow. |
 | `backend` | `false` | `check` only. `true` also asks the backend which of the stacks the check found it holds, with the credentials your job loads before the step, and gives a ready-to-paste `ignore` block for the ones it does not hold. It runs the tool for that one question. An error in every other mode. See [the check](workflow.md#check-your-setup). |
 | `deploy-timeout` | none | `apply` only. A time limit on the deploy itself, in whole minutes. When it runs out the tool is interrupted and gets two minutes to stop by itself, and the deploy fails with "the deploy ran out of its time limit of N minutes and the tool was stopped". The stack may then be half deployed, and the row shows what is left. Without it the job's own `timeout-minutes` is the limit. |
+| `slack-webhook-url` | none | `scan`, `resolve` and `apply`. The address of a Slack incoming webhook, from a secret. Sluiceway posts a short message there on the events `notify.events` lists ([notifications](notifications.md)). |
+| `telegram-bot-token` | none | `scan`, `resolve` and `apply`. The token of a Telegram bot, from a secret. Needs `telegram-chat-id` too. |
+| `telegram-chat-id` | none | The chat the Telegram bot posts to: a chat id or the `@` name of a public channel. |
+| `webhook-url` | none | `scan`, `resolve` and `apply`. An `http` or `https` address, from a secret, that gets a small JSON message on the same events. |
 | `job-id` | the id of the running job | Leave it at the default. GitHub gives a step its job's id in no other way, and it needs no permission. A row's link to a failed preview uses it to land on the job's log. |
 
 ## Outputs
@@ -36,7 +40,7 @@ One action, six modes, chosen with the `mode` input.
 |---|---|---|
 | `matrix` | `resolve`, `scan` | A JSON list with one `{ stack, environment, deployment }` entry per deploy that was started, or `[]`. A scan starts one only after a merge from the dashboard ([Merge and deploy](workflow.md#merge-and-deploy)). |
 
-`scan` and `apply` also set outputs and write a result file, so a step after Sluiceway can tell people or chart numbers. Sluiceway itself sends nothing. [Notifications](notifications.md) lists them, with recipes that stay quiet unless something is pending or failed.
+`scan` and `apply` also set outputs and write a result file, so a step after Sluiceway can chart numbers or send anything the built-in notifications do not. [Notifications](notifications.md) lists them, next to the built-in Slack, Telegram and webhook messages.
 
 ## Requirements
 

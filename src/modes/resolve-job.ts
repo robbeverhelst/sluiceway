@@ -14,6 +14,7 @@ import { readJob } from "../github/job.ts";
 import { actionsLog } from "../github/job-log.ts";
 import { createOctokitPort } from "../github/octokit-port.ts";
 import { readWorkflowRef } from "../github/workflow-ref.ts";
+import { stepNotifier } from "../notify/step.ts";
 import { resolve } from "./resolve.ts";
 
 export async function runResolve(directory: string): Promise<void> {
@@ -22,12 +23,13 @@ export async function runResolve(directory: string): Promise<void> {
   const read = (path: string) => readFileSync(path, "utf8");
   const token = readToken(core.getInput);
   const job = readJob(env);
+  const log = actionsLog();
   await resolve({
     root: job.root,
     // Every tool, each stack to the adapter of its own (record 0053).
     adapter: tools,
     github: createOctokitPort(getOctokit(token), { owner: job.owner, repo: job.repo }),
-    log: actionsLog(),
+    log,
     repoUrl: job.repoUrl,
     runId: job.runId,
     runAttempt: job.runAttempt,
@@ -36,5 +38,6 @@ export async function runResolve(directory: string): Promise<void> {
     event: readEventPayload(env, read),
     workflow: readWorkflowRef(env),
     setOutput: (name, value) => core.setOutput(name, value),
+    notifier: stepNotifier(core.getInput, log, core.setSecret),
   });
 }

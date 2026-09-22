@@ -40,6 +40,12 @@ import {
   deployFailureText,
   previewFailureText,
 } from "../core/failure-reason.ts";
+import {
+  applyNotification,
+  DEFAULT_NOTIFY_EVENTS,
+  type NotifyEvent,
+  repositoryOf,
+} from "../core/notify.ts";
 import type { OutsideDeploy } from "../core/outside-deploy.ts";
 import { shownValues } from "../core/show-values.ts";
 import { stackId } from "../core/stack.ts";
@@ -51,6 +57,7 @@ import type { JobLog } from "../github/job-log.ts";
 import { eventDashboardUrl, type StepOutputs, writeResultFile } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
 import { writeBody } from "../github/write-loop.ts";
+import type { Notifier } from "../notify/send.ts";
 import {
   ALREADY_ENDED,
   type AppliedPreview,
@@ -117,6 +124,9 @@ export interface ApplyContext {
   // The step outputs and the result file (record 0041). A test that does not
   // look at them leaves them out.
   outputs?: StepOutputs | undefined;
+  // The built-in notifications (record 0078). None when the step names no
+  // channel.
+  notifier?: Notifier | undefined;
   // Only a test has a reason to set this.
   limits?: { body?: BudgetOptions } | undefined;
 }
@@ -162,7 +172,29 @@ export async function apply(context: ApplyContext): Promise<void> {
     await applying(context, report);
   } finally {
     reportOutputs(context, report);
+    await notifyOutcome(context, report);
   }
+}
+
+// The built-in notification of the outcome (record 0078), on every way out,
+// as the outputs are. It never throws, so it never changes the job's result.
+// A sluiceway.yaml that cannot be read, which already failed the deploy, sends
+// the default events.
+async function notifyOutcome(context: ApplyContext, report: ApplyReport): Promise<void> {
+  if (!context.notifier) return;
+  const notification = applyNotification(report.outcome ?? "failed", report.stack, {
+    repository: repositoryOf(context.repoUrl),
+    dashboardUrl: eventDashboardUrl(context.repoUrl, context.event),
+    runUrl: runUrlOf(context.repoUrl, context.runId, context.runAttempt),
+  });
+  if (!notification) return;
+  let events: readonly NotifyEvent[] = DEFAULT_NOTIFY_EVENTS;
+  try {
+    events = loadConfig(context.root).notify.events;
+  } catch {
+    // The job log already says why the file cannot be read.
+  }
+  await context.notifier.send([notification], events);
 }
 
 // The outputs are set on every way out (record 0041). `refused` is a record

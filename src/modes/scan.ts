@@ -43,6 +43,7 @@ import {
   type WaitingUpdate,
   waitingUpdates,
 } from "../core/merge-and-deploy.ts";
+import { repositoryOf, scanNotifications } from "../core/notify.ts";
 import { resolveOnItsWay, type TickAtLateRead, tickAtLateRead } from "../core/orphan-tick.ts";
 import {
   type OutsideDeploy,
@@ -80,6 +81,7 @@ import {
   type PreviewPageToWrite,
   previewPages,
 } from "../github/preview-pages.ts";
+import type { Notifier } from "../notify/send.ts";
 import {
   BODY_LIMIT,
   type BudgetOptions,
@@ -167,6 +169,9 @@ export interface ScanContext {
   // The step outputs and the result file (record 0041). A test that does not
   // look at them leaves them out.
   outputs?: StepOutputs | undefined;
+  // The built-in notifications (record 0078). None when the step names no
+  // channel, and in a test that does not look.
+  notifier?: Notifier | undefined;
   // How many requests the port has made so far, counted on the wire. The
   // scan logs it last, so the API budget of record 0017 can be read from a
   // real run. A test that does not look at it leaves it out.
@@ -392,6 +397,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   const prepared = new Set<string>();
   let composed: Composed | undefined;
   let written: DashboardResult;
+  let startedFrom: string | undefined;
   // Stacks this scan previewed a second time for a deploy that ended under it.
   const again = new Set<string>();
   // The tools' own histories, read once the scan is full (record 0073).
@@ -663,6 +669,10 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       // does not fit on its own fails the scan before any request.
       if (previewed.size === ids.length) compose(undefined, NO_DEPLOYS, false, new Map());
       written = await writeDashboard(context.github, config.dashboard, async (liveBody) => {
+        // The body this scan started from, for the notifications: the first
+        // late read, "" for a new dashboard. A retry reads the scan's own
+        // body back, which is no news.
+        startedFrom ??= liveBody;
         let deploys = await lateDeploys(context, stacks, previewed, liveBody);
         // A merge that waits for this scan (record 0054). Its stack has to be
         // previewed first, and then the fresh diff goes to a record of its
@@ -717,6 +727,15 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
     // The counts line of the body as written, from its row markers.
     counts: dashboardCounts(parseDashboard(written.body).rows),
   };
+  // Before anything can turn the job red, so a red scan still tells. A send
+  // never throws (record 0078).
+  await context.notifier?.send(
+    scanNotifications(startedFrom ?? "", written.body, {
+      repository: repositoryOf(context.repoUrl),
+      dashboardUrl: report.dashboard.url,
+    }),
+    config.notify.events,
+  );
 
   // The summary was written before the late read, which is where the commit
   // of a stack's last deploy comes from. Now that it is known, the summary is
