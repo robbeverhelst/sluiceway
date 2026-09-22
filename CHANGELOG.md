@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0](https://github.com/sluiceway/sluiceway/compare/v0.10.0...v0.11.0) (2026-09-22)
+
+
+### Features
+
+* record 0060, the docs, CI recording of the kubectl fixtures, and the e2e with four tools ([15937c3](https://github.com/sluiceway/sluiceway/commit/15937c387a1f3ef942993406e87c662cee483013))
+* the Kubernetes manifests adapter: declared stacks, kubectl diff and apply of one rendered set (slice 4.9) ([ea1a1e1](https://github.com/sluiceway/sluiceway/commit/ea1a1e1fb494e2e08f8adf0e24038b52f2d5f649))
+
 ## [0.10.0](https://github.com/sluiceway/sluiceway/compare/v0.9.0...v0.10.0) (2026-09-22)
 
 
