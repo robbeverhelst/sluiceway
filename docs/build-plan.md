@@ -37,7 +37,7 @@ Everything else is yours to decide. Decide, write down why in the pull request, 
 
 The core loop and nothing else: a scan previews stacks and writes the dashboard, a person ticks a box, exactly that stack deploys, and the row returns to in sync or shows why it failed.
 
-Not in v1: drift detection, stack dependencies, a second adapter, teams in the tick rule, property values. (The second adapter, OpenTofu, came after the first releases, in slice 4.1 and record 0053.) `docs/later.md` has the full list. The marker format, the row states and the diff shape already leave room for them, so nothing in v1 needs a placeholder for them. Do not add empty drift or dependency code.
+Not in v1: drift detection, stack dependencies, a second adapter, teams in the tick rule, property values. (Drift part 1 came after them too, in slice 4.3 and record 0055. The second adapter, OpenTofu, came after the first releases, in slice 4.1 and record 0053.) `docs/later.md` has the full list. The marker format, the row states and the diff shape already leave room for them, so nothing in v1 needs a placeholder for them. Do not add empty drift or dependency code.
 
 The brief's milestone numbers change with that. M0 is merged. M1 is the scan, M2 is the tick and the deploy, M3 is proof and the first release. The brief's M3 (drift and dependencies) and M4 (launch) are not part of this plan.
 
@@ -84,6 +84,7 @@ The file is optional and sits at the repo root. Unknown keys are an error, becau
 | `ignore` | `[]` | Globs matched against the stack id. An entry is a glob, or `{ glob, reason }`, and a stack left out with a reason is listed with it under In sync | 0010, 0051 |
 | `scan.unrelated` | `[]` | Globs for files that claim nothing and force nothing | 0010 |
 | `scan.logDiff` | `false` | Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else | 0048 |
+| `drift.enabled` | `false` | Check every stack for drift in each scan that a schedule starts or a person starts with Run workflow, and in a push's scan only for the stacks whose row showed drift. There is no `drift.schedule`: the loader says the cron goes in the workflow | 0055 |
 | `stacks[].path` | required per entry | Directory of the stack, relative to the repo root | 0006 |
 | `stacks[].name` | none | Name of the stack. Without it the entry covers every stack in `path` | 0006 |
 | `stacks[].tool` | none | `opentofu`: the entry declares a stack of that tool at `path`, because files alone cannot name one | 0053 |
@@ -99,7 +100,7 @@ Rules for config loading:
 
 - A `stacks[]` entry adds settings to stacks that discovery found. It never creates a stack, except an entry with `tool`, which declares one (0053). An entry that matches no discovered stack is a config error.
 - A `tickers` entry with a slash fails with the message that teams are not supported yet (0018).
-- `drift` fails with a message that says it is not in this version yet. It is never ignored. (`dependsOn` did too until slice 4.4, 0056.)
+- `stacks[].drift` fails with a message that says it is not in this version yet. It is never ignored. (`dependsOn` did too until slice 4.4, 0056, and a top level `drift` until slice 4.3, 0055.)
 - The JSON schema is generated from the Zod schema into `schema/sluiceway.schema.json`, committed, and checked in CI the way `dist/` is.
 
 ### Fixed strings and numbers
@@ -108,11 +109,11 @@ Rules for config loading:
 |---|---|---|
 | Bot | `github-actions[bot]`, type `Bot` | 0017 |
 | Deployment `task` | `sluiceway:<stack id>` | 0003 |
-| Deployment payload | `{ "v": 1, "hash", "ticker", "run" }` | 0003 |
+| Deployment payload | `{ "v": 1, "hash", "ticker", "run" }`, plus `"drift": true` when the approved hash covers drift | 0003, 0055 |
 | Default environment label | `sluiceway` | 0003 |
 | Concurrency groups | `sluiceway-scan`, `sluiceway-resolve`, `sluiceway-apply-<stack id>` | 0004, 0025, 0035 |
 | Marker version | `1` | 0009 |
-| Row states | `pending`, `deploying`, `in-sync`, `preview-failed`, and `queued` since slice 4.4 | 0009, 0056 |
+| Row states | `pending`, `deploying`, `in-sync`, `preview-failed`, `queued` since slice 4.4, and `drift` since slice 4.3, with the marker key `drift="true"` on a row whose hash covers drift | 0009, 0055, 0056 |
 | Diff hash | SHA-256 of the canonical document, first 16 hex characters | 0008 |
 | Body target, hard limits | 58,000 characters, 65,536 characters, 262,144 bytes | 0028 |
 | Summary budget | 1,000,000 bytes | 0037 |
@@ -126,7 +127,7 @@ Rules for config loading:
 
 ### The action's own version and the image URLs
 
-The header images are served from the exact release tag of the running action, or its commit SHA, never from a moving tag (0033). There are twenty-two of them, 880 by 160 (0039, 0043). The glue works the ref out once per job and hands it to the renderer as data:
+The header images are served from the exact release tag of the running action, or its commit SHA, never from a moving tag (0033). There are sixty-four of them, 880 by 160 (0039, 0043, 0047, 0055). The glue works the ref out once per job and hands it to the renderer as data:
 
 1. If `GITHUB_ACTION_REF` is a full commit SHA or an exact version tag (`v1.2.3`), use it.
 2. Otherwise read `version` from the `package.json` next to the action and use `v<version>`. The action finds that file from the address of its own entry point (`import.meta.url` of `dist/index.js`, one directory below `package.json`). Not from `GITHUB_ACTION_PATH`: GitHub sets it for composite actions only, so a JavaScript action never gets it, which broke every run of 0.1.0 on `v0` (hotfix 0.1.1, seen in the lab).

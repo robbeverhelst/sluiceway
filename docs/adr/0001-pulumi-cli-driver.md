@@ -1,5 +1,7 @@
 # Drive Pulumi through the CLI, not the Automation API
 
+> Amended by 0055: `refresh --preview-only --json` names a drifted property only in its engine events, so the drift check streams them (`PULUMI_ENABLE_STREAMING_JSON_PREVIEW=true`). The research's claim that the one JSON document turns such a step into an `update` did not hold on v3.229.0 or v3.263.0. The lock-free check on the minimum version is recorded.
+
 The Pulumi adapter shells out to the `pulumi` CLI with `--json` and parses the output with a schema. The Automation API was rejected: it still needs the CLI on PATH, it bundled to 13.9 MB against a few hundred bytes for a CLI wrapper, and its `preview()` result has no per-resource steps, which the row counts and the hash need. A later OpenTofu adapter can only be CLI-driven, so this keeps both adapters the same shape.
 
 Sluiceway does not install Pulumi. The user installs it in a workflow step before Sluiceway, so they control the version.

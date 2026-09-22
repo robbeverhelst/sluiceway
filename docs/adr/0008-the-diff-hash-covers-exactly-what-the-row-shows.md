@@ -1,5 +1,7 @@
 # The diff hash covers exactly what the row shows, no more and no less
 
+> Amended by 0055: drift joins the canonical document under the key `drift`, left out when there is none.
+
 The hash excludes values, so it has a blind spot. Someone ticks a row that says `grafana: update, image`. Before the apply job starts, a second merge moves the image from `v2` to `v3`. Address, op and keys are the same, the hash matches, and `v3` deploys. We accept this, and fix the rule that bounds it: the hash is taken over the whole diff, and the renderer may show nothing about a change that is not in the diff. What a person approved and what was hashed cannot drift apart, because they are the same data (see 0002).
 
 Amended by 0023: on a redacted dashboard the row shows less than the hash covers. The half of the rule that matters stays whole: nothing is shown that is not hashed.

@@ -5,6 +5,8 @@
 > Amended by 0052: a change has one optional field more, `values`, with the old and new value at the changed paths that `dashboard.showValues` lists, as display text. The diff hash leaves it out.
 >
 > Amended by 0053: the table from OpenTofu's plan actions to `op` and `tracking`, settled from recordings of v1.11.0 and v1.12.6, is in that record.
+>
+> Amended by 0055: the drift check's changes use two ops, `update` (a property changed outside the code) and `delete` (the object is gone), and live in `Diff.drift`, never in `changes`.
 
 The brief's diff has one `op` with four values. Both tools also emit steps that leave the real object alone and only change what the tool tracks: adopting an existing object, letting go of one that survives, renaming one in state. OpenTofu can combine these with a real change in one step, such as import and update. A flat list of seven ops was rejected because it cannot say that without inventing combined values, and because a "forget" sitting next to "delete" in one list invites a destroy warning on something that is not destroyed.
 

@@ -11,7 +11,7 @@ The file is read from the checkout of the job, so the rules in force are the one
 - **Unknown keys are an error.** A typo in `tickers` would change who can deploy, so nothing is ever ignored. The message names the keys that are allowed there.
 - **Every problem is listed at once**, top to bottom as the file has them, so you fix the file in one go.
 - **Every mode stops on a file that is not valid.** The job goes red with the messages, and the dashboard is not written.
-- **`dependsOn` and `drift` are not in this version.** They fail with a message that says so, and are never ignored.
+- **`drift` on a stack is not in this version.** It fails with a message that says so, and is never ignored. `drift` at the top level is valid.
 - **Editors can check the file as you type.** Put this line at the top and an editor with YAML support finds the schema: `# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json`.
 - **The `check` mode tells you in a pull request** whether the file is valid, which stacks it covers and what `ignore` leaves out ([README](../README.md#1-check-your-setup)).
 
@@ -267,6 +267,23 @@ Read this before you turn it on:
 
 With it on, a pending row's `preview` link still opens the stack's preview page, which says the tool's diff is in the job log and links to it. The page itself never shows a value, because the masks your workflow registers do not reach it. Without a preview page, the link opens the job's log instead of the summary. In the job log, open the Sluiceway step and the group named after the stack, or type the stack id into the log's search box. The group holds Sluiceway's own list of changes, then the tool's diff. `apply` prints the tool's diff of its fresh preview too, in the group `<stack id>: the fresh preview`. When the second run fails, the group says why and the row does not change: the row and the diff hash always come from the preview itself.
 
+### `drift.enabled`
+
+Default: `false`
+
+Checks every stack for drift, changes made to real infrastructure outside the code, in each scan that a schedule starts, and in a scan that a person starts with "Run workflow". The scans that Sluiceway dispatches itself, after a deploy or for the rescan box, do not check. A stack whose code has nothing to deploy and whose real infrastructure changed gets a row under Drifted, with a box. A pending stack that also drifted shows the drift on its own row. A tick deploys the code as it is, which puts the drift back ([record 0055](adr/0055-drift-is-checked-by-a-scheduled-scan-shown-on-the-stacks-row-and-repaired-by-a-tick.md)).
+
+```yaml
+drift:
+  enabled: true
+```
+
+- **When is the workflow's business.** There is no `drift.schedule`: add a `schedule` trigger to the workflow, and every scan it starts checks drift. A scan that a push starts checks only the stacks whose row showed drift, so known drift is not lost.
+- **It costs one more tool run per stack** in those scans, in the same pool slot and with the same time limit as the stack's preview. For Pulumi it is `pulumi refresh --preview-only`, which changes neither the state nor anything real, and from v3.229.0 takes no stack lock, so it never blocks a deploy.
+- **The deploy of a row with drift reads what is real first.** For Pulumi it runs `pulumi up --refresh`. `apply` checks the drift again before it compares the diff hash, so drift that changed after the tick stops the deploy, as a moved change does.
+- **What counts as drift is up to the tool.** A resource whose provider cannot read it back never drifts. OpenTofu stacks are not checked yet.
+- **A drift check that fails** leaves the row as the preview made it, with a warning on the run and the tool's words in the job log.
+
 ### `stacks[].path`
 
 Required in every entry.
@@ -436,16 +453,18 @@ mergeAndDeploy:
 - **No credentials and no environment variables.** Your workflow puts them into the job environment before Sluiceway runs ([credentials](credentials.md)).
 - **No `concurrency` or `preview-timeout`.** They belong to the runner, so they are inputs of the action.
 - **No stack ids.** They are derived.
-- **No teams and no `drift`.** Not in this version:
+- **No teams, and no `drift` on a stack.** Not in this version:
 
 ```yaml
-# Not valid: not in this version
-drift: true
+# Not valid: drift is turned on for the whole repo
+stacks:
+  - path: apps/web
+    drift: true
 ```
 
 ```text
 sluiceway.yaml is not valid:
-- "drift" is not in this version of Sluiceway yet. Remove it.
+- stacks[0]: "drift" is not in this version of Sluiceway yet. Remove it.
 ```
 
 A typo gets the list of keys that are allowed:
@@ -457,5 +476,5 @@ ticker: admin
 
 ```text
 sluiceway.yaml is not valid:
-- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, stacks, mergeAndDeploy.
+- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, stacks, mergeAndDeploy.
 ```

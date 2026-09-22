@@ -91,8 +91,12 @@ Deploying the stack now would change something, because the code moved.
 _Avoid_: Out of sync, dirty, changed
 
 **Drift**:
-A change made to real infrastructure outside the code. It is shown on the stack's own row, never on a second row.
+A change made to real infrastructure outside the code: a property that changed, or an object that is gone. It is shown on the stack's own row, never on a second row. A stack with drift and nothing to deploy from its code is drifted. A tick deploys the code as it is, which puts the drift back.
 _Avoid_: Out-of-band change, skew
+
+**Drift check**:
+A run of the tool that compares a stack's state with real infrastructure and changes neither. With `drift.enabled`, a scan that a schedule or a person starts runs one for every stack it previews, right after its preview. Its findings join the stack's diff hash, and `apply` runs it again before a deploy of a row whose hash covers drift.
+_Avoid_: Refresh (that is the tool's word, and a plain refresh changes the state), drift scan, drift detection run
 
 **In sync**:
 Nothing to deploy and no known drift.
@@ -235,7 +239,7 @@ A row block that a writer takes from the live body and writes back as it is, bec
 _Avoid_: Kept row, old row, stale row
 
 **Counts line**:
-The first line of text on the dashboard: how many stacks are pending, deploying, preview failed and in sync, always all four. It adds how many pending stacks destroy resources and how many rows carry a failure line, each only when it is not 0. Under a header it is centered and every count has a count dot.
+The first line of text on the dashboard: how many stacks are pending, deploying, preview failed and in sync, always all four. It adds how many stacks drifted, how many pending stacks destroy resources and how many rows carry a failure line, each only when it is not 0. Under a header it is centered and every count has a count dot.
 _Avoid_: Header line, stats, totals
 
 **Scan line**:
@@ -243,7 +247,7 @@ The line under the counts line that says which commit the last scan checked out,
 _Avoid_: Status line, timestamp, last updated
 
 **Row state**:
-Which group a stack's row belongs to: pending, deploying, in sync, preview failed or queued. A queued row is placed and counted with the deploying ones. It is a label for placing and counting rows. Nothing about a deploy is ever decided from it, with one exception that only holds a deploy back and never starts one: `resolve` refuses a tick while a dependency's row is pending. A scan may read it for one thing only: to pick stacks worth previewing again.
+Which group a stack's row belongs to: pending, drift, deploying, in sync, preview failed or queued. A queued row is placed and counted with the deploying ones. It is a label for placing and counting rows. Nothing about a deploy is ever decided from it, with one exception that only holds a deploy back and never starts one: `resolve` refuses a tick while a dependency's row is pending. A scan may read it for one thing only: to pick stacks worth previewing again.
 _Avoid_: Status, stack state, phase
 
 **Preview failure**:
@@ -325,7 +329,7 @@ The exact release tag of the running action, or its commit SHA. Never a moving t
 _Avoid_: Action version, image tag, release
 
 **Header state**:
-Which of five states the header shows: failing, deploying, pending, first run or in sync. The first that applies wins, in that order. It is computed from the row markers and decides nothing. A destroy does not change it. Pending has thirteen pictures, one per crate count, so there are seventeen pictures for five states, and fourteen of them exist once more with the destroy sign.
+Which of six states the header shows: failing, deploying, pending, drift, first run or in sync. The first that applies wins, in that order. It is computed from the row markers and decides nothing. A destroy does not change it. Pending has thirteen pictures, one per crate count, so there are eighteen pictures for six states, and fourteen of them exist once more with the destroy sign. Drift is water seeping through the closed gate.
 _Avoid_: Mood, dashboard status, health
 
 **Destroy sign**:

@@ -1,6 +1,8 @@
 # Three marker kinds, a trailing row marker, and a body that is regenerated around its row blocks
 
 > Amended by 0054: a marker of the kind `sluiceway:merge` sits on its own line outside the row blocks, one per update waiting to merge, with the keys `pr`, `stack` and `head`.
+>
+> Amended by 0055: the state `drift` and the key `drift="true"` arrived. The precedence is deploying, preview failed, pending, drift, in sync.
 
 Record 0004 made the body a cache of row blocks and said each block's marker carries stack id, hash and row state. This record fixes the format. It has to let drift rows and "queued behind X" arrive later without a breaking change.
 

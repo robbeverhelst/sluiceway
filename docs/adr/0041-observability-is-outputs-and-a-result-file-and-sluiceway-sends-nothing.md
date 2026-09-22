@@ -1,6 +1,8 @@
 # Observability is outputs and a result file, and Sluiceway sends nothing
 
 > Amended by 0051: `outcome` of `apply` can also be `in-sync` (nothing to deploy) and `rehearsed` (`dry-run: true`). Both are green jobs, and nothing went out.
+>
+> Amended by 0055: the result file of a scan gives a stack the state `drift` and a `drift` list, both added, so its version stays 1.
 
 People want to hear about pending and failed deploys in Slack, Telegram or Discord, and to chart deploys in Grafana. A sender inside the action would need the user's webhook secret and a call to a third party, which breaks three promises at once: no backend, no credential held (0014), and no network call that is not the GitHub API or the tool's own. So Sluiceway sends nothing. It hands the workflow what it needs to send: step outputs with the counts, the dashboard URL and the outcome, and a JSON result file for anything richer. The user adds the next step, and the secret stays in that step.
 
