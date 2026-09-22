@@ -262,17 +262,14 @@ describe("a valid setup", () => {
   test("lists the files that no stack claims, against the fixture repo", async () => {
     const { log } = await run(FIXTURE);
     expect(log.lines).toContain(
-      "10 files are claimed by no stack. A push that changes one of them gives a full scan.",
+      "6 files are claimed by no stack. A push that changes one of them gives a full scan.",
     );
     expect(log.groups.find((group) => group.title === "Files that no stack claims")?.lines).toEqual(
+      // The docs and tooling files of the defaults are not listed (slice 5.9).
       [
-        "LICENSE",
-        "README.md",
         "package.json",
         "sluiceway.yaml",
-        ".github/workflows/deploy-dashboard.yml",
         "docs/diagram.png",
-        "docs/setup.md",
         "packages/lib/index.ts",
         // playground:dev is ignored, so it claims nothing.
         "playground/Pulumi.dev.yaml",
@@ -288,9 +285,7 @@ describe("a valid setup", () => {
       "scan:",
       "  unrelated:",
       '    - "LICENSE"',
-      '    - "**/*.md"',
       '    - "docs/**"',
-      '    - ".github/**"',
     ]);
   });
 

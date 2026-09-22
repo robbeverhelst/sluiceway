@@ -23,11 +23,10 @@ Found 2 stacks.
 
 ### Files that no stack claims
 
-10 files are claimed by no stack. A push that changes one of them gives a full scan.
+6 files are claimed by no stack. A push that changes one of them gives a full scan.
 
-- The repo root, 4 files: LICENSE, README.md, package.json, sluiceway.yaml
-- .github/, 1 file: .github/workflows/deploy-dashboard.yml
-- docs/, 2 files: docs/diagram.png, docs/setup.md
+- The repo root, 2 files: package.json, sluiceway.yaml
+- docs/, 1 file: docs/diagram.png
 - packages/, 1 file: packages/lib/index.ts
 - playground/, 2 files: playground/Pulumi.dev.yaml, playground/Pulumi.yaml
 
@@ -38,10 +37,7 @@ The block below keeps what scan.unrelated has and adds globs for the files that 
 \`\`\`yaml
 scan:
   unrelated:
-    - "**/*.md"
     - "docs/**"
-    - ".github/**"
-    - "LICENSE*"
 \`\`\`
 
 ### Workflows
@@ -83,21 +79,7 @@ Found no stacks.
 
 ### Files that no stack claims
 
-2 files are claimed by no stack. A push that changes one of them gives a full scan.
-
-- The repo root, 1 file: README.md
-- .github/, 1 file: .github/workflows/deploy-dashboard.yml
-
-A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.
-
-The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.
-
-\`\`\`yaml
-scan:
-  unrelated:
-    - "**/*.md"
-    - ".github/**"
-\`\`\`
+Every file is claimed by a stack, covered by scan.unrelated, or one of the docs and tooling files that force nothing by default.
 
 ### Workflows
 

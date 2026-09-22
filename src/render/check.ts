@@ -469,7 +469,9 @@ export function renderCheckSummary({
   parts.push("### Files that no stack claims");
   const count = report.unclaimed.reduce((sum, group) => sum + group.files.length, 0);
   if (count === 0) {
-    parts.push("Every file is claimed by a stack or covered by scan.unrelated.");
+    parts.push(
+      "Every file is claimed by a stack, covered by scan.unrelated, or one of the docs and tooling files that force nothing by default.",
+    );
   } else {
     parts.push(
       unclaimedText(count),

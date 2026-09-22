@@ -253,15 +253,14 @@ Default: `[]`
 
 Globs for files that claim nothing and force nothing. A push previews only the stacks that claim a changed file (a narrowed scan), and a changed file that no stack claims makes it a full scan. That is the safe side, because Sluiceway cannot know what your programs read. List here the files that no program reads, so that changing them costs no preview at all.
 
-A file listed here claims nothing even inside a stack's directory, so `**/*.md` keeps a README change from previewing its stack. Never list a file one of your programs reads: its stack would show a stale row until the next full scan. There are no defaults. The `check` mode prints a ready-to-paste block for the files that look like docs and tooling, and so does the summary of a push that fell back to a full scan because of files no stack claims, for the files of that push.
+A file listed here claims nothing even inside a stack's directory, so `**/*.md` keeps a README change from previewing its stack. Never list a file one of your programs reads: its stack would show a stale row until the next full scan.
+
+A few docs and tooling files force nothing without any setting: `**/*.md`, `**/LICENSE*`, `**/.gitignore`, `**/.gitattributes`, `.editorconfig` and `.github/**`. Unlike the list above they only matter where no stack claims the file: a README inside a stack's directory still previews that stack, and a program that reads one of them from elsewhere claims it through its stack's `inputs`. The `check` mode prints a ready-to-paste block for the other files that look like docs, and so does the summary of a push that fell back to a full scan because of files no stack claims, for the files of that push.
 
 ```yaml
 scan:
   unrelated:
-    - "**/*.md"
     - "docs/**"
-    - ".github/**"
-    - "LICENSE*"
 ```
 
 Keep `sluiceway.yaml` itself off the list, and lockfiles and package manifests too. A change to one of them should preview every stack, and it does, with a line in the job log that says why, as long as no glob here covers it.

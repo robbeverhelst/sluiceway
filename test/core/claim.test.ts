@@ -146,3 +146,43 @@ describe("scan.unrelated", () => {
     });
   });
 });
+
+// Slice 5.9: a few files that no program reads in practice claim nothing and
+// force nothing without any setting, but only where no stack claims them. A
+// stack still claims its own README, and an `inputs` glob still wins.
+describe("the default unrelated files", () => {
+  test("force nothing when no stack claims them", () => {
+    const stacks = [claimant("apps/loki:prod")];
+    expect(
+      claimed(stacks, [
+        "README.md",
+        "docs/setup.md",
+        "LICENSE",
+        ".gitignore",
+        "tools/.gitignore",
+        ".editorconfig",
+        ".github/workflows/deploy.yml",
+        "package.json",
+      ]),
+    ).toEqual({ claims: {}, unclaimed: ["package.json"] });
+  });
+
+  test("are still claimed by the stack whose directory holds them", () => {
+    const stacks = [claimant("apps/loki:prod")];
+    expect(claimed(stacks, ["apps/loki/README.md"]).claims).toEqual({
+      "apps/loki:prod": ["apps/loki/README.md"],
+    });
+  });
+
+  test("are still claimed through an inputs glob", () => {
+    const stacks = [claimant("app:prod", ["docs/**"])];
+    expect(claimed(stacks, ["docs/setup.md"]).claims).toEqual({
+      "app:prod": ["docs/setup.md"],
+    });
+  });
+
+  test("a stack at the repo root claims them too", () => {
+    const stacks = [claimant(".")];
+    expect(claimed(stacks, ["README.md"]).claims).toEqual({ ".": ["README.md"] });
+  });
+});

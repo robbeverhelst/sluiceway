@@ -212,16 +212,16 @@ describe("falling back to a full scan (record 0010)", () => {
   // Record 0010 needs no special case for them. The words say that the config
   // file changed, and only the other files are listed as unclaimed, since no
   // stack is meant to claim the config file (onboarding log, hurdle 14).
-  test("sluiceway.yaml and a workflow file lie outside every stack, and the log says the config file changed", async () => {
-    const scanned = await pushed(TABLE, ahead("sluiceway.yaml", ".github/workflows/sluiceway.yml"));
+  test("sluiceway.yaml and a Makefile lie outside every stack, and the log says the config file changed", async () => {
+    const scanned = await pushed(TABLE, ahead("sluiceway.yaml", "Makefile"));
     await expectFull(
       scanned,
-      "sluiceway.yaml changed, so every stack is previewed, and no stack claims .github/workflows/sluiceway.yml",
+      "sluiceway.yaml changed, so every stack is previewed, and no stack claims Makefile",
     );
     expect(scanned.log.groups[0]).toEqual({
       title: "Changed files that no stack claims",
       lines: [
-        "unclaimed: .github/workflows/sluiceway.yml",
+        "unclaimed: Makefile",
         "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.",
       ],
     });
@@ -297,6 +297,21 @@ describe("the claim rule in a scan", () => {
     });
     await scan(context);
     expect(adapter.previewed).toEqual(["app:prod"]);
+  });
+
+  // Slice 5.9: docs and tooling files outside every stack force nothing
+  // without any setting, and a stack still claims its own README.
+  test("a push that changes only default unrelated files outside every stack previews nothing, and a stack's own README previews it", async () => {
+    const outside = await pushed(
+      TABLE,
+      ahead("README.md", "docs/setup.md", ".github/workflows/deploy.yml", "LICENSE"),
+    );
+    await scan(outside.context);
+    expect(outside.adapter.previewed).toEqual([]);
+
+    const own = await pushed(TABLE, ahead("README.md", "site/README.md"));
+    await scan(own.context);
+    expect(own.adapter.previewed).toEqual(["site:prod"]);
   });
 
   test("a push that changes only unrelated files previews nothing, needs no tool, moves scan-sha and keeps every row", async () => {
@@ -685,7 +700,7 @@ describe("the summary of a scan that fell back because of unclaimed files", () =
   test("names the files and holds the ready-to-paste scan.unrelated block", async () => {
     const scanned = await pushed(
       TABLE,
-      ahead("README.md", "docs/setup.md", "package.json", "site/index.ts"),
+      ahead("README.md", "docs/setup.txt", "docs/diagram.png", "package.json", "site/index.ts"),
       { config: 'scan:\n  unrelated:\n    - "**/*.txt"\n' },
     );
     await scan(scanned.context);
@@ -694,18 +709,12 @@ describe("the summary of a scan that fell back because of unclaimed files", () =
     expect(section(summary)).toBe(
       [
         "### Why this was a full scan",
-        "This push fell back to a full scan, because no stack claims 3 of the changed files: README.md, docs/setup.md, package.json. A push that changes one of them previews every stack.",
+        "This push fell back to a full scan, because no stack claims 2 of the changed files: docs/diagram.png, package.json. A push that changes one of them previews every stack.",
         "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.",
         "The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.",
-        [
-          "```yaml",
-          "scan:",
-          "  unrelated:",
-          '    - "**/*.txt"',
-          '    - "**/*.md"',
-          '    - "docs/**"',
-          "```",
-        ].join("\n"),
+        ["```yaml", "scan:", "  unrelated:", '    - "**/*.txt"', '    - "docs/**"', "```"].join(
+          "\n",
+        ),
       ].join("\n\n") + "\n",
     );
   });
@@ -720,12 +729,12 @@ describe("the summary of a scan that fell back because of unclaimed files", () =
   });
 
   test("names at most twenty files and points at the job log for the rest", async () => {
-    const files = Array.from({ length: 23 }, (_, i) => `notes/n${String(i).padStart(2, "0")}.md`);
+    const files = Array.from({ length: 23 }, (_, i) => `notes/n${String(i).padStart(2, "0")}.txt`);
     const scanned = await pushed(TABLE, ahead(...files));
     await scan(scanned.context);
     const summary = section(scanned.log.summaries.at(-1) ?? "");
-    expect(summary).toContain("notes/n19.md, and 3 more files. The job log lists them all.");
-    expect(summary).not.toContain("notes/n20.md");
+    expect(summary).toContain("notes/n19.txt, and 3 more files. The job log lists them all.");
+    expect(summary).not.toContain("notes/n20.txt");
   });
 });
 

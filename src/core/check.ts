@@ -85,16 +85,9 @@ export type BackendCheck = { stackId: string } & (
 // Files that look like docs and tooling, which programs seldom read. A fixed
 // list, so the suggestion is the same for everyone. A lockfile, a package
 // manifest or a tsconfig is left out on purpose: they are the shared files that
-// record 0010 wants to give a full scan.
-const SUGGESTIONS = [
-  "**/*.md",
-  "docs/**",
-  ".github/**",
-  "LICENSE*",
-  "**/.gitignore",
-  "**/.gitattributes",
-  ".editorconfig",
-];
+// record 0010 wants to give a full scan. The files of DEFAULT_UNRELATED are
+// never unclaimed since slice 5.9, so only what lies beyond them is here.
+const SUGGESTIONS = ["docs/**"];
 
 // Throws what a scan throws for the same repo: a ConfigError or a
 // DiscoveryError, with the same messages, because it is the same code.

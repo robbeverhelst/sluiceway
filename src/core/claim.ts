@@ -23,6 +23,22 @@ export interface Claims {
   unclaimed: string[];
 }
 
+// Files that no program reads in practice (slice 5.9). Unlike
+// `scan.unrelated` they only stop a file from forcing a full scan when no
+// stack claims it: a stack still claims its own README, and a stack that
+// reads one of them outside its directory says so with `inputs`. So a default
+// can cost a full scan and never a stale row of a stack that claims the file.
+export const DEFAULT_UNRELATED: readonly string[] = [
+  "**/*.md",
+  "**/LICENSE*",
+  "**/.gitignore",
+  "**/.gitattributes",
+  ".editorconfig",
+  ".github/**",
+];
+
+const isDefaultUnrelated = globMatcher([...DEFAULT_UNRELATED]);
+
 function inside(directory: string, file: string): boolean {
   return directory === "." || file.startsWith(`${directory}/`);
 }
@@ -41,7 +57,7 @@ export function claim(stacks: Claimant[], changed: string[], unrelated: string[]
     const claimants = matchers.filter(
       ({ stack, matches }) => inside(stack.path, file) || matches(file),
     );
-    if (claimants.length === 0) unclaimed.push(file);
+    if (claimants.length === 0 && !isDefaultUnrelated(file)) unclaimed.push(file);
     for (const { stack } of claimants)
       claims.set(stack.id, [...(claims.get(stack.id) ?? []), file]);
   }

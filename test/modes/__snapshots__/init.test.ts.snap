@@ -8,13 +8,6 @@ exports[`what init writes, whole the Pulumi example 1`] = `
 # Written by sluiceway init from the files of this repo. Review it before
 # you commit it: docs/configuration.md explains every key.
 
-# Files that look like docs and tooling. A push that changes only these
-# previews nothing. Take out any that one of your programs reads.
-scan:
-  unrelated:
-    - "**/*.md"
-    - ".github/**"
-
 # No stack claims the files in these directories, so a push that changes
 # one of them previews every stack:
 #   shared/
@@ -200,14 +193,6 @@ stacks:
     options:
       workspace: prod
       varFiles: [prod.tfvars]
-
-# Files that look like docs and tooling. A push that changes only these
-# previews nothing. Take out any that one of your programs reads.
-scan:
-  unrelated:
-    - "**/*.md"
-    - ".github/**"
-    - "**/.gitignore"
 "
 ,
   "groups": [
@@ -361,14 +346,6 @@ stacks:
       release: worker
       namespace: worker
       chart: .
-
-# Files that look like docs and tooling. A push that changes only these
-# previews nothing. Take out any that one of your programs reads.
-scan:
-  unrelated:
-    - "**/*.md"
-    - ".github/**"
-    - "**/.gitignore"
 
 # No stack claims the files in these directories, so a push that changes
 # one of them previews every stack:
@@ -551,14 +528,6 @@ stacks:
       release: worker
       namespace: worker
       chart: .
-
-# Files that look like docs and tooling. A push that changes only these
-# previews nothing. Take out any that one of your programs reads.
-scan:
-  unrelated:
-    - "**/*.md"
-    - ".github/**"
-    - "**/.gitignore"
 
 # No stack claims the files in these directories, so a push that changes
 # one of them previews every stack:

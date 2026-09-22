@@ -76,12 +76,13 @@ describe("the files no stack claims", () => {
     "packages/shared/package.json",
   ];
 
+  // Since slice 5.9 the default unrelated files (READMEs, workflows) are not
+  // listed: they force nothing.
   test("are grouped by the directory at the top of the repo, the root first, in code unit order", () => {
     const report = checkSetup(parseConfig(undefined), FOUND, FILES);
     expect(report.unclaimed).toEqual([
-      { directory: ".", files: ["README.md", "package.json", "sluiceway.yaml"] },
-      { directory: ".github", files: [".github/workflows/ci.yml"] },
-      { directory: "docs", files: ["docs/diagram.png", "docs/setup.md"] },
+      { directory: ".", files: ["package.json", "sluiceway.yaml"] },
+      { directory: "docs", files: ["docs/diagram.png"] },
       {
         directory: "packages",
         files: ["packages/shared/package.json", "packages/shared/src/index.ts"],
@@ -103,7 +104,6 @@ describe("the files no stack claims", () => {
     expect(report.unclaimed.flatMap((group) => group.files)).toEqual([
       "package.json",
       "sluiceway.yaml",
-      ".github/workflows/ci.yml",
       "docs/diagram.png",
     ]);
   });
@@ -115,6 +115,8 @@ describe("the files no stack claims", () => {
 });
 
 describe("the ready-to-paste block", () => {
+  // Since slice 5.9 the files the defaults cover are never unclaimed, so the
+  // block only suggests the globs beyond them.
   test("suggests globs for docs and tooling and nothing a program is likely to read", () => {
     const report = checkSetup(parseConfig(undefined), FOUND, [
       "README.md",
@@ -133,24 +135,16 @@ describe("the ready-to-paste block", () => {
       "sluiceway.yaml",
       "packages/shared/src/index.ts",
     ]);
-    expect(report.suggested).toEqual([
-      "**/*.md",
-      "docs/**",
-      ".github/**",
-      "LICENSE*",
-      "**/.gitignore",
-      "**/.gitattributes",
-      ".editorconfig",
-    ]);
+    expect(report.suggested).toEqual(["docs/**"]);
   });
 
   test("suggests only the globs that cover an unclaimed file, and none that scan.unrelated has", () => {
-    const report = checkSetup(parseConfig('scan:\n  unrelated: ["**/*.md"]'), FOUND, [
-      "README.md",
-      ".github/workflows/ci.yml",
+    const report = checkSetup(parseConfig('scan:\n  unrelated: ["docs/*.png"]'), FOUND, [
+      "docs/diagram.png",
+      "docs/notes.txt",
       "network/README.md",
     ]);
-    expect(report.suggested).toEqual([".github/**"]);
+    expect(report.suggested).toEqual(["docs/**"]);
   });
 
   test("suggests nothing when nothing is unclaimed", () => {
