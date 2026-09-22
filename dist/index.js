@@ -12589,7 +12589,7 @@ var require_fetch = __commonJS((exports, module) => {
   function handleFetchDone(response) {
     finalizeAndReportTiming(response, "fetch");
   }
-  function fetch(input, init = undefined) {
+  function fetch2(input, init = undefined) {
     webidl.argumentLengthCheck(arguments, 1, "globalThis.fetch");
     let p = createDeferredPromise();
     let requestObject;
@@ -13479,7 +13479,7 @@ var require_fetch = __commonJS((exports, module) => {
     }
   }
   module.exports = {
-    fetch,
+    fetch: fetch2,
     Fetch,
     fetching,
     finalizeAndReportTiming
@@ -17559,7 +17559,7 @@ var require_undici = __commonJS((exports, module) => {
   exports.setGlobalDispatcher = setGlobalDispatcher;
   exports.getGlobalDispatcher = getGlobalDispatcher;
   var fetchImpl = require_fetch().fetch;
-  exports.fetch = async function fetch(init, options = undefined) {
+  exports.fetch = async function fetch2(init, options = undefined) {
     try {
       return await fetchImpl(init, options);
     } catch (err) {
@@ -27324,6 +27324,9 @@ var ExitCode;
   ExitCode2[ExitCode2["Success"] = 0] = "Success";
   ExitCode2[ExitCode2["Failure"] = 1] = "Failure";
 })(ExitCode || (ExitCode = {}));
+function setSecret(secret) {
+  issueCommand("add-mask", {}, secret);
+}
 function getInput(name, options) {
   const val = process.env[`INPUT_${name.replace(/ /g, "_").toUpperCase()}`] || "";
   if (options && options.required && !val) {
@@ -27484,6 +27487,51 @@ function refuseDeploymentId(mode, getInput2) {
     throw only("deploy-timeout");
   if (getInput2("dry-run").trim() === "true")
     throw only("dry-run");
+}
+var NOTIFY_INPUTS = [
+  "slack-webhook-url",
+  "telegram-bot-token",
+  "telegram-chat-id",
+  "webhook-url"
+];
+var TELEGRAM_TOKEN = /^\d+:[\w-]+$/;
+var TELEGRAM_CHAT = /^(-?\d+|@\w+)$/;
+function readNotifyTargets(getInput2) {
+  const [slack, token, chatId, webhook] = NOTIFY_INPUTS.map((name) => getInput2(name).trim());
+  const targets = {};
+  const problems = [];
+  const secrets = [slack, token, chatId, webhook].filter((value) => !!value);
+  if (slack) {
+    if (/^https:\/\//.test(slack))
+      targets.slack = slack;
+    else
+      problems.push('The "slack-webhook-url" input is not an https:// address, so nothing is sent to Slack. Set it to the address of an incoming webhook, from a secret.');
+  }
+  if (token && !chatId) {
+    problems.push('The "telegram-bot-token" input is set and "telegram-chat-id" is not, so nothing is sent to Telegram. Set both.');
+  } else if (chatId && !token) {
+    problems.push('The "telegram-chat-id" input is set and "telegram-bot-token" is not, so nothing is sent to Telegram. Set both.');
+  } else if (token && chatId) {
+    if (!TELEGRAM_TOKEN.test(token)) {
+      problems.push('The "telegram-bot-token" input is not a bot token as BotFather gives it, so nothing is sent to Telegram.');
+    } else if (!TELEGRAM_CHAT.test(chatId)) {
+      problems.push('The "telegram-chat-id" input is not a chat id or an @ name, so nothing is sent to Telegram.');
+    } else {
+      targets.telegram = { token, chatId };
+    }
+  }
+  if (webhook) {
+    if (/^https?:\/\//.test(webhook))
+      targets.webhook = webhook;
+    else
+      problems.push('The "webhook-url" input is not an http:// or https:// address, so nothing is sent to it.');
+  }
+  return { targets, problems, secrets };
+}
+function unusedNotifyInputs(mode, getInput2) {
+  if (mode === "scan" || mode === "resolve" || mode === "apply")
+    return [];
+  return NOTIFY_INPUTS.filter((name) => getInput2(name).trim() !== "");
 }
 
 // src/modes/apply-job.ts
@@ -28604,8 +28652,8 @@ function isPlainObject2(value) {
 }
 var noop = () => "";
 async function fetchWrapper(requestOptions) {
-  const fetch2 = requestOptions.request?.fetch || globalThis.fetch;
-  if (!fetch2) {
+  const fetch3 = requestOptions.request?.fetch || globalThis.fetch;
+  if (!fetch3) {
     throw new Error("fetch is not set. Please pass a fetch implementation as new Octokit({ request: { fetch }}). Learn more at https://github.com/octokit/octokit.js/#fetch-missing");
   }
   const log = requestOptions.request?.log || console;
@@ -28617,7 +28665,7 @@ async function fetchWrapper(requestOptions) {
   ]));
   let fetchResponse;
   try {
-    fetchResponse = await fetch2(requestOptions.url, {
+    fetchResponse = await fetch3(requestOptions.url, {
       method: requestOptions.method,
       body,
       redirect: requestOptions.request?.redirect,
@@ -51899,6 +51947,34 @@ function describe3(stack) {
   return stack.name === undefined ? `the stack in ${path}` : `${JSON.stringify(stack.name)} in ${path}`;
 }
 
+// src/core/notify.ts
+var NOTIFY_EVENTS = ["pending", "drift", "deployed", "failed", "refused"];
+var DEFAULT_NOTIFY_EVENTS = [
+  "pending",
+  "drift",
+  "failed",
+  "refused"
+];
+function scanNotifications(before, after, links) {
+  const beforeRows = parseDashboard(before).rows;
+  const newly = (state) => {
+    const was = new Set(beforeRows.filter((row) => row.state === state).map((row) => row.stackId));
+    return parseDashboard(after).rows.filter((row) => row.state === state && !was.has(row.stackId)).map((row) => row.stackId).sort(byCodeUnit);
+  };
+  return ["pending", "drift"].flatMap((event) => {
+    const stacks = newly(event);
+    return stacks.length === 0 ? [] : [{ event, stacks, ...links }];
+  });
+}
+function applyNotification(outcome, stack, links) {
+  if (outcome === "in-sync" || outcome === "rehearsed")
+    return;
+  return { event: outcome, stacks: stack === undefined ? [] : [stack], ...links };
+}
+function repositoryOf(repoUrl) {
+  return new URL(repoUrl).pathname.split("/").filter(Boolean).slice(0, 2).join("/");
+}
+
 // src/core/phases.ts
 function phaseKeysOf(config2) {
   return [
@@ -52107,6 +52183,9 @@ var configSchema = exports_external.strictObject({
   mergeAndDeploy: exports_external.strictObject({
     authors: exports_external.array(author).transform((logins) => [...new Set(logins)]).describe("Logins whose open pull requests may be merged and deployed with one tick, such as renovate[bot]. Empty turns it off.").default([]),
     preview: exports_external.boolean().describe("Preview the branch of each update waiting to merge, and show what it would change on its row. One extra preview per update on every scan that lists it.").default(false)
+  }).prefault({}),
+  notify: exports_external.strictObject({
+    events: exports_external.array(exports_external.enum(NOTIFY_EVENTS)).transform((events) => [...new Set(events)]).describe("The events a notification is sent on, to each channel the step's inputs name: pending (stacks newly pending after a scan), drift (stacks newly drifted), deployed, failed and refused (a tick that deployed nothing).").default([...DEFAULT_NOTIFY_EVENTS])
   }).prefault({})
 }).superRefine((config2, context3) => {
   const refuse = (path, message) => context3.addIssue({ code: "custom", path, message });
@@ -52161,6 +52240,8 @@ function describe4(issue3, raw) {
     const unknown2 = (name) => {
       if (issue3.path.length === 1 && issue3.path[0] === "drift" && name === "schedule")
         return `"schedule" is not a key of sluiceway.yaml. A drift check runs in every scan that a schedule starts, so the cron goes in the workflow, under \`on: schedule\`.`;
+      if (issue3.path.length === 1 && issue3.path[0] === "notify")
+        return `unknown key "${name}". Known keys here: ${known.join(", ")}. A channel is an input of the step, from a secret, never a key of sluiceway.yaml.`;
       if (issue3.path.length > 0 && RESERVED_KEYS.includes(name))
         return `"${name}" is not in this version of Sluiceway yet. Remove it.`;
       return `unknown key "${name}". Known keys here: ${known.join(", ")}.`;
@@ -52221,6 +52302,9 @@ function describe4(issue3, raw) {
       return problem(`expected "write", "maintain", "admin" or a list of usernames, got ${show(value)}.`);
     }
     return (issue3.errors[1] ?? []).flatMap((inner) => describe4({ ...inner, path: [...issue3.path, ...inner.path] }, raw));
+  }
+  if (issue3.code === "invalid_value" && issue3.path[0] === "notify") {
+    return problem(`${show(value)} is not an event. The events are: ${NOTIFY_EVENTS.join(", ")}.`);
   }
   if (issue3.code === "invalid_format" && (issue3.path[0] === "phases" || key === "phase")) {
     return problem(`${show(value)} is not a phase name. Use letters, digits, ".", "_" and "-".`);
@@ -58039,6 +58123,152 @@ function writeResultFile(outputs, log, mode, text6) {
   log.info(`Wrote the result file: ${path}`);
 }
 
+// src/render/notification.ts
+var NAMES_IN_A_NOTIFICATION = 10;
+var DOT = {
+  pending: COUNT_DOT.pending,
+  drift: COUNT_DOT.drift,
+  deployed: RESULT_DOT.deployed,
+  failed: RESULT_DOT.failed,
+  refused: RESULT_DOT.refused
+};
+function names(stacks) {
+  const named = stacks.slice(0, NAMES_IN_A_NOTIFICATION).join(", ");
+  const rest = stacks.length - NAMES_IN_A_NOTIFICATION;
+  return rest > 0 ? `${named} and ${rest} more` : named;
+}
+function sentence(n, id) {
+  const { stacks } = n;
+  const one = stacks.length === 1 ? id(stacks[0] ?? "") : undefined;
+  const all = () => names(stacks.map(id));
+  switch (n.event) {
+    case "pending":
+      return one ? `${one} is pending` : `${stacks.length} stacks are pending: ${all()}`;
+    case "drift":
+      return one ? `drift found on ${one}` : `drift found on ${stacks.length} stacks: ${all()}`;
+    case "deployed":
+      return `${one ?? all()} deployed`;
+    case "failed":
+      return stacks.length === 0 ? "a deploy failed" : `${one ?? all()} failed to deploy`;
+    case "refused":
+      if (stacks.length === 0)
+        return "a tick was refused, nothing was deployed";
+      return one ? `the tick on ${one} was refused, nothing was deployed` : `the ticks on ${stacks.length} stacks were refused, nothing was deployed: ${all()}`;
+  }
+}
+function links(n) {
+  const run = n.event === "pending" || n.event === "drift" ? undefined : n.runUrl;
+  return [
+    ...run ? [{ label: "Run", url: run }] : [],
+    ...n.dashboardUrl ? [{ label: "Dashboard", url: n.dashboardUrl }] : []
+  ];
+}
+function headline(n, id) {
+  return `${DOT[n.event]} Sluiceway in ${id(n.repository)}: ${sentence(n, id)}.`;
+}
+function notificationText(n) {
+  const parts = links(n).map(({ label, url: url2 }) => `${label}: ${url2}`);
+  return [headline(n, (text6) => text6), ...parts].join(" ");
+}
+function slackEscape(text6) {
+  return text6.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+function slackMessage(n) {
+  const parts = links(n).map(({ label, url: url2 }) => `<${url2}|${label}>`);
+  const text6 = [headline(n, slackEscape), parts.join(" · ")].filter(Boolean).join(" ");
+  return { text: text6, unfurl_links: false, unfurl_media: false };
+}
+function telegramMessage(n, chatId) {
+  return {
+    chat_id: chatId,
+    text: notificationText(n),
+    link_preview_options: { is_disabled: true }
+  };
+}
+function webhookMessage(n) {
+  return {
+    version: 1,
+    event: n.event,
+    repository: n.repository,
+    stacks: [...n.stacks],
+    dashboard: n.dashboardUrl ?? null,
+    run: n.runUrl ?? null,
+    text: notificationText(n)
+  };
+}
+
+// src/notify/send.ts
+var NOTIFY_TIMEOUT_MS = 1e4;
+function channels(targets) {
+  const { slack, telegram, webhook } = targets;
+  return [
+    ...slack ? [{ name: "Slack", url: slack, body: slackMessage }] : [],
+    ...telegram ? [
+      {
+        name: "Telegram",
+        url: `https://api.telegram.org/bot${telegram.token}/sendMessage`,
+        body: (n) => telegramMessage(n, telegram.chatId)
+      }
+    ] : [],
+    ...webhook ? [{ name: "the webhook", url: webhook, body: webhookMessage }] : []
+  ];
+}
+var NOTHING_ELSE = "Nothing else changes: the dashboard and any deploy are as they would be without it.";
+function capital(text6) {
+  return text6.charAt(0).toUpperCase() + text6.slice(1);
+}
+function createNotifier(targets, options) {
+  const { fetch: fetch3, log, timeoutMs = NOTIFY_TIMEOUT_MS } = options;
+  const all = channels(targets);
+  const post = async (channel, n) => {
+    try {
+      const answer = await fetch3(channel.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "User-Agent": "sluiceway" },
+        body: JSON.stringify(channel.body(n)),
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      return answer.ok ? { ok: true } : { ok: false, status: answer.status };
+    } catch (error63) {
+      return { ok: false, error: error63 instanceof Error ? error63.name : "unknown error" };
+    }
+  };
+  return {
+    async send(notifications, events) {
+      if (all.length === 0)
+        return;
+      for (const n of notifications) {
+        if (!events.includes(n.event))
+          continue;
+        const results = await Promise.all(all.map((channel) => post(channel, n)));
+        all.forEach((channel, index) => {
+          const result = results[index];
+          const what = `the ${n.event} notification`;
+          if (!result || result.ok) {
+            log.info(`Sent ${what} to ${channel.name}.`);
+          } else if ("status" in result) {
+            log.warning(`${capital(channel.name)} answered ${result.status} to ${what}, so it was not sent. ${NOTHING_ELSE}`, "Notification not sent");
+          } else {
+            log.warning(`${capital(channel.name)} could not be reached for ${what} (${result.error}), so it was not sent. ${NOTHING_ELSE}`, "Notification not sent");
+          }
+        });
+      }
+    }
+  };
+}
+
+// src/notify/step.ts
+function stepNotifier(getInput2, log, mask) {
+  const { targets, problems, secrets } = readNotifyTargets(getInput2);
+  for (const secret of secrets)
+    mask(secret);
+  for (const problem4 of problems)
+    log.warning(problem4, "Notification channel not used");
+  if (!targets.slack && !targets.telegram && !targets.webhook)
+    return;
+  return createNotifier(targets, { fetch: (url2, init) => fetch(url2, init), log });
+}
+
 // src/core/config-file.ts
 import { existsSync as existsSync3, readFileSync as readFileSync5 } from "node:fs";
 import { join as join29 } from "node:path";
@@ -58755,13 +58985,13 @@ function movedComment({ login, stackId: stackId2 }) {
 }
 
 // src/render/preview-result.ts
-function previewRow(stackId2, result, links, failure3, options = {}) {
+function previewRow(stackId2, result, links2, failure3, options = {}) {
   if (!result.ok) {
     return {
       state: "preview-failed",
       stackId: stackId2,
       reason: previewFailureText(result.reason),
-      runUrl: links.log,
+      runUrl: links2.log,
       failure: failure3
     };
   }
@@ -58774,7 +59004,7 @@ function previewRow(stackId2, result, links, failure3, options = {}) {
         state: "drift",
         diff: result.diff,
         hash: diffHash(result.diff),
-        runUrl: links.summary,
+        runUrl: links2.summary,
         previewUrl: options.pageUrl,
         failure: failure3,
         ...dependsOn
@@ -58786,8 +59016,8 @@ function previewRow(stackId2, result, links, failure3, options = {}) {
     state: "pending",
     diff: result.diff,
     hash: diffHash(result.diff),
-    runUrl: links.summary,
-    previewUrl: options.pageUrl ?? (options.toolDiffInLog ? links.log : undefined),
+    runUrl: links2.summary,
+    previewUrl: options.pageUrl ?? (options.toolDiffInLog ? links2.log : undefined),
     failure: failure3,
     ...dependsOn
   };
@@ -59086,7 +59316,24 @@ async function apply5(context3) {
     await applying(context3, report);
   } finally {
     reportOutputs(context3, report);
+    await notifyOutcome(context3, report);
   }
+}
+async function notifyOutcome(context3, report) {
+  if (!context3.notifier)
+    return;
+  const notification = applyNotification(report.outcome ?? "failed", report.stack, {
+    repository: repositoryOf(context3.repoUrl),
+    dashboardUrl: eventDashboardUrl(context3.repoUrl, context3.event),
+    runUrl: runUrl(context3.repoUrl, context3.runId, context3.runAttempt)
+  });
+  if (!notification)
+    return;
+  let events = DEFAULT_NOTIFY_EVENTS;
+  try {
+    events = loadConfig(context3.root).notify.events;
+  } catch {}
+  await context3.notifier.send([notification], events);
 }
 function reportOutputs(context3, report) {
   const { outputs } = context3;
@@ -59593,13 +59840,14 @@ async function runApply(directory) {
   const env = process.env;
   const inputs = readApplyInputs(getInput);
   const job = readJob(env);
+  const log = actionsLog();
   await apply5({
     root: job.root,
     env,
     adapter: tools,
     run: runProcess,
     github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),
-    log: actionsLog(),
+    log,
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
     deployTimeoutMinutes: inputs.deployTimeoutMinutes,
     now: () => new Date,
@@ -59612,7 +59860,8 @@ async function runApply(directory) {
     deploymentId: inputs.deploymentId,
     dryRun: inputs.dryRun,
     event: readEventPayload(env, (path) => readFileSync6(path, "utf8")),
-    outputs: actionsOutputs(env.RUNNER_TEMP)
+    outputs: actionsOutputs(env.RUNNER_TEMP),
+    notifier: stepNotifier(getInput, log, setSecret)
   });
 }
 
@@ -59736,13 +59985,13 @@ import { readdirSync as readdirSync3, readFileSync as readFileSync7 } from "node
 import { join as join31 } from "node:path";
 var WORKFLOW_DIRECTORY = ".github/workflows";
 function readWorkflowFiles(root) {
-  let names;
+  let names2;
   try {
-    names = readdirSync3(join31(root, WORKFLOW_DIRECTORY), { withFileTypes: true }).filter((entry3) => entry3.isFile() && /\.ya?ml$/.test(entry3.name)).map((entry3) => entry3.name);
+    names2 = readdirSync3(join31(root, WORKFLOW_DIRECTORY), { withFileTypes: true }).filter((entry3) => entry3.isFile() && /\.ya?ml$/.test(entry3.name)).map((entry3) => entry3.name);
   } catch {
     return [];
   }
-  return names.sort(byCodeUnit17).map((name) => ({
+  return names2.sort(byCodeUnit17).map((name) => ({
     path: `${WORKFLOW_DIRECTORY}/${name}`,
     text: readFileSync7(join31(root, WORKFLOW_DIRECTORY, name), "utf8")
   }));
@@ -61740,13 +61989,13 @@ function what(target2) {
   const stacks = target2.stackIds.map((id) => `**${escapeText(id)}**`).join(" and ");
   return `the merge of #${target2.pr} for ${stacks}`;
 }
-function sentence(text6) {
+function sentence2(text6) {
   const trimmed = escapeText(text6).trim();
   return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 function why({ target: target2, reason, detail, waitsOn }) {
   if (reason === "merge-refused")
-    return `GitHub refused the merge: ${sentence(detail ?? "")}`;
+    return `GitHub refused the merge: ${sentence2(detail ?? "")}`;
   if (reason === "waits-on") {
     const ids2 = (waitsOn ?? []).map((id) => `**${escapeText(id)}**`);
     const has2 = ids2.length === 1 ? "has a change" : "have changes";
@@ -61756,7 +62005,7 @@ function why({ target: target2, reason, detail, waitsOn }) {
     return "The pull request changed since the tick, so it was not merged.";
   }
   if (reason === "not-qualified") {
-    return `The pull request no longer qualifies: ${sentence(detail ?? "")}`;
+    return `The pull request no longer qualifies: ${sentence2(detail ?? "")}`;
   }
   if (reason === "no-account") {
     return "The tick was refused: GitHub has no account by that name any more, as after a rename or a delete. Tick the box again from the account you use now.";
@@ -61772,8 +62021,8 @@ function why({ target: target2, reason, detail, waitsOn }) {
   }
   const named = target2.rule.slice(0, NAMES_IN_A_REFUSAL).map(escapeText).join(", ");
   const rest = target2.rule.length - NAMES_IN_A_REFUSAL;
-  const names = rest > 0 ? `${named} and ${rest} more in sluiceway.yaml` : named;
-  return `The tick was refused: the tick rule of this stack names who can tick it: ${names}.`;
+  const names2 = rest > 0 ? `${named} and ${rest} more in sluiceway.yaml` : named;
+  return `The tick was refused: the tick rule of this stack names who can tick it: ${names2}.`;
 }
 function line2(refused) {
   return `@${refused.login} ticked ${what(refused.target)}. ${why(refused)}`;
@@ -61832,6 +62081,13 @@ async function judgeTicks(github, ticks, { pauseMs = PAUSE_MS } = {}) {
   return outcomes;
 }
 async function commentOnRefusedTicks(github, dashboard, outcomes, merges = []) {
+  const refused = refusedTicks(outcomes, merges);
+  if (refused.length === 0)
+    return false;
+  await github.createComment(dashboard, refusedTicksComment(refused));
+  return true;
+}
+function refusedTicks(outcomes, merges = []) {
   const judged = outcomes.flatMap((outcome) => {
     if (outcome.outcome !== "refused" && outcome.outcome !== "unverified")
       return [];
@@ -61843,11 +62099,7 @@ async function commentOnRefusedTicks(github, dashboard, outcomes, merges = []) {
       }
     ];
   });
-  const refused = [...judged, ...merges];
-  if (refused.length === 0)
-    return false;
-  await github.createComment(dashboard, refusedTicksComment(refused));
-  return true;
+  return [...judged, ...merges];
 }
 
 // src/render/clear-tick.ts
@@ -62219,6 +62471,18 @@ async function resolveTicks(context3, handOn, report) {
     } catch (error63) {
       failures.push(`The comment about the refused ticks could not be written: ${message2(error63)}.`);
     }
+    const refused = refusedTicks(outcomes, merging.problems);
+    if (refused.length > 0) {
+      await context3.notifier?.send([
+        {
+          event: "refused",
+          repository: repositoryOf(context3.repoUrl),
+          stacks: refusedStacks(refused),
+          dashboardUrl: dashboardUrl(context3.repoUrl, issue3.number),
+          runUrl: `${context3.repoUrl}/actions/runs/${context3.runId}`
+        }
+      ], config2.notify.events);
+    }
   }
   const unverified = outcomes.filter(({ outcome }) => outcome === "unverified");
   if (unverified.length > 0)
@@ -62226,6 +62490,10 @@ async function resolveTicks(context3, handOn, report) {
   if (failures.length > 0)
     throw new Error(failures.join(`
 `));
+}
+function refusedStacks(refused) {
+  const ids2 = refused.flatMap(({ target: target2 }) => target2.kind === "stack" ? [target2.stackId] : target2.kind === "merge" ? target2.stackIds : []);
+  return [...new Set(ids2)].sort(byCodeUnit);
 }
 function tickName(tick) {
   if (tick.kind === "row")
@@ -62667,11 +62935,12 @@ async function runResolve(directory) {
   const read3 = (path) => readFileSync10(path, "utf8");
   const token = readToken(getInput);
   const job = readJob(env);
+  const log = actionsLog();
   await resolve({
     root: job.root,
     adapter: tools,
     github: createOctokitPort(getOctokit(token), { owner: job.owner, repo: job.repo }),
-    log: actionsLog(),
+    log,
     repoUrl: job.repoUrl,
     runId: job.runId,
     runAttempt: job.runAttempt,
@@ -62679,7 +62948,8 @@ async function runResolve(directory) {
     actionRef: readActionRef(env, directory, read3),
     event: readEventPayload(env, read3),
     workflow: readWorkflowRef(env),
-    setOutput: (name, value) => setOutput(name, value)
+    setOutput: (name, value) => setOutput(name, value),
+    notifier: stepNotifier(getInput, log, setSecret)
   });
 }
 
@@ -62890,14 +63160,14 @@ var ENCODER = new TextEncoder;
 function byteLength2(text6) {
   return ENCODER.encode(text6).length;
 }
-function jobLog(links) {
-  return links.log === undefined ? "job log of the scan" : `[job log](${links.log})`;
+function jobLog(links2) {
+  return links2.log === undefined ? "job log of the scan" : `[job log](${links2.log})`;
 }
-function pointer(unlisted, id, links) {
+function pointer(unlisted, id, links2) {
   const are = unlisted === 1 ? "change is" : "changes are";
-  return `**${unlisted} more ${are} not listed here**: a preview page holds at most 65,535 bytes. Every change is in the ${jobLog(links)}, in the group <code>${id}</code>, and in the [summary](${links.summary}) of the scan when it fits there.`;
+  return `**${unlisted} more ${are} not listed here**: a preview page holds at most 65,535 bytes. Every change is in the ${jobLog(links2)}, in the group <code>${id}</code>, and in the [summary](${links2.summary}) of the scan when it fits there.`;
 }
-function renderPreviewPage(diff2, links, options = {}) {
+function renderPreviewPage(diff2, links2, options = {}) {
   const id = escapeText(diff2.stackId);
   const { deletes, replaces, others } = orderChanges(diff2);
   const destroys = [...deletes, ...replaces];
@@ -62910,10 +63180,10 @@ function renderPreviewPage(diff2, links, options = {}) {
   const summary3 = [
     `**${id}** · ${counted.join(" · ")}`,
     ...destroys.length > 0 ? [`:warning: **This deploy ${destroyWords(deletes.length, replaces.length)}.**`] : [],
-    diff2.changes.length === 0 ? `Sluiceway's own list of what changed in real infrastructure outside the code, never what it changed to. The code has nothing to deploy, and a deploy puts these back as the code says. It is the drift the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.` : diff2.changes.some((change3) => (change3.values ?? []).length > 0) ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}` : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}`,
-    `Every stack this scan previewed is in the [summary](${links.summary}) of the scan, and the tool's own words are in the ${jobLog(links)}, in the group <code>${id}</code>.`,
+    diff2.changes.length === 0 ? `Sluiceway's own list of what changed in real infrastructure outside the code, never what it changed to. The code has nothing to deploy, and a deploy puts these back as the code says. It is the drift the stack's row on the [dashboard](${links2.dashboard}) shows, with every property path whole.` : diff2.changes.some((change3) => (change3.values ?? []).length > 0) ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links2.dashboard}) shows, with every property path whole.${also}` : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links2.dashboard}) shows, with every property path whole.${also}`,
+    `Every stack this scan previewed is in the [summary](${links2.summary}) of the scan, and the tool's own words are in the ${jobLog(links2)}, in the group <code>${id}</code>.`,
     ...options.toolDiffInLog ? [
-      `The tool's own diff of this stack, values included, is in the ${jobLog(links)}, in the group <code>${id}</code>. It is not on this page.`
+      `The tool's own diff of this stack, values included, is in the ${jobLog(links2)}, in the group <code>${id}</code>. It is not on this page.`
     ] : []
   ].join(`
 
@@ -62932,7 +63202,7 @@ function renderPreviewPage(diff2, links, options = {}) {
   let kept = lines3.length;
   if (whole > limit) {
     const room = limit - byteLength2(`
-${pointer(lines3.length, id, links)}
+${pointer(lines3.length, id, links2)}
 `);
     let used = 0;
     kept = 0;
@@ -62941,7 +63211,7 @@ ${pointer(lines3.length, id, links)}
   }
   const unlisted = lines3.length - kept;
   const text6 = lines3.slice(0, kept).join("") + (unlisted > 0 ? `
-${pointer(unlisted, id, links)}
+${pointer(unlisted, id, links2)}
 ` : "");
   return {
     title: `${diff2.stackId.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")}: ${counted.join(", ").replaceAll("**", "")}`,
@@ -63451,7 +63721,7 @@ async function scanning(context3, report) {
   const startedAt = now();
   report.startedAt = startedAt;
   const at = startedAt.toISOString();
-  const links = runLinks(context3);
+  const links2 = runLinks(context3);
   const config2 = loadConfig(context3.root);
   const found = await context3.adapter.discover(context3.root, config2);
   const ignored = ignoredStacks(config2, found);
@@ -63494,6 +63764,7 @@ async function scanning(context3, report) {
   const prepared = new Set;
   let composed;
   let written;
+  let startedFrom;
   const again = new Set;
   let histories;
   for (;; ) {
@@ -63512,7 +63783,7 @@ async function scanning(context3, report) {
     }
     rounds++;
     await writePages(context3, pages, round, pageUrls, {
-      links,
+      links: links2,
       label: config2.dashboard.label,
       logDiff
     });
@@ -63560,14 +63831,14 @@ async function scanning(context3, report) {
         if (decided.row === "preview-first")
           first.push({ id, why: decided.why });
         else if (decided.row === "fresh" && mine) {
-          const fresh = previewRow(id, mine.result, links, failureLine2(context3, id, fact, outside), {
+          const fresh = previewRow(id, mine.result, links2, failureLine2(context3, id, fact, outside), {
             toolDiffInLog: logDiff,
             pageUrl: pageUrls.get(id)
           });
           const row2 = fresh.state === "pending" ? {
             ...fresh,
             attribution: lines5.get(id)?.lines,
-            pendingAgain: pendingAgain(fact, fresh.hash) ? { logUrl: logDiff ? links.log : undefined } : undefined
+            pendingAgain: pendingAgain(fact, fresh.hash) ? { logUrl: logDiff ? links2.log : undefined } : undefined
           } : fresh;
           if (!ticked) {
             rows.push(row2);
@@ -63673,6 +63944,7 @@ async function scanning(context3, report) {
       if (previewed.size === ids2.length)
         compose(undefined, NO_DEPLOYS, false, new Map);
       written = await writeDashboard(context3.github, config2.dashboard, async (liveBody) => {
+        startedFrom ??= liveBody;
         let deploys = await lateDeploys(context3, stacks, previewed, liveBody);
         const waiting = mergesWaiting(deploys.facts);
         const toPreview = waiting.filter(({ id }) => ids2.includes(id) && !previewed.has(id));
@@ -63714,6 +63986,10 @@ async function scanning(context3, report) {
     changed: written.written,
     counts: dashboardCounts(parseDashboard(written.body).rows)
   };
+  await context3.notifier?.send(scanNotifications(startedFrom ?? "", written.body, {
+    repository: repositoryOf(context3.repoUrl),
+    dashboardUrl: report.dashboard.url
+  }), config2.notify.events);
   if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
     const all = [...previewed.values()].sort((a, b) => byCodeUnit(a.id, b.id));
     await writeSummary2(context3, all, { logDiff, unclaimed }, attributed);
@@ -64055,7 +64331,7 @@ function logResults(context3, previewed) {
 }
 async function writePages(context3, pages, round, urls, options) {
   const { log } = context3;
-  const { links, logDiff } = options;
+  const { links: links2, logDiff } = options;
   const toWrite = [];
   for (const { id, result } of round) {
     urls.delete(id);
@@ -64065,8 +64341,8 @@ async function writePages(context3, pages, round, urls, options) {
       continue;
     const page = renderPreviewPage(result.diff, {
       dashboard: dashboardSearchUrl(context3.repoUrl, options.label),
-      summary: links.summary,
-      log: context3.jobId === undefined ? undefined : links.log
+      summary: links2.summary,
+      log: context3.jobId === undefined ? undefined : links2.log
     }, { toolDiffInLog: logDiff });
     const { title, summary: summary3, text: text6 } = page;
     toWrite.push({ stackId: id, output: { title, summary: summary3, text: text6 } });
@@ -64330,6 +64606,7 @@ async function runScan(directory) {
   const env = process.env;
   const inputs = readScanInputs(getInput);
   const job = readJob(env);
+  const log = actionsLog();
   const octokit = getOctokit(inputs.token);
   const payload = readEventPayload(env, (path) => readFileSync11(path, "utf8"));
   await scan({
@@ -64339,7 +64616,7 @@ async function runScan(directory) {
     run: runProcess,
     github: createOctokitPort(octokit, { owner: job.owner, repo: job.repo }),
     requests: countRequests(octokit),
-    log: actionsLog(),
+    log,
     now: () => new Date,
     concurrency: inputs.concurrency,
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
@@ -64354,6 +64631,7 @@ async function runScan(directory) {
     workflow: job.workflow,
     actionRef: readActionRef(env, directory, (path) => readFileSync11(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),
+    notifier: stepNotifier(getInput, log, setSecret),
     publicRepo: publicRepo(payload),
     startedByPerson: startedByPerson(payload)
   });
@@ -64507,8 +64785,12 @@ var handlers = {
   check: () => runCheck(backendContext),
   init: runInit
 };
-async function run(mode, directory, getInput2 = getInput) {
+async function run(mode, directory, getInput2 = getInput, warn = (message4, title) => warning(message4, { title })) {
   refuseDeploymentId(mode, getInput2);
+  const unused = unusedNotifyInputs(mode, getInput2);
+  if (unused.length > 0) {
+    warn(`${unused.map((name) => `"${name}"`).join(", ")} ${unused.length === 1 ? "is" : "are"} set on a step in ${mode} mode, which sends no notification. Only scan, resolve and apply do. Take ${unused.length === 1 ? "it" : "them"} out of this step.`, "Notification input not used");
+  }
   return handlers[mode](directory);
 }
 
