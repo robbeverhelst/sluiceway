@@ -27421,7 +27421,12 @@ function readToken(getInput2) {
 function readScanInputs(getInput2) {
   const concurrency = wholeNumber(getInput2, "concurrency");
   const previewTimeoutMinutes = wholeNumber(getInput2, "preview-timeout", " It is a number of whole minutes.");
-  return { concurrency, previewTimeoutMinutes, token: readToken(getInput2) };
+  return {
+    concurrency,
+    previewTimeoutMinutes,
+    token: readToken(getInput2),
+    strict: readBoolean(getInput2, "strict")
+  };
 }
 function readJobId(getInput2) {
   const text = getInput2("job-id").trim();
@@ -27445,16 +27450,17 @@ function readApplyInputs(getInput2) {
     deploymentId: Number(text),
     previewTimeoutMinutes,
     token: readToken(getInput2),
-    dryRun: readDryRun(getInput2)
+    dryRun: readBoolean(getInput2, "dry-run"),
+    deployTimeoutMinutes: getInput2("deploy-timeout").trim() === "" ? undefined : wholeNumber(getInput2, "deploy-timeout", " It is a number of whole minutes.")
   };
 }
-function readDryRun(getInput2) {
-  const text = getInput2("dry-run").trim();
+function readBoolean(getInput2, name) {
+  const text = getInput2(name).trim();
   if (text === "" || text === "false")
     return false;
   if (text === "true")
     return true;
-  throw new Error(`The "dry-run" input is true or false, and it is ${JSON.stringify(text)}.`);
+  throw new Error(`The "${name}" input is true or false, and it is ${JSON.stringify(text)}.`);
 }
 function readBackend(getInput2) {
   const text = getInput2("backend").trim();
@@ -27465,14 +27471,17 @@ function readBackend(getInput2) {
   throw new Error(`The "backend" input is true or false, and it is ${JSON.stringify(text)}.`);
 }
 function refuseDeploymentId(mode, getInput2) {
-  if (mode !== "check" && getInput2("backend").trim() === "true") {
-    throw new Error(`The "backend" input is only for check mode, and this step runs ${mode} mode. Take it out of this step.`);
-  }
+  const only = (name, of = "apply") => new Error(`The "${name}" input is only for ${of} mode, and this step runs ${mode} mode. Take it out of this step.`);
+  if (mode !== "check" && getInput2("backend").trim() === "true")
+    throw only("backend", "check");
+  if (mode !== "scan" && getInput2("strict").trim() === "true")
+    throw only("strict", "scan");
   if (mode === "apply")
     return;
-  const only = (name) => new Error(`The "${name}" input is only for apply mode, and this step runs ${mode} mode. Take it out of this step.`);
   if (getInput2("deployment-id").trim() !== "")
     throw only("deployment-id");
+  if (getInput2("deploy-timeout").trim() !== "")
+    throw only("deploy-timeout");
   if (getInput2("dry-run").trim() === "true")
     throw only("dry-run");
 }
@@ -31556,8 +31565,9 @@ function getOctokit(token, options, ...additionalPlugins) {
 // src/adapters/process.ts
 import { spawn } from "node:child_process";
 var GRACE_MS = 5000;
+var OUTPUT_LIMIT_BYTES = 128 * 1024 * 1024;
 var PIPES_MS = 1000;
-function runProcess(run, graceMs = GRACE_MS) {
+function runProcess(run, graceMs = GRACE_MS, limitBytes = OUTPUT_LIMIT_BYTES) {
   const [command = "", ...args] = run.argv;
   return new Promise((done) => {
     const child = spawn(command, args, {
@@ -31571,10 +31581,35 @@ function runProcess(run, graceMs = GRACE_MS) {
       child.on("error", () => done({ status: "not-started" }));
       return;
     }
+    let cut = false;
+    const keep = (chunks) => {
+      let held = 0;
+      return (chunk) => {
+        const room = limitBytes - held;
+        if (chunk.length > room)
+          cut = true;
+        const kept = chunk.length > room ? chunk.subarray(0, Math.max(room, 0)) : chunk;
+        if (kept.length === 0)
+          return;
+        chunks.push(kept);
+        held += kept.length;
+      };
+    };
     const out = [];
     const err = [];
-    stdout.on("data", (chunk) => out.push(chunk));
-    stderr.on("data", (chunk) => err.push(chunk));
+    stdout.on("data", keep(out));
+    stderr.on("data", keep(err));
+    const { onStderrLine } = run;
+    let partial = "";
+    const decoder = new TextDecoder;
+    if (onStderrLine) {
+      stderr.on("data", (chunk) => {
+        const parts = (partial + decoder.decode(chunk, { stream: true })).split(/\r?\n/);
+        partial = parts.pop() ?? "";
+        for (const line of parts)
+          onStderrLine(line);
+      });
+    }
     const signalGroup = (signal) => {
       try {
         process.kill(-pid, signal);
@@ -31594,15 +31629,19 @@ function runProcess(run, graceMs = GRACE_MS) {
           stdout.destroy();
           stderr.destroy();
         }, PIPES_MS);
-      }, graceMs);
+      }, run.graceMs ?? graceMs);
     }, run.timeoutMs);
     child.on("error", () => {});
     child.on("close", (exitCode) => {
       for (const timer of [limit, killing, closing])
         clearTimeout(timer);
+      partial += decoder.decode();
+      if (onStderrLine && partial !== "")
+        onStderrLine(partial);
       const text = {
         stdout: Buffer.concat(out).toString("utf8"),
-        stderr: Buffer.concat(err).toString("utf8")
+        stderr: Buffer.concat(err).toString("utf8"),
+        ...cut ? { outputCutAt: limitBytes } : {}
       };
       done(timedOut ? { status: "timed-out", ...text } : { status: "exited", exitCode, ...text });
     });
@@ -51592,6 +51631,15 @@ function globOf(text) {
 }
 
 // src/core/claim.ts
+var DEFAULT_UNRELATED = [
+  "**/*.md",
+  "**/LICENSE*",
+  "**/.gitignore",
+  "**/.gitattributes",
+  ".editorconfig",
+  ".github/**"
+];
+var isDefaultUnrelated = globMatcher([...DEFAULT_UNRELATED]);
 function inside(directory, file2) {
   return directory === "." || file2.startsWith(`${directory}/`);
 }
@@ -51604,7 +51652,7 @@ function claim2(stacks, changed, unrelated) {
     if (isUnrelated(file2))
       continue;
     const claimants = matchers.filter(({ stack, matches }) => inside(stack.path, file2) || matches(file2));
-    if (claimants.length === 0)
+    if (claimants.length === 0 && !isDefaultUnrelated(file2))
       unclaimed.push(file2);
     for (const { stack } of claimants)
       claims.set(stack.id, [...claims.get(stack.id) ?? [], file2]);
@@ -51616,7 +51664,6 @@ function claim2(stacks, changed, unrelated) {
 var LOOKBACK = 100;
 var NAMED_ON_A_ROW = 5;
 var OUTSIDE_NAMED = 20;
-var COMMIT_FILE_CAP = 300;
 function isCommitId(text) {
   return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(text);
 }
@@ -51673,7 +51720,7 @@ function pullRequestsToRead(walk, from) {
   const numbers = [];
   for (const commit of walk.commits) {
     const pullRequest = wanted.has(commit.sha) ? pullRequestOf(commit, walk) : undefined;
-    if (pullRequest?.renamed && pullRequest.changedFiles <= pullRequest.files.length && !numbers.includes(pullRequest.number))
+    if (pullRequest && (pullRequest.renamed || pullRequest.changedFiles > pullRequest.files.length) && !numbers.includes(pullRequest.number))
       numbers.push(pullRequest.number);
   }
   return numbers;
@@ -51723,14 +51770,14 @@ function attributor(input2) {
     const key = pullRequest ? `#${pullRequest.number}` : commit.sha;
     let merged = mergedBy.get(key);
     if (!merged && pullRequest) {
-      const known = pullRequest.changedFiles <= pullRequest.files.length;
+      const known = input2.pullRequestFiles?.get(pullRequest.number) ?? (pullRequest.changedFiles <= pullRequest.files.length ? pullRequest.files : undefined);
       merged = judge({
         kind: "pull-request",
         number: pullRequest.number,
         title: pullRequest.title,
         url: `${repoUrl}/pull/${pullRequest.number}`,
         ...pullRequest.author === undefined ? {} : { author: pullRequest.author }
-      }, known ? input2.pullRequestFiles?.get(pullRequest.number) ?? pullRequest.files : undefined);
+      }, known);
     } else if (!merged) {
       const files = input2.pushFiles.get(commit.sha);
       merged = judge({
@@ -51739,7 +51786,7 @@ function attributor(input2) {
         message: commit.message,
         url: `${repoUrl}/commit/${commit.sha}`,
         ...commit.author === undefined ? {} : { author: commit.author }
-      }, files !== undefined && files.length < COMMIT_FILE_CAP ? files : undefined);
+      }, files);
     }
     mergedBy.set(key, merged);
     mergeOf.set(commit.sha, merged);
@@ -51809,6 +51856,8 @@ function attributor(input2) {
 
 // src/core/stack.ts
 function stackId(stack) {
+  if (stack.id !== undefined)
+    return stack.id;
   return stack.name === undefined ? stack.path : `${stack.path}:${stack.name}`;
 }
 
@@ -51950,6 +51999,7 @@ var ignoreEntry = exports_external.union([
   })
 ]);
 var phaseName = text.regex(PHASE_NAME);
+var STACK_ID = /^[A-Za-z0-9][A-Za-z0-9._/:@+-]*$/;
 var stackPath = text.superRefine((path, context3) => {
   const refuse = (message) => context3.addIssue({ code: "custom", message });
   if (path.includes("\\"))
@@ -51966,6 +52016,7 @@ var stackEntry = exports_external.strictObject({
   path: stackPath.describe("Directory of the stack, relative to the repo root."),
   name: text.describe("Name of the stack. Without it the entry covers every stack in path.").exactOptional(),
   tool: text.describe("The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at path. See the configuration reference for the tools.").exactOptional(),
+  id: text.regex(STACK_ID, "must be letters, digits and . _ / : @ + -, starting with a letter or digit").describe("The id of the one stack this entry covers, in place of the one derived from its path and name. A stack that moved keeps its row and its deploys under it. Unique among every stack id.").exactOptional(),
   environment: text.describe("Label on the deployment record, and the GitHub Environment where one is used. Default: sluiceway.").exactOptional(),
   tickers: tickers.describe("Tick rule for this stack. Default: the top level tickers.").exactOptional(),
   inputs: globs.describe("Extra globs this stack claims, relative to the repo root.").exactOptional(),
@@ -51995,7 +52046,10 @@ var stackEntry = exports_external.strictObject({
 var stackEntries = exports_external.array(stackEntry).superRefine((entries, context3) => {
   const seen = new Map;
   entries.forEach((entry, index) => {
-    const id = stackId(entry);
+    const id = stackId({
+      path: entry.path,
+      ...entry.name === undefined ? {} : { name: entry.name }
+    });
     const first = seen.get(id);
     if (first === undefined)
       seen.set(id, index);
@@ -52012,9 +52066,9 @@ var LOOKBACK_MAX = 1000;
 var NAMES_MAX = 20;
 var configSchema = exports_external.strictObject({
   dashboard: exports_external.strictObject({
-    title: text.describe("Title of the dashboard issue.").default("Sluiceway dashboard"),
+    title: text.describe("Title of the dashboard issue. Every scan puts it back when it differs.").default("Sluiceway dashboard"),
     label: text.describe("Label the dashboard issue is found by.").default("sluiceway"),
-    pin: exports_external.boolean().describe("Pin the dashboard issue, best effort.").default(true),
+    pin: exports_external.boolean().describe("Pin the dashboard issue on every scan when it is not pinned, best effort. false keeps it unpinned.").default(true),
     redact: exports_external.boolean().describe("Keep resource types, resource names and property names out of the issue. The summary stays full. Not access control.").default(false),
     personality: exports_external.boolean().describe("Show the header image and use the voice. false removes both.").default(true),
     readOnly: exports_external.boolean().describe("Draw no boxes: pending rows have none, there is no rescan box, and a line under the Pending heading says so. For a workflow that only scans.").default(false),
@@ -52061,8 +52115,8 @@ var configSchema = exports_external.strictObject({
 
 class ConfigError extends Error {
   problems;
-  constructor(problems) {
-    super(["sluiceway.yaml is not valid:", ...problems.map((problem) => `- ${problem}`)].join(`
+  constructor(problems, file2 = "sluiceway.yaml") {
+    super([`${file2} is not valid:`, ...problems.map((problem) => `- ${problem}`)].join(`
 `));
     this.name = "ConfigError";
     this.problems = problems;
@@ -52257,6 +52311,41 @@ function ignoredStacks(config2, found) {
   return found.map(stackId).sort((a, b) => a < b ? -1 : a > b ? 1 : 0).flatMap((id) => {
     const entry = config2.ignore.find((one) => globMatcher([ignoreGlob(one)])(id));
     return entry === undefined || typeof entry === "string" ? [] : [{ stackId: id, reason: entry.reason }];
+  });
+}
+function withIds(config2, found) {
+  const given = new Map;
+  const problems = [];
+  config2.stacks.forEach((entry, index) => {
+    if (entry.id === undefined)
+      return;
+    const at = `stacks[${index}].id`;
+    const covered = found.filter((stack) => covers(entry, stack));
+    const [only] = covered;
+    if (only === undefined) {
+      problems.push(`${at}: the entry covers no stack, so there is nothing to name ${entry.id}.`);
+    } else if (covered.length > 1) {
+      problems.push(`${at}: the entry covers ${covered.length} stacks (${covered.map(stackId).join(", ")}), and an id names one. Give the entry a name.`);
+    } else if (given.has(only)) {
+      problems.push(`${at}: ${stackId(only)} already has the id ${given.get(only)}.`);
+    } else {
+      given.set(only, entry.id);
+    }
+  });
+  const taken = new Set(found.filter((stack) => !given.has(stack)).map(stackId));
+  config2.stacks.forEach((entry, index) => {
+    if (entry.id === undefined || ![...given.values()].includes(entry.id))
+      return;
+    if (taken.has(entry.id)) {
+      problems.push(`stacks[${index}].id: ${JSON.stringify(entry.id)} is the id of another stack already. Every stack id is unique.`);
+    }
+    taken.add(entry.id);
+  });
+  if (problems.length > 0)
+    throw new ConfigError([...new Set(problems)]);
+  return found.map((stack) => {
+    const id = given.get(stack);
+    return id === undefined ? stack : { ...stack, id };
   });
 }
 var DEFAULT_ENVIRONMENT = "sluiceway";
@@ -53157,8 +53246,8 @@ async function discoverAll(root, config2) {
   const declared = [...tofu.stacks, ...charts.stacks, ...manifests.stacks];
   const discovered = await discover(root, config2);
   if (declared.length === 0)
-    return discovered;
-  return [...discovered, ...declared].sort((a, b) => compare2(a.path, b.path) || compare2(a.name ?? "", b.name ?? ""));
+    return withIds(config2, discovered);
+  return withIds(config2, [...discovered, ...declared].sort((a, b) => compare2(a.path, b.path) || compare2(a.name ?? "", b.name ?? "")));
 }
 function tryDiscover(discover2) {
   try {
@@ -55927,6 +56016,17 @@ function previewCommand(name) {
   return ["pulumi", "preview", "--json", "--non-interactive", "--color", "never", "--stack", name];
 }
 var STACK_NOT_FOUND_EXIT_CODE = 6;
+var EXIT_REASONS = {
+  2: { kind: "configuration-error" },
+  3: { kind: "authentication-error" },
+  4: { kind: "resource-error" },
+  [STACK_NOT_FOUND_EXIT_CODE]: { kind: "stack-not-found" },
+  9: { kind: "tool-timed-out" }
+};
+function exitReason(exitCode) {
+  const own2 = exitCode === null ? undefined : EXIT_REASONS[exitCode];
+  return own2 ?? { kind: "tool-error", exitCode };
+}
 async function previewWithReferences(stack, options) {
   if (stack.name === undefined)
     throw new Error("A Pulumi stack always has a name.");
@@ -55946,8 +56046,10 @@ async function previewWithReferences(stack, options) {
     return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, toolLog(result.stderr));
   }
   if (result.exitCode !== 0) {
-    const reason = result.exitCode === STACK_NOT_FOUND_EXIT_CODE ? { kind: "stack-not-found" } : { kind: "tool-error", exitCode: result.exitCode };
-    return failed(reason, toolLog(result.stderr, parseDiagnostics(result.stdout)));
+    return failed(exitReason(result.exitCode), toolLog(result.stderr, parseDiagnostics(result.stdout)));
+  }
+  if (result.outputCutAt !== undefined) {
+    return failed({ kind: "output-too-large", megabytes: Math.floor(result.outputCutAt / 1024 / 1024) }, toolLog(result.stderr));
   }
   const parsed = parsePreview(result.stdout, options.showValues);
   if (!parsed.ok) {
@@ -56019,8 +56121,7 @@ async function detectDrift3(stack, options) {
   const read2 = readEvents(result.stdout);
   const words = stripAnsi([result.stderr, ...typeof read2 === "string" ? [] : read2.diagnostics].join(""));
   if (result.exitCode !== 0) {
-    const reason = result.exitCode === STACK_NOT_FOUND_EXIT_CODE ? { kind: "stack-not-found" } : { kind: "tool-error", exitCode: result.exitCode };
-    return failed(reason, words);
+    return failed(exitReason(result.exitCode), words);
   }
   if (typeof read2 === "string")
     return failed({ kind: "unreadable-output" }, words, [read2]);
@@ -56254,8 +56355,7 @@ async function toolDiff4(stack, options) {
     };
   }
   if (result.exitCode !== 0) {
-    const reason = result.exitCode === STACK_NOT_FOUND_EXIT_CODE ? { kind: "stack-not-found" } : { kind: "tool-error", exitCode: result.exitCode };
-    return { ok: false, reason, toolLog: words };
+    return { ok: false, reason: exitReason(result.exitCode), toolLog: words };
   }
   return { ok: true, text: stripAnsi(result.stdout), toolLog: stripAnsi(result.stderr) };
 }
@@ -56544,6 +56644,13 @@ var WALK = `query ($owner: String!, $repo: String!, $head: GitObjectID!, $first:
   }
 }`;
 var PAGE = 100;
+var FILE_LIMIT = 3000;
+function paths(files) {
+  return files.flatMap((file2) => file2.previous_filename === undefined ? [file2.filename] : [file2.filename, file2.previous_filename]);
+}
+function nextPage(link) {
+  return /<([^>]+)>;\s*rel="next"/.exec(link ?? "")?.[1];
+}
 function present(nodes) {
   return (nodes ?? []).filter((node2) => node2 !== null);
 }
@@ -56590,16 +56697,22 @@ function attributionCalls(octokit, repo) {
       return { defaultBranch, commits };
     },
     async listPullRequestFiles(number4) {
-      const { data } = await octokit.rest.pulls.listFiles({
+      const files = await octokit.paginate(octokit.rest.pulls.listFiles, {
         ...repo,
         pull_number: number4,
         per_page: PAGE
       });
-      return data.flatMap((file2) => file2.previous_filename === undefined ? [file2.filename] : [file2.filename, file2.previous_filename]);
+      return files.length >= FILE_LIMIT ? undefined : paths(files);
     },
     async listCommitFiles(sha) {
-      const { data } = await octokit.rest.repos.getCommit({ ...repo, ref: sha });
-      return (data.files ?? []).flatMap((file2) => file2.previous_filename === undefined ? [file2.filename] : [file2.filename, file2.previous_filename]);
+      const first = await octokit.rest.repos.getCommit({ ...repo, ref: sha });
+      const files = [...first.data.files ?? []];
+      for (let next = nextPage(first.headers.link);next !== undefined; ) {
+        const page = await octokit.request(`GET ${next}`);
+        files.push(...page.data.files ?? []);
+        next = nextPage(page.headers.link);
+      }
+      return files.length >= FILE_LIMIT ? undefined : paths(files);
     }
   };
 }
@@ -56826,7 +56939,6 @@ var OPEN_PULL_REQUESTS = `query ($owner: String!, $repo: String!, $after: String
     }
   }
 }`;
-var MAX_PAGES = 10;
 function present2(nodes) {
   return (nodes ?? []).filter((node2) => node2 !== null);
 }
@@ -56873,7 +56985,7 @@ function pullCalls(octokit, repo) {
       let defaultBranch;
       const pullRequests = [];
       let after = null;
-      for (let page = 0;page < MAX_PAGES; page++) {
+      for (;; ) {
         const data = await octokit.graphql(OPEN_PULL_REQUESTS, { ...repo, after });
         defaultBranch ??= data.repository?.defaultBranchRef?.name;
         const list = data.repository?.pullRequests;
@@ -56949,6 +57061,17 @@ function runCalls(octokit, repo) {
 }
 
 // src/github/octokit-port.ts
+var PINNED_ISSUES = `query ($owner: String!, $repo: String!) {
+  repository(owner: $owner, name: $repo) {
+    pinnedIssues(first: 3) {
+      nodes {
+        issue {
+          number
+        }
+      }
+    }
+  }
+}`;
 var PIN_ISSUE = `mutation ($issueId: ID!) {
   pinIssue(input: {issueId: $issueId}) {
     issue {
@@ -57000,6 +57123,20 @@ function createOctokitPort(octokit, repo) {
       const { data } = await octokit.rest.issues.create({ ...repo, title, body, labels });
       return toIssue(data);
     },
+    async listRecentlyClosedIssues(label) {
+      const { data } = await octokit.rest.issues.listForRepo({
+        ...repo,
+        labels: label,
+        state: "closed",
+        sort: "updated",
+        direction: "desc",
+        per_page: 100
+      });
+      return data.filter((issue3) => !issue3.pull_request).map(toIssue);
+    },
+    async updateIssueTitle(number4, title) {
+      await octokit.rest.issues.update({ ...repo, issue_number: number4, title });
+    },
     async updateIssueBody(number4, body) {
       const { data } = await octokit.rest.issues.update({ ...repo, issue_number: number4, body });
       return toIssue(data);
@@ -57036,6 +57173,17 @@ function createOctokitPort(octokit, repo) {
         next: pageInfo.hasNextPage && pageInfo.endCursor !== null ? pageInfo.endCursor : undefined
       };
     },
+    async readTree(sha) {
+      const { data } = await octokit.rest.git.getTree({
+        ...repo,
+        tree_sha: sha,
+        recursive: "1"
+      });
+      return {
+        entries: data.tree.flatMap((entry3) => entry3.path === undefined || entry3.sha === undefined || entry3.type === undefined ? [] : [{ path: entry3.path, sha: entry3.sha, type: entry3.type }]),
+        truncated: data.truncated
+      };
+    },
     async compareCommits(base, head) {
       const { data } = await octokit.rest.repos.compareCommitsWithBasehead({
         ...repo,
@@ -57048,10 +57196,17 @@ function createOctokitPort(octokit, repo) {
       };
     },
     async getPermission(login) {
-      const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({
-        ...repo,
-        username: login
-      });
+      let data;
+      try {
+        ({ data } = await octokit.rest.repos.getCollaboratorPermissionLevel({
+          ...repo,
+          username: login
+        }));
+      } catch (error63) {
+        if (isNoAccount(error63))
+          return;
+        throw error63;
+      }
       const permissions = data.user?.permissions;
       if (!permissions)
         throw new Error(`GitHub's answer holds no permissions for ${login}.`);
@@ -57069,13 +57224,20 @@ function createOctokitPort(octokit, repo) {
     async pinIssue(nodeId) {
       await octokit.graphql(PIN_ISSUE, { issueId: nodeId });
     },
+    async listPinnedIssues() {
+      const data = await octokit.graphql(PINNED_ISSUES, { ...repo });
+      return (data.repository?.pinnedIssues?.nodes ?? []).flatMap((node2) => node2?.issue ? [node2.issue.number] : []);
+    },
     async dispatchWorkflow(workflow, ref, inputs) {
-      await octokit.rest.actions.createWorkflowDispatch({
+      const { data } = await octokit.request("POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches", {
         ...repo,
         workflow_id: workflow,
         ref,
-        ...inputs ? { inputs } : {}
+        ...inputs ? { inputs } : {},
+        return_run_details: true
       });
+      const page = data?.html_url;
+      return typeof page === "string" ? page : undefined;
     }
   };
 }
@@ -57097,6 +57259,11 @@ function toIssue(issue3) {
     labels: issue3.labels.flatMap((label) => typeof label === "string" ? label : label.name ?? []),
     author: issue3.user ? { login: issue3.user.login, type: issue3.user.type } : { login: "", type: "" }
   };
+}
+function isNoAccount(error63) {
+  const { status, response } = error63 ?? {};
+  const message = response?.data?.message;
+  return status === 404 && typeof message === "string" && / is not a user$/.test(message);
 }
 
 // src/github/outputs.ts
@@ -57698,24 +57865,28 @@ async function writeDashboard(github, settings, build) {
       await github.createComment(duplicate.number, duplicateComment(dashboard.number));
       await github.closeIssue(duplicate.number);
     }
+    const renamed = await keepTitle(github, dashboard, settings.title);
     const written = await writeBody(github, dashboard.number, build);
     return {
       number: dashboard.number,
       found: "open",
       closedDuplicates: duplicates.map((duplicate) => duplicate.number),
-      pin: "not-tried",
+      pin: settings.pin ? await keepPinned(github, dashboard) : "not-tried",
+      renamed,
       ...written
     };
   }
   const closed = await newestClosedMatch(github, settings.label);
   if (closed) {
     await github.reopenIssue(closed.number);
+    const renamed = await keepTitle(github, closed, settings.title);
     const written = await writeBody(github, closed.number, build);
     return {
       number: closed.number,
       found: "reopened",
       closedDuplicates: [],
-      pin: "not-tried",
+      pin: settings.pin ? await keepPinned(github, closed) : "not-tried",
+      renamed,
       ...written
     };
   }
@@ -57741,6 +57912,21 @@ async function writeDashboard(github, settings, build) {
 function duplicateComment(dashboard) {
   return `Sluiceway found more than one dashboard in this repo. The dashboard is #${dashboard}, the one with the lowest number, so this one was closed.`;
 }
+async function keepTitle(github, issue3, title) {
+  if (issue3.title === title)
+    return;
+  await github.updateIssueTitle(issue3.number, title);
+  return { from: issue3.title };
+}
+async function keepPinned(github, issue3) {
+  try {
+    if ((await github.listPinnedIssues()).includes(issue3.number))
+      return "already";
+  } catch {
+    return "failed";
+  }
+  return tryPin(github, issue3);
+}
 async function tryPin(github, issue3) {
   try {
     await github.pinIssue(issue3.nodeId);
@@ -57750,7 +57936,7 @@ async function tryPin(github, issue3) {
   }
 }
 async function newestClosedMatch(github, label) {
-  const closed = await github.listIssues({ label, state: "closed" });
+  const closed = await github.listRecentlyClosedIssues(label);
   return closed.filter((issue3) => isDashboard(issue3, label)).sort((a, b) => compare4(b.closedAt ?? "", a.closedAt ?? "") || b.number - a.number)[0];
 }
 function compare4(a, b) {
@@ -57804,16 +57990,30 @@ function writeResultFile(outputs, log, mode, text6) {
 import { existsSync as existsSync3, readFileSync as readFileSync5 } from "node:fs";
 import { join as join29 } from "node:path";
 var CONFIG_FILE = "sluiceway.yaml";
-var FILE = CONFIG_FILE;
-var WRONG_FILE = "sluiceway.yml";
-function loadConfig(root) {
-  if (existsSync3(join29(root, WRONG_FILE))) {
-    throw new ConfigError([`found ${WRONG_FILE}. The file must be named ${FILE}. Rename it.`]);
+var CONFIG_FILE_YML = "sluiceway.yml";
+var CONFIG_FILES = [CONFIG_FILE, CONFIG_FILE_YML];
+function configFileName(root) {
+  const present3 = CONFIG_FILES.filter((name) => existsSync3(join29(root, name)));
+  if (present3.length > 1) {
+    throw new ConfigError([`found both ${CONFIG_FILE} and ${CONFIG_FILE_YML}. Keep one of them.`]);
   }
-  return parseConfig(read2(join29(root, FILE)));
+  return present3[0];
+}
+function loadConfig(root) {
+  const name = configFileName(root);
+  if (name === undefined)
+    return parseConfig(undefined);
+  try {
+    return parseConfig(read2(join29(root, name)));
+  } catch (error63) {
+    if (error63 instanceof ConfigError && name !== CONFIG_FILE) {
+      throw new ConfigError(error63.problems, name);
+    }
+    throw error63;
+  }
 }
 function hasConfigFile(root) {
-  return existsSync3(join29(root, FILE));
+  return configFileName(root) !== undefined;
 }
 function read2(file2) {
   try {
@@ -57845,31 +58045,39 @@ function deploymentPayload(payload) {
     hash: payload.hash,
     ticker: payload.ticker,
     run: payload.run,
+    ...payload.attempt === undefined ? {} : { attempt: payload.attempt },
     ...payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {},
     ...payload.drift ? { drift: true } : {}
   };
 }
 function mergePayload(payload) {
-  return { v: PAYLOAD_VERSION, ticker: payload.ticker, run: payload.run, merge: payload.merge };
+  return {
+    v: PAYLOAD_VERSION,
+    ticker: payload.ticker,
+    run: payload.run,
+    ...payload.attempt === undefined ? {} : { attempt: payload.attempt },
+    merge: payload.merge
+  };
 }
 var RUN_ID2 = /^[1-9]\d*$/;
 function readDeploymentPayload(payload) {
   if (typeof payload !== "object" || payload === null)
     return;
-  const { v, hash: hash2, ticker, run, behind, merge: merge3, drift } = payload;
+  const { v, hash: hash2, ticker, run, behind, merge: merge3, drift, attempt } = payload;
   if (v !== PAYLOAD_VERSION)
     return;
+  const attempted = typeof attempt === "string" && RUN_ID2.test(attempt) ? { attempt } : {};
   if (merge3 !== undefined) {
     const number4 = typeof merge3 === "number" && Number.isInteger(merge3) && merge3 > 0;
     const plain = hash2 === undefined && behind === undefined;
-    return number4 && plain && typeof ticker === "string" && typeof run === "string" && RUN_ID2.test(run) ? { hash: "", ticker, run, merge: merge3 } : undefined;
+    return number4 && plain && typeof ticker === "string" && typeof run === "string" && RUN_ID2.test(run) ? { hash: "", ticker, run, ...attempted, merge: merge3 } : undefined;
   }
   if (typeof hash2 !== "string" || typeof ticker !== "string" || typeof run !== "string") {
     return;
   }
   if (!RUN_ID2.test(run))
     return;
-  const read3 = { hash: hash2, ticker, run };
+  const read3 = { hash: hash2, ticker, run, ...attempted };
   if (drift === true)
     read3.drift = true;
   if (behind === undefined)
@@ -57901,7 +58109,8 @@ function newestLast(a, b) {
   return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id;
 }
 function factOf(record3, payload) {
-  const { ticker, run } = payload;
+  const { ticker } = payload;
+  const run = payload.attempt === undefined ? { run: payload.run } : { run: payload.run, attempt: payload.attempt };
   const state = record3.status?.state ?? "";
   const at = new Date(record3.status?.createdAt ?? record3.createdAt);
   if (SUCCEEDED.has(state)) {
@@ -57910,7 +58119,7 @@ function factOf(record3, payload) {
     return {
       kind: "succeeded",
       ticker,
-      run,
+      ...run,
       at: Number.isNaN(ended.getTime()) ? at : ended,
       hash: payload.hash,
       ...inSync ? { inSync } : {}
@@ -57921,7 +58130,7 @@ function factOf(record3, payload) {
       kind: "failed",
       reason: record3.status?.description || NO_REASON_RECORDED,
       ticker,
-      run,
+      ...run,
       at
     };
   }
@@ -57930,7 +58139,7 @@ function factOf(record3, payload) {
     deployment: record3.id,
     waiting: state !== "in_progress",
     ticker,
-    run,
+    ...run,
     ...payload.behind ? { behind: payload.behind } : {},
     ...payload.merge === undefined ? {} : { merge: payload.merge }
   };
@@ -57954,6 +58163,7 @@ function deployFacts(records) {
         stackId: stackId2,
         ticker: payload.ticker,
         run: payload.run,
+        ...payload.attempt === undefined ? {} : { attempt: payload.attempt },
         at: new Date(record3.status?.createdAt ?? record3.createdAt),
         result: "rehearsed"
       };
@@ -57969,6 +58179,7 @@ function deployFacts(records) {
         stackId: stackId2,
         ticker: fact.ticker,
         run: fact.run,
+        ...fact.attempt === undefined ? {} : { attempt: fact.attempt },
         at: fact.at,
         ...fact.inSync ? { result: "in-sync" } : payload.drift ? { result: "drift-repaired" } : {}
       };
@@ -57983,6 +58194,7 @@ function deployFacts(records) {
         stackId: stackId2,
         ticker: fact.ticker,
         run: fact.run,
+        ...fact.attempt === undefined ? {} : { attempt: fact.attempt },
         at: fact.at,
         result: "failed",
         reason: fact.reason
@@ -58072,12 +58284,24 @@ function previewFailureText(reason) {
       return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
     case "stack-not-found":
       return "the stack does not exist in the backend";
+    case "configuration-error":
+      return "the tool found the configuration invalid or incomplete";
+    case "authentication-error":
+      return "the tool could not authenticate or is not authorized";
+    case "resource-error":
+      return "a resource operation failed in the tool";
+    case "tool-timed-out":
+      return "the tool gave up on a time limit of its own";
     case "timed-out":
       return `the preview timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}`;
     case "unreadable-output":
       return "the tool's output could not be read";
     case "unknown-step":
       return "the tool reported a step Sluiceway does not know";
+    case "output-too-large":
+      return `the tool printed more than the ${reason.megabytes} MB Sluiceway holds`;
+    case "internal-error":
+      return "Sluiceway failed inside itself, which is a bug";
   }
 }
 function deployFailureText(reason) {
@@ -58088,6 +58312,8 @@ function deployFailureText(reason) {
       return "the change moved since the tick";
     case "tool-error":
       return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
+    case "timed-out":
+      return `the deploy ran out of its time limit of ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"} and the tool was stopped`;
     case "preview-failed":
       return `the preview before the deploy failed: ${previewFailureText(reason.reason)}`;
     case "tool-missing":
@@ -58110,6 +58336,7 @@ function attributionSource(github, input2, onFailure) {
   let failed = false;
   const pushFiles = new Map;
   const pullRequestFiles = new Map;
+  const asked = new Set;
   let reads = 0;
   const { lookback, trailLength, ...rest } = input2;
   const read3 = async (ranges) => {
@@ -58122,16 +58349,22 @@ function attributionSource(github, input2, onFailure) {
         return true;
       walk3 ??= await github.walkCommits(input2.scanSha, lookback ?? LOOKBACK);
       for (const sha of directPushesToRead(walk3, ranges)) {
-        if (pushFiles.has(sha) || reads >= READS_PER_JOB)
+        if (asked.has(sha) || reads >= READS_PER_JOB)
           continue;
+        asked.add(sha);
         reads++;
-        pushFiles.set(sha, await github.listCommitFiles(sha));
+        const files = await github.listCommitFiles(sha);
+        if (files !== undefined)
+          pushFiles.set(sha, files);
       }
       for (const number4 of pullRequestsToRead(walk3, ranges)) {
-        if (pullRequestFiles.has(number4) || reads >= READS_PER_JOB)
+        if (asked.has(`#${number4}`) || reads >= READS_PER_JOB)
           continue;
+        asked.add(`#${number4}`);
         reads++;
-        pullRequestFiles.set(number4, await github.listPullRequestFiles(number4));
+        const files = await github.listPullRequestFiles(number4);
+        if (files !== undefined)
+          pullRequestFiles.set(number4, files);
       }
       return true;
     } catch (error63) {
@@ -58394,6 +58627,10 @@ function runLinks(run) {
   const base = `${run.repoUrl}/actions/runs/${run.runId}`;
   const summary2 = `${base}/attempts/${run.runAttempt}`;
   return { summary: summary2, log: run.jobId === undefined ? summary2 : `${base}/job/${run.jobId}` };
+}
+function runUrl(repoUrl, run, attempt) {
+  const base = `${repoUrl}/actions/runs/${run}`;
+  return attempt === undefined ? base : `${base}/attempts/${attempt}`;
 }
 function dashboardSearchUrl(repoUrl, label) {
   return `${repoUrl}/issues?q=${encodeURIComponent(`is:issue is:open label:"${label}"`)}`;
@@ -58864,9 +59101,9 @@ ${ALREADY_ENDED}
   }
   report.ticker = payload.ticker;
   report.outcome = "failed";
-  const runUrl = `${context3.repoUrl}/actions/runs/${context3.runId}`;
+  const runUrl2 = runUrl(context3.repoUrl, context3.runId, context3.runAttempt);
   try {
-    await github.createDeploymentStatus(id, { state: "in_progress", logUrl: runUrl });
+    await github.createDeploymentStatus(id, { state: "in_progress", logUrl: runUrl2 });
   } catch (error63) {
     throw new ApplyFailedError(`Deployment record ${id} of ${name} could not be marked in progress: ${message(error63)}. Nothing was deployed. ${RECORD_PERMISSIONS}`);
   }
@@ -58874,7 +59111,7 @@ ${ALREADY_ENDED}
   const progress = { deploying: false };
   let attempt;
   try {
-    attempt = await deploy(context3, id_, payload, runUrl, progress);
+    attempt = await deploy(context3, id_, payload, runUrl2, progress);
   } catch (error63) {
     const reason = progress.deploying ? { kind: "tool-error", exitCode: null } : { kind: "not-started" };
     attempt = {
@@ -58894,7 +59131,7 @@ ${ALREADY_ENDED}
     await github.createDeploymentStatus(id, {
       state: attempt.state,
       description: attempt.description ?? (attempt.reason && deployFailureText(attempt.reason)),
-      logUrl: runUrl
+      logUrl: runUrl2
     });
     ended = true;
     log.info(`${RESULT_DOT[report.outcome]} Deployment record ${id} ended as ${attempt.state}.`);
@@ -58905,7 +59142,7 @@ ${ALREADY_ENDED}
     await writeSummary(context3, renderApplySummary({
       stackId: id_,
       ticker: payload.ticker,
-      runUrl,
+      runUrl: runUrl2,
       outcome: attempt.summary
     }));
   }
@@ -58919,7 +59156,7 @@ ${ALREADY_ENDED}
           reason: fact.reason,
           ticker: fact.ticker,
           at: fact.at,
-          runUrl: `${context3.repoUrl}/actions/runs/${fact.run}`
+          runUrl: runUrl(context3.repoUrl, fact.run, fact.attempt)
         } : undefined;
         const row = previewRow(id_, made, runLinks(context3), failure3, {
           toolDiffInLog: attempt.toolDiffInLog
@@ -58946,7 +59183,7 @@ ${ALREADY_ENDED}
 function applied(result) {
   return result.ok ? { kind: "diff", diff: result.diff } : { kind: "preview-failed", reason: previewFailureText(result.reason) };
 }
-async function deploy(context3, id, payload, runUrl, progress) {
+async function deploy(context3, id, payload, runUrl2, progress) {
   const { log, adapter } = context3;
   const name = logGroupTitle(id);
   const notDeployed = (reason, why = "") => `${name} was not deployed: ${deployFailureText(reason)}.${why}`;
@@ -59009,13 +59246,13 @@ async function deploy(context3, id, payload, runUrl, progress) {
   };
   const fresh = unprepared ?? await adapter.preview(setup.stack.stack, { ...options, savePlan: true });
   try {
-    return await afterFreshPreview(context3, id, payload, runUrl, progress, setup, fresh, options);
+    return await afterFreshPreview(context3, id, payload, runUrl2, progress, setup, fresh, options);
   } finally {
     if (fresh.ok)
       await fresh.plan?.dispose();
   }
 }
-async function afterFreshPreview(context3, id, payload, runUrl, progress, setup, previewed, options) {
+async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup, previewed, options) {
   const { log, adapter } = context3;
   const name = logGroupTitle(id);
   const notDeployed = (reason, why = "") => `${name} was not deployed: ${deployFailureText(reason)}.${why}`;
@@ -59096,7 +59333,7 @@ async function afterFreshPreview(context3, id, payload, runUrl, progress, setup,
       state: "deploying",
       stackId: id,
       ticker: payload.ticker,
-      runUrl,
+      runUrl: runUrl2,
       waiting: false,
       destroys: fresh.diff.changes.filter(isDestroy).length,
       attribution
@@ -59107,12 +59344,18 @@ async function afterFreshPreview(context3, id, payload, runUrl, progress, setup,
   progress.deploying = true;
   const repairDrift = (fresh.diff.drift ?? []).length > 0;
   const deployStarted = context3.now();
-  let result;
+  const limit = deployLimit(tool.run, context3.deployTimeoutMinutes);
+  let deployed;
   try {
-    result = await adapter.apply(setup.stack.stack, tool, previewed.ok ? previewed.plan : undefined, repairDrift ? { repairDrift } : undefined);
+    deployed = await adapter.apply(setup.stack.stack, { ...tool, run: limit.run }, previewed.ok ? previewed.plan : undefined, repairDrift ? { repairDrift } : undefined);
   } finally {
     progress.milliseconds = context3.now().getTime() - deployStarted.getTime();
   }
+  const result = !deployed.ok && deployed.reason.kind === "tool-error" && limit.ranOut() ? {
+    ok: false,
+    reason: { kind: "timed-out", minutes: context3.deployTimeoutMinutes ?? 0 },
+    toolLog: deployed.toolLog
+  } : deployed;
   const words = lines2(result.toolLog);
   context3.log.group(`${name}: the deploy`, [
     result.ok ? "deployed" : `deploy failed: ${deployFailureText(result.reason)}`,
@@ -59245,7 +59488,7 @@ async function swapRow(context3, setup, id, make) {
         reason: entry3.reason,
         ticker: entry3.ticker,
         at: entry3.at,
-        runUrl: `${context3.repoUrl}/actions/runs/${entry3.run}`,
+        runUrl: runUrl(context3.repoUrl, entry3.run, entry3.attempt),
         shipped: shipped.get(entry3)
       })),
       repoUrl: context3.repoUrl,
@@ -59265,6 +59508,25 @@ async function swapRow(context3, setup, id, make) {
   log.info(result.written ? `Wrote the dashboard (#${dashboard.number}).` : `The dashboard (#${dashboard.number}) already says this. Nothing was written.`);
   return dashboard.number;
 }
+var DEPLOY_GRACE_MS = 120000;
+function deployLimit(run, minutes) {
+  if (minutes === undefined)
+    return { run, ranOut: () => false };
+  let ranOut = false;
+  return {
+    run: async (one) => {
+      const result = await run({
+        ...one,
+        timeoutMs: one.timeoutMs ?? minutes * 60000,
+        graceMs: one.graceMs ?? DEPLOY_GRACE_MS
+      });
+      if (result.status === "timed-out")
+        ranOut = true;
+      return result;
+    },
+    ranOut: () => ranOut
+  };
+}
 
 // src/modes/apply-job.ts
 async function runApply(directory) {
@@ -59279,6 +59541,7 @@ async function runApply(directory) {
     github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),
     log: actionsLog(),
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
+    deployTimeoutMinutes: inputs.deployTimeoutMinutes,
     now: () => new Date,
     repoUrl: job.repoUrl,
     runId: job.runId,
@@ -59299,15 +59562,7 @@ var backendContext = (env) => {
 };
 
 // src/core/check.ts
-var SUGGESTIONS = [
-  "**/*.md",
-  "docs/**",
-  ".github/**",
-  "LICENSE*",
-  "**/.gitignore",
-  "**/.gitattributes",
-  ".editorconfig"
-];
+var SUGGESTIONS = ["docs/**"];
 function checkSetup(config2, found, files, references = new Map) {
   const stacks = applyConfig(config2, found);
   const claimants = stacks.map(({ stack, inputs }) => ({
@@ -60024,7 +60279,7 @@ function renderCheckSummary({
   parts.push("### Files that no stack claims");
   const count3 = report.unclaimed.reduce((sum, group) => sum + group.files.length, 0);
   if (count3 === 0) {
-    parts.push("Every file is claimed by a stack or covered by scan.unrelated.");
+    parts.push("Every file is claimed by a stack, covered by scan.unrelated, or one of the docs and tooling files that force nothing by default.");
   } else {
     parts.push(unclaimedText(count3), report.unclaimed.map(groupLine).join(`
 `), WHERE_FILES_BELONG);
@@ -60342,11 +60597,11 @@ function pulumiRuntime(path, files, read3) {
   }
   return "yaml";
 }
-function nodeFindings(paths, files, read3) {
+function nodeFindings(paths2, files, read3) {
   const lockfile = (directory) => LOCKFILES.find(([name]) => files.includes(directory === "." ? name : `${directory}/${name}`));
   const installs = new Map;
   const withoutLockfile = [];
-  for (const path of paths) {
+  for (const path of paths2) {
     const directory = ancestors(path).find((candidate) => lockfile(candidate) !== undefined);
     const found = directory === undefined ? undefined : lockfile(directory);
     if (directory === undefined || found === undefined)
@@ -60647,9 +60902,9 @@ function installCommand(manager, yarnBerry) {
 function pulumiSteps(findings, job) {
   const managers = [...new Set(findings.node?.installs.map(({ manager }) => manager) ?? [])];
   const keyFiles = managers.length > 0 ? managers.map((manager) => `'**/${LOCKFILE[manager]}'`) : ["'**/Pulumi.yaml'", "'**/Pulumi.yml'", "'**/Pulumi.json'"];
-  const others = findings.otherRuntimes.flatMap(({ runtime, paths }) => [
+  const others = findings.otherRuntimes.flatMap(({ runtime, paths: paths2 }) => [
     `      # The packages of the ${runtime} programs, with the ${runtime} the runner has.`,
-    ...paths.flatMap((path) => [
+    ...paths2.flatMap((path) => [
       "      - run: pulumi install",
       ...path === "." ? [] : [`        working-directory: ${path}`]
     ])
@@ -60775,8 +61030,8 @@ var NOT_A_REPO_ROOT = "This is not the root of a git repo. Run init in the top d
 function noStacksText() {
   return "init found no stack to set up: no Pulumi project, no OpenTofu root module and no Helm chart. It wrote nothing.";
 }
-function workflowExistsText(paths) {
-  return `A workflow runs Sluiceway already: ${paths.join(", ")}. init never overwrites one, and wrote nothing. Run the check (mode: check) to see what it lacks.`;
+function workflowExistsText(paths2) {
+  return `A workflow runs Sluiceway already: ${paths2.join(", ")}. init never overwrites one, and wrote nothing. Run the check (mode: check) to see what it lacks.`;
 }
 function wroteText(file2) {
   return `Wrote ${file2}.`;
@@ -60908,7 +61163,7 @@ async function init(context3) {
     log.info(KEPT_CONFIG);
   log.group(NEEDS_A_PERSON, needsText({ findings, declarable, branchGuessed: branch === undefined }).map((need) => `- ${need}`));
 }
-function nearest(directory, paths) {
+function nearest(directory, paths2) {
   const shared = (path) => {
     const a = directory.split("/");
     const b = path.split("/");
@@ -60917,7 +61172,7 @@ function nearest(directory, paths) {
       count3++;
     return count3;
   };
-  return paths.reduce((best, path) => shared(path) > shared(best) ? path : best);
+  return paths2.reduce((best, path) => shared(path) > shared(best) ? path : best);
 }
 function exists2(root, file2) {
   return existsSync4(join32(root, file2));
@@ -61416,6 +61671,7 @@ function judgeTick(rule, login, permission) {
 }
 
 // src/render/refused-ticks.ts
+var NAMES_IN_A_REFUSAL = 10;
 function what(target2) {
   if (target2.kind === "rescan")
     return "the rescan box";
@@ -61442,6 +61698,9 @@ function why({ target: target2, reason, detail, waitsOn }) {
   if (reason === "not-qualified") {
     return `The pull request no longer qualifies: ${sentence(detail ?? "")}`;
   }
+  if (reason === "no-account") {
+    return "The tick was refused: GitHub has no account by that name any more, as after a rename or a delete. Tick the box again from the account you use now.";
+  }
   if (reason === "unverified") {
     return "The tick could not be verified, because the permission lookup failed. Tick the box again for a fresh try.";
   }
@@ -61451,7 +61710,9 @@ function why({ target: target2, reason, detail, waitsOn }) {
   if (typeof target2.rule === "string") {
     return `The tick was refused: the tick rule of this stack is \`${target2.rule}\`, which takes ${target2.rule} access to this repository.`;
   }
-  const names = target2.rule.map(escapeText).join(", ");
+  const named = target2.rule.slice(0, NAMES_IN_A_REFUSAL).map(escapeText).join(", ");
+  const rest = target2.rule.length - NAMES_IN_A_REFUSAL;
+  const names = rest > 0 ? `${named} and ${rest} more in sluiceway.yaml` : named;
   return `The tick was refused: the tick rule of this stack names who can tick it: ${names}.`;
 }
 function line2(refused) {
@@ -61472,7 +61733,16 @@ function refusedTicksComment(refused) {
 }
 
 // src/github/ticks.ts
-async function judgeTicks(github, ticks) {
+var PAUSE_MS = 1000;
+async function lookUp(github, login, pauseMs) {
+  try {
+    return { permission: await github.getPermission(login) };
+  } catch {
+    await new Promise((resolve) => setTimeout(resolve, pauseMs));
+    return github.getPermission(login).then((permission) => ({ permission }), (error63) => ({ error: error63 }));
+  }
+}
+async function judgeTicks(github, ticks, { pauseMs = PAUSE_MS } = {}) {
   const lookups = new Map;
   const outcomes = [];
   for (const tick of ticks) {
@@ -61484,11 +61754,15 @@ async function judgeTicks(github, ticks) {
     const key = login.toLowerCase();
     let lookup = lookups.get(key);
     if (!lookup) {
-      lookup = await github.getPermission(login).then((permission) => ({ permission }), (error63) => ({ error: error63 }));
+      lookup = await lookUp(github, login, pauseMs);
       lookups.set(key, lookup);
     }
     if ("error" in lookup) {
       outcomes.push({ tick, outcome: "unverified", error: lookup.error });
+      continue;
+    }
+    if (lookup.permission === undefined) {
+      outcomes.push({ tick, outcome: "refused", reason: "no-account" });
       continue;
     }
     const rule = tick.target.kind === "rescan" ? "write" : tick.target.rule;
@@ -61532,6 +61806,23 @@ function clearTick(row2, options = {}) {
   return cleared;
 }
 
+// src/render/resolve-summary.ts
+function resolveSummary({ lines: lines3, scanUrl, scanStarted }) {
+  const parts = [
+    "### Sluiceway resolve",
+    lines3.length === 0 ? "Nothing to report." : lines3.map((line3) => `- ${escapeText(line3)}`).join(`
+`)
+  ];
+  if (scanUrl !== undefined)
+    parts.push(`It started [a scan](${scanUrl}).`);
+  else if (scanStarted)
+    parts.push("It started a scan.");
+  return `${parts.join(`
+
+`)}
+`;
+}
+
 // src/modes/resolve.ts
 async function resolve(context3) {
   let handedOn = false;
@@ -61539,21 +61830,47 @@ async function resolve(context3) {
     context3.setOutput("matrix", matrixOutput(entries));
     handedOn = true;
   };
+  const report = { acting: false, lines: [], scanStarted: false };
+  const recording = {
+    ...context3,
+    log: {
+      ...context3.log,
+      info: (line3) => {
+        if (report.acting)
+          report.lines.push(line3);
+        context3.log.info(line3);
+      }
+    }
+  };
   try {
-    await resolveTicks(context3, handOn);
+    await resolveTicks(recording, handOn, report);
   } finally {
     if (!handedOn)
       handOn([]);
+    if (report.acting)
+      await writeRunSummary(context3, report);
+  }
+}
+async function writeRunSummary(context3, report) {
+  try {
+    await context3.log.writeSummary(resolveSummary({
+      lines: report.lines,
+      scanUrl: report.scanUrl,
+      scanStarted: report.scanStarted
+    }));
+  } catch (error63) {
+    context3.log.info(`The job summary could not be written: ${message2(error63)}`);
   }
 }
 var MAX_READS = 3;
 function message2(error63) {
   return error63 instanceof Error ? error63.message : String(error63);
 }
-async function resolveTicks(context3, handOn) {
+async function resolveTicks(context3, handOn, report) {
   const { log, github } = context3;
   const issue3 = editedIssue(context3.event);
   if (!issue3) {
+    report.acting = true;
     await startQueued(context3, handOn);
     return;
   }
@@ -61567,6 +61884,7 @@ async function resolveTicks(context3, handOn) {
     log.info(notTheDashboard);
     return;
   }
+  report.acting = true;
   let stacks;
   let ignored = [];
   let named = [];
@@ -61584,7 +61902,10 @@ async function resolveTicks(context3, handOn) {
     }
     if (root.version !== MARKER_VERSION) {
       log.info(`The dashboard is written in marker version ${root.version} and this is version ${MARKER_VERSION}. Its body is left alone, and a full scan is started to write it again.`);
-      await dispatchScan(context3);
+      report.scanUrl = await dispatchScan(context3);
+      report.scanStarted = true;
+      if (report.scanUrl)
+        log.info(`Started a full scan: ${report.scanUrl}`);
       return;
     }
     const ticks = ticksIn(first.body);
@@ -61775,6 +62096,7 @@ async function resolveTicks(context3, handOn) {
           hash: hash2,
           ticker,
           run: context3.runId,
+          attempt: context3.runAttempt,
           behind,
           ...drifted.has(id) ? { drift: true } : {}
         })
@@ -61786,7 +62108,7 @@ async function resolveTicks(context3, handOn) {
         ticker,
         behind
       });
-      await github.createDeploymentStatus(record3.id, { state: "queued", logUrl: runUrl(context3) });
+      await github.createDeploymentStatus(record3.id, { state: "queued", logUrl: runUrl2(context3) });
       log.info(behind ? `${logGroupTitle(id)}: deployment record ${record3.id} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.` : `${logGroupTitle(id)}: deployment record ${record3.id} is queued.`);
     } catch (error63) {
       failures.push(`The deployment record of ${logGroupTitle(id)} could not be written: ${message2(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). No further deploy was started, and the ticks that are left stay for the next run.`);
@@ -61806,8 +62128,11 @@ async function resolveTicks(context3, handOn) {
     const prs = [...merging.mergedPrs].sort((a, b) => a - b);
     const narrow = !rescan && declaresMergeScanInput(workflowText(context3));
     try {
-      await dispatchScan(context3, narrow ? mergeScanInputs(prs) : undefined);
-      log.info(rescan ? "Started a full scan for the rescan box." : narrow ? `Started the scan after the merge of ${prs.map((pr) => `#${pr}`).join(", ")}. It previews what changed since the last scan and hands the merged change to apply.` : `Started a full scan, which previews the merged change and hands it to apply. It is narrowed to the merged change when ${logGroupTitle(context3.workflow?.file ?? "the workflow")} declares the workflow_dispatch input ${MERGE_SCAN_INPUT} (record 0064).`);
+      const scanUrl = await dispatchScan(context3, narrow ? mergeScanInputs(prs) : undefined);
+      report.scanUrl = scanUrl;
+      report.scanStarted = true;
+      const at = scanUrl === undefined ? "." : `: ${scanUrl}`;
+      log.info(rescan ? `Started a full scan for the rescan box${at}` : narrow ? `Started the scan after the merge of ${prs.map((pr) => `#${pr}`).join(", ")}. It previews what changed since the last scan and hands the merged change to apply.` : `Started a full scan, which previews the merged change and hands it to apply. It is narrowed to the merged change when ${logGroupTitle(context3.workflow?.file ?? "the workflow")} declares the workflow_dispatch input ${MERGE_SCAN_INPUT} (record 0064).`);
     } catch (error63) {
       failures.push(message2(error63));
     }
@@ -61972,7 +62297,12 @@ async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
           sha: answer.sha,
           task: deploymentTask(id),
           environment: stack.environment,
-          payload: mergePayload({ ticker, run: context3.runId, merge: tick.pr })
+          payload: mergePayload({
+            ticker,
+            run: context3.runId,
+            attempt: context3.runAttempt,
+            merge: tick.pr
+          })
         });
         result.merged.push({
           stackId: id,
@@ -61982,7 +62312,7 @@ async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
         });
         await github.createDeploymentStatus(record3.id, {
           state: "queued",
-          logUrl: runUrl(context3)
+          logUrl: runUrl2(context3)
         });
         log.info(`${logGroupTitle(id)}: deployment record ${record3.id} is queued and deploys after the scan of the merge.`);
       } catch (error63) {
@@ -61998,8 +62328,8 @@ var NOBODY = {
   "end-of-history": "the tick is older than the edit history GitHub keeps",
   "not-in-newest-entry": "the body kept moving"
 };
-function runUrl(context3) {
-  return `${context3.repoUrl}/actions/runs/${context3.runId}`;
+function runUrl2(context3) {
+  return runUrl(context3.repoUrl, context3.runId, context3.runAttempt);
 }
 function unverifiedMessage(unverified) {
   const logins = [...new Set(unverified.map(({ tick }) => tick.editor.login))].join(", ");
@@ -62026,7 +62356,7 @@ async function dispatchScan(context3, inputs) {
     throw new Error("A full scan could not be started: GITHUB_WORKFLOW_REF is not set, so this job does not know which workflow it belongs to.");
   }
   try {
-    await context3.github.dispatchWorkflow(context3.workflow.file, context3.workflow.ref, inputs);
+    return await context3.github.dispatchWorkflow(context3.workflow.file, context3.workflow.ref, inputs);
   } catch (error63) {
     throw new Error(`A full scan could not be started: ${message2(error63)}. The resolve job needs the permission \`actions: write\`, and the workflow (${context3.workflow.file}) needs a \`workflow_dispatch\` trigger that runs the scan (record 0017).`);
   }
@@ -62088,7 +62418,7 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
     state: "deploying",
     stackId: one.stackId,
     ticker: one.ticker,
-    runUrl: runUrl(context3),
+    runUrl: runUrl2(context3),
     waiting: true,
     destroys,
     attribution: lines3.get(one.stackId)?.lines,
@@ -62113,7 +62443,7 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
         state: "deploying",
         stackId: row2.stackId,
         ticker: fact.ticker,
-        runUrl: `${context3.repoUrl}/actions/runs/${fact.run}`,
+        runUrl: runUrl(context3.repoUrl, fact.run, fact.attempt),
         waiting: fact.waiting,
         destroys,
         attribution: lines3.get(row2.stackId)?.lines,
@@ -62151,7 +62481,7 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
       reason: entry3.reason,
       ticker: entry3.ticker,
       at: entry3.at,
-      runUrl: `${context3.repoUrl}/actions/runs/${entry3.run}`,
+      runUrl: runUrl(context3.repoUrl, entry3.run, entry3.attempt),
       shipped: shipped.get(entry3)
     })),
     repoUrl: context3.repoUrl,
@@ -62227,7 +62557,8 @@ async function startQueued(context3, handOn) {
         payload: deploymentPayload({
           hash: payload.hash,
           ticker: payload.ticker,
-          run: context3.runId
+          run: context3.runId,
+          attempt: context3.runAttempt
         })
       });
       started.push({
@@ -62236,11 +62567,11 @@ async function startQueued(context3, handOn) {
         deployment: record3.id,
         ticker: payload.ticker
       });
-      await github.createDeploymentStatus(record3.id, { state: "queued", logUrl: runUrl(context3) });
+      await github.createDeploymentStatus(record3.id, { state: "queued", logUrl: runUrl2(context3) });
       await github.createDeploymentStatus(fact.deployment, {
         state: "inactive",
         description: HANDED_ON_DESCRIPTION,
-        logUrl: runUrl(context3)
+        logUrl: runUrl2(context3)
       });
       log.info(`${logGroupTitle(id)}: what it waited behind went out, so it starts now. Deployment record ${record3.id} is queued and takes over from record ${fact.deployment}.`);
     } catch (error63) {
@@ -62280,6 +62611,7 @@ async function runResolve(directory) {
     log: actionsLog(),
     repoUrl: job.repoUrl,
     runId: job.runId,
+    runAttempt: job.runAttempt,
     sha: job.sha,
     actionRef: readActionRef(env, directory, read3),
     event: readEventPayload(env, read3),
@@ -62400,6 +62732,19 @@ function changedPaths2(comparison) {
     paths: comparison.files.flatMap(({ path, previousPath }) => previousPath === undefined ? [path] : [path, previousPath])
   };
 }
+function treeChanges(base, head) {
+  const ids = (tree) => new Map(tree.filter(({ type }) => type !== "tree").map(({ path, sha }) => [path, sha]));
+  const before = ids(base);
+  const after = ids(head);
+  const changed = new Set;
+  for (const [path, sha] of before)
+    if (after.get(path) !== sha)
+      changed.add(path);
+  for (const [path, sha] of after)
+    if (before.get(path) !== sha)
+      changed.add(path);
+  return [...changed].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+}
 function planScan(stacks, changed, unrelated, rows) {
   const { claims, unclaimed } = claim2(stacks, changed, unrelated);
   if (unclaimed.length > 0)
@@ -62428,7 +62773,10 @@ function oneRowPerStack(discovered, fresh, live) {
   };
 }
 function unclaimedToPlace(files) {
-  return files.filter((file2) => file2 !== CONFIG_FILE);
+  return files.filter((file2) => !isConfigFile(file2));
+}
+function isConfigFile(file2) {
+  return CONFIG_FILES.includes(file2);
 }
 function noClaimant(files) {
   const [first = "", ...rest] = files;
@@ -62451,12 +62799,13 @@ function fullScanReasonText(reason) {
     case "not-a-straight-line":
       return `the checked-out commit does not follow the commit of the last scan in a straight line (GitHub calls it ${JSON.stringify(reason.status)}), as after a force push or a re-run of an older run`;
     case "file-cap":
-      return `the comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, so files may be missing from it`;
+      return `the comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, and the trees of the two commits could not be compared, so files may be missing from it`;
     case "unclaimed": {
       const others = unclaimedToPlace(reason.files);
       if (others.length === reason.files.length)
         return noClaimant(others);
-      const changed = `${CONFIG_FILE} changed, so every stack is previewed`;
+      const file2 = reason.files.find(isConfigFile);
+      const changed = `${file2} changed, so every stack is previewed`;
       return others.length === 0 ? changed : `${changed}, and ${noClaimant(others)}`;
     }
     case "does-not-fit":
@@ -63171,7 +63520,7 @@ async function scanning(context3, report) {
             state: "deploying",
             stackId: id,
             ticker: fact.ticker,
-            runUrl: runUrlOf(context3, fact.run),
+            runUrl: runUrlOf(context3, fact.run, fact.attempt),
             waiting: fact.waiting,
             destroys: destroysOf(mine, liveRow),
             attribution: lines5.get(id)?.lines,
@@ -63217,7 +63566,7 @@ async function scanning(context3, report) {
           reason: entry3.reason,
           ticker: entry3.ticker,
           at: entry3.at,
-          runUrl: runUrlOf(context3, entry3.run),
+          runUrl: runUrlOf(context3, entry3.run, entry3.attempt),
           shipped: shipped.get(entry3)
         })),
         repoUrl: context3.repoUrl,
@@ -63305,8 +63654,16 @@ async function scanning(context3, report) {
     await writeSummary2(context3, all, { logDiff, unclaimed }, attributed);
   }
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
+  const faults = failed.filter(({ result }) => !result.ok && result.reason.kind === "internal-error").map(({ id }) => id).sort(byCodeUnit);
+  if (faults.length > 0) {
+    throw new ScanFailedError(`The preview of ${faults.join(", ")} failed inside Sluiceway, which is a bug. The dashboard was written first and shows ${faults.length === 1 ? "it" : "them"} as a preview failure. The job log holds the error in the group of the stack. Please report it at https://github.com/sluiceway/sluiceway/issues.`);
+  }
   if (everyPreviewFailed(previewed.size, failed.length)) {
     throw new ScanFailedError(`Every preview failed (${failed.length} of ${previewed.size}). That nearly always means the environment is broken, such as missing credentials or a backend that cannot be reached. The dashboard was written first and shows a preview failure on every row of a previewed stack, which is true: nothing can be deployed either. The job log holds what the tool printed, in the group of each stack.`);
+  }
+  if (context3.strict && failed.length > 0) {
+    const ids2 = failed.map(({ id }) => id).sort(byCodeUnit);
+    throw new ScanFailedError(`${plural2(failed.length, "preview")} failed (${ids2.join(", ")}), and the strict input turns the job red on any preview failure. The dashboard was written first and shows ${failed.length === 1 ? "it" : "them"}.`);
   }
 }
 var PREVIEW_FIRST = {
@@ -63332,8 +63689,8 @@ function startingCommits(facts, previewed) {
       add(id);
   return from;
 }
-function runUrlOf(context3, run) {
-  return `${context3.repoUrl}/actions/runs/${run}`;
+function runUrlOf(context3, run, attempt) {
+  return runUrl(context3.repoUrl, run, attempt);
 }
 function failureLine2(context3, fact) {
   if (fact?.kind !== "failed")
@@ -63342,7 +63699,7 @@ function failureLine2(context3, fact) {
     reason: fact.reason,
     ticker: fact.ticker,
     at: fact.at,
-    runUrl: runUrlOf(context3, fact.run)
+    runUrl: runUrlOf(context3, fact.run, fact.attempt)
   };
 }
 function destroysOf(mine, liveRow) {
@@ -63408,11 +63765,33 @@ async function makePlan(context3, config2, stacks, knownDrift) {
     log.info(`Comparing ${short(base.from)} with ${short(context3.sha)} failed: ${error63 instanceof Error ? error63.message : error63}`);
     return full({ kind: "compare-failed" });
   }
-  const changed = changedPaths2(comparison);
+  let changed = changedPaths2(comparison);
+  if (changed.kind === "file-cap") {
+    const paths2 = await treeDiff(context3, base.from);
+    if (paths2 === undefined)
+      return full(changed);
+    log.info(`The comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, so the trees of the two commits were compared: ${plural2(paths2.length, "file")} changed.`);
+    changed = { kind: "changed", paths: paths2 };
+  } else if (changed.kind === "changed") {
+    log.info(`${plural2(comparison.files.length, "file")} changed between ${short(base.from)}, the commit of the last scan, and ${short(context3.sha)}.`);
+  }
   if (changed.kind !== "changed")
     return full(changed);
-  log.info(`${plural2(comparison.files.length, "file")} changed between ${short(base.from)}, the commit of the last scan, and ${short(context3.sha)}.`);
   return planScan(stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })), changed.paths, config2.scan.unrelated, live?.rows ?? []);
+}
+async function treeDiff(context3, from) {
+  try {
+    const [base, head] = [
+      await context3.github.readTree(from),
+      await context3.github.readTree(context3.sha)
+    ];
+    if (base.truncated || head.truncated)
+      return;
+    return treeChanges(base.entries, head.entries);
+  } catch (error63) {
+    context3.log.info(`Reading the trees of ${short(from)} and ${short(context3.sha)} failed: ${error63 instanceof Error ? error63.message : error63}`);
+    return;
+  }
 }
 function fileName(path) {
   return logGroupTitle(path);
@@ -63509,13 +63888,28 @@ async function previewAll(context3, stacks, logDiff, showValues, prepared, check
     const started = startedAt.getTime();
     const options = {
       ...tool,
+      run: liveRun(tool.run, id, log),
       timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
       showValues
     };
-    const previewedOnly = await adapter.preview(configured.stack, {
-      ...options,
-      ...configured.dependsOnAuto ? { dependencies: repoStacks } : {}
-    });
+    let previewedOnly;
+    try {
+      previewedOnly = await adapter.preview(configured.stack, {
+        ...options,
+        ...configured.dependsOnAuto ? { dependencies: repoStacks } : {}
+      });
+    } catch (error63) {
+      const milliseconds2 = now().getTime() - started;
+      const detail = lines4(error63 instanceof Error ? error63.stack ?? String(error63) : String(error63));
+      const result2 = {
+        ok: false,
+        reason: { kind: "internal-error" },
+        detail,
+        toolLog: ""
+      };
+      log.info(`Previewed ${logGroupTitle(id)} in ${seconds2(milliseconds2)}: ${previewOutcome(result2)}`);
+      return { id, result: result2, startedAt, milliseconds: milliseconds2 };
+    }
     let milliseconds = now().getTime() - started;
     log.info(`Previewed ${logGroupTitle(id)} in ${seconds2(milliseconds)}: ${previewOutcome(previewedOnly)}`);
     if (previewedOnly.ok && previewedOnly.dependencies) {
@@ -63552,6 +63946,10 @@ async function previewAll(context3, stacks, logDiff, showValues, prepared, check
   const slowest = previewed.reduce((a, b) => b.milliseconds > a.milliseconds ? b : a);
   log.info(`Previewed ${plural2(previewed.length, "stack")} in ${seconds2(total)} with a pool of ${context3.concurrency}. Added up, the previews took ${seconds2(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds2(slowest.milliseconds)}.`);
   return [...previewed, ...unpreparedFailures];
+}
+function liveRun(run, id, log) {
+  const prefix = `[${logGroupTitle(id)}]`;
+  return (one) => run({ ...one, onStderrLine: (line3) => log.info(`${prefix} ${stripAnsi(line3)}`) });
 }
 function readDependenciesText(id, read3) {
   const named = read3.stackIds.length === 0 ? `${logGroupTitle(id)} reads no stack of this repo through its stack references.` : `${logGroupTitle(id)} reads ${read3.stackIds.map(logGroupTitle).join(", ")} through its stack references.`;
@@ -63699,7 +64097,16 @@ function reportDashboard(context3, written, composed) {
   for (const duplicate of written.closedDuplicates) {
     log.info(`Closed #${duplicate}, a second dashboard.`);
   }
-  if (written.pin === "failed") {
+  if (written.renamed) {
+    log.info(`Renamed the dashboard from ${JSON.stringify(written.renamed.from)} to the dashboard.title of sluiceway.yaml.`);
+  }
+  if (written.pin === "pinned" && written.found !== "created") {
+    log.info("Pinned the dashboard. Set dashboard.pin: false in sluiceway.yaml to keep it unpinned.");
+  }
+  if (written.pin === "failed" && written.found !== "created") {
+    log.info(`The dashboard (#${written.number}) could not be pinned. A repo holds at most three pinned issues. Set dashboard.pin: false in sluiceway.yaml to stop trying.`);
+  }
+  if (written.pin === "failed" && written.found === "created") {
     log.warning(`The new dashboard (#${written.number}) could not be pinned. A repo holds at most three pinned issues. Pin it by hand if you want it at the top of the issue list.`, "Dashboard not pinned");
   }
 }
@@ -63768,7 +64175,7 @@ function mergesWaiting(facts) {
 }
 async function handOffMerges(context3, config2, stacks, previewed, waiting, handedOn) {
   const { github, log } = context3;
-  const logUrl = runUrlOf(context3, context3.runId);
+  const logUrl = runUrlOf(context3, context3.runId, context3.runAttempt);
   let ended = false;
   for (const { id, fact } of waiting) {
     const name = logGroupTitle(id);
@@ -63813,6 +64220,7 @@ async function handOffMerges(context3, config2, stacks, previewed, waiting, hand
             hash: hash2,
             ticker: fact.ticker,
             run: context3.runId,
+            attempt: context3.runAttempt,
             ...(result.diff.drift ?? []).length > 0 ? { drift: true } : {}
           })
         });
@@ -63864,6 +64272,7 @@ async function runScan(directory) {
     now: () => new Date,
     concurrency: inputs.concurrency,
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
+    strict: inputs.strict,
     repoUrl: job.repoUrl,
     runId: job.runId,
     runAttempt: job.runAttempt,
