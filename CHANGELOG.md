@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.0](https://github.com/sluiceway/sluiceway/compare/v0.5.0...v0.6.0) (2026-09-22)
+
+
+### Features
+
+* a three stack chain goes round the whole loop on the fake, in order ([3ba64ad](https://github.com/sluiceway/sluiceway/commit/3ba64ad6f4ea034a081cff521d07f526c828369b))
+* dependsOn in sluiceway.yaml, checked against discovery, circles refused ([263aa8c](https://github.com/sluiceway/sluiceway/commit/263aa8c6b81ec8ed595681d4b3fb9c9657f4eaa8))
+* queued rows survive a scan, and apply never deploys a queued record ([31960da](https://github.com/sluiceway/sluiceway/commit/31960da02706491b357518d3d7f5eb3c73886504))
+* rebuild dist for stack dependencies ([6389019](https://github.com/sluiceway/sluiceway/commit/6389019e26e3e8afbdf83b133e6ae983a11aa173))
+* record 0056, the config reference for dependsOn, glossary terms, and resolve on workflow_dispatch in the workflows ([6af36c3](https://github.com/sluiceway/sluiceway/commit/6af36c3bd518145e26e73e303018abf558531927))
+* resolve refuses a tick whose dependency has a change waiting, queues the rest of a chain, and a dispatched resolve starts what is ready ([ddc303a](https://github.com/sluiceway/sluiceway/commit/ddc303ac84a3f321a9a85314d8b11caa16093279))
+* settle starts the next layer and ends a queued record whose dependency did not deploy ([b68bd7d](https://github.com/sluiceway/sluiceway/commit/b68bd7d44b951eaaa2c3bc910c1aa7929a3ea262))
+* the dependency rules: refused, started and queued ticks, and when a queued record is ready ([633235f](https://github.com/sluiceway/sluiceway/commit/633235fa0acbf93969b2353614f915283cd6a5e5))
+* the e2e runs a chain of three stacks, one layer per run, with the real tool ([c1018ad](https://github.com/sluiceway/sluiceway/commit/c1018ad158b554bc8121515cec4737c409954cff))
+* the queued row state, counted as deploying, and the note on a tick refused for a dependency ([2bd65af](https://github.com/sluiceway/sluiceway/commit/2bd65af63b8312b4fe04c0f5814bb6fcc9031900))
+
 ## [0.5.0](https://github.com/sluiceway/sluiceway/compare/v0.4.0...v0.5.0) (2026-09-22)
 
 
