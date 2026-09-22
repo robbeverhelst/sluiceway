@@ -26,13 +26,10 @@ import {
   type DeployFacts,
   type DeploymentPayload,
   deployFacts,
-  IN_SYNC_DESCRIPTION,
-  isOpenStatus,
   lastDeployedCommit,
-  REHEARSED_DESCRIPTION,
-  readDeploymentPayload,
+  type RecordEnd,
+  recordStatus,
   standingFailure,
-  taskStackId,
 } from "../core/deployment.ts";
 import { diffHash } from "../core/diff-hash.ts";
 import {
@@ -52,7 +49,7 @@ import { stackId } from "../core/stack.ts";
 import { type AttributionSource, attributionSource } from "../github/attribution.ts";
 import { findDashboard } from "../github/dashboard.ts";
 import { swapRows } from "../github/dashboard-write.ts";
-import { readDeploymentRecords } from "../github/deployments.ts";
+import { claimRecord, endRecord, readDeploymentRecords } from "../github/deployments.ts";
 import { publicRepo } from "../github/event.ts";
 import type { JobLog } from "../github/job-log.ts";
 import { eventDashboardUrl, type StepOutputs, writeResultFile } from "../github/outputs.ts";
@@ -231,78 +228,62 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
   // The record comes first, before config, discovery or the tool, so a
   // refused re-run costs one request and never touches the tool or its
   // credentials (record 0019).
-  let status: Awaited<ReturnType<GitHubPort["latestDeploymentStatus"]>>;
-  try {
-    status = await github.latestDeploymentStatus(id);
-  } catch (error) {
+  const claim = await claimRecord(context, id);
+  if (claim.kind === "unread") {
     report.outcome = "failed";
     throw new ApplyFailedError(
-      `Deployment record ${id} could not be read: ${message(error)}. ${RECORD_PERMISSIONS}`,
+      `Deployment record ${id} could not be read: ${message(claim.error)}. ${RECORD_PERMISSIONS}`,
     );
   }
   // Every way out from here to the deploy is a record this job may not deploy.
   report.outcome = "refused";
-  if (!isOpenStatus(status)) {
+  if (claim.kind === "ended") {
     log.info(
-      `Deployment record ${id} already ended as ${status?.state}. Nothing is deployed. A re-run never deploys (record 0019).`,
+      `Deployment record ${id} already ended as ${claim.state}. Nothing is deployed. A re-run never deploys (record 0019).`,
     );
     await writeSummary(context, `## Sluiceway apply\n\n${ALREADY_ENDED}\n`);
     throw new ApplyFailedError(ALREADY_ENDED);
   }
-
-  let task: string;
-  let payload: DeploymentPayload | undefined;
-  try {
-    const deployment = await github.getDeployment(id);
-    task = deployment.task;
-    payload = readDeploymentPayload(deployment.payload);
-  } catch (error) {
-    report.outcome = "failed";
-    throw new ApplyFailedError(
-      `Deployment record ${id} could not be read: ${message(error)}. ${RECORD_PERMISSIONS}`,
-    );
-  }
   // A record that is not Sluiceway's, or one this version cannot read, is
   // never touched (records 0003 and 0035).
-  const id_ = taskStackId(task);
-  if (id_ === undefined) {
+  if (claim.kind === "not-sluiceways") {
     throw new ApplyFailedError(
       `Deployment record ${id} is not one of Sluiceway's: its task does not start with "sluiceway:". Nothing was deployed and the record was left alone.`,
     );
   }
+  const id_ = claim.stackId;
   report.stack = id_;
   const name = logGroupTitle(id_);
-  if (!payload) {
+  if (claim.kind === "unreadable-payload") {
     throw new ApplyFailedError(
       `Deployment record ${id} of ${name} carries a payload this version of Sluiceway cannot read. Nothing was deployed and the record was left alone.`,
     );
   }
   // A record lives as long as its run (record 0003). Deployed from another
   // run, it could be ended under a deploy that is still going.
-  if (payload.run !== context.runId) {
+  if (claim.kind === "other-run") {
     throw new ApplyFailedError(
-      `Deployment record ${id} of ${name} belongs to run ${payload.run}, and this is run ${context.runId}. \`apply\` deploys a record only in the run whose \`resolve\` job created it. Nothing was deployed and the record was left alone.`,
+      `Deployment record ${id} of ${name} belongs to run ${claim.run}, and this is run ${context.runId}. \`apply\` deploys a record only in the run whose \`resolve\` job created it. Nothing was deployed and the record was left alone.`,
     );
   }
-
   // A queued record is started by a later `resolve`, under a record of its
   // own run (record 0056). `resolve` never hands one on.
-  if (payload.behind) {
+  if (claim.kind === "queued") {
+    const { behind } = claim;
     throw new ApplyFailedError(
-      `Deployment record ${id} of ${name} is queued behind ${payload.behind.map(logGroupTitle).join(" and ")}. \`apply\` never deploys a queued record: a later \`resolve\` starts it once ${payload.behind.length === 1 ? "that stack" : "those stacks"} went out. Nothing was deployed and the record was left alone.`,
+      `Deployment record ${id} of ${name} is queued behind ${behind.map(logGroupTitle).join(" and ")}. \`apply\` never deploys a queued record: a later \`resolve\` starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out. Nothing was deployed and the record was left alone.`,
     );
   }
 
+  const { payload } = claim;
   report.ticker = payload.ticker;
   report.outcome = "failed";
   // The attempt of this run, so the link stays on it after a re-run (slice
   // 5.9).
   const runUrl = runUrlOf(context.repoUrl, context.runId, context.runAttempt);
-  try {
-    await github.createDeploymentStatus(id, { state: "in_progress", logUrl: runUrl });
-  } catch (error) {
+  if (claim.kind === "unclaimed") {
     throw new ApplyFailedError(
-      `Deployment record ${id} of ${name} could not be marked in progress: ${message(error)}. Nothing was deployed. ${RECORD_PERMISSIONS}`,
+      `Deployment record ${id} of ${name} could not be marked in progress: ${message(claim.error)}. Nothing was deployed. ${RECORD_PERMISSIONS}`,
     );
   }
   log.info(
@@ -320,38 +301,35 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
       ? { kind: "tool-error", exitCode: null }
       : { kind: "not-started" };
     attempt = {
-      state: "failure",
-      reason,
+      end: { kind: "failed", reason },
       failed: `${name} was not deployed: ${deployFailureText(reason)}. ${message(error)}`,
     };
   }
+  const reason = reasonOf(attempt);
+  const state = recordStatus(attempt.end).state;
   // A deploy that went out is deployed, also when its record could not be
   // given the result. The job is red then, and says why.
   report.outcome =
     attempt.summary?.kind === "in-sync" || attempt.summary?.kind === "rehearsed"
       ? attempt.summary.kind
-      : attempt.state === "success"
+      : attempt.end.kind === "deployed"
         ? "deployed"
-        : attempt.reason?.kind === "moved" || attempt.reason?.kind === "deploys-off"
+        : reason?.kind === "moved" || reason?.kind === "deploys-off"
           ? "refused"
           : "failed";
-  report.reason = attempt.reason && deployFailureText(attempt.reason);
+  report.reason = reason && deployFailureText(reason);
   report.applied = attempt.summary;
   if (progress.milliseconds !== undefined) report.deployMilliseconds = progress.milliseconds;
   const failures: string[] = [];
   let ended = false;
   try {
-    await github.createDeploymentStatus(id, {
-      state: attempt.state,
-      description: attempt.description ?? (attempt.reason && deployFailureText(attempt.reason)),
-      logUrl: runUrl,
-    });
+    await endRecord(context, id, attempt.end);
     ended = true;
     // The headline of the job: the dot of its outcome first (slice 4.5).
-    log.info(`${RESULT_DOT[report.outcome]} Deployment record ${id} ended as ${attempt.state}.`);
+    log.info(`${RESULT_DOT[report.outcome]} Deployment record ${id} ended as ${state}.`);
   } catch (error) {
     failures.push(
-      `Deployment record ${id} of ${name} could not be given its result (${attempt.state}): ${message(error)}. The \`settle\` job of this run ends it. ${RECORD_PERMISSIONS}`,
+      `Deployment record ${id} of ${name} could not be given its result (${state}): ${message(error)}. The \`settle\` job of this run ends it. ${RECORD_PERMISSIONS}`,
     );
   }
 
@@ -397,7 +375,7 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
     // A moved change is told to the ticker in one comment (record 0051). It
     // says that the row shows the fresh diff, so it is written only once
     // that is true.
-    if (written !== undefined && attempt.reason?.kind === "moved") {
+    if (written !== undefined && reason?.kind === "moved") {
       try {
         await github.createComment(written, movedComment({ login: payload.ticker, stackId: id_ }));
       } catch (error) {
@@ -431,10 +409,8 @@ interface Setup {
 }
 
 interface Attempt {
-  state: "success" | "failure" | "error" | "inactive";
-  reason?: DeployFailureReason | undefined;
-  // The status description of a result that is no failure (record 0051).
-  description?: string | undefined;
+  // How the record ends.
+  end: RecordEnd;
   // Why the job goes red. Nothing when the stack deployed.
   failed?: string | undefined;
   // The preview result the stack's row is made from. Without one the row is
@@ -445,6 +421,10 @@ interface Attempt {
   toolDiffInLog?: boolean | undefined;
   summary?: ApplyOutcome | undefined;
   setup?: Setup | undefined;
+}
+
+function reasonOf(attempt: Attempt): DeployFailureReason | undefined {
+  return attempt.end.kind === "failed" ? attempt.end.reason : undefined;
 }
 
 function applied(result: PreviewResult): AppliedPreview {
@@ -472,7 +452,7 @@ async function deploy(
       // One reviewed line stops every deploy, also one ticked before it was
       // merged (record 0051). The tool never runs.
       const reason: DeployFailureReason = { kind: "deploys-off" };
-      return { state: "failure", reason, failed: notDeployed(reason) };
+      return { end: { kind: "failed", reason }, failed: notDeployed(reason) };
     }
     const found = await adapter.discover(context.root, config);
     const stacks = applyConfig(config, found);
@@ -480,8 +460,7 @@ async function deploy(
     if (!stack) {
       const reason: DeployFailureReason = { kind: "unknown-stack" };
       return {
-        state: "failure",
-        reason,
+        end: { kind: "failed", reason },
         failed: notDeployed(
           reason,
           " Discovery does not find it in the files of this commit, or `ignore` leaves it out. The next scan drops its row.",
@@ -516,7 +495,7 @@ async function deploy(
     };
   } catch (error) {
     const reason: DeployFailureReason = { kind: "not-started" };
-    return { state: "failure", reason, failed: notDeployed(reason, ` ${message(error)}`) };
+    return { end: { kind: "failed", reason }, failed: notDeployed(reason, ` ${message(error)}`) };
   }
 
   const tool = { root: context.root, env: context.env, run: context.run };
@@ -528,7 +507,11 @@ async function deploy(
     // log (record 0022).
     if (error.toolLog !== "") context.log.group("The tool's own words", lines(error.toolLog));
     const reason: DeployFailureReason = { kind: "tool-missing" };
-    return { state: "failure", reason, failed: notDeployed(reason, ` ${error.message}`), setup };
+    return {
+      end: { kind: "failed", reason },
+      failed: notDeployed(reason, ` ${error.message}`),
+      setup,
+    };
   }
 
   // The stack's preparation, such as OpenTofu's init, before its fresh
@@ -591,8 +574,7 @@ async function afterFreshPreview(
     logPreview(context, id, "The fresh preview", previewed, toolDiff);
     const reason: DeployFailureReason = { kind: "preview-failed", reason: drift.reason };
     return {
-      state: "failure",
-      reason,
+      end: { kind: "failed", reason },
       failed: notDeployed(
         reason,
         " The drift check failed, and the diff hash the tick approved covers drift.",
@@ -613,8 +595,7 @@ async function afterFreshPreview(
   if (!fresh.ok) {
     const reason: DeployFailureReason = { kind: "preview-failed", reason: fresh.reason };
     return {
-      state: "failure",
-      reason,
+      end: { kind: "failed", reason },
       failed: notDeployed(reason),
       row: fresh,
       summary: { kind: "not-deployed", reason: deployFailureText(reason), checked: applied(fresh) },
@@ -631,8 +612,7 @@ async function afterFreshPreview(
       `The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`,
     );
     return {
-      state: "success",
-      description: IN_SYNC_DESCRIPTION,
+      end: { kind: "in-sync" },
       row: fresh,
       toolDiffInLog: toolDiff !== undefined,
       summary: { kind: "in-sync" },
@@ -646,8 +626,7 @@ async function afterFreshPreview(
     // the row shows the fresh diff, which a fresh tick can approve.
     const reason: DeployFailureReason = { kind: "moved" };
     return {
-      state: "error",
-      reason,
+      end: { kind: "failed", reason },
       failed: notDeployed(
         reason,
         ` The fresh preview gives diff hash ${hash} and the tick approved ${payload.hash}. The row on the dashboard shows the fresh diff. Tick it again to deploy that.`,
@@ -666,8 +645,7 @@ async function afterFreshPreview(
       `The fresh preview gives diff hash ${hash}, the one the tick approved. This is a rehearsal (dry-run: true), so nothing is deployed.`,
     );
     return {
-      state: "inactive",
-      description: REHEARSED_DESCRIPTION,
+      end: { kind: "rehearsed" },
       row: fresh,
       toolDiffInLog: toolDiff !== undefined,
       summary: { kind: "rehearsed", diff: fresh.diff },
@@ -727,7 +705,7 @@ async function afterFreshPreview(
   ]);
   if (result.ok) {
     return {
-      state: "success",
+      end: { kind: "deployed" },
       row: { ok: true, diff: { stackId: id, changes: [] }, toolLog: "" },
       summary: { kind: "deployed", diff: fresh.diff },
       setup,
@@ -738,8 +716,7 @@ async function afterFreshPreview(
     // go out is no longer what the fresh preview saw (record 0058). That is a
     // moved change like any other: nothing went out, and the row is pending.
     return {
-      state: "error",
-      reason: result.reason,
+      end: { kind: "failed", reason: result.reason },
       failed: notDeployed(
         result.reason,
         " What the deploy would install changed after the fresh preview, so nothing was deployed. The job log says what.",
@@ -760,8 +737,7 @@ async function afterFreshPreview(
   const after = await preview();
   logPreview(context, id, "The preview after the failed deploy", after);
   return {
-    state: "failure",
-    reason: result.reason,
+    end: { kind: "failed", reason: result.reason },
     failed: notDeployed(result.reason, " The job log holds the tool's own words."),
     row: after,
     summary: {
