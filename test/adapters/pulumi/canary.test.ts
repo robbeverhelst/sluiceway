@@ -10,15 +10,12 @@ import { canonicalDiff, diffHash } from "../../../src/core/diff-hash.ts";
 import { previewFailureText } from "../../../src/core/failure-reason.ts";
 import { type Stack, stackId } from "../../../src/core/stack.ts";
 import { scan } from "../../../src/modes/scan.ts";
-import { renderBody, rowBlock } from "../../../src/render/body.ts";
-import { fitBody } from "../../../src/render/budget.ts";
-import { diffLogLines, logGroupTitle } from "../../../src/render/log-text.ts";
-import { renderPreviewPage } from "../../../src/render/preview-page.ts";
-import { applyResultFile, scanResultFile } from "../../../src/render/result-file.ts";
+import { scanResultFile } from "../../../src/render/result-file.ts";
 import { renderRow } from "../../../src/render/row.ts";
 import { renderSummary } from "../../../src/render/summary.ts";
 import { harness, repoRoot } from "../../modes/harness.ts";
 import { rememberingOutputs } from "../../modes/outputs-harness.ts";
+import { annex, RESULT, rows } from "../canary-surfaces.ts";
 import { FIXTURES, ROOT, readRecording, replay, scenarioNames, VERSIONS } from "./replay.ts";
 
 // The canary test of record 0021 (build plan, section 6). Every program of
@@ -29,78 +26,6 @@ import { FIXTURES, ROOT, readRecording, replay, scenarioNames, VERSIONS } from "
 // test stays in the suite forever.
 
 const FORBIDDEN = [CANARY_VALUE, CANARY_SECRET, "CANARY", "[secret]"];
-
-// The row of a diff at every level of the size budget, and redacted.
-function rows(diff: Diff): string {
-  const row = { state: "pending", diff, hash: diffHash(diff), runUrl: "run-url" } as const;
-  return [
-    ...([0, 1, 2, 3] as const).map((level) => renderRow(row, { level })),
-    renderRow(row, { redact: true }),
-    body(row),
-    budgeted(row),
-  ].join("\n");
-}
-
-// The whole body around that row, which is what reaches the issue.
-function body(row: Parameters<typeof rowBlock>[0]): string {
-  return renderBody({
-    root: { scanSha: "sha", scanRun: "1", scanAt: "2026-09-21T10:02:41Z" },
-    rows: [rowBlock(row)],
-    recentlyDeployed: [],
-    repoUrl: "repo-url",
-    actionRef: "v0.1.0",
-    personality: true,
-  });
-}
-
-// The same body through the size budget, cut as far as it goes (record 0028).
-function budgeted(row: Parameters<typeof rowBlock>[0]): string {
-  return fitBody(
-    {
-      root: { scanSha: "sha", scanRun: "1", scanAt: "2026-09-21T10:02:41Z" },
-      rows: [row],
-      carried: [],
-      recentlyDeployed: [],
-      repoUrl: "repo-url",
-      actionRef: "v0.1.0",
-      personality: true,
-    },
-    { target: 0 },
-  ).body;
-}
-
-// The summary in full and cut as far as it goes, the log text (record 0037),
-// the result files of a scan and of an apply (record 0041), and the preview
-// page in full and cut as far as it goes (record 0050).
-function annex(diff: Diff): string {
-  const stack = { kind: "diff", diff } as const;
-  const stacks = [stack];
-  return [
-    renderSummary(stacks).text,
-    renderSummary(stacks, { budget: 0 }).text,
-    JSON.stringify(renderPreviewPage(diff, PAGE_LINKS, { toolDiffInLog: true })),
-    JSON.stringify(renderPreviewPage(diff, PAGE_LINKS, { limit: 0 })),
-    logGroupTitle(diff.stackId),
-    ...diffLogLines(diff),
-    scanResultFile({ ...RESULT, stacks: [{ stack, milliseconds: 1 }] }),
-    applyResultFile({ ...RESULT, ...APPLIED, applied: { kind: "deployed", diff } }),
-    applyResultFile({
-      ...RESULT,
-      ...APPLIED,
-      outcome: "failed",
-      applied: {
-        kind: "not-deployed",
-        reason: "the tool exited with an error (exit code 1)",
-        checked: { kind: "diff", diff },
-        after: { kind: "diff", diff },
-      },
-    }),
-  ].join("\n");
-}
-
-const RESULT = { run: "run-url", commit: "sha", milliseconds: 1 };
-const PAGE_LINKS = { dashboard: "dashboard-url", summary: "summary-url", log: "log-url" };
-const APPLIED = { deployment: 1, outcome: "deployed", stack: "a", ticker: "alice" } as const;
 
 type Command = ReturnType<typeof readRecording>["commands"][number];
 
