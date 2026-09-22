@@ -25511,8 +25511,8 @@ var require_scan = __commonJS((exports, module) => {
     CHAR_RIGHT_PARENTHESES,
     CHAR_RIGHT_SQUARE_BRACKET
   } = require_constants6();
-  var isPathSeparator = (code) => {
-    return code === CHAR_FORWARD_SLASH || code === CHAR_BACKWARD_SLASH;
+  var isPathSeparator = (code2) => {
+    return code2 === CHAR_FORWARD_SLASH || code2 === CHAR_BACKWARD_SLASH;
   };
   var depth = (token) => {
     if (token.isPrefix !== true) {
@@ -25542,38 +25542,38 @@ var require_scan = __commonJS((exports, module) => {
     let finished = false;
     let braces = 0;
     let prev;
-    let code;
+    let code2;
     let token = { value: "", depth: 0, isGlob: false };
     const eos = () => index >= length;
     const peek = () => str.charCodeAt(index + 1);
     const advance = () => {
-      prev = code;
+      prev = code2;
       return str.charCodeAt(++index);
     };
     while (index < length) {
-      code = advance();
+      code2 = advance();
       let next;
-      if (code === CHAR_BACKWARD_SLASH) {
+      if (code2 === CHAR_BACKWARD_SLASH) {
         backslashes = token.backslashes = true;
-        code = advance();
-        if (code === CHAR_LEFT_CURLY_BRACE) {
+        code2 = advance();
+        if (code2 === CHAR_LEFT_CURLY_BRACE) {
           braceEscaped = true;
         }
         continue;
       }
-      if (braceEscaped === true || code === CHAR_LEFT_CURLY_BRACE) {
+      if (braceEscaped === true || code2 === CHAR_LEFT_CURLY_BRACE) {
         braces++;
-        while (eos() !== true && (code = advance())) {
-          if (code === CHAR_BACKWARD_SLASH) {
+        while (eos() !== true && (code2 = advance())) {
+          if (code2 === CHAR_BACKWARD_SLASH) {
             backslashes = token.backslashes = true;
             advance();
             continue;
           }
-          if (code === CHAR_LEFT_CURLY_BRACE) {
+          if (code2 === CHAR_LEFT_CURLY_BRACE) {
             braces++;
             continue;
           }
-          if (braceEscaped !== true && code === CHAR_DOT && (code = advance()) === CHAR_DOT) {
+          if (braceEscaped !== true && code2 === CHAR_DOT && (code2 = advance()) === CHAR_DOT) {
             isBrace = token.isBrace = true;
             isGlob = token.isGlob = true;
             finished = true;
@@ -25582,7 +25582,7 @@ var require_scan = __commonJS((exports, module) => {
             }
             break;
           }
-          if (braceEscaped !== true && code === CHAR_COMMA) {
+          if (braceEscaped !== true && code2 === CHAR_COMMA) {
             isBrace = token.isBrace = true;
             isGlob = token.isGlob = true;
             finished = true;
@@ -25591,7 +25591,7 @@ var require_scan = __commonJS((exports, module) => {
             }
             break;
           }
-          if (code === CHAR_RIGHT_CURLY_BRACE) {
+          if (code2 === CHAR_RIGHT_CURLY_BRACE) {
             braces--;
             if (braces === 0) {
               braceEscaped = false;
@@ -25606,7 +25606,7 @@ var require_scan = __commonJS((exports, module) => {
         }
         break;
       }
-      if (code === CHAR_FORWARD_SLASH) {
+      if (code2 === CHAR_FORWARD_SLASH) {
         slashes.push(index);
         tokens.push(token);
         token = { value: "", depth: 0, isGlob: false };
@@ -25620,27 +25620,27 @@ var require_scan = __commonJS((exports, module) => {
         continue;
       }
       if (opts.noext !== true) {
-        const isExtglobChar = code === CHAR_PLUS || code === CHAR_AT || code === CHAR_ASTERISK || code === CHAR_QUESTION_MARK || code === CHAR_EXCLAMATION_MARK;
+        const isExtglobChar = code2 === CHAR_PLUS || code2 === CHAR_AT || code2 === CHAR_ASTERISK || code2 === CHAR_QUESTION_MARK || code2 === CHAR_EXCLAMATION_MARK;
         if (isExtglobChar === true && peek() === CHAR_LEFT_PARENTHESES) {
           isGlob = token.isGlob = true;
           isExtglob = token.isExtglob = true;
           finished = true;
-          if (code === CHAR_EXCLAMATION_MARK && index === start) {
+          if (code2 === CHAR_EXCLAMATION_MARK && index === start) {
             negatedExtglob = true;
           }
           if (scanToEnd === true) {
             let parens = 0;
-            while (eos() !== true && (code = advance())) {
-              if (code === CHAR_BACKWARD_SLASH) {
+            while (eos() !== true && (code2 = advance())) {
+              if (code2 === CHAR_BACKWARD_SLASH) {
                 backslashes = token.backslashes = true;
                 advance();
                 continue;
               }
-              if (code === CHAR_LEFT_PARENTHESES) {
+              if (code2 === CHAR_LEFT_PARENTHESES) {
                 parens++;
                 continue;
               }
-              if (code === CHAR_RIGHT_PARENTHESES && --parens === 0) {
+              if (code2 === CHAR_RIGHT_PARENTHESES && --parens === 0) {
                 finished = true;
                 break;
               }
@@ -25650,7 +25650,7 @@ var require_scan = __commonJS((exports, module) => {
           break;
         }
       }
-      if (code === CHAR_ASTERISK) {
+      if (code2 === CHAR_ASTERISK) {
         if (prev === CHAR_ASTERISK)
           isGlobstar = token.isGlobstar = true;
         isGlob = token.isGlob = true;
@@ -25660,7 +25660,7 @@ var require_scan = __commonJS((exports, module) => {
         }
         break;
       }
-      if (code === CHAR_QUESTION_MARK) {
+      if (code2 === CHAR_QUESTION_MARK) {
         isGlob = token.isGlob = true;
         finished = true;
         if (scanToEnd === true) {
@@ -25668,7 +25668,7 @@ var require_scan = __commonJS((exports, module) => {
         }
         break;
       }
-      if (code === CHAR_LEFT_SQUARE_BRACKET) {
+      if (code2 === CHAR_LEFT_SQUARE_BRACKET) {
         while (eos() !== true && (next = advance())) {
           if (next === CHAR_BACKWARD_SLASH) {
             backslashes = token.backslashes = true;
@@ -25687,26 +25687,26 @@ var require_scan = __commonJS((exports, module) => {
         }
         break;
       }
-      if (opts.nonegate !== true && code === CHAR_EXCLAMATION_MARK && index === start) {
+      if (opts.nonegate !== true && code2 === CHAR_EXCLAMATION_MARK && index === start) {
         negated = token.negated = true;
         start++;
         continue;
       }
-      if (opts.noparen !== true && code === CHAR_LEFT_PARENTHESES) {
+      if (opts.noparen !== true && code2 === CHAR_LEFT_PARENTHESES) {
         isGlob = token.isGlob = true;
         if (scanToEnd === true) {
           let parens = 1;
-          while (eos() !== true && (code = advance())) {
-            if (code === CHAR_BACKWARD_SLASH) {
+          while (eos() !== true && (code2 = advance())) {
+            if (code2 === CHAR_BACKWARD_SLASH) {
               backslashes = token.backslashes = true;
               advance();
               continue;
             }
-            if (code === CHAR_LEFT_PARENTHESES) {
+            if (code2 === CHAR_LEFT_PARENTHESES) {
               parens++;
               continue;
             }
-            if (code === CHAR_RIGHT_PARENTHESES && --parens === 0) {
+            if (code2 === CHAR_RIGHT_PARENTHESES && --parens === 0) {
               finished = true;
               break;
             }
@@ -25772,7 +25772,7 @@ var require_scan = __commonJS((exports, module) => {
     };
     if (opts.tokens === true) {
       state.maxDepth = 0;
-      if (!isPathSeparator(code)) {
+      if (!isPathSeparator(code2)) {
         tokens.push(token);
       }
       state.tokens = tokens;
@@ -51025,6 +51025,556 @@ function bigint3(params) {
 function date4(params) {
   return _coercedDate(ZodDate, params);
 }
+// src/render/escape.ts
+var NAMED = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;"
+};
+function escapeText(text) {
+  return text.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
+}
+
+// src/render/images.ts
+var ACTION_REPO = "sluiceway/sluiceway";
+function urlPart(text) {
+  return encodeURIComponent(text).replace(/[()*!'~]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+function mascotUrl(actionRef2, file2) {
+  return `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef2)}/assets/mascot/${file2}`;
+}
+
+// src/render/marker.ts
+function encodeMarkerValue(value) {
+  return value.replace(/[%"<>\u0000- \u007f]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
+}
+var utf8 = new TextDecoder;
+function decodeMarkerValue(value) {
+  return value.replace(/(?:%[0-9A-Fa-f]{2})+/g, (run) => {
+    const bytes = run.split("%").slice(1).map((hex3) => Number.parseInt(hex3, 16));
+    return utf8.decode(new Uint8Array(bytes));
+  });
+}
+var MARKER_VERSION = 1;
+var ROW_STATES = [
+  "pending",
+  "deploying",
+  "in-sync",
+  "preview-failed",
+  "queued",
+  "drift"
+];
+function isDeployingState(state) {
+  return state === "deploying" || state === "queued";
+}
+function encodeIds(ids) {
+  return ids.map((id) => id.replace(/[%,]/g, (char) => char === "%" ? "%25" : "%2C")).join(",");
+}
+function decodeIds(value) {
+  return value.split(",").map(decodeMarkerValue);
+}
+var ROW_CLOSE_MARKER = "<!-- /sluiceway:row -->";
+var RESCAN_MARKER = "<!-- sluiceway:rescan -->";
+function marker(kind, pairs) {
+  const payload = pairs.map(([key, value]) => ` ${key}="${encodeMarkerValue(value)}"`).join("");
+  return `<!-- sluiceway:${kind}${payload} -->`;
+}
+function rootMarker(facts) {
+  const pairs = [
+    ["v", String(MARKER_VERSION)],
+    ["scan-sha", facts.scanSha],
+    ["scan-run", facts.scanRun],
+    ["scan-at", facts.scanAt]
+  ];
+  if (facts.fullScanAt !== undefined)
+    pairs.push(["full-scan-at", facts.fullScanAt]);
+  if (facts.fullScanRun !== undefined)
+    pairs.push(["full-scan-run", facts.fullScanRun]);
+  return marker("dashboard", pairs);
+}
+function rowMarker(facts) {
+  const pairs = [
+    ["stack", facts.stackId],
+    ["state", facts.state]
+  ];
+  if (facts.hash !== undefined)
+    pairs.push(["hash", facts.hash]);
+  if (facts.destroys)
+    pairs.push(["destroys", String(facts.destroys)]);
+  if (facts.failed)
+    pairs.push(["failed", "true"]);
+  if (facts.shortened)
+    pairs.push(["shortened", String(facts.shortened)]);
+  if (facts.drift)
+    pairs.push(["drift", "true"]);
+  if (facts.dependsOn && facts.dependsOn.length > 0) {
+    pairs.push(["depends-on", encodeIds(facts.dependsOn)]);
+  }
+  return marker("row", pairs);
+}
+function mergeMarker(facts) {
+  return marker("merge", [
+    ["pr", String(facts.pr)],
+    ["stack", encodeIds(facts.stackIds)],
+    ["head", facts.head]
+  ]);
+}
+function outsideMarker(deploy) {
+  const pairs = [
+    ["stack", deploy.stackId],
+    ["kind", deploy.kind],
+    ["at", deploy.at.toISOString()]
+  ];
+  if (deploy.commit !== undefined)
+    pairs.push(["commit", deploy.commit]);
+  if (deploy.dirty)
+    pairs.push(["dirty", "true"]);
+  return marker("outside", pairs);
+}
+var PAIRS = '((?: [^\\s="]+="[^"]*")*)';
+var ROOT_LINE = new RegExp(`^<!-- sluiceway:dashboard${PAIRS} -->[ \\t]*$`);
+var ROW_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:row${PAIRS} -->[ \\t]*$`);
+var MERGE_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:merge${PAIRS} -->[ \\t]*$`);
+var OUTSIDE_LINE = new RegExp(`^- .*<!-- sluiceway:outside${PAIRS} -->[ \\t]*$`);
+var RESCAN_LINE = /^- \[[xX]\] .*<!-- sluiceway:rescan -->[ \t]*$/;
+function readPairs(payload) {
+  const pairs = new Map;
+  for (const [, key, value] of payload.matchAll(/ ([^\s="]+)="([^"]*)"/g)) {
+    if (key !== undefined && value !== undefined)
+      pairs.set(key, decodeMarkerValue(value));
+  }
+  return pairs;
+}
+function readRoot(line) {
+  const pairs = readPairs(ROOT_LINE.exec(line)?.[1] ?? "");
+  const version2 = pairs.get("v");
+  if (version2 === undefined || !/^\d+$/.test(version2))
+    return;
+  return {
+    version: Number(version2),
+    scanSha: pairs.get("scan-sha"),
+    scanRun: pairs.get("scan-run"),
+    scanAt: pairs.get("scan-at"),
+    fullScanAt: pairs.get("full-scan-at"),
+    fullScanRun: pairs.get("full-scan-run")
+  };
+}
+function isRowState(state) {
+  return ROW_STATES.includes(state);
+}
+function parseDashboard(body) {
+  const lines = body.replace(/\r\n?/g, `
+`).split(`
+`);
+  const rows = [];
+  const merges = [];
+  const outside = [];
+  let rescanTicked = false;
+  for (let index = 0;index < lines.length; index++) {
+    const line = lines[index] ?? "";
+    if (RESCAN_LINE.test(line))
+      rescanTicked = true;
+    const deploy = readOutside(line);
+    if (deploy) {
+      outside.push(deploy);
+      continue;
+    }
+    const merge3 = readMerge(line);
+    if (merge3) {
+      let end2 = index;
+      while (/^ {2}\S/.test(lines[end2 + 1] ?? ""))
+        end2++;
+      merges.push({ ...merge3, text: lines.slice(index, end2 + 1).join(`
+`) });
+      index = end2;
+      continue;
+    }
+    const match = ROW_LINE.exec(line);
+    if (!match)
+      continue;
+    const pairs = readPairs(match[2] ?? "");
+    const stackId = pairs.get("stack");
+    if (stackId === undefined)
+      continue;
+    let end = index;
+    for (let next = index + 1;next < lines.length; next++) {
+      const candidate = lines[next] ?? "";
+      if (candidate.trim() === ROW_CLOSE_MARKER)
+        end = next;
+      if (end === next || ROW_LINE.test(candidate))
+        break;
+    }
+    const text = lines.slice(index, end + 1).join(`
+`);
+    index = end;
+    const state = pairs.get("state") ?? "";
+    if (!isRowState(state)) {
+      rows.push({ known: false, stackId, state, text });
+      continue;
+    }
+    const count = (key) => {
+      const value = pairs.get(key) ?? "";
+      return /^\d+$/.test(value) ? Number(value) : 0;
+    };
+    const dependsOn = pairs.get("depends-on") ?? "";
+    rows.push({
+      known: true,
+      stackId,
+      state,
+      hash: pairs.get("hash"),
+      destroys: count("destroys"),
+      failed: pairs.get("failed") === "true",
+      shortened: count("shortened"),
+      drift: pairs.get("drift") === "true",
+      ...dependsOn === "" ? {} : { dependsOn: decodeIds(dependsOn) },
+      ticked: match[1] === "x" || match[1] === "X",
+      text
+    });
+  }
+  return { root: readRoot(lines[0] ?? ""), rows, merges, outside, rescanTicked };
+}
+function readMerge(line) {
+  const match = MERGE_LINE.exec(line);
+  if (!match)
+    return;
+  const pairs = readPairs(match[2] ?? "");
+  const pr = pairs.get("pr") ?? "";
+  const stack = pairs.get("stack");
+  const head = pairs.get("head") ?? "";
+  if (!/^[1-9]\d*$/.test(pr) || stack === undefined || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(head)) {
+    return;
+  }
+  return {
+    pr: Number(pr),
+    stackIds: decodeIds(stack),
+    head,
+    ticked: match[1] === "x" || match[1] === "X",
+    text: line
+  };
+}
+function readOutside(line) {
+  const match = OUTSIDE_LINE.exec(line);
+  if (!match)
+    return;
+  const pairs = readPairs(match[1] ?? "");
+  const stackId = pairs.get("stack");
+  const kind = pairs.get("kind");
+  const at = new Date(pairs.get("at") ?? "");
+  const commit = pairs.get("commit");
+  if (stackId === undefined || kind !== "deploy" && kind !== "destroy" || Number.isNaN(at.getTime()) || commit !== undefined && !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit)) {
+    return;
+  }
+  return {
+    stackId,
+    kind,
+    at,
+    ...commit === undefined ? {} : { commit },
+    ...pairs.get("dirty") === "true" ? { dirty: true } : {}
+  };
+}
+
+// src/render/time.ts
+function utcMinute(at) {
+  const iso = at.toISOString();
+  return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
+}
+
+// src/render/row.ts
+var INDENT = "  ";
+function byCodeUnit(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function isDestroy(change) {
+  return change.op === "replace" || change.op === "delete";
+}
+function plural2(count, word) {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+function counts(changes) {
+  const of = (op) => changes.filter((change) => change.op === op).length;
+  const trackingOnly = changes.filter((change) => change.op === "none" && change.tracking).length;
+  return [
+    of("create") && plural2(of("create"), "create"),
+    of("update") && plural2(of("update"), "update"),
+    of("replace") && `**${plural2(of("replace"), "replace")}**`,
+    of("delete") && `**${plural2(of("delete"), "delete")}**`,
+    trackingOnly && `${trackingOnly} tracking only`
+  ].filter(Boolean).join(", ");
+}
+function valueSuffix(change, path, show) {
+  const value = change.values?.find((one) => one.path === path);
+  if (value === undefined)
+    return "";
+  const side = (text) => text === undefined ? "nothing" : show(text);
+  return ` ${side(value.old)} → ${side(value.new)}`;
+}
+function code(text) {
+  return `<code>${escapeText(text)}</code>`;
+}
+function sortedKeys(keys) {
+  return [...new Set(keys)].sort(byCodeUnit);
+}
+var ROW_PATH_LENGTH = 80;
+var ROW_PATHS_PER_CHANGE = 10;
+var HEAD_LENGTH = 24;
+function shortPath(path) {
+  const points = Array.from(path);
+  if (points.length <= ROW_PATH_LENGTH)
+    return path;
+  const first = /^(?:\["(?:[^"\\]|\\.)*"\]|[^.[]+)/.exec(path)?.[0] ?? "";
+  const head = Array.from(first).slice(0, HEAD_LENGTH);
+  const tail = points.slice(points.length - (ROW_PATH_LENGTH - head.length - 1));
+  const segment = tail.findIndex((point) => point === "." || point === "[");
+  const start = segment < 0 ? 0 : tail[segment] === "." ? segment + 1 : segment;
+  const end = start < tail.length ? tail.slice(start) : tail;
+  return `${head.join("")}…${end.join("")}`;
+}
+function changeLine(change, options = {}) {
+  const word = [change.op === "none" ? undefined : change.op, change.tracking].filter((part) => part !== undefined).join(" + ");
+  const cap = isDestroy(change) ? word.toUpperCase() : word;
+  const forcing = sortedKeys(change.replaceKeys);
+  const others = sortedKeys(change.changedKeys).filter((key) => !forcing.includes(key));
+  const capped = options.row === true && !isDestroy(change);
+  const listed = capped ? others.slice(0, ROW_PATHS_PER_CHANGE) : others;
+  const hidden = others.length - listed.length;
+  const show = (keys) => keys.map((key) => code(options.row ? shortPath(key) : key) + valueSuffix(change, key, code)).join(", ");
+  const parts = [
+    `<kbd>${cap}</kbd> <code>${escapeText(change.type)}</code> <b>${escapeText(change.name)}</b>`
+  ];
+  if (forcing.length > 0)
+    parts.push(`forced by ${show(forcing)}`);
+  if (others.length > 0) {
+    const more = hidden > 0 ? `, and ${hidden} more` : "";
+    parts.push(`${forcing.length > 0 ? "also changes " : ""}${show(listed)}${more}`);
+  }
+  return parts.join(" · ");
+}
+var ORPHAN_TICK_NOTE = ":information_source: a tick on this row was not picked up. Tick again to deploy.";
+var DEPLOYS_OFF_NOTE = ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick started nothing.";
+function dependencyNote(ids, phases = []) {
+  const names = ids.map((id) => `**${escapeText(id)}**`).join(" and ");
+  const one = ids.length === 1;
+  if (phases.length === 0) {
+    return `:information_source: this tick started nothing: it depends on ${names}, which ${one ? "has a change" : "have changes"} waiting. Tick ${one ? "both" : "them all"} to deploy them in order, or deploy ${names} first.`;
+  }
+  const waiting = (count2) => count2 === 1 ? "has a change" : "have changes";
+  const clauses = [
+    ...ids.length === 0 ? [] : [`it depends on ${names}, which ${waiting(ids.length)} waiting`],
+    ...phases.map(({ phase, stackIds }) => `it waits on the **${escapeText(phase)}** phase: ${shortList(stackIds)} ${waiting(stackIds.length)} waiting`)
+  ];
+  const count = ids.length + phases.reduce((sum, { stackIds }) => sum + stackIds.length, 0);
+  const first = [
+    ...ids.map((id) => `**${escapeText(id)}**`),
+    ...phases.map(({ phase }) => `the **${escapeText(phase)}** phase`)
+  ];
+  return `:information_source: this tick started nothing: ${clauses.join(", and ")}. Tick ${count === 1 ? "both" : "them all"} to deploy them in order, or deploy ${listWords(first)} first.`;
+}
+var NAMES_PER_PHASE = 5;
+function shortList(ids) {
+  const shown = ids.slice(0, NAMES_PER_PHASE).map((id) => `**${escapeText(id)}**`);
+  const more = ids.length - shown.length;
+  return more > 0 ? `${shown.join(", ")} and ${more} more` : listWords(shown);
+}
+function listWords(words) {
+  return words.length <= 1 ? words[0] ?? "" : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+var PENDING_AGAIN_NOTE = ":information_source: pending again right after a deploy of this same change, a value in the program may differ on every run.";
+function pendingAgainLine({ logUrl }) {
+  return logUrl === undefined ? PENDING_AGAIN_NOTE : `${PENDING_AGAIN_NOTE} Compare the tool's own diff in the [job log](${logUrl}).`;
+}
+function failureLine(failure2) {
+  return `:x: last deploy failed: ${escapeText(failure2.reason)} · ticked by ${escapeText(failure2.ticker)} · ${utcMinute(failure2.at)} · [run](${failure2.runUrl})`;
+}
+function destroyWords(deletes, replaces) {
+  return [deletes && `deletes ${deletes}`, replaces && `replaces ${replaces}`].filter(Boolean).join(", ");
+}
+var DRIFT_WORDS = { update: "changed", delete: "gone" };
+function driftWord(change) {
+  return DRIFT_WORDS[change.op] ?? change.op;
+}
+function driftCounts(drift) {
+  const of = (op) => drift.filter((change) => change.op === op).length;
+  const parts = [of("update") && `${of("update")} changed`, of("delete") && `${of("delete")} gone`];
+  return `${parts.filter(Boolean).join(", ")} outside the code`;
+}
+function driftLine(change, options = {}) {
+  const keys = sortedKeys(change.changedKeys);
+  const listed = options.row === true ? keys.slice(0, ROW_PATHS_PER_CHANGE) : keys;
+  const hidden = keys.length - listed.length;
+  const parts = [
+    `<kbd>${driftWord(change)}</kbd> <code>${escapeText(change.type)}</code> <b>${escapeText(change.name)}</b>`
+  ];
+  if (listed.length > 0) {
+    const more = hidden > 0 ? `, and ${hidden} more` : "";
+    parts.push(`${listed.map((key) => code(options.row ? shortPath(key) : key)).join(", ")}${more}`);
+  }
+  return parts.join(" · ");
+}
+function sortedDrift(diff) {
+  return [...diff.drift ?? []].sort((a, b) => byCodeUnit(a.address, b.address));
+}
+function driftLines(drift, summary2, options) {
+  if (drift.length === 0)
+    return [];
+  const inside = plural2(drift.length, "change");
+  if (options.redact)
+    return [`Changes outside the code are listed in the ${summary2}`];
+  if ((options.level ?? 0) >= 2) {
+    return [`${inside} outside the code not listed here, see the ${summary2}`];
+  }
+  return [
+    `<details><summary>${inside} outside the code</summary>`,
+    ...drift.map((change) => `${driftLine(change, { row: true })}<br>`),
+    "</details>"
+  ];
+}
+function driftRow(row, options) {
+  const level = options.level ?? 0;
+  const drift = sortedDrift(row.diff);
+  const summary2 = `[summary](${row.runUrl})`;
+  const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
+  const lines = [
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${driftCounts(drift)} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker({
+      stackId: row.diff.stackId,
+      state: "drift",
+      hash: row.hash,
+      failed: row.failure !== undefined,
+      shortened: level >= 2 ? level : 0,
+      drift: true,
+      dependsOn: row.dependsOn
+    })}`
+  ];
+  if (row.failure)
+    lines.push(failureLine(row.failure));
+  if (row.orphanTick && !options.readOnly)
+    lines.push(ORPHAN_TICK_NOTE);
+  lines.push(...driftLines(drift, summary2, options));
+  return lines;
+}
+function pendingRow(row, options) {
+  const level = options.level ?? 0;
+  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit(a.address, b.address));
+  const deletes = changes.filter((change) => change.op === "delete");
+  const replaces = changes.filter((change) => change.op === "replace");
+  const folded = changes.filter((change) => !isDestroy(change));
+  const destroys = deletes.length + replaces.length;
+  const summary2 = `[summary](${row.runUrl})`;
+  const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
+  const drift = sortedDrift(row.diff);
+  const driftCount = drift.length > 0 ? ` · ${driftCounts(drift)}` : "";
+  const lines = [
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)}${driftCount} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker({
+      stackId: row.diff.stackId,
+      state: "pending",
+      hash: row.hash,
+      destroys,
+      failed: row.failure !== undefined,
+      shortened: level,
+      drift: drift.length > 0,
+      dependsOn: row.dependsOn
+    })}`
+  ];
+  if (row.attribution)
+    lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
+  if (row.failure)
+    lines.push(failureLine(row.failure));
+  if (row.pendingAgain)
+    lines.push(pendingAgainLine(row.pendingAgain));
+  if (row.orphanTick && !options.readOnly)
+    lines.push(ORPHAN_TICK_NOTE);
+  if (options.redact || level >= 3) {
+    const words = destroyWords(deletes.length, replaces.length);
+    if (destroys > 0) {
+      const warning2 = options.redact ? `${words}.` : `${words}, too many to list here.`;
+      const read = options.readOnly ? `Read the ${summary2}.` : `Read the ${summary2} before you tick.`;
+      lines.push(`:warning: **${warning2}** ${read}`);
+    } else {
+      lines.push(`Changes ${options.redact ? "are listed in the" : "not listed here, see the"} ${summary2}`);
+    }
+    lines.push(...driftLines(drift, summary2, options), ...outsideFold(row.attribution, level));
+    return lines;
+  }
+  for (const change of [...deletes, ...replaces])
+    lines.push(`:warning: ${changeLine(change, { row: true })}`);
+  if (folded.length > 0) {
+    const inside = plural2(folded.length, destroys > 0 ? "other change" : "change");
+    if (level >= 2) {
+      lines.push(`${inside} not listed here, see the ${summary2}`);
+    } else {
+      lines.push(`<details><summary>${inside}</summary>`);
+      for (const change of folded)
+        lines.push(`${changeLine(change, { row: true })}<br>`);
+      lines.push("</details>");
+    }
+  }
+  lines.push(...driftLines(drift, summary2, options), ...outsideFold(row.attribution, level));
+  return lines;
+}
+function outsideFold(attribution, level) {
+  return level === 0 ? [...attribution?.outside ?? []] : [];
+}
+var SPINNER_WIDTH = 16;
+function spinner(actionRef2) {
+  const file2 = (theme) => mascotUrl(actionRef2, `spinner-${theme}.svg`);
+  return `<picture><source media="(prefers-color-scheme: dark)" srcset="${file2("dark")}"><img alt="" width="${SPINNER_WIDTH}" height="${SPINNER_WIDTH}" src="${file2("light")}"></picture> `;
+}
+function deployingRow(row, options) {
+  const behind = row.behind ?? [];
+  const word = behind.length > 0 ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}` : row.waiting ? "waiting to start" : "deploying";
+  const state = behind.length > 0 ? "queued" : "deploying";
+  const lines = [
+    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef)}**${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys })}`
+  ];
+  if (row.attribution)
+    lines.push(row.attribution.full, ...outsideFold(row.attribution, 0));
+  return lines;
+}
+function previewFailedRow(row) {
+  const lines = [
+    `- **${escapeText(row.stackId)}** · preview failed: ${escapeText(row.reason)} · [run](${row.runUrl}) ${rowMarker({
+      stackId: row.stackId,
+      state: "preview-failed",
+      failed: row.failure !== undefined
+    })}`
+  ];
+  if (row.failure)
+    lines.push(failureLine(row.failure));
+  return lines;
+}
+function inSyncRow(row) {
+  const lines = [
+    `- ${escapeText(row.stackId)} ${rowMarker({
+      stackId: row.stackId,
+      state: "in-sync",
+      failed: row.failure !== undefined,
+      dependsOn: row.dependsOn
+    })}`
+  ];
+  if (row.failure)
+    lines.push(failureLine(row.failure));
+  return lines;
+}
+function rowLines(row, options) {
+  switch (row.state) {
+    case "pending":
+      return pendingRow(row, options);
+    case "drift":
+      return driftRow(row, options);
+    case "deploying":
+      return deployingRow(row, options);
+    case "preview-failed":
+      return previewFailedRow(row);
+    case "in-sync":
+      return inSyncRow(row);
+  }
+}
+function renderRow(row, options = {}) {
+  const [first = "", ...rest] = rowLines(row, options);
+  return [first, ...[...rest, ROW_CLOSE_MARKER].map((line) => INDENT + line)].join(`
+`);
+}
+
 // src/core/glob.ts
 var import_picomatch = __toESM(require_picomatch2(), 1);
 function globMatcher(globs) {
@@ -51034,6 +51584,222 @@ function globMatcher(globs) {
 }
 function globOf(text) {
   return text.replace(/[\\*?[\]{}()!+@|]/g, "\\$&");
+}
+
+// src/core/claim.ts
+function inside(directory, file2) {
+  return directory === "." || file2.startsWith(`${directory}/`);
+}
+function claim2(stacks, changed, unrelated) {
+  const isUnrelated = globMatcher(unrelated);
+  const matchers = stacks.map((stack) => ({ stack, matches: globMatcher(stack.inputs) }));
+  const claims = new Map;
+  const unclaimed = [];
+  for (const file2 of new Set(changed)) {
+    if (isUnrelated(file2))
+      continue;
+    const claimants = matchers.filter(({ stack, matches }) => inside(stack.path, file2) || matches(file2));
+    if (claimants.length === 0)
+      unclaimed.push(file2);
+    for (const { stack } of claimants)
+      claims.set(stack.id, [...claims.get(stack.id) ?? [], file2]);
+  }
+  return { claims, unclaimed };
+}
+
+// src/core/attribution.ts
+var LOOKBACK = 100;
+var NAMED_ON_A_ROW = 5;
+var OUTSIDE_NAMED = 20;
+var COMMIT_FILE_CAP = 300;
+function isCommitId(text) {
+  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(text);
+}
+var NEVER_DEPLOYED = "not deployed from this dashboard yet";
+function pullRequestOf(commit, walk) {
+  return commit.pullRequests.find((pullRequest) => pullRequest.merged && pullRequest.base === walk.defaultBranch);
+}
+function inRange(walk, from, to) {
+  const bySha = new Map(walk.commits.map((commit) => [commit.sha, commit]));
+  const reach = (start) => {
+    const reached2 = new Set;
+    const queue = bySha.has(start) ? [start] : [];
+    for (let sha = queue.pop();sha !== undefined; sha = queue.pop()) {
+      if (reached2.has(sha))
+        continue;
+      reached2.add(sha);
+      queue.push(...bySha.get(sha)?.parents.filter((parent) => bySha.has(parent)) ?? []);
+    }
+    return reached2;
+  };
+  if (to !== undefined && !bySha.has(to))
+    return { earlier: false };
+  const under = to === undefined ? undefined : reach(to);
+  const reached = reach(from);
+  return {
+    commits: walk.commits.filter(({ sha }) => !reached.has(sha) && (under?.has(sha) ?? true)),
+    earlier: !bySha.has(from)
+  };
+}
+function rangesOf(from) {
+  const seen = new Set;
+  return from.map((one) => typeof one === "string" ? { from: one } : one).filter(({ from: start, to }) => {
+    const key = `${start} ${to ?? ""}`;
+    if (seen.has(key))
+      return false;
+    seen.add(key);
+    return true;
+  });
+}
+function commitsInRanges(walk, from) {
+  const wanted = new Set;
+  for (const { from: start, to } of rangesOf(from)) {
+    for (const commit of inRange(walk, start, to).commits ?? [])
+      wanted.add(commit.sha);
+  }
+  return wanted;
+}
+function directPushesToRead(walk, from) {
+  const wanted = commitsInRanges(walk, from);
+  return walk.commits.filter((commit) => wanted.has(commit.sha) && !pullRequestOf(commit, walk)).map(({ sha }) => sha);
+}
+function pullRequestsToRead(walk, from) {
+  const wanted = commitsInRanges(walk, from);
+  const numbers = [];
+  for (const commit of walk.commits) {
+    const pullRequest = wanted.has(commit.sha) ? pullRequestOf(commit, walk) : undefined;
+    if (pullRequest?.renamed && pullRequest.changedFiles <= pullRequest.files.length && !numbers.includes(pullRequest.number))
+      numbers.push(pullRequest.number);
+  }
+  return numbers;
+}
+function by(author) {
+  return author === undefined ? "" : ` by ${escapeText(author)}`;
+}
+function nameOf(merge3) {
+  return merge3.kind === "pull-request" ? `#${merge3.number}${by(merge3.author)}` : `[${merge3.sha.slice(0, 7)}](${merge3.url})${by(merge3.author)}`;
+}
+function htmlNameOf(merge3) {
+  return merge3.kind === "pull-request" ? `<a href="${merge3.url}">#${merge3.number}</a>${by(merge3.author)}` : `<a href="${merge3.url}">${merge3.sha.slice(0, 7)}</a>${by(merge3.author)}`;
+}
+function countOf(merges) {
+  const pushes = merges.filter((merge3) => merge3.kind === "push").length;
+  return [
+    merges.length - pushes && plural2(merges.length - pushes, "pull request"),
+    pushes && `${pushes} direct push${pushes === 1 ? "" : "es"}`
+  ].filter(Boolean).join(" and ");
+}
+function inLink(sha) {
+  return sha.slice(0, 12);
+}
+function outsideFold2(outside) {
+  const named = outside.slice(0, OUTSIDE_NAMED).map((merge3) => `${htmlNameOf(merge3)}<br>`);
+  const more = outside.length - named.length;
+  return [
+    "<details><summary>changes outside this stack</summary>",
+    ...named,
+    ...more > 0 ? [`and ${more} more<br>`] : [],
+    "</details>"
+  ];
+}
+function attributor(input2) {
+  const { walk, repoUrl } = input2;
+  const names = input2.names ?? NAMED_ON_A_ROW;
+  const mergedBy = new Map;
+  const mergeOf = new Map;
+  const judge = (merge3, files) => {
+    if (files === undefined)
+      return { merge: merge3, claimedBy: new Set, outside: true };
+    const { claims, unclaimed } = claim2(input2.stacks, [...files], input2.unrelated);
+    return { merge: merge3, claimedBy: new Set(claims.keys()), outside: unclaimed.length > 0 };
+  };
+  for (const commit of walk.commits) {
+    const pullRequest = pullRequestOf(commit, walk);
+    const key = pullRequest ? `#${pullRequest.number}` : commit.sha;
+    let merged = mergedBy.get(key);
+    if (!merged && pullRequest) {
+      const known = pullRequest.changedFiles <= pullRequest.files.length;
+      merged = judge({
+        kind: "pull-request",
+        number: pullRequest.number,
+        title: pullRequest.title,
+        url: `${repoUrl}/pull/${pullRequest.number}`,
+        ...pullRequest.author === undefined ? {} : { author: pullRequest.author }
+      }, known ? input2.pullRequestFiles?.get(pullRequest.number) ?? pullRequest.files : undefined);
+    } else if (!merged) {
+      const files = input2.pushFiles.get(commit.sha);
+      merged = judge({
+        kind: "push",
+        sha: commit.sha,
+        message: commit.message,
+        url: `${repoUrl}/commit/${commit.sha}`,
+        ...commit.author === undefined ? {} : { author: commit.author }
+      }, files !== undefined && files.length < COMMIT_FILE_CAP ? files : undefined);
+    }
+    mergedBy.set(key, merged);
+    mergeOf.set(commit.sha, merged);
+  }
+  const ranges = new Map;
+  const rangeOf = (from, to) => {
+    const key = `${from} ${to ?? ""}`;
+    const range = ranges.get(key) ?? inRange(walk, from, to);
+    ranges.set(key, range);
+    return range;
+  };
+  const explain = (stackId, from, to) => {
+    const range = rangeOf(from, to);
+    const merged = [...new Set((range.commits ?? []).flatMap(({ sha }) => mergeOf.get(sha) ?? []))];
+    const claimed = merged.filter(({ claimedBy }) => claimedBy.has(stackId)).map((m) => m.merge);
+    const outside = merged.filter((m) => !m.claimedBy.has(stackId) && m.outside).map((m) => m.merge);
+    const link = `[compare](${repoUrl}/compare/${inLink(from)}...${inLink(to ?? input2.scanSha)})`;
+    const line = (word, nothing, listed) => {
+      const parts = [...listed];
+      const and = () => parts.length > 0 ? "and " : "";
+      if (outside.length > 0)
+        parts.push(`${and()}${plural2(outside.length, "change")} outside this stack`);
+      if (range.earlier)
+        parts.push(`${and()}earlier changes`);
+      return `${parts.length > 0 ? `${word} ${parts.join(", ")}` : nothing} · ${link}`;
+    };
+    const named = claimed.slice(0, names).map(nameOf);
+    const more = claimed.length - named.length;
+    const full = [named.join(", "), more > 0 && named.length > 0 ? `and ${more} more` : ""].filter(Boolean);
+    return {
+      range,
+      claimed,
+      outside,
+      lines: (word, nothing) => {
+        const counted = line(word, nothing, claimed.length > 0 ? [countOf(claimed)] : []);
+        return {
+          full: named.length > 0 ? line(word, nothing, full) : counted,
+          counted
+        };
+      }
+    };
+  };
+  const one = (stackId, from) => {
+    if (from === undefined) {
+      return { lines: { full: NEVER_DEPLOYED, counted: NEVER_DEPLOYED }, merges: [] };
+    }
+    const { claimed, outside, lines } = explain(stackId, from, undefined);
+    return {
+      lines: {
+        ...lines("from", "nothing this stack claims has changed since its last deploy"),
+        ...outside.length > 0 ? { outside: outsideFold2(outside) } : {}
+      },
+      merges: claimed
+    };
+  };
+  return Object.assign(one, {
+    shipped(stackId, from, to) {
+      const { range, claimed, outside, lines } = explain(stackId, from, to);
+      if (range.commits === undefined)
+        return;
+      if (claimed.length === 0 && outside.length === 0 && !range.earlier)
+        return;
+      return lines("shipped", "");
+    }
+  });
 }
 
 // src/core/stack.ts
@@ -51077,23 +51843,23 @@ function phaseKeysOf(config2) {
   ];
 }
 var PHASE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-function byCodeUnit(a, b) {
+function byCodeUnit2(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function phaseGroups(phases, phaseOf) {
   return phases.map((phase) => ({
     phase,
-    stackIds: [...phaseOf].flatMap(([id, one]) => one === phase ? [id] : []).sort(byCodeUnit)
+    stackIds: [...phaseOf].flatMap(([id, one]) => one === phase ? [id] : []).sort(byCodeUnit2)
   }));
 }
 function phaseDependencies(phases, phaseOf) {
   const index = (id) => phases.indexOf(phaseOf.get(id) ?? "");
   const edges = new Map;
-  for (const id of [...phaseOf.keys()].sort(byCodeUnit)) {
+  for (const id of [...phaseOf.keys()].sort(byCodeUnit2)) {
     const at = index(id);
     if (at === -1)
       continue;
-    edges.set(id, [...phaseOf.keys()].filter((other) => index(other) !== -1 && index(other) < at).sort(byCodeUnit));
+    edges.set(id, [...phaseOf.keys()].filter((other) => index(other) !== -1 && index(other) < at).sort(byCodeUnit2));
   }
   return edges;
 }
@@ -51106,7 +51872,7 @@ function waitsByPhase(input2) {
   const { phases, phaseOf, stackId: stackId2 } = input2;
   const named = [];
   const grouped = new Map;
-  for (const id of [...new Set(input2.waitingOn)].sort(byCodeUnit)) {
+  for (const id of [...new Set(input2.waitingOn)].sort(byCodeUnit2)) {
     const phase = phaseOf.get(id);
     if (phase === undefined || !throughPhase(phases, phaseOf, stackId2, id))
       named.push(id);
@@ -51237,6 +52003,8 @@ var stackEntries = exports_external.array(stackEntry).superRefine((entries, cont
   });
 });
 var RECENTLY_DEPLOYED_MAX = 50;
+var LOOKBACK_MAX = 1000;
+var NAMES_MAX = 20;
 var configSchema = exports_external.strictObject({
   dashboard: exports_external.strictObject({
     title: text.describe("Title of the dashboard issue.").default("Sluiceway dashboard"),
@@ -51261,6 +52029,10 @@ var configSchema = exports_external.strictObject({
   }).prefault({}),
   drift: exports_external.strictObject({
     enabled: exports_external.boolean().describe("Check every stack for drift in each scan that a schedule starts, or that a person starts with Run workflow: changes made to real infrastructure outside the code. A stack with drift gets a row with a box, and a tick deploys the code as it is, which puts it back. Costs one more tool run per stack in those scans.").default(false)
+  }).prefault({}),
+  attribution: exports_external.strictObject({
+    lookback: exports_external.int().min(1).max(LOOKBACK_MAX).describe("How many of the newest commits a job walks to say which pull requests made a row pending. A stack whose last deploy lies further back gets a line that says earlier changes exist. Each 100 commits cost one more GraphQL request.").default(LOOKBACK),
+    names: exports_external.int().min(0).max(NAMES_MAX).describe("How many pull requests and direct pushes a row and a line of Recently deployed name, newest first. The rest is a count. 0 names none and always counts.").default(NAMED_ON_A_ROW)
   }).prefault({}),
   phases: exports_external.array(phaseName).describe("Names of the phases stacks deploy in, in order. A stack in a phase depends on every stack in every earlier phase.").default([]),
   stacks: stackEntries.describe("Settings for stacks that discovery found. An entry never creates a stack.").default([]),
@@ -51344,6 +52116,12 @@ function describe4(issue3, raw) {
   }
   if (key === "recentlyDeployed" && issue3.path[0] === "dashboard") {
     return problem(`expected a whole number of lines from 0 to ${RECENTLY_DEPLOYED_MAX}, got ${show(value)}.`);
+  }
+  if (key === "lookback" && issue3.path[0] === "attribution") {
+    return problem(`expected a whole number of commits from 1 to ${LOOKBACK_MAX}, got ${show(value)}.`);
+  }
+  if (key === "names" && issue3.path[0] === "attribution") {
+    return problem(`expected a whole number of names from 0 to ${NAMES_MAX}, got ${show(value)}.`);
   }
   if (key === "previewTimeout" && issue3.code !== "custom") {
     return problem(`expected a whole number of minutes, 1 or more, got ${show(value)}.`);
@@ -51522,7 +52300,7 @@ function entriesOf(config2, stack) {
 function dependsOnOf(entries, fromPhases = []) {
   const ids = [
     ...new Set([...entries.flatMap((entry) => listed(entry.dependsOn)), ...fromPhases])
-  ].sort(byCodeUnit2);
+  ].sort(byCodeUnit3);
   return ids.length === 0 ? {} : { dependsOn: ids };
 }
 function phasesOf(config2, stacks) {
@@ -51556,7 +52334,7 @@ function phasesOf(config2, stacks) {
 function listed(dependsOn) {
   return Array.isArray(dependsOn) ? dependsOn : [];
 }
-function byCodeUnit2(a, b) {
+function byCodeUnit3(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function checkDependsOn(config2, found, stacks, phaseOf) {
@@ -51578,7 +52356,7 @@ function checkDependsOn(config2, found, stacks, phaseOf) {
     const self = stacks.find((stack) => stackId(stack) === id);
     if (self && covers(entry, self))
       return [`${where2} is the stack itself. A stack cannot depend on itself.`];
-    const earlier = stacks.filter((stack) => covers(entry, stack)).map(stackId).sort(byCodeUnit2).find((one) => throughPhase(config2.phases, phaseOf, id, one));
+    const earlier = stacks.filter((stack) => covers(entry, stack)).map(stackId).sort(byCodeUnit3).find((one) => throughPhase(config2.phases, phaseOf, id, one));
     if (earlier !== undefined)
       return [
         `${where2} is in the ${phaseOf.get(id)} phase, which comes after the ${phaseOf.get(earlier)} phase of ${earlier}. ${id} already waits on every stack of the ${phaseOf.get(earlier)} phase, so take this out, or move one of them to another phase.`
@@ -51625,17 +52403,17 @@ function dependencyCircles(edges) {
         continue;
       }
       const circle = path.slice(at);
-      const start = circle.indexOf([...circle].sort(byCodeUnit2)[0] ?? "");
+      const start = circle.indexOf([...circle].sort(byCodeUnit3)[0] ?? "");
       const turned = [...circle.slice(start), ...circle.slice(0, start)];
-      const key = [...turned].sort(byCodeUnit2).join(`
+      const key = [...turned].sort(byCodeUnit3).join(`
 `);
       if (!circles.has(key))
         circles.set(key, [...turned, turned[0] ?? ""]);
     }
   };
-  for (const id of [...edges.keys()].sort(byCodeUnit2))
+  for (const id of [...edges.keys()].sort(byCodeUnit3))
     walk([id]);
-  return [...circles.values()].sort((a, b) => byCodeUnit2(a[0] ?? "", b[0] ?? ""));
+  return [...circles.values()].sort((a, b) => byCodeUnit3(a[0] ?? "", b[0] ?? ""));
 }
 function covers(entry, stack) {
   return entry.path === stack.path && (entry.name === undefined || entry.name === stack.name);
@@ -51890,7 +52668,7 @@ function sourceOf(dir) {
   return (filesIn(dir) ?? []).some(isKustomization) ? "kustomization" : "manifests";
 }
 function bundleManifests(dir) {
-  const names = (filesIn(dir) ?? []).filter(isManifestFile).sort(byCodeUnit3);
+  const names = (filesIn(dir) ?? []).filter(isManifestFile).sort(byCodeUnit4);
   return names.map((name) => {
     const text4 = readFileSync3(join3(dir, name), "utf8");
     return text4.endsWith(`
@@ -51899,7 +52677,7 @@ function bundleManifests(dir) {
   }).join(`---
 `);
 }
-function byCodeUnit3(a, b) {
+function byCodeUnit4(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function filesIn(dir) {
@@ -52234,8 +53012,8 @@ async function fileNamesIn(dir) {
   try {
     return fileNames(await readdir2(dir, { withFileTypes: true }));
   } catch (error63) {
-    const code = error63.code;
-    if (code === "ENOENT" || code === "ENOTDIR")
+    const code2 = error63.code;
+    if (code2 === "ENOENT" || code2 === "ENOTDIR")
       return [];
     throw error63;
   }
@@ -52789,7 +53567,7 @@ function foldEntries(entries, namespace, showValues) {
     return { ok: false, reason: "unreadable-output", detail: unreadable };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
-  changes.sort((a, b) => byCodeUnit4(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit5(a.address, b.address));
   return { ok: true, changes };
 }
 function typeOf(entry) {
@@ -52811,8 +53589,8 @@ function keys(entry, showValues) {
     }
     return path;
   });
-  const changedKeys = [...new Set(paths.filter((path) => path !== ""))].sort(byCodeUnit4);
-  const shown2 = values2.filter((value, index) => values2.findIndex((one) => one.path === value.path) === index).sort((a, b) => byCodeUnit4(a.path, b.path));
+  const changedKeys = [...new Set(paths.filter((path) => path !== ""))].sort(byCodeUnit5);
+  const shown2 = values2.filter((value, index) => values2.findIndex((one) => one.path === value.path) === index).sort((a, b) => byCodeUnit5(a.path, b.path));
   return { changedKeys, ...shown2.length === 0 ? {} : { values: shown2 } };
 }
 function propertyPath(change) {
@@ -52852,7 +53630,7 @@ function shown2(value) {
     return "refused";
   return shortValue(value);
 }
-function byCodeUnit4(a, b) {
+function byCodeUnit5(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -53291,10 +54069,10 @@ function foldObjects2(pairs, showValues) {
       beforeSensitive: sensitive,
       afterSensitive: sensitive
     }, showValues);
-    const changedKeys = [...new Set(paths)].sort(byCodeUnit5);
+    const changedKeys = [...new Set(paths)].sort(byCodeUnit6);
     if (changedKeys.length === 0)
       return;
-    const shown3 = values2.sort((a, b) => byCodeUnit5(a.path, b.path));
+    const shown3 = values2.sort((a, b) => byCodeUnit6(a.path, b.path));
     changes.push({
       ...base,
       changedKeys,
@@ -53304,7 +54082,7 @@ function foldObjects2(pairs, showValues) {
   });
   if (problems.length > 0)
     return { ok: false, reason: "unreadable-output", detail: problems };
-  changes.sort((a, b) => byCodeUnit5(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit6(a.address, b.address));
   return { ok: true, changes };
 }
 function yamlObject(text5) {
@@ -53350,7 +54128,7 @@ function withoutServerFields(object2) {
 function isObject3(node2) {
   return typeof node2 === "object" && node2 !== null && !Array.isArray(node2);
 }
-function byCodeUnit5(a, b) {
+function byCodeUnit6(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -53730,7 +54508,7 @@ async function apply3(stack, context3, plan) {
 import { join as join19 } from "node:path";
 function prepare2(stacks) {
   const byPath = Map.groupBy(stacks, (stack) => stack.path);
-  return [...byPath].sort(([a], [b]) => byCodeUnit6(a, b)).map(([path, grouped]) => ({
+  return [...byPath].sort(([a], [b]) => byCodeUnit7(a, b)).map(([path, grouped]) => ({
     title: path,
     stacks: grouped,
     run: async (context3) => {
@@ -53742,7 +54520,7 @@ function prepare2(stacks) {
       if (!synth.ok)
         return synth;
       let toolLog = synth.toolLog;
-      const named = [...grouped].sort((a, b) => byCodeUnit6(a.name ?? "", b.name ?? ""));
+      const named = [...grouped].sort((a, b) => byCodeUnit7(a.name ?? "", b.name ?? ""));
       for (const stack of named) {
         const init = await step(context3, command(stack, initArgs()), workingDirectory(context3.root, stack));
         toolLog += init.toolLog;
@@ -53772,7 +54550,7 @@ async function step(context3, argv, cwd) {
   }
   return { ok: true, toolLog };
 }
-function byCodeUnit6(a, b) {
+function byCodeUnit7(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -53840,7 +54618,7 @@ function foldChanges(found, showValues) {
     return { ok: false, reason: "unreadable-output", detail: unreadable };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
-  changes.sort((a, b) => byCodeUnit7(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit8(a.address, b.address));
   return { ok: true, changes };
 }
 function withTracking(known, tracking) {
@@ -53870,13 +54648,13 @@ function keys2(resource, op, showValues) {
   }, showValues);
   const replaceKeys = op === "replace" ? sortedSet((change3.replace_paths ?? []).map((steps) => replacePath(steps, change3.before_sensitive, change3.after_sensitive))) : [];
   const changedKeys = sortedSet([...paths, ...replaceKeys]);
-  const shown3 = values2.filter((value) => changedKeys.includes(value.path)).sort((a, b) => byCodeUnit7(a.path, b.path));
+  const shown3 = values2.filter((value) => changedKeys.includes(value.path)).sort((a, b) => byCodeUnit8(a.path, b.path));
   return { changedKeys, replaceKeys, ...shown3.length === 0 ? {} : { values: shown3 } };
 }
 function sortedSet(names) {
-  return [...new Set(names.filter((name) => name !== ""))].sort(byCodeUnit7);
+  return [...new Set(names.filter((name) => name !== ""))].sort(byCodeUnit8);
 }
-function byCodeUnit7(a, b) {
+function byCodeUnit8(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -54191,7 +54969,7 @@ function foldSteps(steps) {
     return { ok: false, reason: "unreadable-output", detail: unreadable };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
-  changes.sort((a, b) => byCodeUnit8(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit9(a.address, b.address));
   return { ok: true, changes };
 }
 function typeAndName(urn) {
@@ -54213,9 +54991,9 @@ function keys3(step2, op) {
   return { changedKeys, replaceKeys, ...values2.length === 0 ? {} : { values: values2 } };
 }
 function sortedSet2(names) {
-  return [...new Set(names)].sort(byCodeUnit8);
+  return [...new Set(names)].sort(byCodeUnit9);
 }
-function byCodeUnit8(a, b) {
+function byCodeUnit9(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -54687,12 +55465,12 @@ async function readDependencies(stack, names, root, candidates) {
     else if (one.id !== self)
       found.add(one.id);
   }
-  return { stackIds: [...found].sort(byCodeUnit9), elsewhere };
+  return { stackIds: [...found].sort(byCodeUnit10), elsewhere };
 }
 function orElse(first, second) {
   return first.length > 0 ? first : second();
 }
-function byCodeUnit9(a, b) {
+function byCodeUnit10(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -54971,14 +55749,18 @@ function actionsLog() {
 }
 
 // src/github/octokit-attribution.ts
-var WALK = `query ($owner: String!, $repo: String!, $head: GitObjectID!) {
+var WALK = `query ($owner: String!, $repo: String!, $head: GitObjectID!, $first: Int!, $after: String) {
   repository(owner: $owner, name: $repo) {
     defaultBranchRef {
       name
     }
     object(oid: $head) {
       ... on Commit {
-        history(first: 100) {
+        history(first: $first, after: $after) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
           nodes {
             oid
             messageHeadline
@@ -55006,6 +55788,7 @@ var WALK = `query ($owner: String!, $repo: String!, $head: GitObjectID!) {
                 files(first: 100) {
                   nodes {
                     path
+                    changeType
                   }
                 }
               }
@@ -55016,6 +55799,7 @@ var WALK = `query ($owner: String!, $repo: String!, $head: GitObjectID!) {
     }
   }
 }`;
+var PAGE = 100;
 function present(nodes) {
   return (nodes ?? []).filter((node2) => node2 !== null);
 }
@@ -55028,7 +55812,8 @@ function toPullRequest(node2) {
     base: node2.baseRefName,
     merged: node2.merged,
     changedFiles: node2.changedFiles,
-    files: present(node2.files?.nodes).map(({ path }) => path)
+    files: present(node2.files?.nodes).map(({ path }) => path),
+    renamed: present(node2.files?.nodes).some(({ changeType }) => changeType === "RENAMED")
   };
 }
 function toCommit(node2) {
@@ -55042,15 +55827,31 @@ function toCommit(node2) {
 }
 function attributionCalls(octokit, repo) {
   return {
-    async walkCommits(head) {
-      const data = await octokit.graphql(WALK, { ...repo, head });
-      const history = data.repository?.object?.history;
-      if (!history)
-        throw new Error(`GitHub has no commit ${head.slice(0, 7)} to walk back from.`);
-      const defaultBranch = data.repository?.defaultBranchRef?.name;
-      if (defaultBranch === undefined)
-        throw new Error("GitHub named no default branch.");
-      return { defaultBranch, commits: present(history.nodes).map(toCommit) };
+    async walkCommits(head, lookback = LOOKBACK) {
+      const commits = [];
+      let defaultBranch;
+      let after = null;
+      do {
+        const first = Math.min(PAGE, lookback - commits.length);
+        const data = await octokit.graphql(WALK, { ...repo, head, first, after });
+        const history = data.repository?.object?.history;
+        if (!history)
+          throw new Error(`GitHub has no commit ${head.slice(0, 7)} to walk back from.`);
+        defaultBranch = data.repository?.defaultBranchRef?.name;
+        if (defaultBranch === undefined)
+          throw new Error("GitHub named no default branch.");
+        commits.push(...present(history.nodes).map(toCommit));
+        after = history.pageInfo.hasNextPage ? history.pageInfo.endCursor : null;
+      } while (after !== null && commits.length < lookback);
+      return { defaultBranch, commits };
+    },
+    async listPullRequestFiles(number4) {
+      const { data } = await octokit.rest.pulls.listFiles({
+        ...repo,
+        pull_number: number4,
+        per_page: PAGE
+      });
+      return data.flatMap((file2) => file2.previous_filename === undefined ? [file2.filename] : [file2.filename, file2.previous_filename]);
     },
     async listCommitFiles(sha) {
       const { data } = await octokit.rest.repos.getCommit({ ...repo, ref: sha });
@@ -55558,27 +56359,6 @@ function toIssue(issue3) {
 import { writeFileSync } from "node:fs";
 import { join as join26 } from "node:path";
 
-// src/core/claim.ts
-function inside(directory, file2) {
-  return directory === "." || file2.startsWith(`${directory}/`);
-}
-function claim2(stacks, changed, unrelated) {
-  const isUnrelated = globMatcher(unrelated);
-  const matchers = stacks.map((stack) => ({ stack, matches: globMatcher(stack.inputs) }));
-  const claims = new Map;
-  const unclaimed = [];
-  for (const file2 of new Set(changed)) {
-    if (isUnrelated(file2))
-      continue;
-    const claimants = matchers.filter(({ stack, matches }) => inside(stack.path, file2) || matches(file2));
-    if (claimants.length === 0)
-      unclaimed.push(file2);
-    for (const { stack } of claimants)
-      claims.set(stack.id, [...claims.get(stack.id) ?? [], file2]);
-  }
-  return { claims, unclaimed };
-}
-
 // src/core/merge-and-deploy.ts
 function qualify(pullRequest, options) {
   const author2 = pullRequest.author?.toLowerCase();
@@ -55598,7 +56378,7 @@ function qualify(pullRequest, options) {
   const { claims, unclaimed } = claim2(options.stacks, pullRequest.files, options.unrelated);
   if (unclaimed.length > 0)
     return { qualifies: false, why: "unclaimed" };
-  const stackIds = [...claims.keys()].sort(byCodeUnit10);
+  const stackIds = [...claims.keys()].sort(byCodeUnit11);
   if (stackIds.length === 0)
     return { qualifies: false, why: "no-stack" };
   if (dependOnEachOther(stackIds, options.dependsOn)) {
@@ -55606,7 +56386,7 @@ function qualify(pullRequest, options) {
   }
   return { qualifies: true, stackIds };
 }
-function byCodeUnit10(a, b) {
+function byCodeUnit11(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function dependOnEachOther(ids, dependsOn) {
@@ -55793,6 +56573,8 @@ function deployFacts(records) {
     }
     facts.byStack.set(stackId2, fact);
     if (fact.kind === "succeeded") {
+      const before = lastDeployedCommit(facts, stackId2);
+      const wentOut = !fact.inSync;
       const succeeded = {
         stackId: stackId2,
         ticker: fact.ticker,
@@ -55801,7 +56583,10 @@ function deployFacts(records) {
         ...fact.inSync ? { result: "in-sync" } : payload.drift ? { result: "drift-repaired" } : {}
       };
       facts.succeeded.push({ ...succeeded, sha: record3.sha });
-      facts.trail.push(succeeded);
+      facts.trail.push({
+        ...succeeded,
+        ...wentOut && before !== undefined ? { shipped: { from: before, to: record3.sha } } : {}
+      });
     }
     if (fact.kind === "failed") {
       facts.trail.push({
@@ -55842,17 +56627,6 @@ function rowAtLateRead(stack) {
   return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
 }
 
-// src/render/escape.ts
-var NAMED = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;"
-};
-function escapeText(text6) {
-  return text6.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
-}
-
 // src/render/destroy-alert.ts
 function destroyAlert(rows) {
   const ids = rows.filter((row) => row.known && row.state === "pending" && row.destroys > 0).map((row) => `**${escapeText(row.stackId)}**`);
@@ -55861,235 +56635,6 @@ function destroyAlert(rows) {
   const words = ids.length === 1 ? "1 pending stack deletes or replaces resources" : `${ids.length} pending stacks delete or replace resources`;
   return `> [!CAUTION]
 > ${words}: ${ids.join(", ")}`;
-}
-
-// src/render/marker.ts
-function encodeMarkerValue(value) {
-  return value.replace(/[%"<>\u0000- \u007f]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
-}
-var utf8 = new TextDecoder;
-function decodeMarkerValue(value) {
-  return value.replace(/(?:%[0-9A-Fa-f]{2})+/g, (run) => {
-    const bytes = run.split("%").slice(1).map((hex3) => Number.parseInt(hex3, 16));
-    return utf8.decode(new Uint8Array(bytes));
-  });
-}
-var MARKER_VERSION = 1;
-var ROW_STATES = [
-  "pending",
-  "deploying",
-  "in-sync",
-  "preview-failed",
-  "queued",
-  "drift"
-];
-function isDeployingState(state) {
-  return state === "deploying" || state === "queued";
-}
-function encodeIds(ids) {
-  return ids.map((id) => id.replace(/[%,]/g, (char) => char === "%" ? "%25" : "%2C")).join(",");
-}
-function decodeIds(value) {
-  return value.split(",").map(decodeMarkerValue);
-}
-var ROW_CLOSE_MARKER = "<!-- /sluiceway:row -->";
-var RESCAN_MARKER = "<!-- sluiceway:rescan -->";
-function marker(kind, pairs) {
-  const payload = pairs.map(([key, value]) => ` ${key}="${encodeMarkerValue(value)}"`).join("");
-  return `<!-- sluiceway:${kind}${payload} -->`;
-}
-function rootMarker(facts) {
-  const pairs = [
-    ["v", String(MARKER_VERSION)],
-    ["scan-sha", facts.scanSha],
-    ["scan-run", facts.scanRun],
-    ["scan-at", facts.scanAt]
-  ];
-  if (facts.fullScanAt !== undefined)
-    pairs.push(["full-scan-at", facts.fullScanAt]);
-  if (facts.fullScanRun !== undefined)
-    pairs.push(["full-scan-run", facts.fullScanRun]);
-  return marker("dashboard", pairs);
-}
-function rowMarker(facts) {
-  const pairs = [
-    ["stack", facts.stackId],
-    ["state", facts.state]
-  ];
-  if (facts.hash !== undefined)
-    pairs.push(["hash", facts.hash]);
-  if (facts.destroys)
-    pairs.push(["destroys", String(facts.destroys)]);
-  if (facts.failed)
-    pairs.push(["failed", "true"]);
-  if (facts.shortened)
-    pairs.push(["shortened", String(facts.shortened)]);
-  if (facts.drift)
-    pairs.push(["drift", "true"]);
-  if (facts.dependsOn && facts.dependsOn.length > 0) {
-    pairs.push(["depends-on", encodeIds(facts.dependsOn)]);
-  }
-  return marker("row", pairs);
-}
-function mergeMarker(facts) {
-  return marker("merge", [
-    ["pr", String(facts.pr)],
-    ["stack", encodeIds(facts.stackIds)],
-    ["head", facts.head]
-  ]);
-}
-function outsideMarker(deploy) {
-  const pairs = [
-    ["stack", deploy.stackId],
-    ["kind", deploy.kind],
-    ["at", deploy.at.toISOString()]
-  ];
-  if (deploy.commit !== undefined)
-    pairs.push(["commit", deploy.commit]);
-  if (deploy.dirty)
-    pairs.push(["dirty", "true"]);
-  return marker("outside", pairs);
-}
-var PAIRS = '((?: [^\\s="]+="[^"]*")*)';
-var ROOT_LINE = new RegExp(`^<!-- sluiceway:dashboard${PAIRS} -->[ \\t]*$`);
-var ROW_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:row${PAIRS} -->[ \\t]*$`);
-var MERGE_LINE = new RegExp(`^- (?:\\[([ xX])\\] )?.*<!-- sluiceway:merge${PAIRS} -->[ \\t]*$`);
-var OUTSIDE_LINE = new RegExp(`^- .*<!-- sluiceway:outside${PAIRS} -->[ \\t]*$`);
-var RESCAN_LINE = /^- \[[xX]\] .*<!-- sluiceway:rescan -->[ \t]*$/;
-function readPairs(payload) {
-  const pairs = new Map;
-  for (const [, key, value] of payload.matchAll(/ ([^\s="]+)="([^"]*)"/g)) {
-    if (key !== undefined && value !== undefined)
-      pairs.set(key, decodeMarkerValue(value));
-  }
-  return pairs;
-}
-function readRoot(line) {
-  const pairs = readPairs(ROOT_LINE.exec(line)?.[1] ?? "");
-  const version2 = pairs.get("v");
-  if (version2 === undefined || !/^\d+$/.test(version2))
-    return;
-  return {
-    version: Number(version2),
-    scanSha: pairs.get("scan-sha"),
-    scanRun: pairs.get("scan-run"),
-    scanAt: pairs.get("scan-at"),
-    fullScanAt: pairs.get("full-scan-at"),
-    fullScanRun: pairs.get("full-scan-run")
-  };
-}
-function isRowState(state) {
-  return ROW_STATES.includes(state);
-}
-function parseDashboard(body) {
-  const lines = body.replace(/\r\n?/g, `
-`).split(`
-`);
-  const rows = [];
-  const merges = [];
-  const outside = [];
-  let rescanTicked = false;
-  for (let index = 0;index < lines.length; index++) {
-    const line = lines[index] ?? "";
-    if (RESCAN_LINE.test(line))
-      rescanTicked = true;
-    const deploy = readOutside(line);
-    if (deploy) {
-      outside.push(deploy);
-      continue;
-    }
-    const merge3 = readMerge(line);
-    if (merge3) {
-      let end2 = index;
-      while (/^ {2}\S/.test(lines[end2 + 1] ?? ""))
-        end2++;
-      merges.push({ ...merge3, text: lines.slice(index, end2 + 1).join(`
-`) });
-      index = end2;
-      continue;
-    }
-    const match = ROW_LINE.exec(line);
-    if (!match)
-      continue;
-    const pairs = readPairs(match[2] ?? "");
-    const stackId2 = pairs.get("stack");
-    if (stackId2 === undefined)
-      continue;
-    let end = index;
-    for (let next = index + 1;next < lines.length; next++) {
-      const candidate = lines[next] ?? "";
-      if (candidate.trim() === ROW_CLOSE_MARKER)
-        end = next;
-      if (end === next || ROW_LINE.test(candidate))
-        break;
-    }
-    const text6 = lines.slice(index, end + 1).join(`
-`);
-    index = end;
-    const state = pairs.get("state") ?? "";
-    if (!isRowState(state)) {
-      rows.push({ known: false, stackId: stackId2, state, text: text6 });
-      continue;
-    }
-    const count = (key) => {
-      const value = pairs.get(key) ?? "";
-      return /^\d+$/.test(value) ? Number(value) : 0;
-    };
-    const dependsOn = pairs.get("depends-on") ?? "";
-    rows.push({
-      known: true,
-      stackId: stackId2,
-      state,
-      hash: pairs.get("hash"),
-      destroys: count("destroys"),
-      failed: pairs.get("failed") === "true",
-      shortened: count("shortened"),
-      drift: pairs.get("drift") === "true",
-      ...dependsOn === "" ? {} : { dependsOn: decodeIds(dependsOn) },
-      ticked: match[1] === "x" || match[1] === "X",
-      text: text6
-    });
-  }
-  return { root: readRoot(lines[0] ?? ""), rows, merges, outside, rescanTicked };
-}
-function readMerge(line) {
-  const match = MERGE_LINE.exec(line);
-  if (!match)
-    return;
-  const pairs = readPairs(match[2] ?? "");
-  const pr = pairs.get("pr") ?? "";
-  const stack = pairs.get("stack");
-  const head = pairs.get("head") ?? "";
-  if (!/^[1-9]\d*$/.test(pr) || stack === undefined || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(head)) {
-    return;
-  }
-  return {
-    pr: Number(pr),
-    stackIds: decodeIds(stack),
-    head,
-    ticked: match[1] === "x" || match[1] === "X",
-    text: line
-  };
-}
-function readOutside(line) {
-  const match = OUTSIDE_LINE.exec(line);
-  if (!match)
-    return;
-  const pairs = readPairs(match[1] ?? "");
-  const stackId2 = pairs.get("stack");
-  const kind = pairs.get("kind");
-  const at = new Date(pairs.get("at") ?? "");
-  const commit = pairs.get("commit");
-  if (stackId2 === undefined || kind !== "deploy" && kind !== "destroy" || Number.isNaN(at.getTime()) || commit !== undefined && !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit)) {
-    return;
-  }
-  return {
-    stackId: stackId2,
-    kind,
-    at,
-    ...commit === undefined ? {} : { commit },
-    ...pairs.get("dirty") === "true" ? { dirty: true } : {}
-  };
 }
 
 // src/render/destroy-sign.ts
@@ -56140,313 +56685,6 @@ function headerState(rows) {
   return "in-sync";
 }
 
-// src/render/images.ts
-var ACTION_REPO = "sluiceway/sluiceway";
-function urlPart(text6) {
-  return encodeURIComponent(text6).replace(/[()*!'~]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
-}
-function mascotUrl(actionRef2, file2) {
-  return `https://raw.githubusercontent.com/${ACTION_REPO}/${urlPart(actionRef2)}/assets/mascot/${file2}`;
-}
-
-// src/render/time.ts
-function utcMinute(at) {
-  const iso = at.toISOString();
-  return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
-}
-
-// src/render/row.ts
-var INDENT = "  ";
-function byCodeUnit11(a, b) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-function isDestroy(change3) {
-  return change3.op === "replace" || change3.op === "delete";
-}
-function plural2(count, word) {
-  return `${count} ${word}${count === 1 ? "" : "s"}`;
-}
-function counts(changes) {
-  const of = (op) => changes.filter((change3) => change3.op === op).length;
-  const trackingOnly = changes.filter((change3) => change3.op === "none" && change3.tracking).length;
-  return [
-    of("create") && plural2(of("create"), "create"),
-    of("update") && plural2(of("update"), "update"),
-    of("replace") && `**${plural2(of("replace"), "replace")}**`,
-    of("delete") && `**${plural2(of("delete"), "delete")}**`,
-    trackingOnly && `${trackingOnly} tracking only`
-  ].filter(Boolean).join(", ");
-}
-function valueSuffix(change3, path, show2) {
-  const value = change3.values?.find((one) => one.path === path);
-  if (value === undefined)
-    return "";
-  const side2 = (text6) => text6 === undefined ? "nothing" : show2(text6);
-  return ` ${side2(value.old)} → ${side2(value.new)}`;
-}
-function code(text6) {
-  return `<code>${escapeText(text6)}</code>`;
-}
-function sortedKeys(keys4) {
-  return [...new Set(keys4)].sort(byCodeUnit11);
-}
-var ROW_PATH_LENGTH = 80;
-var ROW_PATHS_PER_CHANGE = 10;
-var HEAD_LENGTH = 24;
-function shortPath(path) {
-  const points = Array.from(path);
-  if (points.length <= ROW_PATH_LENGTH)
-    return path;
-  const first = /^(?:\["(?:[^"\\]|\\.)*"\]|[^.[]+)/.exec(path)?.[0] ?? "";
-  const head = Array.from(first).slice(0, HEAD_LENGTH);
-  const tail = points.slice(points.length - (ROW_PATH_LENGTH - head.length - 1));
-  const segment2 = tail.findIndex((point) => point === "." || point === "[");
-  const start = segment2 < 0 ? 0 : tail[segment2] === "." ? segment2 + 1 : segment2;
-  const end = start < tail.length ? tail.slice(start) : tail;
-  return `${head.join("")}…${end.join("")}`;
-}
-function changeLine(change3, options = {}) {
-  const word = [change3.op === "none" ? undefined : change3.op, change3.tracking].filter((part) => part !== undefined).join(" + ");
-  const cap = isDestroy(change3) ? word.toUpperCase() : word;
-  const forcing = sortedKeys(change3.replaceKeys);
-  const others = sortedKeys(change3.changedKeys).filter((key) => !forcing.includes(key));
-  const capped = options.row === true && !isDestroy(change3);
-  const listed3 = capped ? others.slice(0, ROW_PATHS_PER_CHANGE) : others;
-  const hidden = others.length - listed3.length;
-  const show2 = (keys4) => keys4.map((key) => code(options.row ? shortPath(key) : key) + valueSuffix(change3, key, code)).join(", ");
-  const parts = [
-    `<kbd>${cap}</kbd> <code>${escapeText(change3.type)}</code> <b>${escapeText(change3.name)}</b>`
-  ];
-  if (forcing.length > 0)
-    parts.push(`forced by ${show2(forcing)}`);
-  if (others.length > 0) {
-    const more = hidden > 0 ? `, and ${hidden} more` : "";
-    parts.push(`${forcing.length > 0 ? "also changes " : ""}${show2(listed3)}${more}`);
-  }
-  return parts.join(" · ");
-}
-var ORPHAN_TICK_NOTE = ":information_source: a tick on this row was not picked up. Tick again to deploy.";
-var DEPLOYS_OFF_NOTE = ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick started nothing.";
-function dependencyNote(ids, phases = []) {
-  const names = ids.map((id) => `**${escapeText(id)}**`).join(" and ");
-  const one = ids.length === 1;
-  if (phases.length === 0) {
-    return `:information_source: this tick started nothing: it depends on ${names}, which ${one ? "has a change" : "have changes"} waiting. Tick ${one ? "both" : "them all"} to deploy them in order, or deploy ${names} first.`;
-  }
-  const waiting = (count2) => count2 === 1 ? "has a change" : "have changes";
-  const clauses = [
-    ...ids.length === 0 ? [] : [`it depends on ${names}, which ${waiting(ids.length)} waiting`],
-    ...phases.map(({ phase, stackIds }) => `it waits on the **${escapeText(phase)}** phase: ${shortList(stackIds)} ${waiting(stackIds.length)} waiting`)
-  ];
-  const count = ids.length + phases.reduce((sum, { stackIds }) => sum + stackIds.length, 0);
-  const first = [
-    ...ids.map((id) => `**${escapeText(id)}**`),
-    ...phases.map(({ phase }) => `the **${escapeText(phase)}** phase`)
-  ];
-  return `:information_source: this tick started nothing: ${clauses.join(", and ")}. Tick ${count === 1 ? "both" : "them all"} to deploy them in order, or deploy ${listWords(first)} first.`;
-}
-var NAMES_PER_PHASE = 5;
-function shortList(ids) {
-  const shown3 = ids.slice(0, NAMES_PER_PHASE).map((id) => `**${escapeText(id)}**`);
-  const more = ids.length - shown3.length;
-  return more > 0 ? `${shown3.join(", ")} and ${more} more` : listWords(shown3);
-}
-function listWords(words) {
-  return words.length <= 1 ? words[0] ?? "" : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
-}
-var PENDING_AGAIN_NOTE = ":information_source: pending again right after a deploy of this same change, a value in the program may differ on every run.";
-function pendingAgainLine({ logUrl }) {
-  return logUrl === undefined ? PENDING_AGAIN_NOTE : `${PENDING_AGAIN_NOTE} Compare the tool's own diff in the [job log](${logUrl}).`;
-}
-function failureLine(failure2) {
-  return `:x: last deploy failed: ${escapeText(failure2.reason)} · ticked by ${escapeText(failure2.ticker)} · ${utcMinute(failure2.at)} · [run](${failure2.runUrl})`;
-}
-function destroyWords(deletes, replaces) {
-  return [deletes && `deletes ${deletes}`, replaces && `replaces ${replaces}`].filter(Boolean).join(", ");
-}
-var DRIFT_WORDS = { update: "changed", delete: "gone" };
-function driftWord(change3) {
-  return DRIFT_WORDS[change3.op] ?? change3.op;
-}
-function driftCounts(drift) {
-  const of = (op) => drift.filter((change3) => change3.op === op).length;
-  const parts = [of("update") && `${of("update")} changed`, of("delete") && `${of("delete")} gone`];
-  return `${parts.filter(Boolean).join(", ")} outside the code`;
-}
-function driftLine(change3, options = {}) {
-  const keys4 = sortedKeys(change3.changedKeys);
-  const listed3 = options.row === true ? keys4.slice(0, ROW_PATHS_PER_CHANGE) : keys4;
-  const hidden = keys4.length - listed3.length;
-  const parts = [
-    `<kbd>${driftWord(change3)}</kbd> <code>${escapeText(change3.type)}</code> <b>${escapeText(change3.name)}</b>`
-  ];
-  if (listed3.length > 0) {
-    const more = hidden > 0 ? `, and ${hidden} more` : "";
-    parts.push(`${listed3.map((key) => code(options.row ? shortPath(key) : key)).join(", ")}${more}`);
-  }
-  return parts.join(" · ");
-}
-function sortedDrift(diff2) {
-  return [...diff2.drift ?? []].sort((a, b) => byCodeUnit11(a.address, b.address));
-}
-function driftLines(drift, summary2, options) {
-  if (drift.length === 0)
-    return [];
-  const inside2 = plural2(drift.length, "change");
-  if (options.redact)
-    return [`Changes outside the code are listed in the ${summary2}`];
-  if ((options.level ?? 0) >= 2) {
-    return [`${inside2} outside the code not listed here, see the ${summary2}`];
-  }
-  return [
-    `<details><summary>${inside2} outside the code</summary>`,
-    ...drift.map((change3) => `${driftLine(change3, { row: true })}<br>`),
-    "</details>"
-  ];
-}
-function driftRow(row, options) {
-  const level = options.level ?? 0;
-  const drift = sortedDrift(row.diff);
-  const summary2 = `[summary](${row.runUrl})`;
-  const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
-  const lines = [
-    `- ${box}**${escapeText(row.diff.stackId)}** · ${driftCounts(drift)} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker({
-      stackId: row.diff.stackId,
-      state: "drift",
-      hash: row.hash,
-      failed: row.failure !== undefined,
-      shortened: level >= 2 ? level : 0,
-      drift: true,
-      dependsOn: row.dependsOn
-    })}`
-  ];
-  if (row.failure)
-    lines.push(failureLine(row.failure));
-  if (row.orphanTick && !options.readOnly)
-    lines.push(ORPHAN_TICK_NOTE);
-  lines.push(...driftLines(drift, summary2, options));
-  return lines;
-}
-function pendingRow(row, options) {
-  const level = options.level ?? 0;
-  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit11(a.address, b.address));
-  const deletes = changes.filter((change3) => change3.op === "delete");
-  const replaces = changes.filter((change3) => change3.op === "replace");
-  const folded = changes.filter((change3) => !isDestroy(change3));
-  const destroys = deletes.length + replaces.length;
-  const summary2 = `[summary](${row.runUrl})`;
-  const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
-  const drift = sortedDrift(row.diff);
-  const driftCount = drift.length > 0 ? ` · ${driftCounts(drift)}` : "";
-  const lines = [
-    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)}${driftCount} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker({
-      stackId: row.diff.stackId,
-      state: "pending",
-      hash: row.hash,
-      destroys,
-      failed: row.failure !== undefined,
-      shortened: level,
-      drift: drift.length > 0,
-      dependsOn: row.dependsOn
-    })}`
-  ];
-  if (row.attribution)
-    lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
-  if (row.failure)
-    lines.push(failureLine(row.failure));
-  if (row.pendingAgain)
-    lines.push(pendingAgainLine(row.pendingAgain));
-  if (row.orphanTick && !options.readOnly)
-    lines.push(ORPHAN_TICK_NOTE);
-  if (options.redact || level >= 3) {
-    const words = destroyWords(deletes.length, replaces.length);
-    if (destroys > 0) {
-      const warning2 = options.redact ? `${words}.` : `${words}, too many to list here.`;
-      const read3 = options.readOnly ? `Read the ${summary2}.` : `Read the ${summary2} before you tick.`;
-      lines.push(`:warning: **${warning2}** ${read3}`);
-    } else {
-      lines.push(`Changes ${options.redact ? "are listed in the" : "not listed here, see the"} ${summary2}`);
-    }
-    lines.push(...driftLines(drift, summary2, options));
-    return lines;
-  }
-  for (const change3 of [...deletes, ...replaces])
-    lines.push(`:warning: ${changeLine(change3, { row: true })}`);
-  if (folded.length > 0) {
-    const inside2 = plural2(folded.length, destroys > 0 ? "other change" : "change");
-    if (level >= 2) {
-      lines.push(`${inside2} not listed here, see the ${summary2}`);
-    } else {
-      lines.push(`<details><summary>${inside2}</summary>`);
-      for (const change3 of folded)
-        lines.push(`${changeLine(change3, { row: true })}<br>`);
-      lines.push("</details>");
-    }
-  }
-  lines.push(...driftLines(drift, summary2, options));
-  return lines;
-}
-var SPINNER_WIDTH = 16;
-function spinner(actionRef2) {
-  const file2 = (theme) => mascotUrl(actionRef2, `spinner-${theme}.svg`);
-  return `<picture><source media="(prefers-color-scheme: dark)" srcset="${file2("dark")}"><img alt="" width="${SPINNER_WIDTH}" height="${SPINNER_WIDTH}" src="${file2("light")}"></picture> `;
-}
-function deployingRow(row, options) {
-  const behind = row.behind ?? [];
-  const word = behind.length > 0 ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}` : row.waiting ? "waiting to start" : "deploying";
-  const state = behind.length > 0 ? "queued" : "deploying";
-  const lines = [
-    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef)}**${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys })}`
-  ];
-  if (row.attribution)
-    lines.push(row.attribution.full);
-  return lines;
-}
-function previewFailedRow(row) {
-  const lines = [
-    `- **${escapeText(row.stackId)}** · preview failed: ${escapeText(row.reason)} · [run](${row.runUrl}) ${rowMarker({
-      stackId: row.stackId,
-      state: "preview-failed",
-      failed: row.failure !== undefined
-    })}`
-  ];
-  if (row.failure)
-    lines.push(failureLine(row.failure));
-  return lines;
-}
-function inSyncRow(row) {
-  const lines = [
-    `- ${escapeText(row.stackId)} ${rowMarker({
-      stackId: row.stackId,
-      state: "in-sync",
-      failed: row.failure !== undefined,
-      dependsOn: row.dependsOn
-    })}`
-  ];
-  if (row.failure)
-    lines.push(failureLine(row.failure));
-  return lines;
-}
-function rowLines(row, options) {
-  switch (row.state) {
-    case "pending":
-      return pendingRow(row, options);
-    case "drift":
-      return driftRow(row, options);
-    case "deploying":
-      return deployingRow(row, options);
-    case "preview-failed":
-      return previewFailedRow(row);
-    case "in-sync":
-      return inSyncRow(row);
-  }
-}
-function renderRow(row, options = {}) {
-  const [first = "", ...rest] = rowLines(row, options);
-  return [first, ...[...rest, ROW_CLOSE_MARKER].map((line) => INDENT + line)].join(`
-`);
-}
-
 // src/render/merge-row.ts
 var TITLE_LENGTH = 80;
 function shorten(title) {
@@ -56454,11 +56692,11 @@ function shorten(title) {
   return chars.length <= TITLE_LENGTH ? title : `${chars.slice(0, TITLE_LENGTH - 3).join("")}...`;
 }
 function renderMergeRow(row, options = {}) {
-  const by = row.author === undefined ? "" : ` by ${escapeText(row.author)}`;
+  const by2 = row.author === undefined ? "" : ` by ${escapeText(row.author)}`;
   const parts = [
     row.stackIds.map((id) => `**${escapeText(id)}**`).join(", "),
     ...options.redact ? [] : [escapeText(shorten(row.title))],
-    `#${row.pr}${by}`,
+    `#${row.pr}${by2}`,
     ...row.preview && row.preview.length > 0 ? [previewText(row.preview)] : []
   ];
   return `- [ ] ${parts.join(" · ")} ${mergeMarker(row)}`;
@@ -56651,12 +56889,17 @@ var RESULT_WORDS = {
   rehearsed: REHEARSED_DESCRIPTION,
   "drift-repaired": DRIFT_REPAIRED_WORDS
 };
-function recentLine(deploy, dots) {
+function recentLine(deploy, dots, short) {
   const words = deploy.result === "failed" ? `failed: ${escapeText(deploy.reason ?? "")}` : deploy.result && RESULT_WORDS[deploy.result];
   const result = words ? ` · ${words}` : "";
   const outcome = deploy.result === undefined || deploy.result === "drift-repaired" ? "deployed" : deploy.result;
   const dot = dots ? `${RESULT_DOT[outcome]}&nbsp;` : "";
-  return `- ${dot}${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)}${result} · ${utcMinute(deploy.at)} · [run](${deploy.runUrl})`;
+  const shipped = deploy.shipped ? `
+${INDENT}${short ? deploy.shipped.counted : deploy.shipped.full}` : "";
+  return `- ${dot}${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)}${result} · ${utcMinute(deploy.at)} · [run](${deploy.runUrl})${shipped}`;
+}
+function newestTrail(deploys, length) {
+  return [...deploys].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit12(a.stackId, b.stackId)).slice(0, length ?? RECENTLY_DEPLOYED);
 }
 function outsideLine(deploy, repoUrl, dots) {
   const dot = dots ? `${RESULT_DOT.deployed}&nbsp;` : "";
@@ -56728,18 +56971,19 @@ function renderBody(input2) {
     }
   }
   const outside = (input2.outsideDeploys ?? []).filter((deploy, index, all) => all.findIndex((one) => one.stackId === deploy.stackId && one.kind === deploy.kind && one.at.getTime() === deploy.at.getTime()) === index);
-  const recent = [
+  const entries = [
     ...input2.recentlyDeployed.map((deploy) => ({
       at: deploy.at,
       stackId: deploy.stackId,
-      line: () => recentLine(deploy, input2.personality)
+      line: () => recentLine(deploy, input2.personality, input2.shortTrail)
     })),
     ...outside.map((deploy) => ({
       at: deploy.at,
       stackId: deploy.stackId,
       line: () => outsideLine(deploy, input2.repoUrl, input2.personality)
     }))
-  ].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit12(a.stackId, b.stackId)).slice(0, input2.recentLength ?? RECENTLY_DEPLOYED);
+  ];
+  const recent = newestTrail(entries, input2.recentLength);
   if (recent.length > 0)
     out.push("## Recently deployed", recent.map((entry3) => entry3.line()).join(`
 `));
@@ -56780,10 +57024,12 @@ function fitBody(input2, options = {}) {
     return { stackId: blocks2[0]?.stackId ?? "", blocks: blocks2, still, level: 0 };
   });
   const blockOf = (entry3) => !spinning && entry3.still || entry3.blocks[entry3.level] || [];
+  let shortTrail = input2.shortTrail ?? false;
   const render = () => renderBody({
     ...input2,
     rows: [...input2.carried, ...entries.flatMap(blockOf)],
-    merges
+    merges,
+    shortTrail
   });
   const fits = () => render().length <= target2;
   if (allMerges.length > MAX_UPDATES && !fits()) {
@@ -56801,8 +57047,10 @@ function fitBody(input2, options = {}) {
   }
   if (spinning && !fits())
     spinning = false;
+  if (!shortTrail && input2.recentlyDeployed.some(({ shipped }) => shipped) && !fits())
+    shortTrail = true;
   for (const level of LEVELS.slice(1)) {
-    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit11(a.stackId, b.stackId));
+    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit(a.stackId, b.stackId));
     for (const entry3 of biggestFirst) {
       if (fits())
         break;
@@ -56810,7 +57058,7 @@ function fitBody(input2, options = {}) {
         entry3.level = level;
     }
   }
-  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit11(a.stackId, b.stackId));
+  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit(a.stackId, b.stackId));
   for (const entry3 of smallestFirst) {
     const reached = entry3.level;
     for (const level of LEVELS.slice(0, reached)) {
@@ -57109,156 +57357,71 @@ function deployFailureText(reason) {
   }
 }
 
-// src/core/attribution.ts
-var NAMED_ON_A_ROW = 5;
-var COMMIT_FILE_CAP = 300;
-function isCommitId(text6) {
-  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(text6);
-}
-var NEVER_DEPLOYED = "not deployed from this dashboard yet";
-function pullRequestOf(commit, walk2) {
-  return commit.pullRequests.find((pullRequest) => pullRequest.merged && pullRequest.base === walk2.defaultBranch);
-}
-function inRange(walk2, from) {
-  const bySha = new Map(walk2.commits.map((commit) => [commit.sha, commit]));
-  if (!bySha.has(from))
-    return { commits: walk2.commits, earlier: true };
-  const reached = new Set;
-  const queue = [from];
-  for (let sha = queue.pop();sha !== undefined; sha = queue.pop()) {
-    if (reached.has(sha))
-      continue;
-    reached.add(sha);
-    queue.push(...bySha.get(sha)?.parents.filter((parent) => bySha.has(parent)) ?? []);
-  }
-  return { commits: walk2.commits.filter(({ sha }) => !reached.has(sha)), earlier: false };
-}
-function directPushesToRead(walk2, from) {
-  const wanted = new Set;
-  for (const start of new Set(from)) {
-    for (const commit of inRange(walk2, start).commits) {
-      if (!pullRequestOf(commit, walk2))
-        wanted.add(commit.sha);
-    }
-  }
-  return walk2.commits.filter(({ sha }) => wanted.has(sha)).map(({ sha }) => sha);
-}
-function by(author2) {
-  return author2 === undefined ? "" : ` by ${escapeText(author2)}`;
-}
-function nameOf(merge3) {
-  return merge3.kind === "pull-request" ? `#${merge3.number}${by(merge3.author)}` : `[${merge3.sha.slice(0, 7)}](${merge3.url})${by(merge3.author)}`;
-}
-function countOf(merges) {
-  const pushes = merges.filter((merge3) => merge3.kind === "push").length;
-  return [
-    merges.length - pushes && plural2(merges.length - pushes, "pull request"),
-    pushes && `${pushes} direct push${pushes === 1 ? "" : "es"}`
-  ].filter(Boolean).join(" and ");
-}
-function inLink(sha) {
-  return sha.slice(0, 12);
-}
-function attributor(input2) {
-  const { walk: walk2, repoUrl } = input2;
-  const mergedBy = new Map;
-  const mergeOf = new Map;
-  const judge = (merge3, files) => {
-    if (files === undefined)
-      return { merge: merge3, claimedBy: new Set, outside: true };
-    const { claims, unclaimed } = claim2(input2.stacks, [...files], input2.unrelated);
-    return { merge: merge3, claimedBy: new Set(claims.keys()), outside: unclaimed.length > 0 };
-  };
-  for (const commit of walk2.commits) {
-    const pullRequest = pullRequestOf(commit, walk2);
-    const key = pullRequest ? `#${pullRequest.number}` : commit.sha;
-    let merged = mergedBy.get(key);
-    if (!merged && pullRequest) {
-      const known = pullRequest.changedFiles <= pullRequest.files.length;
-      merged = judge({
-        kind: "pull-request",
-        number: pullRequest.number,
-        title: pullRequest.title,
-        url: `${repoUrl}/pull/${pullRequest.number}`,
-        ...pullRequest.author === undefined ? {} : { author: pullRequest.author }
-      }, known ? pullRequest.files : undefined);
-    } else if (!merged) {
-      const files = input2.pushFiles.get(commit.sha);
-      merged = judge({
-        kind: "push",
-        sha: commit.sha,
-        message: commit.message,
-        url: `${repoUrl}/commit/${commit.sha}`,
-        ...commit.author === undefined ? {} : { author: commit.author }
-      }, files !== undefined && files.length < COMMIT_FILE_CAP ? files : undefined);
-    }
-    mergedBy.set(key, merged);
-    mergeOf.set(commit.sha, merged);
-  }
-  const ranges = new Map;
-  return (stackId2, from) => {
-    if (from === undefined) {
-      return { lines: { full: NEVER_DEPLOYED, counted: NEVER_DEPLOYED }, merges: [] };
-    }
-    const range = ranges.get(from) ?? inRange(walk2, from);
-    ranges.set(from, range);
-    const merged = [...new Set(range.commits.flatMap(({ sha }) => mergeOf.get(sha) ?? []))];
-    const claimed = merged.filter(({ claimedBy }) => claimedBy.has(stackId2)).map((m) => m.merge);
-    const outside = merged.filter((m) => !m.claimedBy.has(stackId2) && m.outside).length;
-    const line = (names) => {
-      const parts = [...names];
-      const and = () => parts.length > 0 ? "and " : "";
-      if (outside > 0)
-        parts.push(`${and()}${plural2(outside, "change")} outside this stack`);
-      if (range.earlier)
-        parts.push(`${and()}earlier changes`);
-      const text6 = parts.length > 0 ? `from ${parts.join(", ")}` : "nothing this stack claims has changed since its last deploy";
-      return `${text6} · [compare](${repoUrl}/compare/${inLink(from)}...${inLink(input2.scanSha)})`;
-    };
-    const named = claimed.slice(0, NAMED_ON_A_ROW).map(nameOf);
-    const more = claimed.length - named.length;
-    return {
-      lines: {
-        full: line([named.join(", "), more > 0 ? `and ${more} more` : ""].filter(Boolean)),
-        counted: line(claimed.length > 0 ? [countOf(claimed)] : [])
-      },
-      merges: claimed
-    };
-  };
-}
-
 // src/github/attribution.ts
+var READS_PER_JOB = 100;
 function attributionSource(github, input2, onFailure) {
   let walk2;
   let failed = false;
   const pushFiles = new Map;
+  const pullRequestFiles = new Map;
+  let reads = 0;
+  const { lookback, trailLength, ...rest } = input2;
+  const read4 = async (ranges) => {
+    try {
+      if (failed)
+        return false;
+      if (!isCommitId(input2.scanSha))
+        throw new Error("the scanned commit is no commit id");
+      if (ranges.length === 0)
+        return true;
+      walk2 ??= await github.walkCommits(input2.scanSha, lookback ?? LOOKBACK);
+      for (const sha of directPushesToRead(walk2, ranges)) {
+        if (pushFiles.has(sha) || reads >= READS_PER_JOB)
+          continue;
+        reads++;
+        pushFiles.set(sha, await github.listCommitFiles(sha));
+      }
+      for (const number4 of pullRequestsToRead(walk2, ranges)) {
+        if (pullRequestFiles.has(number4) || reads >= READS_PER_JOB)
+          continue;
+        reads++;
+        pullRequestFiles.set(number4, await github.listPullRequestFiles(number4));
+      }
+      return true;
+    } catch (error63) {
+      failed = true;
+      const words = error63 instanceof Error ? error63.message : String(error63);
+      onFailure(words.replace(/\.+$/, ""));
+      return false;
+    }
+  };
+  const of = () => attributor({
+    ...rest,
+    walk: walk2 ?? { defaultBranch: "", commits: [] },
+    pushFiles,
+    pullRequestFiles
+  });
   return {
     async attribute(from) {
       const starts = [...from.values()].filter((sha) => sha !== undefined);
-      try {
-        if (failed)
-          return new Map;
-        if (!isCommitId(input2.scanSha))
-          throw new Error("the scanned commit is no commit id");
-        if (starts.length > 0) {
-          walk2 ??= await github.walkCommits(input2.scanSha);
-          for (const sha of directPushesToRead(walk2, starts)) {
-            if (!pushFiles.has(sha))
-              pushFiles.set(sha, await github.listCommitFiles(sha));
-          }
-        }
-      } catch (error63) {
-        failed = true;
-        const words = error63 instanceof Error ? error63.message : String(error63);
-        onFailure(words.replace(/\.+$/, ""));
+      if (!await read4(starts))
         return new Map;
+      const one = of();
+      return new Map([...from].map(([stackId2, sha]) => [stackId2, one(stackId2, sha)]));
+    },
+    async ship(trail) {
+      const shown3 = newestTrail(trail, trailLength).filter(({ shipped }) => shipped);
+      const ranges = shown3.flatMap(({ shipped }) => shipped ? [shipped] : []);
+      if (ranges.length === 0 || !await read4(ranges))
+        return new Map;
+      const one = of();
+      const lines = new Map;
+      for (const entry3 of shown3) {
+        const said = entry3.shipped && one.shipped(entry3.stackId, entry3.shipped.from, entry3.shipped.to);
+        if (said)
+          lines.set(entry3, said);
       }
-      const of = attributor({
-        ...input2,
-        walk: walk2 ?? { defaultBranch: "", commits: [] },
-        pushFiles
-      });
-      return new Map([...from].map(([stackId2, sha]) => [stackId2, of(stackId2, sha)]));
+      return lines;
     }
   };
 }
@@ -57414,7 +57577,7 @@ async function settleEndedRuns(github, records, repoUrl) {
 
 // src/render/changes.ts
 function orderChanges(diff2) {
-  const changes = [...diff2.changes].sort((a, b) => byCodeUnit11(a.address, b.address));
+  const changes = [...diff2.changes].sort((a, b) => byCodeUnit(a.address, b.address));
   return {
     deletes: changes.filter((change3) => change3.op === "delete"),
     replaces: changes.filter((change3) => change3.op === "replace"),
@@ -57765,7 +57928,7 @@ function json2(value) {
 `;
 }
 function scanResultFile(input2) {
-  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit11(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? {
+  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? {
     stack: stack.diff.stackId,
     seconds: seconds(milliseconds),
     ...diffOf(stack.diff),
@@ -58072,7 +58235,9 @@ async function deploy(context3, id, payload, runUrl, progress) {
         })),
         unrelated: config2.scan.unrelated,
         repoUrl: context3.repoUrl,
-        scanSha: context3.sha
+        scanSha: context3.sha,
+        ...config2.attribution,
+        trailLength: config2.dashboard.recentlyDeployed
       }, (why) => log.info(`Attribution was left off the row: ${why}. It only explains a row, so nothing else changes (record 0026).`))
     };
   } catch (error63) {
@@ -58303,6 +58468,7 @@ async function swapRow(context3, setup, id, make) {
     const facts = deployFacts(await readDeploymentRecords(github, setup.stacks.map(({ environment }) => environment), [{ stackId: id, environment: setup.stack.environment }]));
     const attributed = await setup.attribution.attribute(new Map([[id, lastDeployedCommit(facts, id)]]));
     const mine = make(facts, attributed.get(id)?.lines);
+    const shipped = await setup.attribution.ship(facts.trail);
     const rows = [];
     const carried = [];
     let placed2 = false;
@@ -58327,13 +58493,14 @@ async function swapRow(context3, setup, id, make) {
       rows,
       carried,
       redact: setup.config.dashboard.redact,
-      recentlyDeployed: facts.trail.map(({ stackId: stack, ticker, run, at, result: result2, reason }) => ({
-        stackId: stack,
-        result: result2,
-        reason,
-        ticker,
-        at,
-        runUrl: `${context3.repoUrl}/actions/runs/${run}`
+      recentlyDeployed: facts.trail.map((entry3) => ({
+        stackId: entry3.stackId,
+        result: entry3.result,
+        reason: entry3.reason,
+        ticker: entry3.ticker,
+        at: entry3.at,
+        runUrl: `${context3.repoUrl}/actions/runs/${entry3.run}`,
+        shipped: shipped.get(entry3)
       })),
       repoUrl: context3.repoUrl,
       actionRef: context3.actionRef,
@@ -61159,7 +61326,9 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
     })),
     unrelated: config2.scan.unrelated,
     repoUrl: context3.repoUrl,
-    scanSha: root.scanSha
+    scanSha: root.scanSha,
+    ...config2.attribution,
+    trailLength: config2.dashboard.recentlyDeployed
   }, (why2) => context3.log.info(`Attribution was left off the rows: ${why2}. It only explains a row, so nothing else changes (record 0026).`));
   attribution.set(root.scanSha, source);
   const deployingIds = [
@@ -61167,6 +61336,7 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
     ...swap.dropped.filter((id) => facts.byStack.get(id)?.kind === "open")
   ];
   const lines3 = await source.attribute(new Map(deployingIds.map((id) => [id, lastDeployedCommit(facts, id)])));
+  const shipped = await source.ship(facts.trail);
   const startedBy = new Map(swap.started.map((one) => [one.stackId, one]));
   const mine = (one, destroys) => ({
     state: "deploying",
@@ -61229,13 +61399,14 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
     rows,
     carried,
     redact: config2.dashboard.redact,
-    recentlyDeployed: facts.trail.map(({ stackId: id, ticker, run, at, result, reason }) => ({
-      stackId: id,
-      result,
-      reason,
-      ticker,
-      at,
-      runUrl: `${context3.repoUrl}/actions/runs/${run}`
+    recentlyDeployed: facts.trail.map((entry3) => ({
+      stackId: entry3.stackId,
+      result: entry3.result,
+      reason: entry3.reason,
+      ticker: entry3.ticker,
+      at: entry3.at,
+      runUrl: `${context3.repoUrl}/actions/runs/${entry3.run}`,
+      shipped: shipped.get(entry3)
     })),
     repoUrl: context3.repoUrl,
     actionRef: context3.actionRef,
@@ -61805,7 +61976,7 @@ function fitToBudget(entries, frameCost, budget) {
     entry3.level = level;
   };
   const fits = () => frameCost(shortened) + blocks2 - 1 <= budget;
-  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit11(a.stackId, b.stackId);
+  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit(a.stackId, b.stackId);
   for (const level of LEVELS2.slice(1)) {
     for (const entry3 of [...entries].sort(bySize((entry4) => entry4.level, -1))) {
       if (fits())
@@ -61846,7 +62017,7 @@ function toolDiffLine(options) {
   return `The tool's own diff of every pending stack, values included, is in the ${log}, in the stack's group.`;
 }
 function renderSummary(stacks, options = {}) {
-  const sorted = [...stacks].sort((a, b) => byCodeUnit11(stackIdOf2(a), stackIdOf2(b)));
+  const sorted = [...stacks].sort((a, b) => byCodeUnit(stackIdOf2(a), stackIdOf2(b)));
   const diffs = sorted.filter((stack) => stack.kind === "diff");
   const pending = diffs.filter((stack) => stack.diff.changes.length > 0);
   const hasDrift = (stack) => (stack.diff.drift ?? []).length > 0;
@@ -62126,7 +62297,7 @@ async function scanning(context3, report) {
   const config2 = loadConfig(context3.root);
   const found = await context3.adapter.discover(context3.root, config2);
   const ignored = ignoredStacks(config2, found);
-  const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit11(stackId(a.stack), stackId(b.stack)));
+  const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit(stackId(a.stack), stackId(b.stack)));
   const ids = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural2(stacks.length, "stack")}.`);
   const { logDiff } = config2.scan;
@@ -62153,7 +62324,9 @@ async function scanning(context3, report) {
     stacks: stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
     unrelated: config2.scan.unrelated,
     repoUrl: context3.repoUrl,
-    scanSha: context3.sha
+    scanSha: context3.sha,
+    ...config2.attribution,
+    trailLength: config2.dashboard.recentlyDeployed
   }, (message3) => log.info(`Attribution was left off the rows: ${message3}. It only explains a row, so the scan goes on without it (record 0026).`));
   let attributed = new Map;
   const previewed = new Map;
@@ -62174,7 +62347,7 @@ async function scanning(context3, report) {
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit11(a.id, b.id));
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit(a.id, b.id));
     if (round.length > 0 || rounds === 0) {
       await writeSummary2(context3, all, { logDiff, unclaimed });
       report.previewed = all;
@@ -62185,7 +62358,7 @@ async function scanning(context3, report) {
       label: config2.dashboard.label,
       logDiff
     });
-    const compose = (liveBody, deploys, waits, lines5) => {
+    const compose = (liveBody, deploys, waits, lines5, shipped = new Map) => {
       const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
       const liveRows = new Map;
       if (live?.root?.version === MARKER_VERSION) {
@@ -62292,13 +62465,14 @@ async function scanning(context3, report) {
         rows,
         carried,
         redact: config2.dashboard.redact,
-        recentlyDeployed: deploys.facts.trail.map(({ stackId: id, ticker, run, at: when, result, reason }) => ({
-          stackId: id,
-          result,
-          reason,
-          ticker,
-          at: when,
-          runUrl: runUrlOf(context3, run)
+        recentlyDeployed: deploys.facts.trail.map((entry3) => ({
+          stackId: entry3.stackId,
+          result: entry3.result,
+          reason: entry3.reason,
+          ticker: entry3.ticker,
+          at: entry3.at,
+          runUrl: runUrlOf(context3, entry3.run),
+          shipped: shipped.get(entry3)
         })),
         repoUrl: context3.repoUrl,
         actionRef: context3.actionRef,
@@ -62352,7 +62526,8 @@ async function scanning(context3, report) {
             deploys = await lateDeploys(context3, stacks, previewed, liveBody);
         }
         attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
-        composed = compose(liveBody, deploys, !config2.dashboard.readOnly && await resolveWaits(context3, liveBody, deploys), attributed);
+        const shipped = await attribution.ship(deploys.facts.trail);
+        composed = compose(liveBody, deploys, !config2.dashboard.readOnly && await resolveWaits(context3, liveBody, deploys), attributed, shipped);
         return composed.body;
       });
       break;
@@ -62380,7 +62555,7 @@ async function scanning(context3, report) {
     counts: dashboardCounts(parseDashboard(written.body).rows)
   };
   if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit11(a.id, b.id));
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit(a.id, b.id));
     await writeSummary2(context3, all, { logDiff, unclaimed }, attributed);
   }
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
@@ -62843,7 +63018,7 @@ function mergesWaiting(facts) {
       waiting.push({ id, fact: { ...fact, merge: fact.merge } });
     }
   }
-  return waiting.sort((a, b) => byCodeUnit11(a.id, b.id));
+  return waiting.sort((a, b) => byCodeUnit(a.id, b.id));
 }
 async function handOffMerges(context3, config2, stacks, previewed, waiting, handedOn) {
   const { github, log } = context3;
