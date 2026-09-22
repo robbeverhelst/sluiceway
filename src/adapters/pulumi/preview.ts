@@ -53,7 +53,7 @@ export async function preview(stack: Stack, options: PreviewOptions): Promise<Pr
     return failed(reason, toolLog(result.stderr, parseDiagnostics(result.stdout)));
   }
 
-  const parsed = parsePreview(result.stdout);
+  const parsed = parsePreview(result.stdout, options.showValues);
   if (!parsed.ok) {
     return failed({ kind: "unreadable-output" }, toolLog(result.stderr), parsed.problems);
   }

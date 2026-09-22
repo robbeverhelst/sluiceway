@@ -1,5 +1,7 @@
 # A pending row links to a preview page: a check run with the stack's diff
 
+> Amended by 0052: the page shows the old and new value at the paths that `dashboard.showValues` lists, as the row does, and says so in its summary. That is the separate decision this record asked for.
+
 The first real user asked why the preview is not there when they click the link (onboarding log, hurdle 18, part C). Record 0044 sends a pending row's `preview` link to the summary of the attempt, where the stack is one section among all the others, and record 0048 sends it to the job log when `scan.logDiff` is on. Neither is a page of that stack. The owner decided on 2026-09-22 that a GitHub check run per pending stack becomes that page, for 0.2.0. The research on the branch `research/preview-page` (`docs/research/preview-page.md`) measured what a check run made with the workflow token can and cannot do. This record fixes how Sluiceway uses one.
 
 ## What was measured (research, 2026-09-22)

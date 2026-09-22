@@ -79,7 +79,9 @@ export function renderPreviewPage(
     ...(destroys.length > 0
       ? [`:warning: **This deploy ${destroyWords(deletes.length, replaces.length)}.**`]
       : []),
-    `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.`,
+    diff.changes.some((change) => (change.values ?? []).length > 0)
+      ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.`
+      : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.`,
     `Every stack this scan previewed is in the [summary](${links.summary}) of the scan, and the tool's own words are in the ${jobLog(links)}, in the group <code>${id}</code>.`,
     ...(options.toolDiffInLog
       ? [

@@ -94,7 +94,7 @@ Pin the dashboard issue to the top of the repo's issue list when Sluiceway creat
 
 Default: `false`
 
-Keep resource types, resource names and property names out of the issue. A redacted row shows the stack id, the counts by op, the destroy warning, the failure line and a link to the run's summary, which stays full. Values are never shown either way.
+Keep resource types, resource names and property names out of the issue. A redacted row shows the stack id, the counts by op, the destroy warning, the failure line and a link to the run's summary, which stays full. It also turns [`dashboard.showValues`](#dashboardshowvalues) off, so no value is shown anywhere.
 
 Redact is about reach, not access. An issue body is emailed, sent to integrations and indexed on a public repo. A job summary sits behind a click. But anyone who can read the repo can open the run and read the code that names the resources. **It is not access control.** Turning it on or off never voids a tick: the diff hash covers the whole diff either way.
 
@@ -118,6 +118,39 @@ dashboard:
 ```
 
 When you move to the whole workflow, take the key out. A change to `sluiceway.yaml` makes the next push a full scan, so every pending row gets its box back in that scan.
+
+### `dashboard.showValues`
+
+Default: `[]`
+
+Property paths whose old and new value may appear on the dashboard. A listed path that changes reads `old → new` right after it, so a version bump shows as a version bump:
+
+```
+update kubernetes:helm.sh/v3:Release odoo-release · version 17.0.3 → 17.0.4
+```
+
+Without this key Sluiceway shows which properties change and never what they change to ([record 0021](adr/0021-no-property-value-ever-leaves-the-adapter.md)). The list is the one exception, and it is yours: Sluiceway never guesses that a value is safe.
+
+- **An entry matches a path exactly as the row writes it**, such as `values.image.tag`, `spec.template.spec.containers[0].image` or `data["app.properties"]`. Quote an entry that holds `[` or `"` in YAML.
+- **`*` stands for part of one name.** It never crosses a `.` or a bracket, so `values.*` matches `values.replicas` and not `values.image.tag`. `**` and an entry made only of `*` are refused.
+- **A value the tool marks secret is never shown**, listed or not. Only the tool's own mark counts. A value you forgot to mark is shown if you list its path, so list only paths whose values you would put in an issue.
+- **Only single-line text, numbers and booleans are shown.** A whole object or list, a value of several lines, and a value that is known only once the deploy runs show nothing. A value longer than 40 characters keeps its start and its end.
+- **The same values appear in the summary, on the preview page, in the result file and in the job log.** The issue is emailed and kept in its edit history, so a value that reached it cannot be taken back.
+- **`dashboard.redact: true` turns the list off.** No value is even read.
+- **The diff hash does not cover values.** A tick approves the paths, as without the list: if a later merge moves `17.0.4` to `17.0.5` before the deploy, `17.0.5` deploys. See [what a tick promises](security.md#what-a-tick-promises).
+
+A list to copy in, of paths that are nearly always safe to show:
+
+```yaml
+dashboard:
+  showValues:
+    - version          # a Helm release's chart version
+    - chart.version
+    - values.image.tag # the image tag in a chart's values
+    - image            # a container image
+```
+
+Check every path against your own stacks before you add it. A chart can put a token anywhere in its `values`, such as `values.githubConfigSecret.github_token`, and the tool does not know it is one. That is why the list takes exact paths and `*` never reaches a level further down.
 
 ### `tickers`
 

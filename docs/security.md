@@ -6,7 +6,7 @@ What a tick protects, what it does not, and how to make it stronger with what yo
 
 A tick is a request to deploy one stack exactly as its row shows it. Before anything deploys, Sluiceway checks who ticked, previews the stack again, and deploys only when the fresh preview gives the same **diff hash** as the row that was ticked. The hash covers every change of the diff: the address of each resource, what happens to it (create, update, replace, delete, import and so on), and the names of the properties that change.
 
-It does not cover **values**. Sluiceway never shows a value, so it never hashes one either: a tick approves what a person could see. That leaves one gap, and it is deliberate. Someone ticks a row that says `web: update, image`. Before the deploy starts, another merge changes the image from `v2` to `v3`. The same resource changes the same property, the hash is the same, and `v3` goes out.
+It does not cover **values**. Without [`dashboard.showValues`](configuration.md#dashboardshowvalues) Sluiceway never shows a value, and with it the values of the listed paths are shown and still not hashed: a tick approves the changes, not their values. That leaves one gap, and it is deliberate. Someone ticks a row that says `web: update, image`. Before the deploy starts, another merge changes the image from `v2` to `v3`. The same resource changes the same property, the hash is the same, and `v3` goes out.
 
 So a tick means "change these properties on these resources, at whatever value the code has when the deploy runs". Two things bound it:
 
@@ -68,7 +68,8 @@ Anyone who can edit the dashboard can start the `resolve` job. It is built to be
 
 ## What reaches the issue
 
-- **Never a value.** The dashboard shows resource types, resource names and the paths of changed properties (property names, list indexes and map keys), never what a property is set to, whether or not the tool marks it secret. The job summary, the preview pages and the job log's diff follow the same rule.
+- **No value, unless you list its path.** The dashboard shows resource types, resource names and the paths of changed properties (property names, list indexes and map keys), never what a property is set to, whether or not the tool marks it secret. The job summary, the preview pages and the job log's diff follow the same rule.
+- **`dashboard.showValues` is the one exception.** A value at a path you list shows as `old → new`, on the dashboard and everywhere the path does. Sluiceway matches only the paths you wrote, never guesses that a value is safe, and never shows a value the tool marks secret. A value you forgot to mark is shown if you list its path, and an issue keeps every value that reached it in its edit history ([configuration](configuration.md#dashboardshowvalues)).
 - **Never the tool's own words.** Error messages, warnings and anything else the tool prints stay in the job log. A failure row says why in a fixed phrase and links to the run.
 - **Names, unless you redact.** Resource types, resource names and property paths, map keys included, are in the issue, which is emailed, sent to integrations and indexed on a public repo. `dashboard.redact: true` keeps them out of the issue and leaves the job summary and the preview pages full. It is about reach, not access: anyone who can read the repo can open the run and read the code ([configuration](configuration.md#dashboardredact)).
 - **No value in the job log either, unless you ask for one.** `scan.logDiff: true` prints the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else. See [The tool's own diff in the job log](#the-tools-own-diff-in-the-job-log).
@@ -89,7 +90,7 @@ What the tool prints comes from a second run of the program, next to the one tha
 
 ## The preview pages
 
-A scan writes one preview page per pending stack: a check run on the scanned commit, named `sluiceway / <stack id>`, with what the summary shows of that stack. Resource types, resource names and property paths, never a value, and never the tool's own words ([record 0050](adr/0050-a-pending-row-links-to-a-preview-page-a-check-run-with-the-stacks-diff.md)). That rule has one more reason here: the masks your workflow registers only apply to the job log, and a check run never passes through it. So even with `scan.logDiff` on, the tool's diff stays in the job log and the page only says where it is.
+A scan writes one preview page per pending stack: a check run on the scanned commit, named `sluiceway / <stack id>`, with what the summary shows of that stack. Resource types, resource names and property paths, a value only at a path that `dashboard.showValues` lists, and never the tool's own words ([record 0050](adr/0050-a-pending-row-links-to-a-preview-page-a-check-run-with-the-stacks-diff.md)). That rule has one more reason here: the masks your workflow registers only apply to the job log, and a check run never passes through it. So even with `scan.logDiff` on, the tool's diff stays in the job log and the page only says where it is.
 
 Who can read a page: everyone who can read the repository, in the web interface and through the API. In a public repository, anyone, logged in or not. Its name shows in the commit's list of checks and, when the page joined a check suite of a `push`, in a pull request's checks. A page lives as long as the repository's retention setting keeps checks, and goes away earlier when someone deletes the workflow run whose check suite it joined. GitHub has no way to delete a check run on its own.
 

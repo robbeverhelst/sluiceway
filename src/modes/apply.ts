@@ -33,6 +33,7 @@ import {
   deployFailureText,
   previewFailureText,
 } from "../core/failure-reason.ts";
+import { shownValues } from "../core/show-values.ts";
 import { stackId } from "../core/stack.ts";
 import { type AttributionSource, attributionSource } from "../github/attribution.ts";
 import { findDashboard } from "../github/dashboard.ts";
@@ -461,6 +462,7 @@ async function deploy(
   const options = {
     ...tool,
     timeoutMinutes: setup.stack.previewTimeout ?? context.previewTimeoutMinutes,
+    showValues: shownValues(setup.config.dashboard),
   };
   const preview = () => adapter.preview(setup.stack.stack, options);
   const fresh = await preview();

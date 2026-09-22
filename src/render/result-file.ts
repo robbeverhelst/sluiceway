@@ -1,8 +1,8 @@
 // The result file of a scan and of an apply (record 0041): what the summary
 // holds, as JSON, for a workflow step that sends it somewhere or charts it.
 // Sluiceway sends nothing itself. The file is rendered from the same summary
-// data as the summary (records 0021 and 0037), which has no field for a value,
-// and every failure reason in it comes from the fixed list (record 0022). The
+// data as the summary (records 0021 and 0037), which holds a value only at a
+// path that `dashboard.showValues` lists (record 0052), and every failure reason in it comes from the fixed list (record 0022). The
 // schemas below are strict, so a field that is not named here cannot ride
 // along: the renderer checks its own output against them.
 
@@ -31,7 +31,8 @@ const countsSchema = z.strictObject({
 
 // One change as a row shows it: the type, the name, the op, the tracking
 // change and the paths of the changed properties, whole (record 0046). No
-// address and no value.
+// address, and a value only as a row shows it: at a path that
+// `dashboard.showValues` lists, shortened (record 0052).
 const changeSchema = z.strictObject({
   type: z.string(),
   name: z.string(),
@@ -39,6 +40,17 @@ const changeSchema = z.strictObject({
   tracking: z.enum(["import", "forget", "move"]).optional(),
   changedKeys: z.array(z.string()),
   replaceKeys: z.array(z.string()),
+  // Absent when no path of the change is listed. A side is absent when the
+  // property is not there on that side.
+  values: z
+    .array(
+      z.strictObject({
+        path: z.string(),
+        old: z.string().optional(),
+        new: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 const diffSchema = {
@@ -184,6 +196,9 @@ function changeOf(change: Change): z.infer<typeof changeSchema> {
     ...(change.tracking === undefined ? {} : { tracking: change.tracking }),
     changedKeys: sortedKeys(change.changedKeys),
     replaceKeys: sortedKeys(change.replaceKeys),
+    ...(change.values === undefined || change.values.length === 0
+      ? {}
+      : { values: change.values.map((value) => ({ ...value })) }),
   };
 }
 
@@ -282,7 +297,7 @@ export function resultFileJsonSchema(): Record<string, unknown> {
     $schema,
     title: "Sluiceway result file",
     description:
-      "What the summary of a scan or an apply holds, written under RUNNER_TEMP. No property value and none of the tool's own words.",
+      "What the summary of a scan or an apply holds, written under RUNNER_TEMP. No property value except at the paths dashboard.showValues lists, and none of the tool's own words.",
     ...rest,
   };
 }

@@ -2,6 +2,7 @@ import { LineCounter, parseDocument } from "yaml";
 import { z } from "zod";
 import { knownStacks } from "./discovery.ts";
 import { globMatcher } from "./glob.ts";
+import { showValuesEntryProblem } from "./show-values.ts";
 import { type Stack, stackId } from "./stack.ts";
 
 // Loose on purpose: old logins break today's rules, and managed accounts
@@ -121,6 +122,19 @@ export const configSchema = z.strictObject({
           "Draw no boxes: pending rows have none, there is no rescan box, and a line under the Pending heading says so. For a workflow that only scans.",
         )
         .default(false),
+      // Slice 2.19: the one list that lets a value reach the issue (record
+      // 0052). Empty by default.
+      showValues: z
+        .array(
+          text.superRefine((entry, context) => {
+            const problem = showValuesEntryProblem(entry);
+            if (problem !== undefined) context.addIssue({ code: "custom", message: problem });
+          }),
+        )
+        .describe(
+          'Property paths whose old and new value may appear on the dashboard, as "old → new". Exact paths, or "*" for part of one name. Never a value the tool marks secret, and none at all with redact on.',
+        )
+        .default([]),
     })
     .prefault({}),
   tickers: tickers

@@ -4,7 +4,7 @@ exports[`the JSON schema of the result file 1`] = `
 "{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Sluiceway result file",
-  "description": "What the summary of a scan or an apply holds, written under RUNNER_TEMP. No property value and none of the tool's own words.",
+  "description": "What the summary of a scan or an apply holds, written under RUNNER_TEMP. No property value except at the paths dashboard.showValues lists, and none of the tool's own words.",
   "oneOf": [
     {
       "type": "object",
@@ -176,6 +176,27 @@ exports[`the JSON schema of the result file 1`] = `
                           "type": "array",
                           "items": {
                             "type": "string"
+                          }
+                        },
+                        "values": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "path": {
+                                "type": "string"
+                              },
+                              "old": {
+                                "type": "string"
+                              },
+                              "new": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "path"
+                            ],
+                            "additionalProperties": false
                           }
                         }
                       },
@@ -403,6 +424,27 @@ exports[`the JSON schema of the result file 1`] = `
                             "items": {
                               "type": "string"
                             }
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "path": {
+                                  "type": "string"
+                                },
+                                "old": {
+                                  "type": "string"
+                                },
+                                "new": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "path"
+                              ],
+                              "additionalProperties": false
+                            }
                           }
                         },
                         "required": [
@@ -538,6 +580,27 @@ exports[`the JSON schema of the result file 1`] = `
                             "type": "array",
                             "items": {
                               "type": "string"
+                            }
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "path": {
+                                  "type": "string"
+                                },
+                                "old": {
+                                  "type": "string"
+                                },
+                                "new": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "path"
+                              ],
+                              "additionalProperties": false
                             }
                           }
                         },

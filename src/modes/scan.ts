@@ -35,6 +35,7 @@ import {
   unclaimedToPlace,
 } from "../core/scan-plan.ts";
 import { everyPreviewFailed } from "../core/scan-result.ts";
+import { shownValues } from "../core/show-values.ts";
 import { stackId } from "../core/stack.ts";
 import { attributionSource } from "../github/attribution.ts";
 import { type DashboardResult, findDashboard, writeDashboard } from "../github/dashboard.ts";
@@ -297,7 +298,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       await checkVersion(context);
       versionChecked = true;
     }
-    const round = await previewAll(context, next, logDiff);
+    const round = await previewAll(context, next, logDiff, shownValues(config.dashboard));
     for (const one of round) previewed.set(one.id, one);
     logResults(context, round);
 
@@ -817,6 +818,7 @@ async function previewAll(
   context: ScanContext,
   stacks: ConfiguredStack[],
   logDiff: boolean,
+  showValues: readonly string[],
 ): Promise<Previewed[]> {
   const { log, now, adapter } = context;
   // Nothing to preview, so a repo without stacks needs no tool, and neither
@@ -835,6 +837,7 @@ async function previewAll(
     const options = {
       ...tool,
       timeoutMinutes: configured.previewTimeout ?? context.previewTimeoutMinutes,
+      showValues,
     };
     const result = await adapter.preview(configured.stack, options);
     const milliseconds = now().getTime() - started;

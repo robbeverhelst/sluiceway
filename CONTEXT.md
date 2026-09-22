@@ -59,8 +59,12 @@ What deploying one stack would change, told as addresses, ops, tracking changes 
 _Avoid_: Plan, preview output, changeset
 
 **Value**:
-What a property is set to, before or after a deploy. A value never leaves the tool's adapter: Sluiceway shows that a property changes and never what it changes to, whether or not the tool marks it secret. The one exception is the tool diff, which a repo may turn on for the job log.
+What a property is set to, before or after a deploy. A value never leaves the tool's adapter: Sluiceway shows that a property changes and never what it changes to, whether or not the tool marks it secret. There are two exceptions, both a repo's own choice: the tool diff, which it may turn on for the job log, and the value list.
 _Avoid_: Secret (a secret is only one kind of value, and all values are treated alike), content, setting
+
+**Value list**:
+The property paths a repo names in `dashboard.showValues`, whose old and new value appear as `old → new` after the path, everywhere the path does. Only exact paths and globs a person wrote match, never a guess. A value the tool marks secret never shows, and `dashboard.redact` turns the list off. The diff hash does not cover the values.
+_Avoid_: Allowlist, safe values, visible values
 
 **Property path**:
 Where inside a resource a change happens, as the tool writes it: property names, list indexes and map keys, such as `spec.containers[0].image` or `data["app.properties"]`. Never a value. A row shortens a long one, and the summary shows it whole.

@@ -39,6 +39,15 @@
           "default": false,
           "type": "boolean",
           "description": "Draw no boxes: pending rows have none, there is no rescan box, and a line under the Pending heading says so. For a workflow that only scans."
+        },
+        "showValues": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Property paths whose old and new value may appear on the dashboard, as \"old → new\". Exact paths, or \"*\" for part of one name. Never a value the tool marks secret, and none at all with redact on."
         }
       },
       "additionalProperties": false

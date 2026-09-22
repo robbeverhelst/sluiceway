@@ -92,14 +92,18 @@ function typeAndName(urn: string): Pick<Change, "type" | "name"> | undefined {
 // update, and on a replace only when the provider does. Otherwise the reason
 // lists name what changed, as paths too or as top-level names. Creates,
 // deletes and tracking changes list no keys.
-function keys(step: PreviewStep, op: Op): Pick<Change, "changedKeys" | "replaceKeys"> {
+function keys(step: PreviewStep, op: Op): Pick<Change, "changedKeys" | "replaceKeys" | "values"> {
   if (op !== "update" && op !== "replace") return { changedKeys: [], replaceKeys: [] };
   const paths = step.detailedDiff ?? [];
   const changed = paths.length > 0 ? paths : (step.diffReasons ?? []);
   const replaceKeys = op === "replace" ? sortedSet(step.replaceReasons ?? []) : [];
   // What forced a replace is a changed key too, also when the tool leaves it
   // out of its own list.
-  return { changedKeys: sortedSet([...changed, ...replaceKeys]), replaceKeys };
+  const changedKeys = sortedSet([...changed, ...replaceKeys]);
+  // Values come with the paths of detailedDiff only, and only for the paths
+  // `dashboard.showValues` lists (record 0052).
+  const values = (step.values ?? []).filter((value) => changedKeys.includes(value.path));
+  return { changedKeys, replaceKeys, ...(values.length === 0 ? {} : { values }) };
 }
 
 function sortedSet(names: string[]): string[] {

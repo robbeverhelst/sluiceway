@@ -31906,7 +31906,9 @@ function keys(step, op) {
   const paths = step.detailedDiff ?? [];
   const changed = paths.length > 0 ? paths : step.diffReasons ?? [];
   const replaceKeys = op === "replace" ? sortedSet(step.replaceReasons ?? []) : [];
-  return { changedKeys: sortedSet([...changed, ...replaceKeys]), replaceKeys };
+  const changedKeys = sortedSet([...changed, ...replaceKeys]);
+  const values = (step.values ?? []).filter((value) => changedKeys.includes(value.path));
+  return { changedKeys, replaceKeys, ...values.length === 0 ? {} : { values } };
 }
 function sortedSet(names) {
   return [...new Set(names)].sort(byCodeUnit);
@@ -51285,27 +51287,174 @@ function bigint3(params) {
 function date4(params) {
   return _coercedDate(ZodDate, params);
 }
+// src/core/show-values.ts
+function shownValues(dashboard) {
+  return dashboard.redact ? [] : dashboard.showValues;
+}
+function isListedPath(list, path) {
+  return list.some((entry) => entryPattern(entry).test(path));
+}
+var patterns = new Map;
+function entryPattern(entry) {
+  let pattern = patterns.get(entry);
+  if (pattern === undefined) {
+    const parts = entry.split("*").map((part) => part.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&"));
+    pattern = new RegExp(`^${parts.join("[^.[\\]]*")}$`, "u");
+    patterns.set(entry, pattern);
+  }
+  return pattern;
+}
+function showValuesEntryProblem(entry) {
+  const quoted = JSON.stringify(entry);
+  if (entry === "")
+    return;
+  if (entry.includes("**")) {
+    return `${quoted} uses "**". An entry matches one path, and "*" stands for part of one name. Write each path whose value may appear.`;
+  }
+  if (!/[^*.[\]]/.test(entry)) {
+    return `${quoted} names no property. Write each path whose value may appear.`;
+  }
+  return;
+}
+var VALUE_LENGTH = 40;
+var VALUE_HEAD = 19;
+function shortValue(value) {
+  const points = Array.from(value);
+  if (points.length <= VALUE_LENGTH)
+    return value;
+  const tail = points.slice(points.length - (VALUE_LENGTH - VALUE_HEAD - 1));
+  return `${points.slice(0, VALUE_HEAD).join("")}…${tail.join("")}`;
+}
+
+// src/adapters/pulumi/values.ts
+var SECRET = "[secret]";
+var UNKNOWN = "04da6b54-80e4-46f7-96ec-b56ff0331ba9";
+function listedValues(list, sources) {
+  const shown = [];
+  for (const { path, inputDiff } of sources.paths) {
+    if (!isListedPath(list, path))
+      continue;
+    const old = side(valueAt(inputDiff ? sources.oldInputs : sources.oldOutputs, path));
+    const next = side(valueAt(sources.newInputs, path));
+    if (old === "refused" || next === "refused")
+      continue;
+    if (old === undefined && next === undefined)
+      continue;
+    shown.push({
+      path,
+      ...old === undefined ? {} : { old },
+      ...next === undefined ? {} : { new: next }
+    });
+  }
+  return shown.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+}
+function side(found) {
+  if (found.kind === "refused")
+    return "refused";
+  if (found.kind === "absent" || found.value === null)
+    return;
+  const { value } = found;
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
+  if (typeof value !== "string")
+    return "refused";
+  if (value === SECRET || value === UNKNOWN)
+    return "refused";
+  if (/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value))
+    return "refused";
+  return shortValue(value);
+}
+function valueAt(root, path) {
+  const found = [];
+  const walk = (node2, prefix) => {
+    if (node2 === SECRET) {
+      found.push({ kind: "refused" });
+      return;
+    }
+    for (const [segment, child] of children(node2, prefix === "")) {
+      const at = prefix + segment;
+      if (at === path)
+        found.push({ kind: "found", value: child });
+      else if (path.startsWith(at) && (path[at.length] === "." || path[at.length] === "["))
+        walk(child, at);
+    }
+  };
+  walk(root, "");
+  const [only] = found;
+  if (found.length > 1)
+    return { kind: "refused" };
+  return only ?? { kind: "absent" };
+}
+function children(node2, top) {
+  if (Array.isArray(node2))
+    return node2.map((child, index) => [`[${index}]`, child]);
+  if (typeof node2 !== "object" || node2 === null)
+    return [];
+  return Object.entries(node2).map(([key, child]) => [segmentOf(key, top), child]);
+}
+function segmentOf(key, top) {
+  if (/^[\p{L}_][\p{L}\p{Nd}_]*$/u.test(key))
+    return top ? key : `.${key}`;
+  return `["${key.replaceAll('"', "\\\"")}"]`;
+}
+
 // src/adapters/pulumi/schema.ts
 var oldState = exports_external.object({ retainOnDelete: exports_external.boolean().nullish() });
-var step = exports_external.object({
+var stepFields = {
   op: exports_external.string(),
   urn: exports_external.string(),
-  oldState: oldState.nullish(),
   diffReasons: exports_external.array(exports_external.string()).nullish(),
-  replaceReasons: exports_external.array(exports_external.string()).nullish(),
+  replaceReasons: exports_external.array(exports_external.string()).nullish()
+};
+var step = exports_external.object({
+  ...stepFields,
+  oldState: oldState.nullish(),
   detailedDiff: exports_external.record(exports_external.string(), exports_external.unknown()).nullish().transform((paths) => paths == null ? undefined : Object.keys(paths))
 });
+function stepWithValues(list) {
+  const state = exports_external.object({ inputs: exports_external.unknown().optional(), outputs: exports_external.unknown().optional() }).nullish();
+  return exports_external.object({
+    ...stepFields,
+    oldState: exports_external.object({
+      retainOnDelete: exports_external.boolean().nullish(),
+      inputs: exports_external.unknown().optional(),
+      outputs: exports_external.unknown().optional()
+    }).nullish(),
+    newState: state,
+    detailedDiff: exports_external.record(exports_external.string(), exports_external.unknown()).nullish()
+  }).transform(({ oldState: old, newState, detailedDiff, ...rest }) => {
+    const paths = Object.entries(detailedDiff ?? {}).map(([path, entry]) => ({
+      path,
+      inputDiff: typeof entry === "object" && entry !== null && "inputDiff" in entry ? entry.inputDiff === true : false
+    }));
+    const values = listedValues(list, {
+      paths,
+      oldInputs: old?.inputs,
+      oldOutputs: old?.outputs,
+      newInputs: newState?.inputs
+    });
+    return {
+      ...rest,
+      oldState: old == null ? old : { retainOnDelete: old.retainOnDelete },
+      detailedDiff: detailedDiff == null ? undefined : Object.keys(detailedDiff),
+      ...values.length === 0 ? {} : { values }
+    };
+  });
+}
 var diagnostics = exports_external.array(exports_external.object({ message: exports_external.string() })).nullish();
-var previewDocument = exports_external.object({ steps: exports_external.array(step), diagnostics });
+function previewDocument(showValues) {
+  const steps = showValues.length === 0 ? step : stepWithValues(showValues);
+  return exports_external.object({ steps: exports_external.array(steps), diagnostics });
+}
 var failedDocument = exports_external.object({ diagnostics });
-function parsePreview(stdout) {
+function parsePreview(stdout, showValues = []) {
   let json2;
   try {
     json2 = JSON.parse(stdout);
   } catch {
     return { ok: false, problems: ["The tool's output: expected one JSON document."] };
   }
-  const parsed = previewDocument.safeParse(json2);
+  const parsed = previewDocument(showValues).safeParse(json2);
   if (!parsed.success)
     return { ok: false, problems: parsed.error.issues.map(problem) };
   return {
@@ -51366,7 +51515,7 @@ async function preview(stack, options) {
     const reason = result.exitCode === STACK_NOT_FOUND_EXIT_CODE ? { kind: "stack-not-found" } : { kind: "tool-error", exitCode: result.exitCode };
     return failed(reason, toolLog(result.stderr, parseDiagnostics(result.stdout)));
   }
-  const parsed = parsePreview(result.stdout);
+  const parsed = parsePreview(result.stdout, options.showValues);
   if (!parsed.ok) {
     return failed({ kind: "unreadable-output" }, toolLog(result.stderr), parsed.problems);
   }
@@ -52296,8 +52445,15 @@ function counts(changes) {
     trackingOnly && `${trackingOnly} tracking only`
   ].filter(Boolean).join(", ");
 }
-function codes(keys2) {
-  return keys2.map((key) => `<code>${escapeText(key)}</code>`).join(", ");
+function valueSuffix(change, path, show) {
+  const value = change.values?.find((one) => one.path === path);
+  if (value === undefined)
+    return "";
+  const side2 = (text2) => text2 === undefined ? "nothing" : show(text2);
+  return ` ${side2(value.old)} → ${side2(value.new)}`;
+}
+function code(text2) {
+  return `<code>${escapeText(text2)}</code>`;
 }
 function sortedKeys(keys2) {
   return [...new Set(keys2)].sort(byCodeUnit2);
@@ -52325,7 +52481,7 @@ function changeLine(change, options = {}) {
   const capped = options.row === true && !isDestroy(change);
   const listed = capped ? others.slice(0, ROW_PATHS_PER_CHANGE) : others;
   const hidden = others.length - listed.length;
-  const show = (keys2) => codes(options.row ? keys2.map(shortPath) : keys2);
+  const show = (keys2) => keys2.map((key) => code(options.row ? shortPath(key) : key) + valueSuffix(change, key, code)).join(", ");
   const parts = [
     `<kbd>${cap}</kbd> <code>${escapeText(change.type)}</code> <b>${escapeText(change.name)}</b>`
   ];
@@ -52910,7 +53066,12 @@ var configSchema = exports_external.strictObject({
     pin: exports_external.boolean().describe("Pin the dashboard issue, best effort.").default(true),
     redact: exports_external.boolean().describe("Keep resource types, resource names and property names out of the issue. The summary stays full. Not access control.").default(false),
     personality: exports_external.boolean().describe("Show the header image and use the voice. false removes both.").default(true),
-    readOnly: exports_external.boolean().describe("Draw no boxes: pending rows have none, there is no rescan box, and a line under the Pending heading says so. For a workflow that only scans.").default(false)
+    readOnly: exports_external.boolean().describe("Draw no boxes: pending rows have none, there is no rescan box, and a line under the Pending heading says so. For a workflow that only scans.").default(false),
+    showValues: exports_external.array(text2.superRefine((entry, context3) => {
+      const problem2 = showValuesEntryProblem(entry);
+      if (problem2 !== undefined)
+        context3.addIssue({ code: "custom", message: problem2 });
+    })).describe('Property paths whose old and new value may appear on the dashboard, as "old → new". Exact paths, or "*" for part of one name. Never a value the tool marks secret, and none at all with redact on.').default([])
   }).prefault({}),
   tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
   deploys: exports_external.boolean().describe("false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.").default(true),
@@ -52953,7 +53114,7 @@ function readYaml(text3) {
 }
 function describe4(issue3, raw) {
   const at = where(issue3.path);
-  const value = valueAt(raw, issue3.path);
+  const value = valueAt2(raw, issue3.path);
   const problem2 = (text3) => [{ path: issue3.path, text: `${at}${text3}` }];
   const key = issue3.path.at(-1);
   if (issue3.code === "unrecognized_keys") {
@@ -52974,7 +53135,7 @@ function describe4(issue3, raw) {
     return problem2("is required. It is the directory of the stack, relative to the repo root.");
   }
   if (issue3.path[0] === "ignore" && issue3.path.length === 3) {
-    const glob = valueAt(raw, [...issue3.path.slice(0, -1), "glob"]);
+    const glob = valueAt2(raw, [...issue3.path.slice(0, -1), "glob"]);
     if (value === undefined && key === "reason") {
       return problem2(`is required. Say why the stack is left out, or write the glob as text: ${show(glob)}.`);
     }
@@ -53018,7 +53179,7 @@ var EXPECTED2 = {
 function isMapping(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function valueAt(raw, path) {
+function valueAt2(raw, path) {
   let value = raw;
   for (const segment of path) {
     if (typeof value !== "object" || value === null)
@@ -53152,10 +53313,10 @@ function read(file2) {
   try {
     return readFileSync2(file2, "utf8");
   } catch (error63) {
-    const code = error63.code;
-    if (code === "ENOENT")
+    const code2 = error63.code;
+    if (code2 === "ENOENT")
       return;
-    if (code === "EISDIR")
+    if (code2 === "EISDIR")
       throw new ConfigError(["it is not a file."]);
     throw error63;
   }
@@ -53537,8 +53698,10 @@ function logGroupTitle(stackId2) {
 }
 function changeLogLine(change) {
   const word = [change.op === "none" ? undefined : change.op, change.tracking].filter((part) => part !== undefined).join(" + ");
-  const forcing = sortedKeys(change.replaceKeys).map(oneLine);
-  const others = sortedKeys(change.changedKeys).map(oneLine).filter((key) => !forcing.includes(key));
+  const forcingKeys = sortedKeys(change.replaceKeys);
+  const withValue = (key) => oneLine(key) + valueSuffix(change, key, oneLine);
+  const forcing = forcingKeys.map(withValue);
+  const others = sortedKeys(change.changedKeys).filter((key) => !forcingKeys.includes(key)).map(withValue);
   const parts = [
     `${isDestroy(change) ? word.toUpperCase() : word} ${oneLine(change.type)} ${oneLine(change.name)}`
   ];
@@ -53632,7 +53795,12 @@ var changeSchema = exports_external.strictObject({
   op: exports_external.enum(["create", "update", "replace", "delete", "none"]),
   tracking: exports_external.enum(["import", "forget", "move"]).optional(),
   changedKeys: exports_external.array(exports_external.string()),
-  replaceKeys: exports_external.array(exports_external.string())
+  replaceKeys: exports_external.array(exports_external.string()),
+  values: exports_external.array(exports_external.strictObject({
+    path: exports_external.string(),
+    old: exports_external.string().optional(),
+    new: exports_external.string().optional()
+  })).optional()
 });
 var diffSchema = {
   state: exports_external.enum(["pending", "in-sync"]),
@@ -53705,7 +53873,8 @@ function changeOf(change) {
     op: change.op,
     ...change.tracking === undefined ? {} : { tracking: change.tracking },
     changedKeys: sortedKeys(change.changedKeys),
-    replaceKeys: sortedKeys(change.replaceKeys)
+    replaceKeys: sortedKeys(change.replaceKeys),
+    ...change.values === undefined || change.values.length === 0 ? {} : { values: change.values.map((value) => ({ ...value })) }
   };
 }
 function diffOf(diff) {
@@ -53999,7 +54168,8 @@ async function deploy(context3, id, payload, runUrl, progress) {
   }
   const options = {
     ...tool,
-    timeoutMinutes: setup.stack.previewTimeout ?? context3.previewTimeoutMinutes
+    timeoutMinutes: setup.stack.previewTimeout ?? context3.previewTimeoutMinutes,
+    showValues: shownValues(setup.config.dashboard)
   };
   const preview2 = () => adapter.preview(setup.stack.stack, options);
   const fresh = await preview2();
@@ -55189,7 +55359,7 @@ function renderPreviewPage(diff, links, options = {}) {
   const summary3 = [
     `**${id}** · ${counted}`,
     ...destroys.length > 0 ? [`:warning: **This deploy ${destroyWords(deletes.length, replaces.length)}.**`] : [],
-    `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.`,
+    diff.changes.some((change) => (change.values ?? []).length > 0) ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.` : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.`,
     `Every stack this scan previewed is in the [summary](${links.summary}) of the scan, and the tool's own words are in the ${jobLog(links)}, in the group <code>${id}</code>.`,
     ...options.toolDiffInLog ? [
       `The tool's own diff of this stack, values included, is in the ${jobLog(links)}, in the group <code>${id}</code>. It is not on this page.`
@@ -55599,7 +55769,7 @@ async function scanning(context3, report) {
       await checkVersion2(context3);
       versionChecked = true;
     }
-    const round = await previewAll(context3, next, logDiff);
+    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard));
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
@@ -55927,7 +56097,7 @@ async function checkVersion2(context3) {
     throw error63;
   }
 }
-async function previewAll(context3, stacks, logDiff) {
+async function previewAll(context3, stacks, logDiff, showValues) {
   const { log, now, adapter } = context3;
   if (stacks.length === 0)
     return [];
@@ -55940,7 +56110,8 @@ async function previewAll(context3, stacks, logDiff) {
     const started = startedAt.getTime();
     const options = {
       ...tool,
-      timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes
+      timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
+      showValues
     };
     const result = await adapter.preview(configured.stack, options);
     const milliseconds = now().getTime() - started;

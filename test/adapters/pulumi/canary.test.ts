@@ -261,3 +261,72 @@ for (const version of VERSIONS) {
     expect(leaks(elsewhere)).toEqual([]);
   });
 }
+
+// Record 0052: `dashboard.showValues` lets a value through at a listed path,
+// and only there. The recorded nested change holds the canary value at two
+// paths: one on the Deployment and one on the ConfigMap.
+const LISTED = "spec.template.spec.containers[0].env[0].value";
+const NESTED: Stack = { path: "generated/nested", name: "dev", options: {} };
+
+for (const version of VERSIONS) {
+  describe(`dashboard.showValues, replaying pulumi ${version}`, () => {
+    async function listing(showValues: string[]): Promise<Diff> {
+      const result = await pulumi.preview(NESTED, {
+        root: ROOT,
+        env: {},
+        run: replay(version, "nested-paths").run,
+        timeoutMinutes: 10,
+        showValues,
+      });
+      if (!result.ok) throw new Error("expected a diff");
+      return result.diff;
+    }
+
+    test("the canary value on an unlisted path appears nowhere", async () => {
+      const diff = await listing(["spec.template.spec.containers[0].image"]);
+      expect(leaks(JSON.stringify(diff) + rows(diff) + annex(diff))).toEqual([]);
+    });
+
+    test("the canary value on a listed path appears, the one on the unlisted path does not, and neither is in the hash", async () => {
+      const diff = await listing([LISTED]);
+      const made = JSON.stringify(diff) + rows(diff) + annex(diff);
+
+      expect(made).toContain(`${CANARY_VALUE}-2`);
+      expect(made).not.toContain(`${CANARY_VALUE}-3`);
+      expect(canonicalDiff(diff)).not.toContain("CANARY");
+      expect(diffHash(diff)).toBe(diffHash(await listing([])));
+      // A redacted row shows no value, whatever the diff holds.
+      const row = { state: "pending", diff, hash: diffHash(diff), runUrl: "run-url" } as const;
+      expect(leaks(renderRow(row, { redact: true }))).toEqual([]);
+    });
+  });
+
+  // The worst list there is: every path that any recorded preview changes.
+  // Values of the program may then appear. A secret never does, and neither
+  // does the tool's stand-in for one.
+  describe(`a list that names every changed path, replaying pulumi ${version}`, () => {
+    for (const scenario of scenarioNames(version)) {
+      const previews = readRecording(version, scenario).commands.filter(isPreview);
+      if (previews.length === 0) continue;
+      test(scenario, async () => {
+        for (const command of previews) {
+          const options = { root: ROOT, env: {}, timeoutMinutes: 10 };
+          const first = await pulumi.preview(stackOf(command), {
+            ...options,
+            run: replay(version, scenario).run,
+          });
+          const every = first.ok ? first.diff.changes.flatMap((change) => change.changedKeys) : [];
+          const result = await pulumi.preview(stackOf(command), {
+            ...options,
+            run: replay(version, scenario).run,
+            showValues: every,
+          });
+          const made = result.ok ? rows(result.diff) + annex(result.diff) : "";
+          const text = JSON.stringify(result) + made;
+          expect(text).not.toContain(CANARY_SECRET);
+          expect(text).not.toContain("[secret]");
+        }
+      });
+    }
+  });
+}

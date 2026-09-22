@@ -2,13 +2,14 @@
 // prints every previewed stack's diff there, so whatever a row or the summary
 // had to cut, the log has in full. The lines hold what a row could show and
 // nothing more (record 0021): ops, tracking changes, types, names and property
-// names, in Sluiceway's own words. Never a value, never the tool's text.
+// names, in Sluiceway's own words, and the values a row shows at paths that
+// `dashboard.showValues` lists (record 0052). Never the tool's text.
 
 import type { ToolDiffResult } from "../adapters/adapter.ts";
 import type { Change, Diff } from "../core/diff.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
 import { orderChanges } from "./changes.ts";
-import { counts, isDestroy, sortedKeys } from "./row.ts";
+import { counts, isDestroy, sortedKeys, valueSuffix } from "./row.ts";
 
 // A line of the job log that starts with `::` or `##[` is a command to the
 // runner. Text from outside is never trusted with a line of its own: a control
@@ -28,10 +29,12 @@ function changeLogLine(change: Change): string {
   const word = [change.op === "none" ? undefined : change.op, change.tracking]
     .filter((part) => part !== undefined)
     .join(" + ");
-  const forcing = sortedKeys(change.replaceKeys).map(oneLine);
+  const forcingKeys = sortedKeys(change.replaceKeys);
+  const withValue = (key: string) => oneLine(key) + valueSuffix(change, key, oneLine);
+  const forcing = forcingKeys.map(withValue);
   const others = sortedKeys(change.changedKeys)
-    .map(oneLine)
-    .filter((key) => !forcing.includes(key));
+    .filter((key) => !forcingKeys.includes(key))
+    .map(withValue);
   const parts = [
     `${isDestroy(change) ? word.toUpperCase() : word} ${oneLine(change.type)} ${oneLine(change.name)}`,
   ];

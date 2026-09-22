@@ -10,6 +10,7 @@ const DEFAULTS: Config = {
     redact: false,
     personality: true,
     readOnly: false,
+    showValues: [],
   },
   tickers: "write",
   deploys: true,
@@ -61,6 +62,7 @@ scan:
         redact: true,
         personality: false,
         readOnly: true,
+        showValues: [],
       },
       tickers: "admin",
       deploys: true,
@@ -289,7 +291,7 @@ describe("wrong types", () => {
       'dashboard.readOnly: expected true or false, got "yes".',
     ]);
     expect(problems("dashboard:\n  read-only: true\n")).toEqual([
-      'dashboard: unknown key "read-only". Known keys here: title, label, pin, redact, personality, readOnly.',
+      'dashboard: unknown key "read-only". Known keys here: title, label, pin, redact, personality, readOnly, showValues.',
     ]);
   });
 

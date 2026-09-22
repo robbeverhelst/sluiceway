@@ -128,8 +128,18 @@ export function counts(changes: Change[]): string {
     .join(", ");
 }
 
-function codes(keys: string[]): string {
-  return keys.map((key) => `<code>${escapeText(key)}</code>`).join(", ");
+// The old and new value of a path that `dashboard.showValues` lists (record
+// 0052), as ` old → new`, or nothing for any other path. A side that is not
+// there reads "nothing", outside the code, so it cannot pass for a value.
+export function valueSuffix(change: Change, path: string, show: (value: string) => string): string {
+  const value = change.values?.find((one) => one.path === path);
+  if (value === undefined) return "";
+  const side = (text: string | undefined) => (text === undefined ? "nothing" : show(text));
+  return ` ${side(value.old)} → ${side(value.new)}`;
+}
+
+function code(text: string): string {
+  return `<code>${escapeText(text)}</code>`;
 }
 
 export function sortedKeys(keys: string[]): string[] {
@@ -159,7 +169,8 @@ export function shortPath(path: string): string {
 }
 
 // One change as one line of plain HTML: the op as a key cap, the type, the
-// name in bold, then the paths of the changed properties. Never a value. On a
+// name in bold, then the paths of the changed properties. A value only at a
+// path `dashboard.showValues` lists, as the adapter gave it (record 0052). On a
 // row a long path is shortened, and a line in the fold lists at most ten
 // paths. A delete or replace line lists every one, because it is shown whole
 // or cut whole (record 0024).
@@ -173,7 +184,10 @@ export function changeLine(change: Change, options: { row?: boolean } = {}): str
   const capped = options.row === true && !isDestroy(change);
   const listed = capped ? others.slice(0, ROW_PATHS_PER_CHANGE) : others;
   const hidden = others.length - listed.length;
-  const show = (keys: string[]) => codes(options.row ? keys.map(shortPath) : keys);
+  const show = (keys: string[]) =>
+    keys
+      .map((key) => code(options.row ? shortPath(key) : key) + valueSuffix(change, key, code))
+      .join(", ");
   const parts = [
     `<kbd>${cap}</kbd> <code>${escapeText(change.type)}</code> <b>${escapeText(change.name)}</b>`,
   ];

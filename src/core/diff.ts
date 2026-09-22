@@ -1,5 +1,6 @@
-// The shape of a diff, as record 0007 fixes it. No field here can hold a
-// property value, and none gets added in v1 (record 0021).
+// The shape of a diff, as record 0007 fixes it. One field holds values: the
+// ones at paths a repo listed in `dashboard.showValues`, and no other (record
+// 0052, which amends 0021).
 
 // What a deploy does to the real object.
 export type Op = "create" | "update" | "replace" | "delete" | "none";
@@ -24,6 +25,18 @@ export interface Change {
   changedKeys: string[];
   // The changed keys that forced a replace.
   replaceKeys: string[];
+  // The old and new value at changed paths that `dashboard.showValues` lists,
+  // sorted by path. Absent when there are none. Display only: the diff hash
+  // leaves them out (record 0052).
+  values?: ShownValue[];
+}
+
+// A value as display text, already shortened. A side is absent when the
+// property is not there on that side: a key that is added or removed.
+export interface ShownValue {
+  path: string;
+  old?: string;
+  new?: string;
 }
 
 export interface Diff {

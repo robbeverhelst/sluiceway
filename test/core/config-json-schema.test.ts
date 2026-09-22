@@ -36,6 +36,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "redact",
       "personality",
       "readOnly",
+      "showValues",
     ]);
     expect(Object.keys(schema.properties?.scan?.properties ?? {})).toEqual([
       "unrelated",

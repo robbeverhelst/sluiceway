@@ -17,6 +17,9 @@ export interface ToolContext {
 export interface PreviewOptions extends ToolContext {
   // The time limit of this one preview, in whole minutes (record 0012).
   timeoutMinutes: number;
+  // `dashboard.showValues` (record 0052): the only paths whose values the
+  // diff may hold. Absent or empty, it holds none.
+  showValues?: readonly string[] | undefined;
 }
 
 export type PreviewResult = (
@@ -90,7 +93,8 @@ export interface Adapter {
   // Works out what deploying the stack would change. It always resolves: a
   // preview that gave no diff is a preview failure with a reason, so one
   // broken stack never stops the others (record 0012). No property value is in
-  // the diff, the reason or the detail (record 0021).
+  // the diff, the reason or the detail (record 0021), except the values at
+  // paths that `showValues` lists (record 0052).
   preview(stack: Stack, options: PreviewOptions): Promise<PreviewResult>;
 
   // Runs the tool a second time for a stack whose preview is pending, and
