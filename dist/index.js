@@ -53836,7 +53836,41 @@ async function readsFiles3(root, stack) {
 // src/adapters/helm/apply.ts
 import { join as join9 } from "node:path";
 
-// src/adapters/pulumi/tool-log.ts
+// src/adapters/tool-run.ts
+async function runTool(runner, spec) {
+  const { timeoutMinutes, exitCodes = {}, ...command } = spec;
+  const result = await runner({ ...command, timeoutMs: timeoutMinutes * 60000 });
+  if (result.status === "not-started") {
+    return { ok: false, reason: { kind: "tool-error", exitCode: null }, stdout: "", stderr: "" };
+  }
+  const { stdout, stderr } = result;
+  if (result.status === "timed-out") {
+    return { ok: false, reason: { kind: "timed-out", minutes: timeoutMinutes }, stdout, stderr };
+  }
+  const { exitCode } = result;
+  if (exitCode !== null && (exitCodes.success ?? [0]).includes(exitCode)) {
+    return {
+      ok: true,
+      exitCode,
+      stdout,
+      stderr,
+      ...result.outputCutAt === undefined ? {} : { outputCutAt: result.outputCutAt }
+    };
+  }
+  const own2 = exitCode === null ? undefined : exitCodes.reasons?.[exitCode];
+  return { ok: false, reason: own2 ?? { kind: "tool-error", exitCode }, stdout, stderr };
+}
+async function runDeploy(runner, command) {
+  const result = await runner(command);
+  if (result.status === "not-started") {
+    return { ok: false, reason: { kind: "tool-error", exitCode: null }, stdout: "", stderr: "" };
+  }
+  const { stdout, stderr } = result;
+  if (result.status === "exited" && result.exitCode === 0)
+    return { ok: true, stdout, stderr };
+  const exitCode = result.status === "exited" ? result.exitCode : null;
+  return { ok: false, reason: { kind: "tool-error", exitCode }, stdout, stderr };
+}
 var ANSI_ESCAPES = new RegExp([
   "\\u001b\\[[0-?]*[ -/]*[@-~]",
   "\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)",
@@ -54043,50 +54077,40 @@ async function apply(stack, context3, plan, options) {
     throw new Error("A Helm stack deploys only what its fresh preview rendered.");
   }
   const helm = optionsOf(stack);
-  const run = (argv) => context3.run({
+  const run = (argv) => runDeploy(context3.run, {
     argv,
     cwd: join9(context3.root, stack.path),
     env: helmEnvironment(context3.env)
   });
   const failed = (result, toolLog2) => ({
     ok: false,
-    reason: {
-      kind: "tool-error",
-      exitCode: result.status === "exited" ? result.exitCode : null
-    },
+    reason: result.ok ? { kind: "tool-error", exitCode: 0 } : result.reason,
     toolLog: toolLog2
   });
-  const done = (result) => result.status === "exited" && result.exitCode === 0;
   const rendered = await run(renderCommand(helm));
-  if (rendered.status === "not-started")
-    return failed(rendered, "");
   let toolLog = stripAnsi(rendered.stderr);
-  if (!done(rendered))
+  if (!rendered.ok)
     return failed(rendered, toolLog);
   if (!plan.matches(rendered.stdout)) {
     return { ok: false, reason: { kind: "moved" }, toolLog };
   }
   const version2 = await run(versionCommand());
-  if (version2.status !== "not-started")
-    toolLog += stripAnsi(version2.stderr);
-  const major = done(version2) ? readVersion(version2.stdout)?.numbers[0] : undefined;
+  toolLog += stripAnsi(version2.stderr);
+  const major = version2.ok ? readVersion(version2.stdout)?.numbers[0] : undefined;
   if (major === undefined) {
-    return failed(version2, toolLog + (done(version2) ? stripAnsi(version2.stdout) : ""));
+    return failed(version2, toolLog + (version2.ok ? stripAnsi(version2.stdout) : ""));
   }
   let forceConflicts = false;
   if (options?.repairDrift === true && major >= 4) {
     const metadata = await run(metadataCommand(helm));
-    if (metadata.status !== "not-started")
-      toolLog += stripAnsi(metadata.stderr);
-    if (!done(metadata))
+    toolLog += stripAnsi(metadata.stderr);
+    if (!metadata.ok)
       return failed(metadata, toolLog);
     forceConflicts = appliedServerSide(metadata.stdout);
   }
   const deployed = await run(deployCommand(helm, { major, forceConflicts }));
-  if (deployed.status === "not-started")
-    return failed(deployed, toolLog);
   toolLog += stripAnsi(deployed.stdout + deployed.stderr);
-  return done(deployed) ? { ok: true, toolLog } : failed(deployed, toolLog);
+  return deployed.ok ? { ok: true, toolLog } : failed(deployed, toolLog);
 }
 var metadataSchema = exports_external.object({ applyMethod: exports_external.string().optional() });
 function appliedServerSide(stdout) {
@@ -54098,7 +54122,7 @@ function appliedServerSide(stdout) {
 }
 
 // src/adapters/helm/drift.ts
-import { join as join11 } from "node:path";
+import { join as join10 } from "node:path";
 
 // src/adapters/opentofu/paths.ts
 function changedPaths(sides, showValues) {
@@ -54340,9 +54364,6 @@ function byCodeUnit5(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-// src/adapters/helm/preview.ts
-import { join as join10 } from "node:path";
-
 // src/adapters/opentofu/schema.ts
 var formatVersion = exports_external.string().regex(/^1\.\d+$/);
 var change = exports_external.object({
@@ -54448,77 +54469,23 @@ function problem2(issue3) {
   return `The tool's output, at ${at}: expected ${expected ?? "something else"}.`;
 }
 
-// src/adapters/helm/preview.ts
-async function preview(stack, options) {
-  const helm = optionsOf(stack);
-  const run = (argv) => options.run({
-    argv,
-    cwd: join10(options.root, stack.path),
-    env: helmEnvironment(options.env),
-    timeoutMs: options.timeoutMinutes * 60000
-  });
-  const failed = (reason, toolLog, detail = []) => ({ ok: false, reason, detail, toolLog });
-  const diffed = await run(diffCommand(helm));
-  const words = diffed.status === "not-started" ? "" : stripAnsi(diffed.stderr);
-  const failure2 = failureOf(diffed, options.timeoutMinutes);
-  if (failure2 !== undefined)
-    return failed(failure2, words);
-  if (diffed.status !== "exited")
-    return failed({ kind: "tool-error", exitCode: null }, words);
-  const parsed = parseEntries(diffed.stdout);
-  if (!parsed.ok)
-    return failed({ kind: "unreadable-output" }, words, parsed.problems);
-  const folded = foldEntries(parsed.entries, helm.namespace, options.showValues ?? []);
-  if (!folded.ok)
-    return failed({ kind: folded.reason }, words, folded.detail);
-  const diff = { stackId: stackId(stack), changes: folded.changes };
-  if (!options.savePlan)
-    return { ok: true, diff, toolLog: words };
-  const rendered = await run(renderCommand(helm));
-  const log = words + (rendered.status === "not-started" ? "" : stripAnsi(rendered.stderr));
-  const renderFailure = failureOf(rendered, options.timeoutMinutes);
-  if (renderFailure !== undefined)
-    return failed(renderFailure, log);
-  if (rendered.status !== "exited")
-    return failed({ kind: "tool-error", exitCode: null }, log);
-  return {
-    ok: true,
-    diff,
-    plan: new RenderedManifests(stackId(stack), rendered.stdout),
-    toolLog: log
-  };
-}
-function failureOf(result, timeoutMinutes) {
-  if (result.status === "not-started")
-    return { kind: "tool-error", exitCode: null };
-  if (result.status === "timed-out")
-    return { kind: "timed-out", minutes: timeoutMinutes };
-  if (result.exitCode !== 0)
-    return { kind: "tool-error", exitCode: result.exitCode };
-  return;
-}
-
 // src/adapters/helm/drift.ts
 async function detectDrift(stack, options) {
   const helm = optionsOf(stack);
-  const run = (argv) => options.run({
+  const run = (argv) => runTool(options.run, {
     argv,
-    cwd: join11(options.root, stack.path),
+    cwd: join10(options.root, stack.path),
     env: helmEnvironment(options.env),
-    timeoutMs: options.timeoutMinutes * 60000
+    timeoutMinutes: options.timeoutMinutes
   });
   const failed = (reason, toolLog, detail = []) => ({ ok: false, reason, detail, toolLog });
   const outputs = [];
   let words = "";
   for (const argv of [diffCommand(helm), threeWayDiffCommand(helm)]) {
     const result = await run(argv);
-    if (result.status !== "not-started")
-      words += stripAnsi(result.stderr);
-    const failure2 = failureOf(result, options.timeoutMinutes);
-    if (failure2 !== undefined)
-      return failed(failure2, words);
-    if (result.status !== "exited")
-      return failed({ kind: "tool-error", exitCode: null }, words);
+    words += stripAnsi(result.stderr);
+    if (!result.ok)
+      return failed(result.reason, words);
     outputs.push(result.stdout);
   }
   const [plain, threeWay] = outputs.map(parseEntries);
@@ -54567,7 +54534,7 @@ function driftOf(plain, threeWay, namespace) {
 }
 
 // src/adapters/helm/prepare.ts
-import { join as join12 } from "node:path";
+import { join as join11 } from "node:path";
 function prepare(stacks) {
   const byChart = new Map;
   for (const stack of stacks) {
@@ -54581,34 +54548,65 @@ function prepare(stacks) {
     title: chartDir,
     stacks: grouped,
     run: async (context3) => {
-      const result = await context3.run({
+      const result = await runTool(context3.run, {
         argv: dependencyCommand(),
-        cwd: join12(context3.root, chartDir),
+        cwd: join11(context3.root, chartDir),
         env: helmEnvironment(context3.env),
-        timeoutMs: context3.timeoutMinutes * 60000
+        timeoutMinutes: context3.timeoutMinutes
       });
-      const toolLog = result.status === "not-started" ? "" : stripAnsi(result.stdout + result.stderr);
-      const reason = failureOf(result, context3.timeoutMinutes);
-      return reason === undefined ? { ok: true, toolLog } : { ok: false, reason, toolLog };
+      const toolLog = stripAnsi(result.stdout + result.stderr);
+      return result.ok ? { ok: true, toolLog } : { ok: false, reason: result.reason, toolLog };
     }
   }));
+}
+
+// src/adapters/helm/preview.ts
+import { join as join12 } from "node:path";
+async function preview(stack, options) {
+  const helm = optionsOf(stack);
+  const run = (argv) => runTool(options.run, {
+    argv,
+    cwd: join12(options.root, stack.path),
+    env: helmEnvironment(options.env),
+    timeoutMinutes: options.timeoutMinutes
+  });
+  const failed = (reason, toolLog, detail = []) => ({ ok: false, reason, detail, toolLog });
+  const diffed = await run(diffCommand(helm));
+  const words = stripAnsi(diffed.stderr);
+  if (!diffed.ok)
+    return failed(diffed.reason, words);
+  const parsed = parseEntries(diffed.stdout);
+  if (!parsed.ok)
+    return failed({ kind: "unreadable-output" }, words, parsed.problems);
+  const folded = foldEntries(parsed.entries, helm.namespace, options.showValues ?? []);
+  if (!folded.ok)
+    return failed({ kind: folded.reason }, words, folded.detail);
+  const diff = { stackId: stackId(stack), changes: folded.changes };
+  if (!options.savePlan)
+    return { ok: true, diff, toolLog: words };
+  const rendered = await run(renderCommand(helm));
+  const log = words + stripAnsi(rendered.stderr);
+  if (!rendered.ok)
+    return failed(rendered.reason, log);
+  return {
+    ok: true,
+    diff,
+    plan: new RenderedManifests(stackId(stack), rendered.stdout),
+    toolLog: log
+  };
 }
 
 // src/adapters/helm/tool-diff.ts
 import { join as join13 } from "node:path";
 async function toolDiff(stack, options) {
-  const result = await options.run({
+  const result = await runTool(options.run, {
     argv: toolDiffCommand(optionsOf(stack)),
     cwd: join13(options.root, stack.path),
     env: helmEnvironment(options.env),
-    timeoutMs: options.timeoutMinutes * 60000
+    timeoutMinutes: options.timeoutMinutes
   });
-  if (result.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-  }
-  const reason = failureOf(result, options.timeoutMinutes);
-  if (reason !== undefined) {
-    return { ok: false, reason, toolLog: stripAnsi(result.stdout + result.stderr) };
+  if (!result.ok) {
+    return { ok: false, reason: result.reason, toolLog: stripAnsi(result.stdout + result.stderr) };
   }
   return { ok: true, text: stripAnsi(result.stdout), toolLog: stripAnsi(result.stderr) };
 }
@@ -54649,6 +54647,7 @@ function applier(options) {
     ...options.fieldManager === undefined ? [] : [`--field-manager=${options.fieldManager}`]
   ];
 }
+var DIFF_EXIT_CODES = { success: [0, 1] };
 function diffCommand2(file2, options, extra = {}) {
   return [
     KUBECTL_COMMAND,
@@ -55182,16 +55181,15 @@ async function renderSet(stack, context3) {
   if (sourceOf(dir) === "manifests") {
     text5 = bundleManifests(dir, options.recursive === true);
   } else {
-    const result = await context3.run({
+    const result = await runTool(context3.run, {
       argv: kustomizeCommand(),
       cwd: dir,
       env: kubectlEnvironment(context3.env),
-      timeoutMs: context3.timeoutMinutes * 60000
+      timeoutMinutes: context3.timeoutMinutes
     });
-    const failed = failure2(result, context3.timeoutMinutes);
-    toolLog = result.status === "not-started" ? "" : stripAnsi(result.stderr);
-    if (failed !== undefined)
-      return { ok: false, reason: failed, detail: [], toolLog };
+    toolLog = stripAnsi(result.stderr);
+    if (!result.ok)
+      return { ok: false, reason: result.reason, detail: [], toolLog };
     text5 = result.stdout;
   }
   if (options.prune !== true) {
@@ -55209,17 +55207,16 @@ async function prune(stack, context3, set2, text5) {
   const options = optionsOf2(stack);
   const id = stackId(stack);
   const name = inventoryName(id, context3.env.GITHUB_REPOSITORY);
-  const run = (argv) => context3.run({
+  const run = (argv) => runTool(context3.run, {
     argv,
     cwd: join14(context3.root, stack.path),
     env: kubectlEnvironment(context3.env),
-    timeoutMs: context3.timeoutMinutes * 60000
+    timeoutMinutes: context3.timeoutMinutes
   });
   const inventory = await run(inventoryCommand(name, options));
-  let toolLog = inventory.status === "not-started" ? "" : stripAnsi(inventory.stderr);
-  const failed = failure2(inventory, context3.timeoutMinutes);
-  if (failed !== undefined)
-    return { ok: false, reason: failed, detail: [], toolLog };
+  let toolLog = stripAnsi(inventory.stderr);
+  if (!inventory.ok)
+    return { ok: false, reason: inventory.reason, detail: [], toolLog };
   const read2 = readInventory(inventory.stdout);
   if (!read2.ok) {
     return { ok: false, reason: { kind: "unreadable-output" }, detail: read2.problems, toolLog };
@@ -55229,11 +55226,9 @@ async function prune(stack, context3, set2, text5) {
   if (candidates.length > 0) {
     await writeFile2(set2.scratchPath, stubs(candidates), { mode: 384 });
     const live = await run(liveCommand(set2.scratchPath, options));
-    if (live.status !== "not-started")
-      toolLog += stripAnsi(live.stderr);
-    const failedLive = failure2(live, context3.timeoutMinutes);
-    if (failedLive !== undefined)
-      return { ok: false, reason: failedLive, detail: [], toolLog };
+    toolLog += stripAnsi(live.stderr);
+    if (!live.ok)
+      return { ok: false, reason: live.reason, detail: [], toolLog };
     const found = readLive(live.stdout);
     if (!found.ok) {
       return { ok: false, reason: { kind: "unreadable-output" }, detail: found.problems, toolLog };
@@ -55265,13 +55260,6 @@ async function prune(stack, context3, set2, text5) {
   await set2.write(withInventory(text5, name, id, kept.map(({ listed: listed3 }) => listed3)), resolved.length === 0 ? undefined : stubs(resolved));
   return { ok: true, pruning: { inventory: name, listed: read2.objects, deletes }, toolLog };
 }
-function failure2(result, minutes) {
-  if (result.status === "not-started")
-    return { kind: "tool-error", exitCode: null };
-  if (result.status === "timed-out")
-    return { kind: "timed-out", minutes };
-  return result.exitCode === 0 ? undefined : { kind: "tool-error", exitCode: result.exitCode };
-}
 
 // src/adapters/kubectl/apply.ts
 async function apply2(stack, context3, plan) {
@@ -55281,34 +55269,23 @@ async function apply2(stack, context3, plan) {
   if (!await plan.intact()) {
     throw new Error(`The rendered set of ${stackId(stack)} changed after its preview. Nothing was deployed.`);
   }
-  const result = await context3.run({
+  const result = await runDeploy(context3.run, {
     argv: applyCommand(plan.path, optionsOf2(stack)),
     cwd: join15(context3.root, stack.path),
     env: kubectlEnvironment(context3.env)
   });
-  if (result.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-  }
   const toolLog = stripAnsi(result.stdout + result.stderr);
-  if (result.status !== "exited" || result.exitCode !== 0) {
-    const exitCode2 = result.status === "exited" ? result.exitCode : null;
-    return { ok: false, reason: { kind: "tool-error", exitCode: exitCode2 }, toolLog };
-  }
+  if (!result.ok)
+    return { ok: false, reason: result.reason, toolLog };
   if (plan.prunePath === undefined)
     return { ok: true, toolLog };
-  const deleted = await context3.run({
+  const deleted = await runDeploy(context3.run, {
     argv: deleteCommand(plan.prunePath, optionsOf2(stack)),
     cwd: join15(context3.root, stack.path),
     env: kubectlEnvironment(context3.env)
   });
-  if (deleted.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog };
-  }
   const log = toolLog + stripAnsi(deleted.stdout + deleted.stderr);
-  if (deleted.status === "exited" && deleted.exitCode === 0)
-    return { ok: true, toolLog: log };
-  const exitCode = deleted.status === "exited" ? deleted.exitCode : null;
-  return { ok: false, reason: { kind: "tool-error", exitCode }, toolLog: log };
+  return deleted.ok ? { ok: true, toolLog: log } : { ok: false, reason: deleted.reason, toolLog: log };
 }
 
 // src/adapters/kubectl/drift.ts
@@ -55396,37 +55373,16 @@ async function detectDrift2(stack, options) {
   if (!rendered.ok)
     return rendered;
   try {
-    const result = await options.run({
+    const result = await runTool(options.run, {
       argv: diffCommand2(rendered.set.path, stackOptions, { managedFields: true }),
       cwd: join16(options.root, stack.path),
       env: kubectlEnvironment(options.env, { KUBECTL_EXTERNAL_DIFF: PREVIEW_DIFF }),
-      timeoutMs: options.timeoutMinutes * 60000
+      timeoutMinutes: options.timeoutMinutes,
+      exitCodes: DIFF_EXIT_CODES
     });
-    if (result.status === "not-started") {
-      return {
-        ok: false,
-        reason: { kind: "tool-error", exitCode: null },
-        detail: [],
-        toolLog: rendered.toolLog
-      };
-    }
     const toolLog = rendered.toolLog + stripAnsi(result.stderr);
-    if (result.status === "timed-out") {
-      return {
-        ok: false,
-        reason: { kind: "timed-out", minutes: options.timeoutMinutes },
-        detail: [],
-        toolLog
-      };
-    }
-    if (result.exitCode !== 0 && result.exitCode !== 1) {
-      return {
-        ok: false,
-        reason: { kind: "tool-error", exitCode: result.exitCode },
-        detail: [],
-        toolLog
-      };
-    }
+    if (!result.ok)
+      return { ok: false, reason: result.reason, detail: [], toolLog };
     const read2 = readDiff(result.stdout);
     if (!read2.ok) {
       return { ok: false, reason: { kind: "unreadable-output" }, detail: read2.problems, toolLog };
@@ -55472,21 +55428,16 @@ async function preview2(stack, options) {
 }
 async function diff(stack, options, { set: set2, toolLog: renderLog, pruning }) {
   const failed = (reason, toolLog, detail = []) => ({ ok: false, reason, detail, toolLog });
-  const result = await options.run({
+  const result = await runTool(options.run, {
     argv: diffCommand2(set2.path, optionsOf2(stack)),
     cwd: join17(options.root, stack.path),
     env: kubectlEnvironment(options.env, { KUBECTL_EXTERNAL_DIFF: PREVIEW_DIFF }),
-    timeoutMs: options.timeoutMinutes * 60000
+    timeoutMinutes: options.timeoutMinutes,
+    exitCodes: DIFF_EXIT_CODES
   });
-  if (result.status === "not-started")
-    return failed({ kind: "tool-error", exitCode: null }, renderLog);
   const log = renderLog + stripAnsi(result.stderr);
-  if (result.status === "timed-out") {
-    return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, log);
-  }
-  if (result.exitCode !== 0 && result.exitCode !== 1) {
-    return failed({ kind: "tool-error", exitCode: result.exitCode }, log);
-  }
+  if (!result.ok)
+    return failed(result.reason, log);
   const read2 = readDiff(result.stdout);
   if (!read2.ok)
     return failed({ kind: "unreadable-output" }, log, read2.problems);
@@ -55509,26 +55460,16 @@ async function toolDiff2(stack, options) {
   if (!rendered.ok)
     return { ok: false, reason: rendered.reason, toolLog: rendered.toolLog };
   try {
-    const result = await options.run({
+    const result = await runTool(options.run, {
       argv: diffCommand2(rendered.set.path, optionsOf2(stack)),
       cwd: join18(options.root, stack.path),
       env: kubectlEnvironment(options.env),
-      timeoutMs: options.timeoutMinutes * 60000
+      timeoutMinutes: options.timeoutMinutes,
+      exitCodes: DIFF_EXIT_CODES
     });
-    if (result.status === "not-started") {
-      return {
-        ok: false,
-        reason: { kind: "tool-error", exitCode: null },
-        toolLog: rendered.toolLog
-      };
-    }
     const toolLog = rendered.toolLog + stripAnsi(result.stderr);
-    if (result.status === "timed-out") {
-      return { ok: false, reason: { kind: "timed-out", minutes: options.timeoutMinutes }, toolLog };
-    }
-    if (result.exitCode !== 0 && result.exitCode !== 1) {
-      return { ok: false, reason: { kind: "tool-error", exitCode: result.exitCode }, toolLog };
-    }
+    if (!result.ok)
+      return { ok: false, reason: result.reason, toolLog };
     return { ok: true, text: stripAnsi(result.stdout), toolLog };
   } finally {
     await rendered.set.dispose();
@@ -55737,19 +55678,13 @@ async function apply3(stack, context3, plan) {
   if (!(plan instanceof PlanFile) || plan.stackId !== stackId(stack)) {
     throw new Error("An OpenTofu stack deploys only the plan its fresh preview saved.");
   }
-  const result = await context3.run({
+  const result = await runDeploy(context3.run, {
     argv: command(stack, applyArgs(plan.path)),
     cwd: workingDirectory(context3.root, stack),
     env: tofuEnvironment(context3.env, stack)
   });
-  if (result.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-  }
   const toolLog = stripAnsi(result.stderr) + jsonLogWords(result.stdout);
-  if (result.status === "exited" && result.exitCode === 0)
-    return { ok: true, toolLog };
-  const exitCode = result.status === "exited" ? result.exitCode : null;
-  return { ok: false, reason: { kind: "tool-error", exitCode }, toolLog };
+  return result.ok ? { ok: true, toolLog } : { ok: false, reason: result.reason, toolLog };
 }
 
 // src/adapters/opentofu/prepare.ts
@@ -55780,23 +55715,14 @@ function prepare2(stacks) {
   }));
 }
 async function step(context3, argv, cwd) {
-  const result = await context3.run({
+  const result = await runTool(context3.run, {
     argv,
     cwd,
     env: tofuEnvironment(context3.env),
-    timeoutMs: context3.timeoutMinutes * 60000
+    timeoutMinutes: context3.timeoutMinutes
   });
-  if (result.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-  }
   const toolLog = stripAnsi(result.stdout + result.stderr);
-  if (result.status === "timed-out") {
-    return { ok: false, reason: { kind: "timed-out", minutes: context3.timeoutMinutes }, toolLog };
-  }
-  if (result.exitCode !== 0) {
-    return { ok: false, reason: { kind: "tool-error", exitCode: result.exitCode }, toolLog };
-  }
-  return { ok: true, toolLog };
+  return result.ok ? { ok: true, toolLog } : { ok: false, reason: result.reason, toolLog };
 }
 function byCodeUnit8(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -55923,33 +55849,21 @@ async function preview3(stack, options) {
   }
 }
 async function planAndShow(stack, options, plan) {
-  const run = (argv) => options.run({
+  const run = (argv) => runTool(options.run, {
     argv: command(stack, argv),
     cwd: workingDirectory(options.root, stack),
     env: tofuEnvironment(options.env, stack),
-    timeoutMs: options.timeoutMinutes * 60000
+    timeoutMinutes: options.timeoutMinutes
   });
   const failed = (reason, toolLog, detail = []) => ({ ok: false, reason, detail, toolLog });
   const planned = await run(planArgs(plan.path, optionsOf3(stack).varFiles));
-  if (planned.status === "not-started")
-    return failed({ kind: "tool-error", exitCode: null }, "");
   const planWords = stripAnsi(planned.stderr) + jsonLogWords(planned.stdout);
-  if (planned.status === "timed-out") {
-    return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, planWords);
-  }
-  if (planned.exitCode !== 0) {
-    return failed({ kind: "tool-error", exitCode: planned.exitCode }, planWords);
-  }
+  if (!planned.ok)
+    return failed(planned.reason, planWords);
   const shown3 = await run(showArgs(plan.path));
-  if (shown3.status === "not-started") {
-    return failed({ kind: "tool-error", exitCode: null }, planWords);
-  }
   const log = planWords + stripAnsi(shown3.stderr);
-  if (shown3.status === "timed-out") {
-    return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, log);
-  }
-  if (shown3.exitCode !== 0)
-    return failed({ kind: "tool-error", exitCode: shown3.exitCode }, log);
+  if (!shown3.ok)
+    return failed(shown3.reason, log);
   const parsed = parsePlan(shown3.stdout);
   if (!parsed.ok)
     return failed({ kind: "unreadable-output" }, log, parsed.problems);
@@ -55961,25 +55875,14 @@ async function planAndShow(stack, options, plan) {
 
 // src/adapters/opentofu/tool-diff.ts
 async function toolDiff3(stack, options) {
-  const result = await options.run({
+  const result = await runTool(options.run, {
     argv: command(stack, toolDiffArgs(optionsOf3(stack).varFiles)),
     cwd: workingDirectory(options.root, stack),
     env: tofuEnvironment(options.env, stack),
-    timeoutMs: options.timeoutMinutes * 60000
+    timeoutMinutes: options.timeoutMinutes
   });
-  if (result.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-  }
-  const words = stripAnsi(result.stdout + result.stderr);
-  if (result.status === "timed-out") {
-    return {
-      ok: false,
-      reason: { kind: "timed-out", minutes: options.timeoutMinutes },
-      toolLog: words
-    };
-  }
-  if (result.exitCode !== 0) {
-    return { ok: false, reason: { kind: "tool-error", exitCode: result.exitCode }, toolLog: words };
+  if (!result.ok) {
+    return { ok: false, reason: result.reason, toolLog: stripAnsi(result.stdout + result.stderr) };
   }
   return { ok: true, text: stripAnsi(result.stdout), toolLog: stripAnsi(result.stderr) };
 }
@@ -56106,19 +56009,13 @@ function upCommand(name, repairDrift) {
 async function apply4(stack, context3, _plan, options = {}) {
   if (stack.name === undefined)
     throw new Error("A Pulumi stack always has a name.");
-  const result = await context3.run({
+  const result = await runDeploy(context3.run, {
     argv: upCommand(stack.name, options.repairDrift === true),
     cwd: join22(context3.root, stack.path),
     env: pulumiEnvironment(context3.env)
   });
-  if (result.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-  }
   const toolLog = stripAnsi(result.stdout + result.stderr);
-  if (result.status === "exited" && result.exitCode === 0)
-    return { ok: true, toolLog };
-  const exitCode = result.status === "exited" ? result.exitCode : null;
-  return { ok: false, reason: { kind: "tool-error", exitCode }, toolLog };
+  return result.ok ? { ok: true, toolLog } : { ok: false, reason: result.reason, toolLog };
 }
 
 // src/adapters/pulumi/backend.ts
@@ -56130,25 +56027,17 @@ async function findInBackend(stacks, context3) {
   const answers = [];
   const logs = [];
   for (const [path, inPath] of Map.groupBy(stacks, (stack) => stack.path)) {
-    const result = await context3.run({
+    const result = await runTool(context3.run, {
       argv: LIST,
       cwd: join23(context3.root, path),
       env: pulumiEnvironment(context3.env),
-      timeoutMs: BACKEND_TIMEOUT_MINUTES * 60000
+      timeoutMinutes: BACKEND_TIMEOUT_MINUTES
     });
     const unknown2 = (reason) => answers.push(...inPath.map((stack) => ({ stack, found: "unknown", reason })));
-    if (result.status === "not-started") {
-      unknown2({ kind: "tool-error", exitCode: null });
-      continue;
-    }
     if (result.stderr !== "")
       logs.push(stripAnsi(result.stderr));
-    if (result.status === "timed-out") {
-      unknown2({ kind: "timed-out", minutes: BACKEND_TIMEOUT_MINUTES });
-      continue;
-    }
-    if (result.exitCode !== 0) {
-      unknown2({ kind: "tool-error", exitCode: result.exitCode });
+    if (!result.ok) {
+      unknown2(result.reason);
       continue;
     }
     const parsed = parseList(result.stdout);
@@ -56171,7 +56060,22 @@ function parseList(stdout) {
 }
 
 // src/adapters/pulumi/drift.ts
-import { join as join25 } from "node:path";
+import { join as join24 } from "node:path";
+
+// src/adapters/pulumi/exit-codes.ts
+var STACK_NOT_FOUND_EXIT_CODE = 6;
+var PULUMI_EXIT_CODES = {
+  reasons: {
+    2: { kind: "configuration-error" },
+    3: { kind: "authentication-error" },
+    4: { kind: "resource-error" },
+    [STACK_NOT_FOUND_EXIT_CODE]: { kind: "stack-not-found" },
+    9: { kind: "tool-timed-out" }
+  }
+};
+var HISTORY_EXIT_CODES = {
+  reasons: { [STACK_NOT_FOUND_EXIT_CODE]: { kind: "stack-not-found" } }
+};
 
 // src/adapters/pulumi/fold.ts
 var STEP_OPS = {
@@ -56258,8 +56162,216 @@ function byCodeUnit10(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+// src/adapters/pulumi/drift.ts
+function driftCommand(name) {
+  return [
+    "pulumi",
+    "refresh",
+    "--preview-only",
+    "--json",
+    "--non-interactive",
+    "--color",
+    "never",
+    "--stack",
+    name
+  ];
+}
+var STREAM_EVENTS = { PULUMI_ENABLE_STREAMING_JSON_PREVIEW: "true" };
+var outputsEvent = exports_external.object({
+  resOutputsEvent: exports_external.object({
+    metadata: exports_external.object({
+      op: exports_external.string(),
+      urn: exports_external.string(),
+      diffs: exports_external.array(exports_external.string()).nullish(),
+      detailedDiff: exports_external.record(exports_external.string(), exports_external.unknown()).nullish().transform((paths) => paths == null ? undefined : Object.keys(paths))
+    })
+  })
+});
+var summaryEvent = exports_external.object({
+  summaryEvent: exports_external.object({ resourceChanges: exports_external.record(exports_external.string(), exports_external.number()).nullish() })
+});
+var diagnosticEvent = exports_external.object({ diagnosticEvent: exports_external.object({ message: exports_external.string() }) });
+var DRIFT_OPS = {
+  same: "drop",
+  refresh: "drop",
+  update: "update",
+  delete: "delete"
+};
+async function detectDrift3(stack, options) {
+  if (stack.name === undefined)
+    throw new Error("A Pulumi stack always has a name.");
+  const result = await runTool(options.run, {
+    argv: driftCommand(stack.name),
+    cwd: join24(options.root, stack.path),
+    env: { ...pulumiEnvironment(options.env), ...STREAM_EVENTS },
+    timeoutMinutes: options.timeoutMinutes,
+    exitCodes: PULUMI_EXIT_CODES
+  });
+  const failed = (reason, toolLog, detail = []) => ({ ok: false, reason, detail, toolLog });
+  if (!result.ok && result.reason.kind === "timed-out") {
+    return failed(result.reason, stripAnsi(result.stderr));
+  }
+  const read2 = readEvents(result.stdout);
+  const words = stripAnsi([result.stderr, ...typeof read2 === "string" ? [] : read2.diagnostics].join(""));
+  if (!result.ok)
+    return failed(result.reason, words);
+  if (typeof read2 === "string")
+    return failed({ kind: "unreadable-output" }, words, [read2]);
+  if (read2.unknown.length > 0)
+    return failed({ kind: "unknown-step" }, words, read2.unknown);
+  if (read2.summary === undefined) {
+    return failed({ kind: "unreadable-output" }, words, [
+      "The tool's output: expected a summary event at the end."
+    ]);
+  }
+  const counted = Object.entries(read2.summary).filter(([op]) => op !== "same").reduce((sum, [, count]) => sum + count, 0);
+  if (counted > read2.drift.length) {
+    return failed({ kind: "unreadable-output" }, words, [
+      `The tool's output: expected an event for every change the summary counts, and ${counted - read2.drift.length} is missing.`
+    ]);
+  }
+  read2.drift.sort((a, b) => a.address < b.address ? -1 : a.address > b.address ? 1 : 0);
+  return { ok: true, drift: read2.drift, toolLog: words };
+}
+function readEvents(stdout) {
+  const events = { drift: [], unknown: [], diagnostics: [], summary: undefined };
+  const seen = new Set;
+  let count = 0;
+  const lines = stdout.split(`
+`);
+  for (const [index, line] of lines.entries()) {
+    if (line.trim() === "")
+      continue;
+    let json2;
+    try {
+      json2 = JSON.parse(line);
+    } catch {
+      return `The tool's output, at line ${index + 1}: expected one JSON document per line.`;
+    }
+    const diagnostic = diagnosticEvent.safeParse(json2);
+    if (diagnostic.success)
+      events.diagnostics.push(diagnostic.data.diagnosticEvent.message);
+    const summary2 = summaryEvent.safeParse(json2);
+    if (summary2.success)
+      events.summary = summary2.data.summaryEvent.resourceChanges ?? {};
+    const outputs = outputsEvent.safeParse(json2);
+    if (!outputs.success)
+      continue;
+    count++;
+    const { op, urn, diffs, detailedDiff } = outputs.data.resOutputsEvent.metadata;
+    const at = `The tool's output, at event ${count}`;
+    const known = Object.hasOwn(DRIFT_OPS, op) ? DRIFT_OPS[op] : undefined;
+    if (known === undefined) {
+      events.unknown.push(`${at}: expected a drift op that Sluiceway knows.`);
+      continue;
+    }
+    if (known === "drop")
+      continue;
+    const resource = typeAndName(urn);
+    if (resource === undefined || seen.has(urn)) {
+      return `${at}: expected the URN of a resource that no earlier event has.`;
+    }
+    seen.add(urn);
+    const paths = detailedDiff !== undefined && detailedDiff.length > 0 ? detailedDiff : diffs;
+    events.drift.push({
+      address: urn,
+      ...resource,
+      op: known,
+      changedKeys: known === "update" ? [...new Set(paths ?? [])].sort() : [],
+      replaceKeys: []
+    });
+  }
+  return events;
+}
+
+// src/adapters/pulumi/history.ts
+import { join as join25 } from "node:path";
+function historyCommand(name, limit) {
+  return [
+    "pulumi",
+    "stack",
+    "history",
+    "--json",
+    "--page-size",
+    String(limit),
+    "--non-interactive",
+    "--color",
+    "never",
+    "--stack",
+    name
+  ];
+}
+var entry2 = exports_external.object({
+  kind: exports_external.string(),
+  result: exports_external.string(),
+  endTime: exports_external.string(),
+  resourceChanges: exports_external.record(exports_external.string(), exports_external.number()).nullish(),
+  environment: exports_external.object({
+    "git.head": exports_external.string().optional(),
+    "git.dirty": exports_external.string().optional(),
+    "ci.system": exports_external.string().optional(),
+    "ci.build.id": exports_external.string().optional()
+  }).nullish()
+});
+var KINDS = { update: "deploy", destroy: "destroy" };
+var COMMIT = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
+var RUN_ID = /^[1-9]\d*$/;
+async function deployHistory(stack, options) {
+  if (stack.name === undefined)
+    throw new Error("A Pulumi stack always has a name.");
+  const result = await runTool(options.run, {
+    argv: historyCommand(stack.name, options.limit),
+    cwd: join25(options.root, stack.path),
+    env: pulumiEnvironment(options.env),
+    timeoutMinutes: options.timeoutMinutes,
+    exitCodes: HISTORY_EXIT_CODES
+  });
+  const failed = (reason, toolLog, detail = []) => ({ ok: false, reason, detail, toolLog });
+  const words = stripAnsi(result.stderr);
+  if (!result.ok)
+    return failed(result.reason, words);
+  const read2 = readHistory(result.stdout);
+  if (typeof read2 === "string")
+    return failed({ kind: "unreadable-output" }, words, [read2]);
+  return { ok: true, deploys: read2, toolLog: words };
+}
+function readHistory(stdout) {
+  let json2;
+  try {
+    json2 = JSON.parse(stdout);
+  } catch {
+    return "The tool's output: expected one JSON document.";
+  }
+  if (!Array.isArray(json2))
+    return "The tool's output: expected a list of updates.";
+  const deploys = [];
+  for (const [index, raw] of json2.entries()) {
+    const parsed = entry2.safeParse(raw);
+    const at = `The tool's output, at update ${index + 1}`;
+    if (!parsed.success)
+      return `${at}: expected a kind, a result and an end time.`;
+    const { kind, result, endTime, resourceChanges, environment } = parsed.data;
+    const endedAt = new Date(endTime);
+    if (Number.isNaN(endedAt.getTime()))
+      return `${at}: expected an end time.`;
+    const deployKind = Object.hasOwn(KINDS, kind) ? KINDS[kind] : undefined;
+    const changed = Object.entries(resourceChanges ?? {}).some(([op, count]) => op !== "same" && count > 0);
+    if (deployKind === undefined || result !== "succeeded" || !changed)
+      continue;
+    const sha = environment?.["git.head"] ?? "";
+    const runId = environment?.["ci.build.id"] ?? "";
+    deploys.push({
+      kind: deployKind,
+      endedAt,
+      ...COMMIT.test(sha) ? { commit: { sha, dirty: environment?.["git.dirty"] === "true" } } : {},
+      ...environment?.["ci.system"] === "GitHub Actions" && RUN_ID.test(runId) ? { runId } : {}
+    });
+  }
+  return deploys.sort((a, b) => b.endedAt.getTime() - a.endedAt.getTime());
+}
+
 // src/adapters/pulumi/preview.ts
-import { join as join24 } from "node:path";
+import { join as join26 } from "node:path";
 
 // src/adapters/pulumi/values.ts
 var SECRET = "[secret]";
@@ -56370,9 +56482,9 @@ function stepWithValues(list) {
     detailedDiff: exports_external.record(exports_external.string(), exports_external.unknown()).nullish()
   }).transform(({ oldState: old, newState, detailedDiff, ...rest }) => {
     const stackReference = stackReferenceOf(rest.urn, referenceState.safeParse(newState).data ?? undefined);
-    const paths = Object.entries(detailedDiff ?? {}).map(([path, entry2]) => ({
+    const paths = Object.entries(detailedDiff ?? {}).map(([path, entry3]) => ({
       path,
-      inputDiff: typeof entry2 === "object" && entry2 !== null && "inputDiff" in entry2 ? entry2.inputDiff === true : false
+      inputDiff: typeof entry3 === "object" && entry3 !== null && "inputDiff" in entry3 ? entry3.inputDiff === true : false
     }));
     const values2 = listedValues(list, {
       paths,
@@ -56443,38 +56555,23 @@ function place2(path) {
 function previewCommand(name) {
   return ["pulumi", "preview", "--json", "--non-interactive", "--color", "never", "--stack", name];
 }
-var STACK_NOT_FOUND_EXIT_CODE = 6;
-var EXIT_REASONS = {
-  2: { kind: "configuration-error" },
-  3: { kind: "authentication-error" },
-  4: { kind: "resource-error" },
-  [STACK_NOT_FOUND_EXIT_CODE]: { kind: "stack-not-found" },
-  9: { kind: "tool-timed-out" }
-};
-function exitReason(exitCode) {
-  const own2 = exitCode === null ? undefined : EXIT_REASONS[exitCode];
-  return own2 ?? { kind: "tool-error", exitCode };
-}
 async function previewWithReferences(stack, options) {
   if (stack.name === undefined)
     throw new Error("A Pulumi stack always has a name.");
-  const result = await options.run({
+  const result = await runTool(options.run, {
     argv: previewCommand(stack.name),
-    cwd: join24(options.root, stack.path),
+    cwd: join26(options.root, stack.path),
     env: pulumiEnvironment(options.env),
-    timeoutMs: options.timeoutMinutes * 60000
+    timeoutMinutes: options.timeoutMinutes,
+    exitCodes: PULUMI_EXIT_CODES
   });
   const failed = (reason, toolLog, detail = []) => ({
     result: { ok: false, reason, detail, toolLog },
     references: []
   });
-  if (result.status === "not-started")
-    return failed({ kind: "tool-error", exitCode: null }, "");
-  if (result.status === "timed-out") {
-    return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, toolLog(result.stderr));
-  }
-  if (result.exitCode !== 0) {
-    return failed(exitReason(result.exitCode), toolLog(result.stderr, parseDiagnostics(result.stdout)));
+  if (!result.ok) {
+    const finished = result.reason.kind !== "timed-out";
+    return failed(result.reason, toolLog(result.stderr, finished ? parseDiagnostics(result.stdout) : []));
   }
   if (result.outputCutAt !== undefined) {
     return failed({ kind: "output-too-large", megabytes: Math.floor(result.outputCutAt / 1024 / 1024) }, toolLog(result.stderr));
@@ -56494,221 +56591,6 @@ async function previewWithReferences(stack, options) {
 }
 function toolLog(stderr, diagnostics2 = []) {
   return stripAnsi([stderr, ...diagnostics2].join(""));
-}
-
-// src/adapters/pulumi/drift.ts
-function driftCommand(name) {
-  return [
-    "pulumi",
-    "refresh",
-    "--preview-only",
-    "--json",
-    "--non-interactive",
-    "--color",
-    "never",
-    "--stack",
-    name
-  ];
-}
-var STREAM_EVENTS = { PULUMI_ENABLE_STREAMING_JSON_PREVIEW: "true" };
-var outputsEvent = exports_external.object({
-  resOutputsEvent: exports_external.object({
-    metadata: exports_external.object({
-      op: exports_external.string(),
-      urn: exports_external.string(),
-      diffs: exports_external.array(exports_external.string()).nullish(),
-      detailedDiff: exports_external.record(exports_external.string(), exports_external.unknown()).nullish().transform((paths) => paths == null ? undefined : Object.keys(paths))
-    })
-  })
-});
-var summaryEvent = exports_external.object({
-  summaryEvent: exports_external.object({ resourceChanges: exports_external.record(exports_external.string(), exports_external.number()).nullish() })
-});
-var diagnosticEvent = exports_external.object({ diagnosticEvent: exports_external.object({ message: exports_external.string() }) });
-var DRIFT_OPS = {
-  same: "drop",
-  refresh: "drop",
-  update: "update",
-  delete: "delete"
-};
-async function detectDrift3(stack, options) {
-  if (stack.name === undefined)
-    throw new Error("A Pulumi stack always has a name.");
-  const result = await options.run({
-    argv: driftCommand(stack.name),
-    cwd: join25(options.root, stack.path),
-    env: { ...pulumiEnvironment(options.env), ...STREAM_EVENTS },
-    timeoutMs: options.timeoutMinutes * 60000
-  });
-  const failed = (reason, toolLog2, detail = []) => ({ ok: false, reason, detail, toolLog: toolLog2 });
-  if (result.status === "not-started")
-    return failed({ kind: "tool-error", exitCode: null }, "");
-  if (result.status === "timed-out") {
-    return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, stripAnsi(result.stderr));
-  }
-  const read2 = readEvents(result.stdout);
-  const words = stripAnsi([result.stderr, ...typeof read2 === "string" ? [] : read2.diagnostics].join(""));
-  if (result.exitCode !== 0) {
-    return failed(exitReason(result.exitCode), words);
-  }
-  if (typeof read2 === "string")
-    return failed({ kind: "unreadable-output" }, words, [read2]);
-  if (read2.unknown.length > 0)
-    return failed({ kind: "unknown-step" }, words, read2.unknown);
-  if (read2.summary === undefined) {
-    return failed({ kind: "unreadable-output" }, words, [
-      "The tool's output: expected a summary event at the end."
-    ]);
-  }
-  const counted = Object.entries(read2.summary).filter(([op]) => op !== "same").reduce((sum, [, count]) => sum + count, 0);
-  if (counted > read2.drift.length) {
-    return failed({ kind: "unreadable-output" }, words, [
-      `The tool's output: expected an event for every change the summary counts, and ${counted - read2.drift.length} is missing.`
-    ]);
-  }
-  read2.drift.sort((a, b) => a.address < b.address ? -1 : a.address > b.address ? 1 : 0);
-  return { ok: true, drift: read2.drift, toolLog: words };
-}
-function readEvents(stdout) {
-  const events = { drift: [], unknown: [], diagnostics: [], summary: undefined };
-  const seen = new Set;
-  let count = 0;
-  const lines = stdout.split(`
-`);
-  for (const [index, line] of lines.entries()) {
-    if (line.trim() === "")
-      continue;
-    let json2;
-    try {
-      json2 = JSON.parse(line);
-    } catch {
-      return `The tool's output, at line ${index + 1}: expected one JSON document per line.`;
-    }
-    const diagnostic = diagnosticEvent.safeParse(json2);
-    if (diagnostic.success)
-      events.diagnostics.push(diagnostic.data.diagnosticEvent.message);
-    const summary2 = summaryEvent.safeParse(json2);
-    if (summary2.success)
-      events.summary = summary2.data.summaryEvent.resourceChanges ?? {};
-    const outputs = outputsEvent.safeParse(json2);
-    if (!outputs.success)
-      continue;
-    count++;
-    const { op, urn, diffs, detailedDiff } = outputs.data.resOutputsEvent.metadata;
-    const at = `The tool's output, at event ${count}`;
-    const known = Object.hasOwn(DRIFT_OPS, op) ? DRIFT_OPS[op] : undefined;
-    if (known === undefined) {
-      events.unknown.push(`${at}: expected a drift op that Sluiceway knows.`);
-      continue;
-    }
-    if (known === "drop")
-      continue;
-    const resource = typeAndName(urn);
-    if (resource === undefined || seen.has(urn)) {
-      return `${at}: expected the URN of a resource that no earlier event has.`;
-    }
-    seen.add(urn);
-    const paths = detailedDiff !== undefined && detailedDiff.length > 0 ? detailedDiff : diffs;
-    events.drift.push({
-      address: urn,
-      ...resource,
-      op: known,
-      changedKeys: known === "update" ? [...new Set(paths ?? [])].sort() : [],
-      replaceKeys: []
-    });
-  }
-  return events;
-}
-
-// src/adapters/pulumi/history.ts
-import { join as join26 } from "node:path";
-function historyCommand(name, limit) {
-  return [
-    "pulumi",
-    "stack",
-    "history",
-    "--json",
-    "--page-size",
-    String(limit),
-    "--non-interactive",
-    "--color",
-    "never",
-    "--stack",
-    name
-  ];
-}
-var entry2 = exports_external.object({
-  kind: exports_external.string(),
-  result: exports_external.string(),
-  endTime: exports_external.string(),
-  resourceChanges: exports_external.record(exports_external.string(), exports_external.number()).nullish(),
-  environment: exports_external.object({
-    "git.head": exports_external.string().optional(),
-    "git.dirty": exports_external.string().optional(),
-    "ci.system": exports_external.string().optional(),
-    "ci.build.id": exports_external.string().optional()
-  }).nullish()
-});
-var KINDS = { update: "deploy", destroy: "destroy" };
-var COMMIT = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
-var RUN_ID = /^[1-9]\d*$/;
-async function deployHistory(stack, options) {
-  if (stack.name === undefined)
-    throw new Error("A Pulumi stack always has a name.");
-  const result = await options.run({
-    argv: historyCommand(stack.name, options.limit),
-    cwd: join26(options.root, stack.path),
-    env: pulumiEnvironment(options.env),
-    timeoutMs: options.timeoutMinutes * 60000
-  });
-  const failed = (reason, toolLog2, detail = []) => ({ ok: false, reason, detail, toolLog: toolLog2 });
-  if (result.status === "not-started")
-    return failed({ kind: "tool-error", exitCode: null }, "");
-  const words = stripAnsi(result.stderr);
-  if (result.status === "timed-out") {
-    return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, words);
-  }
-  if (result.exitCode !== 0) {
-    return failed(result.exitCode === STACK_NOT_FOUND_EXIT_CODE ? { kind: "stack-not-found" } : { kind: "tool-error", exitCode: result.exitCode }, words);
-  }
-  const read2 = readHistory(result.stdout);
-  if (typeof read2 === "string")
-    return failed({ kind: "unreadable-output" }, words, [read2]);
-  return { ok: true, deploys: read2, toolLog: words };
-}
-function readHistory(stdout) {
-  let json2;
-  try {
-    json2 = JSON.parse(stdout);
-  } catch {
-    return "The tool's output: expected one JSON document.";
-  }
-  if (!Array.isArray(json2))
-    return "The tool's output: expected a list of updates.";
-  const deploys = [];
-  for (const [index, raw] of json2.entries()) {
-    const parsed = entry2.safeParse(raw);
-    const at = `The tool's output, at update ${index + 1}`;
-    if (!parsed.success)
-      return `${at}: expected a kind, a result and an end time.`;
-    const { kind, result, endTime, resourceChanges, environment } = parsed.data;
-    const endedAt = new Date(endTime);
-    if (Number.isNaN(endedAt.getTime()))
-      return `${at}: expected an end time.`;
-    const deployKind = Object.hasOwn(KINDS, kind) ? KINDS[kind] : undefined;
-    const changed = Object.entries(resourceChanges ?? {}).some(([op, count]) => op !== "same" && count > 0);
-    if (deployKind === undefined || result !== "succeeded" || !changed)
-      continue;
-    const sha = environment?.["git.head"] ?? "";
-    const runId = environment?.["ci.build.id"] ?? "";
-    deploys.push({
-      kind: deployKind,
-      endedAt,
-      ...COMMIT.test(sha) ? { commit: { sha, dirty: environment?.["git.dirty"] === "true" } } : {},
-      ...environment?.["ci.system"] === "GitHub Actions" && RUN_ID.test(runId) ? { runId } : {}
-    });
-  }
-  return deploys.sort((a, b) => b.endedAt.getTime() - a.endedAt.getTime());
 }
 
 // src/adapters/pulumi/references.ts
@@ -56765,25 +56647,15 @@ function toolDiffCommand2(name) {
 async function toolDiff4(stack, options) {
   if (stack.name === undefined)
     throw new Error("A Pulumi stack always has a name.");
-  const result = await options.run({
+  const result = await runTool(options.run, {
     argv: toolDiffCommand2(stack.name),
     cwd: join27(options.root, stack.path),
     env: pulumiEnvironment(options.env),
-    timeoutMs: options.timeoutMinutes * 60000
+    timeoutMinutes: options.timeoutMinutes,
+    exitCodes: PULUMI_EXIT_CODES
   });
-  if (result.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-  }
-  const words = stripAnsi(result.stdout + result.stderr);
-  if (result.status === "timed-out") {
-    return {
-      ok: false,
-      reason: { kind: "timed-out", minutes: options.timeoutMinutes },
-      toolLog: words
-    };
-  }
-  if (result.exitCode !== 0) {
-    return { ok: false, reason: exitReason(result.exitCode), toolLog: words };
+  if (!result.ok) {
+    return { ok: false, reason: result.reason, toolLog: stripAnsi(result.stdout + result.stderr) };
   }
   return { ok: true, text: stripAnsi(result.stdout), toolLog: stripAnsi(result.stderr) };
 }
@@ -60203,14 +60075,14 @@ function movedComment({ login, stackId: stackId2 }) {
 }
 
 // src/render/preview-result.ts
-function previewRow(stackId2, result, links2, failure3, options = {}) {
+function previewRow(stackId2, result, links2, failure2, options = {}) {
   if (!result.ok) {
     return {
       state: "preview-failed",
       stackId: stackId2,
       reason: previewFailureText(result.reason),
       runUrl: links2.log,
-      failure: failure3
+      failure: failure2
     };
   }
   const drifted = (result.diff.drift ?? []).length > 0;
@@ -60224,11 +60096,11 @@ function previewRow(stackId2, result, links2, failure3, options = {}) {
         hash: diffHash(result.diff),
         runUrl: links2.summary,
         previewUrl: options.pageUrl,
-        failure: failure3,
+        failure: failure2,
         ...dependsOn
       };
     }
-    return { state: "in-sync", stackId: stackId2, failure: failure3, ...dependsOn };
+    return { state: "in-sync", stackId: stackId2, failure: failure2, ...dependsOn };
   }
   return {
     state: "pending",
@@ -60236,7 +60108,7 @@ function previewRow(stackId2, result, links2, failure3, options = {}) {
     hash: diffHash(result.diff),
     runUrl: links2.summary,
     previewUrl: options.pageUrl ?? (options.toolDiffInLog ? links2.log : undefined),
-    failure: failure3,
+    failure: failure2,
     ...dependsOn
   };
 }
@@ -60455,13 +60327,13 @@ ${ALREADY_ENDED}
     try {
       written = await swapRow(context3, attempt.setup, id_, (facts, attribution, outside) => {
         const fact = standingFailure(id_, facts.byStack.get(id_), outside);
-        const failure3 = fact !== undefined ? {
+        const failure2 = fact !== undefined ? {
           reason: fact.reason,
           ticker: fact.ticker,
           at: fact.at,
           runUrl: runUrl(context3.repoUrl, fact.run, fact.attempt)
         } : undefined;
-        const row = previewRow(id_, made, runLinks(context3), failure3, {
+        const row = previewRow(id_, made, runLinks(context3), failure2, {
           toolDiffInLog: attempt.toolDiffInLog
         });
         return row.state === "pending" ? { ...row, attribution } : row;
