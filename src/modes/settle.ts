@@ -7,10 +7,10 @@
 // 0014, promise 4).
 
 import type { Adapter } from "../adapters/adapter.ts";
-import { applyConfig, type ConfiguredStack } from "../core/config.ts";
-import { loadConfig } from "../core/config-file.ts";
+import type { ConfiguredStack } from "../core/config.ts";
 import { queueState } from "../core/dependencies.ts";
 import { type DeploymentRecord, deployFacts } from "../core/deployment.ts";
+import { openRepo } from "../core/repo.ts";
 import { stackId } from "../core/stack.ts";
 import {
   type EndedRecord,
@@ -60,8 +60,7 @@ export async function settle(context: SettleContext): Promise<void> {
   // From the event, so it costs no request and is there on every way out.
   const url = eventDashboardUrl(context.repoUrl, context.event);
   if (url !== undefined) context.outputs?.set("dashboard-url", url);
-  const config = loadConfig(context.root);
-  const stacks = applyConfig(config, await context.adapter.discover(context.root, config));
+  const { stacks } = await openRepo(context.root, context.adapter).stacks();
 
   const read = await readRecords(context, stacks);
   const settled = await settleOwnRun(context, read);

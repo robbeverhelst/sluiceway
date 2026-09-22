@@ -18,8 +18,7 @@ import type { ProcessRunner } from "../adapters/process.ts";
 import { stripAnsi } from "../adapters/pulumi/tool-log.ts";
 import type { Attribution } from "../core/attribution.ts";
 import { sharedFiles, suggestedUnrelated } from "../core/check.ts";
-import { applyConfig, type Config, type ConfiguredStack, ignoredStacks } from "../core/config.ts";
-import { loadConfig } from "../core/config-file.ts";
+import type { Config, ConfiguredStack } from "../core/config.ts";
 import {
   type DeployFact,
   type DeployFacts,
@@ -51,6 +50,7 @@ import {
   trailOutside,
 } from "../core/outside-deploy.ts";
 import { runPool } from "../core/pool.ts";
+import { openRepo } from "../core/repo.ts";
 import { type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import {
   COMPARE_FILE_CAP,
@@ -335,12 +335,9 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   // Config and discovery come first and cost no preview. An error in either
   // fails the job before the tool or GitHub is touched (record 0012). Every
   // scan runs discovery, a narrowed one too (record 0011).
-  const config = loadConfig(context.root);
-  const found = await context.adapter.discover(context.root, config);
-  const ignored = ignoredStacks(config, found);
-  const stacks = applyConfig(config, found).sort((a, b) =>
-    byCodeUnit(stackId(a.stack), stackId(b.stack)),
-  );
+  const repo = openRepo(context.root, context.adapter);
+  const config = repo.config();
+  const { stacks, ignored } = await repo.stacks();
   const ids = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural(stacks.length, "stack")}.`);
   const { logDiff } = config.scan;
@@ -951,7 +948,7 @@ async function resolveWaits(
 // follow a push makes neither.
 async function makePlan(
   context: ScanContext,
-  config: ReturnType<typeof loadConfig>,
+  config: Config,
   stacks: ConfiguredStack[],
   // Filled with the stacks whose row at the first read says its hash covers
   // drift (record 0055).
@@ -1130,7 +1127,7 @@ async function checkVersion(context: ScanContext, stacks: Stack[]): Promise<void
 // when a push previews the stack. A stack entry turns the check on or off for
 // its own stacks, and the same scans check (record 0059).
 function driftCheckRule(
-  config: ReturnType<typeof loadConfig>,
+  config: Config,
   context: ScanContext,
   knownDrift: ReadonlySet<string>,
   stacks: readonly ConfiguredStack[],
