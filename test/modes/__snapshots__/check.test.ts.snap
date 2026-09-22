@@ -55,8 +55,8 @@ exports[`a setup that is not valid the summary of a config that is not valid 1`]
 
 sluiceway.yaml is not valid.
 
-- unknown key &quot;tickerz&quot;. Known keys here: dashboard, tickers, deploys, ignore, scan, stacks, mergeAndDeploy.
-- &quot;drift&quot; is not in this version of Sluiceway yet. Remove it.
+- unknown key &quot;tickerz&quot;. Known keys here: dashboard, tickers, deploys, ignore, scan, drift, stacks, mergeAndDeploy.
+- drift: expected a mapping, got true.
 
 Fix these and run the check again. A scan stops at the same place.
 "
