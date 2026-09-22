@@ -55397,8 +55397,6 @@ function tickedMergeBlock(row) {
 var MAX_CRATES = 12;
 function pendingCrates(rows) {
   const pending = rows.filter((row) => row.known && row.state === "pending").length;
-  if (pending === 0)
-    return;
   return pending > MAX_CRATES ? "more" : pending;
 }
 
@@ -55711,13 +55709,21 @@ var ALT = {
   "first-run": "Sluiceway: no stacks yet",
   "in-sync": "Sluiceway: everything is in sync"
 };
-function pendingAlt(crates) {
+function pendingWords(crates) {
   if (crates === "more")
-    return `Sluiceway: more than ${MAX_CRATES} stacks are pending`;
-  return crates === 1 ? "Sluiceway: 1 stack is pending" : `Sluiceway: ${crates} stacks are pending`;
+    return `more than ${MAX_CRATES} stacks are pending`;
+  return crates === 1 ? "1 stack is pending" : `${crates} stacks are pending`;
+}
+var COUNTED = ["pending", "failing", "deploying"];
+var isCounted = (state) => COUNTED.includes(state);
+function countedAlt(state, crates) {
+  if (state === "pending")
+    return `Sluiceway: ${pendingWords(crates)}`;
+  return crates === 0 ? ALT[state] : `${ALT[state]}, ${pendingWords(crates)}`;
 }
 var SIGNED_FACT = {
   pending: ", some delete or replace resources",
+  failing: ", some changes delete or replace resources",
   deploying: ", some changes delete or replace resources"
 };
 function placed(row) {
@@ -55736,10 +55742,11 @@ function rowBlock(row, options = {}) {
   return block;
 }
 function picture(state, crates, sign, actionRef2) {
-  const base = state === "pending" ? `pending-${crates ?? 1}` : state;
-  const signed = sign && (state === "pending" || state === "deploying");
+  const counted = isCounted(state);
+  const base = counted ? `${state}-${crates}` : state;
+  const signed = sign && counted;
   const name = signed ? `${base}-destroys` : base;
-  const plainAlt = state === "pending" ? pendingAlt(crates ?? 1) : ALT[state];
+  const plainAlt = counted ? countedAlt(state, crates) : ALT[state];
   const alt = signed ? `${plainAlt}${SIGNED_FACT[state]}` : plainAlt;
   const file2 = (theme) => mascotUrl(actionRef2, `${name}-${theme}.svg`);
   return [
