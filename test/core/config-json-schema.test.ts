@@ -27,6 +27,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "deploys",
       "ignore",
       "scan",
+      "drift",
       "stacks",
       "mergeAndDeploy",
     ]);
@@ -63,6 +64,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "root.properties.dashboard",
       "root.properties.ignore.items.anyOf.1",
       "root.properties.scan",
+      "root.properties.drift",
       "root.properties.stacks.items",
       "root.properties.stacks.items.properties.options",
       "root.properties.mergeAndDeploy",

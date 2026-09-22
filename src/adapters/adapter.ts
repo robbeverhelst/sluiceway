@@ -1,5 +1,5 @@
 import type { Config } from "../core/config.ts";
-import type { Diff } from "../core/diff.ts";
+import type { Change, Diff } from "../core/diff.ts";
 import type { DeployFailureReason, PreviewFailureReason } from "../core/failure-reason.ts";
 import type { Stack } from "../core/stack.ts";
 import type { ProcessRunner } from "./process.ts";
@@ -65,6 +65,23 @@ export type ApplyResult = (
   // and nowhere else (record 0022).
   toolLog: string;
 };
+
+// What the drift check found (record 0055): the changes made to real
+// infrastructure outside the code, with the ops `update` (a property changed)
+// and `delete` (the object is gone). No value, like a diff (record 0021).
+export type DriftResult = (
+  | { ok: true; drift: Change[] }
+  | { ok: false; reason: PreviewFailureReason; detail: string[] }
+) & {
+  // The tool's own words, for the job log only (record 0022).
+  toolLog: string;
+};
+
+export interface ApplyOptions {
+  // The diff hash the tick approved covers drift (record 0055): the deploy
+  // reads what is real first, so it puts the drift back as the code says.
+  repairDrift?: boolean | undefined;
+}
 
 // The tool's own diff (record 0048): what a deploy would change as the tool
 // displays it, values included, except the ones the tool holds as secret. It
@@ -145,12 +162,26 @@ export interface Adapter {
   // decides depends on it: the row and the diff hash come from the preview.
   toolDiff(stack: Stack, options: PreviewOptions): Promise<ToolDiffResult>;
 
+  // Compares the stack's state with real infrastructure and changes neither
+  // (record 0055). Same directory, environment and time limit as the
+  // preview. It always resolves. An adapter whose tool cannot do this leaves
+  // it out, or answers undefined for a stack it cannot check, and that stack
+  // is never checked for drift.
+  detectDrift?(stack: Stack, options: PreviewOptions): Promise<DriftResult | undefined>;
+
   // Deploys the stack as the code is now. `apply` calls it only right after a
   // fresh preview gave the diff hash the tick approved (record 0008), and the
   // command line differs from the preview's only in what makes it a deploy
   // (record 0015). It has no time limit of its own: a deploy stopped half way
   // leaves a stack half deployed. It always resolves. With a plan that the
   // fresh preview saved, the tool deploys that plan and nothing else (record
-  // 0053). An adapter whose tool saves no plan never gets one.
-  apply(stack: Stack, context: ToolContext, plan?: SavedPlan): Promise<ApplyResult>;
+  // 0053). An adapter whose tool saves no plan never gets one. With
+  // `repairDrift` it also puts back the drift that the approved hash covered
+  // (record 0055); only an adapter with `detectDrift` is ever asked to.
+  apply(
+    stack: Stack,
+    context: ToolContext,
+    plan?: SavedPlan,
+    options?: ApplyOptions,
+  ): Promise<ApplyResult>;
 }

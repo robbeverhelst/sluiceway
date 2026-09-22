@@ -206,6 +206,19 @@ export const configSchema = z.strictObject({
         .default(false),
     })
     .prefault({}),
+  // The drift check (record 0055). When it runs is the workflow's business:
+  // every scan that a schedule starts checks drift, and so does a dispatch
+  // that a person started.
+  drift: z
+    .strictObject({
+      enabled: z
+        .boolean()
+        .describe(
+          "Check every stack for drift in each scan that a schedule starts, or that a person starts with Run workflow: changes made to real infrastructure outside the code. A stack with drift gets a row with a box, and a tick deploys the code as it is, which puts it back. Costs one more tool run per stack in those scans.",
+        )
+        .default(false),
+    })
+    .prefault({}),
   stacks: stackEntries
     .describe("Settings for stacks that discovery found. An entry never creates a stack.")
     .default([]),
@@ -284,7 +297,9 @@ function describe(issue: Issue, raw: unknown): Problem[] {
   if (issue.code === "unrecognized_keys") {
     const known = knownKeys(issue.path);
     const unknown = (name: string): string => {
-      if (RESERVED_KEYS.includes(name))
+      if (issue.path.length === 1 && issue.path[0] === "drift" && name === "schedule")
+        return `"schedule" is not a key of sluiceway.yaml. A drift check runs in every scan that a schedule starts, so the cron goes in the workflow, under \`on: schedule\`.`;
+      if (issue.path.length > 0 && RESERVED_KEYS.includes(name))
         return `"${name}" is not in this version of Sluiceway yet. Remove it.`;
       return `unknown key "${name}". Known keys here: ${known.join(", ")}.`;
     };
@@ -418,7 +433,8 @@ function inFileOrder(problems: Problem[], raw: unknown): Problem[] {
 }
 
 // Keys of features that are planned and not in v1. They fail with their own
-// message and are never ignored (build-plan.md, section 3).
+// message and are never ignored (build-plan.md, section 3). `drift` is a top
+// level key since record 0055, and stays reserved on a stack.
 const RESERVED_KEYS = ["drift"];
 
 // "stacks[0].path: ", or nothing for the top level.

@@ -58,13 +58,25 @@ function canonicalValues(values: Change["values"]): Canonical | undefined {
 // over (record 0008). The order in which an adapter hands over changes or keys
 // never shows in it.
 export function canonicalDiff(diff: Diff): string {
-  const changes = diff.changes
-    .map((change) => ({ address: change.address, text: canonicalJson(canonicalChange(change)) }))
-    // An address is unique within a diff. Should an adapter break that, the
-    // text settles the order, so the document still does not depend on it.
-    .sort((a, b) => byCodeUnit(a.address, b.address) || byCodeUnit(a.text, b.text))
-    .map((change) => change.text);
-  return `{"changes":[${changes.join(",")}],"stackId":${JSON.stringify(diff.stackId)}}`;
+  // Drift joins the document under its own key, so the one hash covers both
+  // (records 0008 and 0055). Without drift the key is left out, so a diff
+  // hashes as it always did.
+  const drift =
+    diff.drift === undefined || diff.drift.length === 0
+      ? ""
+      : `"drift":[${canonicalChanges(diff.drift).join(",")}],`;
+  return `{"changes":[${canonicalChanges(diff.changes).join(",")}],${drift}"stackId":${JSON.stringify(diff.stackId)}}`;
+}
+
+function canonicalChanges(changes: readonly Change[]): string[] {
+  return (
+    changes
+      .map((change) => ({ address: change.address, text: canonicalJson(canonicalChange(change)) }))
+      // An address is unique within a list. Should an adapter break that, the
+      // text settles the order, so the document still does not depend on it.
+      .sort((a, b) => byCodeUnit(a.address, b.address) || byCodeUnit(a.text, b.text))
+      .map((change) => change.text)
+  );
 }
 
 // SHA-256 of the canonical document as UTF-8, first 16 hex characters, lower

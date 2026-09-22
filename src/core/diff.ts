@@ -42,4 +42,10 @@ export interface ShownValue {
 export interface Diff {
   stackId: string;
   changes: Change[];
+  // Drift (record 0055): what changed in real infrastructure outside the code,
+  // found by the drift check, never by the preview. The op says what happened
+  // to the real object: `update`, a property changed, or `delete`, it is gone.
+  // A deploy puts it back as the code says. Absent when the check did not run
+  // or found nothing. Never values: a drift change holds no `values`.
+  drift?: Change[];
 }

@@ -34,5 +34,8 @@ export const tools: Adapter = {
 
   preview: (stack, options) => adapterOf(stack).preview(stack, options),
   toolDiff: (stack, options) => adapterOf(stack).toolDiff(stack, options),
-  apply: (stack, context, plan) => adapterOf(stack).apply(stack, context, plan),
+  // Only Pulumi can check drift (record 0055). A stack of another tool is
+  // never checked.
+  detectDrift: async (stack, options) => adapterOf(stack).detectDrift?.(stack, options),
+  apply: (stack, context, plan, options) => adapterOf(stack).apply(stack, context, plan, options),
 };

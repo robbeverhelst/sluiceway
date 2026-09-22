@@ -132,6 +132,18 @@
       },
       "additionalProperties": false
     },
+    "drift": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean",
+          "description": "Check every stack for drift in each scan that a schedule starts, or that a person starts with Run workflow: changes made to real infrastructure outside the code. A stack with drift gets a row with a box, and a tick deploys the code as it is, which puts it back. Costs one more tool run per stack in those scans."
+        }
+      },
+      "additionalProperties": false
+    },
     "stacks": {
       "type": "array",
       "items": {

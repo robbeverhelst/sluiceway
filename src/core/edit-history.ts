@@ -37,8 +37,10 @@ export interface HistoryPage {
 
 // What a walk looks for: a row ticked at one diff hash, an update waiting to
 // merge ticked at one head commit (record 0054), or the ticked rescan box.
+// `drift` is the row's word that its hash covers drift (record 0055). It
+// changes nothing about who ticked, only what `apply` checks again.
 export type Tick =
-  | { kind: "row"; stackId: string; hash: string }
+  | { kind: "row"; stackId: string; hash: string; drift?: true }
   | { kind: "merge"; pr: number; stackId: string; head: string }
   | { kind: "rescan" };
 
@@ -99,7 +101,12 @@ export function ticksIn(body: string): Tick[] {
     // A queued row is taken like a deploying one and never holds a tick
     // (record 0056).
     if (row.known && row.ticked && row.hash !== undefined && row.state !== "queued") {
-      ticks.push({ kind: "row", stackId: row.stackId, hash: row.hash });
+      ticks.push({
+        kind: "row",
+        stackId: row.stackId,
+        hash: row.hash,
+        ...(row.drift ? { drift: true as const } : {}),
+      });
     }
   }
   const merged = new Set<number>();

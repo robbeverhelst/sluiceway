@@ -65,6 +65,11 @@ export interface DeploymentPayload {
   // ends it and opens the record that deploys. It outlives its run, which is
   // the run of `resolve`.
   merge?: number | undefined;
+  // The hash covers drift (record 0055): `apply` checks drift again before it
+  // compares, and the deploy puts the drift back. An added key, so the
+  // version stays 1. A reader that does not know it compares without drift,
+  // which ends as a moved change: the safe direction.
+  drift?: boolean | undefined;
 }
 
 export function deploymentPayload(payload: DeploymentPayload): Record<string, unknown> {
@@ -74,6 +79,7 @@ export function deploymentPayload(payload: DeploymentPayload): Record<string, un
     ticker: payload.ticker,
     run: payload.run,
     ...(payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {}),
+    ...(payload.drift ? { drift: true } : {}),
   };
 }
 
@@ -94,7 +100,7 @@ const RUN_ID = /^[1-9]\d*$/;
 // built from text that came from outside.
 export function readDeploymentPayload(payload: unknown): DeploymentPayload | undefined {
   if (typeof payload !== "object" || payload === null) return undefined;
-  const { v, hash, ticker, run, behind, merge } = payload as Record<string, unknown>;
+  const { v, hash, ticker, run, behind, merge, drift } = payload as Record<string, unknown>;
   if (v !== PAYLOAD_VERSION) return undefined;
   if (merge !== undefined) {
     const number = typeof merge === "number" && Number.isInteger(merge) && merge > 0;
@@ -111,12 +117,14 @@ export function readDeploymentPayload(payload: unknown): DeploymentPayload | und
     return undefined;
   }
   if (!RUN_ID.test(run)) return undefined;
-  if (behind === undefined) return { hash, ticker, run };
+  const read: DeploymentPayload = { hash, ticker, run };
+  if (drift === true) read.drift = true;
+  if (behind === undefined) return read;
   const ids = Array.isArray(behind) ? behind : [];
   if (ids.length === 0 || !ids.every((id) => typeof id === "string" && id !== "")) {
     return undefined;
   }
-  return { hash, ticker, run, behind: ids as string[] };
+  return { ...read, behind: ids as string[] };
 }
 
 // What the newest record of a stack says about it (record 0003). A preview

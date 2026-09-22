@@ -39,6 +39,11 @@ function isToolDiff(command: Command): boolean {
   return command.argv[1] === "preview" && command.argv.includes("--diff");
 }
 
+// The drift check (record 0055), whose engine events hold every value.
+function isDriftCheck(command: Command): boolean {
+  return command.argv[1] === "refresh" && command.argv.includes("--preview-only");
+}
+
 function stackOf(command: Command): Stack {
   const name = command.argv[command.argv.indexOf("--stack") + 1];
   return { path: command.cwd, options: {}, ...(name ? { name } : {}) };
@@ -71,7 +76,8 @@ for (const version of VERSIONS) {
       const commands = readRecording(version, scenario).commands;
       const previews = commands.filter(isPreview);
       const toolDiffs = commands.filter(isToolDiff);
-      if (previews.length + toolDiffs.length === 0) continue;
+      const driftChecks = commands.filter(isDriftCheck);
+      if (previews.length + toolDiffs.length + driftChecks.length === 0) continue;
 
       test(scenario, async () => {
         const runner = replay(version, scenario);
@@ -120,6 +126,25 @@ for (const version of VERSIONS) {
           const stdout = readFileSync(join(FIXTURES, version, scenario, command.stdout), "utf8");
           expect(leaks(JSON.stringify(parsePreview(stdout)))).toEqual([]);
         }
+        // What the drift check hands over, and what a drifted row, the hash,
+        // the summary and the log make of it.
+        for (const command of driftChecks) {
+          const stack = stackOf(command);
+          const result = await pulumi.detectDrift?.(stack, {
+            root: ROOT,
+            env: {},
+            run: runner.run,
+            timeoutMinutes: 10,
+          });
+          if (result === undefined) throw new Error("Pulumi always checks drift.");
+          const drift = {
+            stackId: stackId(stack),
+            changes: [],
+            drift: result.ok ? result.drift : [],
+          };
+          const made = canonicalDiff(drift) + rows(drift) + annex(drift);
+          expect(leaks(JSON.stringify(result) + made)).toEqual([]);
+        }
       });
     }
   });
@@ -129,7 +154,7 @@ test("every scenario but the version check is covered", () => {
   for (const version of VERSIONS) {
     const without = scenarioNames(version).filter((scenario) =>
       readRecording(version, scenario).commands.every(
-        (command) => !isPreview(command) && !isToolDiff(command),
+        (command) => !isPreview(command) && !isToolDiff(command) && !isDriftCheck(command),
       ),
     );
     expect(without).toEqual(["version"]);

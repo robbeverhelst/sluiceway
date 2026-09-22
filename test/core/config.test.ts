@@ -16,6 +16,7 @@ const DEFAULTS: Config = {
   deploys: true,
   ignore: [],
   scan: { unrelated: [], logDiff: false },
+  drift: { enabled: false },
   stacks: [],
   mergeAndDeploy: { authors: [] },
 };
@@ -54,6 +55,8 @@ ignore:
 scan:
   unrelated:
     - "**/*.md"
+drift:
+  enabled: true
 `);
     expect(config).toEqual({
       dashboard: {
@@ -69,6 +72,7 @@ scan:
       deploys: true,
       ignore: ["**/*:dev"],
       scan: { unrelated: ["**/*.md"], logDiff: false },
+      drift: { enabled: true },
       stacks: [],
       mergeAndDeploy: { authors: [] },
     });
@@ -89,18 +93,41 @@ function problems(text: string): string[] {
 describe("unknown keys", () => {
   test("a typo at the top level is an error that lists the known keys", () => {
     expect(problems("tickerz: admin\n")).toEqual([
-      'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, stacks, mergeAndDeploy.',
+      'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, stacks, mergeAndDeploy.',
     ]);
   });
 });
 
 describe("the reserved keys", () => {
-  test("drift fails at the top level and on a stack", () => {
-    expect(
-      problems("drift:\n  enabled: true\nstacks:\n  - path: apps/a\n    drift: true\n"),
-    ).toEqual([
-      '"drift" is not in this version of Sluiceway yet. Remove it.',
+  test("drift on a stack still fails: drift is turned on for the whole repo", () => {
+    expect(problems("stacks:\n  - path: apps/a\n    drift: true\n")).toEqual([
       'stacks[0]: "drift" is not in this version of Sluiceway yet. Remove it.',
+    ]);
+  });
+});
+
+describe("drift (record 0055)", () => {
+  test("is off by default, and drift.enabled turns it on", () => {
+    expect(parseConfig(undefined).drift).toEqual({ enabled: false });
+    expect(parseConfig("drift:\n  enabled: true\n").drift).toEqual({ enabled: true });
+    expect(parseConfig("drift: {}\n").drift).toEqual({ enabled: false });
+  });
+
+  test("enabled is true or false", () => {
+    expect(problems("drift:\n  enabled: yes please\n")).toEqual([
+      'drift.enabled: expected true or false, got "yes please".',
+    ]);
+  });
+
+  test("a schedule is the workflow's, so drift.schedule says where it goes", () => {
+    expect(problems('drift:\n  enabled: true\n  schedule: "0 6 * * *"\n')).toEqual([
+      'drift: "schedule" is not a key of sluiceway.yaml. A drift check runs in every scan that a schedule starts, so the cron goes in the workflow, under `on: schedule`.',
+    ]);
+  });
+
+  test("another unknown key names the known ones", () => {
+    expect(problems("drift:\n  enable: true\n")).toEqual([
+      'drift: unknown key "enable". Known keys here: enabled.',
     ]);
   });
 });
@@ -347,7 +374,7 @@ describe("a file that is not a mapping", () => {
 describe("the error", () => {
   test("names the file and lists every problem", () => {
     expect(() => parseConfig("tickerz: admin\ndashboard:\n  pin: 1\n")).toThrow(
-      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, stacks, mergeAndDeploy.\n- dashboard.pin: expected true or false, got 1.',
+      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, stacks, mergeAndDeploy.\n- dashboard.pin: expected true or false, got 1.',
     );
   });
 });

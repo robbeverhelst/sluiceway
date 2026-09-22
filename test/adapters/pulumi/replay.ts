@@ -41,7 +41,10 @@ export function replay(version: string, scenario: string, root = ROOT): Replay {
     const index = waiting.findIndex(
       (command) =>
         JSON.stringify(command.argv) === JSON.stringify(asked.argv) &&
-        join(root, command.cwd) === asked.cwd,
+        join(root, command.cwd) === asked.cwd &&
+        // A variable the scenario set for this command has to be set the
+        // same way by the adapter (record 0055).
+        Object.entries(command.env ?? {}).every(([name, value]) => asked.env[name] === value),
     );
     const [command] = index < 0 ? [] : waiting.splice(index, 1);
     if (command === undefined) {

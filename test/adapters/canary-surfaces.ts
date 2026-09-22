@@ -18,7 +18,19 @@ export function rows(diff: Diff): string {
     renderRow(row, { redact: true }),
     body(row),
     budgeted(row),
+    // A diff with drift is also a drifted row (record 0055).
+    ...((diff.drift ?? []).length > 0 ? drifted(diff) : []),
   ].join("\n");
+}
+
+function drifted(diff: Diff): string[] {
+  const row = { state: "drift", diff, hash: diffHash(diff), runUrl: "run-url" } as const;
+  return [
+    ...([0, 2] as const).map((level) => renderRow(row, { level })),
+    renderRow(row, { redact: true }),
+    body(row),
+    budgeted(row),
+  ];
 }
 
 // The whole body around that row, which is what reaches the issue.

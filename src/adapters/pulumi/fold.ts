@@ -77,7 +77,7 @@ export function foldSteps(steps: PreviewStep[]): Folded {
 // URN never reaches the dashboard (record 0007). A URN reads
 // urn:pulumi:<stack>::<project>::<parent type>$<type>::<name>, and only a name
 // can hold "::".
-function typeAndName(urn: string): Pick<Change, "type" | "name"> | undefined {
+export function typeAndName(urn: string): Pick<Change, "type" | "name"> | undefined {
   if (!urn.startsWith("urn:pulumi:")) return undefined;
   const [, , qualifiedType, ...rest] = urn.split("::");
   const type = qualifiedType?.split("$").at(-1);

@@ -342,3 +342,55 @@ const everything: Diff = {
     },
   ],
 };
+
+// Record 0055: drift joins the same document under its own key, so the one
+// hash covers what the row shows about both (records 0008 and 0009). Hashed
+// outside the code with `shasum -a 256`.
+describe("drift", () => {
+  const pet: Change = {
+    address: "a",
+    type: "random:Pet",
+    name: "pet",
+    op: "update",
+    changedKeys: ["length"],
+    replaceKeys: [],
+  };
+  const gone: Change = {
+    address: "c",
+    type: "local:index/file:File",
+    name: "notes",
+    op: "delete",
+    changedKeys: [],
+    replaceKeys: [],
+  };
+  const changed: Change = {
+    address: "b",
+    type: "pulumi-nodejs:dynamic:Resource",
+    name: "note",
+    op: "update",
+    changedKeys: ["text"],
+    replaceKeys: [],
+  };
+
+  test("a row with drift only", () => {
+    const diff: Diff = { stackId: "site:prod", changes: [], drift: [gone, changed] };
+    expect(canonicalDiff(diff)).toBe(
+      '{"changes":[],"drift":[' +
+        '{"address":"b","changedKeys":["text"],"name":"note","op":"update","replaceKeys":[],"type":"pulumi-nodejs:dynamic:Resource"},' +
+        '{"address":"c","changedKeys":[],"name":"notes","op":"delete","replaceKeys":[],"type":"local:index/file:File"}' +
+        '],"stackId":"site:prod"}',
+    );
+    expect(diffHash(diff)).toBe("be148b80efa3bb8f");
+  });
+
+  test("a pending row that also shows drift has one hash over both", () => {
+    expect(diffHash({ stackId: "site:prod", changes: [pet], drift: [gone] })).toBe(
+      "dd803ea1e69c7010",
+    );
+  });
+
+  test("no drift, or an empty list, hashes as a diff always did", () => {
+    expect(diffHash({ stackId: "site:prod", changes: [pet] })).toBe("e037bcad66090295");
+    expect(diffHash({ stackId: "site:prod", changes: [pet], drift: [] })).toBe("e037bcad66090295");
+  });
+});
