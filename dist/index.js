@@ -58565,6 +58565,58 @@ function read2(file2) {
   }
 }
 
+// src/core/failure-reason.ts
+function previewFailureText(reason) {
+  switch (reason.kind) {
+    case "tool-error":
+      return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
+    case "stack-not-found":
+      return "the stack does not exist in the backend";
+    case "configuration-error":
+      return "the tool found the configuration invalid or incomplete";
+    case "authentication-error":
+      return "the tool could not authenticate or is not authorized";
+    case "resource-error":
+      return "a resource operation failed in the tool";
+    case "tool-timed-out":
+      return "the tool gave up on a time limit of its own";
+    case "timed-out":
+      return `the preview timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}`;
+    case "unreadable-output":
+      return "the tool's output could not be read";
+    case "unknown-step":
+      return "the tool reported a step Sluiceway does not know";
+    case "output-too-large":
+      return `the tool printed more than the ${reason.megabytes} MB Sluiceway holds`;
+    case "internal-error":
+      return "Sluiceway failed inside itself, which is a bug";
+  }
+}
+function deployFailureText(reason) {
+  switch (reason.kind) {
+    case "run-ended":
+      return "the run ended without a result";
+    case "moved":
+      return "the change moved since the tick";
+    case "tool-error":
+      return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
+    case "timed-out":
+      return `the deploy ran out of its time limit of ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"} and the tool was stopped`;
+    case "preview-failed":
+      return `the preview before the deploy failed: ${previewFailureText(reason.reason)}`;
+    case "tool-missing":
+      return "the tool is missing or older than Sluiceway needs";
+    case "unknown-stack":
+      return "the stack is not in the repo any more";
+    case "deploys-off":
+      return "deploys are turned off in sluiceway.yaml";
+    case "not-started":
+      return "the deploy stopped before the tool ran";
+    case "dependency-failed":
+      return "a stack it depends on did not deploy";
+  }
+}
+
 // src/core/deployment.ts
 var TASK_PREFIX = "sluiceway:";
 function deploymentTask(stackId2) {
@@ -58641,6 +58693,29 @@ function isHandedOn(status) {
 function isOpenStatus(status) {
   const state = status?.state ?? "";
   return !SUCCEEDED.has(state) && !FAILED.has(state);
+}
+function recordStatus(step3) {
+  switch (step3.kind) {
+    case "opened":
+      return { state: "queued" };
+    case "claimed":
+      return { state: "in_progress" };
+    case "deployed":
+      return { state: "success", description: undefined };
+    case "in-sync":
+      return { state: "success", description: IN_SYNC_DESCRIPTION };
+    case "rehearsed":
+      return { state: "inactive", description: REHEARSED_DESCRIPTION };
+    case "handed-on":
+      return { state: "inactive", description: HANDED_ON_DESCRIPTION };
+    case "merged":
+      return { state: "inactive", description: MERGED_DESCRIPTION };
+    case "failed":
+      return {
+        state: step3.reason.kind === "moved" || step3.reason.kind === "run-ended" ? "error" : "failure",
+        description: deployFailureText(step3.reason)
+      };
+  }
 }
 function newestLast(a, b) {
   return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id;
@@ -58818,58 +58893,6 @@ function canonicalChanges(changes) {
 }
 function diffHash(diff2) {
   return createHash4("sha256").update(canonicalDiff(diff2), "utf8").digest("hex").slice(0, 16);
-}
-
-// src/core/failure-reason.ts
-function previewFailureText(reason) {
-  switch (reason.kind) {
-    case "tool-error":
-      return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
-    case "stack-not-found":
-      return "the stack does not exist in the backend";
-    case "configuration-error":
-      return "the tool found the configuration invalid or incomplete";
-    case "authentication-error":
-      return "the tool could not authenticate or is not authorized";
-    case "resource-error":
-      return "a resource operation failed in the tool";
-    case "tool-timed-out":
-      return "the tool gave up on a time limit of its own";
-    case "timed-out":
-      return `the preview timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}`;
-    case "unreadable-output":
-      return "the tool's output could not be read";
-    case "unknown-step":
-      return "the tool reported a step Sluiceway does not know";
-    case "output-too-large":
-      return `the tool printed more than the ${reason.megabytes} MB Sluiceway holds`;
-    case "internal-error":
-      return "Sluiceway failed inside itself, which is a bug";
-  }
-}
-function deployFailureText(reason) {
-  switch (reason.kind) {
-    case "run-ended":
-      return "the run ended without a result";
-    case "moved":
-      return "the change moved since the tick";
-    case "tool-error":
-      return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
-    case "timed-out":
-      return `the deploy ran out of its time limit of ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"} and the tool was stopped`;
-    case "preview-failed":
-      return `the preview before the deploy failed: ${previewFailureText(reason.reason)}`;
-    case "tool-missing":
-      return "the tool is missing or older than Sluiceway needs";
-    case "unknown-stack":
-      return "the stack is not in the repo any more";
-    case "deploys-off":
-      return "deploys are turned off in sluiceway.yaml";
-    case "not-started":
-      return "the deploy stopped before the tool ran";
-    case "dependency-failed":
-      return "a stack it depends on did not deploy";
-  }
 }
 
 // src/github/attribution.ts
@@ -59400,6 +59423,25 @@ function withReadDependencies(input2) {
   return { dependsOn, dropped };
 }
 
+// src/core/settle.ts
+function openRecordsOfRun(records, runId) {
+  const found = new Map;
+  for (const record3 of records) {
+    const stackId2 = taskStackId(record3.task);
+    if (stackId2 === undefined)
+      continue;
+    const fact = deployFacts([record3]).byStack.get(stackId2);
+    if (fact?.kind !== "open" || fact.run !== runId || fact.merge !== undefined)
+      continue;
+    found.set(record3.id, {
+      id: record3.id,
+      stackId: stackId2,
+      ...fact.behind ? { behind: fact.behind } : {}
+    });
+  }
+  return [...found.values()].sort((a, b) => a.id - b.id);
+}
+
 // src/github/deployments.ts
 async function readDeploymentRecords(github, environments, fallBack) {
   const records = [];
@@ -59426,35 +59468,184 @@ async function readDeploymentRecords(github, environments, fallBack) {
   }
   return records;
 }
-async function settleEndedRuns(github, records, repoUrl) {
-  const settled = { records: [...records], stackIds: [] };
-  const end = async (stackId2, deployment, run, dead) => {
-    const status = await github.createDeploymentStatus(deployment, {
-      state: dead ? "failure" : "error",
-      description: deployFailureText({ kind: dead ? "dependency-failed" : "run-ended" }),
-      logUrl: `${repoUrl}/actions/runs/${run}`
+function linkOf(writer) {
+  return runUrl(writer.repoUrl, writer.runId, writer.runAttempt);
+}
+async function openRecord(writer, opening) {
+  const { github } = writer;
+  const run = { ticker: opening.ticker, run: writer.runId, attempt: writer.runAttempt };
+  const record3 = await github.createDeployment({
+    sha: opening.sha,
+    task: deploymentTask(opening.stackId),
+    environment: opening.environment,
+    payload: "merge" in opening ? mergePayload({ ...run, merge: opening.merge }) : deploymentPayload({
+      hash: opening.hash,
+      ...run,
+      behind: opening.behind,
+      ...opening.drift ? { drift: true } : {}
+    })
+  });
+  try {
+    await github.createDeploymentStatus(record3.id, {
+      ...recordStatus({ kind: "opened" }),
+      logUrl: linkOf(writer)
     });
-    settled.records = settled.records.map((record3) => record3.id === deployment && taskStackId(record3.task) === stackId2 ? { ...record3, status } : record3);
-    settled.stackIds.push(stackId2);
-  };
-  for (const [stackId2, fact] of deployFacts(records).byStack) {
-    if (fact.kind !== "open" || fact.behind || fact.merge !== undefined)
-      continue;
-    const run = await github.getWorkflowRun(fact.run);
-    if (run && !run.completed)
-      continue;
-    await end(stackId2, fact.deployment, fact.run, false);
+  } catch (error63) {
+    return { deployment: record3.id, unfinished: error63 };
   }
-  for (let ended = true;ended; ) {
-    ended = false;
-    const queued = [...deployFacts(settled.records).byStack].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
-    for (const [stackId2, fact] of queued) {
-      if (fact.kind !== "open" || !fact.behind)
+  return { deployment: record3.id };
+}
+async function startQueuedRecord(writer, queued, at) {
+  const stackId2 = taskStackId(queued.task);
+  const payload = readDeploymentPayload(queued.payload);
+  if (stackId2 === undefined || !payload)
+    return;
+  const opened = await openRecord(writer, {
+    stackId: stackId2,
+    environment: at.environment,
+    sha: at.sha,
+    ticker: payload.ticker,
+    hash: payload.hash
+  });
+  const started = { ...opened, ticker: payload.ticker };
+  if (opened.unfinished !== undefined)
+    return started;
+  try {
+    await endRecord(writer, queued.id, { kind: "handed-on" });
+  } catch (error63) {
+    return { ...started, unfinished: error63 };
+  }
+  return started;
+}
+async function claimRecord(writer, id) {
+  const { github } = writer;
+  let status;
+  try {
+    status = await github.latestDeploymentStatus(id);
+  } catch (error63) {
+    return { kind: "unread", error: error63 };
+  }
+  if (!isOpenStatus(status))
+    return { kind: "ended", state: status?.state };
+  let task;
+  let payload;
+  try {
+    const deployment = await github.getDeployment(id);
+    task = deployment.task;
+    payload = readDeploymentPayload(deployment.payload);
+  } catch (error63) {
+    return { kind: "unread", error: error63 };
+  }
+  const stackId2 = taskStackId(task);
+  if (stackId2 === undefined)
+    return { kind: "not-sluiceways" };
+  if (!payload)
+    return { kind: "unreadable-payload", stackId: stackId2 };
+  if (payload.run !== writer.runId)
+    return { kind: "other-run", stackId: stackId2, run: payload.run };
+  if (payload.behind)
+    return { kind: "queued", stackId: stackId2, behind: payload.behind };
+  try {
+    await github.createDeploymentStatus(id, {
+      ...recordStatus({ kind: "claimed" }),
+      logUrl: linkOf(writer)
+    });
+  } catch (error63) {
+    return { kind: "unclaimed", stackId: stackId2, payload, error: error63 };
+  }
+  return { kind: "claimed", stackId: stackId2, payload };
+}
+async function endRecord(writer, id, end) {
+  return await writer.github.createDeploymentStatus(id, {
+    ...recordStatus(end),
+    logUrl: linkOf(writer)
+  });
+}
+
+class RecordNotEnded extends Error {
+  stackId;
+  deployment;
+  cause;
+  settled;
+  constructor(stackId2, deployment, cause, settled) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.stackId = stackId2;
+    this.deployment = deployment;
+    this.cause = cause;
+    this.settled = settled;
+    this.name = "RecordNotEnded";
+  }
+}
+async function settleEndedRuns(github, records, repoUrl) {
+  const open2 = [];
+  const queued = [];
+  for (const [stackId2, fact] of deployFacts(records).byStack) {
+    if (fact.kind !== "open" || fact.merge !== undefined)
+      continue;
+    const one = { deployment: fact.deployment, stackId: stackId2, run: fact.run };
+    if (fact.behind)
+      queued.push({ ...one, behind: fact.behind });
+    else
+      open2.push(one);
+  }
+  queued.sort((a, b) => a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0);
+  return await settle2(github, repoUrl, records, [...open2, ...queued], async (id) => {
+    const run = await github.getWorkflowRun(id);
+    return !run || run.completed;
+  });
+}
+async function settleRun(github, records, repoUrl, runId) {
+  const open2 = openRecordsOfRun(records, runId).map(({ id, stackId: stackId2, behind }) => ({
+    deployment: id,
+    stackId: stackId2,
+    run: runId,
+    ...behind ? { behind } : {}
+  }));
+  const settled = await settle2(github, repoUrl, records, open2, async () => true);
+  return { ...settled, open: open2.length };
+}
+async function settle2(github, repoUrl, records, open2, over) {
+  const settled = { records: [...records], ended: [] };
+  const end = async (record3, dead) => {
+    let status;
+    try {
+      status = await github.createDeploymentStatus(record3.deployment, {
+        ...recordStatus({
+          kind: "failed",
+          reason: { kind: dead ? "dependency-failed" : "run-ended" }
+        }),
+        logUrl: `${repoUrl}/actions/runs/${record3.run}`
+      });
+    } catch (error63) {
+      throw new RecordNotEnded(record3.stackId, record3.deployment, error63, settled);
+    }
+    settled.records = settled.records.map((one) => one.id === record3.deployment ? { ...one, status } : one);
+    settled.ended.push({
+      deployment: record3.deployment,
+      stackId: record3.stackId,
+      run: record3.run,
+      dead
+    });
+  };
+  for (const record3 of open2) {
+    if (record3.behind)
+      continue;
+    if (!await over(record3.run))
+      continue;
+    await end(record3, false);
+  }
+  const endedHere = () => new Set(settled.ended.map(({ deployment }) => deployment));
+  for (let more = true;more; ) {
+    more = false;
+    for (const record3 of open2) {
+      if (!record3.behind || endedHere().has(record3.deployment))
         continue;
-      if (queueState(fact.behind, settled.records) !== "dead")
+      if (deployFacts(settled.records).byStack.get(record3.stackId)?.kind !== "open")
         continue;
-      await end(stackId2, fact.deployment, fact.run, true);
-      ended = true;
+      if (queueState(record3.behind, settled.records) !== "dead")
+        continue;
+      await end(record3, true);
+      more = true;
     }
   }
   return settled;
@@ -59750,54 +59941,42 @@ function reportOutputs(context3, report) {
 async function applying(context3, report) {
   const { github, log } = context3;
   const id = context3.deploymentId;
-  let status;
-  try {
-    status = await github.latestDeploymentStatus(id);
-  } catch (error63) {
+  const claim3 = await claimRecord(context3, id);
+  if (claim3.kind === "unread") {
     report.outcome = "failed";
-    throw new ApplyFailedError(`Deployment record ${id} could not be read: ${message(error63)}. ${RECORD_PERMISSIONS}`);
+    throw new ApplyFailedError(`Deployment record ${id} could not be read: ${message(claim3.error)}. ${RECORD_PERMISSIONS}`);
   }
   report.outcome = "refused";
-  if (!isOpenStatus(status)) {
-    log.info(`Deployment record ${id} already ended as ${status?.state}. Nothing is deployed. A re-run never deploys (record 0019).`);
+  if (claim3.kind === "ended") {
+    log.info(`Deployment record ${id} already ended as ${claim3.state}. Nothing is deployed. A re-run never deploys (record 0019).`);
     await writeSummary(context3, `## Sluiceway apply
 
 ${ALREADY_ENDED}
 `);
     throw new ApplyFailedError(ALREADY_ENDED);
   }
-  let task;
-  let payload;
-  try {
-    const deployment = await github.getDeployment(id);
-    task = deployment.task;
-    payload = readDeploymentPayload(deployment.payload);
-  } catch (error63) {
-    report.outcome = "failed";
-    throw new ApplyFailedError(`Deployment record ${id} could not be read: ${message(error63)}. ${RECORD_PERMISSIONS}`);
-  }
-  const id_ = taskStackId(task);
-  if (id_ === undefined) {
+  if (claim3.kind === "not-sluiceways") {
     throw new ApplyFailedError(`Deployment record ${id} is not one of Sluiceway's: its task does not start with "sluiceway:". Nothing was deployed and the record was left alone.`);
   }
+  const id_ = claim3.stackId;
   report.stack = id_;
   const name = logGroupTitle(id_);
-  if (!payload) {
+  if (claim3.kind === "unreadable-payload") {
     throw new ApplyFailedError(`Deployment record ${id} of ${name} carries a payload this version of Sluiceway cannot read. Nothing was deployed and the record was left alone.`);
   }
-  if (payload.run !== context3.runId) {
-    throw new ApplyFailedError(`Deployment record ${id} of ${name} belongs to run ${payload.run}, and this is run ${context3.runId}. \`apply\` deploys a record only in the run whose \`resolve\` job created it. Nothing was deployed and the record was left alone.`);
+  if (claim3.kind === "other-run") {
+    throw new ApplyFailedError(`Deployment record ${id} of ${name} belongs to run ${claim3.run}, and this is run ${context3.runId}. \`apply\` deploys a record only in the run whose \`resolve\` job created it. Nothing was deployed and the record was left alone.`);
   }
-  if (payload.behind) {
-    throw new ApplyFailedError(`Deployment record ${id} of ${name} is queued behind ${payload.behind.map(logGroupTitle).join(" and ")}. \`apply\` never deploys a queued record: a later \`resolve\` starts it once ${payload.behind.length === 1 ? "that stack" : "those stacks"} went out. Nothing was deployed and the record was left alone.`);
+  if (claim3.kind === "queued") {
+    const { behind } = claim3;
+    throw new ApplyFailedError(`Deployment record ${id} of ${name} is queued behind ${behind.map(logGroupTitle).join(" and ")}. \`apply\` never deploys a queued record: a later \`resolve\` starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out. Nothing was deployed and the record was left alone.`);
   }
+  const { payload } = claim3;
   report.ticker = payload.ticker;
   report.outcome = "failed";
   const runUrl2 = runUrl(context3.repoUrl, context3.runId, context3.runAttempt);
-  try {
-    await github.createDeploymentStatus(id, { state: "in_progress", logUrl: runUrl2 });
-  } catch (error63) {
-    throw new ApplyFailedError(`Deployment record ${id} of ${name} could not be marked in progress: ${message(error63)}. Nothing was deployed. ${RECORD_PERMISSIONS}`);
+  if (claim3.kind === "unclaimed") {
+    throw new ApplyFailedError(`Deployment record ${id} of ${name} could not be marked in progress: ${message(claim3.error)}. Nothing was deployed. ${RECORD_PERMISSIONS}`);
   }
   log.info(`Deployment record ${id}: ${name}, ticked by ${payload.ticker}, approved diff hash ${payload.hash}. It is in progress.`);
   const progress = { deploying: false };
@@ -59805,30 +59984,27 @@ ${ALREADY_ENDED}
   try {
     attempt = await deploy(context3, id_, payload, runUrl2, progress);
   } catch (error63) {
-    const reason = progress.deploying ? { kind: "tool-error", exitCode: null } : { kind: "not-started" };
+    const reason2 = progress.deploying ? { kind: "tool-error", exitCode: null } : { kind: "not-started" };
     attempt = {
-      state: "failure",
-      reason,
-      failed: `${name} was not deployed: ${deployFailureText(reason)}. ${message(error63)}`
+      end: { kind: "failed", reason: reason2 },
+      failed: `${name} was not deployed: ${deployFailureText(reason2)}. ${message(error63)}`
     };
   }
-  report.outcome = attempt.summary?.kind === "in-sync" || attempt.summary?.kind === "rehearsed" ? attempt.summary.kind : attempt.state === "success" ? "deployed" : attempt.reason?.kind === "moved" || attempt.reason?.kind === "deploys-off" ? "refused" : "failed";
-  report.reason = attempt.reason && deployFailureText(attempt.reason);
+  const reason = reasonOf(attempt);
+  const state = recordStatus(attempt.end).state;
+  report.outcome = attempt.summary?.kind === "in-sync" || attempt.summary?.kind === "rehearsed" ? attempt.summary.kind : attempt.end.kind === "deployed" ? "deployed" : reason?.kind === "moved" || reason?.kind === "deploys-off" ? "refused" : "failed";
+  report.reason = reason && deployFailureText(reason);
   report.applied = attempt.summary;
   if (progress.milliseconds !== undefined)
     report.deployMilliseconds = progress.milliseconds;
   const failures = [];
   let ended = false;
   try {
-    await github.createDeploymentStatus(id, {
-      state: attempt.state,
-      description: attempt.description ?? (attempt.reason && deployFailureText(attempt.reason)),
-      logUrl: runUrl2
-    });
+    await endRecord(context3, id, attempt.end);
     ended = true;
-    log.info(`${RESULT_DOT[report.outcome]} Deployment record ${id} ended as ${attempt.state}.`);
+    log.info(`${RESULT_DOT[report.outcome]} Deployment record ${id} ended as ${state}.`);
   } catch (error63) {
-    failures.push(`Deployment record ${id} of ${name} could not be given its result (${attempt.state}): ${message(error63)}. The \`settle\` job of this run ends it. ${RECORD_PERMISSIONS}`);
+    failures.push(`Deployment record ${id} of ${name} could not be given its result (${state}): ${message(error63)}. The \`settle\` job of this run ends it. ${RECORD_PERMISSIONS}`);
   }
   if (attempt.summary) {
     await writeSummary(context3, renderApplySummary({
@@ -59858,7 +60034,7 @@ ${ALREADY_ENDED}
     } catch (error63) {
       failures.push(`The dashboard could not be written: ${message(error63)}`);
     }
-    if (written !== undefined && attempt.reason?.kind === "moved") {
+    if (written !== undefined && reason?.kind === "moved") {
       try {
         await github.createComment(written, movedComment({ login: payload.ticker, stackId: id_ }));
       } catch (error63) {
@@ -59872,6 +60048,9 @@ ${ALREADY_ENDED}
     throw new ApplyFailedError(failures.join(`
 `));
 }
+function reasonOf(attempt) {
+  return attempt.end.kind === "failed" ? attempt.end.reason : undefined;
+}
 function applied(result) {
   return result.ok ? { kind: "diff", diff: result.diff } : { kind: "preview-failed", reason: previewFailureText(result.reason) };
 }
@@ -59884,7 +60063,7 @@ async function deploy(context3, id, payload, runUrl2, progress) {
     const config2 = loadConfig(context3.root);
     if (!config2.deploys) {
       const reason = { kind: "deploys-off" };
-      return { state: "failure", reason, failed: notDeployed(reason) };
+      return { end: { kind: "failed", reason }, failed: notDeployed(reason) };
     }
     const found = await adapter.discover(context3.root, config2);
     const stacks = applyConfig(config2, found);
@@ -59892,8 +60071,7 @@ async function deploy(context3, id, payload, runUrl2, progress) {
     if (!stack) {
       const reason = { kind: "unknown-stack" };
       return {
-        state: "failure",
-        reason,
+        end: { kind: "failed", reason },
         failed: notDeployed(reason, " Discovery does not find it in the files of this commit, or `ignore` leaves it out. The next scan drops its row.")
       };
     }
@@ -59917,7 +60095,7 @@ async function deploy(context3, id, payload, runUrl2, progress) {
     };
   } catch (error63) {
     const reason = { kind: "not-started" };
-    return { state: "failure", reason, failed: notDeployed(reason, ` ${message(error63)}`) };
+    return { end: { kind: "failed", reason }, failed: notDeployed(reason, ` ${message(error63)}`) };
   }
   const tool = { root: context3.root, env: context3.env, run: context3.run };
   try {
@@ -59928,7 +60106,11 @@ async function deploy(context3, id, payload, runUrl2, progress) {
     if (error63.toolLog !== "")
       context3.log.group("The tool's own words", lines2(error63.toolLog));
     const reason = { kind: "tool-missing" };
-    return { state: "failure", reason, failed: notDeployed(reason, ` ${error63.message}`), setup };
+    return {
+      end: { kind: "failed", reason },
+      failed: notDeployed(reason, ` ${error63.message}`),
+      setup
+    };
   }
   const unprepared = (await prepareStacks({ ...tool, log, adapter }, [setup.stack], context3.previewTimeoutMinutes)).get(id);
   const options = {
@@ -59960,8 +60142,7 @@ async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup
     logPreview(context3, id, "The fresh preview", previewed, toolDiff5);
     const reason = { kind: "preview-failed", reason: drift.reason };
     return {
-      state: "failure",
-      reason,
+      end: { kind: "failed", reason },
       failed: notDeployed(reason, " The drift check failed, and the diff hash the tick approved covers drift."),
       summary: {
         kind: "not-deployed",
@@ -59976,8 +60157,7 @@ async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup
   if (!fresh.ok) {
     const reason = { kind: "preview-failed", reason: fresh.reason };
     return {
-      state: "failure",
-      reason,
+      end: { kind: "failed", reason },
       failed: notDeployed(reason),
       row: fresh,
       summary: { kind: "not-deployed", reason: deployFailureText(reason), checked: applied(fresh) },
@@ -59987,8 +60167,7 @@ async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup
   if (fresh.diff.changes.length === 0 && (fresh.diff.drift ?? []).length === 0) {
     log.info(`The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`);
     return {
-      state: "success",
-      description: IN_SYNC_DESCRIPTION,
+      end: { kind: "in-sync" },
       row: fresh,
       toolDiffInLog: toolDiff5 !== undefined,
       summary: { kind: "in-sync" },
@@ -59999,8 +60178,7 @@ async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup
   if (hash2 !== payload.hash) {
     const reason = { kind: "moved" };
     return {
-      state: "error",
-      reason,
+      end: { kind: "failed", reason },
       failed: notDeployed(reason, ` The fresh preview gives diff hash ${hash2} and the tick approved ${payload.hash}. The row on the dashboard shows the fresh diff. Tick it again to deploy that.`),
       row: fresh,
       toolDiffInLog: toolDiff5 !== undefined,
@@ -60011,8 +60189,7 @@ async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup
   if (context3.dryRun) {
     log.info(`The fresh preview gives diff hash ${hash2}, the one the tick approved. This is a rehearsal (dry-run: true), so nothing is deployed.`);
     return {
-      state: "inactive",
-      description: REHEARSED_DESCRIPTION,
+      end: { kind: "rehearsed" },
       row: fresh,
       toolDiffInLog: toolDiff5 !== undefined,
       summary: { kind: "rehearsed", diff: fresh.diff },
@@ -60056,7 +60233,7 @@ async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup
   ]);
   if (result.ok) {
     return {
-      state: "success",
+      end: { kind: "deployed" },
       row: { ok: true, diff: { stackId: id, changes: [] }, toolLog: "" },
       summary: { kind: "deployed", diff: fresh.diff },
       setup
@@ -60064,8 +60241,7 @@ async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup
   }
   if (result.reason.kind === "moved") {
     return {
-      state: "error",
-      reason: result.reason,
+      end: { kind: "failed", reason: result.reason },
       failed: notDeployed(result.reason, " What the deploy would install changed after the fresh preview, so nothing was deployed. The job log says what."),
       row: fresh,
       toolDiffInLog: toolDiff5 !== undefined,
@@ -60080,8 +60256,7 @@ async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup
   const after = await preview5();
   logPreview(context3, id, "The preview after the failed deploy", after);
   return {
-    state: "failure",
-    reason: result.reason,
+    end: { kind: "failed", reason: result.reason },
     failed: notDeployed(result.reason, " The job log holds the tool's own words."),
     row: after,
     summary: {
@@ -60940,11 +61115,11 @@ function checkJobs(path, workflow, found, config2, warnings) {
     }
   }
   const applies = withMode("apply");
-  for (const settle2 of withMode("settle")) {
-    const { needs } = jobOf(settle2);
+  for (const settle3 of withMode("settle")) {
+    const { needs } = jobOf(settle3);
     for (const apply6 of applies) {
       if (!needs.includes(apply6)) {
-        warnings.push({ kind: "settle-skips-apply", path, job: settle2, apply: apply6 });
+        warnings.push({ kind: "settle-skips-apply", path, job: settle3, apply: apply6 });
       }
     }
   }
@@ -61414,28 +61589,25 @@ async function resolveTicks(context3, handOn, report) {
     if (!stack || hash2 === undefined || ticker === undefined)
       continue;
     try {
-      const record3 = await github.createDeployment({
-        sha: context3.sha,
-        task: deploymentTask(id),
+      const record3 = await openRecord(context3, {
+        stackId: id,
         environment: stack.environment,
-        payload: deploymentPayload({
-          hash: hash2,
-          ticker,
-          run: context3.runId,
-          attempt: context3.runAttempt,
-          behind,
-          ...drifted.has(id) ? { drift: true } : {}
-        })
+        sha: context3.sha,
+        ticker,
+        hash: hash2,
+        behind,
+        drift: drifted.has(id)
       });
       started.push({
         stackId: id,
         environment: stack.environment,
-        deployment: record3.id,
+        deployment: record3.deployment,
         ticker,
         behind
       });
-      await github.createDeploymentStatus(record3.id, { state: "queued", logUrl: runUrl2(context3) });
-      log.info(behind ? `${logGroupTitle(id)}: deployment record ${record3.id} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.` : `${logGroupTitle(id)}: deployment record ${record3.id} is queued.`);
+      if (record3.unfinished !== undefined)
+        throw record3.unfinished;
+      log.info(behind ? `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.` : `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued.`);
     } catch (error63) {
       failures.push(`The deployment record of ${logGroupTitle(id)} could not be written: ${message2(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). No further deploy was started, and the ticks that are left stay for the next run.`);
       break;
@@ -61634,28 +61806,22 @@ async function mergeAll(context3, config2, stacks, ticks, waitingOn) {
       if (!stack)
         continue;
       try {
-        const record3 = await github.createDeployment({
-          sha: answer.sha,
-          task: deploymentTask(id),
+        const record3 = await openRecord(context3, {
+          stackId: id,
           environment: stack.environment,
-          payload: mergePayload({
-            ticker,
-            run: context3.runId,
-            attempt: context3.runAttempt,
-            merge: tick.pr
-          })
+          sha: answer.sha,
+          ticker,
+          merge: tick.pr
         });
         result.merged.push({
           stackId: id,
           environment: stack.environment,
-          deployment: record3.id,
+          deployment: record3.deployment,
           ticker
         });
-        await github.createDeploymentStatus(record3.id, {
-          state: "queued",
-          logUrl: runUrl2(context3)
-        });
-        log.info(`${logGroupTitle(id)}: deployment record ${record3.id} is queued and deploys after the scan of the merge.`);
+        if (record3.unfinished !== undefined)
+          throw record3.unfinished;
+        log.info(`${logGroupTitle(id)}: deployment record ${record3.deployment} is queued and deploys after the scan of the merge.`);
       } catch (error63) {
         result.failure = `#${tick.pr} is merged, and the deployment record of ${logGroupTitle(id)} could not be written: ${message2(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). Nothing deploys for it: the scan shows the stack as pending, and a tick on its row deploys it. Nothing more was merged.`;
         return result;
@@ -61716,7 +61882,7 @@ async function openDeployments(context3, ticked) {
   const records = await readRecords(context3, ticked.map(({ environment }) => environment), ticked);
   const theirs = records.filter((record3) => ids2.has(taskStackId(record3.task) ?? ""));
   const settled = await settleEndedRuns(context3.github, theirs, context3.repoUrl);
-  for (const id of settled.stackIds) {
+  for (const { stackId: id } of settled.ended) {
     context3.log.info(`Ended the open deployment of ${logGroupTitle(id)}: its run is over and never reported a result.`);
   }
   const open2 = new Map;
@@ -61844,7 +62010,7 @@ async function startQueued(context3, handOn) {
   const anyAuto = all.some(({ dependsOnAuto }) => dependsOnAuto);
   const involved = all.filter(({ stack, dependsOn }) => anyAuto || dependsOn !== undefined || all.some((other) => other.dependsOn?.includes(stackId(stack)) === true));
   const settled = await settleEndedRuns(github, await readRecords(context3, all.map(({ environment }) => environment), involved), context3.repoUrl);
-  for (const id of settled.stackIds) {
+  for (const { stackId: id } of settled.ended) {
     log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
   }
   const ready = [...deployFacts(settled.records).byStack].flatMap(([id, fact]) => fact.kind === "open" && fact.behind && stacks.has(id) && queueState(fact.behind, settled.records) === "ready" ? [{ stackId: id, fact }] : []).sort((a, b) => a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0);
@@ -61856,35 +62022,25 @@ async function startQueued(context3, handOn) {
   const started = [];
   for (const { stackId: id, fact } of capDeploys(ready).start) {
     const stack = stacks.get(id);
-    const old = settled.records.find((record3) => record3.id === fact.deployment);
-    const payload = old && readDeploymentPayload(old.payload);
-    if (!stack || !payload)
+    const queued = settled.records.find((record3) => record3.id === fact.deployment);
+    if (!stack || !queued)
       continue;
     try {
-      const record3 = await github.createDeployment({
+      const record3 = await startQueuedRecord(context3, queued, {
         sha: context3.sha,
-        task: deploymentTask(id),
-        environment: stack.environment,
-        payload: deploymentPayload({
-          hash: payload.hash,
-          ticker: payload.ticker,
-          run: context3.runId,
-          attempt: context3.runAttempt
-        })
+        environment: stack.environment
       });
+      if (!record3)
+        continue;
       started.push({
         stackId: id,
         environment: stack.environment,
-        deployment: record3.id,
-        ticker: payload.ticker
+        deployment: record3.deployment,
+        ticker: record3.ticker
       });
-      await github.createDeploymentStatus(record3.id, { state: "queued", logUrl: runUrl2(context3) });
-      await github.createDeploymentStatus(fact.deployment, {
-        state: "inactive",
-        description: HANDED_ON_DESCRIPTION,
-        logUrl: runUrl2(context3)
-      });
-      log.info(`${logGroupTitle(id)}: what it waited behind went out, so it starts now. Deployment record ${record3.id} is queued and takes over from record ${fact.deployment}.`);
+      if (record3.unfinished !== undefined)
+        throw record3.unfinished;
+      log.info(`${logGroupTitle(id)}: what it waited behind went out, so it starts now. Deployment record ${record3.deployment} is queued and takes over from record ${fact.deployment}.`);
     } catch (error63) {
       failures.push(`The deployment record of ${logGroupTitle(id)} could not be written: ${message2(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). No further deploy was started, and the queued stacks that are left wait for the next run.`);
       break;
@@ -63929,15 +64085,13 @@ async function lateDeploys(context3, stacks, previewed, live) {
   });
   try {
     const records = await readDeploymentRecords(github, stacks.map(({ environment }) => environment), fallBack);
-    const before = deployFacts(records).byStack;
     const settled = await settleEndedRuns(github, records, context3.repoUrl);
-    for (const id of settled.stackIds) {
-      const fact = before.get(id);
-      log.info(`Ended the open deployment of ${logGroupTitle(id)}: run ${fact?.kind === "open" ? fact.run : ""} is over and never reported a result.`);
+    for (const { stackId: id, run } of settled.ended) {
+      log.info(`Ended the open deployment of ${logGroupTitle(id)}: run ${run} is over and never reported a result.`);
     }
     return {
       facts: deployFacts(settled.records),
-      settled: new Set(settled.stackIds),
+      settled: new Set(settled.ended.map(({ stackId: id }) => id)),
       runs: ownRuns(settled.records)
     };
   } catch (error63) {
@@ -64387,8 +64541,7 @@ function mergesWaiting(facts) {
   return waiting.sort((a, b) => byCodeUnit(a.id, b.id));
 }
 async function handOffMerges(context3, config2, stacks, previewed, waiting, handedOn) {
-  const { github, log } = context3;
-  const logUrl = runUrl(context3.repoUrl, context3.runId, context3.runAttempt);
+  const { log } = context3;
   let ended = false;
   for (const { id, fact } of waiting) {
     const name = logGroupTitle(id);
@@ -64401,45 +64554,42 @@ async function handOffMerges(context3, config2, stacks, previewed, waiting, hand
     }
     const stack = stacks.find(({ stack: one }) => stackId(one) === id);
     const result = previewed.get(id)?.result;
-    const end = async (state, description) => {
+    const end = async (how) => {
       try {
-        await github.createDeploymentStatus(fact.deployment, { state, description, logUrl });
+        await endRecord(context3, fact.deployment, how);
       } catch (error63) {
         throw new Error(`The deployment record ${fact.deployment} of ${name} could not be ended: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permission \`deployments: write\` (record 0054).`);
       }
       ended = true;
     };
     if (!stack || !result) {
-      await end("failure", deployFailureText({ kind: "unknown-stack" }));
+      await end({ kind: "failed", reason: { kind: "unknown-stack" } });
       log.info(`${name} is not in the repo any more, so the merge of #${fact.merge} deploys nothing.`);
     } else if (!config2.deploys) {
-      await end("failure", deployFailureText({ kind: "deploys-off" }));
+      await end({ kind: "failed", reason: { kind: "deploys-off" } });
       log.info(`#${fact.merge} is merged, and deploys are turned off in sluiceway.yaml (deploys: false). ${name} is not deployed.`);
     } else if (!result.ok) {
-      await end("failure", deployFailureText({ kind: "preview-failed", reason: result.reason }));
+      await end({ kind: "failed", reason: { kind: "preview-failed", reason: result.reason } });
       log.info(`#${fact.merge} is merged, and the preview of ${name} failed, so nothing is deployed.`);
     } else if (result.diff.changes.length === 0) {
-      await end("success", IN_SYNC_DESCRIPTION);
+      await end({ kind: "in-sync" });
       log.info(`#${fact.merge} is merged, and ${name} has nothing to deploy.`);
     } else {
-      await end("inactive", MERGED_DESCRIPTION);
+      await end({ kind: "merged" });
       const hash2 = diffHash(result.diff);
       try {
-        const record4 = await github.createDeployment({
-          sha: context3.sha,
-          task: deploymentTask(id),
+        const record4 = await openRecord(context3, {
+          stackId: id,
           environment: stack.environment,
-          payload: deploymentPayload({
-            hash: hash2,
-            ticker: fact.ticker,
-            run: context3.runId,
-            attempt: context3.runAttempt,
-            ...(result.diff.drift ?? []).length > 0 ? { drift: true } : {}
-          })
+          sha: context3.sha,
+          ticker: fact.ticker,
+          hash: hash2,
+          drift: (result.diff.drift ?? []).length > 0
         });
-        handedOn.push({ stack: id, environment: stack.environment, deployment: record4.id });
-        await github.createDeploymentStatus(record4.id, { state: "queued", logUrl });
-        log.info(`#${fact.merge} is merged: deployment record ${record4.id} of ${name} is queued with diff hash ${hash2}, ticked by ${fact.ticker}, and handed to apply.`);
+        handedOn.push({ stack: id, environment: stack.environment, deployment: record4.deployment });
+        if (record4.unfinished !== undefined)
+          throw record4.unfinished;
+        log.info(`#${fact.merge} is merged: deployment record ${record4.deployment} of ${name} is queued with diff hash ${hash2}, ticked by ${fact.ticker}, and handed to apply.`);
       } catch (error63) {
         throw new Error(`#${fact.merge} is merged, and the deployment record that deploys ${name} could not be written: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permission \`deployments: write\` (record 0054). Nothing deploys: the row shows the stack as pending, and a tick deploys it.`);
       }
@@ -64506,82 +64656,49 @@ async function runScan(directory, step3) {
 // src/modes/settle-job.ts
 import { readFileSync as readFileSync11 } from "node:fs";
 
-// src/core/settle.ts
-function openRecordsOfRun(records, runId) {
-  const found = new Map;
-  for (const record4 of records) {
-    const stackId2 = taskStackId(record4.task);
-    if (stackId2 === undefined)
-      continue;
-    const fact = deployFacts([record4]).byStack.get(stackId2);
-    if (fact?.kind !== "open" || fact.run !== runId || fact.merge !== undefined)
-      continue;
-    found.set(record4.id, {
-      id: record4.id,
-      stackId: stackId2,
-      ...fact.behind ? { behind: fact.behind } : {}
-    });
-  }
-  return [...found.values()].sort((a, b) => a.id - b.id);
-}
-
 // src/modes/settle.ts
 function message4(error63) {
   return error63 instanceof Error ? error63.message : String(error63);
 }
-async function settle2(context3) {
-  const { github, log } = context3;
+async function settle3(context3) {
+  const { log } = context3;
   const url2 = eventDashboardUrl(context3.repoUrl, context3.event);
   if (url2 !== undefined)
     context3.outputs?.set("dashboard-url", url2);
   const config2 = loadConfig(context3.root);
   const stacks = applyConfig(config2, await context3.adapter.discover(context3.root, config2));
-  let records = await readRecords2(context3, stacks);
-  const open2 = openRecordsOfRun(records, context3.runId);
-  const end = async (id, stack, dead) => {
-    try {
-      const status = await github.createDeploymentStatus(id, {
-        state: dead ? "failure" : "error",
-        description: deployFailureText({ kind: dead ? "dependency-failed" : "run-ended" }),
-        logUrl: `${context3.repoUrl}/actions/runs/${context3.runId}`
-      });
-      records = records.map((record4) => record4.id === id ? { ...record4, status } : record4);
-    } catch (error63) {
-      throw new Error(`The deployment record of ${logGroupTitle(stack)} could not be given its result: ${message4(error63)}. The settle job needs the permission \`deployments: write\` (record 0003).`);
-    }
-  };
-  let ended = 0;
-  for (const { id, stackId: stack, behind } of open2) {
-    if (behind)
-      continue;
-    await end(id, stack, false);
-    ended++;
-    log.info(`${RESULT_DOT.failed} Ended the open deployment of ${logGroupTitle(stack)} (record ${id}): this run ended without a result for it.`);
-  }
-  for (let more = true;more; ) {
-    more = false;
-    for (const { id, stackId: stack, behind } of open2) {
-      if (!behind || deployFacts(records).byStack.get(stack)?.kind !== "open")
-        continue;
-      if (queueState(behind, records) !== "dead")
-        continue;
-      await end(id, stack, true);
-      ended++;
-      more = true;
-      log.info(`${RESULT_DOT.failed} Ended the queued deployment of ${logGroupTitle(stack)} (record ${id}): a stack it depends on did not deploy.`);
-    }
-  }
+  const read3 = await readRecords2(context3, stacks);
+  const settled = await settleOwnRun(context3, read3);
+  const { records } = settled;
+  const ended = settled.ended.length;
   const ready = [...deployFacts(records).byStack].flatMap(([stack, fact]) => fact.kind === "open" && fact.behind && queueState(fact.behind, records) === "ready" ? [stack] : []);
   for (const stack of ready) {
     log.info(`${logGroupTitle(stack)} can start now: what it waited behind went out. Started the workflow again, and its resolve job starts it.`);
   }
   if (ended === 0 && ready.length === 0) {
-    log.info(open2.length === 0 ? `${DOT_AT_ZERO} No deployment record of this run is open. Every deploy it started reported a result.` : `${DOT_AT_ZERO} Every deploy this run started reported a result, and what is queued still waits.`);
+    log.info(settled.open === 0 ? `${DOT_AT_ZERO} No deployment record of this run is open. Every deploy it started reported a result.` : `${DOT_AT_ZERO} Every deploy this run started reported a result, and what is queued still waits.`);
     return;
   }
   await dispatchScan2(context3);
   if (ended > 0) {
     log.info("Started a full scan, which writes the rows of these stacks again with the failure line.");
+  }
+}
+async function settleOwnRun(context3, records) {
+  try {
+    const settled = await settleRun(context3.github, records, context3.repoUrl, context3.runId);
+    logEnded(context3.log, settled.ended);
+    return settled;
+  } catch (error63) {
+    if (!(error63 instanceof RecordNotEnded))
+      throw error63;
+    logEnded(context3.log, error63.settled.ended);
+    throw new Error(`The deployment record of ${logGroupTitle(error63.stackId)} could not be given its result: ${message4(error63.cause)}. The settle job needs the permission \`deployments: write\` (record 0003).`);
+  }
+}
+function logEnded(log, ended) {
+  for (const { deployment, stackId: stack, dead } of ended) {
+    log.info(dead ? `${RESULT_DOT.failed} Ended the queued deployment of ${logGroupTitle(stack)} (record ${deployment}): a stack it depends on did not deploy.` : `${RESULT_DOT.failed} Ended the open deployment of ${logGroupTitle(stack)} (record ${deployment}): this run ended without a result for it.`);
   }
 }
 async function readRecords2(context3, stacks) {
@@ -64616,7 +64733,7 @@ async function runSettle(step3) {
   const env = process.env;
   const token = readToken(getInput);
   const job = readJob(env);
-  await settle2({
+  await settle3({
     root: job.root,
     adapter: tools,
     github: createOctokitPort(getOctokit(token), { owner: job.owner, repo: job.repo }),
@@ -65328,12 +65445,12 @@ async function run(mode, directory, getInput2 = getInput, warn = (message5, titl
   }
   return handlers[mode](directory);
 }
-async function post(mode, getState2, settle3) {
+async function post(mode, getState2, settle4) {
   if (mode !== "auto")
     return;
   if (getState2(HANDED_ON_STATE) !== "true" || getState2(SETTLED_STATE) === "true")
     return;
-  await settle3();
+  await settle4();
 }
 
 // src/main.ts
