@@ -11,6 +11,10 @@ Left out of v1 on purpose, and v1 was shaped so these can be added without a bre
 | What | Why not in v1 | Decided in |
 |---|---|---|
 | OpenTofu and Terraform adapter | One adapter first. The core terms, diff shape and adapter interface were checked against OpenTofu on paper. | Brief, 0006, 0007 |
+| A Helm adapter (a release in a namespace as the stack, `Chart.yaml` and values files for discovery, `helm diff upgrade` for the preview, `helm upgrade --install` for the deploy) | The closest fit after OpenTofu: a plan-and-apply cycle and a live release to compare against, credential-free fixtures, and the largest new audience (Kubernetes teams that have not wrapped Helm). First adapter after OpenTofu. | The adapter interface, 0006, 0007 |
+| A Kubernetes manifests adapter (kustomize or plain YAML, `kubectl diff` for the preview, `kubectl apply` for the deploy) | Same shape as Helm, simpler. Shares its audience. After Helm. | 0006, 0007 |
+| The Terraform family beyond OpenTofu (Terragrunt, CDK for Terraform) | They reduce to the same plan JSON, so they come nearly free once the OpenTofu adapter exists. | 0006, 0007 |
+| An AWS CDK and CloudFormation adapter (change sets as the preview) | Fits the model, a different format from plan JSON, a large all-AWS audience. Wanted, waiting for a user who asks. | 0006, 0007 |
 | Drift detection and the drift section | Needs the core loop working first. The marker format and row states already have room for drift rows. | Brief M3, 0009 |
 | Stack dependencies and "queued behind X" | Same. The marker format has room for the queued state. | Brief M3, 0009 |
 | Detecting dependencies from Pulumi stack references | Comes after manual `dependsOn`. | Brief |
@@ -152,6 +156,8 @@ Not planned. Bringing one of these back means reopening the decision named here,
 | A grey header with no face and no colour for any delete or replace (the plain state) | Routine replaces are everyday in some repos, so the header that sets Sluiceway apart almost never showed, and a warning that is always on is not read. The header always shows the real state, and a destroy adds a sign to the same picture. | 0043, 0031 |
 | A header state of its own for a delete or replace, in colour, in place of the pending pictures (the careful state) | It hides the real state behind the warning. A sign inside the real picture hides nothing. | 0043 |
 | The destroy sign as one stamped crate, or as a striped board with a beacon | The crate is small on a phone and drifts out of view while deploying. The board and beacon are loud and move, and a sign that shows most days and nags is tuned out. The still sign on the wall won. | 0043 |
+| An Ansible adapter | Ansible has no state. `--check --diff` gives a dry run, but "what is pending since the last deploy" would need the whole playbook in check mode on every scan, and the dashboard could only promise "what this playbook would change now". Decided 2026-09-22 with the owner: not a fit. | The adapter interface |
+| A Docker or Docker Compose adapter | No plan, no diff, no state to compare. "Pending" could only mean "the file changed since the last run", which is a deploy button, and there are many. It would dilute what a row on the dashboard means. Decided 2026-09-22. | The adapter interface |
 | Per-resource selection (`--target`) | Granularity is one checkbox per stack. | Brief non-goals |
 | Plan comments on pull requests | Other tools do that well already. | Brief non-goals |
 | An `env` key, or an environment per stack, in `sluiceway.yaml` | Programs may read any variable, so Sluiceway cannot know the names. The workflow prepares one environment for the job. | 0013 |
