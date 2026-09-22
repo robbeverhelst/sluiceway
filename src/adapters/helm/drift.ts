@@ -3,10 +3,11 @@ import type { Change } from "../../core/diff.ts";
 import type { PreviewFailureReason } from "../../core/failure-reason.ts";
 import type { Stack } from "../../core/stack.ts";
 import type { DriftResult, PreviewOptions } from "../adapter.ts";
+import type { Folded } from "../folded.ts";
 import { stripAnsi } from "../pulumi/tool-log.ts";
 import { diffCommand, threeWayDiffCommand } from "./commands.ts";
 import { helmEnvironment, optionsOf } from "./environment.ts";
-import { addressOf, type Folded, foldEntries } from "./fold.ts";
+import { addressOf, foldEntries } from "./fold.ts";
 import { failureOf } from "./preview.ts";
 import { type Entry, parseEntries } from "./schema.ts";
 

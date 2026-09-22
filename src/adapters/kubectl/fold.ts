@@ -1,5 +1,6 @@
 import { parse } from "yaml";
 import type { Change, Op } from "../../core/diff.ts";
+import type { Folded } from "../folded.ts";
 import { changedPaths } from "../opentofu/paths.ts";
 import { groupOf, type ListedObject, lists } from "./inventory.ts";
 import { heldByOthers } from "./ownership.ts";
@@ -33,12 +34,6 @@ const SERVER_FIELDS = [
   "selfLink",
 ];
 
-export type Folded =
-  | { ok: true; changes: Change[] }
-  // The detail names a place in the tool's output and what was expected
-  // there, never what was found (record 0021).
-  | { ok: false; reason: "unreadable-output"; detail: string[] };
-
 export interface Identity {
   address: string;
   type: string;
@@ -52,7 +47,7 @@ export function foldObjects(
   pairs: ObjectPair[],
   showValues: readonly string[],
   inventory?: string,
-): Folded {
+): Folded<"unreadable-output"> {
   const changes: Change[] = [];
   const problems: string[] = [];
   const firstAt = new Map<string, number>();
@@ -187,7 +182,7 @@ function isInventory(identity: Identity, inventory: string | undefined): boolean
 export function foldDrift(
   pairs: ObjectPair[],
   context: { inventory?: string; listed: readonly ListedObject[]; manager: string },
-): Folded {
+): Folded<"unreadable-output"> {
   const drift: Change[] = [];
   const problems: string[] = [];
   pairs.forEach((pair, index) => {

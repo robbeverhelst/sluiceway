@@ -1,5 +1,6 @@
 import type { Change, Op, ShownValue } from "../../core/diff.ts";
 import { isListedPath, shortValue } from "../../core/show-values.ts";
+import type { Folded } from "../folded.ts";
 import { segment } from "../opentofu/paths.ts";
 import type { Entry, FieldChange } from "./schema.ts";
 
@@ -15,12 +16,6 @@ const OPS: Record<string, Op> = {
   MODIFY: "update",
   REMOVE: "delete",
 };
-
-export type Folded =
-  | { ok: true; changes: Change[] }
-  // The detail names a place in the tool's output and what was expected
-  // there, never what was found (record 0021).
-  | { ok: false; reason: "unreadable-output" | "unknown-step"; detail: string[] };
 
 // `namespace` is the release's own: an object there reads by its name alone,
 // and an object the chart puts in another namespace reads with it in front.

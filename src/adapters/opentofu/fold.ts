@@ -1,4 +1,5 @@
 import type { Change, Op, Tracking } from "../../core/diff.ts";
+import type { Folded } from "../folded.ts";
 import { changedPaths, replacePath } from "./paths.ts";
 import type { ResourceChange } from "./schema.ts";
 
@@ -25,12 +26,6 @@ const ACTIONS: Record<string, { op: Op; tracking?: Tracking } | "drop"> = {
   // record of the old object goes and a new object is made (record 0007).
   "forget,create": { op: "create", tracking: "forget" },
 };
-
-export type Folded =
-  | { ok: true; changes: Change[] }
-  // The detail names a place in the tool's output and what was expected
-  // there, never what was found (record 0021).
-  | { ok: false; reason: "unreadable-output" | "unknown-step"; detail: string[] };
 
 export function foldChanges(found: ResourceChange[], showValues: readonly string[]): Folded {
   const changes: Change[] = [];

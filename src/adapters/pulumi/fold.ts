@@ -1,4 +1,5 @@
 import type { Change, Op, Tracking } from "../../core/diff.ts";
+import type { Folded } from "../folded.ts";
 import type { PreviewStep } from "./schema.ts";
 
 // From the tool's step ops to what a change says (record 0007), settled from
@@ -24,12 +25,6 @@ const STEP_OPS: Record<string, { op: Op; tracking?: Tracking } | "drop"> = {
 // What the tool calls a delete of a resource with retainOnDelete: the record
 // goes and the real object stays.
 const FORGET = { op: "none", tracking: "forget" } as const;
-
-export type Folded =
-  | { ok: true; changes: Change[] }
-  // The detail names a place in the tool's output and what was expected
-  // there, never what was found (record 0021).
-  | { ok: false; reason: "unreadable-output" | "unknown-step"; detail: string[] };
 
 export function foldSteps(steps: PreviewStep[]): Folded {
   const changes: Change[] = [];
