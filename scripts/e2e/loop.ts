@@ -166,6 +166,26 @@ export function checkResolve(
   step: LoopStep,
   expected: { stack: string; environment: string; ticker: string; runId: string },
 ): string[] {
+  const problems = checkStarted(step, expected);
+  const record = step.records.find(
+    ({ id }) => id === matrixEntries(step.outputs.matrix ?? "")[0]?.deployment,
+  );
+  if (!record) return problems;
+  problems.push(
+    ...statuses(record, ["queued"]),
+    ...rowState(step.body, expected.stack, "deploying"),
+  );
+  return problems;
+}
+
+// The deploy an allowed tick started (records 0003, 0035 and 0077): one entry
+// in the matrix output, for a record of the stack, in its environment, that
+// names the ticker and the run. The step may have deployed it since, as the
+// one step of auto mode does, so its statuses are the caller's to check.
+export function checkStarted(
+  step: LoopStep,
+  expected: { stack: string; environment: string; ticker: string; runId: string },
+): string[] {
   const { stack, environment, ticker, runId } = expected;
   const problems = exitCode(step, true);
   const text = step.outputs.matrix;
@@ -198,7 +218,6 @@ export function checkResolve(
   if (run !== runId) {
     problems.push(`Deployment record ${record.id} belongs to run ${run}, expected ${runId}.`);
   }
-  problems.push(...statuses(record, ["queued"]), ...rowState(step.body, stack, "deploying"));
   return problems;
 }
 
@@ -474,10 +493,10 @@ export function checkMergeTick(
 
 // The scan after the merge: the merge record is handed on, and a new record
 // with the fresh diff hash, the same ticker and the scan's run is in its
-// matrix output.
+// matrix output. In auto mode the same step deploys it (record 0077).
 export function checkHandOff(
   step: LoopStep,
-  expected: { stack: string; merge: number; ticker: string; runId: string },
+  expected: { stack: string; merge: number; ticker: string; runId: string; deployed?: boolean },
 ): string[] {
   const { stack, merge, ticker, runId } = expected;
   const problems = exitCode(step, true);
@@ -508,6 +527,13 @@ export function checkHandOff(
   if (payloadField(record.payload, "run") !== runId) {
     problems.push(`Deployment record ${record.id} does not belong to run ${runId}.`);
   }
-  problems.push(...statuses(record, ["queued"]), ...rowState(step.body, stack, "deploying"));
+  if (expected.deployed) {
+    problems.push(
+      ...statuses(record, ["queued", "in_progress", "success"]),
+      ...rowState(step.body, stack, "in-sync"),
+    );
+  } else {
+    problems.push(...statuses(record, ["queued"]), ...rowState(step.body, stack, "deploying"));
+  }
   return problems;
 }

@@ -191,14 +191,27 @@ function checkScan(observed: Observed, expected: Expected, previewed: string[]):
   problems.push(...checkPages(observed, expected, rows, previewed));
 
   // The count the scan logs is taken on the wire, so it has to be the count
-  // the fake GitHub saw (record 0017, build plan slice 3.1).
+  // the fake GitHub saw (record 0017, build plan slice 3.1). On a dispatch the
+  // one step of auto mode resolves before it scans (record 0077), and those
+  // requests are the step's but not the scan's.
   const requests = observed.requests.length;
-  problems.push(
-    ...needLine(
-      observed.log,
-      `The scan made ${requests} ${requests === 1 ? "request" : "requests"} to the GitHub API.`,
-    ),
-  );
+  if (observed.log.includes(RESOLVED_FIRST)) {
+    const made = Number(
+      /The scan made (\d+) requests? to the GitHub API\./.exec(observed.log)?.[1],
+    );
+    if (!(made > 0 && made <= requests)) {
+      problems.push(
+        `The scan says it made ${made} requests to the GitHub API, and the step made ${requests}.`,
+      );
+    }
+  } else {
+    problems.push(
+      ...needLine(
+        observed.log,
+        `The scan made ${requests} ${requests === 1 ? "request" : "requests"} to the GitHub API.`,
+      ),
+    );
+  }
 
   // Annotations show on the run's page, outside the job log (record 0022).
   const annotations = observed.log
@@ -229,6 +242,9 @@ export function checkOutsideDeploys(observed: Observed, stacks: string[]): strin
         `expected outside deploys of ${stacks.join(", ") || "no stack"} on the trail, found ${found.join(", ") || "none"}.`,
       ];
 }
+
+// The line of auto mode that says it resolves before it scans.
+const RESOLVED_FIRST = "Sluiceway runs resolve, for the workflow_dispatch event of this run.";
 
 export function checkFullScan(observed: Observed, expected: Expected): string[] {
   const stacks = Object.keys(expected.rows);

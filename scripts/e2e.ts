@@ -77,6 +77,7 @@ import {
   checkResolve,
   checkRowFacts,
   checkSettle,
+  checkStarted,
   type LoopRecord,
   type LoopStep,
   type MatrixEntry,
@@ -197,9 +198,10 @@ interface Stepped extends Observed {
 }
 
 // One step of `uses: ./` or of a downloaded action, with only the inputs given here set, so every other
-// input is the default of action.yml.
+// input is the default of action.yml. Without a mode the step is auto mode,
+// the one step of the README's workflow (record 0077).
 let stepNumber = 0;
-async function step(mode: string, options: StepOptions): Promise<Stepped> {
+async function step(mode: string | undefined, options: StepOptions): Promise<Stepped> {
   stepNumber++;
   const summaryFile = join(temp, `summary-${stepNumber}.md`);
   const outputFile = join(temp, `output-${stepNumber}`);
@@ -219,7 +221,7 @@ async function step(mode: string, options: StepOptions): Promise<Stepped> {
   try {
     const env = stepEnvironment(
       action,
-      { mode, ...options.inputs },
+      { ...(mode === undefined ? {} : { mode }), ...options.inputs },
       {
         workspace,
         repository: "acme/infra",
@@ -274,12 +276,14 @@ async function step(mode: string, options: StepOptions): Promise<Stepped> {
   }
 }
 
-// A scan of a push, a schedule or a dispatch. Each is a run of its own.
+// A scan of a push, a schedule or a dispatch. Each is a run of its own, of
+// the one step with no mode, which scans on each of these events (record
+// 0077). On a dispatch it resolves first, and finds nothing to start.
 let runNumber = 0;
 function scanStep(sha: string, event = "push", action?: StepOptions["action"]): Promise<Stepped> {
   runNumber++;
   const from = action === undefined ? "" : `, from ${action.ref}`;
-  return step("scan", {
+  return step(undefined, {
     runId: String(runNumber),
     sha,
     event,
@@ -397,10 +401,11 @@ good =
   ) && good;
 
 // The loop (build plan, slice 2.9). Every tick is an edit by a person, and
-// the edit starts a run of the workflow with the `issues` event: `resolve`,
-// then one `apply` per matrix entry, then `settle`, all with the run id of
-// that run, and each only when the `if:` of its job in the README's workflow
-// would let it start.
+// the edit starts a run of the workflow with the `issues` event. In the
+// README's workflow that run is one step with no mode, which resolves, deploys
+// what it started and settles (record 0077). Two scenes run the split
+// workflow instead, one job per mode with the run id of the run: a re-run of
+// an apply job, and an apply job that was cancelled before it started.
 const WORKFLOW = "sluiceway.yml";
 const ALICE = { login: "alice", type: "User" };
 const CAROL = { login: "carol", type: "User" };
@@ -433,7 +438,7 @@ function records(): LoopRecord[] {
 }
 
 // A step of the loop, with what it left behind in GitHub.
-async function loopStep(mode: string, options: StepOptions): Promise<LoopStep> {
+async function loopStep(mode: string | undefined, options: StepOptions): Promise<LoopStep> {
   const commentsBefore = fake.comments(1).length;
   const dispatchesBefore = fake.dispatches.length;
   const stepped = await step(mode, options);
@@ -454,12 +459,26 @@ interface IssuesRun {
   runId: string;
   // The payload of the edit, which the runner hands every job of the run.
   payload: unknown;
+  // The one step of the run, or its resolve job in the split workflow.
   resolved: LoopStep;
   matrix: MatrixEntry[];
 }
 
+interface TickOptions {
+  // "resolve" for the resolve job of the split workflow. Without it the run
+  // is the one step of the README's workflow.
+  mode?: string;
+  inputs?: Record<string, string>;
+  // What happens between the edit and the start of the run.
+  beforeRun?: () => Promise<void>;
+}
+
 // A person ticks the box of a stack, and the edit starts a run.
-async function tick(stack: string, person: { login: string; type: string }): Promise<IssuesRun> {
+async function tick(
+  stack: string,
+  person: { login: string; type: string },
+  options: TickOptions = {},
+): Promise<IssuesRun> {
   const [dashboard] = await fake.listIssues({ label: "sluiceway", state: "open" });
   if (!dashboard) throw new Error("There is no dashboard to tick.");
   fake.editBody(dashboard.number, tickRow(dashboard.body, stack), person);
@@ -468,12 +487,15 @@ async function tick(stack: string, person: { login: string; type: string }): Pro
   // GitHub knows the run from the moment the edit started it.
   fake.seedIssuesRun(WORKFLOW, { id: runId, completed: false });
   const payload = fake.deliverEvent();
-  const resolved = await loopStep("resolve", {
+  await options.beforeRun?.();
+  const what = options.mode === undefined ? "the one step" : options.mode;
+  const resolved = await loopStep(options.mode, {
     runId,
     sha: SECOND_SHA,
     event: "issues",
     payload,
-    title: `Run ${runId}: resolve, after ${person.login} ticked ${stack}`,
+    ...(options.inputs === undefined ? {} : { inputs: options.inputs }),
+    title: `Run ${runId}: ${what}, after ${person.login} ticked ${stack}`,
   });
   return { runId, payload, resolved, matrix: matrixEntries(resolved.outputs.matrix ?? "") };
 }
@@ -537,8 +559,7 @@ function reportStep(title: string, stepped: LoopStep, problems: string[]): boole
   return report(title, [...problems, ...checkNothingLeaks(stepped, secrets)]);
 }
 
-// 1. carol ticks network:dev. The tick is refused, and nothing else of the
-// run starts, because the matrix is empty.
+// 1. carol ticks network:dev. The tick is refused, and nothing is deployed.
 const refused = await tick("network:dev", CAROL);
 endRun(refused);
 good =
@@ -548,42 +569,32 @@ good =
     checkRefusedTick(refused.resolved, { stack: "network:dev", ticker: CAROL.login }),
   ) && good;
 
-// 2. alice ticks network:dev. It deploys with the real tool, and settle finds
-// nothing open.
+// 2. alice ticks network:dev. The one step resolves, deploys it with the real
+// tool and settles, which finds nothing open and starts nothing.
 const deployed = await tick("network:dev", ALICE);
+endRun(deployed);
+const [deployedEntry] = deployed.matrix;
+if (!deployedEntry) throw new Error("The step started no deploy of network:dev.");
 good =
-  reportStep(
-    "The tick that deploys: resolve",
-    deployed.resolved,
-    checkResolve(deployed.resolved, {
+  reportStep("The tick that deploys, in one step", deployed.resolved, [
+    ...checkStarted(deployed.resolved, {
       stack: "network:dev",
       environment: "network",
       ticker: ALICE.login,
       runId: deployed.runId,
     }),
-  ) && good;
-const [deployedEntry] = deployed.matrix;
-if (!deployedEntry) throw new Error("resolve handed on no deploy of network:dev.");
-const applied = await applyStep(deployed, deployedEntry.deployment);
-good =
-  reportStep("The tick that deploys: apply", applied, [
-    ...checkApply(applied, {
+    ...checkApply(deployed.resolved, {
       stack: "network:dev",
       deployment: deployedEntry.deployment,
       outcome: "deployed",
     }),
+    ...checkSettle(deployed.resolved, { ended: undefined, before: deployed.resolved.records }),
     ...checkDeploys("network:dev", await deploysOf("network", "dev"), 1),
   ]) && good;
-const settledNothing = await settleStep(deployed);
-good =
-  reportStep(
-    "The tick that deploys: settle",
-    settledNothing,
-    checkSettle(settledNothing, { ended: undefined, before: applied.records }),
-  ) && good;
+const settledNothing = deployed.resolved;
 
-// 3. Someone presses "Re-run all jobs" on that run. The apply job starts again
-// with the same record, and deploys nothing.
+// 3. In the split workflow, someone presses "Re-run all jobs" on the run of a
+// tick. Its apply job starts again with the same record, and deploys nothing.
 fake.seedIssuesRun(WORKFLOW, { id: deployed.runId, completed: false });
 const rerun = await applyStep(deployed, deployedEntry.deployment, "2");
 endRun(deployed);
@@ -593,9 +604,10 @@ good =
     ...checkDeploys("network:dev", await deploysOf("network", "dev"), 1),
   ]) && good;
 
-// 4. alice ticks site:prod, and the apply job is cancelled before it starts,
-// as when a reviewer rejects it. settle ends the record and starts a scan.
-const cancelled = await tick("site:prod", ALICE);
+// 4. In the split workflow, alice ticks site:prod, and the apply job is
+// cancelled before it starts, as when a reviewer rejects it. settle ends the
+// record and starts a scan.
+const cancelled = await tick("site:prod", ALICE, { mode: "resolve" });
 good =
   reportStep(
     "The cancelled deploy: resolve",
@@ -643,14 +655,13 @@ good =
     }),
   ]) && good;
 
-// 6. alice ticks site:prod, and the apply job is a rehearsal (record 0051):
-// the whole path to the hash check with the real tool, and no deploy.
-const rehearsed = await tick("site:prod", ALICE);
+// 6. alice ticks site:prod, and the step is a rehearsal (record 0051): the
+// whole path to the hash check with the real tool, and no deploy.
+const rehearsed = await tick("site:prod", ALICE, { inputs: { "dry-run": "true" } });
+endRun(rehearsed);
 const [rehearsedEntry] = rehearsed.matrix;
-if (!rehearsedEntry) throw new Error("resolve handed on no deploy of site:prod.");
-const rehearsal = await applyStep(rehearsed, rehearsedEntry.deployment, "1", {
-  "dry-run": "true",
-});
+if (!rehearsedEntry) throw new Error("The step started no deploy of site:prod.");
+const rehearsal = rehearsed.resolved;
 good =
   reportStep("The rehearsal", rehearsal, [
     ...checkRehearsal(rehearsal, {
@@ -658,50 +669,41 @@ good =
       deployment: rehearsedEntry.deployment,
       ticker: ALICE.login,
     }),
+    ...checkSettle(rehearsal, { ended: undefined, before: rehearsal.records }),
     ...checkDeploys("site:prod", await deploysOf("site", "prod"), 0),
   ]) && good;
-const settledRehearsal = await settleStep(rehearsed);
-good =
-  reportStep(
-    "The rehearsal: settle",
-    settledRehearsal,
-    checkSettle(settledRehearsal, { ended: undefined, before: rehearsal.records }),
-  ) && good;
 
-// 7. alice ticks site:prod again, and before its apply job starts someone
-// deploys the stack by hand (record 0016). The fresh preview has nothing to
-// deploy: nothing goes out, the record ends as success with the words of
-// record 0051, and the row is in sync with no failure line.
-const outside = await tick("site:prod", ALICE);
+// 7. alice ticks site:prod again, and before its run starts someone deploys
+// the stack by hand (record 0016). The fresh preview has nothing to deploy:
+// nothing goes out, the record ends as success with the words of record 0051,
+// and the row is in sync with no failure line.
+const outside = await tick("site:prod", ALICE, {
+  beforeRun: async () => {
+    console.log("::group::Deploying site:prod by hand before its run starts");
+    await deploy("site", "prod");
+    console.log("::endgroup::");
+  },
+});
+endRun(outside);
 const [outsideEntry] = outside.matrix;
-if (!outsideEntry) throw new Error("resolve handed on no deploy of site:prod.");
-console.log("::group::Deploying site:prod by hand before its apply job starts");
-await deploy("site", "prod");
-console.log("::endgroup::");
-const outsideApply = await applyStep(outside, outsideEntry.deployment);
+if (!outsideEntry) throw new Error("The step started no deploy of site:prod.");
 good =
-  reportStep("Nothing to deploy", outsideApply, [
-    ...checkResolve(outside.resolved, {
+  reportStep("Nothing to deploy", outside.resolved, [
+    ...checkStarted(outside.resolved, {
       stack: "site:prod",
       environment: "sluiceway",
       ticker: ALICE.login,
       runId: outside.runId,
     }),
-    ...checkApply(outsideApply, {
+    ...checkApply(outside.resolved, {
       stack: "site:prod",
       deployment: outsideEntry.deployment,
       outcome: "in-sync",
     }),
+    ...checkSettle(outside.resolved, { ended: undefined, before: outside.resolved.records }),
     // Only the deploy by hand.
     ...checkDeploys("site:prod", await deploysOf("site", "prod"), 1),
   ]) && good;
-const settledOutside = await settleStep(outside);
-good =
-  reportStep(
-    "Nothing to deploy: settle",
-    settledOutside,
-    checkSettle(settledOutside, { ended: undefined, before: outsideApply.records }),
-  ) && good;
 
 // 8. The next full scan. Every stack is in sync. The last record of site:prod
 // is the success with nothing to deploy, so its failure line is gone, and the
@@ -795,35 +797,39 @@ async function tickAll(stacks: string[]): Promise<IssuesRun> {
   const runId = String(runNumber);
   fake.seedIssuesRun(WORKFLOW, { id: runId, completed: false });
   const payload = fake.deliverEvent();
-  const resolved = await loopStep("resolve", {
+  const resolved = await loopStep(undefined, {
     runId,
     sha: THIRD_SHA,
     event: "issues",
     payload,
-    title: `Run ${runId}: resolve, after alice ticked ${stacks.join(", ")}`,
+    title: `Run ${runId}: the one step, after alice ticked ${stacks.join(", ")}`,
   });
+  endRun({ runId, payload, resolved, matrix: [] });
   return { runId, payload, resolved, matrix: matrixEntries(resolved.outputs.matrix ?? "") };
 }
 
-// The run that settle starts: its resolve job, on a dispatch.
-async function dispatchedResolve(): Promise<IssuesRun> {
+// The run that settle starts, on a dispatch: the one step resolves, deploys
+// the next layer, scans and settles.
+async function dispatchedRun(): Promise<IssuesRun> {
   runNumber++;
   const runId = String(runNumber);
   fake.seedRun(runId, { completed: false });
   const payload = { ref: "refs/heads/main" };
-  const resolved = await loopStep("resolve", {
+  const resolved = await loopStep(undefined, {
     runId,
     sha: THIRD_SHA,
     event: "workflow_dispatch",
     payload,
-    title: `Run ${runId}: resolve, started by settle`,
+    title: `Run ${runId}: the one step, started by settle`,
   });
+  fake.seedRun(runId, { completed: true });
   return { runId, payload, resolved, matrix: matrixEntries(resolved.outputs.matrix ?? "") };
 }
 
-// One layer: its apply job with the real tool, then settle.
-async function deployLayer(layer: IssuesRun, stack: string, environment: string) {
-  const problems = checkResolve(layer.resolved, {
+// One layer, deployed with the real tool in the one step of its run, which
+// settles last.
+function deployLayer(layer: IssuesRun, stack: string, environment: string) {
+  const problems = checkStarted(layer.resolved, {
     stack,
     environment,
     ticker: ALICE.login,
@@ -831,16 +837,14 @@ async function deployLayer(layer: IssuesRun, stack: string, environment: string)
   });
   const [entry] = layer.matrix;
   if (!entry) return { problems, settled: undefined };
-  const applied = await applyStep(layer, entry.deployment);
   problems.push(
-    ...checkApply(applied, { stack, deployment: entry.deployment, outcome: "deployed" }),
+    ...checkApply(layer.resolved, { stack, deployment: entry.deployment, outcome: "deployed" }),
   );
-  const settled = await settleStep(layer);
-  return { problems, settled };
+  return { problems, settled: layer.resolved };
 }
 
 const chainTick = await tickAll(["site:prod", "app:prod", "network:dev"]);
-const firstLayer = await deployLayer(chainTick, "network:dev", "network");
+const firstLayer = deployLayer(chainTick, "network:dev", "network");
 good =
   reportStep("The chain: the first layer", chainTick.resolved, [
     ...firstLayer.problems,
@@ -857,8 +861,8 @@ good =
       : ["settle did not start the workflow again after the first layer."]),
   ]) && good;
 
-const secondRun = await dispatchedResolve();
-const secondLayer = await deployLayer(secondRun, "app:prod", "sluiceway");
+const secondRun = await dispatchedRun();
+const secondLayer = deployLayer(secondRun, "app:prod", "sluiceway");
 good =
   reportStep("The chain: the second layer", secondRun.resolved, [
     ...secondLayer.problems,
@@ -870,8 +874,8 @@ good =
       : ["settle did not start the workflow again after the second layer."]),
   ]) && good;
 
-const thirdRun = await dispatchedResolve();
-const thirdLayer = await deployLayer(thirdRun, "site:prod", "sluiceway");
+const thirdRun = await dispatchedRun();
+const thirdLayer = deployLayer(thirdRun, "site:prod", "sluiceway");
 good =
   reportStep("The chain: the third layer", thirdRun.resolved, [
     ...thirdLayer.problems,
@@ -932,12 +936,12 @@ fake.editBody(board.number, tickMerge(board.body, RENOVATE_PR), ALICE);
 runNumber++;
 const mergeRun = String(runNumber);
 fake.seedIssuesRun(WORKFLOW, { id: mergeRun, completed: false });
-const merging = await loopStep("resolve", {
+const merging = await loopStep(undefined, {
   runId: mergeRun,
   sha: THIRD_SHA,
   event: "issues",
   payload: fake.deliverEvent(),
-  title: `Run ${mergeRun}: resolve, after alice ticked the merge of #${RENOVATE_PR}`,
+  title: `Run ${mergeRun}: the one step, after alice ticked the merge of #${RENOVATE_PR}`,
 });
 fake.seedIssuesRun(WORKFLOW, { id: mergeRun, completed: true });
 const [merged] = fake.merges;
@@ -967,54 +971,35 @@ runNumber++;
 const handOffRun = String(runNumber);
 // GitHub knows the run of the scan while it runs.
 fake.seedRun(handOffRun, { completed: false });
-const handingOn = await loopStep("scan", {
+// The run resolve started: the one step scans, hands the merged change on,
+// deploys it and settles.
+const handingOn = await loopStep(undefined, {
   runId: handOffRun,
   sha: merged.sha,
   event: "workflow_dispatch",
-  title: `Scan ${handOffRun}, started by resolve after the merge`,
+  title: `Run ${handOffRun}: the one step, started by resolve after the merge`,
 });
+fake.seedRun(handOffRun, { completed: true });
+const [handedEntry] = matrixEntries(handingOn.outputs.matrix ?? "");
 good =
-  reportStep(
-    "The merge tick: the scan after the merge",
-    handingOn,
-    checkHandOff(handingOn, {
+  reportStep("The merge tick: the run after the merge", handingOn, [
+    ...checkHandOff(handingOn, {
       stack: "app:prod",
       merge: mergeRecord?.id ?? 0,
       ticker: ALICE.login,
       runId: handOffRun,
+      deployed: true,
     }),
-  ) && good;
-const [handedEntry] = matrixEntries(handingOn.outputs.matrix ?? "");
-if (!handedEntry) throw new Error("The scan after the merge handed nothing to apply.");
-const mergedApply = await loopStep("apply", {
-  inputs: { "deployment-id": String(handedEntry.deployment) },
-  runId: handOffRun,
-  sha: merged.sha,
-  event: "workflow_dispatch",
-  title: `Run ${handOffRun}: apply of deployment record ${handedEntry.deployment}`,
-});
-good =
-  reportStep("The merge tick: apply", mergedApply, [
-    ...checkApply(mergedApply, {
-      stack: "app:prod",
-      deployment: handedEntry.deployment,
-      outcome: "deployed",
-    }),
+    ...(handedEntry === undefined
+      ? []
+      : checkApply(handingOn, {
+          stack: "app:prod",
+          deployment: handedEntry.deployment,
+          outcome: "deployed",
+        })),
+    ...checkSettle(handingOn, { ended: undefined, before: handingOn.records }),
     ...checkDeploys("app:prod", await deploysOf("app", "prod"), appDeploys + 1),
   ]) && good;
-const mergedSettle = await loopStep("settle", {
-  runId: handOffRun,
-  sha: merged.sha,
-  event: "workflow_dispatch",
-  title: `Run ${handOffRun}: settle`,
-});
-fake.seedRun(handOffRun, { completed: true });
-good =
-  reportStep(
-    "The merge tick: settle",
-    mergedSettle,
-    checkSettle(mergedSettle, { ended: undefined, before: mergedApply.records }),
-  ) && good;
 
 console.log("::group::The dashboard after the narrowed scan");
 console.log(dashboardBody(second));

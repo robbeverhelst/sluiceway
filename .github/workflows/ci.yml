@@ -453,3 +453,21 @@ jobs:
             echo "::error::Expected the check to fail on the broken sluiceway.yaml, got: $OUTCOME"
             exit 1
           fi
+
+      # A step with no mode is auto mode (record 0077): on a pull request it
+      # runs the check, on a push to main it scans. Either stops at the broken
+      # sluiceway.yaml, so the step reads the event and picks a mode for real
+      # without reaching GitHub. Its post step runs at the end of the job and
+      # has nothing to settle.
+      - id: auto
+        uses: ./action
+        continue-on-error: true
+
+      - name: Expect auto mode to fail on the config
+        env:
+          OUTCOME: ${{ steps.auto.outcome }}
+        run: |
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "::error::Expected auto mode to fail on the broken sluiceway.yaml, got: $OUTCOME"
+            exit 1
+          fi

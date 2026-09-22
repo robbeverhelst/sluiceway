@@ -232,6 +232,17 @@ describe("the checks of a full scan", () => {
       'The job log has no line that starts with "The scan made 1 request to the GitHub API.".',
     ]);
   });
+
+  // Record 0077: on a dispatch the one step resolves first, and those
+  // requests are not the scan's.
+  test("after resolve in the same step, the scan's count is its share of the step's", () => {
+    const first = `Sluiceway runs resolve, for the workflow_dispatch event of this run.\n${FULL_LOG}`;
+    const more = [...observed().requests, "listNewestDeployments"];
+    expect(checkFullScan(observed({ log: first, requests: more }), EXPECTED)).toEqual([]);
+    expect(checkFullScan(observed({ log: first, requests: ["listIssues"] }), EXPECTED)).toEqual([
+      "The scan says it made 6 requests to the GitHub API, and the step made 1.",
+    ]);
+  });
 });
 
 describe("the checks of a narrowed scan", () => {
