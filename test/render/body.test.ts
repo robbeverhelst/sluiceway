@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { type BodyInput, type RecentDeploy, renderBody, rowBlock } from "../../src/render/body.ts";
-import { HEADER_STATES, type HeaderState } from "../../src/render/header-state.ts";
+import { HEADER_STATES, type HeaderState } from "../../src/render/dashboard-facts.ts";
 import { type ParsedRow, parseDashboard } from "../../src/render/marker.ts";
 import type {
   DeployingRow,

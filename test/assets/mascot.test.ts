@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { HEADER_STATES } from "../../src/render/header-state.ts";
-import { MAX_CRATES } from "../../src/render/pending-crates.ts";
+import { HEADER_STATES, MAX_CRATES } from "../../src/render/dashboard-facts.ts";
 
 // The file rules of records 0033, 0039, 0043, 0047, 0055, 0066 and 0075, checked in CI on every header
 // image, and of record 0063 on the row spinner. The cap forces clean,

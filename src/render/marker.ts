@@ -48,7 +48,8 @@ export const ROW_STATES = [
 export type RowState = (typeof ROW_STATES)[number];
 
 // A queued stack is taken like a deploying one (record 0003), so it is placed
-// and counted with them.
+// and counted with them. Only the header state tells it apart (record 0075),
+// in `dashboard-facts.ts`.
 export function isDeployingState(state: string): boolean {
   return state === "deploying" || state === "queued";
 }

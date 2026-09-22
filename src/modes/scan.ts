@@ -89,8 +89,8 @@ import {
   fitBody,
 } from "../render/budget.ts";
 import { whereFilesBelong } from "../render/check.ts";
+import { dashboardFacts } from "../render/dashboard-facts.ts";
 import { COUNT_DOT, HEADER_DOT } from "../render/dots.ts";
-import { headerState } from "../render/header-state.ts";
 import { dashboardSearchUrl, type RunLinks, runLinks, runUrl } from "../render/links.ts";
 import {
   diffLogLines,
@@ -1485,7 +1485,7 @@ function reportDashboard(
   const size = `${written.body.length.toLocaleString("en-US")} of ${BODY_LIMIT.toLocaleString("en-US")} characters`;
   // The headline of the scan starts with the dot of the header state it wrote,
   // so a person scanning the log sees the result at once (slice 4.5).
-  const dot = HEADER_DOT[headerState(parseDashboard(written.body).rows)];
+  const dot = HEADER_DOT[dashboardFacts(parseDashboard(written.body).rows).headerState];
   log.info(
     `${dot} ${FOUND[written.found]}: ${context.repoUrl}/issues/${written.number} (${size}).`,
   );

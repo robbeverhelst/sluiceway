@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { Change, Diff } from "../core/diff.ts";
 import type { AppliedPreview, ApplyOutcome } from "./apply-summary.ts";
 import { orderChanges } from "./changes.ts";
+import { dashboardFacts } from "./dashboard-facts.ts";
 import type { ParsedRow } from "./marker.ts";
 import { byCodeUnit, sortedDrift, sortedKeys } from "./row.ts";
 import type { SummaryMerge, SummaryStack } from "./summary.ts";
@@ -177,9 +178,9 @@ export type ScanResult = z.infer<typeof scanResultSchema>;
 export type ApplyResult = z.infer<typeof applyResultSchema>;
 export type ApplyResultOutcome = ApplyResult["outcome"];
 
-// The counts line of the dashboard in numbers, counted from the row markers
-// the way the counts line is. A row of a state this version does not know is
-// not counted.
+// Five numbers of the counts line of the dashboard, the ones the counts line
+// always shows, and the failed deploys. A row of a state this version does
+// not know is not counted.
 export interface DashboardCounts {
   pending: number;
   deploying: number;
@@ -189,16 +190,8 @@ export interface DashboardCounts {
 }
 
 export function dashboardCounts(rows: readonly ParsedRow[]): DashboardCounts {
-  const known = rows.filter((row) => row.known);
-  const of = (state: string) => known.filter((row) => row.state === state).length;
-  return {
-    pending: of("pending"),
-    // A queued stack counts as deploying, as on the counts line (record 0056).
-    deploying: of("deploying") + of("queued"),
-    previewFailed: of("preview-failed"),
-    inSync: of("in-sync"),
-    failedDeploys: known.filter((row) => row.failed).length,
-  };
+  const { pending, deploying, previewFailed, inSync, failedDeploys } = dashboardFacts(rows).counts;
+  return { pending, deploying, previewFailed, inSync, failedDeploys };
 }
 
 export interface ScanResultInput {

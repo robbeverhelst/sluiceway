@@ -2,7 +2,7 @@
 // in the picture, never the voice (record 0032): the words next to a dot
 // always say what it means.
 
-import type { HeaderState } from "./header-state.ts";
+import type { HeaderState } from "./dashboard-facts.ts";
 import type { ApplyResultOutcome } from "./result-file.ts";
 
 // The count dots of the counts line. A count of 0 gets the white dot, so a

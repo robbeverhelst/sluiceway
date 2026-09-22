@@ -4,11 +4,17 @@
 
 import type { IgnoredStack } from "../core/config.ts";
 import type { OutsideDeploy } from "../core/outside-deploy.ts";
-import { destroyAlert } from "./destroy-alert.ts";
-import { type DestroySigns, destroySigns } from "./destroy-sign.ts";
+import {
+  type CountsLineNumbers,
+  type Crates,
+  type DashboardFacts,
+  type DestroySigns,
+  dashboardFacts,
+  type HeaderState,
+  MAX_CRATES,
+} from "./dashboard-facts.ts";
 import { COUNT_DOT, DOT_AT_ZERO, RESULT_DOT } from "./dots.ts";
 import { escapeText } from "./escape.ts";
-import { type HeaderState, headerState } from "./header-state.ts";
 import { mascotUrl, urlPart } from "./images.ts";
 import {
   outsideMarker,
@@ -20,7 +26,6 @@ import {
   rootMarker,
 } from "./marker.ts";
 import { MERGE_FOLD_AFTER } from "./merge-row.ts";
-import { type Crates, MAX_CRATES, pendingCrates } from "./pending-crates.ts";
 import { type AttributionLines, INDENT, type Row, type RowOptions, renderRow } from "./row.ts";
 import { trailMinute, utcMinute } from "./time.ts";
 import {
@@ -143,13 +148,6 @@ function signed(state: Counted, signs: DestroySigns): { suffix: string; fact: st
   return { suffix, fact: suffix === "" ? "" : `, ${subject} ${verb} resources` };
 }
 
-type KnownRow = Extract<ParsedRow, { known: true }>;
-
-// A queued row is counted as deploying (record 0056).
-function placed(row: KnownRow): KnownRow["state"] {
-  return row.state === "queued" ? "deploying" : row.state;
-}
-
 function byCodeUnit(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -205,20 +203,19 @@ function picture(
 // The four state counts always, so the line keeps its shape. Two more facts
 // only when they are not 0. The non-breaking space keeps a dot and its count
 // on one line in a narrow column.
-function countsLine(rows: KnownRow[], dots: boolean): string {
-  const of = (state: KnownRow["state"]) => rows.filter((row) => placed(row) === state).length;
+function countsLine(counts: CountsLineNumbers, dots: boolean): string {
+  const { pending, drifted, deploying, previewFailed, inSync, destroying } = counts;
+  const failed = counts.failedDeploys;
   const dot = (kind: keyof typeof COUNT_DOT, count: number) =>
     dots ? `${count === 0 ? DOT_AT_ZERO : COUNT_DOT[kind]}&nbsp;` : "";
-  const destroying = rows.filter((row) => row.state === "pending" && row.destroys > 0).length;
-  const failed = rows.filter((row) => row.failed).length;
   const parts = [
-    `${dot("pending", of("pending"))}**${of("pending")} pending**`,
+    `${dot("pending", pending)}**${pending} pending**`,
     // Only when there is drift (record 0055), so a repo that never checks for
     // it keeps its counts line byte for byte.
-    ...(of("drift") > 0 ? [`${dot("drift", of("drift"))}${of("drift")} drifted`] : []),
-    `${dot("deploying", of("deploying"))}${of("deploying")} deploying`,
-    `${dot("preview-failed", of("preview-failed"))}${of("preview-failed")} preview failed`,
-    `${dot("in-sync", of("in-sync"))}${of("in-sync")} in sync`,
+    ...(drifted > 0 ? [`${dot("drift", drifted)}${drifted} drifted`] : []),
+    `${dot("deploying", deploying)}${deploying} deploying`,
+    `${dot("preview-failed", previewFailed)}${previewFailed} preview failed`,
+    `${dot("in-sync", inSync)}${inSync} in sync`,
   ];
   // The warning keeps its `:warning:` and gets no dot.
   if (destroying > 0) {
@@ -257,13 +254,13 @@ function scanDay(root: RootFacts): Date | undefined {
 }
 
 // The one line under the Pending heading (records 0029, 0032 and 0034).
-function pendingLine(input: BodyInput, state: HeaderState, pending: number): string {
-  if (pending > 0) return input.readOnly ? READ_ONLY_LINE : INSTRUCTION_LINE;
-  if (input.rows.some((row) => row.known && row.state === "drift")) return NOTHING_FROM_THE_CODE;
+function pendingLine(input: BodyInput, facts: DashboardFacts): string {
+  if (facts.pending.length > 0) return input.readOnly ? READ_ONLY_LINE : INSTRUCTION_LINE;
+  if (facts.drift.length > 0) return NOTHING_FROM_THE_CODE;
   const lines = input.personality ? WARM : DRY;
-  if (state === "first-run") return lines.firstRun;
+  if (facts.headerState === "first-run") return lines.firstRun;
   // A row of a state this version does not know is not known to be calm.
-  if (state === "in-sync" && input.rows.every((row) => row.known))
+  if (facts.headerState === "in-sync" && facts.unknown.length === 0)
     return lines.goodNews(input.rows.length, scanDay(input.root));
   return NOTHING_TO_DEPLOY;
 }
@@ -351,21 +348,18 @@ function version(actionRef: string): string {
 }
 
 export function renderBody(input: BodyInput): string {
-  const rows = [...input.rows].sort((a, b) => byCodeUnit(a.stackId, b.stackId));
-  const known = rows.filter((row) => row.known);
-  const of = (state: KnownRow["state"]) => known.filter((row) => row.state === state);
-  const state = headerState(rows);
+  const facts = dashboardFacts(input.rows);
 
   // Paragraphs, each followed by a blank line.
   const out: string[] = [rootMarker(input.root)];
   // Under a header the two lines are one centered block, and the blank lines
   // inside it keep both rendered as Markdown (record 0040). Without a header
   // they are what record 0029 made them.
-  const counts = countsLine(known, input.personality);
+  const counts = countsLine(facts.counts, input.personality);
   const scan = scanLine(input.root, input.repoUrl);
   if (input.personality)
     out.push(
-      picture(state, pendingCrates(rows), destroySigns(rows), input.actionRef).join("\n"),
+      picture(facts.headerState, facts.crates, facts.signs, input.actionRef).join("\n"),
       '<div align="center">',
       counts,
       scan,
@@ -376,16 +370,13 @@ export function renderBody(input: BodyInput): string {
   // The note about shortened rows (record 0028) is counted from the markers
   // like everything else up here, so it stays when a writer that is not the
   // scan regenerates the body.
-  const pending = of("pending");
-  const shortened = pending.filter((row) => row.shortened > 0).length;
-  if (shortened > 0) out.push(shortenedNote(shortened, pending.length));
+  const { pending } = facts;
+  if (facts.shortened > 0) out.push(shortenedNote(facts.shortened, pending.length));
 
   // Deploying comes first while it has rows: what is going out is what the
   // person is watching, and the section is gone when it is empty, so pending
   // loses nothing (record 0063).
-  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) =>
-    byCodeUnit(a.stackId, b.stackId),
-  );
+  const { deploying } = facts;
   if (deploying.length > 0) out.push("## Deploying", blocks(deploying));
 
   // Above Pending, because a tick there also ends in a deploy (record 0054).
@@ -413,25 +404,24 @@ export function renderBody(input: BodyInput): string {
   }
 
   // Pending is always shown. The other sections are left out when empty.
-  out.push("## Pending", pendingLine(input, state, pending.length));
+  out.push("## Pending", pendingLine(input, facts));
   // The destroy alert sits right above the pending list (records 0062 and
   // 0075). It names drifted stacks too, which are listed right under it.
-  const drifted = of("drift");
-  const alert = destroyAlert([...pending, ...drifted]);
-  if (alert) out.push(alert);
+  if (facts.alert) out.push(facts.alert);
   if (pending.length > 0) out.push(blocks(pending));
 
   // Drift sits right under Pending: its rows have boxes too (record 0055).
+  const drifted = facts.drift;
   if (drifted.length > 0) out.push("## Drifted", DRIFTED_LINE, blocks(drifted));
 
-  const previewFailed = of("preview-failed");
+  const { previewFailed } = facts;
   if (previewFailed.length > 0)
     out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
 
   // In sync rows are calm and sit in a fold. One with a failure line is not
   // calm: it is listed open, above the fold. Its state stays in sync. The
   // stacks left out with a reason get a fold of their own under it.
-  const inSync = of("in-sync");
+  const { inSync } = facts;
   const ignored = [...(input.ignored ?? [])].sort((a, b) => byCodeUnit(a.stackId, b.stackId));
   if (inSync.length > 0 || ignored.length > 0) {
     const loud = inSync.filter((row) => row.failed);
@@ -496,7 +486,7 @@ export function renderBody(input: BodyInput): string {
 
   // Rows of a state this version does not know: a plain list at the end of
   // the body (record 0009). The footer line keeps it apart from the rescan box.
-  const unknown = rows.filter((row) => !row.known);
+  const { unknown } = facts;
   if (unknown.length > 0) out.push(blocks(unknown));
 
   return out.join("\n\n");

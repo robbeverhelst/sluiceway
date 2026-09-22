@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { HEADER_STATES } from "../../src/render/dashboard-facts.ts";
 import { HEADER_DOT, RESULT_DOT } from "../../src/render/dots.ts";
-import { HEADER_STATES } from "../../src/render/header-state.ts";
 
 // Slice 4.5: the result of a deploy and of a scan as a dot, in the colours of
 // the counts line (record 0040). Written out from the slice, not the code.
