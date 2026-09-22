@@ -349,23 +349,23 @@ The exact release tag of the running action, or its commit SHA. Never a moving t
 _Avoid_: Action version, image tag, release
 
 **Header state**:
-Which of six states the header shows: failing, deploying, pending, drift, first run or in sync. The first that applies wins, in that order. It is computed from the row markers and decides nothing. A destroy does not change it. Pending has thirteen pictures, one per crate count, so there are eighteen pictures for six states, and fourteen of them exist once more with the destroy sign. Drift is water seeping through the closed gate.
+Which of six states the header shows: failing, deploying, pending, drift, first run or in sync. The first that applies wins, in that order. It is computed from the row markers and decides nothing. A destroy does not change it. Pending has thirteen pictures and failing and deploying fourteen each, one per crate count, so there are forty-four pictures for six states, and forty-one of them exist once more with the destroy sign. Drift is water seeping through the closed gate.
 _Avoid_: Mood, dashboard status, health
 
 **Destroy sign**:
-The amber warning triangle on a pole in the water in the header, right of the wordmark. The pending and deploying pictures carry it whenever a pending or deploying row has a destroy. It does not move, and the rest of the picture is unchanged. It is computed from the row markers and decides nothing. It took the place of a grey header state called plain.
+The amber warning triangle on a pole in the water in the header, right of the wordmark. The pending, failing and deploying pictures carry it whenever a pending or deploying row has a destroy. It does not move, and the rest of the picture is unchanged. It is computed from the row markers and decides nothing. It took the place of a grey header state called plain.
 _Avoid_: Plain, careful state, warning header, danger state, alarm
 
 **Crate count**:
-Which of the thirteen pending pictures the header shows: the number of pending rows, from 1 to 12, or `more` above 12. It is computed from the row markers and decides nothing. It replaced the pending level.
+How many crates the pending, failing or deploying picture shows: the number of pending rows, from 0 to 12, or `more` above 12. The same count picks the file in all three states, and a pending header always has at least 1. It is computed from the row markers and decides nothing. It replaced the pending level.
 _Avoid_: Pending level, tier, severity, load
 
 **Water step**:
-How high the water stands upstream in a pending picture, one of five: 1 or 2 pending, 3 or 4, 5 to 7, 8 to 10, 11 or more. The gauge on the wall has one amber mark per step. It follows from the crate count.
+How high the water stands upstream in a pending or failing picture, one of five: 1 or 2 pending, 3 or 4, 5 to 7, 8 to 10, 11 or more. The gauge on the wall has one amber mark per step. It follows from the crate count. The failing picture with 0 crates has the lowest water. The deploying picture keeps one level at every count, because the open gate lets the water run.
 _Avoid_: Pending level, water level (for the count)
 
 **Overflow**:
-The pending picture past the maximum of 12 crates: the row runs on with a half crate cut by the left edge, which reads as more than 12.
+The pending, failing or deploying picture past the maximum of 12 crates: the row runs on with a half crate cut by the left edge, which reads as more than 12.
 _Avoid_: Cap picture, max picture
 
 **Upstream and downstream**:

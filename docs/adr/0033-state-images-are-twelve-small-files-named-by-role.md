@@ -5,6 +5,8 @@
 > Amended by 0055: `drift-light.svg` and `drift-dark.svg` join the files.
 >
 > Amended by 0063: `spinner-light.svg` and `spinner-dark.svg` join the files. They are not a header: a deploying or queued row starts with one. Square, `viewBox="0 0 24 24"`, at most 1 KB, the same rules otherwise.
+>
+> Amended by 0066: failing and deploying have one file per crate count too, which makes 170 header files and 172 in all.
 
 The rendering research fixed the mechanics: an animated SVG plays through `<img>`, a top level `<picture>` with a `prefers-color-scheme` source follows the reader's GitHub theme, images from `raw.githubusercontent.com` are not proxied, and a file must never change behind a URL because the raw host caches for five minutes. The owner confirmed by eye in the lab repo on 2026-09-21 that the images show, move and follow the GitHub theme, which closes the last open item of that research.
 

@@ -1,6 +1,8 @@
 # Pending shows one crate per pending stack up to twelve, and the destroy sign stands on a pole
 
 > Amended, 2026-09-22: small fish swim upstream of Penny, one per water step up to four, and two in the deploying picture.
+>
+> Amended by 0066: failing and deploying show one crate per pending stack too, from 0 to 12 and more, each with and without the sign. Deploying is no longer one picture.
 
 Record 0039 gave pending three pictures, picked from the pending count, with 1, 3 and 6 crates. The owner looked at the header on a real dashboard with 14 pending stacks on 2026-09-21 and asked for three things: as many crates as there are pending stacks, a maximum beyond which the crates run on off the picture, and the warning sign further right. Record 0039 had rejected one crate per stack because it needs a file pair per count and says nothing above the cap. The files turned out small, only one is fetched per view, and the picture past the cap does say something: more than the cap.
 

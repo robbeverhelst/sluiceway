@@ -113,9 +113,7 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A drift picture with crates, or drift above pending in the header
 - Levels for deploying or failing (how many are deploying, how much failed)
 - A sign of its own for a delete, next to the one for a replace
-- The destroy sign on the failing picture
 - More than 12 exact crates
-- Deploying with the number of crates still waiting
 - The destroy sign painted on the wall right of the wordmark, or on a pole at the far right
 - The overflow as a pile running off the edge
 - Count dots as small images in the brand colours

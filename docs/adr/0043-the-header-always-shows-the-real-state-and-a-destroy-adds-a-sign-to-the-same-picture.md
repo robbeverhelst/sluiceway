@@ -3,6 +3,8 @@
 > Amended by 0047: the sign stands on a pole in the water right of the wordmark, and it is added to the thirteen pending pictures of 0047, which makes 62 files. The pending alt text says the number of stacks.
 >
 > Amended by 0055: the drift state takes the low downstream space this record kept free. Sixty-four files.
+>
+> Amended by 0066: the failing picture carries the destroy sign too, from the same rule, and the pending, failing and deploying pictures each exist per crate count.
 
 Record 0031 made any delete or replace in a pending or deploying row turn the header plain: a grey gate, no face, no colour, no motion. The first scan of a real repo with 58 stacks showed what that means in practice (onboarding log, hurdle 12). Four pending rows held a delete or a replace, and three of those were routine replacements of a Kubernetes Secret or ConfigMap, which Pulumi replaces whenever their content changes. In a Kubernetes repo that is the normal state. The header that sets Sluiceway apart would almost never show, and a warning that is on every day is not read.
 
