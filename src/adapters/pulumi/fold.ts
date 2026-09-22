@@ -36,6 +36,7 @@ export function foldSteps(steps: PreviewStep[]): Folded {
   const unknown: string[] = [];
   const unreadable: string[] = [];
   const firstAt = new Map<string, number>();
+  let rootCreate: Change | undefined;
 
   steps.forEach((step, index) => {
     const at = `The tool's output, at steps[${index}]`;
@@ -45,6 +46,11 @@ export function foldSteps(steps: PreviewStep[]): Folded {
       return;
     }
     if (known === "drop") return;
+    // The root stack resource holds nothing but the stack's outputs, which
+    // are not shown (record 0036), and its create is the stack coming into
+    // being, not a resource of the program (record 0079). A delete or a
+    // replace of it stays: a destroy warning too many is the safe side.
+    if (isRootStack(step.urn) && step.op === "update") return;
 
     const resource = typeAndName(step.urn);
     if (resource === undefined) {
@@ -62,15 +68,29 @@ export function foldSteps(steps: PreviewStep[]): Folded {
     firstAt.set(step.urn, index);
 
     const folded = step.op === "delete" && step.oldState?.retainOnDelete === true ? FORGET : known;
-    changes.push({ address: step.urn, ...resource, ...folded, ...keys(step, folded.op) });
+    const change = { address: step.urn, ...resource, ...folded, ...keys(step, folded.op) };
+    if (isRootStack(step.urn) && step.op === "create") rootCreate = change;
+    else changes.push(change);
   });
 
   if (unreadable.length > 0) return { ok: false, reason: "unreadable-output", detail: unreadable };
   if (unknown.length > 0) return { ok: false, reason: "unknown-step", detail: unknown };
+  // A stack that was never deployed and holds no resource still has work: its
+  // first deploy makes the stack, with its outputs. An empty diff would call it
+  // in sync and leave it no box, so the create is its one change (record 0079).
+  if (rootCreate !== undefined && changes.length === 0) changes.push(rootCreate);
   // The tool gives steps in an order that changes between identical runs
   // (record 0001).
   changes.sort((a, b) => byCodeUnit(a.address, b.address));
   return { ok: true, changes };
+}
+
+// The resource Pulumi makes for the stack itself, the parent of every other
+// one. It has no parent, so its URN names the type alone.
+const ROOT_STACK_TYPE = "pulumi:pulumi:Stack";
+
+function isRootStack(urn: string): boolean {
+  return urn.startsWith("urn:pulumi:") && urn.split("::")[2] === ROOT_STACK_TYPE;
 }
 
 // What a person sees of a resource: the type token and the logical name, so a

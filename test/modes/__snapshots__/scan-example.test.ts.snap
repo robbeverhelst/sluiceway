@@ -25,11 +25,10 @@ Tick a box to deploy that stack exactly as its row shows it.
 > [!CAUTION]
 > 1 pending stack deletes or replaces resources: **network:dev**
 
-- [ ] **app:prod** · 3 creates · [preview](https://github.com/acme/infra/runs/106538952701) <!-- sluiceway:row stack="app:prod" state="pending" hash="6f5afda2b3712163" -->
+- [ ] **app:prod** · 2 creates · [preview](https://github.com/acme/infra/runs/106538952701) <!-- sluiceway:row stack="app:prod" state="pending" hash="9fb39d8d82346ac8" -->
   not deployed from this dashboard yet
-  <details><summary>3 changes</summary>
+  <details><summary>2 changes</summary>
   <kbd>create</kbd> <code>command:local:Command</code> <b>start</b><br>
-  <kbd>create</kbd> <code>pulumi:pulumi:Stack</code> <b>app-prod</b><br>
   <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>release</b><br>
   </details>
   <!-- /sluiceway:row -->
@@ -79,12 +78,11 @@ exports[`a full scan of the example project gives the same dashboard, summary an
 
 #### <a id="sluiceway-app-3a-prod"></a>app:prod
 
-3 creates
+2 creates
 
-<details><summary>3 changes</summary>
+<details><summary>2 changes</summary>
 
 - <kbd>create</kbd> <code>command:local:Command</code> <b>start</b>
-- <kbd>create</kbd> <code>pulumi:pulumi:Stack</code> <b>app-prod</b>
 - <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>release</b>
 
 </details>
@@ -115,14 +113,13 @@ exports[`a full scan of the example project gives the same dashboard, summary an
 `;
 
 exports[`a full scan of the example project gives the same dashboard, summary and preview pages from both CLI versions: sluiceway / app:prod 1`] = `
-"**app:prod** · 3 creates
+"**app:prod** · 2 creates
 
 Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](https://github.com/acme/infra/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22sluiceway%22) shows, with every property path whole.
 
 Every stack this scan previewed is in the [summary](https://github.com/acme/infra/actions/runs/4242/attempts/1) of the scan, and the tool's own words are in the [job log](https://github.com/acme/infra/actions/runs/4242/job/106502264185), in the group <code>app:prod</code>.
 
 - <kbd>create</kbd> <code>command:local:Command</code> <b>start</b>
-- <kbd>create</kbd> <code>pulumi:pulumi:Stack</code> <b>app-prod</b>
 - <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>release</b>
 "
 `;
@@ -161,12 +158,11 @@ exports[`a stack of the example project that does not exist in the backend gives
 
 #### <a id="sluiceway-app-3a-prod"></a>app:prod
 
-3 creates
+2 creates
 
-<details><summary>3 changes</summary>
+<details><summary>2 changes</summary>
 
 - <kbd>create</kbd> <code>command:local:Command</code> <b>start</b>
-- <kbd>create</kbd> <code>pulumi:pulumi:Stack</code> <b>app-prod</b>
 - <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>release</b>
 
 </details>

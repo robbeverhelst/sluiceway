@@ -4,7 +4,7 @@ import { pulumi } from "../../../src/adapters/pulumi/index.ts";
 import type { Change } from "../../../src/core/diff.ts";
 import { diffHash } from "../../../src/core/diff-hash.ts";
 import type { Stack } from "../../../src/core/stack.ts";
-import { type Replay, ROOT, replay, VERSIONS } from "./replay.ts";
+import { answering, type Replay, ROOT, replay, VERSIONS } from "./replay.ts";
 
 // The adapter's preview against what the real CLI printed, replayed through
 // the process runner. Expected diffs are written out by hand from what each
@@ -63,6 +63,9 @@ const SUBNET_DELETE: Change = {
 
 for (const version of VERSIONS) {
   describe(`preview, replaying pulumi ${version}`, () => {
+    // The tool also creates the root stack resource, pulumi:pulumi:Stack. That
+    // is the stack coming into being, not a resource of the program, so it is
+    // not a change (record 0079): two resources read as two creates.
     test("a stack that was never deployed gives one create per resource, with no keys", async () => {
       const result = await previewWith(NETWORK_DEV, replay(version, "new-stack"));
 
@@ -80,14 +83,6 @@ for (const version of VERSIONS) {
           address: network("local:index/file:File", "notes"),
           type: "local:index/file:File",
           name: "notes",
-          op: "create",
-          changedKeys: [],
-          replaceKeys: [],
-        },
-        {
-          address: network("pulumi:pulumi:Stack", "network-dev"),
-          type: "pulumi:pulumi:Stack",
-          name: "network-dev",
           op: "create",
           changedKeys: [],
           replaceKeys: [],
@@ -274,6 +269,25 @@ for (const version of VERSIONS) {
       ]);
     });
 
+    // Dropping the root stack create here would leave an empty diff, a row in
+    // sync with no box, while a deploy still has work: the stack's state and
+    // outputs, which another stack may read. So it stays (record 0079).
+    test("a stack that was never deployed and holds no resource has one change, the create of the stack", async () => {
+      const stack: Stack = { path: "generated/empty", name: "dev", options: {} };
+      const result = await previewWith(stack, replay(version, "new-stack-without-resources"));
+
+      expect(changesOf(result)).toEqual([
+        {
+          address: "urn:pulumi:dev::empty::pulumi:pulumi:Stack::empty-dev",
+          type: "pulumi:pulumi:Stack",
+          name: "empty-dev",
+          op: "create",
+          changedKeys: [],
+          replaceKeys: [],
+        },
+      ]);
+    });
+
     test("a project file spelled Pulumi.yml previews the same way", async () => {
       const stack: Stack = { path: "app", name: "prod", options: {} };
       const result = await previewWith(stack, replay(version, "new-stack-yml-project"));
@@ -281,7 +295,6 @@ for (const version of VERSIONS) {
       expect(result.ok && result.diff.stackId).toBe("app:prod");
       expect(changesOf(result).map((change) => [change.op, change.type, change.name])).toEqual([
         ["create", "command:local:Command", "start"],
-        ["create", "pulumi:pulumi:Stack", "app-prod"],
         ["create", "random:index/randomPet:RandomPet", "release"],
       ]);
     });
@@ -296,7 +309,7 @@ for (const version of VERSIONS) {
         changesOf(first)
           .map((change) => change.name)
           .sort(),
-      ).toEqual(["page-about", "page-contact", "page-home", "publish", "site-prod"]);
+      ).toEqual(["page-about", "page-contact", "page-home", "publish"]);
       expect(second).toEqual(first);
       expect(first.ok && second.ok && diffHash(second.diff) === diffHash(first.diff)).toBe(true);
     });
@@ -305,14 +318,86 @@ for (const version of VERSIONS) {
       const stack: Stack = { path: "generated/many", name: "big", options: {} };
       const changes = changesOf(await previewWith(stack, replay(version, "many-resources")));
 
-      expect(changes).toHaveLength(301);
-      expect(changes[0]?.name).toBe("many-big");
-      expect(changes[1]?.name).toBe("item001");
-      expect(changes[300]?.name).toBe("item300");
+      expect(changes).toHaveLength(300);
+      expect(changes[0]?.name).toBe("item001");
+      expect(changes[299]?.name).toBe("item300");
       expect(new Set(changes.map((change) => change.op))).toEqual(new Set(["create"]));
     });
   });
 }
+
+// Steps of the root stack resource that no recording holds, because a preview
+// of the example project never gives them (record 0079). Written as the
+// recordings write the other steps.
+describe("the root stack resource, in steps no recording holds", () => {
+  const ROOT_STACK = network("pulumi:pulumi:Stack", "network-dev");
+  const PET = network("random:index/randomPet:RandomPet", "name");
+
+  async function changesFor(...steps: { op: string; urn: string }[]): Promise<Change[]> {
+    const { run } = answering({
+      status: "exited",
+      exitCode: 0,
+      stdout: JSON.stringify({ steps }),
+      stderr: "",
+    });
+    return changesOf(
+      await pulumi.preview(NETWORK_DEV, { root: ROOT, env: {}, run, timeoutMinutes: 10 }),
+    );
+  }
+
+  const rootStack = (op: Change["op"]): Change => ({
+    address: ROOT_STACK,
+    type: "pulumi:pulumi:Stack",
+    name: "network-dev",
+    op,
+    changedKeys: [],
+    replaceKeys: [],
+  });
+
+  // It holds nothing but the stack's outputs, and a change to outputs alone
+  // is not shown (record 0036).
+  test("an update of it is dropped, also when nothing else changes", async () => {
+    expect(await changesFor({ op: "update", urn: ROOT_STACK })).toEqual([]);
+    expect(
+      (await changesFor({ op: "update", urn: ROOT_STACK }, { op: "delete", urn: PET })).map(
+        (change) => change.address,
+      ),
+    ).toEqual([PET]);
+  });
+
+  // The whole stack would go. Record 0007: a destroy warning too many is the
+  // safe side.
+  test("a delete or a replace of it stays, as a destroy", async () => {
+    expect(await changesFor({ op: "delete", urn: ROOT_STACK })).toEqual([rootStack("delete")]);
+    expect(await changesFor({ op: "replace", urn: ROOT_STACK })).toEqual([rootStack("replace")]);
+  });
+
+  test("its create goes when any other change is left, a tracking change too", async () => {
+    expect(
+      (await changesFor({ op: "create", urn: ROOT_STACK }, { op: "import", urn: PET })).map(
+        (change) => [change.op, change.tracking, change.address],
+      ),
+    ).toEqual([["none", "import", PET]]);
+  });
+
+  // A step that changes nothing does not count as work.
+  test("its create stays when every other step changes nothing", async () => {
+    expect(await changesFor({ op: "create", urn: ROOT_STACK }, { op: "same", urn: PET })).toEqual([
+      rootStack("create"),
+    ]);
+  });
+
+  // Only the stack's own resource is the root: its type stands alone in the
+  // URN. A child of another type is a resource of the program.
+  test("a resource with a parent is never the root stack resource", async () => {
+    const child = network("my:index:Component$pulumi:pulumi:Stack", "inner");
+    expect(
+      (await changesFor({ op: "create", urn: child }, { op: "create", urn: PET })).map(
+        (change) => change.address,
+      ),
+    ).toEqual([child, PET]);
+  });
+});
 
 describe("the environment of the tool", () => {
   async function environmentFor(env: Record<string, string | undefined>) {
