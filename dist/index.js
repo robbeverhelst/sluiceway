@@ -27467,7 +27467,7 @@ function refuseDeploymentId(mode, getInput2) {
 }
 
 // src/modes/apply-job.ts
-import { readFileSync as readFileSync3 } from "node:fs";
+import { readFileSync as readFileSync4 } from "node:fs";
 
 // node_modules/@actions/github/lib/context.js
 import { readFileSync, existsSync as existsSync2 } from "fs";
@@ -51493,15 +51493,199 @@ function describeMiss(entry, inPath, ignored) {
   return `no stack named ${show(entry.name)} was found in ${show(entry.path)}. ${found}`;
 }
 
-// src/adapters/opentofu/discover.ts
-import { readdirSync, statSync } from "node:fs";
+// src/adapters/helm/discover.ts
+import { readFileSync as readFileSync2, statSync } from "node:fs";
 import { isAbsolute, join as join2, normalize, relative, sep as sep2 } from "node:path";
 
-// src/adapters/opentofu/options.ts
+// src/adapters/helm/options.ts
 var text2 = exports_external.string().min(1);
+var RELEASE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/;
+var NAMESPACE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
+var LOCAL_CHART = /^\.\.?(\/|$)/;
+var REFERENCE = /^(oci:\/\/|https?:\/\/)[^\s]+$|^[A-Za-z0-9][\w.-]*\/[\w.-]+$/;
+var EXACT = /^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+var helmOptionsSchema = exports_external.strictObject({
+  release: text2.max(53).regex(RELEASE).describe("The name of the Helm release. Helm's rule: lower case letters, digits, - and ."),
+  namespace: text2.max(63).regex(NAMESPACE).describe("The namespace of the release, passed with --namespace to every command."),
+  chart: text2.regex(new RegExp(`${LOCAL_CHART.source}|${REFERENCE.source}`)).describe('The chart: a path relative to the directory of the stack that starts with "./" or "../", or a chart reference such as repo/name or oci://registry/name.'),
+  version: text2.regex(EXACT).describe("The exact version of a chart reference. A local chart takes none.").exactOptional(),
+  valuesFiles: exports_external.array(text2).describe("Values files, relative to the directory of the stack, passed with --values in this order to every command.").default([])
+});
+var HELM = "helm";
+function isHelmOptions(options) {
+  return options.tool === HELM;
+}
+var PATTERN_PROBLEMS = {
+  release: 'expected a release name of lower case letters, digits, "-" and ".", that starts and ends with a letter or a digit, at most 53 characters.',
+  namespace: 'expected a namespace of lower case letters, digits and "-", that starts and ends with a letter or a digit, at most 63 characters.',
+  chart: 'expected a local chart as a path that starts with "./" or "../", or a chart reference such as repo/name or oci://registry/name.',
+  version: "expected an exact chart version, such as 1.2.3."
+};
+function parseHelmOptions(raw, index) {
+  const at = `stacks[${index}].options`;
+  const parsed = helmOptionsSchema.safeParse(raw ?? {});
+  if (!parsed.success) {
+    const known = Object.keys(helmOptionsSchema.shape).join(", ");
+    const order = Object.keys(helmOptionsSchema.shape);
+    const rank = (issue3) => issue3.code === "unrecognized_keys" ? -1 : order.indexOf(String(issue3.path[0]));
+    const issues = [...parsed.error.issues].sort((a, b) => rank(a) - rank(b));
+    const problems = issues.flatMap((issue3) => {
+      if (issue3.code === "unrecognized_keys") {
+        return issue3.keys.map((key) => `${at}: unknown option ${JSON.stringify(key)}. Known options for helm: ${known}.`);
+      }
+      const [name] = issue3.path;
+      const where2 = `${at}${issue3.path.map((part) => typeof part === "number" ? `[${part}]` : `.${String(part)}`).join("")}`;
+      if (issue3.code === "invalid_type" && issue3.input === undefined) {
+        return [`${where2}: required for tool: helm.`];
+      }
+      if (issue3.code === "too_small")
+        return [`${where2}: must not be empty.`];
+      if (issue3.path.length === 1 && name === "valuesFiles") {
+        return [`${where2}: expected a list of file names.`];
+      }
+      if (issue3.code === "invalid_type")
+        return [`${where2}: expected text.`];
+      return [`${where2}: ${PATTERN_PROBLEMS[String(name)] ?? "expected something else."}`];
+    });
+    return { ok: false, problems: [...new Set(problems)] };
+  }
+  const options = parsed.data;
+  const local = LOCAL_CHART.test(options.chart);
+  if (local && options.version !== undefined) {
+    return {
+      ok: false,
+      problems: [
+        `${at}.version: only a chart reference takes a version. A local chart is used as the repo holds it.`
+      ]
+    };
+  }
+  if (!local && options.version === undefined) {
+    return {
+      ok: false,
+      problems: [
+        `${at}.version: required for a chart reference, so that the deploy installs the chart the preview saw.`
+      ]
+    };
+  }
+  return { ok: true, options };
+}
+
+// src/adapters/helm/discover.ts
+var WHAT_PATH_IS = "An entry with tool: helm names the directory its chart and values files are relative to.";
+function discoverHelm(root, config2) {
+  const stacks = [];
+  const optionProblems = [];
+  const problems = [];
+  config2.stacks.forEach((entry, index) => {
+    if (entry.tool !== HELM)
+      return;
+    const parsed = parseHelmOptions(entry.options, index);
+    if (!parsed.ok) {
+      optionProblems.push(...parsed.problems);
+      return;
+    }
+    const { options } = parsed;
+    const dir = join2(root, entry.path);
+    const shown = JSON.stringify(entry.path);
+    if (!isDirectory2(dir)) {
+      problems.push(`stacks[${index}]: ${shown} is not a directory of the repo. ${WHAT_PATH_IS}`);
+      return;
+    }
+    const before = problems.length;
+    const inRepo = (file2) => {
+      const fromRoot = relative(root, normalize(join2(dir, file2)));
+      if (fromRoot === ".." || fromRoot.startsWith(`..${sep2}`) || isAbsolute(fromRoot)) {
+        return;
+      }
+      return fromRoot === "" ? "." : fromRoot.split(sep2).join("/");
+    };
+    let chart;
+    if (LOCAL_CHART.test(options.chart)) {
+      const where2 = `stacks[${index}].options.chart: ${JSON.stringify(options.chart)}`;
+      const chartDir = inRepo(options.chart);
+      if (chartDir === undefined) {
+        problems.push(`${where2} must stay inside the repo.`);
+      } else {
+        const found = chartFile(join2(root, chartDir, "Chart.yaml"));
+        if (found === "missing") {
+          problems.push(`${where2} is not a chart in ${shown}: it holds no Chart.yaml.`);
+        } else if (found === "unreadable") {
+          problems.push(`stacks[${index}].options.chart: the Chart.yaml of ${JSON.stringify(options.chart)} could not be read as YAML.`);
+        } else {
+          chart = { chartDir, dependencies: found.dependencies };
+        }
+      }
+    }
+    options.valuesFiles.forEach((file2, at) => {
+      const where2 = `stacks[${index}].options.valuesFiles[${at}]: ${JSON.stringify(file2)}`;
+      if (isAbsolute(file2)) {
+        problems.push(`${where2} must be relative to the directory of the stack.`);
+        return;
+      }
+      const fromRoot = inRepo(file2);
+      if (fromRoot === undefined) {
+        problems.push(`${where2} must stay inside the repo.`);
+        return;
+      }
+      if (!isFile(join2(root, fromRoot)))
+        problems.push(`${where2} is not a file in ${shown}.`);
+    });
+    if (problems.length > before)
+      return;
+    const bag = {
+      tool: HELM,
+      ...options,
+      ...chart === undefined ? { dependencies: false } : chart
+    };
+    stacks.push({
+      path: entry.path,
+      ...entry.name === undefined ? {} : { name: entry.name },
+      options: { ...bag }
+    });
+  });
+  if (optionProblems.length === 0 && problems.length > 0)
+    throw new DiscoveryError(problems);
+  return { stacks, optionProblems };
+}
+function chartFile(path) {
+  let text3;
+  try {
+    text3 = readFileSync2(path, "utf8");
+  } catch {
+    return "missing";
+  }
+  try {
+    const chart = $parse(text3);
+    const dependencies = typeof chart === "object" && chart !== null ? chart.dependencies : undefined;
+    return { dependencies: Array.isArray(dependencies) && dependencies.length > 0 };
+  } catch {
+    return "unreadable";
+  }
+}
+function isDirectory2(path) {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function isFile(path) {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+// src/adapters/opentofu/discover.ts
+import { readdirSync, statSync as statSync2 } from "node:fs";
+import { isAbsolute as isAbsolute2, join as join3, normalize as normalize2, relative as relative2, sep as sep3 } from "node:path";
+
+// src/adapters/opentofu/options.ts
+var text3 = exports_external.string().min(1);
 var openTofuOptionsSchema = exports_external.strictObject({
-  workspace: text2.describe("The workspace of the stack, selected with TF_WORKSPACE for every command. Without it, the one the environment selects, which is default.").exactOptional(),
-  varFiles: exports_external.array(text2).describe("Var files, relative to the directory of the stack, passed with -var-file in this order to every plan.").default([])
+  workspace: text3.describe("The workspace of the stack, selected with TF_WORKSPACE for every command. Without it, the one the environment selects, which is default.").exactOptional(),
+  varFiles: exports_external.array(text3).describe("Var files, relative to the directory of the stack, passed with -var-file in this order to every plan.").default([])
 });
 var OPENTOFU = "opentofu";
 function isOpenTofuOptions(options) {
@@ -51544,7 +51728,7 @@ function discoverOpenTofu(root, config2) {
       optionProblems.push(...parsed.problems);
       return;
     }
-    const dir = join2(root, entry.path);
+    const dir = join3(root, entry.path);
     const shown = JSON.stringify(entry.path);
     const files = filesIn(dir);
     if (files === undefined) {
@@ -51558,16 +51742,16 @@ function discoverOpenTofu(root, config2) {
     const before = problems.length;
     parsed.options.varFiles.forEach((file2, at) => {
       const where2 = `stacks[${index}].options.varFiles[${at}]: ${JSON.stringify(file2)}`;
-      if (isAbsolute(file2)) {
+      if (isAbsolute2(file2)) {
         problems.push(`${where2} must be relative to the directory of the stack.`);
         return;
       }
-      const fromRoot = relative(root, normalize(join2(dir, file2)));
-      if (fromRoot === ".." || fromRoot.startsWith(`..${sep2}`) || isAbsolute(fromRoot)) {
+      const fromRoot = relative2(root, normalize2(join3(dir, file2)));
+      if (fromRoot === ".." || fromRoot.startsWith(`..${sep3}`) || isAbsolute2(fromRoot)) {
         problems.push(`${where2} must stay inside the repo.`);
         return;
       }
-      if (!isFile(join2(root, fromRoot)))
+      if (!isFile2(join3(root, fromRoot)))
         problems.push(`${where2} is not a file in ${shown}.`);
     });
     if (problems.length > before)
@@ -51590,9 +51774,9 @@ function filesIn(dir) {
     return;
   }
 }
-function isFile(path) {
+function isFile2(path) {
   try {
-    return statSync(path).isFile();
+    return statSync2(path).isFile();
   } catch {
     return false;
   }
@@ -51600,7 +51784,7 @@ function isFile(path) {
 
 // src/adapters/pulumi/discover.ts
 import { readdir as readdir2, readFile } from "node:fs/promises";
-import { isAbsolute as isAbsolute2, join as join3, relative as relative2, sep as sep3 } from "node:path";
+import { isAbsolute as isAbsolute3, join as join4, relative as relative3, sep as sep4 } from "node:path";
 var PROJECT_FILE = "Pulumi";
 var EXTENSIONS = [".json", ".yaml", ".yml"];
 var SKIPPED = new Set([".git", "node_modules"]);
@@ -51611,22 +51795,22 @@ async function discover(root) {
     const entries = await readdir2(dir, { withFileTypes: true });
     const extension = EXTENSIONS.find((ext) => fileNames(entries).includes(PROJECT_FILE + ext));
     if (extension !== undefined) {
-      const projectFile = join3(dir, PROJECT_FILE + extension);
+      const projectFile = join4(dir, PROJECT_FILE + extension);
       try {
         const stackDir = await stackConfigDir(root, projectFile);
         const files = stackDir === dir ? fileNames(entries) : await fileNamesIn(stackDir);
-        const path = slashed(relative2(root, dir)) || ".";
+        const path = slashed(relative3(root, dir)) || ".";
         for (const name of stackNames(files, extension))
           stacks.push({ path, name, options: {} });
       } catch (error63) {
         if (!(error63 instanceof ProjectFileProblem))
           throw error63;
-        problems.push(`${slashed(relative2(root, projectFile))}: ${error63.message}`);
+        problems.push(`${slashed(relative3(root, projectFile))}: ${error63.message}`);
       }
     }
     for (const entry of entries) {
       if (entry.isDirectory() && !SKIPPED.has(entry.name))
-        await walk(join3(dir, entry.name));
+        await walk(join4(dir, entry.name));
     }
   };
   await walk(root);
@@ -51638,7 +51822,7 @@ async function discover(root) {
 class ProjectFileProblem extends Error {
 }
 async function projectName(root, path) {
-  const dir = join3(root, path);
+  const dir = join4(root, path);
   let entries;
   try {
     entries = await readdir2(dir, { withFileTypes: true });
@@ -51648,7 +51832,7 @@ async function projectName(root, path) {
   const extension = EXTENSIONS.find((ext) => fileNames(entries).includes(PROJECT_FILE + ext));
   if (extension === undefined)
     return;
-  const document = $parseDocument(await readFile(join3(dir, PROJECT_FILE + extension), "utf8"), {
+  const document = $parseDocument(await readFile(join4(dir, PROJECT_FILE + extension), "utf8"), {
     uniqueKeys: false
   });
   if (document.errors.length > 0)
@@ -51659,7 +51843,7 @@ async function projectName(root, path) {
   return typeof project.name === "string" ? project.name : undefined;
 }
 async function stackConfigDir(root, projectFile) {
-  const dir = join3(projectFile, "..");
+  const dir = join4(projectFile, "..");
   const lineCounter2 = new $LineCounter;
   const document = $parseDocument(await readFile(projectFile, "utf8"), {
     lineCounter: lineCounter2,
@@ -51678,9 +51862,9 @@ async function stackConfigDir(root, projectFile) {
   if (typeof named !== "string") {
     throw new ProjectFileProblem("stackConfigDir must be text, the directory that holds the stack files.");
   }
-  const stackDir = join3(dir, named);
-  const fromRoot = relative2(root, stackDir);
-  if (fromRoot === ".." || fromRoot.startsWith(`..${sep3}`) || isAbsolute2(fromRoot)) {
+  const stackDir = join4(dir, named);
+  const fromRoot = relative3(root, stackDir);
+  if (fromRoot === ".." || fromRoot.startsWith(`..${sep4}`) || isAbsolute3(fromRoot)) {
     throw new ProjectFileProblem(`stackConfigDir points outside the repo (${JSON.stringify(named)}). Sluiceway only reads files inside the repo.`);
   }
   return stackDir;
@@ -51703,14 +51887,14 @@ async function fileNamesIn(dir) {
   }
 }
 function slashed(path) {
-  return path.split(sep3).join("/");
+  return path.split(sep4).join("/");
 }
 function compare(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
 // src/adapters/discover-all.ts
-var TOOLS = [OPENTOFU];
+var TOOLS = [OPENTOFU, HELM];
 async function discoverAll(root, config2) {
   const toolProblems = config2.stacks.flatMap((entry, index) => {
     if (entry.tool === undefined)
@@ -51724,24 +51908,40 @@ async function discoverAll(root, config2) {
       `stacks[${index}].dependsOn: ${DEPENDS_ON_AUTO} reads the stack references of a Pulumi program, and an ${entry.tool} stack has none. Name the stack ids instead.`
     ] : [];
   });
-  const { stacks: declared, optionProblems } = discoverOpenTofu(root, config2);
-  const problems = [...toolProblems, ...optionProblems];
+  const tofu = tryDiscover(() => discoverOpenTofu(root, config2));
+  const charts = tryDiscover(() => discoverHelm(root, config2));
+  const problems = [...toolProblems, ...tofu.optionProblems, ...charts.optionProblems];
   if (problems.length > 0)
     throw new ConfigError(problems.sort(byEntry));
+  const errors4 = [tofu.error, charts.error].filter((error63) => error63 !== undefined);
+  const other = errors4.find((error63) => !(error63 instanceof DiscoveryError));
+  if (other !== undefined)
+    throw other;
+  if (errors4.length > 0) {
+    throw new DiscoveryError(errors4.flatMap((error63) => error63.problems).sort(byEntry));
+  }
+  const declared = [...tofu.stacks, ...charts.stacks];
   const discovered = await discover(root);
   if (declared.length === 0)
     return discovered;
   return [...discovered, ...declared].sort((a, b) => compare2(a.path, b.path) || compare2(a.name ?? "", b.name ?? ""));
 }
+function tryDiscover(discover2) {
+  try {
+    return discover2();
+  } catch (error63) {
+    return { stacks: [], optionProblems: [], error: error63 };
+  }
+}
 function byEntry(a, b) {
-  const index = (text3) => Number(/^stacks\[(\d+)\]/.exec(text3)?.[1] ?? 0);
+  const index = (text4) => Number(/^stacks\[(\d+)\]/.exec(text4)?.[1] ?? 0);
   return index(a) - index(b);
 }
 function compare2(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-// src/adapters/opentofu/apply.ts
+// src/adapters/helm/apply.ts
 import { join as join5 } from "node:path";
 
 // src/adapters/pulumi/tool-log.ts
@@ -51750,45 +51950,74 @@ var ANSI_ESCAPES = new RegExp([
   "\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)",
   "\\u001b[@-Z\\\\^_]"
 ].join("|"), "g");
-function stripAnsi(text3) {
-  return text3.replace(ANSI_ESCAPES, "");
+function stripAnsi(text4) {
+  return text4.replace(ANSI_ESCAPES, "");
 }
 
-// src/adapters/opentofu/commands.ts
-var TOFU = "tofu";
-function initCommand() {
-  return [TOFU, "init", "-input=false", "-no-color"];
-}
-function planCommand(planFile, varFiles) {
+// src/adapters/helm/commands.ts
+var HELM2 = "helm";
+function release(options) {
   return [
-    TOFU,
-    "plan",
-    "-input=false",
-    "-no-color",
-    "-refresh=false",
-    "-json",
-    `-out=${planFile}`,
-    ...varFiles.map((file2) => `-var-file=${file2}`)
+    options.release,
+    options.chart,
+    `--namespace=${options.namespace}`,
+    ...options.version === undefined ? [] : [`--version=${options.version}`]
   ];
 }
-function showCommand(planFile) {
-  return [TOFU, "show", "-json", "-no-color", planFile];
+function values(options) {
+  return options.valuesFiles.map((file2) => `--values=${file2}`);
 }
-function applyCommand(planFile) {
-  return [TOFU, "apply", "-input=false", "-no-color", "-json", planFile];
-}
-function toolDiffCommand(varFiles) {
+function diffCommand(options) {
   return [
-    TOFU,
-    "plan",
-    "-input=false",
-    "-no-color",
-    "-refresh=false",
-    ...varFiles.map((file2) => `-var-file=${file2}`)
+    HELM2,
+    "diff",
+    "upgrade",
+    ...release(options),
+    "--install",
+    "--reset-values",
+    "--dry-run=server",
+    "--output=structured",
+    "--no-color",
+    ...values(options)
   ];
+}
+function renderCommand(options) {
+  return [HELM2, "template", ...release(options), "--dry-run=server", ...values(options)];
+}
+function deployCommand(options) {
+  return [
+    HELM2,
+    "upgrade",
+    ...release(options),
+    "--install",
+    "--reset-values",
+    "--atomic",
+    "--hide-notes",
+    ...values(options)
+  ];
+}
+function toolDiffCommand(options) {
+  return [
+    HELM2,
+    "diff",
+    "upgrade",
+    ...release(options),
+    "--install",
+    "--reset-values",
+    "--dry-run=server",
+    "--output=diff",
+    "--no-color",
+    ...values(options)
+  ];
+}
+function dependencyCommand() {
+  return [HELM2, "dependency", "build", "."];
 }
 function versionCommand() {
-  return [TOFU, "version", "-json"];
+  return [HELM2, "version", "--template={{.Version}}"];
+}
+function pluginVersionCommand() {
+  return [HELM2, "diff", "version"];
 }
 
 // src/adapters/environment.ts
@@ -51801,146 +52030,80 @@ function toolEnvironment(env) {
   return kept;
 }
 
-// src/adapters/opentofu/environment.ts
-function tofuEnvironment(env, stack) {
-  const workspace = stack === undefined ? undefined : optionsOf(stack).workspace;
-  return {
-    ...toolEnvironment(env),
-    TF_IN_AUTOMATION: "true",
-    ...workspace === undefined ? {} : { TF_WORKSPACE: workspace }
-  };
+// src/adapters/helm/environment.ts
+function helmEnvironment(env) {
+  return toolEnvironment(env);
 }
 function optionsOf(stack) {
   return stack.options;
 }
 
-// src/adapters/opentofu/plan-file.ts
-import { mkdtemp, rm as rm2 } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join as join4 } from "node:path";
+// src/adapters/helm/rendered.ts
+import { createHash } from "node:crypto";
 
-class PlanFile {
-  path;
+class RenderedManifests {
   stackId;
-  dir;
-  constructor(dir, stackId2) {
-    this.dir = dir;
-    this.path = join4(dir, "tfplan");
+  digest;
+  constructor(stackId2, manifests) {
     this.stackId = stackId2;
+    this.digest = digestOf(manifests);
   }
-  static async create(stackId2) {
-    return new PlanFile(await mkdtemp(join4(tmpdir(), "sluiceway-plan-")), stackId2);
+  matches(manifests) {
+    return digestOf(manifests) === this.digest;
   }
-  async dispose() {
-    await rm2(this.dir, { recursive: true, force: true });
+  async dispose() {}
+  toJSON() {
+    return { stackId: this.stackId };
   }
+}
+function digestOf(manifests) {
+  return createHash("sha256").update(manifests).digest("hex");
 }
 
-// src/adapters/opentofu/tool-log.ts
-var LEFT_OUT = new Set(["outputs", "planned_change", "resource_drift", "version"]);
-function jsonLogWords(stdout) {
-  const words = [];
-  for (const line of stdout.split(/\r?\n/)) {
-    if (line.trim() === "")
-      continue;
-    let message;
-    try {
-      message = JSON.parse(line);
-    } catch {
-      words.push(line);
-      continue;
-    }
-    if (typeof message !== "object" || message === null)
-      continue;
-    const { type, diagnostic } = message;
-    if (typeof type === "string" && LEFT_OUT.has(type))
-      continue;
-    if (type === "diagnostic" && typeof diagnostic === "object" && diagnostic !== null) {
-      words.push(...diagnosticWords(diagnostic));
-      continue;
-    }
-    const text3 = message["@message"];
-    if (typeof text3 === "string")
-      words.push(text3);
-  }
-  return stripAnsi(words.map((line) => `${line}
-`).join(""));
-}
-function diagnosticWords(diagnostic) {
-  const severity = diagnostic.severity === "warning" ? "Warning" : "Error";
-  const where2 = [
-    typeof diagnostic.range?.filename === "string" ? diagnostic.range.filename : undefined,
-    typeof diagnostic.range?.start?.line === "number" ? `line ${diagnostic.range.start.line}` : undefined
-  ].filter((part) => part !== undefined);
-  return [
-    `${severity}: ${typeof diagnostic.summary === "string" ? diagnostic.summary : ""}`,
-    ...where2.length > 0 ? [`  on ${where2.join(", ")}`] : [],
-    ...typeof diagnostic.address === "string" ? [`  at ${diagnostic.address}`] : [],
-    ...typeof diagnostic.detail === "string" && diagnostic.detail !== "" ? diagnostic.detail.split(`
-`).map((line) => `  ${line}`) : []
-  ];
-}
-
-// src/adapters/opentofu/apply.ts
+// src/adapters/helm/apply.ts
 async function apply(stack, context3, plan) {
-  if (!(plan instanceof PlanFile) || plan.stackId !== stackId(stack)) {
-    throw new Error("An OpenTofu stack deploys only the plan its fresh preview saved.");
+  if (!(plan instanceof RenderedManifests) || plan.stackId !== stackId(stack)) {
+    throw new Error("A Helm stack deploys only what its fresh preview rendered.");
   }
-  const result = await context3.run({
-    argv: applyCommand(plan.path),
+  const helm = optionsOf(stack);
+  const run = (argv) => context3.run({
+    argv,
     cwd: join5(context3.root, stack.path),
-    env: tofuEnvironment(context3.env, stack)
+    env: helmEnvironment(context3.env)
   });
-  if (result.status === "not-started") {
+  const rendered = await run(renderCommand(helm));
+  if (rendered.status === "not-started") {
     return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
   }
-  const toolLog = stripAnsi(result.stderr) + jsonLogWords(result.stdout);
-  if (result.status === "exited" && result.exitCode === 0)
+  const renderWords = stripAnsi(rendered.stderr);
+  if (rendered.status !== "exited" || rendered.exitCode !== 0) {
+    const exitCode2 = rendered.status === "exited" ? rendered.exitCode : null;
+    return { ok: false, reason: { kind: "tool-error", exitCode: exitCode2 }, toolLog: renderWords };
+  }
+  if (!plan.matches(rendered.stdout)) {
+    return { ok: false, reason: { kind: "moved" }, toolLog: renderWords };
+  }
+  const deployed = await run(deployCommand(helm));
+  if (deployed.status === "not-started") {
+    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: renderWords };
+  }
+  const toolLog = renderWords + stripAnsi(deployed.stdout + deployed.stderr);
+  if (deployed.status === "exited" && deployed.exitCode === 0)
     return { ok: true, toolLog };
-  const exitCode = result.status === "exited" ? result.exitCode : null;
+  const exitCode = deployed.status === "exited" ? deployed.exitCode : null;
   return { ok: false, reason: { kind: "tool-error", exitCode }, toolLog };
 }
 
-// src/adapters/opentofu/prepare.ts
-import { join as join6 } from "node:path";
-function prepare(stacks) {
-  const byPath = Map.groupBy(stacks, (stack) => stack.path);
-  return [...byPath].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([path, grouped]) => ({
-    title: path,
-    stacks: grouped,
-    run: async (context3) => {
-      const result = await context3.run({
-        argv: initCommand(),
-        cwd: join6(context3.root, path),
-        env: tofuEnvironment(context3.env),
-        timeoutMs: context3.timeoutMinutes * 60000
-      });
-      if (result.status === "not-started") {
-        return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-      }
-      const toolLog = stripAnsi(result.stdout + result.stderr);
-      if (result.status === "timed-out") {
-        return {
-          ok: false,
-          reason: { kind: "timed-out", minutes: context3.timeoutMinutes },
-          toolLog
-        };
-      }
-      if (result.exitCode !== 0) {
-        return { ok: false, reason: { kind: "tool-error", exitCode: result.exitCode }, toolLog };
-      }
-      return { ok: true, toolLog };
-    }
-  }));
-}
-
-// src/adapters/opentofu/preview.ts
+// src/adapters/helm/prepare.ts
 import { join as join7 } from "node:path";
+
+// src/adapters/helm/preview.ts
+import { join as join6 } from "node:path";
 
 // src/adapters/opentofu/paths.ts
 function changedPaths(sides, showValues) {
   const paths = [];
-  const values = [];
+  const values2 = [];
   const changed = (path, value) => {
     if (path === "")
       return;
@@ -51953,7 +52116,7 @@ function changedPaths(sides, showValues) {
       return;
     if (old === undefined && next === undefined)
       return;
-    values.push({
+    values2.push({
       path,
       ...old === undefined ? {} : { old },
       ...next === undefined ? {} : { new: next }
@@ -51992,7 +52155,7 @@ function changedPaths(sides, showValues) {
     }
   };
   walk(sides.before, sides.after, sides.afterUnknown, sides.beforeSensitive, sides.afterSensitive, "");
-  return { paths, values };
+  return { paths, values: values2 };
 }
 function replacePath(steps, beforeSensitive, afterSensitive) {
   let path = "";
@@ -52058,64 +52221,49 @@ function shown(value) {
   return shortValue(value);
 }
 
-// src/adapters/opentofu/fold.ts
-var ACTIONS = {
-  "no-op": "drop",
-  read: "drop",
-  create: { op: "create" },
-  update: { op: "update" },
-  "delete,create": { op: "replace" },
-  "create,delete": { op: "replace" },
-  delete: { op: "delete" },
-  forget: { op: "none", tracking: "forget" },
-  "forget,create": { op: "create", tracking: "forget" }
+// src/adapters/helm/fold.ts
+var OPS = {
+  ADD: "create",
+  MODIFY: "update",
+  REMOVE: "delete"
 };
-function foldChanges(found, showValues) {
+function foldEntries(entries, namespace, showValues) {
   const changes = [];
   const unknown2 = [];
   const unreadable = [];
   const firstAt = new Map;
-  found.forEach((resource, index) => {
-    const at = `The tool's output, at resource_changes[${index}]`;
-    const key = resource.change.actions.join(",");
-    const known = Object.hasOwn(ACTIONS, key) ? ACTIONS[key] : undefined;
-    if (known === undefined) {
-      unknown2.push(`${at}.change.actions: expected actions that Sluiceway knows.`);
+  entries.forEach((entry, index) => {
+    const at = `The tool's output, at [${index}]`;
+    const op = Object.hasOwn(OPS, entry.changeType) ? OPS[entry.changeType] : undefined;
+    if (op === undefined) {
+      unknown2.push(`${at}.changeType: expected ADD, MODIFY or REMOVE.`);
       return;
     }
-    const moved = resource.previous_address !== undefined;
-    const imported = resource.change.importing;
-    if (moved && imported) {
-      unreadable.push(`${at}: expected a move or an import, not both.`);
+    if (entry.changesSuppressed === true) {
+      unreadable.push(`${at}.changesSuppressed: expected every change to be shown.`);
       return;
     }
-    if (resource.mode === "data") {
-      if (known !== "drop")
-        unknown2.push(`${at}.change.actions: expected a read of a data source.`);
-      return;
-    }
-    const flagged = moved ? "move" : imported ? "import" : undefined;
-    if (flagged !== undefined && known !== "drop" && known.tracking !== undefined) {
-      unreadable.push(`${at}: expected one tracking change, found two.`);
-      return;
-    }
-    const folded = withTracking(known, flagged);
-    if (folded === undefined)
-      return;
-    const address = resource.deposed === undefined ? resource.address : `${resource.address} deposed ${resource.deposed}`;
+    const type = typeOf(entry);
+    const where2 = entry.namespace ?? "";
+    const address = `${type}/${where2}/${entry.name}`;
     const earlier = firstAt.get(address);
     if (earlier !== undefined) {
-      unreadable.push(`${at}.address: expected an address that no earlier change has, and resource_changes[${earlier}] has it.`);
+      unreadable.push(`${at}: expected an object that no earlier entry has, and [${earlier}] has it.`);
       return;
     }
     firstAt.set(address, index);
+    const found = op === "update" ? keys(entry, showValues) : { changedKeys: [] };
+    if (found === undefined) {
+      unreadable.push(`${at}.changes: expected the paths that change on a MODIFY.`);
+      return;
+    }
     changes.push({
       address,
-      type: resource.type,
-      name: displayName(resource),
-      ...folded,
-      ...moved && resource.previous_address !== undefined ? { previousAddress: resource.previous_address } : {},
-      ...keys(resource, folded.op, showValues)
+      type,
+      name: where2 === "" || where2 === namespace ? entry.name : `${where2}/${entry.name}`,
+      op,
+      replaceKeys: [],
+      ...found
     });
   });
   if (unreadable.length > 0)
@@ -52125,38 +52273,65 @@ function foldChanges(found, showValues) {
   changes.sort((a, b) => byCodeUnit2(a.address, b.address));
   return { ok: true, changes };
 }
-function withTracking(known, tracking) {
-  if (known === "drop")
-    return tracking === undefined ? undefined : { op: "none", tracking };
-  if (tracking === undefined)
-    return known;
-  return { ...known, tracking };
+function typeOf(entry) {
+  const slash = entry.apiVersion.lastIndexOf("/");
+  return slash < 0 ? entry.kind : `${entry.kind}.${entry.apiVersion.slice(0, slash)}`;
 }
-function displayName(resource) {
-  const module = resource.module_address === undefined ? "" : `${resource.module_address}.`;
-  const prefix = `${module}${resource.type}.`;
-  const rest = resource.address.startsWith(prefix) ? resource.address.slice(prefix.length) : resource.name;
-  const name = `${module}${rest}`;
-  return resource.deposed === undefined ? name : `${name} (deposed ${resource.deposed})`;
+function keys(entry, showValues) {
+  const found = entry.changes ?? [];
+  if (found.length === 0)
+    return;
+  const secret = entry.kind === "Secret" && !entry.apiVersion.includes("/");
+  const values2 = [];
+  const paths = found.map((change) => {
+    const path = propertyPath(change);
+    if (!secret && isListedPath(showValues, path)) {
+      const value = shownValue(path, change);
+      if (value !== undefined)
+        values2.push(value);
+    }
+    return path;
+  });
+  const changedKeys = [...new Set(paths.filter((path) => path !== ""))].sort(byCodeUnit2);
+  const shown2 = values2.filter((value, index) => values2.findIndex((one) => one.path === value.path) === index).sort((a, b) => byCodeUnit2(a.path, b.path));
+  return { changedKeys, ...shown2.length === 0 ? {} : { values: shown2 } };
 }
-function keys(resource, op, showValues) {
-  if (op !== "update" && op !== "replace")
-    return { changedKeys: [], replaceKeys: [] };
-  const { change } = resource;
-  const { paths, values } = changedPaths({
-    before: change.before,
-    after: change.after,
-    afterUnknown: change.after_unknown,
-    beforeSensitive: change.before_sensitive,
-    afterSensitive: change.after_sensitive
-  }, showValues);
-  const replaceKeys = op === "replace" ? sortedSet((change.replace_paths ?? []).map((steps) => replacePath(steps, change.before_sensitive, change.after_sensitive))) : [];
-  const changedKeys = sortedSet([...paths, ...replaceKeys]);
-  const shown2 = values.filter((value) => changedKeys.includes(value.path)).sort((a, b) => byCodeUnit2(a.path, b.path));
-  return { changedKeys, replaceKeys, ...shown2.length === 0 ? {} : { values: shown2 } };
+function propertyPath(change) {
+  let path = "";
+  for (const part of (change.path ?? "").split(".")) {
+    if (part === "")
+      continue;
+    const [, name = "", indexes = ""] = /^(.*?)((?:\[\d+\])*)$/.exec(part) ?? [];
+    if (name !== "")
+      path += segment(name, path === "");
+    path += indexes;
+  }
+  const { field } = change;
+  return path + (/^\d+$/.test(field) ? `[${field}]` : segment(field, path === ""));
 }
-function sortedSet(names) {
-  return [...new Set(names.filter((name) => name !== ""))].sort(byCodeUnit2);
+function shownValue(path, change) {
+  const old = shown2(change.oldValue);
+  const next = shown2(change.newValue);
+  if (old === "refused" || next === "refused")
+    return;
+  if (old === undefined && next === undefined)
+    return;
+  return {
+    path,
+    ...old === undefined ? {} : { old },
+    ...next === undefined ? {} : { new: next }
+  };
+}
+function shown2(value) {
+  if (value === undefined || value === null)
+    return;
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
+  if (typeof value !== "string")
+    return "refused";
+  if (/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value))
+    return "refused";
+  return shortValue(value);
 }
 function byCodeUnit2(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -52223,8 +52398,489 @@ function place(path) {
   return path.map((part, index) => typeof part === "number" ? `[${part}]` : `${index === 0 ? "" : "."}${String(part)}`).join("");
 }
 
-// src/adapters/opentofu/preview.ts
+// src/adapters/helm/schema.ts
+var change2 = exports_external.object({
+  path: exports_external.string().optional(),
+  field: exports_external.string(),
+  oldValue: exports_external.unknown().optional(),
+  newValue: exports_external.unknown().optional()
+});
+var entry = exports_external.object({
+  apiVersion: exports_external.string().min(1),
+  kind: exports_external.string().min(1),
+  namespace: exports_external.string().optional(),
+  name: exports_external.string().min(1),
+  changeType: exports_external.string(),
+  changes: exports_external.array(change2).optional(),
+  changesSuppressed: exports_external.boolean().optional()
+});
+function parseEntries(stdout) {
+  let json2;
+  try {
+    json2 = JSON.parse(stdout);
+  } catch {
+    return { ok: false, problems: ["The tool's output: expected one JSON document."] };
+  }
+  const parsed = exports_external.array(entry).safeParse(json2);
+  if (!parsed.success)
+    return { ok: false, problems: parsed.error.issues.map(problem2) };
+  return { ok: true, entries: parsed.data };
+}
+var EXPECTED3 = {
+  string: "text",
+  array: "a list",
+  object: "an object",
+  boolean: "true or false"
+};
+function problem2(issue3) {
+  const at = place(issue3.path);
+  const expected = issue3.code === "invalid_type" ? EXPECTED3[issue3.expected] : issue3.code === "too_small" ? "text" : undefined;
+  return `The tool's output, at ${at}: expected ${expected ?? "something else"}.`;
+}
+
+// src/adapters/helm/preview.ts
 async function preview(stack, options) {
+  const helm = optionsOf(stack);
+  const run = (argv) => options.run({
+    argv,
+    cwd: join6(options.root, stack.path),
+    env: helmEnvironment(options.env),
+    timeoutMs: options.timeoutMinutes * 60000
+  });
+  const failed = (reason, toolLog, detail = []) => ({ ok: false, reason, detail, toolLog });
+  const diffed = await run(diffCommand(helm));
+  const words = diffed.status === "not-started" ? "" : stripAnsi(diffed.stderr);
+  const failure2 = failureOf(diffed, options.timeoutMinutes);
+  if (failure2 !== undefined)
+    return failed(failure2, words);
+  if (diffed.status !== "exited")
+    return failed({ kind: "tool-error", exitCode: null }, words);
+  const parsed = parseEntries(diffed.stdout);
+  if (!parsed.ok)
+    return failed({ kind: "unreadable-output" }, words, parsed.problems);
+  const folded = foldEntries(parsed.entries, helm.namespace, options.showValues ?? []);
+  if (!folded.ok)
+    return failed({ kind: folded.reason }, words, folded.detail);
+  const diff = { stackId: stackId(stack), changes: folded.changes };
+  if (!options.savePlan)
+    return { ok: true, diff, toolLog: words };
+  const rendered = await run(renderCommand(helm));
+  const log = words + (rendered.status === "not-started" ? "" : stripAnsi(rendered.stderr));
+  const renderFailure = failureOf(rendered, options.timeoutMinutes);
+  if (renderFailure !== undefined)
+    return failed(renderFailure, log);
+  if (rendered.status !== "exited")
+    return failed({ kind: "tool-error", exitCode: null }, log);
+  return {
+    ok: true,
+    diff,
+    plan: new RenderedManifests(stackId(stack), rendered.stdout),
+    toolLog: log
+  };
+}
+function failureOf(result, timeoutMinutes) {
+  if (result.status === "not-started")
+    return { kind: "tool-error", exitCode: null };
+  if (result.status === "timed-out")
+    return { kind: "timed-out", minutes: timeoutMinutes };
+  if (result.exitCode !== 0)
+    return { kind: "tool-error", exitCode: result.exitCode };
+  return;
+}
+
+// src/adapters/helm/prepare.ts
+function prepare(stacks) {
+  const byChart = Map.groupBy(stacks.filter((stack) => optionsOf(stack).dependencies), (stack) => optionsOf(stack).chartDir ?? "");
+  return [...byChart].filter(([chartDir]) => chartDir !== "").sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([chartDir, grouped]) => ({
+    title: chartDir,
+    stacks: grouped,
+    run: async (context3) => {
+      const result = await context3.run({
+        argv: dependencyCommand(),
+        cwd: join7(context3.root, chartDir),
+        env: helmEnvironment(context3.env),
+        timeoutMs: context3.timeoutMinutes * 60000
+      });
+      const toolLog = result.status === "not-started" ? "" : stripAnsi(result.stdout + result.stderr);
+      const reason = failureOf(result, context3.timeoutMinutes);
+      return reason === undefined ? { ok: true, toolLog } : { ok: false, reason, toolLog };
+    }
+  }));
+}
+
+// src/adapters/helm/tool-diff.ts
+import { join as join8 } from "node:path";
+async function toolDiff(stack, options) {
+  const result = await options.run({
+    argv: toolDiffCommand(optionsOf(stack)),
+    cwd: join8(options.root, stack.path),
+    env: helmEnvironment(options.env),
+    timeoutMs: options.timeoutMinutes * 60000
+  });
+  if (result.status === "not-started") {
+    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
+  }
+  const reason = failureOf(result, options.timeoutMinutes);
+  if (reason !== undefined) {
+    return { ok: false, reason, toolLog: stripAnsi(result.stdout + result.stderr) };
+  }
+  return { ok: true, text: stripAnsi(result.stdout), toolLog: stripAnsi(result.stderr) };
+}
+
+// src/adapters/adapter.ts
+class ToolVersionError extends Error {
+  toolLog;
+  constructor(message, toolLog = "") {
+    super(message);
+    this.name = "ToolVersionError";
+    this.toolLog = toolLog;
+  }
+}
+
+// src/adapters/helm/version.ts
+var MINIMUM_VERSION = [3, 18, 0];
+var MINIMUM_DIFF_VERSION = [3, 15, 11];
+var NEEDS = `Sluiceway needs helm v${MINIMUM_VERSION.join(".")} or newer`;
+var NEEDS_DIFF = `Sluiceway needs helm-diff v${MINIMUM_DIFF_VERSION.join(".")} or newer`;
+var TIME_LIMIT_MS = 60000;
+var VERSION7 = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.+-]*)?$/;
+async function checkVersion(context3, _stacks) {
+  const run = (argv) => context3.run({
+    argv,
+    cwd: context3.root,
+    env: helmEnvironment(context3.env),
+    timeoutMs: TIME_LIMIT_MS
+  });
+  const helm = await run(versionCommand());
+  if (helm.status === "not-started") {
+    throw new ToolVersionError(`Could not start helm. ${NEEDS} on PATH and does not install it. Add a workflow step that installs helm before the step that runs Sluiceway.`);
+  }
+  const found = helm.status === "exited" && helm.exitCode === 0 ? read(helm.stdout) : undefined;
+  if (found === undefined) {
+    throw new ToolVersionError(`"${versionCommand().join(" ")}" did not print a version Sluiceway can read. ${NEEDS}. The job log holds what the tool printed.`, stripAnsi(helm.stdout + helm.stderr));
+  }
+  if (older(found.numbers, MINIMUM_VERSION)) {
+    throw new ToolVersionError(`Found helm ${found.text}. ${NEEDS}. Change the workflow step that installs helm so it installs a newer version.`);
+  }
+  const plugin = await run(pluginVersionCommand());
+  const diff = plugin.status === "exited" && plugin.exitCode === 0 ? read(plugin.stdout) : undefined;
+  if (diff === undefined) {
+    throw new ToolVersionError(`The helm diff plugin did not say which version it is. ${NEEDS_DIFF} and does not install it. Add a workflow step that runs helm plugin install https://github.com/databus23/helm-diff before the step that runs Sluiceway.`, plugin.status === "not-started" ? "" : stripAnsi(plugin.stdout + plugin.stderr));
+  }
+  if (older(diff.numbers, MINIMUM_DIFF_VERSION)) {
+    throw new ToolVersionError(`Found helm-diff ${diff.text}. ${NEEDS_DIFF}. Change the workflow step that installs the plugin so it installs a newer version.`);
+  }
+}
+function read(stdout) {
+  const trimmed = stdout.trim();
+  const found = VERSION7.exec(trimmed);
+  if (found === null)
+    return;
+  const text4 = trimmed.startsWith("v") ? trimmed : `v${trimmed}`;
+  return { text: text4, numbers: [Number(found[1]), Number(found[2]), Number(found[3])] };
+}
+function older(numbers, floor) {
+  const difference = floor.map((minimum, index) => (numbers[index] ?? 0) - minimum).find((one) => one !== 0);
+  return difference !== undefined && difference < 0;
+}
+
+// src/adapters/helm/index.ts
+var helm = {
+  async discover(root, config2) {
+    const { stacks, optionProblems } = discoverHelm(root, config2);
+    if (optionProblems.length > 0)
+      throw new ConfigError(optionProblems);
+    return stacks;
+  },
+  checkVersion,
+  prepare,
+  preview,
+  toolDiff,
+  apply
+};
+
+// src/adapters/opentofu/apply.ts
+import { join as join10 } from "node:path";
+
+// src/adapters/opentofu/commands.ts
+var TOFU = "tofu";
+function initCommand() {
+  return [TOFU, "init", "-input=false", "-no-color"];
+}
+function planCommand(planFile, varFiles) {
+  return [
+    TOFU,
+    "plan",
+    "-input=false",
+    "-no-color",
+    "-refresh=false",
+    "-json",
+    `-out=${planFile}`,
+    ...varFiles.map((file2) => `-var-file=${file2}`)
+  ];
+}
+function showCommand(planFile) {
+  return [TOFU, "show", "-json", "-no-color", planFile];
+}
+function applyCommand(planFile) {
+  return [TOFU, "apply", "-input=false", "-no-color", "-json", planFile];
+}
+function toolDiffCommand2(varFiles) {
+  return [
+    TOFU,
+    "plan",
+    "-input=false",
+    "-no-color",
+    "-refresh=false",
+    ...varFiles.map((file2) => `-var-file=${file2}`)
+  ];
+}
+function versionCommand2() {
+  return [TOFU, "version", "-json"];
+}
+
+// src/adapters/opentofu/environment.ts
+function tofuEnvironment(env, stack) {
+  const workspace = stack === undefined ? undefined : optionsOf2(stack).workspace;
+  return {
+    ...toolEnvironment(env),
+    TF_IN_AUTOMATION: "true",
+    ...workspace === undefined ? {} : { TF_WORKSPACE: workspace }
+  };
+}
+function optionsOf2(stack) {
+  return stack.options;
+}
+
+// src/adapters/opentofu/plan-file.ts
+import { mkdtemp, rm as rm2 } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join as join9 } from "node:path";
+
+class PlanFile {
+  path;
+  stackId;
+  dir;
+  constructor(dir, stackId2) {
+    this.dir = dir;
+    this.path = join9(dir, "tfplan");
+    this.stackId = stackId2;
+  }
+  static async create(stackId2) {
+    return new PlanFile(await mkdtemp(join9(tmpdir(), "sluiceway-plan-")), stackId2);
+  }
+  async dispose() {
+    await rm2(this.dir, { recursive: true, force: true });
+  }
+}
+
+// src/adapters/opentofu/tool-log.ts
+var LEFT_OUT = new Set(["outputs", "planned_change", "resource_drift", "version"]);
+function jsonLogWords(stdout) {
+  const words = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    if (line.trim() === "")
+      continue;
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      words.push(line);
+      continue;
+    }
+    if (typeof message !== "object" || message === null)
+      continue;
+    const { type, diagnostic } = message;
+    if (typeof type === "string" && LEFT_OUT.has(type))
+      continue;
+    if (type === "diagnostic" && typeof diagnostic === "object" && diagnostic !== null) {
+      words.push(...diagnosticWords(diagnostic));
+      continue;
+    }
+    const text4 = message["@message"];
+    if (typeof text4 === "string")
+      words.push(text4);
+  }
+  return stripAnsi(words.map((line) => `${line}
+`).join(""));
+}
+function diagnosticWords(diagnostic) {
+  const severity = diagnostic.severity === "warning" ? "Warning" : "Error";
+  const where2 = [
+    typeof diagnostic.range?.filename === "string" ? diagnostic.range.filename : undefined,
+    typeof diagnostic.range?.start?.line === "number" ? `line ${diagnostic.range.start.line}` : undefined
+  ].filter((part) => part !== undefined);
+  return [
+    `${severity}: ${typeof diagnostic.summary === "string" ? diagnostic.summary : ""}`,
+    ...where2.length > 0 ? [`  on ${where2.join(", ")}`] : [],
+    ...typeof diagnostic.address === "string" ? [`  at ${diagnostic.address}`] : [],
+    ...typeof diagnostic.detail === "string" && diagnostic.detail !== "" ? diagnostic.detail.split(`
+`).map((line) => `  ${line}`) : []
+  ];
+}
+
+// src/adapters/opentofu/apply.ts
+async function apply2(stack, context3, plan) {
+  if (!(plan instanceof PlanFile) || plan.stackId !== stackId(stack)) {
+    throw new Error("An OpenTofu stack deploys only the plan its fresh preview saved.");
+  }
+  const result = await context3.run({
+    argv: applyCommand(plan.path),
+    cwd: join10(context3.root, stack.path),
+    env: tofuEnvironment(context3.env, stack)
+  });
+  if (result.status === "not-started") {
+    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
+  }
+  const toolLog = stripAnsi(result.stderr) + jsonLogWords(result.stdout);
+  if (result.status === "exited" && result.exitCode === 0)
+    return { ok: true, toolLog };
+  const exitCode = result.status === "exited" ? result.exitCode : null;
+  return { ok: false, reason: { kind: "tool-error", exitCode }, toolLog };
+}
+
+// src/adapters/opentofu/prepare.ts
+import { join as join11 } from "node:path";
+function prepare2(stacks) {
+  const byPath = Map.groupBy(stacks, (stack) => stack.path);
+  return [...byPath].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([path, grouped]) => ({
+    title: path,
+    stacks: grouped,
+    run: async (context3) => {
+      const result = await context3.run({
+        argv: initCommand(),
+        cwd: join11(context3.root, path),
+        env: tofuEnvironment(context3.env),
+        timeoutMs: context3.timeoutMinutes * 60000
+      });
+      if (result.status === "not-started") {
+        return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
+      }
+      const toolLog = stripAnsi(result.stdout + result.stderr);
+      if (result.status === "timed-out") {
+        return {
+          ok: false,
+          reason: { kind: "timed-out", minutes: context3.timeoutMinutes },
+          toolLog
+        };
+      }
+      if (result.exitCode !== 0) {
+        return { ok: false, reason: { kind: "tool-error", exitCode: result.exitCode }, toolLog };
+      }
+      return { ok: true, toolLog };
+    }
+  }));
+}
+
+// src/adapters/opentofu/preview.ts
+import { join as join12 } from "node:path";
+
+// src/adapters/opentofu/fold.ts
+var ACTIONS = {
+  "no-op": "drop",
+  read: "drop",
+  create: { op: "create" },
+  update: { op: "update" },
+  "delete,create": { op: "replace" },
+  "create,delete": { op: "replace" },
+  delete: { op: "delete" },
+  forget: { op: "none", tracking: "forget" },
+  "forget,create": { op: "create", tracking: "forget" }
+};
+function foldChanges(found, showValues) {
+  const changes = [];
+  const unknown2 = [];
+  const unreadable = [];
+  const firstAt = new Map;
+  found.forEach((resource, index) => {
+    const at = `The tool's output, at resource_changes[${index}]`;
+    const key = resource.change.actions.join(",");
+    const known = Object.hasOwn(ACTIONS, key) ? ACTIONS[key] : undefined;
+    if (known === undefined) {
+      unknown2.push(`${at}.change.actions: expected actions that Sluiceway knows.`);
+      return;
+    }
+    const moved = resource.previous_address !== undefined;
+    const imported = resource.change.importing;
+    if (moved && imported) {
+      unreadable.push(`${at}: expected a move or an import, not both.`);
+      return;
+    }
+    if (resource.mode === "data") {
+      if (known !== "drop")
+        unknown2.push(`${at}.change.actions: expected a read of a data source.`);
+      return;
+    }
+    const flagged = moved ? "move" : imported ? "import" : undefined;
+    if (flagged !== undefined && known !== "drop" && known.tracking !== undefined) {
+      unreadable.push(`${at}: expected one tracking change, found two.`);
+      return;
+    }
+    const folded = withTracking(known, flagged);
+    if (folded === undefined)
+      return;
+    const address = resource.deposed === undefined ? resource.address : `${resource.address} deposed ${resource.deposed}`;
+    const earlier = firstAt.get(address);
+    if (earlier !== undefined) {
+      unreadable.push(`${at}.address: expected an address that no earlier change has, and resource_changes[${earlier}] has it.`);
+      return;
+    }
+    firstAt.set(address, index);
+    changes.push({
+      address,
+      type: resource.type,
+      name: displayName(resource),
+      ...folded,
+      ...moved && resource.previous_address !== undefined ? { previousAddress: resource.previous_address } : {},
+      ...keys2(resource, folded.op, showValues)
+    });
+  });
+  if (unreadable.length > 0)
+    return { ok: false, reason: "unreadable-output", detail: unreadable };
+  if (unknown2.length > 0)
+    return { ok: false, reason: "unknown-step", detail: unknown2 };
+  changes.sort((a, b) => byCodeUnit3(a.address, b.address));
+  return { ok: true, changes };
+}
+function withTracking(known, tracking) {
+  if (known === "drop")
+    return tracking === undefined ? undefined : { op: "none", tracking };
+  if (tracking === undefined)
+    return known;
+  return { ...known, tracking };
+}
+function displayName(resource) {
+  const module = resource.module_address === undefined ? "" : `${resource.module_address}.`;
+  const prefix = `${module}${resource.type}.`;
+  const rest = resource.address.startsWith(prefix) ? resource.address.slice(prefix.length) : resource.name;
+  const name = `${module}${rest}`;
+  return resource.deposed === undefined ? name : `${name} (deposed ${resource.deposed})`;
+}
+function keys2(resource, op, showValues) {
+  if (op !== "update" && op !== "replace")
+    return { changedKeys: [], replaceKeys: [] };
+  const { change: change3 } = resource;
+  const { paths, values: values2 } = changedPaths({
+    before: change3.before,
+    after: change3.after,
+    afterUnknown: change3.after_unknown,
+    beforeSensitive: change3.before_sensitive,
+    afterSensitive: change3.after_sensitive
+  }, showValues);
+  const replaceKeys = op === "replace" ? sortedSet((change3.replace_paths ?? []).map((steps) => replacePath(steps, change3.before_sensitive, change3.after_sensitive))) : [];
+  const changedKeys = sortedSet([...paths, ...replaceKeys]);
+  const shown3 = values2.filter((value) => changedKeys.includes(value.path)).sort((a, b) => byCodeUnit3(a.path, b.path));
+  return { changedKeys, replaceKeys, ...shown3.length === 0 ? {} : { values: shown3 } };
+}
+function sortedSet(names) {
+  return [...new Set(names.filter((name) => name !== ""))].sort(byCodeUnit3);
+}
+function byCodeUnit3(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// src/adapters/opentofu/preview.ts
+async function preview2(stack, options) {
   const plan = await PlanFile.create(stackId(stack));
   let kept = false;
   try {
@@ -52242,12 +52898,12 @@ async function preview(stack, options) {
 async function planAndShow(stack, options, plan) {
   const run = (argv) => options.run({
     argv,
-    cwd: join7(options.root, stack.path),
+    cwd: join12(options.root, stack.path),
     env: tofuEnvironment(options.env, stack),
     timeoutMs: options.timeoutMinutes * 60000
   });
   const failed = (reason, toolLog, detail = []) => ({ ok: false, reason, detail, toolLog });
-  const planned = await run(planCommand(plan.path, optionsOf(stack).varFiles));
+  const planned = await run(planCommand(plan.path, optionsOf2(stack).varFiles));
   if (planned.status === "not-started")
     return failed({ kind: "tool-error", exitCode: null }, "");
   const planWords = stripAnsi(planned.stderr) + jsonLogWords(planned.stdout);
@@ -52257,17 +52913,17 @@ async function planAndShow(stack, options, plan) {
   if (planned.exitCode !== 0) {
     return failed({ kind: "tool-error", exitCode: planned.exitCode }, planWords);
   }
-  const shown2 = await run(showCommand(plan.path));
-  if (shown2.status === "not-started") {
+  const shown3 = await run(showCommand(plan.path));
+  if (shown3.status === "not-started") {
     return failed({ kind: "tool-error", exitCode: null }, planWords);
   }
-  const log = planWords + stripAnsi(shown2.stderr);
-  if (shown2.status === "timed-out") {
+  const log = planWords + stripAnsi(shown3.stderr);
+  if (shown3.status === "timed-out") {
     return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, log);
   }
-  if (shown2.exitCode !== 0)
-    return failed({ kind: "tool-error", exitCode: shown2.exitCode }, log);
-  const parsed = parsePlan(shown2.stdout);
+  if (shown3.exitCode !== 0)
+    return failed({ kind: "tool-error", exitCode: shown3.exitCode }, log);
+  const parsed = parsePlan(shown3.stdout);
   if (!parsed.ok)
     return failed({ kind: "unreadable-output" }, log, parsed.problems);
   const folded = foldChanges(parsed.changes, options.showValues ?? []);
@@ -52277,11 +52933,11 @@ async function planAndShow(stack, options, plan) {
 }
 
 // src/adapters/opentofu/tool-diff.ts
-import { join as join8 } from "node:path";
-async function toolDiff(stack, options) {
+import { join as join13 } from "node:path";
+async function toolDiff2(stack, options) {
   const result = await options.run({
-    argv: toolDiffCommand(optionsOf(stack).varFiles),
-    cwd: join8(options.root, stack.path),
+    argv: toolDiffCommand2(optionsOf2(stack).varFiles),
+    cwd: join13(options.root, stack.path),
     env: tofuEnvironment(options.env, stack),
     timeoutMs: options.timeoutMinutes * 60000
   });
@@ -52302,39 +52958,29 @@ async function toolDiff(stack, options) {
   return { ok: true, text: stripAnsi(result.stdout), toolLog: stripAnsi(result.stderr) };
 }
 
-// src/adapters/adapter.ts
-class ToolVersionError extends Error {
-  toolLog;
-  constructor(message, toolLog = "") {
-    super(message);
-    this.name = "ToolVersionError";
-    this.toolLog = toolLog;
-  }
-}
-
 // src/adapters/opentofu/version.ts
-var MINIMUM_VERSION = [1, 11, 0];
-var NEEDS = `Sluiceway needs tofu v${MINIMUM_VERSION.join(".")} or newer`;
-var TIME_LIMIT_MS = 60000;
-async function checkVersion(context3, _stacks) {
+var MINIMUM_VERSION2 = [1, 11, 0];
+var NEEDS2 = `Sluiceway needs tofu v${MINIMUM_VERSION2.join(".")} or newer`;
+var TIME_LIMIT_MS2 = 60000;
+async function checkVersion2(context3, _stacks) {
   const result = await context3.run({
-    argv: versionCommand(),
+    argv: versionCommand2(),
     cwd: context3.root,
     env: tofuEnvironment(context3.env),
-    timeoutMs: TIME_LIMIT_MS
+    timeoutMs: TIME_LIMIT_MS2
   });
   if (result.status === "not-started") {
-    throw new ToolVersionError(`Could not start tofu. ${NEEDS} on PATH and does not install it. Add a workflow step that installs tofu before the step that runs Sluiceway.`);
+    throw new ToolVersionError(`Could not start tofu. ${NEEDS2} on PATH and does not install it. Add a workflow step that installs tofu before the step that runs Sluiceway.`);
   }
   const version2 = result.status === "exited" && result.exitCode === 0 ? readVersion(result.stdout) : undefined;
   const found = version2 === undefined ? null : /^(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.+-]*)?$/.exec(version2);
   if (found === null || version2 === undefined) {
-    throw new ToolVersionError(`"tofu version -json" did not print a version Sluiceway can read. ${NEEDS}. The job log holds what the tool printed.`, stripAnsi(result.stdout + result.stderr));
+    throw new ToolVersionError(`"tofu version -json" did not print a version Sluiceway can read. ${NEEDS2}. The job log holds what the tool printed.`, stripAnsi(result.stdout + result.stderr));
   }
   const numbers = [Number(found[1]), Number(found[2]), Number(found[3])];
-  const older = MINIMUM_VERSION.map((floor, index) => (numbers[index] ?? 0) - floor).find((difference) => difference !== 0);
-  if (older !== undefined && older < 0) {
-    throw new ToolVersionError(`Found tofu v${version2}. ${NEEDS}. Change the workflow step that installs tofu so it installs a newer version.`);
+  const older2 = MINIMUM_VERSION2.map((floor, index) => (numbers[index] ?? 0) - floor).find((difference) => difference !== 0);
+  if (older2 !== undefined && older2 < 0) {
+    throw new ToolVersionError(`Found tofu v${version2}. ${NEEDS2}. Change the workflow step that installs tofu so it installs a newer version.`);
   }
 }
 function readVersion(stdout) {
@@ -52357,15 +53003,15 @@ var opentofu = {
       throw new ConfigError(optionProblems);
     return stacks;
   },
-  checkVersion,
-  prepare,
-  preview,
-  toolDiff,
-  apply
+  checkVersion: checkVersion2,
+  prepare: prepare2,
+  preview: preview2,
+  toolDiff: toolDiff2,
+  apply: apply2
 };
 
 // src/adapters/pulumi/apply.ts
-import { join as join9 } from "node:path";
+import { join as join14 } from "node:path";
 
 // src/adapters/pulumi/environment.ts
 function pulumiEnvironment(env) {
@@ -52388,12 +53034,12 @@ function upCommand(name, repairDrift) {
     name
   ];
 }
-async function apply2(stack, context3, _plan, options = {}) {
+async function apply3(stack, context3, _plan, options = {}) {
   if (stack.name === undefined)
     throw new Error("A Pulumi stack always has a name.");
   const result = await context3.run({
     argv: upCommand(stack.name, options.repairDrift === true),
-    cwd: join9(context3.root, stack.path),
+    cwd: join14(context3.root, stack.path),
     env: pulumiEnvironment(context3.env)
   });
   if (result.status === "not-started") {
@@ -52407,7 +53053,7 @@ async function apply2(stack, context3, _plan, options = {}) {
 }
 
 // src/adapters/pulumi/drift.ts
-import { join as join11 } from "node:path";
+import { join as join16 } from "node:path";
 
 // src/adapters/pulumi/fold.ts
 var STEP_OPS = {
@@ -52447,13 +53093,13 @@ function foldSteps(steps) {
     }
     firstAt.set(step.urn, index);
     const folded = step.op === "delete" && step.oldState?.retainOnDelete === true ? FORGET : known;
-    changes.push({ address: step.urn, ...resource, ...folded, ...keys2(step, folded.op) });
+    changes.push({ address: step.urn, ...resource, ...folded, ...keys3(step, folded.op) });
   });
   if (unreadable.length > 0)
     return { ok: false, reason: "unreadable-output", detail: unreadable };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
-  changes.sort((a, b) => byCodeUnit3(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit4(a.address, b.address));
   return { ok: true, changes };
 }
 function typeAndName(urn) {
@@ -52464,31 +53110,31 @@ function typeAndName(urn) {
   const name = rest.join("::");
   return type === undefined || type === "" || name === "" ? undefined : { type, name };
 }
-function keys2(step, op) {
+function keys3(step, op) {
   if (op !== "update" && op !== "replace")
     return { changedKeys: [], replaceKeys: [] };
   const paths = step.detailedDiff ?? [];
   const changed = paths.length > 0 ? paths : step.diffReasons ?? [];
   const replaceKeys = op === "replace" ? sortedSet2(step.replaceReasons ?? []) : [];
   const changedKeys = sortedSet2([...changed, ...replaceKeys]);
-  const values = (step.values ?? []).filter((value) => changedKeys.includes(value.path));
-  return { changedKeys, replaceKeys, ...values.length === 0 ? {} : { values } };
+  const values2 = (step.values ?? []).filter((value) => changedKeys.includes(value.path));
+  return { changedKeys, replaceKeys, ...values2.length === 0 ? {} : { values: values2 } };
 }
 function sortedSet2(names) {
-  return [...new Set(names)].sort(byCodeUnit3);
+  return [...new Set(names)].sort(byCodeUnit4);
 }
-function byCodeUnit3(a, b) {
+function byCodeUnit4(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
 // src/adapters/pulumi/preview.ts
-import { join as join10 } from "node:path";
+import { join as join15 } from "node:path";
 
 // src/adapters/pulumi/values.ts
 var SECRET = "[secret]";
 var UNKNOWN = "04da6b54-80e4-46f7-96ec-b56ff0331ba9";
 function listedValues(list, sources) {
-  const shown2 = [];
+  const shown3 = [];
   for (const { path, inputDiff } of sources.paths) {
     if (!isListedPath(list, path))
       continue;
@@ -52498,13 +53144,13 @@ function listedValues(list, sources) {
       continue;
     if (old === undefined && next === undefined)
       continue;
-    shown2.push({
+    shown3.push({
       path,
       ...old === undefined ? {} : { old },
       ...next === undefined ? {} : { new: next }
     });
   }
-  return shown2.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  return shown3.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 }
 function side(found) {
   if (found.kind === "refused")
@@ -52593,11 +53239,11 @@ function stepWithValues(list) {
     detailedDiff: exports_external.record(exports_external.string(), exports_external.unknown()).nullish()
   }).transform(({ oldState: old, newState, detailedDiff, ...rest }) => {
     const stackReference = stackReferenceOf(rest.urn, referenceState.safeParse(newState).data ?? undefined);
-    const paths = Object.entries(detailedDiff ?? {}).map(([path, entry]) => ({
+    const paths = Object.entries(detailedDiff ?? {}).map(([path, entry2]) => ({
       path,
-      inputDiff: typeof entry === "object" && entry !== null && "inputDiff" in entry ? entry.inputDiff === true : false
+      inputDiff: typeof entry2 === "object" && entry2 !== null && "inputDiff" in entry2 ? entry2.inputDiff === true : false
     }));
-    const values = listedValues(list, {
+    const values2 = listedValues(list, {
       paths,
       oldInputs: old?.inputs,
       oldOutputs: old?.outputs,
@@ -52607,7 +53253,7 @@ function stepWithValues(list) {
       ...rest,
       oldState: old == null ? old : { retainOnDelete: old.retainOnDelete },
       detailedDiff: detailedDiff == null ? undefined : Object.keys(detailedDiff),
-      ...values.length === 0 ? {} : { values },
+      ...values2.length === 0 ? {} : { values: values2 },
       ...stackReference === undefined ? {} : { stackReference }
     };
   });
@@ -52627,7 +53273,7 @@ function parsePreview(stdout, showValues = []) {
   }
   const parsed = previewDocument(showValues).safeParse(json2);
   if (!parsed.success)
-    return { ok: false, problems: parsed.error.issues.map(problem2) };
+    return { ok: false, problems: parsed.error.issues.map(problem3) };
   return {
     ok: true,
     steps: parsed.data.steps,
@@ -52645,15 +53291,15 @@ function parseDiagnostics(stdout) {
 function messages(found) {
   return (found ?? []).map((diagnostic) => diagnostic.message);
 }
-var EXPECTED3 = {
+var EXPECTED4 = {
   string: "text",
   array: "a list",
   object: "an object",
   record: "an object",
   boolean: "true or false"
 };
-function problem2(issue3) {
-  const expected = issue3.code === "invalid_type" ? EXPECTED3[issue3.expected] : undefined;
+function problem3(issue3) {
+  const expected = issue3.code === "invalid_type" ? EXPECTED4[issue3.expected] : undefined;
   return `The tool's output, at ${place2(issue3.path)}: expected ${expected ?? "something else"}.`;
 }
 function place2(path) {
@@ -52672,7 +53318,7 @@ async function previewWithReferences(stack, options) {
     throw new Error("A Pulumi stack always has a name.");
   const result = await options.run({
     argv: previewCommand(stack.name),
-    cwd: join10(options.root, stack.path),
+    cwd: join15(options.root, stack.path),
     env: pulumiEnvironment(options.env),
     timeoutMs: options.timeoutMinutes * 60000
   });
@@ -52746,7 +53392,7 @@ async function detectDrift(stack, options) {
     throw new Error("A Pulumi stack always has a name.");
   const result = await options.run({
     argv: driftCommand(stack.name),
-    cwd: join11(options.root, stack.path),
+    cwd: join16(options.root, stack.path),
     env: { ...pulumiEnvironment(options.env), ...STREAM_EVENTS },
     timeoutMs: options.timeoutMinutes * 60000
   });
@@ -52756,29 +53402,29 @@ async function detectDrift(stack, options) {
   if (result.status === "timed-out") {
     return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, stripAnsi(result.stderr));
   }
-  const read = readEvents(result.stdout);
-  const words = stripAnsi([result.stderr, ...typeof read === "string" ? [] : read.diagnostics].join(""));
+  const read2 = readEvents(result.stdout);
+  const words = stripAnsi([result.stderr, ...typeof read2 === "string" ? [] : read2.diagnostics].join(""));
   if (result.exitCode !== 0) {
     const reason = result.exitCode === STACK_NOT_FOUND_EXIT_CODE ? { kind: "stack-not-found" } : { kind: "tool-error", exitCode: result.exitCode };
     return failed(reason, words);
   }
-  if (typeof read === "string")
-    return failed({ kind: "unreadable-output" }, words, [read]);
-  if (read.unknown.length > 0)
-    return failed({ kind: "unknown-step" }, words, read.unknown);
-  if (read.summary === undefined) {
+  if (typeof read2 === "string")
+    return failed({ kind: "unreadable-output" }, words, [read2]);
+  if (read2.unknown.length > 0)
+    return failed({ kind: "unknown-step" }, words, read2.unknown);
+  if (read2.summary === undefined) {
     return failed({ kind: "unreadable-output" }, words, [
       "The tool's output: expected a summary event at the end."
     ]);
   }
-  const counted = Object.entries(read.summary).filter(([op]) => op !== "same").reduce((sum, [, count]) => sum + count, 0);
-  if (counted > read.drift.length) {
+  const counted = Object.entries(read2.summary).filter(([op]) => op !== "same").reduce((sum, [, count]) => sum + count, 0);
+  if (counted > read2.drift.length) {
     return failed({ kind: "unreadable-output" }, words, [
-      `The tool's output: expected an event for every change the summary counts, and ${counted - read.drift.length} is missing.`
+      `The tool's output: expected an event for every change the summary counts, and ${counted - read2.drift.length} is missing.`
     ]);
   }
-  read.drift.sort((a, b) => a.address < b.address ? -1 : a.address > b.address ? 1 : 0);
-  return { ok: true, drift: read.drift, toolLog: words };
+  read2.drift.sort((a, b) => a.address < b.address ? -1 : a.address > b.address ? 1 : 0);
+  return { ok: true, drift: read2.drift, toolLog: words };
 }
 function readEvents(stdout) {
   const events = { drift: [], unknown: [], diagnostics: [], summary: undefined };
@@ -52858,18 +53504,18 @@ async function readDependencies(stack, names, root, candidates) {
     else if (one.id !== self)
       found.add(one.id);
   }
-  return { stackIds: [...found].sort(byCodeUnit4), elsewhere };
+  return { stackIds: [...found].sort(byCodeUnit5), elsewhere };
 }
 function orElse(first, second) {
   return first.length > 0 ? first : second();
 }
-function byCodeUnit4(a, b) {
+function byCodeUnit5(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
 // src/adapters/pulumi/tool-diff.ts
-import { join as join12 } from "node:path";
-function toolDiffCommand2(name) {
+import { join as join17 } from "node:path";
+function toolDiffCommand3(name) {
   return [
     "pulumi",
     "preview",
@@ -52882,12 +53528,12 @@ function toolDiffCommand2(name) {
     name
   ];
 }
-async function toolDiff2(stack, options) {
+async function toolDiff3(stack, options) {
   if (stack.name === undefined)
     throw new Error("A Pulumi stack always has a name.");
   const result = await options.run({
-    argv: toolDiffCommand2(stack.name),
-    cwd: join12(options.root, stack.path),
+    argv: toolDiffCommand3(stack.name),
+    cwd: join17(options.root, stack.path),
     env: pulumiEnvironment(options.env),
     timeoutMs: options.timeoutMinutes * 60000
   });
@@ -52910,55 +53556,65 @@ async function toolDiff2(stack, options) {
 }
 
 // src/adapters/pulumi/version.ts
-var MINIMUM_VERSION2 = [3, 229, 0];
-var NEEDS2 = `Sluiceway needs pulumi v${MINIMUM_VERSION2.join(".")} or newer`;
-var TIME_LIMIT_MS2 = 60000;
-async function checkVersion2(context3) {
+var MINIMUM_VERSION3 = [3, 229, 0];
+var NEEDS3 = `Sluiceway needs pulumi v${MINIMUM_VERSION3.join(".")} or newer`;
+var TIME_LIMIT_MS3 = 60000;
+async function checkVersion3(context3) {
   const result = await context3.run({
     argv: ["pulumi", "version"],
     cwd: context3.root,
     env: pulumiEnvironment(context3.env),
-    timeoutMs: TIME_LIMIT_MS2
+    timeoutMs: TIME_LIMIT_MS3
   });
   if (result.status === "not-started") {
-    throw new ToolVersionError(`Could not start pulumi. ${NEEDS2} on PATH and does not install it. Add a workflow step that installs pulumi before the step that runs Sluiceway.`);
+    throw new ToolVersionError(`Could not start pulumi. ${NEEDS3} on PATH and does not install it. Add a workflow step that installs pulumi before the step that runs Sluiceway.`);
   }
   const found = result.status === "exited" && result.exitCode === 0 ? /^v?(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.+-]*)?\s*$/.exec(result.stdout) : null;
   if (found === null) {
-    throw new ToolVersionError(`"pulumi version" did not print a version Sluiceway can read. ${NEEDS2}. The job log holds what the tool printed.`, stripAnsi(result.stdout + result.stderr));
+    throw new ToolVersionError(`"pulumi version" did not print a version Sluiceway can read. ${NEEDS3}. The job log holds what the tool printed.`, stripAnsi(result.stdout + result.stderr));
   }
   const numbers = [Number(found[1]), Number(found[2]), Number(found[3])];
-  const older = MINIMUM_VERSION2.map((floor, index) => (numbers[index] ?? 0) - floor).find((difference) => difference !== 0);
-  if (older !== undefined && older < 0) {
-    throw new ToolVersionError(`Found pulumi ${result.stdout.trim()}. ${NEEDS2}. Change the workflow step that installs pulumi so it installs a newer version.`);
+  const older2 = MINIMUM_VERSION3.map((floor, index) => (numbers[index] ?? 0) - floor).find((difference) => difference !== 0);
+  if (older2 !== undefined && older2 < 0) {
+    throw new ToolVersionError(`Found pulumi ${result.stdout.trim()}. ${NEEDS3}. Change the workflow step that installs pulumi so it installs a newer version.`);
   }
 }
 
 // src/adapters/pulumi/index.ts
-var preview2 = async (stack, options) => {
+var preview3 = async (stack, options) => {
   const { result, references } = await previewWithReferences(stack, options);
   if (!result.ok || options.dependencies === undefined)
     return result;
   const dependencies = await readDependencies(stack, references, options.root, options.dependencies);
   return { ...result, dependencies };
 };
-var pulumi = { discover, checkVersion: checkVersion2, preview: preview2, toolDiff: toolDiff2, detectDrift, apply: apply2 };
+var pulumi = { discover, checkVersion: checkVersion3, preview: preview3, toolDiff: toolDiff3, detectDrift, apply: apply3 };
 
 // src/adapters/tools.ts
 function adapterOf(stack) {
-  return isOpenTofuOptions(stack.options) ? opentofu : pulumi;
+  if (isOpenTofuOptions(stack.options))
+    return opentofu;
+  if (isHelmOptions(stack.options))
+    return helm;
+  return pulumi;
 }
 var tools = {
   discover: discoverAll,
   async checkVersion(context3, stacks) {
     const tofu = stacks.filter((stack) => isOpenTofuOptions(stack.options));
-    if (tofu.length < stacks.length)
+    const charts = stacks.filter((stack) => isHelmOptions(stack.options));
+    if (tofu.length + charts.length < stacks.length)
       await pulumi.checkVersion(context3, []);
     if (tofu.length > 0)
       await opentofu.checkVersion(context3, tofu);
+    if (charts.length > 0)
+      await helm.checkVersion(context3, charts);
   },
   prepare(stacks) {
-    return opentofu.prepare?.(stacks.filter((stack) => isOpenTofuOptions(stack.options))) ?? [];
+    return [
+      ...opentofu.prepare?.(stacks.filter((stack) => isOpenTofuOptions(stack.options))) ?? [],
+      ...helm.prepare?.(stacks.filter((stack) => isHelmOptions(stack.options))) ?? []
+    ];
   },
   preview: (stack, options) => adapterOf(stack).preview(stack, options),
   toolDiff: (stack, options) => adapterOf(stack).toolDiff(stack, options),
@@ -52970,7 +53626,7 @@ var tools = {
 function record2(value) {
   return typeof value === "object" && value !== null ? value : undefined;
 }
-function text3(value) {
+function text4(value) {
   return typeof value === "string" ? value : "";
 }
 function editedIssue(payload) {
@@ -52983,12 +53639,12 @@ function editedIssue(payload) {
   return {
     number: issue3.number,
     state: issue3.state === "open" ? "open" : "closed",
-    body: text3(issue3.body),
+    body: text4(issue3.body),
     labels: labels.flatMap((label) => {
       const name = typeof label === "string" ? label : record2(label)?.name;
       return typeof name === "string" ? [name] : [];
     }),
-    author: { login: text3(user?.login), type: text3(user?.type) }
+    author: { login: text4(user?.login), type: text4(user?.type) }
   };
 }
 function readEventPayload(env, readFile2) {
@@ -53062,8 +53718,8 @@ function actionsLog() {
       endGroup();
     },
     warning: (message, title) => warning(message, { title }),
-    async writeSummary(text4) {
-      await summary.emptyBuffer().addRaw(text4).write({ overwrite: true });
+    async writeSummary(text5) {
+      await summary.emptyBuffer().addRaw(text5).write({ overwrite: true });
     }
   };
 }
@@ -53606,7 +54262,7 @@ function toIssue(issue3) {
 
 // src/github/outputs.ts
 import { writeFileSync } from "node:fs";
-import { join as join13 } from "node:path";
+import { join as join18 } from "node:path";
 
 // src/core/deployment.ts
 var TASK_PREFIX = "sluiceway:";
@@ -53649,16 +54305,16 @@ function readDeploymentPayload(payload) {
   }
   if (!RUN_ID.test(run))
     return;
-  const read = { hash: hash2, ticker, run };
+  const read2 = { hash: hash2, ticker, run };
   if (drift === true)
-    read.drift = true;
+    read2.drift = true;
   if (behind === undefined)
-    return read;
+    return read2;
   const ids = Array.isArray(behind) ? behind : [];
   if (ids.length === 0 || !ids.every((id) => typeof id === "string" && id !== "")) {
     return;
   }
-  return { ...read, behind: ids };
+  return { ...read2, behind: ids };
 }
 var SUCCEEDED = new Set(["success", "inactive"]);
 var FAILED = new Set(["failure", "error"]);
@@ -53913,12 +54569,12 @@ function parseDashboard(body) {
       if (end === next || ROW_LINE.test(candidate))
         break;
     }
-    const text4 = lines.slice(index, end + 1).join(`
+    const text5 = lines.slice(index, end + 1).join(`
 `);
     index = end;
     const state = pairs.get("state") ?? "";
     if (!isRowState(state)) {
-      rows.push({ known: false, stackId: stackId2, state, text: text4 });
+      rows.push({ known: false, stackId: stackId2, state, text: text5 });
       continue;
     }
     const count = (key) => {
@@ -53937,7 +54593,7 @@ function parseDashboard(body) {
       drift: pairs.get("drift") === "true",
       ...dependsOn === "" ? {} : { dependsOn: decodeIds(dependsOn) },
       ticked: match[1] === "x" || match[1] === "X",
-      text: text4
+      text: text5
     });
   }
   return { root: readRoot(lines[0] ?? ""), rows, merges, rescanTicked };
@@ -53974,8 +54630,8 @@ var NAMED = {
   ">": "&gt;",
   '"': "&quot;"
 };
-function escapeText(text4) {
-  return text4.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
+function escapeText(text5) {
+  return text5.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
 // src/render/header-state.ts
@@ -54012,18 +54668,18 @@ function utcMinute(at) {
 
 // src/render/row.ts
 var INDENT = "  ";
-function byCodeUnit5(a, b) {
+function byCodeUnit6(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
-function isDestroy(change2) {
-  return change2.op === "replace" || change2.op === "delete";
+function isDestroy(change3) {
+  return change3.op === "replace" || change3.op === "delete";
 }
 function plural2(count, word) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 function counts(changes) {
-  const of = (op) => changes.filter((change2) => change2.op === op).length;
-  const trackingOnly = changes.filter((change2) => change2.op === "none" && change2.tracking).length;
+  const of = (op) => changes.filter((change3) => change3.op === op).length;
+  const trackingOnly = changes.filter((change3) => change3.op === "none" && change3.tracking).length;
   return [
     of("create") && plural2(of("create"), "create"),
     of("update") && plural2(of("update"), "update"),
@@ -54032,18 +54688,18 @@ function counts(changes) {
     trackingOnly && `${trackingOnly} tracking only`
   ].filter(Boolean).join(", ");
 }
-function valueSuffix(change2, path, show2) {
-  const value = change2.values?.find((one) => one.path === path);
+function valueSuffix(change3, path, show2) {
+  const value = change3.values?.find((one) => one.path === path);
   if (value === undefined)
     return "";
-  const side2 = (text4) => text4 === undefined ? "nothing" : show2(text4);
+  const side2 = (text5) => text5 === undefined ? "nothing" : show2(text5);
   return ` ${side2(value.old)} → ${side2(value.new)}`;
 }
-function code(text4) {
-  return `<code>${escapeText(text4)}</code>`;
+function code(text5) {
+  return `<code>${escapeText(text5)}</code>`;
 }
-function sortedKeys(keys3) {
-  return [...new Set(keys3)].sort(byCodeUnit5);
+function sortedKeys(keys4) {
+  return [...new Set(keys4)].sort(byCodeUnit6);
 }
 var ROW_PATH_LENGTH = 80;
 var ROW_PATHS_PER_CHANGE = 10;
@@ -54060,17 +54716,17 @@ function shortPath(path) {
   const end = start < tail.length ? tail.slice(start) : tail;
   return `${head.join("")}…${end.join("")}`;
 }
-function changeLine(change2, options = {}) {
-  const word = [change2.op === "none" ? undefined : change2.op, change2.tracking].filter((part) => part !== undefined).join(" + ");
-  const cap = isDestroy(change2) ? word.toUpperCase() : word;
-  const forcing = sortedKeys(change2.replaceKeys);
-  const others = sortedKeys(change2.changedKeys).filter((key) => !forcing.includes(key));
-  const capped = options.row === true && !isDestroy(change2);
+function changeLine(change3, options = {}) {
+  const word = [change3.op === "none" ? undefined : change3.op, change3.tracking].filter((part) => part !== undefined).join(" + ");
+  const cap = isDestroy(change3) ? word.toUpperCase() : word;
+  const forcing = sortedKeys(change3.replaceKeys);
+  const others = sortedKeys(change3.changedKeys).filter((key) => !forcing.includes(key));
+  const capped = options.row === true && !isDestroy(change3);
   const listed2 = capped ? others.slice(0, ROW_PATHS_PER_CHANGE) : others;
   const hidden = others.length - listed2.length;
-  const show2 = (keys3) => keys3.map((key) => code(options.row ? shortPath(key) : key) + valueSuffix(change2, key, code)).join(", ");
+  const show2 = (keys4) => keys4.map((key) => code(options.row ? shortPath(key) : key) + valueSuffix(change3, key, code)).join(", ");
   const parts = [
-    `<kbd>${cap}</kbd> <code>${escapeText(change2.type)}</code> <b>${escapeText(change2.name)}</b>`
+    `<kbd>${cap}</kbd> <code>${escapeText(change3.type)}</code> <b>${escapeText(change3.name)}</b>`
   ];
   if (forcing.length > 0)
     parts.push(`forced by ${show2(forcing)}`);
@@ -54098,20 +54754,20 @@ function destroyWords(deletes, replaces) {
   return [deletes && `deletes ${deletes}`, replaces && `replaces ${replaces}`].filter(Boolean).join(", ");
 }
 var DRIFT_WORDS = { update: "changed", delete: "gone" };
-function driftWord(change2) {
-  return DRIFT_WORDS[change2.op] ?? change2.op;
+function driftWord(change3) {
+  return DRIFT_WORDS[change3.op] ?? change3.op;
 }
 function driftCounts(drift) {
-  const of = (op) => drift.filter((change2) => change2.op === op).length;
+  const of = (op) => drift.filter((change3) => change3.op === op).length;
   const parts = [of("update") && `${of("update")} changed`, of("delete") && `${of("delete")} gone`];
   return `${parts.filter(Boolean).join(", ")} outside the code`;
 }
-function driftLine(change2, options = {}) {
-  const keys3 = sortedKeys(change2.changedKeys);
-  const listed2 = options.row === true ? keys3.slice(0, ROW_PATHS_PER_CHANGE) : keys3;
-  const hidden = keys3.length - listed2.length;
+function driftLine(change3, options = {}) {
+  const keys4 = sortedKeys(change3.changedKeys);
+  const listed2 = options.row === true ? keys4.slice(0, ROW_PATHS_PER_CHANGE) : keys4;
+  const hidden = keys4.length - listed2.length;
   const parts = [
-    `<kbd>${driftWord(change2)}</kbd> <code>${escapeText(change2.type)}</code> <b>${escapeText(change2.name)}</b>`
+    `<kbd>${driftWord(change3)}</kbd> <code>${escapeText(change3.type)}</code> <b>${escapeText(change3.name)}</b>`
   ];
   if (listed2.length > 0) {
     const more = hidden > 0 ? `, and ${hidden} more` : "";
@@ -54120,7 +54776,7 @@ function driftLine(change2, options = {}) {
   return parts.join(" · ");
 }
 function sortedDrift(diff) {
-  return [...diff.drift ?? []].sort((a, b) => byCodeUnit5(a.address, b.address));
+  return [...diff.drift ?? []].sort((a, b) => byCodeUnit6(a.address, b.address));
 }
 function driftLines(drift, summary2, options) {
   if (drift.length === 0)
@@ -54133,7 +54789,7 @@ function driftLines(drift, summary2, options) {
   }
   return [
     `<details><summary>${inside} outside the code</summary>`,
-    ...drift.map((change2) => `${driftLine(change2, { row: true })}<br>`),
+    ...drift.map((change3) => `${driftLine(change3, { row: true })}<br>`),
     "</details>"
   ];
 }
@@ -54162,10 +54818,10 @@ function driftRow(row, options) {
 }
 function pendingRow(row, options) {
   const level = options.level ?? 0;
-  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit5(a.address, b.address));
-  const deletes = changes.filter((change2) => change2.op === "delete");
-  const replaces = changes.filter((change2) => change2.op === "replace");
-  const folded = changes.filter((change2) => !isDestroy(change2));
+  const changes = [...row.diff.changes].sort((a, b) => byCodeUnit6(a.address, b.address));
+  const deletes = changes.filter((change3) => change3.op === "delete");
+  const replaces = changes.filter((change3) => change3.op === "replace");
+  const folded = changes.filter((change3) => !isDestroy(change3));
   const destroys = deletes.length + replaces.length;
   const summary2 = `[summary](${row.runUrl})`;
   const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
@@ -54195,24 +54851,24 @@ function pendingRow(row, options) {
     const words = destroyWords(deletes.length, replaces.length);
     if (destroys > 0) {
       const warning2 = options.redact ? `${words}.` : `${words}, too many to list here.`;
-      const read = options.readOnly ? `Read the ${summary2}.` : `Read the ${summary2} before you tick.`;
-      lines.push(`:warning: **${warning2}** ${read}`);
+      const read2 = options.readOnly ? `Read the ${summary2}.` : `Read the ${summary2} before you tick.`;
+      lines.push(`:warning: **${warning2}** ${read2}`);
     } else {
       lines.push(`Changes ${options.redact ? "are listed in the" : "not listed here, see the"} ${summary2}`);
     }
     lines.push(...driftLines(drift, summary2, options));
     return lines;
   }
-  for (const change2 of [...deletes, ...replaces])
-    lines.push(`:warning: ${changeLine(change2, { row: true })}`);
+  for (const change3 of [...deletes, ...replaces])
+    lines.push(`:warning: ${changeLine(change3, { row: true })}`);
   if (folded.length > 0) {
     const inside = plural2(folded.length, destroys > 0 ? "other change" : "change");
     if (level >= 2) {
       lines.push(`${inside} not listed here, see the ${summary2}`);
     } else {
       lines.push(`<details><summary>${inside}</summary>`);
-      for (const change2 of folded)
-        lines.push(`${changeLine(change2, { row: true })}<br>`);
+      for (const change3 of folded)
+        lines.push(`${changeLine(change3, { row: true })}<br>`);
       lines.push("</details>");
     }
   }
@@ -54320,14 +54976,14 @@ var SIGNED_FACT = {
 function placed(row) {
   return row.state === "queued" ? "deploying" : row.state;
 }
-function byCodeUnit6(a, b) {
+function byCodeUnit7(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function plural3(count, word) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
-function urlPart(text4) {
-  return encodeURIComponent(text4).replace(/[()*!'~]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+function urlPart(text5) {
+  return encodeURIComponent(text5).replace(/[()*!'~]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 function rowBlock(row, options = {}) {
   const [block] = parseDashboard(renderRow(row, options)).rows;
@@ -54426,7 +55082,7 @@ function version2(actionRef2) {
   return /^[0-9a-f]{40,}$/.test(actionRef2) ? `\`${actionRef2.slice(0, 7)}\`` : escapeText(actionRef2);
 }
 function renderBody(input2) {
-  const rows = [...input2.rows].sort((a, b) => byCodeUnit6(a.stackId, b.stackId));
+  const rows = [...input2.rows].sort((a, b) => byCodeUnit7(a.stackId, b.stackId));
   const known = rows.filter((row) => row.known);
   const of = (state2) => known.filter((row) => row.state === state2);
   const state = headerState(rows);
@@ -54453,14 +55109,14 @@ function renderBody(input2) {
   const drifted = of("drift");
   if (drifted.length > 0)
     out.push("## Drifted", DRIFTED_LINE, blocks(drifted));
-  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) => byCodeUnit6(a.stackId, b.stackId));
+  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) => byCodeUnit7(a.stackId, b.stackId));
   if (deploying.length > 0)
     out.push("## Deploying", blocks(deploying));
   const previewFailed = of("preview-failed");
   if (previewFailed.length > 0)
     out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
   const inSync = of("in-sync");
-  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit6(a.stackId, b.stackId));
+  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit7(a.stackId, b.stackId));
   if (inSync.length > 0 || ignored.length > 0) {
     const loud = inSync.filter((row) => row.failed);
     const quiet = inSync.filter((row) => !row.failed);
@@ -54476,7 +55132,7 @@ function renderBody(input2) {
 `), "</details>");
     }
   }
-  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit6(a.stackId, b.stackId)).slice(0, RECENTLY_DEPLOYED);
+  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit7(a.stackId, b.stackId)).slice(0, RECENTLY_DEPLOYED);
   if (recent.length > 0)
     out.push("## Recently deployed", recent.map(recentLine).join(`
 `));
@@ -54500,8 +55156,8 @@ function bodyDoesNotFitMessage(size) {
   return `The dashboard does not fit in one issue. With every pending row shortened as far as it goes the body is ${count(size)} characters, and GitHub drops a body over ${count(BODY_LIMIT)} without an error. Nothing was written and the dashboard stays as it was. It fits again with fewer stacks pending at once: deploy some, or take stacks off the dashboard with \`ignore\` in \`sluiceway.yaml\`.`;
 }
 var LEVELS = [0, 1, 2, 3];
-function sizeOf(entry, level = entry.level) {
-  return entry.blocks[level]?.text.length ?? 0;
+function sizeOf(entry2, level = entry2.level) {
+  return entry2.blocks[level]?.text.length ?? 0;
 }
 function fitBody(input2, options = {}) {
   const limit = options.limit ?? BODY_LIMIT;
@@ -54513,30 +55169,30 @@ function fitBody(input2, options = {}) {
   });
   const render = () => renderBody({
     ...input2,
-    rows: [...input2.carried, ...entries.flatMap((entry) => entry.blocks[entry.level] ?? [])]
+    rows: [...input2.carried, ...entries.flatMap((entry2) => entry2.blocks[entry2.level] ?? [])]
   });
   const fits = () => render().length <= target;
   for (const level of LEVELS.slice(1)) {
-    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit5(a.stackId, b.stackId));
-    for (const entry of biggestFirst) {
+    const biggestFirst = [...entries].sort((a, b) => sizeOf(b) - sizeOf(a) || byCodeUnit6(a.stackId, b.stackId));
+    for (const entry2 of biggestFirst) {
       if (fits())
         break;
-      if (entry.blocks[level] && sizeOf(entry, level) < sizeOf(entry))
-        entry.level = level;
+      if (entry2.blocks[level] && sizeOf(entry2, level) < sizeOf(entry2))
+        entry2.level = level;
     }
   }
-  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit5(a.stackId, b.stackId));
-  for (const entry of smallestFirst) {
-    const reached = entry.level;
+  const smallestFirst = [...entries].sort((a, b) => sizeOf(a, 0) - sizeOf(b, 0) || byCodeUnit6(a.stackId, b.stackId));
+  for (const entry2 of smallestFirst) {
+    const reached = entry2.level;
     for (const level of LEVELS.slice(0, reached)) {
-      entry.level = level;
+      entry2.level = level;
       if (fits())
         break;
-      entry.level = reached;
+      entry2.level = reached;
     }
   }
   const body = render();
-  const shortened = entries.filter((entry) => entry.level > 0).length;
+  const shortened = entries.filter((entry2) => entry2.level > 0).length;
   return { body, size: body.length, shortened, fits: body.length <= limit };
 }
 
@@ -54572,8 +55228,8 @@ async function writeBody(github, number4, build) {
       throw new DashboardWriteError(number4, body);
   }
 }
-function byteLength(text4) {
-  return new TextEncoder().encode(text4).length;
+function byteLength(text5) {
+  return new TextEncoder().encode(text5).length;
 }
 function count(n) {
   return n.toLocaleString("en-US");
@@ -54669,12 +55325,12 @@ function resultFileName(mode) {
 function actionsOutputs(runnerTemp) {
   return {
     set: (name, value) => setOutput(name, value),
-    writeResultFile(mode, text4) {
+    writeResultFile(mode, text5) {
       if (!runnerTemp) {
         throw new Error("RUNNER_TEMP is not set, so there is no directory for the result file");
       }
-      const path = join13(runnerTemp, resultFileName(mode));
-      writeFileSync(path, text4);
+      const path = join18(runnerTemp, resultFileName(mode));
+      writeFileSync(path, text5);
       return path;
     }
   };
@@ -54688,10 +55344,10 @@ function eventDashboardUrl(repoUrl, event) {
 function dashboardUrl(repoUrl, number4) {
   return `${repoUrl}/issues/${number4}`;
 }
-function writeResultFile(outputs, log, mode, text4) {
+function writeResultFile(outputs, log, mode, text5) {
   let path;
   try {
-    path = outputs.writeResultFile(mode, text4);
+    path = outputs.writeResultFile(mode, text5);
   } catch (error63) {
     log.info(`Writing the result file failed: ${error63 instanceof Error ? error63.message : String(error63)}`);
     log.warning("The result file of this step could not be written. The job log says why. Nothing else changes.", "Result file not written");
@@ -54702,23 +55358,23 @@ function writeResultFile(outputs, log, mode, text4) {
 }
 
 // src/core/config-file.ts
-import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
-import { join as join14 } from "node:path";
+import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
+import { join as join19 } from "node:path";
 var CONFIG_FILE = "sluiceway.yaml";
 var FILE = CONFIG_FILE;
 var WRONG_FILE = "sluiceway.yml";
 function loadConfig(root) {
-  if (existsSync3(join14(root, WRONG_FILE))) {
+  if (existsSync3(join19(root, WRONG_FILE))) {
     throw new ConfigError([`found ${WRONG_FILE}. The file must be named ${FILE}. Rename it.`]);
   }
-  return parseConfig(read(join14(root, FILE)));
+  return parseConfig(read2(join19(root, FILE)));
 }
 function hasConfigFile(root) {
-  return existsSync3(join14(root, FILE));
+  return existsSync3(join19(root, FILE));
 }
-function read(file2) {
+function read2(file2) {
   try {
-    return readFileSync2(file2, "utf8");
+    return readFileSync3(file2, "utf8");
   } catch (error63) {
     const code2 = error63.code;
     if (code2 === "ENOENT")
@@ -54730,51 +55386,51 @@ function read(file2) {
 }
 
 // src/core/diff-hash.ts
-import { createHash } from "node:crypto";
-function byCodeUnit7(a, b) {
+import { createHash as createHash2 } from "node:crypto";
+function byCodeUnit8(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
-function sortedSet3(keys3) {
-  return [...new Set(keys3)].sort(byCodeUnit7);
+function sortedSet3(keys4) {
+  return [...new Set(keys4)].sort(byCodeUnit8);
 }
 function canonicalJson(value) {
   if (typeof value === "string")
     return JSON.stringify(value);
   if (Array.isArray(value))
     return `[${value.map(canonicalJson).join(",")}]`;
-  const members2 = Object.keys(value).sort(byCodeUnit7).flatMap((key) => {
+  const members2 = Object.keys(value).sort(byCodeUnit8).flatMap((key) => {
     const member = value[key];
     return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
   });
   return `{${members2.join(",")}}`;
 }
-function canonicalChange(change2) {
+function canonicalChange(change3) {
   return {
-    address: change2.address,
-    type: change2.type,
-    name: change2.name,
-    op: change2.op,
-    tracking: change2.tracking,
-    previousAddress: change2.previousAddress,
-    changedKeys: sortedSet3(change2.changedKeys),
-    replaceKeys: sortedSet3(change2.replaceKeys),
-    values: canonicalValues(change2.values)
+    address: change3.address,
+    type: change3.type,
+    name: change3.name,
+    op: change3.op,
+    tracking: change3.tracking,
+    previousAddress: change3.previousAddress,
+    changedKeys: sortedSet3(change3.changedKeys),
+    replaceKeys: sortedSet3(change3.replaceKeys),
+    values: canonicalValues(change3.values)
   };
 }
-function canonicalValues(values) {
-  if (values === undefined || values.length === 0)
+function canonicalValues(values2) {
+  if (values2 === undefined || values2.length === 0)
     return;
-  return [...values].sort((a, b) => byCodeUnit7(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
+  return [...values2].sort((a, b) => byCodeUnit8(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
 }
 function canonicalDiff(diff) {
   const drift = diff.drift === undefined || diff.drift.length === 0 ? "" : `"drift":[${canonicalChanges(diff.drift).join(",")}],`;
   return `{"changes":[${canonicalChanges(diff.changes).join(",")}],${drift}"stackId":${JSON.stringify(diff.stackId)}}`;
 }
 function canonicalChanges(changes) {
-  return changes.map((change2) => ({ address: change2.address, text: canonicalJson(canonicalChange(change2)) })).sort((a, b) => byCodeUnit7(a.address, b.address) || byCodeUnit7(a.text, b.text)).map((change2) => change2.text);
+  return changes.map((change3) => ({ address: change3.address, text: canonicalJson(canonicalChange(change3)) })).sort((a, b) => byCodeUnit8(a.address, b.address) || byCodeUnit8(a.text, b.text)).map((change3) => change3.text);
 }
 function diffHash(diff) {
-  return createHash("sha256").update(canonicalDiff(diff), "utf8").digest("hex").slice(0, 16);
+  return createHash2("sha256").update(canonicalDiff(diff), "utf8").digest("hex").slice(0, 16);
 }
 
 // src/core/failure-reason.ts
@@ -54839,8 +55495,8 @@ function claim2(stacks, changed, unrelated) {
 // src/core/attribution.ts
 var NAMED_ON_A_ROW = 5;
 var COMMIT_FILE_CAP = 300;
-function isCommitId(text4) {
-  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(text4);
+function isCommitId(text5) {
+  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(text5);
 }
 var NEVER_DEPLOYED = "not deployed from this dashboard yet";
 function pullRequestOf(commit, walk) {
@@ -54939,8 +55595,8 @@ function attributor(input2) {
         parts.push(`${and()}${plural2(outside, "change")} outside this stack`);
       if (range.earlier)
         parts.push(`${and()}earlier changes`);
-      const text4 = parts.length > 0 ? `from ${parts.join(", ")}` : "nothing this stack claims has changed since its last deploy";
-      return `${text4} · [compare](${repoUrl}/compare/${inLink(from)}...${inLink(input2.scanSha)})`;
+      const text5 = parts.length > 0 ? `from ${parts.join(", ")}` : "nothing this stack claims has changed since its last deploy";
+      return `${text5} · [compare](${repoUrl}/compare/${inLink(from)}...${inLink(input2.scanSha)})`;
     };
     const named = claimed.slice(0, NAMED_ON_A_ROW).map(nameOf);
     const more = claimed.length - named.length;
@@ -54991,11 +55647,11 @@ function attributionSource(github, input2, onFailure) {
 }
 
 // src/core/dependencies.ts
-function byCodeUnit8(a, b) {
+function byCodeUnit9(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function planDeploys(input2) {
-  const ids = [...new Set(input2.allowed)].sort(byCodeUnit8);
+  const ids = [...new Set(input2.allowed)].sort(byCodeUnit9);
   const going = new Set(ids);
   const refused = new Map;
   for (let changed = true;changed; ) {
@@ -55006,7 +55662,7 @@ function planDeploys(input2) {
       const waitingOn = (input2.dependsOn.get(id) ?? []).filter((dependency) => !input2.open.has(dependency) && !going.has(dependency) && (input2.pending.has(dependency) || refused.has(dependency)));
       if (waitingOn.length === 0)
         continue;
-      refused.set(id, [...waitingOn].sort(byCodeUnit8));
+      refused.set(id, [...waitingOn].sort(byCodeUnit9));
       going.delete(id);
       changed = true;
     }
@@ -55016,7 +55672,7 @@ function planDeploys(input2) {
   for (const id of ids) {
     if (refused.has(id))
       continue;
-    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit8);
+    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit9);
     if (behind.length === 0)
       start.push(id);
     else
@@ -55062,11 +55718,11 @@ function withReadDependencies(input2) {
     return walk(from);
   };
   const dropped = [];
-  for (const id of [...input2.auto].sort(byCodeUnit8)) {
+  for (const id of [...input2.auto].sort(byCodeUnit9)) {
     const list = dependsOn.get(id);
     if (list === undefined)
       continue;
-    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit8)) {
+    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit9)) {
       if (dependency === id || !dependsOn.has(dependency) || list.includes(dependency))
         continue;
       if (reaches(dependency, id))
@@ -55074,7 +55730,7 @@ function withReadDependencies(input2) {
       else
         list.push(dependency);
     }
-    list.sort(byCodeUnit8);
+    list.sort(byCodeUnit9);
   }
   return { dependsOn, dropped };
 }
@@ -55141,11 +55797,11 @@ async function settleEndedRuns(github, records, repoUrl) {
 
 // src/render/changes.ts
 function orderChanges(diff) {
-  const changes = [...diff.changes].sort((a, b) => byCodeUnit5(a.address, b.address));
+  const changes = [...diff.changes].sort((a, b) => byCodeUnit6(a.address, b.address));
   return {
-    deletes: changes.filter((change2) => change2.op === "delete"),
-    replaces: changes.filter((change2) => change2.op === "replace"),
-    others: changes.filter((change2) => change2.op !== "delete" && change2.op !== "replace")
+    deletes: changes.filter((change3) => change3.op === "delete"),
+    replaces: changes.filter((change3) => change3.op === "replace"),
+    others: changes.filter((change3) => change3.op !== "delete" && change3.op !== "replace")
   };
 }
 
@@ -55156,7 +55812,7 @@ var REHEARSED_LINE = "This was a rehearsal (`dry-run: true`). The fresh preview 
 var NOT_DEPLOYED = "Nothing was deployed from this deployment record, and nothing will be. The job log of this run holds the tool's own words. A fresh tick on the dashboard tries again.";
 function diffParts(diff, empty) {
   const drift = sortedDrift(diff);
-  const driftParts = drift.length === 0 ? [] : [`${driftCounts(drift)}:`, drift.map((change2) => `- ${driftLine(change2)}`).join(`
+  const driftParts = drift.length === 0 ? [] : [`${driftCounts(drift)}:`, drift.map((change3) => `- ${driftLine(change3)}`).join(`
 `)];
   if (diff.changes.length === 0)
     return driftParts.length > 0 ? driftParts : [empty];
@@ -55167,17 +55823,17 @@ function changeParts(diff) {
   const destroys = [...deletes, ...replaces];
   const parts = [counts([...destroys, ...others])];
   if (destroys.length > 0) {
-    parts.push(destroys.map((change2) => `- :warning: ${changeLine(change2)}`).join(`
+    parts.push(destroys.map((change3) => `- :warning: ${changeLine(change3)}`).join(`
 `));
   }
   if (others.length > 0) {
-    parts.push(`<details><summary>${plural2(others.length, destroys.length > 0 ? "other change" : "change")}</summary>`, others.map((change2) => `- ${changeLine(change2)}`).join(`
+    parts.push(`<details><summary>${plural2(others.length, destroys.length > 0 ? "other change" : "change")}</summary>`, others.map((change3) => `- ${changeLine(change3)}`).join(`
 `), "</details>");
   }
   return parts;
 }
-function previewParts(preview3, empty) {
-  return preview3.kind === "diff" ? diffParts(preview3.diff, empty) : [`The preview failed: ${escapeText(preview3.reason)}.`];
+function previewParts(preview4, empty) {
+  return preview4.kind === "diff" ? diffParts(preview4.diff, empty) : [`The preview failed: ${escapeText(preview4.reason)}.`];
 }
 function renderApplySummary(input2) {
   const { outcome } = input2;
@@ -55218,20 +55874,20 @@ function dashboardSearchUrl(repoUrl, label) {
 }
 
 // src/render/log-text.ts
-function oneLine(text4) {
-  return text4.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ");
+function oneLine(text5) {
+  return text5.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ");
 }
 function logGroupTitle(stackId2) {
   return oneLine(stackId2);
 }
-function changeLogLine(change2) {
-  const word = [change2.op === "none" ? undefined : change2.op, change2.tracking].filter((part) => part !== undefined).join(" + ");
-  const forcingKeys = sortedKeys(change2.replaceKeys);
-  const withValue = (key) => oneLine(key) + valueSuffix(change2, key, oneLine);
+function changeLogLine(change3) {
+  const word = [change3.op === "none" ? undefined : change3.op, change3.tracking].filter((part) => part !== undefined).join(" + ");
+  const forcingKeys = sortedKeys(change3.replaceKeys);
+  const withValue = (key) => oneLine(key) + valueSuffix(change3, key, oneLine);
   const forcing = forcingKeys.map(withValue);
-  const others = sortedKeys(change2.changedKeys).filter((key) => !forcingKeys.includes(key)).map(withValue);
+  const others = sortedKeys(change3.changedKeys).filter((key) => !forcingKeys.includes(key)).map(withValue);
   const parts = [
-    `${isDestroy(change2) ? word.toUpperCase() : word} ${oneLine(change2.type)} ${oneLine(change2.name)}`
+    `${isDestroy(change3) ? word.toUpperCase() : word} ${oneLine(change3.type)} ${oneLine(change3.name)}`
   ];
   if (forcing.length > 0)
     parts.push(`forced by ${forcing.join(", ")}`);
@@ -55248,21 +55904,21 @@ function diffLogLines(diff) {
     return lines;
   return [...lines, driftCounts(drift), ...drift.map(driftLogLine)];
 }
-function driftLogLine(change2) {
-  const keys3 = sortedKeys(change2.changedKeys).map(oneLine);
-  const head = `${driftWord(change2)} ${oneLine(change2.type)} ${oneLine(change2.name)}`;
-  return keys3.length > 0 ? `${head} · ${keys3.join(", ")}` : head;
+function driftLogLine(change3) {
+  const keys4 = sortedKeys(change3.changedKeys).map(oneLine);
+  const head = `${driftWord(change3)} ${oneLine(change3.type)} ${oneLine(change3.name)}`;
+  return keys4.length > 0 ? `${head} · ${keys4.join(", ")}` : head;
 }
-function toolDiffLogLines(toolDiff3) {
-  if (toolDiff3 === undefined)
+function toolDiffLogLines(toolDiff4) {
+  if (toolDiff4 === undefined)
     return [];
-  if (toolDiff3.ok) {
+  if (toolDiff4.ok) {
     return [
       "The tool's own diff follows, values included, because scan.logDiff is on in sluiceway.yaml:"
     ];
   }
   return [
-    `The tool's own diff could not be shown: ${previewFailureText(toolDiff3.reason)}. The row and the diff hash come from the preview above and do not depend on it.`
+    `The tool's own diff could not be shown: ${previewFailureText(toolDiff4.reason)}. The row and the diff hash come from the preview above and do not depend on it.`
   ];
 }
 var PUBLIC_LOG_DIFF = {
@@ -55288,8 +55944,8 @@ function previewRow(stackId2, result, links, failure2, options = {}) {
     };
   }
   const drifted = (result.diff.drift ?? []).length > 0;
-  const read2 = result.dependencies?.stackIds ?? [];
-  const dependsOn = read2.length === 0 ? {} : { dependsOn: read2 };
+  const read3 = result.dependencies?.stackIds ?? [];
+  const dependsOn = read3.length === 0 ? {} : { dependsOn: read3 };
   if (result.diff.changes.length === 0) {
     if (drifted) {
       return {
@@ -55421,21 +56077,21 @@ function dashboardCounts(rows) {
 function seconds(milliseconds) {
   return milliseconds / 1000;
 }
-function changeOf(change2) {
+function changeOf(change3) {
   return {
-    type: change2.type,
-    name: change2.name,
-    op: change2.op,
-    ...change2.tracking === undefined ? {} : { tracking: change2.tracking },
-    changedKeys: sortedKeys(change2.changedKeys),
-    replaceKeys: sortedKeys(change2.replaceKeys),
-    ...change2.values === undefined || change2.values.length === 0 ? {} : { values: change2.values.map((value) => ({ ...value })) }
+    type: change3.type,
+    name: change3.name,
+    op: change3.op,
+    ...change3.tracking === undefined ? {} : { tracking: change3.tracking },
+    changedKeys: sortedKeys(change3.changedKeys),
+    replaceKeys: sortedKeys(change3.replaceKeys),
+    ...change3.values === undefined || change3.values.length === 0 ? {} : { values: change3.values.map((value) => ({ ...value })) }
   };
 }
 function diffOf(diff) {
   const { deletes, replaces, others } = orderChanges(diff);
   const drift = sortedDrift(diff);
-  const of = (op) => diff.changes.filter((change2) => change2.op === op).length;
+  const of = (op) => diff.changes.filter((change3) => change3.op === op).length;
   return {
     state: diff.changes.length > 0 ? "pending" : drift.length > 0 ? "drift" : "in-sync",
     counts: {
@@ -55443,7 +56099,7 @@ function diffOf(diff) {
       update: of("update"),
       replace: of("replace"),
       delete: of("delete"),
-      trackingOnly: diff.changes.filter((change2) => change2.op === "none" && change2.tracking).length
+      trackingOnly: diff.changes.filter((change3) => change3.op === "none" && change3.tracking).length
     },
     changes: [...deletes, ...replaces, ...others].map(changeOf),
     ...drift.length === 0 ? {} : { drift: drift.map(changeOf) }
@@ -55457,7 +56113,7 @@ function json2(value) {
 `;
 }
 function scanResultFile(input2) {
-  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit5(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? { stack: stack.diff.stackId, seconds: seconds(milliseconds), ...diffOf(stack.diff) } : {
+  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit6(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? { stack: stack.diff.stackId, seconds: seconds(milliseconds), ...diffOf(stack.diff) } : {
     stack: stack.stackId,
     seconds: seconds(milliseconds),
     state: "preview-failed",
@@ -55475,10 +56131,10 @@ function scanResultFile(input2) {
     stacks
   }));
 }
-function previewOf(preview3) {
-  if (preview3 === undefined)
+function previewOf(preview4) {
+  if (preview4 === undefined)
     return null;
-  return preview3.kind === "diff" ? diffOf(preview3.diff) : { state: "preview-failed", reason: preview3.reason };
+  return preview4.kind === "diff" ? diffOf(preview4.diff) : { state: "preview-failed", reason: preview4.reason };
 }
 function applyResultFile(input2) {
   const { applied } = input2;
@@ -55536,8 +56192,8 @@ async function prepareStacks(context3, stacks, defaultTimeoutMinutes) {
   }
   return failed;
 }
-function lines(text4) {
-  const all = text4.split(/\r?\n/);
+function lines(text5) {
+  const all = text5.split(/\r?\n/);
   if (all.at(-1) === "")
     all.pop();
   return all;
@@ -55553,14 +56209,14 @@ class ApplyFailedError extends Error {
 function message(error63) {
   return error63 instanceof Error ? error63.message : String(error63);
 }
-function lines2(text4) {
-  const all = text4.split(/\r?\n/);
+function lines2(text5) {
+  const all = text5.split(/\r?\n/);
   if (all.at(-1) === "")
     all.pop();
   return all;
 }
 var RECORD_PERMISSIONS = "The apply job needs the permission `deployments: write`, and `deployment-id` has to be the `deployment` of a matrix entry that `resolve` set (record 0035).";
-async function apply3(context3) {
+async function apply4(context3) {
   const report = {};
   try {
     await applying(context3, report);
@@ -55579,7 +56235,7 @@ function reportOutputs(context3, report) {
   outputs.set("outcome", outcome);
   if (report.stack !== undefined)
     outputs.set("stack", report.stack);
-  const text4 = applyResultFile({
+  const text5 = applyResultFile({
     run: `${context3.repoUrl}/actions/runs/${context3.runId}`,
     commit: context3.sha,
     deployment: context3.deploymentId,
@@ -55590,7 +56246,7 @@ function reportOutputs(context3, report) {
     reason: report.reason,
     applied: report.applied
   });
-  writeResultFile(outputs, context3.log, "apply", text4);
+  writeResultFile(outputs, context3.log, "apply", text5);
 }
 async function applying(context3, report) {
   const { github, log } = context3;
@@ -55790,15 +56446,15 @@ async function afterFreshPreview(context3, id, payload, runUrl, progress, setup,
   const name = logGroupTitle(id);
   const notDeployed = (reason, why = "") => `${name} was not deployed: ${deployFailureText(reason)}.${why}`;
   const tool = { root: context3.root, env: context3.env, run: context3.run };
-  const preview3 = () => adapter.preview(setup.stack.stack, options);
+  const preview4 = () => adapter.preview(setup.stack.stack, options);
   const { logDiff } = setup.config.scan;
   if (logDiff && publicRepo(context3.event)) {
     log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
   }
-  const toolDiff3 = logDiff && previewed.ok && previewed.diff.changes.length > 0 ? await adapter.toolDiff(setup.stack.stack, options) : undefined;
+  const toolDiff4 = logDiff && previewed.ok && previewed.diff.changes.length > 0 ? await adapter.toolDiff(setup.stack.stack, options) : undefined;
   const drift = payload.drift && previewed.ok ? await checkDriftAgain(context3, setup, options, id) : undefined;
   if (drift !== undefined && !drift.ok) {
-    logPreview(context3, id, "The fresh preview", previewed, toolDiff3);
+    logPreview(context3, id, "The fresh preview", previewed, toolDiff4);
     const reason = { kind: "preview-failed", reason: drift.reason };
     return {
       state: "failure",
@@ -55813,7 +56469,7 @@ async function afterFreshPreview(context3, id, payload, runUrl, progress, setup,
     };
   }
   const fresh = previewed.ok && drift?.ok && drift.drift.length > 0 ? { ...previewed, diff: { ...previewed.diff, drift: drift.drift } } : previewed;
-  logPreview(context3, id, "The fresh preview", fresh, toolDiff3);
+  logPreview(context3, id, "The fresh preview", fresh, toolDiff4);
   if (!fresh.ok) {
     const reason = { kind: "preview-failed", reason: fresh.reason };
     return {
@@ -55831,7 +56487,7 @@ async function afterFreshPreview(context3, id, payload, runUrl, progress, setup,
       state: "success",
       description: IN_SYNC_DESCRIPTION,
       row: fresh,
-      toolDiffInLog: toolDiff3 !== undefined,
+      toolDiffInLog: toolDiff4 !== undefined,
       summary: { kind: "in-sync" },
       setup
     };
@@ -55844,7 +56500,7 @@ async function afterFreshPreview(context3, id, payload, runUrl, progress, setup,
       reason,
       failed: notDeployed(reason, ` The fresh preview gives diff hash ${hash2} and the tick approved ${payload.hash}. The row on the dashboard shows the fresh diff. Tick it again to deploy that.`),
       row: fresh,
-      toolDiffInLog: toolDiff3 !== undefined,
+      toolDiffInLog: toolDiff4 !== undefined,
       summary: { kind: "not-deployed", reason: deployFailureText(reason), checked: applied(fresh) },
       setup
     };
@@ -55855,7 +56511,7 @@ async function afterFreshPreview(context3, id, payload, runUrl, progress, setup,
       state: "inactive",
       description: REHEARSED_DESCRIPTION,
       row: fresh,
-      toolDiffInLog: toolDiff3 !== undefined,
+      toolDiffInLog: toolDiff4 !== undefined,
       summary: { kind: "rehearsed", diff: fresh.diff },
       setup
     };
@@ -55890,7 +56546,22 @@ async function afterFreshPreview(context3, id, payload, runUrl, progress, setup,
       setup
     };
   }
-  const after = await preview3();
+  if (result.reason.kind === "moved") {
+    return {
+      state: "error",
+      reason: result.reason,
+      failed: notDeployed(result.reason, " What the deploy would install changed after the fresh preview, so nothing was deployed. The job log says what."),
+      row: fresh,
+      toolDiffInLog: toolDiff4 !== undefined,
+      summary: {
+        kind: "not-deployed",
+        reason: deployFailureText(result.reason),
+        checked: applied(fresh)
+      },
+      setup
+    };
+  }
+  const after = await preview4();
   logPreview(context3, id, "The preview after the failed deploy", after);
   return {
     state: "failure",
@@ -55925,22 +56596,22 @@ async function checkDriftAgain(context3, setup, options, id) {
   }
   return found;
 }
-function logPreview(context3, id, what, result, toolDiff3) {
-  const words = lines2(result.toolLog + (toolDiff3?.toolLog ?? ""));
+function logPreview(context3, id, what, result, toolDiff4) {
+  const words = lines2(result.toolLog + (toolDiff4?.toolLog ?? ""));
   const title = `${logGroupTitle(id)}: ${what.toLowerCase()}`;
   const own2 = [
     ...result.ok ? diffLogLines(result.diff) : [`preview failed: ${previewFailureText(result.reason)}`, ...result.detail],
-    ...toolDiffLogLines(toolDiff3),
+    ...toolDiffLogLines(toolDiff4),
     ...words.length > 0 ? ["The tool's own words:", ...words] : []
   ];
-  if (toolDiff3?.ok)
-    context3.log.group(title, own2, lines2(toolDiff3.text));
+  if (toolDiff4?.ok)
+    context3.log.group(title, own2, lines2(toolDiff4.text));
   else
     context3.log.group(title, own2);
 }
-async function writeSummary(context3, text4) {
+async function writeSummary(context3, text5) {
   try {
-    await context3.log.writeSummary(text4);
+    await context3.log.writeSummary(text5);
   } catch (error63) {
     context3.log.info(`Writing the summary failed: ${message(error63)}`);
     context3.log.warning("The summary of this run could not be written. The job log holds what happened.", "Summary not written");
@@ -56015,7 +56686,7 @@ async function runApply(directory) {
   const env = process.env;
   const inputs = readApplyInputs(getInput);
   const job = readJob(env);
-  await apply3({
+  await apply4({
     root: job.root,
     env,
     adapter: tools,
@@ -56028,10 +56699,10 @@ async function runApply(directory) {
     runAttempt: job.runAttempt,
     jobId: readJobId(getInput),
     sha: job.sha,
-    actionRef: readActionRef(env, directory, (path) => readFileSync3(path, "utf8")),
+    actionRef: readActionRef(env, directory, (path) => readFileSync4(path, "utf8")),
     deploymentId: inputs.deploymentId,
     dryRun: inputs.dryRun,
-    event: readEventPayload(env, (path) => readFileSync3(path, "utf8")),
+    event: readEventPayload(env, (path) => readFileSync4(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP)
   });
 }
@@ -56051,7 +56722,7 @@ function checkSetup(config2, found, files) {
   const { unclaimed } = claim2(stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })), files, config2.scan.unrelated);
   return {
     stacks,
-    ignore: config2.ignore.map((entry) => ignoreReport(ignoreGlob(entry), found)),
+    ignore: config2.ignore.map((entry2) => ignoreReport(ignoreGlob(entry2), found)),
     unclaimed: groups(unclaimed),
     suggested: suggestedUnrelated(unclaimed)
   };
@@ -56074,29 +56745,29 @@ function groups(files) {
     const slash = file2.indexOf("/");
     return slash === -1 ? "." : file2.slice(0, slash);
   };
-  const byDirectory = Map.groupBy([...files].sort(byCodeUnit9), top);
-  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit9(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
+  const byDirectory = Map.groupBy([...files].sort(byCodeUnit10), top);
+  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit10(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
 }
-function byCodeUnit9(a, b) {
+function byCodeUnit10(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
 // src/core/repo-files.ts
 import { readdir as readdir3 } from "node:fs/promises";
-import { join as join15 } from "node:path";
+import { join as join20 } from "node:path";
 var SKIPPED2 = new Set([".git", "node_modules"]);
 async function repoFiles(root) {
   const files = [];
-  const walk = async (relative3) => {
-    const entries = await readdir3(join15(root, ...relative3), { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name === ".git")
+  const walk = async (relative4) => {
+    const entries = await readdir3(join20(root, ...relative4), { withFileTypes: true });
+    for (const entry2 of entries) {
+      if (entry2.name === ".git")
         continue;
-      if (entry.isDirectory()) {
-        if (!SKIPPED2.has(entry.name))
-          await walk([...relative3, entry.name]);
+      if (entry2.isDirectory()) {
+        if (!SKIPPED2.has(entry2.name))
+          await walk([...relative4, entry2.name]);
       } else {
-        files.push([...relative3, entry.name].join("/"));
+        files.push([...relative4, entry2.name].join("/"));
       }
     }
   };
@@ -56138,8 +56809,8 @@ function dependsOnCell({ dependsOn, dependsOnAuto }) {
 function ignoreText({ glob, stacks }) {
   return `ignore ${JSON.stringify(glob)} leaves out ${plural2(stacks.length, "stack")}: ${stacks.join(", ")}.`;
 }
-function unmatchedText(entry) {
-  return `ignore ${JSON.stringify(entry.glob)} matches no stack. ${unmatchedWhy(entry)}`;
+function unmatchedText(entry2) {
+  return `ignore ${JSON.stringify(entry2.glob)} matches no stack. ${unmatchedWhy(entry2)}`;
 }
 function unmatchedWhy({ hint }) {
   const why = "It is matched against the stack id, not the directory.";
@@ -56179,9 +56850,9 @@ function renderCheckSummary({ report, unrelated, hasConfigFile: hasConfigFile2 }
     parts.push("### Ignore", [
       "| Glob | Leaves out |",
       "|---|---|",
-      ...report.ignore.map((entry) => row([
-        entry.glob,
-        entry.stacks.length > 0 ? entry.stacks.join(", ") : `No stack. ${unmatchedWhy(entry)}`
+      ...report.ignore.map((entry2) => row([
+        entry2.glob,
+        entry2.stacks.length > 0 ? entry2.stacks.join(", ") : `No stack. ${unmatchedWhy(entry2)}`
       ]))
     ].join(`
 `));
@@ -56209,7 +56880,7 @@ function renderCheckFailure(kind, problems) {
   return `${[
     "## Sluiceway check",
     title,
-    problems.map((problem3) => `- ${escapeText(problem3)}`).join(`
+    problems.map((problem4) => `- ${escapeText(problem4)}`).join(`
 `),
     "Fix these and run the check again. A scan stops at the same place."
   ].join(`
@@ -56219,10 +56890,10 @@ function renderCheckFailure(kind, problems) {
 }
 function groupLine({ directory, files }) {
   const where2 = directory === "." ? "The repo root" : escapeText(`${directory}/`);
-  const shown2 = files.slice(0, FILES_PER_DIRECTORY).map(escapeText).join(", ");
+  const shown3 = files.slice(0, FILES_PER_DIRECTORY).map(escapeText).join(", ");
   const rest = files.length - FILES_PER_DIRECTORY;
   const more = rest > 0 ? `, and ${plural2(rest, "more file")}. The job log lists them all.` : "";
-  return `- ${where2}, ${plural2(files.length, "file")}: ${shown2}${more}`;
+  return `- ${where2}, ${plural2(files.length, "file")}: ${shown3}${more}`;
 }
 function row(cells) {
   return `| ${cells.map(escapeText).join(" | ")} |`;
@@ -56251,11 +56922,11 @@ async function check2(context3) {
   if (report.stacks.length > 0) {
     log.group("Stacks", report.stacks.map((configured) => line(`${stackId(configured.stack)}: ${settingsText(configured)}`)));
   }
-  for (const entry of report.ignore) {
-    if (entry.stacks.length > 0)
-      log.info(line(ignoreText(entry)));
+  for (const entry2 of report.ignore) {
+    if (entry2.stacks.length > 0)
+      log.info(line(ignoreText(entry2)));
     else
-      log.warning(line(unmatchedText(entry)), "An ignore glob matches no stack");
+      log.warning(line(unmatchedText(entry2)), "An ignore glob matches no stack");
   }
   const unclaimed = report.unclaimed.flatMap((group) => group.files);
   if (unclaimed.length > 0) {
@@ -56270,9 +56941,9 @@ async function check2(context3) {
   log.info(VALID);
   log.info(CANNOT_TELL);
 }
-async function summary2(context3, text4) {
+async function summary2(context3, text5) {
   try {
-    await context3.log.writeSummary(text4);
+    await context3.log.writeSummary(text5);
   } catch (error63) {
     context3.log.info(`Writing the summary failed: ${error63 instanceof Error ? error63.message : error63}`);
   }
@@ -56292,7 +56963,7 @@ async function runCheck() {
 }
 
 // src/modes/resolve-job.ts
-import { readFileSync as readFileSync5 } from "node:fs";
+import { readFileSync as readFileSync6 } from "node:fs";
 
 // src/github/workflow-ref.ts
 function readWorkflowRef(env) {
@@ -56306,8 +56977,8 @@ function readWorkflowRef(env) {
 }
 
 // src/modes/resolve.ts
-import { readFileSync as readFileSync4 } from "node:fs";
-import { join as join16 } from "node:path";
+import { readFileSync as readFileSync5 } from "node:fs";
+import { join as join21 } from "node:path";
 
 // src/core/edit-history.ts
 var HISTORY_CAP = 100;
@@ -56360,20 +57031,20 @@ async function nameTickers(ticks, readPage) {
   while (open2()) {
     const page = await readPage(after);
     capped ||= page.total >= HISTORY_CAP;
-    for (const [position, entry] of page.entries.entries()) {
+    for (const [position, entry2] of page.entries.entries()) {
       if (!open2())
         break;
       const last = page.next === undefined && position === page.entries.length - 1;
       if (capped && last)
         break;
-      const dashboard = entry.body ? parseDashboard(entry.body) : undefined;
+      const dashboard = entry2.body ? parseDashboard(entry2.body) : undefined;
       ticks.forEach((tick, index) => {
         if (answers[index] !== undefined)
           return;
         if (dashboard === undefined) {
           answers[index] = { named: false, reason: "entry-without-body" };
         } else if (holds(dashboard, tick)) {
-          oldest[index] = entry;
+          oldest[index] = entry2;
         } else {
           const made = oldest[index];
           answers[index] = made ? { named: true, editor: made.editor, editedAt: made.editedAt } : { named: false, reason: "not-in-newest-entry" };
@@ -56453,10 +57124,10 @@ var RENOVATE_CONFIG_FILES = [
   ".renovaterc",
   ".renovaterc.json"
 ];
-function renovateStrategy(text4) {
+function renovateStrategy(text5) {
   let config2;
   try {
-    config2 = JSON.parse(text4);
+    config2 = JSON.parse(text5);
   } catch {
     return;
   }
@@ -56498,8 +57169,8 @@ function what(target) {
   const stack = `**${escapeText(target.stackId)}**`;
   return target.kind === "merge" ? `the merge of #${target.pr} for ${stack}` : stack;
 }
-function sentence(text4) {
-  const trimmed = escapeText(text4).trim();
+function sentence(text5) {
+  const trimmed = escapeText(text5).trim();
   return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 function why({ target, reason, detail, waitsOn }) {
@@ -56936,13 +57607,13 @@ function targetName(target) {
 }
 function renovateStrategyOf(root) {
   for (const file2 of RENOVATE_CONFIG_FILES) {
-    let text4;
+    let text5;
     try {
-      text4 = readFileSync4(join16(root, file2), "utf8");
+      text5 = readFileSync5(join21(root, file2), "utf8");
     } catch {
       continue;
     }
-    return renovateStrategy(text4);
+    return renovateStrategy(text5);
   }
   return;
 }
@@ -57222,15 +57893,15 @@ function withRowDependencies(context3, stacks, rows) {
   const auto = new Set([...stacks.values()].flatMap((one) => one.dependsOnAuto ? [stackId(one.stack)] : []));
   if (auto.size === 0)
     return stacks;
-  const read2 = new Map;
+  const read3 = new Map;
   for (const row2 of rows) {
-    if (row2.known && row2.dependsOn && !read2.has(row2.stackId))
-      read2.set(row2.stackId, row2.dependsOn);
+    if (row2.known && row2.dependsOn && !read3.has(row2.stackId))
+      read3.set(row2.stackId, row2.dependsOn);
   }
   const { dependsOn, dropped } = withReadDependencies({
     configured: new Map([...stacks].map(([id, one]) => [id, one.dependsOn ?? []])),
     auto,
-    read: read2
+    read: read3
   });
   for (const { stackId: id, dependency } of dropped) {
     context3.log.info(`${logGroupTitle(id)} reads ${logGroupTitle(dependency)} through its stack references, and ${logGroupTitle(dependency)} already depends on ${logGroupTitle(id)}. That would be a circle, so ${logGroupTitle(id)} does not wait on ${logGroupTitle(dependency)}.`);
@@ -57320,7 +57991,7 @@ async function startQueued(context3, handOn) {
 // src/modes/resolve-job.ts
 async function runResolve(directory) {
   const env = process.env;
-  const read2 = (path) => readFileSync5(path, "utf8");
+  const read3 = (path) => readFileSync6(path, "utf8");
   const token = readToken(getInput);
   const job = readJob(env);
   await resolve({
@@ -57331,15 +58002,15 @@ async function runResolve(directory) {
     repoUrl: job.repoUrl,
     runId: job.runId,
     sha: job.sha,
-    actionRef: readActionRef(env, directory, read2),
-    event: readEventPayload(env, read2),
+    actionRef: readActionRef(env, directory, read3),
+    event: readEventPayload(env, read3),
     workflow: readWorkflowRef(env),
     setOutput: (name, value) => setOutput(name, value)
   });
 }
 
 // src/modes/scan-job.ts
-import { readFileSync as readFileSync6 } from "node:fs";
+import { readFileSync as readFileSync7 } from "node:fs";
 
 // src/github/request-count.ts
 function countRequests(octokit) {
@@ -57494,8 +58165,8 @@ function previewPageName(stackId2) {
   return `sluiceway / ${stackId2}`;
 }
 var ENCODER = new TextEncoder;
-function byteLength2(text4) {
-  return ENCODER.encode(text4).length;
+function byteLength2(text5) {
+  return ENCODER.encode(text5).length;
 }
 function jobLog(links) {
   return links.log === undefined ? "job log of the scan" : `[job log](${links.log})`;
@@ -57517,7 +58188,7 @@ function renderPreviewPage(diff, links, options = {}) {
   const summary3 = [
     `**${id}** · ${counted.join(" · ")}`,
     ...destroys.length > 0 ? [`:warning: **This deploy ${destroyWords(deletes.length, replaces.length)}.**`] : [],
-    diff.changes.length === 0 ? `Sluiceway's own list of what changed in real infrastructure outside the code, never what it changed to. The code has nothing to deploy, and a deploy puts these back as the code says. It is the drift the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.` : diff.changes.some((change2) => (change2.values ?? []).length > 0) ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}` : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}`,
+    diff.changes.length === 0 ? `Sluiceway's own list of what changed in real infrastructure outside the code, never what it changed to. The code has nothing to deploy, and a deploy puts these back as the code says. It is the drift the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.` : diff.changes.some((change3) => (change3.values ?? []).length > 0) ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}` : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}`,
     `Every stack this scan previewed is in the [summary](${links.summary}) of the scan, and the tool's own words are in the ${jobLog(links)}, in the group <code>${id}</code>.`,
     ...options.toolDiffInLog ? [
       `The tool's own diff of this stack, values included, is in the ${jobLog(links)}, in the group <code>${id}</code>. It is not on this page.`
@@ -57526,11 +58197,11 @@ function renderPreviewPage(diff, links, options = {}) {
 
 `);
   const lines3 = [
-    ...destroys.map((change2) => `- :warning: ${changeLine(change2)}
+    ...destroys.map((change3) => `- :warning: ${changeLine(change3)}
 `),
-    ...others.map((change2) => `- ${changeLine(change2)}
+    ...others.map((change3) => `- ${changeLine(change3)}
 `),
-    ...drift.map((change2) => `- ${driftLine(change2)}
+    ...drift.map((change3) => `- ${driftLine(change3)}
 `)
   ];
   const limit = options.limit ?? PREVIEW_PAGE_FIELD_LIMIT;
@@ -57547,13 +58218,13 @@ ${pointer(lines3.length, id, links)}
       used += sizes[kept++] ?? 0;
   }
   const unlisted = lines3.length - kept;
-  const text4 = lines3.slice(0, kept).join("") + (unlisted > 0 ? `
+  const text5 = lines3.slice(0, kept).join("") + (unlisted > 0 ? `
 ${pointer(unlisted, id, links)}
 ` : "");
   return {
     title: `${diff.stackId.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")}: ${counted.join(", ").replaceAll("**", "")}`,
     summary: summary3,
-    text: text4,
+    text: text5,
     unlisted
   };
 }
@@ -57680,7 +58351,7 @@ function diffParts2(stack, level, options) {
     counts([...destroys, ...others])
   ];
   if (destroys.length > 0) {
-    parts.push(level >= 3 ? `:warning: **${destroyWords(deletes.length, replaces.length)}, too many to list here.** Read the ${jobLog2(options)} before you tick.` : destroys.map((change2) => `- :warning: ${changeLine(change2)}`).join(`
+    parts.push(level >= 3 ? `:warning: **${destroyWords(deletes.length, replaces.length)}, too many to list here.** Read the ${jobLog2(options)} before you tick.` : destroys.map((change3) => `- :warning: ${changeLine(change3)}`).join(`
 `));
   }
   if (others.length > 0) {
@@ -57688,13 +58359,13 @@ function diffParts2(stack, level, options) {
     if (level >= 2)
       parts.push(`${inside2} not listed here, see the ${jobLog2(options)}.`);
     else {
-      parts.push(`<details><summary>${inside2}</summary>`, others.map((change2) => `- ${changeLine(change2)}`).join(`
+      parts.push(`<details><summary>${inside2}</summary>`, others.map((change3) => `- ${changeLine(change3)}`).join(`
 `), "</details>");
     }
   }
   const drift = sortedDrift(stack.diff);
   if (drift.length > 0) {
-    parts.push(`${driftCounts(drift)}:`, drift.map((change2) => `- ${driftLine(change2)}`).join(`
+    parts.push(`${driftCounts(drift)}:`, drift.map((change3) => `- ${driftLine(change3)}`).join(`
 `));
   }
   const merges = stack.merges ?? [];
@@ -57722,8 +58393,8 @@ function stackIdOf2(stack) {
   return stack.kind === "diff" ? stack.diff.stackId : stack.stackId;
 }
 var ENCODER2 = new TextEncoder;
-function byteLength3(text4) {
-  return ENCODER2.encode(text4).length;
+function byteLength3(text5) {
+  return ENCODER2.encode(text5).length;
 }
 function cost(parts) {
   return parts.reduce((sum, part) => sum + byteLength3(part) + 2, 0);
@@ -57733,42 +58404,42 @@ function note(shortened, pending, options) {
   return `> **This summary is shortened: ${shortened} of ${plural2(pending, "pending stack")} ${shows} whole diff.** Every diff is in full in the ${jobLog2(options)} of this run, in the group that has the stack id as its title. Deletes and replaces are cut last.`;
 }
 function fitToBudget(entries, frameCost, budget) {
-  let blocks2 = entries.reduce((sum, entry) => sum + (entry.costs[0] ?? 0), 0);
+  let blocks2 = entries.reduce((sum, entry2) => sum + (entry2.costs[0] ?? 0), 0);
   let shortened = 0;
-  const move = (entry, level) => {
-    blocks2 += (entry.costs[level] ?? 0) - (entry.costs[entry.level] ?? 0);
-    shortened += Number(level > 0) - Number(entry.level > 0);
-    entry.level = level;
+  const move = (entry2, level) => {
+    blocks2 += (entry2.costs[level] ?? 0) - (entry2.costs[entry2.level] ?? 0);
+    shortened += Number(level > 0) - Number(entry2.level > 0);
+    entry2.level = level;
   };
   const fits = () => frameCost(shortened) + blocks2 - 1 <= budget;
-  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit5(a.stackId, b.stackId);
+  const bySize = (level, direction) => (a, b) => direction * ((a.costs[level(a)] ?? 0) - (b.costs[level(b)] ?? 0)) || byCodeUnit6(a.stackId, b.stackId);
   for (const level of LEVELS2.slice(1)) {
-    for (const entry of [...entries].sort(bySize((entry2) => entry2.level, -1))) {
+    for (const entry2 of [...entries].sort(bySize((entry3) => entry3.level, -1))) {
       if (fits())
         break;
-      move(entry, level);
+      move(entry2, level);
     }
   }
   if (!fits())
     return;
-  for (const entry of [...entries].sort(bySize(() => 0, 1))) {
-    const reached = entry.level;
+  for (const entry2 of [...entries].sort(bySize(() => 0, 1))) {
+    const reached = entry2.level;
     for (const level of LEVELS2.slice(0, reached)) {
-      move(entry, level);
+      move(entry2, level);
       if (fits())
         break;
-      move(entry, reached);
+      move(entry2, reached);
     }
   }
 }
 var UNCLAIMED_FILES_SHOWN = 20;
 function unclaimedParts({ files, unrelated, suggested }) {
-  const shown2 = files.slice(0, UNCLAIMED_FILES_SHOWN).map(escapeText).join(", ");
+  const shown3 = files.slice(0, UNCLAIMED_FILES_SHOWN).map(escapeText).join(", ");
   const rest = files.length - UNCLAIMED_FILES_SHOWN;
   const more = rest > 0 ? `, and ${plural2(rest, "more file")}. The job log lists them all` : "";
   const parts = [
     "### Why this was a full scan",
-    `This push fell back to a full scan, because no stack claims ${files.length} of the changed files: ${shown2}${more}. A push that changes one of them previews every stack.`,
+    `This push fell back to a full scan, because no stack claims ${files.length} of the changed files: ${shown3}${more}. A push that changes one of them previews every stack.`,
     WHERE_FILES_BELONG
   ];
   if (suggested.length > 0) {
@@ -57782,7 +58453,7 @@ function toolDiffLine(options) {
   return `The tool's own diff of every pending stack, values included, is in the ${log}, in the stack's group.`;
 }
 function renderSummary(stacks, options = {}) {
-  const sorted = [...stacks].sort((a, b) => byCodeUnit5(stackIdOf2(a), stackIdOf2(b)));
+  const sorted = [...stacks].sort((a, b) => byCodeUnit6(stackIdOf2(a), stackIdOf2(b)));
   const diffs = sorted.filter((stack) => stack.kind === "diff");
   const pending = diffs.filter((stack) => stack.diff.changes.length > 0);
   const hasDrift = (stack) => (stack.diff.drift ?? []).length > 0;
@@ -57800,7 +58471,7 @@ function renderSummary(stacks, options = {}) {
     tail.push("### Drifted");
     for (const stack of drifted) {
       const drift = sortedDrift(stack.diff);
-      tail.push(`#### ${anchorTag(stack.diff.stackId)}${escapeText(stack.diff.stackId)}`, driftCounts(drift), drift.map((change2) => `- ${driftLine(change2)}`).join(`
+      tail.push(`#### ${anchorTag(stack.diff.stackId)}${escapeText(stack.diff.stackId)}`, driftCounts(drift), drift.map((change3) => `- ${driftLine(change3)}`).join(`
 `));
     }
   }
@@ -57835,17 +58506,17 @@ function renderSummary(stacks, options = {}) {
   });
   const tailCost = cost(tail);
   fitToBudget(entries, (shortened2) => cost(frame(shortened2)) + tailCost, options.budget ?? SUMMARY_BUDGET);
-  const shortened = entries.filter((entry) => entry.level > 0).length;
-  const text4 = `${[
+  const shortened = entries.filter((entry2) => entry2.level > 0).length;
+  const text5 = `${[
     ...frame(shortened),
-    ...entries.flatMap((entry) => entry.parts[entry.level] ?? []),
+    ...entries.flatMap((entry2) => entry2.parts[entry2.level] ?? []),
     ...tail
   ].join(`
 
 `)}
 `;
-  const bytes = byteLength3(text4);
-  return { text: text4, bytes, shortened, fits: bytes <= (options.budget ?? SUMMARY_BUDGET) };
+  const bytes = byteLength3(text5);
+  return { text: text5, bytes, shortened, fits: bytes <= (options.budget ?? SUMMARY_BUDGET) };
 }
 
 // src/modes/scan.ts
@@ -57872,8 +58543,8 @@ function seconds2(milliseconds) {
 function minutes(count3) {
   return plural2(count3, "minute");
 }
-function lines3(text4) {
-  const all = text4.split(/\r?\n/);
+function lines3(text5) {
+  const all = text5.split(/\r?\n/);
   if (all.at(-1) === "")
     all.pop();
   return all;
@@ -57914,7 +58585,7 @@ function reportOutputs2(context3, report) {
   }
   if (!previewed || !startedAt)
     return;
-  const text4 = scanResultFile({
+  const text5 = scanResultFile({
     run: runUrlOf(context3, context3.runId),
     commit: context3.sha,
     milliseconds: context3.now().getTime() - startedAt.getTime(),
@@ -57924,7 +58595,7 @@ function reportOutputs2(context3, report) {
       milliseconds
     }))
   });
-  writeResultFile(outputs, context3.log, "scan", text4);
+  writeResultFile(outputs, context3.log, "scan", text5);
 }
 async function scanning(context3, report) {
   const { log, now } = context3;
@@ -57935,7 +58606,7 @@ async function scanning(context3, report) {
   const config2 = loadConfig(context3.root);
   const found = await context3.adapter.discover(context3.root, config2);
   const ignored = ignoredStacks(config2, found);
-  const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit5(stackId(a.stack), stackId(b.stack)));
+  const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit6(stackId(a.stack), stackId(b.stack)));
   const ids = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural2(stacks.length, "stack")}.`);
   const { logDiff } = config2.scan;
@@ -57969,14 +58640,14 @@ async function scanning(context3, report) {
   const again = new Set;
   for (;; ) {
     if (next.length > 0 && !versionChecked) {
-      await checkVersion3(context3, stacks.map(({ stack }) => stack));
+      await checkVersion4(context3, stacks.map(({ stack }) => stack));
       versionChecked = true;
     }
     const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), prepared, checkDrift, stacks.map(({ stack }) => stack));
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit5(a.id, b.id));
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit6(a.id, b.id));
     if (round.length > 0 || rounds === 0) {
       await writeSummary2(context3, all, { logDiff, unclaimed });
       report.previewed = all;
@@ -58171,7 +58842,7 @@ async function scanning(context3, report) {
     counts: dashboardCounts(parseDashboard(written.body).rows)
   };
   if ([...attributed.values()].some(({ merges }) => merges.length > 0)) {
-    const all = [...previewed.values()].sort((a, b) => byCodeUnit5(a.id, b.id));
+    const all = [...previewed.values()].sort((a, b) => byCodeUnit6(a.id, b.id));
     await writeSummary2(context3, all, { logDiff, unclaimed }, attributed);
   }
   const failed = [...previewed.values()].filter(({ result }) => !result.ok);
@@ -58326,7 +58997,7 @@ function logPlan(context3, plan, stackCount) {
     log.info(`${logGroupTitle(id)} is previewed: ${whyText(why2)}.`);
   }
 }
-async function checkVersion3(context3, stacks) {
+async function checkVersion4(context3, stacks) {
   try {
     await context3.adapter.checkVersion({ root: context3.root, env: context3.env, run: context3.run }, stacks);
   } catch (error63) {
@@ -58403,9 +59074,9 @@ async function previewAll(context3, stacks, logDiff, showValues, prepared, check
       return { id, result, startedAt, milliseconds, drift };
     }
     const toolDiffStarted = now().getTime();
-    const toolDiff3 = await adapter.toolDiff(configured.stack, options);
-    log.info(`Ran the tool's own diff of ${logGroupTitle(id)} in ${seconds2(now().getTime() - toolDiffStarted)}${toolDiff3.ok ? "" : `: ${previewFailureText(toolDiff3.reason)}`}.`);
-    return { id, result, startedAt, milliseconds, toolDiff: toolDiff3, drift };
+    const toolDiff4 = await adapter.toolDiff(configured.stack, options);
+    log.info(`Ran the tool's own diff of ${logGroupTitle(id)} in ${seconds2(now().getTime() - toolDiffStarted)}${toolDiff4.ok ? "" : `: ${previewFailureText(toolDiff4.reason)}`}.`);
+    return { id, result, startedAt, milliseconds, toolDiff: toolDiff4, drift };
   });
   const total = now().getTime() - poolStarted;
   const addedUp = previewed.reduce((sum, { milliseconds }) => sum + milliseconds, 0);
@@ -58413,25 +59084,25 @@ async function previewAll(context3, stacks, logDiff, showValues, prepared, check
   log.info(`Previewed ${plural2(previewed.length, "stack")} in ${seconds2(total)} with a pool of ${context3.concurrency}. Added up, the previews took ${seconds2(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds2(slowest.milliseconds)}.`);
   return [...previewed, ...unpreparedFailures];
 }
-function readDependenciesText(id, read2) {
-  const named = read2.stackIds.length === 0 ? `${logGroupTitle(id)} reads no stack of this repo through its stack references.` : `${logGroupTitle(id)} reads ${read2.stackIds.map(logGroupTitle).join(", ")} through its stack references.`;
-  if (read2.elsewhere === 0)
+function readDependenciesText(id, read3) {
+  const named = read3.stackIds.length === 0 ? `${logGroupTitle(id)} reads no stack of this repo through its stack references.` : `${logGroupTitle(id)} reads ${read3.stackIds.map(logGroupTitle).join(", ")} through its stack references.`;
+  if (read3.elsewhere === 0)
     return named;
-  const one = read2.elsewhere === 1;
-  return `${named} ${plural2(read2.elsewhere, "stack reference")} ${one ? "names" : "name"} no stack of this repo that Sluiceway knows, so nothing waits on ${one ? "it" : "them"}.`;
+  const one = read3.elsewhere === 1;
+  return `${named} ${plural2(read3.elsewhere, "stack reference")} ${one ? "names" : "name"} no stack of this repo that Sluiceway knows, so nothing waits on ${one ? "it" : "them"}.`;
 }
 function logResults(context3, previewed) {
   const { log } = context3;
-  for (const { id, result, toolDiff: toolDiff3, drift } of previewed) {
-    const words = lines3(result.toolLog + (toolDiff3?.toolLog ?? "") + (drift?.toolLog ?? ""));
+  for (const { id, result, toolDiff: toolDiff4, drift } of previewed) {
+    const words = lines3(result.toolLog + (toolDiff4?.toolLog ?? "") + (drift?.toolLog ?? ""));
     const own2 = [
       ...result.ok ? diffLogLines(result.diff) : [`preview failed: ${previewFailureText(result.reason)}`, ...result.detail],
       ...drift !== undefined && !drift.ok ? [`drift check failed: ${previewFailureText(drift.reason)}`, ...drift.detail] : [],
-      ...toolDiffLogLines(toolDiff3),
+      ...toolDiffLogLines(toolDiff4),
       ...words.length > 0 ? ["The tool's own words:", ...words] : []
     ];
-    if (toolDiff3?.ok)
-      log.group(logGroupTitle(id), own2, lines3(toolDiff3.text));
+    if (toolDiff4?.ok)
+      log.group(logGroupTitle(id), own2, lines3(toolDiff4.text));
     else
       log.group(logGroupTitle(id), own2);
   }
@@ -58459,8 +59130,8 @@ async function writePages(context3, pages, round, urls, options) {
       summary: links.summary,
       log: context3.jobId === undefined ? undefined : links.log
     }, { toolDiffInLog: logDiff });
-    const { title, summary: summary3, text: text4 } = page;
-    toWrite.push({ stackId: id, output: { title, summary: summary3, text: text4 } });
+    const { title, summary: summary3, text: text5 } = page;
+    toWrite.push({ stackId: id, output: { title, summary: summary3, text: text5 } });
   }
   if (toWrite.length === 0)
     return;
@@ -58617,7 +59288,7 @@ function mergesWaiting(facts) {
       waiting.push({ id, fact: { ...fact, merge: fact.merge } });
     }
   }
-  return waiting.sort((a, b) => byCodeUnit5(a.id, b.id));
+  return waiting.sort((a, b) => byCodeUnit6(a.id, b.id));
 }
 async function handOffMerges(context3, config2, stacks, previewed, waiting, handedOn) {
   const { github, log } = context3;
@@ -58705,7 +59376,7 @@ async function runScan(directory) {
   const inputs = readScanInputs(getInput);
   const job = readJob(env);
   const octokit = getOctokit(inputs.token);
-  const payload = readEventPayload(env, (path) => readFileSync6(path, "utf8"));
+  const payload = readEventPayload(env, (path) => readFileSync7(path, "utf8"));
   await scan({
     root: job.root,
     env,
@@ -58724,7 +59395,7 @@ async function runScan(directory) {
     sha: job.sha,
     event: job.event,
     workflow: job.workflow,
-    actionRef: readActionRef(env, directory, (path) => readFileSync6(path, "utf8")),
+    actionRef: readActionRef(env, directory, (path) => readFileSync7(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),
     publicRepo: publicRepo(payload),
     startedByPerson: startedByPerson(payload)
@@ -58732,7 +59403,7 @@ async function runScan(directory) {
 }
 
 // src/modes/settle-job.ts
-import { readFileSync as readFileSync7 } from "node:fs";
+import { readFileSync as readFileSync8 } from "node:fs";
 
 // src/core/settle.ts
 function openRecordsOfRun(records, runId) {
@@ -58851,7 +59522,7 @@ async function runSettle() {
     log: actionsLog(),
     repoUrl: job.repoUrl,
     runId: job.runId,
-    event: readEventPayload(env, (path) => readFileSync7(path, "utf8")),
+    event: readEventPayload(env, (path) => readFileSync8(path, "utf8")),
     workflow: readWorkflowRef(env),
     outputs: actionsOutputs(env.RUNNER_TEMP)
   });
