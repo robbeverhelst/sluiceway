@@ -38,8 +38,10 @@ import {
 import { diffHash } from "../core/diff-hash.ts";
 import { deployFailureText, previewFailureText } from "../core/failure-reason.ts";
 import {
+  MAX_WAITING_ON_CHECKS,
   NOT_QUALIFIED,
   qualify,
+  updatesWaitingOnChecks,
   type WaitingUpdate,
   waitingUpdates,
 } from "../core/merge-and-deploy.ts";
@@ -107,6 +109,7 @@ import {
   MARKER_VERSION,
   type ParsedMerge,
   type ParsedRow,
+  type ParsedWaiting,
   parseDashboard,
 } from "../render/marker.ts";
 import {
@@ -128,6 +131,7 @@ import {
   type Row,
 } from "../render/row.ts";
 import { renderSummary, type UnclaimedFiles } from "../render/summary.ts";
+import { waitingBlock } from "../render/waiting-line.ts";
 import { previewBranches } from "./branch-preview.ts";
 import { readHistories } from "./outside-deploys.ts";
 import { prepareStacks } from "./prepare.ts";
@@ -480,6 +484,11 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         waits,
         config.dashboard.redact,
       );
+      const waiting = waitingLines(
+        listing,
+        live.current ? live.waiting : [],
+        config.dashboard.redact,
+      );
 
       // What this scan read of the tools' histories, and for every other
       // stack the lines the live body has (record 0073). A row's failure line
@@ -607,6 +616,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           rows,
           carried,
           merges,
+          waiting,
           outside,
         },
         composed: {
@@ -1541,7 +1551,11 @@ function reportDashboard(
 // What the scan knows of the updates waiting to merge (record 0054): nothing
 // to list, because the setting is off or nothing could be merged or ticked
 // here; the list; or a list that could not be read, which keeps the live rows.
-type Listing = { kind: "off" } | { kind: "listed"; updates: WaitingUpdate[] } | { kind: "failed" };
+// The updates waiting on their checks come with the list (record 0081).
+type Listing =
+  | { kind: "off" }
+  | { kind: "listed"; updates: WaitingUpdate[]; onChecks: WaitingUpdate[] }
+  | { kind: "failed" };
 
 // One GraphQL query, and only when mergeAndDeploy names authors. A list that
 // cannot be read never fails the scan: the updates only offer a merge, and
@@ -1574,11 +1588,20 @@ async function listUpdates(
   };
   // A pull request by someone who is not on the list is an ordinary one and
   // gets no line.
+  // Of one whose checks have not finished the log names what would still
+  // stop it once they are green, when anything would (record 0081).
   for (const pullRequest of open.pullRequests) {
-    const qualified = qualify(pullRequest, options);
-    if (!qualified.qualifies && qualified.why !== "author") {
-      log.info(`#${pullRequest.number} is not listed to merge: ${NOT_QUALIFIED[qualified.why]}.`);
-    }
+    const qualified = qualify(
+      pullRequest.checks === "pending" ? { ...pullRequest, checks: "success" } : pullRequest,
+      options,
+    );
+    const pending = pullRequest.checks === "pending";
+    if (qualified.qualifies ? !pending : qualified.why === "author") continue;
+    log.info(
+      qualified.qualifies
+        ? `#${pullRequest.number} is not listed to merge yet: its checks have not all finished. Its line has no box until they are green.`
+        : `#${pullRequest.number} is not listed to merge: ${NOT_QUALIFIED[qualified.why]}.`,
+    );
   }
   const updates = waitingUpdates(open.pullRequests, options);
   log.info(
@@ -1586,7 +1609,22 @@ async function listUpdates(
       ? "No pull request waits to merge."
       : `${plural(updates.length, "pull request")} ${updates.length === 1 ? "waits" : "wait"} to merge: ${updates.map(({ pullRequest }) => `#${pullRequest.number}`).join(", ")}.`,
   );
-  return { kind: "listed", updates };
+  const onChecks = updatesWaitingOnChecks(open.pullRequests, options);
+  const shown = onChecks.slice(0, MAX_WAITING_ON_CHECKS);
+  const numbers = (list: WaitingUpdate[]) =>
+    list.map(({ pullRequest }) => `#${pullRequest.number}`).join(", ");
+  if (shown.length > 0) {
+    log.info(
+      `${plural(shown.length, "pull request")} ${shown.length === 1 ? "waits on its checks" : "wait on their checks"}: ${numbers(shown)}.`,
+    );
+  }
+  const rest = onChecks.slice(MAX_WAITING_ON_CHECKS);
+  if (rest.length > 0) {
+    log.info(
+      `${plural(rest.length, "more pull request")} ${rest.length === 1 ? "waits on its checks and is" : "wait on their checks and are"} not listed: ${numbers(rest)}.`,
+    );
+  }
+  return { kind: "listed", updates, onChecks: shown };
 }
 
 // The merge rows of this scan. A tick on a live row carries over while a
@@ -1629,6 +1667,29 @@ function mergeRows(
       : clearMergeTick(tickedMergeBlock(block), { note: "orphan" });
   });
   return { merges, mergeTicks };
+}
+
+// The lines of the updates waiting on their checks (record 0081), drawn fresh
+// from the list, or kept as the live body has them when the list could not be
+// read. They have no box, so there is no tick to carry.
+function waitingLines(
+  listing: Listing,
+  live: readonly ParsedWaiting[],
+  redact: boolean,
+): ParsedWaiting[] {
+  if (listing.kind === "off") return [];
+  if (listing.kind === "failed") return [...live];
+  return listing.onChecks.map(({ pullRequest, stackIds }) =>
+    waitingBlock(
+      {
+        pr: pullRequest.number,
+        stackIds,
+        title: pullRequest.title,
+        author: pullRequest.author,
+      },
+      { redact },
+    ),
+  );
 }
 
 interface WaitingMerge {

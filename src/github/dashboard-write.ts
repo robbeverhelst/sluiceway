@@ -16,6 +16,7 @@ import {
   type ParsedDashboard,
   type ParsedMerge,
   type ParsedRow,
+  type ParsedWaiting,
   parseDashboard,
   type RootFacts,
 } from "../render/marker.ts";
@@ -66,6 +67,9 @@ export interface Rows {
   // The updates waiting to merge. A swap that leaves them out carries the
   // live ones as they stand: only a scan lists them (record 0054).
   merges?: readonly ParsedMerge[] | undefined;
+  // The updates waiting on their checks. A swap that leaves them out carries
+  // the live ones as they stand: only a scan draws them (record 0081).
+  waiting?: readonly ParsedWaiting[] | undefined;
   // The outside deploys of the trail. A swap that leaves them out carries
   // the live ones: only a full scan reads the tool's history (record 0073).
   outside?: readonly OutsideDeploy[] | undefined;
@@ -76,6 +80,7 @@ export interface Rows {
 export interface ScanRows extends Rows {
   root: RootFacts;
   merges: readonly ParsedMerge[];
+  waiting: readonly ParsedWaiting[];
   outside: readonly OutsideDeploy[];
 }
 
@@ -142,6 +147,7 @@ export async function swapRows(
             facts: mine.facts,
             shipped: mine.shipped,
             merges: mine.merges ?? live.merges,
+            waiting: mine.waiting ?? live.waiting,
             outside: mine.outside ?? live.outside,
           },
           // A writer that swaps rows aims at the hard limit (record 0028).
@@ -190,6 +196,7 @@ export function fitScan(writer: DashboardWriter, full: boolean, mine: ScanRows):
       facts: mine.facts,
       shipped: mine.shipped,
       merges: mine.merges,
+      waiting: mine.waiting,
       outside: mine.outside,
     },
     full,
@@ -234,6 +241,7 @@ interface Body {
   facts: Pick<DeployFacts, "trail">;
   shipped?: ReadonlyMap<TrailEntry, AttributionLines> | undefined;
   merges: readonly ParsedMerge[];
+  waiting: readonly ParsedWaiting[];
   outside: readonly OutsideDeploy[];
 }
 
@@ -261,6 +269,7 @@ function fit(writer: DashboardWriter, body: Body, aimAtTarget: boolean): FittedB
       readOnly: dashboard.readOnly,
       ignored: writer.ignored,
       merges: body.merges,
+      waiting: body.waiting,
       outsideDeploys: body.outside,
     },
     // The room between the target and the limit exists for a writer that

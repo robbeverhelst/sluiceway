@@ -14,6 +14,7 @@ import { dashboardFacts } from "../../src/render/dashboard-facts.ts";
 import { type ParsedRow, parseDashboard, type RootFacts } from "../../src/render/marker.ts";
 import { dashboardCounts } from "../../src/render/result-file.ts";
 import type { DeployingRow, InSyncRow } from "../../src/render/row.ts";
+import { waitingBlock } from "../../src/render/waiting-line.ts";
 import { FakeGitHub } from "../fake-github/fake-github.ts";
 
 const REPO = "https://github.com/acme/infra";
@@ -228,6 +229,34 @@ describe("a row swap", () => {
     ]);
   });
 
+  // Slice 5.17 (record 0081): only a scan draws the lines of the updates
+  // waiting on their checks, so a swap carries them as they stand.
+  test("the lines of updates waiting on their checks are carried as they stand", async () => {
+    const github = new FakeGitHub();
+    const line = waitingBlock({
+      pr: 1137,
+      stackIds: ["app"],
+      title: "Bump",
+      author: "renovate[bot]",
+    });
+    const number = seed(
+      github,
+      renderBody({
+        root: ROOT,
+        rows: [rowBlock(inSync("app"))],
+        recentlyDeployed: [],
+        repoUrl: REPO,
+        actionRef: "v1.0.0",
+        personality: true,
+        waiting: [line],
+      }),
+    );
+
+    await swapRows(writerFor(github), number, rows([deploying("app")]));
+
+    expect(parseDashboard(github.issue(number).body).waiting).toEqual([line]);
+  });
+
   test("a body that does not fit is an answer, and nothing is written", async () => {
     const github = new FakeGitHub();
     const live = bodyOf([rowBlock(inSync("app"))]);
@@ -252,6 +281,7 @@ describe("the write of a scan", () => {
     facts: NO_TRAIL,
     rows: new Map(entries.map((row) => [row.stackId, row])),
     merges: [],
+    waiting: [],
     outside: [],
     ...more,
   });
@@ -289,6 +319,30 @@ describe("the write of a scan", () => {
 
     const written = parseDashboard(github.issue(number).body).rows;
     expect(written.map(({ text }) => text)).toEqual([carried.text]);
+  });
+
+  test("it writes the lines of updates waiting on their checks it hands over, and no live ones", async () => {
+    const github = new FakeGitHub();
+    const line = (pr: number) =>
+      waitingBlock({ pr, stackIds: ["app"], title: "Bump", author: "renovate[bot]" });
+    const number = seed(
+      github,
+      renderBody({
+        root: ROOT,
+        rows: [rowBlock(inSync("app"))],
+        recentlyDeployed: [],
+        repoUrl: REPO,
+        actionRef: "v1.0.0",
+        personality: true,
+        waiting: [line(1137)],
+      }),
+    );
+
+    await writeScan(writerFor(github), true, async () =>
+      scanRows([inSync("app")], { waiting: [line(1140)] }),
+    );
+
+    expect(parseDashboard(github.issue(number).body).waiting).toEqual([line(1140)]);
   });
 
   test("it knows whether the live body is of this version", async () => {

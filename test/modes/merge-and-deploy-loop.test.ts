@@ -33,7 +33,12 @@ const RESOLVE = "200";
 const SECOND_SCAN = "300";
 
 async function loop(
-  options: { moveBeforeApply?: boolean; declaresInput?: boolean; bothStacks?: boolean } = {},
+  options: {
+    moveBeforeApply?: boolean;
+    declaresInput?: boolean;
+    bothStacks?: boolean;
+    waitingOnChecks?: boolean;
+  } = {},
 ) {
   const table: Record<string, PreviewResult> = {
     "a:prod": inSync("a:prod"),
@@ -54,6 +59,15 @@ async function loop(
     title: "Update dependency b to v2",
     files: ["b/package.json"],
   });
+  if (options.waitingOnChecks) {
+    // Slice 5.17: an update whose checks have not finished (record 0081).
+    github.seedOpenPullRequest({
+      number: 1137,
+      title: "Update dependency b to v3",
+      files: ["b/values.yaml"],
+      checks: "pending",
+    });
+  }
   await scan(first.context);
   if (options.declaresInput) {
     // The workflow declares the input of the scan after a merge (record 0064).
@@ -83,6 +97,7 @@ async function loop(
     setOutput: () => {},
   };
   await resolve(resolveContext);
+  const afterResolve = dashboardBody(github);
   github.seedRun(RESOLVE, { completed: true });
   const [merged] = github.merges;
   if (!merged) throw new Error("resolve merged nothing");
@@ -145,7 +160,15 @@ async function loop(
     () => undefined,
     (error: unknown) => error,
   );
-  return { github, adapter, matrix, error: await applied, applyOutputs, previewedAfterMerge };
+  return {
+    github,
+    adapter,
+    matrix,
+    error: await applied,
+    applyOutputs,
+    previewedAfterMerge,
+    afterResolve,
+  };
 }
 
 describe("merge and deploy on the fake GitHub", () => {
@@ -163,6 +186,19 @@ describe("merge and deploy on the fake GitHub", () => {
     expect(dashboardBody(github)).toMatch(
       /## Recently deployed\n\nTimes are in UTC\.\n\n- 🟢&nbsp;a:prod · alice · /,
     );
+  });
+
+  test("every writer carries the line of an update waiting on its checks (slice 5.17)", async () => {
+    const { github, afterResolve, error } = await loop({ waitingOnChecks: true });
+
+    expect(error).toBeUndefined();
+    // resolve merged #418 and carried the line of #1137 as it stood.
+    expect(parseDashboard(afterResolve).waiting.map(({ pr }) => pr)).toEqual([1137]);
+    expect(parseDashboard(afterResolve).merges.map(({ pr }) => pr)).toEqual([419]);
+    // apply carried the line the scan after the merge drew.
+    const parsed = parseDashboard(dashboardBody(github));
+    expect(parsed.waiting.map(({ pr }) => pr)).toEqual([1137]);
+    expect(parsed.merges.map(({ pr }) => pr)).toEqual([419]);
   });
 
   test("the scan after the merge previews every stack when the workflow does not declare the input", async () => {
