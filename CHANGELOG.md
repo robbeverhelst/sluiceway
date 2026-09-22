@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/sluiceway/sluiceway/compare/v0.1.1...v0.2.0) (2026-09-22)
+
+
+### Features
+
+* a preview page per pending stack, the page a row's preview link lands on (slice 2.18) ([d9f4e11](https://github.com/sluiceway/sluiceway/commit/d9f4e112478906af7b9b40b2a65bcda056c3fb33))
+* **scan:** a failed list of check runs stops the preview pages with one log line ([e53d243](https://github.com/sluiceway/sluiceway/commit/e53d243a4f9a8896762339321b807653d9339aaf))
+
 ## [0.1.1](https://github.com/sluiceway/sluiceway/compare/v0.1.0...v0.1.1) (2026-09-21)
 
 
