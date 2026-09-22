@@ -1,0 +1,76 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`a full scan drops the failure line of every row whose stack was deployed outside the dashboard after the failure 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="0123456789abcdef0123456789abcdef01234567" scan-run="4242" scan-at="2026-09-21T06:00:00.000Z" full-scan-at="2026-09-21T06:00:00.000Z" full-scan-run="4242" -->
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/failing-1-dark.svg">
+    <img alt="Sluiceway: something failed, 1 stack is pending" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/failing-1-light.svg">
+  </picture>
+</p>
+
+<div align="center">
+
+🟡&nbsp;**1 pending** · 🟠&nbsp;1 drifted · ⚪&nbsp;0 deploying · 🔴&nbsp;1 preview failed · 🟢&nbsp;1 in sync
+
+Scanned [\`0123456\`](https://github.com/acme/infra/commit/0123456789abcdef0123456789abcdef01234567) on 2026-09-21 06:00 UTC · [run](https://github.com/acme/infra/actions/runs/4242) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
+
+</div>
+
+## Pending
+
+Tick a box to deploy that stack exactly as its row shows it.
+
+- [ ] **app:prod** · 1 update · [preview](https://github.com/acme/infra/runs/106538952701) <!-- sluiceway:row stack="app:prod" state="pending" hash="de2a01f100d259ac" -->
+  not deployed from this dashboard yet
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>aws:s3/bucket:Bucket</code> <b>motd</b> · <code>tags</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+
+## Drifted
+
+Real infrastructure changed outside the code. Deploying a stack puts it back as its code says.
+
+- [ ] **site:prod** · 1 changed outside the code · [preview](https://github.com/acme/infra/runs/106538952702) <!-- sluiceway:row stack="site:prod" state="drift" hash="870c1a68fb125e34" drift="true" -->
+  <details><summary>1 change outside the code</summary>
+  <kbd>changed</kbd> <code>aws:s3/bucket:Bucket</code> <b>assets</b> · <code>tags</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+
+## Preview failed
+
+These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.
+
+- **web:prod** · preview failed: the tool exited with an error (exit code 255) · [run](https://github.com/acme/infra/actions/runs/4242/job/106502264185) <!-- sluiceway:row stack="web:prod" state="preview-failed" -->
+  <!-- /sluiceway:row -->
+
+## In sync
+
+<details><summary>1 stack in sync</summary>
+
+- network:dev <!-- sluiceway:row stack="network:dev" state="in-sync" -->
+  <!-- /sluiceway:row -->
+
+</details>
+
+## Recently deployed
+
+Times are in UTC.
+
+- 🟢&nbsp;app:prod · deployed outside the dashboard, from [\`59ff6e7\`](https://github.com/acme/infra/commit/59ff6e77e502bf395aae44f33ec3e94bc2897d02) · 09-21 05:55 <!-- sluiceway:outside stack="app:prod" kind="deploy" at="2026-09-21T05:55:00.000Z" commit="59ff6e77e502bf395aae44f33ec3e94bc2897d02" -->
+- 🟢&nbsp;network:dev · deployed outside the dashboard, from [\`59ff6e7\`](https://github.com/acme/infra/commit/59ff6e77e502bf395aae44f33ec3e94bc2897d02) · 09-21 05:55 <!-- sluiceway:outside stack="network:dev" kind="deploy" at="2026-09-21T05:55:00.000Z" commit="59ff6e77e502bf395aae44f33ec3e94bc2897d02" -->
+- 🟢&nbsp;site:prod · deployed outside the dashboard, from [\`59ff6e7\`](https://github.com/acme/infra/commit/59ff6e77e502bf395aae44f33ec3e94bc2897d02) · 09-21 05:55 <!-- sluiceway:outside stack="site:prod" kind="deploy" at="2026-09-21T05:55:00.000Z" commit="59ff6e77e502bf395aae44f33ec3e94bc2897d02" -->
+- 🟢&nbsp;web:prod · deployed outside the dashboard, from [\`59ff6e7\`](https://github.com/acme/infra/commit/59ff6e77e502bf395aae44f33ec3e94bc2897d02) · 09-21 05:55 <!-- sluiceway:outside stack="web:prod" kind="deploy" at="2026-09-21T05:55:00.000Z" commit="59ff6e77e502bf395aae44f33ec3e94bc2897d02" -->
+- 🔴&nbsp;app:prod · failed · alice · 09-21 05:52 · [run](https://github.com/acme/infra/actions/runs/70)
+- 🔴&nbsp;network:dev · failed · alice · 09-21 05:52 · [run](https://github.com/acme/infra/actions/runs/71)
+- 🔴&nbsp;site:prod · failed · alice · 09-21 05:52 · [run](https://github.com/acme/infra/actions/runs/72)
+- 🔴&nbsp;web:prod · failed · alice · 09-21 05:52 · [run](https://github.com/acme/infra/actions/runs/73)
+
+---
+
+- [ ] Rescan all stacks <!-- sluiceway:rescan -->
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>"
+`;

@@ -31,6 +31,7 @@ import {
   lastDeployedCommit,
   REHEARSED_DESCRIPTION,
   readDeploymentPayload,
+  standingFailure,
   taskStackId,
 } from "../core/deployment.ts";
 import { diffHash } from "../core/diff-hash.ts";
@@ -39,6 +40,7 @@ import {
   deployFailureText,
   previewFailureText,
 } from "../core/failure-reason.ts";
+import type { OutsideDeploy } from "../core/outside-deploy.ts";
 import { shownValues } from "../core/show-values.ts";
 import { stackId } from "../core/stack.ts";
 import { type AttributionSource, attributionSource } from "../github/attribution.ts";
@@ -340,10 +342,12 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
     const made = attempt.row;
     let written: number | undefined;
     try {
-      written = await swapRow(context, attempt.setup, id_, (facts, attribution) => {
-        const fact = facts.byStack.get(id_);
+      written = await swapRow(context, attempt.setup, id_, (facts, attribution, outside) => {
+        // It stands while no deploy of the stack ended after it, outside the
+        // dashboard included, as the body's trail lists them (record 0076).
+        const fact = standingFailure(id_, facts.byStack.get(id_), outside);
         const failure: FailureLine | undefined =
-          fact?.kind === "failed"
+          fact !== undefined
             ? {
                 reason: fact.reason,
                 ticker: fact.ticker,
@@ -816,7 +820,12 @@ async function swapRow(
   context: ApplyContext,
   setup: Setup,
   id: string,
-  make: (facts: DeployFacts, attribution: AttributionLines | undefined) => Row,
+  make: (
+    facts: DeployFacts,
+    attribution: AttributionLines | undefined,
+    // The outside deploys the live body's trail lists (record 0073).
+    outside: readonly OutsideDeploy[],
+  ) => Row,
 ): Promise<number | undefined> {
   const { github, log } = context;
   const dashboard = await findDashboard(github, setup.config.dashboard.label);
@@ -847,7 +856,7 @@ async function swapRow(
     const attributed = await setup.attribution.attribute(
       new Map([[id, lastDeployedCommit(facts, id)]]),
     );
-    const mine = make(facts, attributed.get(id)?.lines);
+    const mine = make(facts, attributed.get(id)?.lines, live.outside);
     const shipped = await setup.attribution.ship(facts.trail);
 
     const rows: Row[] = [];

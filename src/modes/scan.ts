@@ -32,6 +32,7 @@ import {
   type PreviewFirstWhy,
   pendingAgain,
   rowAtLateRead,
+  standingFailure,
   type TrailEntry,
 } from "../core/deployment.ts";
 import { diffHash } from "../core/diff-hash.ts";
@@ -43,7 +44,12 @@ import {
   waitingUpdates,
 } from "../core/merge-and-deploy.ts";
 import { resolveOnItsWay, type TickAtLateRead, tickAtLateRead } from "../core/orphan-tick.ts";
-import { outsideDeploys, ownRuns, trailOutside } from "../core/outside-deploy.ts";
+import {
+  type OutsideDeploy,
+  outsideDeploys,
+  ownRuns,
+  trailOutside,
+} from "../core/outside-deploy.ts";
 import { runPool } from "../core/pool.ts";
 import { type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import {
@@ -472,6 +478,20 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         config.dashboard.redact,
       );
 
+      // What this scan read of the tools' histories, and for every other
+      // stack the lines the live body has (record 0073). A row's failure line
+      // stands only while none of them ended after the failure (record 0076).
+      const outside = trailOutside(
+        ids,
+        new Map(
+          [...(histories ?? [])].map(([id, history]) => [
+            id,
+            outsideDeploys(id, history, deploys.runs.get(id)),
+          ]),
+        ),
+        live?.root?.version === MARKER_VERSION ? live.outside : [],
+      );
+
       const rows: Row[] = [];
       const carried: ParsedRow[] = [];
       const first: { id: string; why: LateWhy }[] = [];
@@ -494,10 +514,16 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         const ticked = liveTicks.has(id);
         if (decided.row === "preview-first") first.push({ id, why: decided.why });
         else if (decided.row === "fresh" && mine) {
-          const fresh = previewRow(id, mine.result, links, failureLine(context, fact), {
-            toolDiffInLog: logDiff,
-            pageUrl: pageUrls.get(id),
-          });
+          const fresh = previewRow(
+            id,
+            mine.result,
+            links,
+            failureLine(context, id, fact, outside),
+            {
+              toolDiffInLog: logDiff,
+              pageUrl: pageUrls.get(id),
+            },
+          );
           const row =
             fresh.state === "pending"
               ? {
@@ -592,18 +618,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           readOnly: config.dashboard.readOnly,
           ignored,
           merges,
-          // What this scan read of the tools' histories, and for every other
-          // stack the lines the live body has (record 0073).
-          outsideDeploys: trailOutside(
-            ids,
-            new Map(
-              [...(histories ?? [])].map(([id, history]) => [
-                id,
-                outsideDeploys(id, history, deploys.runs.get(id)),
-              ]),
-            ),
-            live?.root?.version === MARKER_VERSION ? live.outside : [],
-          ),
+          outsideDeploys: outside,
         },
         // A writer that swaps rows aims at the hard limit, because the room
         // between the target and the limit exists for that writer (0028).
@@ -812,9 +827,17 @@ function runUrlOf(context: ScanContext, run: string, attempt?: string | undefine
   return runUrl(context.repoUrl, run, attempt);
 }
 
-// A deploy fact from the deployment record, never from the old row.
-function failureLine(context: ScanContext, fact: DeployFact | undefined): FailureLine | undefined {
-  if (fact?.kind !== "failed") return undefined;
+// A deploy fact from the deployment record, never from the old row. It
+// stands while no deploy of the stack ended after it, outside the dashboard
+// included (record 0076).
+function failureLine(
+  context: ScanContext,
+  id: string,
+  deployFact: DeployFact | undefined,
+  outside: readonly OutsideDeploy[],
+): FailureLine | undefined {
+  const fact = standingFailure(id, deployFact, outside);
+  if (fact === undefined) return undefined;
   return {
     reason: fact.reason,
     ticker: fact.ticker,
