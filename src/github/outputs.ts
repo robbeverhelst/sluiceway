@@ -17,7 +17,10 @@ export type OutputName =
   | "dashboard-changed"
   | "outcome"
   | "stack"
-  | "result-file";
+  | "result-file"
+  // `resolve`'s hand-off to `apply`, and the scan's after a merge (record
+  // 0054).
+  | "matrix";
 
 export interface StepOutputs {
   set(name: OutputName, value: string): void;

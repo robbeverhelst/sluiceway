@@ -758,6 +758,8 @@ async function swapRow(
         personality: setup.config.dashboard.personality,
         readOnly: setup.config.dashboard.readOnly,
         ignored: setup.ignored,
+        // Carried as they stand: only a scan lists them (record 0054).
+        merges: live.merges,
       },
       // A writer that swaps rows aims at the hard limit (record 0028).
       { ...context.limits?.body, target: Number.POSITIVE_INFINITY },

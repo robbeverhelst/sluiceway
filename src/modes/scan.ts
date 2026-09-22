@@ -16,14 +16,26 @@ import {
   type DeployFact,
   type DeployFacts,
   deployFacts,
+  deploymentPayload,
+  deploymentTask,
+  IN_SYNC_DESCRIPTION,
   lastDeployedCommit,
+  MERGED_DESCRIPTION,
   type PreviewFirstWhy,
   pendingAgain,
   rowAtLateRead,
 } from "../core/deployment.ts";
-import { previewFailureText } from "../core/failure-reason.ts";
+import { diffHash } from "../core/diff-hash.ts";
+import { deployFailureText, previewFailureText } from "../core/failure-reason.ts";
+import {
+  NOT_QUALIFIED,
+  qualify,
+  type WaitingUpdate,
+  waitingUpdates,
+} from "../core/merge-and-deploy.ts";
 import { resolveOnItsWay, type TickAtLateRead, tickAtLateRead } from "../core/orphan-tick.ts";
 import { runPool } from "../core/pool.ts";
+import { type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import {
   changedPaths,
   comparisonBase,
@@ -66,9 +78,11 @@ import {
 import {
   isDeployingState,
   MARKER_VERSION,
+  type ParsedMerge,
   type ParsedRow,
   parseDashboard,
 } from "../render/marker.ts";
+import { mergeBlock, tickedMergeBlock } from "../render/merge-row.ts";
 import { renderPreviewPage } from "../render/preview-page.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, dashboardCounts, scanResultFile } from "../render/result-file.ts";
@@ -160,9 +174,10 @@ class PreviewFirst extends Error {
 }
 
 // Why a stack is previewed at the late read: for its deployment records
-// (record 0004), or because its row holds an orphan tick and only a fresh row
-// can carry the note (record 0025).
-type LateWhy = PreviewFirstWhy | "orphan-tick";
+// (record 0004), because its row holds an orphan tick and only a fresh row
+// can carry the note (record 0025), or because a merge waits for its fresh
+// diff (record 0054).
+type LateWhy = PreviewFirstWhy | "orphan-tick" | "merged";
 
 function seconds(milliseconds: number): string {
   return `${(milliseconds / 1000).toFixed(1)} s`;
@@ -199,6 +214,8 @@ export async function scan(context: ScanContext): Promise<void> {
   context.outputs?.set("preview-failed", "0");
   context.outputs?.set("in-sync", "0");
   context.outputs?.set("dashboard-changed", "false");
+  // Only a scan after a merge hands anything to `apply` (record 0054).
+  context.outputs?.set("matrix", "[]");
   const report: ScanReport = {};
   try {
     await scanning(context, report);
@@ -273,6 +290,12 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
   const unclaimed = unclaimedFiles(plan, config);
   let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
+
+  // The updates waiting to merge (record 0054): read once, before the slow
+  // work, and drawn at the late read, where the ticks are.
+  const listing = await listUpdates(context, config, stacks);
+  // The records this scan opened for merged changes, handed to `apply`.
+  const handedOn: MatrixEntry[] = [];
 
   // Attribution (record 0026): walked once per job, shared by every stack,
   // and it never blocks.
@@ -367,6 +390,13 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         seen.add(row.stackId);
         if (row.known && row.ticked) liveTicks.set(row.stackId, row.hash);
       }
+
+      const { merges, mergeTicks } = mergeRows(
+        listing,
+        live?.root?.version === MARKER_VERSION ? live.merges : [],
+        waits,
+        config.dashboard.redact,
+      );
 
       const rows: Row[] = [];
       const carried: ParsedRow[] = [];
@@ -484,6 +514,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           personality: config.dashboard.personality,
           readOnly: config.dashboard.readOnly,
           ignored,
+          merges,
         },
         // A writer that swaps rows aims at the hard limit, because the room
         // between the target and the limit exists for that writer (0028).
@@ -508,6 +539,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         deploying,
         deferred,
         ticks,
+        mergeTicks,
         resolveWaits: waits,
         unread: deploys.facts.unread,
       };
@@ -519,7 +551,23 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       // does not fit on its own fails the scan before any request.
       if (previewed.size === ids.length) compose(undefined, NO_DEPLOYS, false, new Map());
       written = await writeDashboard(context.github, config.dashboard, async (liveBody) => {
-        const deploys = await lateDeploys(context, stacks, previewed, liveBody);
+        let deploys = await lateDeploys(context, stacks, previewed, liveBody);
+        // A merge that waits for this scan (record 0054). Its stack has to be
+        // previewed first, and then the fresh diff goes to a record of its
+        // own. Once handed on, the records are read again, so the row is made
+        // from the new one.
+        const waiting = mergesWaiting(deploys.facts);
+        const toPreview = waiting.filter(({ id }) => ids.includes(id) && !previewed.has(id));
+        if (toPreview.length > 0) {
+          throw new PreviewFirst(toPreview.map(({ id }) => ({ id, why: "merged" })));
+        }
+        if (waiting.length > 0) {
+          const ended = await handOffMerges(context, config, stacks, previewed, waiting, handedOn);
+          // Before the body, so a failed write does not lose the hand-off
+          // (record 0035).
+          context.outputs?.set("matrix", matrixOutput(handedOn));
+          if (ended) deploys = await lateDeploys(context, stacks, previewed, liveBody);
+        }
         attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
         composed = compose(
           liveBody,
@@ -587,6 +635,8 @@ interface Composed {
   // What became of every tick the scan met on a stack with no open deployment
   // (record 0025). `box` says whether the row it wrote has a box.
   ticks: { id: string; tick: Exclude<TickAtLateRead, "preview-first">; box: boolean }[];
+  // The same for the ticks on updates waiting to merge (record 0054).
+  mergeTicks: { pr: number; tick: "carry" | "sweep" }[];
   // A run that an issue edit started was queued or in progress.
   resolveWaits: boolean;
   // Deployment records with a payload this version cannot read.
@@ -599,6 +649,8 @@ const PREVIEW_FIRST: Record<LateWhy, string> = {
   "deploy-ended": "is previewed again: a deploy of it ended after its preview started.",
   "orphan-tick":
     "is previewed now: its row holds an orphan tick, and only a fresh row can ask for a fresh tick.",
+  merged:
+    "is previewed now: a pull request for it was merged, and its deploy waits for this preview.",
 };
 
 // The deploy facts of one late read (record 0003).
@@ -711,9 +763,11 @@ async function resolveWaits(
   liveBody: string,
   deploys: LateDeploys,
 ): Promise<boolean> {
-  const met = parseDashboard(liveBody).rows.some(
-    (row) => row.known && row.ticked && deploys.facts.byStack.get(row.stackId)?.kind !== "open",
-  );
+  const live = parseDashboard(liveBody);
+  const met =
+    live.rows.some(
+      (row) => row.known && row.ticked && deploys.facts.byStack.get(row.stackId)?.kind !== "open",
+    ) || live.merges.some((merge) => merge.ticked);
   if (!met) return false;
   try {
     return resolveOnItsWay(await context.github.listIssuesRuns(context.workflow), context.runId);
@@ -1112,6 +1166,13 @@ function reportDashboard(
   for (const { id, tick, box } of composed?.ticks ?? []) {
     log.info(tickText(logGroupTitle(id), tick, box, composed?.resolveWaits ?? false));
   }
+  for (const { pr, tick } of composed?.mergeTicks ?? []) {
+    log.info(
+      tick === "carry"
+        ? `Left the tick on the merge of #${pr} alone: a run that an issue edit started is queued or in progress, and its \`resolve\` job handles every tick.`
+        : `Cleared an orphan tick on the merge of #${pr}: no run that an issue edit started is queued or in progress. Tick it again to merge.`,
+    );
+  }
   const unread = composed?.unread ?? 0;
   if (unread > 0) {
     log.info(
@@ -1129,4 +1190,217 @@ function reportDashboard(
       "Dashboard not pinned",
     );
   }
+}
+
+// What the scan knows of the updates waiting to merge (record 0054): nothing
+// to list, because the setting is off or nothing could be merged or ticked
+// here; the list; or a list that could not be read, which keeps the live rows.
+type Listing = { kind: "off" } | { kind: "listed"; updates: WaitingUpdate[] } | { kind: "failed" };
+
+// One GraphQL query, and only when mergeAndDeploy names authors. A list that
+// cannot be read never fails the scan: the updates only offer a merge, and
+// `resolve` reads the pull request again before it merges one.
+async function listUpdates(
+  context: ScanContext,
+  config: Config,
+  stacks: ConfiguredStack[],
+): Promise<Listing> {
+  const { authors } = config.mergeAndDeploy;
+  if (authors.length === 0 || !config.deploys || config.dashboard.readOnly) return { kind: "off" };
+  const { log } = context;
+  let open: Awaited<ReturnType<GitHubPort["listOpenPullRequests"]>>;
+  try {
+    open = await context.github.listOpenPullRequests();
+  } catch (error) {
+    log.info(
+      `The open pull requests could not be read: ${error instanceof Error ? error.message : error}. The updates waiting to merge are kept as they were. The scan job needs the permission \`pull-requests: read\` (record 0054).`,
+    );
+    return { kind: "failed" };
+  }
+  const options = {
+    authors,
+    defaultBranch: open.defaultBranch,
+    stacks: stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
+    unrelated: config.scan.unrelated,
+  };
+  // A pull request by someone who is not on the list is an ordinary one and
+  // gets no line.
+  for (const pullRequest of open.pullRequests) {
+    const qualified = qualify(pullRequest, options);
+    if (!qualified.qualifies && qualified.why !== "author") {
+      log.info(`#${pullRequest.number} is not listed to merge: ${NOT_QUALIFIED[qualified.why]}.`);
+    }
+  }
+  const updates = waitingUpdates(open.pullRequests, options);
+  log.info(
+    updates.length === 0
+      ? "No pull request waits to merge."
+      : `${plural(updates.length, "pull request")} ${updates.length === 1 ? "waits" : "wait"} to merge: ${updates.map(({ pullRequest }) => `#${pullRequest.number}`).join(", ")}.`,
+  );
+  return { kind: "listed", updates };
+}
+
+// The merge rows of this scan. A tick on a live row carries over while a
+// `resolve` run is on its way and the row still shows the same pull request at
+// the same head commit, for the same stack. Otherwise it goes, as an orphan
+// tick does (record 0025).
+function mergeRows(
+  listing: Listing,
+  live: readonly ParsedMerge[],
+  waits: boolean,
+  redact: boolean,
+): { merges: ParsedMerge[]; mergeTicks: Composed["mergeTicks"] } {
+  if (listing.kind === "off") return { merges: [], mergeTicks: [] };
+  if (listing.kind === "failed") return { merges: [...live], mergeTicks: [] };
+  const mergeTicks: Composed["mergeTicks"] = [];
+  const merges = listing.updates.map(({ pullRequest, stackId: id }) => {
+    const block = mergeBlock(
+      {
+        pr: pullRequest.number,
+        stackId: id,
+        head: pullRequest.head,
+        title: pullRequest.title,
+        author: pullRequest.author,
+      },
+      { redact },
+    );
+    const ticked = live.find((one) => one.pr === block.pr);
+    if (!ticked?.ticked) return block;
+    const same = ticked.head === block.head && ticked.stackId === block.stackId;
+    const carry = same && waits;
+    mergeTicks.push({ pr: block.pr, tick: carry ? "carry" : "sweep" });
+    return carry ? tickedMergeBlock(block) : block;
+  });
+  return { merges, mergeTicks };
+}
+
+interface WaitingMerge {
+  id: string;
+  fact: Extract<DeployFact, { kind: "open" }> & { merge: number };
+}
+
+// The records `resolve` opened for a merge, which wait for this scan.
+function mergesWaiting(facts: DeployFacts): WaitingMerge[] {
+  const waiting: WaitingMerge[] = [];
+  for (const [id, fact] of facts.byStack) {
+    if (fact.kind === "open" && fact.merge !== undefined) {
+      waiting.push({ id, fact: { ...fact, merge: fact.merge } });
+    }
+  }
+  return waiting.sort((a, b) => byCodeUnit(a.id, b.id));
+}
+
+// The hand-off of record 0054. A scan of a commit that holds the merge ends
+// the merge record: with nothing to deploy as in sync, with a failed preview
+// or deploys turned off as failed, and otherwise as handed on, with a new
+// record that carries the fresh diff hash, the ticker and this run, which
+// `apply` then deploys as it deploys any tick. The fresh preview of `apply`
+// and its hash check guard that deploy (record 0008). The merge record is
+// ended before the new one is opened, so a hand-off is never made twice.
+// Says whether it ended a record.
+async function handOffMerges(
+  context: ScanContext,
+  config: Config,
+  stacks: ConfiguredStack[],
+  previewed: ReadonlyMap<string, Previewed>,
+  waiting: WaitingMerge[],
+  handedOn: MatrixEntry[],
+): Promise<boolean> {
+  const { github, log } = context;
+  const logUrl = runUrlOf(context, context.runId);
+  let ended = false;
+  for (const { id, fact } of waiting) {
+    const name = logGroupTitle(id);
+    const merge = await holdsMerge(context, fact.deployment);
+    if (!merge.holds) {
+      if (merge.sha !== undefined) {
+        log.info(
+          `${name} waits for the scan of #${fact.merge}: this scan checked out ${short(context.sha)}, which does not hold the merge ${short(merge.sha)} yet.`,
+        );
+      }
+      continue;
+    }
+    const stack = stacks.find(({ stack: one }) => stackId(one) === id);
+    const result = previewed.get(id)?.result;
+    const end = async (
+      state: "success" | "failure" | "inactive",
+      description: string,
+    ): Promise<void> => {
+      try {
+        await github.createDeploymentStatus(fact.deployment, { state, description, logUrl });
+      } catch (error) {
+        throw new Error(
+          `The deployment record ${fact.deployment} of ${name} could not be ended: ${error instanceof Error ? error.message : error}. The scan job needs the permission \`deployments: write\` (record 0054).`,
+        );
+      }
+      ended = true;
+    };
+    if (!stack || !result) {
+      await end("failure", deployFailureText({ kind: "unknown-stack" }));
+      log.info(
+        `${name} is not in the repo any more, so the merge of #${fact.merge} deploys nothing.`,
+      );
+    } else if (!config.deploys) {
+      await end("failure", deployFailureText({ kind: "deploys-off" }));
+      log.info(
+        `#${fact.merge} is merged, and deploys are turned off in sluiceway.yaml (deploys: false). ${name} is not deployed.`,
+      );
+    } else if (!result.ok) {
+      await end("failure", deployFailureText({ kind: "preview-failed", reason: result.reason }));
+      log.info(
+        `#${fact.merge} is merged, and the preview of ${name} failed, so nothing is deployed.`,
+      );
+    } else if (result.diff.changes.length === 0) {
+      await end("success", IN_SYNC_DESCRIPTION);
+      log.info(`#${fact.merge} is merged, and ${name} has nothing to deploy.`);
+    } else {
+      await end("inactive", MERGED_DESCRIPTION);
+      const hash = diffHash(result.diff);
+      try {
+        const record = await github.createDeployment({
+          sha: context.sha,
+          task: deploymentTask(id),
+          environment: stack.environment,
+          payload: deploymentPayload({ hash, ticker: fact.ticker, run: context.runId }),
+        });
+        handedOn.push({ stack: id, environment: stack.environment, deployment: record.id });
+        await github.createDeploymentStatus(record.id, { state: "queued", logUrl });
+        log.info(
+          `#${fact.merge} is merged: deployment record ${record.id} of ${name} is queued with diff hash ${hash}, ticked by ${fact.ticker}, and handed to apply.`,
+        );
+      } catch (error) {
+        throw new Error(
+          `#${fact.merge} is merged, and the deployment record that deploys ${name} could not be written: ${error instanceof Error ? error.message : error}. The scan job needs the permission \`deployments: write\` (record 0054). Nothing deploys: the row shows the stack as pending, and a tick deploys it.`,
+        );
+      }
+    }
+  }
+  return ended;
+}
+
+// Whether the commit this scan checked out holds the merge commit of the
+// record. A comparison that fails or is not a straight line says no, and the
+// record waits for a later scan.
+async function holdsMerge(
+  context: ScanContext,
+  deployment: number,
+): Promise<{ holds: boolean; sha?: string }> {
+  const { github, log } = context;
+  let sha: string;
+  try {
+    ({ sha } = await github.getDeployment(deployment));
+  } catch (error) {
+    log.info(
+      `Deployment record ${deployment} could not be read: ${error instanceof Error ? error.message : error}. It waits for a later scan.`,
+    );
+    return { holds: false };
+  }
+  if (sha === context.sha) return { holds: true, sha };
+  let status: string;
+  try {
+    ({ status } = await github.compareCommits(sha, context.sha));
+  } catch {
+    status = "failed";
+  }
+  return { holds: status === "ahead" || status === "identical", sha };
 }

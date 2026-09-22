@@ -41,6 +41,8 @@ describe("the outputs of a scan", () => {
       "preview-failed": "1",
       "in-sync": "1",
       "dashboard-changed": "true",
+      // Only a scan after a merge hands anything to apply (record 0054).
+      matrix: "[]",
       "result-file": `${outputs.directory}/sluiceway-scan-result.json`,
     });
     const file = scanResultSchema.parse(outputs.resultFile("scan"));
@@ -141,6 +143,7 @@ describe("the outputs of a failed scan", () => {
       "preview-failed": "0",
       "in-sync": "0",
       "dashboard-changed": "false",
+      matrix: "[]",
     });
     expect(outputs.resultFile("scan")).toBeUndefined();
   });

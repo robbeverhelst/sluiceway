@@ -1,0 +1,37 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`a whole body with updates waiting to merge under the header 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="0123456789abcdef0123456789abcdef01234567" scan-run="7" scan-at="2026-09-22T08:00:00.000Z" -->
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.4.0/assets/mascot/first-run-dark.svg">
+    <img alt="Sluiceway: no stacks yet" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.4.0/assets/mascot/first-run-light.svg">
+  </picture>
+</p>
+
+<div align="center">
+
+⚪&nbsp;**0 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · ⚪&nbsp;0 in sync
+
+Scanned [\`0123456\`](https://github.com/acme/infra/commit/0123456789abcdef0123456789abcdef01234567) on 2026-09-22 08:00 UTC · [run](https://github.com/acme/infra/actions/runs/7)
+
+</div>
+
+## Updates waiting to merge
+
+Tick a box to merge that pull request. Its stack is then previewed again and deployed as that preview shows it.
+
+- [ ] **apps/odoo:prod** · Update Helm release odoo to v17.0.4 · #418 by renovate&#91;bot&#93; <!-- sluiceway:merge pr="418" stack="apps/odoo:prod" head="0123456789abcdef0123456789abcdef01234567" -->
+- [ ] **network:prod** · Update dependency @pulumi/aws to v7.9.0 · #421 by renovate&#91;bot&#93; <!-- sluiceway:merge pr="421" stack="network:prod" head="0123456789abcdef0123456789abcdef01234567" -->
+
+## Pending
+
+The channel is dry. Add a stack to \`sluiceway.yaml\` and the next scan fills it.
+
+---
+
+- [ ] Rescan all stacks <!-- sluiceway:rescan -->
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.4.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>"
+`;

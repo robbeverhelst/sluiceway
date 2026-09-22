@@ -110,3 +110,24 @@ describe("the section in the body", () => {
     expect(renderBody({ ...base, merges: parseDashboard(body).merges })).toBe(body);
   });
 });
+
+test("a whole body with updates waiting to merge under the header", () => {
+  const body = renderBody({
+    root: { scanSha: HEAD, scanRun: "7", scanAt: "2026-09-22T08:00:00.000Z" },
+    rows: [],
+    recentlyDeployed: [],
+    repoUrl: "https://github.com/acme/infra",
+    actionRef: "v0.4.0",
+    personality: true,
+    merges: [
+      mergeBlock(UPDATE),
+      mergeBlock({
+        ...UPDATE,
+        pr: 421,
+        stackId: "network:prod",
+        title: "Update dependency @pulumi/aws to v7.9.0",
+      }),
+    ],
+  });
+  expect(body).toMatchSnapshot();
+});
