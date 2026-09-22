@@ -51,6 +51,28 @@ export async function discover(root: string): Promise<Stack[]> {
 
 class ProjectFileProblem extends Error {}
 
+// The name a project file gives its project, which a stack reference names
+// (record 0059). Undefined when the directory holds no project file, or one
+// that does not parse or names none: no reference can then name its stacks.
+export async function projectName(root: string, path: string): Promise<string | undefined> {
+  const dir = join(root, path);
+  let entries: Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+  const extension = EXTENSIONS.find((ext) => fileNames(entries).includes(PROJECT_FILE + ext));
+  if (extension === undefined) return undefined;
+  const document = parseDocument(await readFile(join(dir, PROJECT_FILE + extension), "utf8"), {
+    uniqueKeys: false,
+  });
+  if (document.errors.length > 0) return undefined;
+  const project: unknown = document.toJS();
+  if (typeof project !== "object" || project === null || !("name" in project)) return undefined;
+  return typeof project.name === "string" ? project.name : undefined;
+}
+
 // Where the project's stack files are: next to the project file, unless the
 // project file names another directory. This is the only thing discovery reads
 // from a project file. A file it can parse is taken as it stands, however

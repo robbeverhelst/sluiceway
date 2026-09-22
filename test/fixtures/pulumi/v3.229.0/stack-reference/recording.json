@@ -1,0 +1,43 @@
+{
+  "scenario": "stack-reference",
+  "description": "app/ reads an output of network:prod through a stack reference: the preview of app:prod before it was deployed, and again after, when nothing changed.",
+  "cliVersion": "v3.229.0",
+  "commands": [
+    {
+      "id": "preview",
+      "argv": [
+        "pulumi",
+        "preview",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "prod"
+      ],
+      "cwd": "app",
+      "exitCode": 0,
+      "stdout": "preview.stdout",
+      "stderr": "preview.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "preview-deployed",
+      "argv": [
+        "pulumi",
+        "preview",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "prod"
+      ],
+      "cwd": "app",
+      "exitCode": 0,
+      "stdout": "preview-deployed.stdout",
+      "stderr": "preview-deployed.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

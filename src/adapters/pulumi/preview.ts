@@ -21,7 +21,13 @@ function previewCommand(name: string): string[] {
 // no such stack. The recorded missing-stack scenario shows it on both versions.
 export const STACK_NOT_FOUND_EXIT_CODE = 6;
 
-export async function preview(stack: Stack, options: PreviewOptions): Promise<PreviewResult> {
+// The preview, and the names its stack references give (record 0059). The
+// names stay inside the adapter: its index turns them into stack ids, and
+// nothing else sees them.
+export async function previewWithReferences(
+  stack: Stack,
+  options: PreviewOptions,
+): Promise<{ result: PreviewResult; references: string[] }> {
   if (stack.name === undefined) throw new Error("A Pulumi stack always has a name.");
   const result = await options.run({
     argv: previewCommand(stack.name),
@@ -31,11 +37,10 @@ export async function preview(stack: Stack, options: PreviewOptions): Promise<Pr
     timeoutMs: options.timeoutMinutes * 60_000,
   });
 
-  const failed = (
-    reason: PreviewFailureReason,
-    toolLog: string,
-    detail: string[] = [],
-  ): PreviewResult => ({ ok: false, reason, detail, toolLog });
+  const failed = (reason: PreviewFailureReason, toolLog: string, detail: string[] = []) => ({
+    result: { ok: false, reason, detail, toolLog } as PreviewResult,
+    references: [],
+  });
 
   if (result.status === "not-started") return failed({ kind: "tool-error", exitCode: null }, "");
   if (result.status === "timed-out") {
@@ -60,7 +65,10 @@ export async function preview(stack: Stack, options: PreviewOptions): Promise<Pr
   const log = toolLog(result.stderr, parsed.diagnostics);
   const folded = foldSteps(parsed.steps);
   if (!folded.ok) return failed({ kind: folded.reason }, log, folded.detail);
-  return { ok: true, diff: { stackId: stackId(stack), changes: folded.changes }, toolLog: log };
+  return {
+    result: { ok: true, diff: { stackId: stackId(stack), changes: folded.changes }, toolLog: log },
+    references: parsed.steps.flatMap((step) => step.stackReference ?? []),
+  };
 }
 
 // The tool's stderr and its diagnostics (record 0022). Nothing of stdout but

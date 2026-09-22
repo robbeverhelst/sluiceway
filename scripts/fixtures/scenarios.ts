@@ -313,6 +313,30 @@ resources:
       version: 4.34.2
 `;
 
+// A stack reference from app/ to network:prod (record 0059), the way a program
+// reads the outputs of a stack it depends on. The example itself does not
+// change: a reference to a stack that does not exist fails every preview, so
+// the scenario adds it after network:prod is deployed. On a file backend the
+// organization is always "organization".
+const APP_PROGRAM = "app/program/Main.yaml";
+
+const APP_REFERENCE = edit(
+  "resources:\n",
+  `resources:
+  network:
+    type: pulumi:pulumi:StackReference
+    properties:
+      name: organization/network/prod
+`,
+  APP_PROGRAM,
+);
+
+const APP_READS_NETWORK = edit(
+  `        TIER: \${tier}\n`,
+  `        TIER: \${tier}\n        NETWORK: \${network.outputs["networkName"]}\n`,
+  APP_PROGRAM,
+);
+
 function nestedEdit(find: string, replace: string): Step {
   return edit(find, replace, NESTED);
 }
@@ -634,6 +658,21 @@ ${OUTPUTS}`,
     name: "drift-missing-stack",
     description: "The drift check of a stack that the backend does not hold.",
     steps: [driftCheck("network", "ghost", { exit: "nonzero" }, "drift", "text")],
+  },
+  {
+    name: "stack-reference",
+    description:
+      "app/ reads an output of network:prod through a stack reference: the preview of app:prod before it was deployed, and again after, when nothing changed.",
+    steps: [
+      init("network", "prod"),
+      up("network", "prod"),
+      APP_REFERENCE,
+      APP_READS_NETWORK,
+      init("app", "prod"),
+      preview("app", "prod", { exit: "zero", ops: ["create", "read"] }),
+      up("app", "prod"),
+      preview("app", "prod", { exit: "zero" }, "preview-deployed"),
+    ],
   },
   {
     name: "many-resources",

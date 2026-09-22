@@ -20,15 +20,38 @@ const stepFields = {
   replaceReasons: z.array(z.string()).nullish(),
 };
 
-const step = z.object({
-  ...stepFields,
-  oldState: oldState.nullish(),
-  // Property paths. What sits under each path is dropped.
-  detailedDiff: z
-    .record(z.string(), z.unknown())
-    .nullish()
-    .transform((paths) => (paths == null ? undefined : Object.keys(paths))),
-});
+// The one input the adapter reads of a new state (record 0059): the name of a
+// stack reference, the stack it reads from. It is kept only on a step of that
+// resource type, turned into a stack id of the repo by the adapter, and never
+// handed on. Every other input is dropped here, a name included.
+const STACK_REFERENCE_TYPE = "pulumi:pulumi:StackReference";
+const referenceState = z
+  .object({ inputs: z.object({ name: z.unknown() }).partial().nullish() })
+  .nullish();
+
+function stackReferenceOf(urn: string, state: z.infer<typeof referenceState>): string | undefined {
+  const name = state?.inputs?.name;
+  const type = urn.split("::")[2]?.split("$").at(-1);
+  return type === STACK_REFERENCE_TYPE && typeof name === "string" && name !== ""
+    ? name
+    : undefined;
+}
+
+const step = z
+  .object({
+    ...stepFields,
+    oldState: oldState.nullish(),
+    newState: referenceState,
+    // Property paths. What sits under each path is dropped.
+    detailedDiff: z
+      .record(z.string(), z.unknown())
+      .nullish()
+      .transform((paths) => (paths == null ? undefined : Object.keys(paths))),
+  })
+  .transform(({ newState, ...rest }) => {
+    const stackReference = stackReferenceOf(rest.urn, newState);
+    return stackReference === undefined ? rest : { ...rest, stackReference };
+  });
 
 // With `dashboard.showValues` set (record 0052), a step keeps the old and new
 // state long enough to read the values at the listed paths, and hands over
@@ -51,6 +74,10 @@ function stepWithValues(list: readonly string[]) {
       detailedDiff: z.record(z.string(), z.unknown()).nullish(),
     })
     .transform(({ oldState: old, newState, detailedDiff, ...rest }): PreviewStep => {
+      const stackReference = stackReferenceOf(
+        rest.urn,
+        referenceState.safeParse(newState).data ?? undefined,
+      );
       const paths = Object.entries(detailedDiff ?? {}).map(([path, entry]) => ({
         path,
         inputDiff:
@@ -69,6 +96,7 @@ function stepWithValues(list: readonly string[]) {
         oldState: old == null ? old : { retainOnDelete: old.retainOnDelete },
         detailedDiff: detailedDiff == null ? undefined : Object.keys(detailedDiff),
         ...(values.length === 0 ? {} : { values }),
+        ...(stackReference === undefined ? {} : { stackReference }),
       };
     });
 }
@@ -87,7 +115,11 @@ function previewDocument(showValues: readonly string[]) {
 // What a failed preview may still hold. Nothing else is read from it.
 const failedDocument = z.object({ diagnostics });
 
-export type PreviewStep = z.infer<typeof step> & { values?: ShownValue[] };
+export type PreviewStep = z.infer<typeof step> & {
+  values?: ShownValue[];
+  // The name of the stack a stack reference reads from (record 0059).
+  stackReference?: string;
+};
 
 export type ParsedPreview =
   | { ok: true; steps: PreviewStep[]; diagnostics: string[] }

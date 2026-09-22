@@ -25,6 +25,21 @@ export interface PreviewOptions extends ToolContext {
   // was hashed (record 0053). Only `apply` asks, and only an adapter whose
   // tool can save a plan keeps one. Whoever asked lets the plan go.
   savePlan?: boolean | undefined;
+  // `dependsOn: auto` (record 0059): read the stacks this stack depends on
+  // from its program's stack references, among these stacks of the repo.
+  // Only a scan asks, and only for a stack with auto. An adapter whose tool
+  // has no such references reads nothing.
+  dependencies?: readonly Stack[] | undefined;
+}
+
+// The stacks a preview read that its stack depends on (record 0059). Only
+// stack ids of the repo leave the adapter, never the name a program wrote.
+export interface ReadDependencies {
+  // In stack id order, each once, never the stack itself.
+  stackIds: string[];
+  // References that name no stack among the ones handed in, or more than one.
+  // Nothing waits on them.
+  elsewhere: number;
 }
 
 // A plan the tool saved, which only its own adapter can read. It lives inside
@@ -41,6 +56,8 @@ export type PreviewResult = (
       diff: Diff;
       // Only when the preview was asked to save its plan and the tool can.
       plan?: SavedPlan;
+      // Only when the preview was asked to read them and the tool can.
+      dependencies?: ReadDependencies;
     }
   | {
       ok: false;
