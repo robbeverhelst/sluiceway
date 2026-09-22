@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   checkApply,
+  checkHandOff,
+  checkMergeTick,
   checkNothingLeaks,
   checkQueued,
   checkRefusedTick,
@@ -11,6 +13,8 @@ import {
   checkSettle,
   type LoopRecord,
   type LoopStep,
+  mergeRows,
+  tickMerge,
   tickRow,
 } from "../../scripts/e2e/loop.ts";
 
@@ -533,5 +537,86 @@ describe("the queued stacks of a chain", () => {
         { stack: "app:prod", behind: ["network:dev"] },
       ]),
     ).toEqual(["app:prod has no deployment record."]);
+  });
+});
+
+// Slice 4.2 (record 0054): the checks of merge and deploy name what is wrong.
+describe("merge and deploy", () => {
+  const MERGE_ROW =
+    '- [ ] **app:prod** · Update · #50 by renovate&#91;bot&#93; <!-- sluiceway:merge pr="50" stack="app:prod" head="4444444444444444444444444444444444444444" -->';
+  const DEPLOYING = row("app:prod", "deploying");
+
+  function step(over: Partial<LoopStep> = {}): LoopStep {
+    return {
+      exitCode: 0,
+      log: "",
+      summary: "",
+      outputs: { matrix: "[]" },
+      body: dashboard(DEPLOYING),
+      newComments: [],
+      records: [
+        {
+          id: 3,
+          task: "sluiceway:app:prod",
+          environment: "sluiceway",
+          payload: { v: 1, ticker: "alice", run: "12", merge: 50 },
+          states: ["queued"],
+          description: "",
+        },
+      ],
+      requests: [],
+      newDispatches: 1,
+      ...over,
+    };
+  }
+  const expected = { pr: 50, stack: "app:prod", ticker: "alice", runId: "12" };
+
+  test("a merge row is ticked by its pull request", () => {
+    expect(mergeRows(tickMerge(MERGE_ROW, 50))).toEqual([
+      { pr: "50", stack: "app:prod", ticked: true },
+    ]);
+    expect(() => tickMerge(MERGE_ROW, 51)).toThrow("The dashboard lists no #51 to merge.");
+  });
+
+  test("the merge tick is good as resolve leaves it, and each thing wrong is named", () => {
+    expect(checkMergeTick(step(), expected)).toEqual([]);
+    expect(checkMergeTick(step({ newDispatches: 0 }), expected)).toEqual([
+      "The step started 0 runs, expected 1 scan.",
+    ]);
+    expect(checkMergeTick(step({ body: dashboard(DEPLOYING, MERGE_ROW) }), expected)).toEqual([
+      "The dashboard still lists #50 to merge.",
+    ]);
+    expect(checkMergeTick(step({ records: [] }), expected)).toEqual([
+      "No deployment record carries the merge of #50.",
+    ]);
+  });
+
+  test("the hand-off is good as the scan leaves it, and a missing one is named", () => {
+    const records: LoopRecord[] = [
+      {
+        ...step().records[0],
+        states: ["queued", "inactive"],
+        description: "merged, the deploy follows in a record of its own",
+      } as LoopRecord,
+      {
+        id: 4,
+        task: "sluiceway:app:prod",
+        environment: "sluiceway",
+        payload: { v: 1, hash: "05bf4ba5424cef76", ticker: "alice", run: "13" },
+        states: ["queued"],
+        description: "",
+      },
+    ];
+    const good = step({
+      records,
+      outputs: { matrix: '[{"stack":"app:prod","environment":"sluiceway","deployment":4}]' },
+    });
+    const handOff = { stack: "app:prod", merge: 3, ticker: "alice", runId: "13" };
+    expect(checkHandOff(good, handOff)).toEqual([]);
+    expect(checkHandOff(step(), handOff)).toEqual([
+      "Deployment record 3 has the statuses queued, expected queued, inactive.",
+      'Deployment record 3 has the description "", expected "merged, the deploy follows in a record of its own".',
+      "The matrix output is [], expected one entry for app:prod.",
+    ]);
   });
 });

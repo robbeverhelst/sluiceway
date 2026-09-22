@@ -412,3 +412,98 @@ export function checkQueued(
     ];
   });
 }
+
+// Merge and deploy (record 0054). The rows of the updates waiting to merge,
+// read the plain way: the pull request and the stack of each marker.
+export function mergeRows(body: string): { pr: string; stack: string; ticked: boolean }[] {
+  return body.split("\n").flatMap((line) => {
+    const marker = /<!-- sluiceway:merge pr="(\d+)" stack="([^"]*)"/.exec(line);
+    return marker
+      ? [{ pr: marker[1] ?? "", stack: marker[2] ?? "", ticked: line.startsWith("- [x] ") }]
+      : [];
+  });
+}
+
+// What a person does in GitHub's interface: check the box of one pull request.
+export function tickMerge(body: string, pr: number): string {
+  const lines = body.split("\n");
+  const index = lines.findIndex((line) => line.includes(`<!-- sluiceway:merge pr="${pr}"`));
+  const line = lines[index];
+  if (line === undefined) throw new Error(`The dashboard lists no #${pr} to merge.`);
+  if (!line.startsWith("- [ ] ")) throw new Error(`The row of #${pr} has no box to tick.`);
+  lines[index] = `- [x] ${line.slice("- [ ] ".length)}`;
+  return lines.join("\n");
+}
+
+// `resolve` after a tick on an update: the pull request is merged, one merge
+// record waits for the scan, nothing is handed to apply, a scan is started,
+// the row of the pull request is gone and the stack is deploying.
+export function checkMergeTick(
+  step: LoopStep,
+  expected: { pr: number; stack: string; ticker: string; runId: string },
+): string[] {
+  const { pr, stack, ticker, runId } = expected;
+  const problems = exitCode(step, true);
+  if (step.outputs.matrix !== "[]") {
+    problems.push(`The matrix output is ${step.outputs.matrix}, expected [].`);
+  }
+  if (step.newDispatches !== 1) {
+    problems.push(`The step started ${step.newDispatches} runs, expected 1 scan.`);
+  }
+  const record = step.records.find(({ payload }) => payloadField(payload, "merge") === pr);
+  if (!record) return [...problems, `No deployment record carries the merge of #${pr}.`];
+  if (record.task !== `sluiceway:${stack}`) {
+    problems.push(`Deployment record ${record.id} has the task ${record.task}.`);
+  }
+  if (payloadField(record.payload, "ticker") !== ticker) {
+    problems.push(`Deployment record ${record.id} does not name ${ticker} as the ticker.`);
+  }
+  if (payloadField(record.payload, "run") !== runId) {
+    problems.push(`Deployment record ${record.id} does not belong to run ${runId}.`);
+  }
+  if (mergeRows(step.body).some((row) => row.pr === String(pr))) {
+    problems.push(`The dashboard still lists #${pr} to merge.`);
+  }
+  problems.push(...statuses(record, ["queued"]), ...rowState(step.body, stack, "deploying"));
+  return problems;
+}
+
+// The scan after the merge: the merge record is handed on, and a new record
+// with the fresh diff hash, the same ticker and the scan's run is in its
+// matrix output.
+export function checkHandOff(
+  step: LoopStep,
+  expected: { stack: string; merge: number; ticker: string; runId: string },
+): string[] {
+  const { stack, merge, ticker, runId } = expected;
+  const problems = exitCode(step, true);
+  const was = step.records.find(({ id }) => id === merge);
+  if (!was) problems.push(`Deployment record ${merge} does not exist.`);
+  else {
+    problems.push(
+      ...statuses(was, ["queued", "inactive"], "merged, the deploy follows in a record of its own"),
+    );
+  }
+  const matrix = matrixEntries(step.outputs.matrix ?? "");
+  const [entry] = matrix;
+  if (matrix.length !== 1 || entry?.stack !== stack) {
+    return [
+      ...problems,
+      `The matrix output is ${step.outputs.matrix}, expected one entry for ${stack}.`,
+    ];
+  }
+  const record = step.records.find(({ id }) => id === entry.deployment);
+  if (!record) return [...problems, `Deployment record ${entry.deployment} does not exist.`];
+  const hash = payloadField(record.payload, "hash");
+  if (typeof hash !== "string" || !/^[0-9a-f]{16}$/.test(hash)) {
+    problems.push(`Deployment record ${record.id} carries no diff hash.`);
+  }
+  if (payloadField(record.payload, "ticker") !== ticker) {
+    problems.push(`Deployment record ${record.id} does not name ${ticker} as the ticker.`);
+  }
+  if (payloadField(record.payload, "run") !== runId) {
+    problems.push(`Deployment record ${record.id} does not belong to run ${runId}.`);
+  }
+  problems.push(...statuses(record, ["queued"]), ...rowState(step.body, stack, "deploying"));
+  return problems;
+}

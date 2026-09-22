@@ -35,13 +35,24 @@
 //      three, and alice ticks them in one edit. Each run deploys one layer
 //      with the real tool, settle starts the workflow again, and the resolve
 //      of that run starts the next stack.
+//  11. Merge and deploy: Renovate's pull request is listed, alice ticks it,
+//      resolve merges it on the fake, and the scan it starts hands the fresh
+//      diff of app:prod to apply, which deploys it with the real tool.
 //
 // The tool only runs in a copy inside the work directory, against a file
 // backend made there, with an environment built from nothing. `node` on PATH
 // has to be the version that action.yml names, because it stands in for the
 // runner's own.
 import { spawn } from "node:child_process";
-import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  cpSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -50,6 +61,8 @@ import { startFakeGitHubServer } from "../test/fake-github/server.ts";
 import { checkFullScan, checkNarrowedScan, type Expected, type Observed } from "./e2e/checks.ts";
 import {
   checkApply,
+  checkHandOff,
+  checkMergeTick,
   checkNothingLeaks,
   checkQueued,
   checkRefusedTick,
@@ -62,6 +75,8 @@ import {
   type LoopStep,
   type MatrixEntry,
   matrixEntries,
+  mergeRows,
+  tickMerge,
   tickRow,
 } from "./e2e/loop.ts";
 import { type ActionMetadata, readStepOutputs, stepEnvironment } from "./e2e/step.ts";
@@ -867,6 +882,129 @@ good =
       actionRef: THIRD_SHA,
       rows: { ...afterLoop.rows, "site:prod": "in-sync" },
     }),
+  ) && good;
+
+// 11. Merge and deploy (record 0054). The repo turns it on for Renovate, and
+// Renovate opens a pull request that changes shared/motd.txt, which only
+// app:prod claims. A scan lists it, alice ticks it, resolve merges it on the
+// fake and starts a scan, and that scan, on the merge commit, hands the fresh
+// diff of app:prod to apply, which deploys it with the real tool.
+console.log("::group::Turning on merge and deploy, and Renovate opens a pull request");
+appendFileSync(
+  join(workspace, "sluiceway.yaml"),
+  "\nmergeAndDeploy:\n  authors:\n    - renovate[bot]\n",
+);
+const RENOVATE_PR = 50;
+fake.seedOpenPullRequest({
+  number: RENOVATE_PR,
+  head: "4444444444444444444444444444444444444444",
+  title: "Update the message of the day",
+  author: "renovate[bot]",
+  files: ["shared/motd.txt"],
+});
+console.log("::endgroup::");
+const listing = await scanStep(THIRD_SHA, "schedule");
+const listed = mergeRows(dashboardBody(listing));
+good =
+  report("The update waiting to merge", [
+    ...(listing.exitCode === 0 ? [] : [`The scan ended with exit code ${listing.exitCode}.`]),
+    ...(listed.length === 1 &&
+    listed[0]?.pr === String(RENOVATE_PR) &&
+    listed[0]?.stack === "app:prod"
+      ? []
+      : [
+          `The dashboard lists ${JSON.stringify(listed)} to merge, expected #${RENOVATE_PR} for app:prod.`,
+        ]),
+  ]) && good;
+
+const [board] = await fake.listIssues({ label: "sluiceway", state: "open" });
+if (!board) throw new Error("There is no dashboard to tick.");
+fake.editBody(board.number, tickMerge(board.body, RENOVATE_PR), ALICE);
+runNumber++;
+const mergeRun = String(runNumber);
+fake.seedIssuesRun(WORKFLOW, { id: mergeRun, completed: false });
+const merging = await loopStep("resolve", {
+  runId: mergeRun,
+  sha: THIRD_SHA,
+  event: "issues",
+  payload: fake.deliverEvent(),
+  title: `Run ${mergeRun}: resolve, after alice ticked the merge of #${RENOVATE_PR}`,
+});
+fake.seedIssuesRun(WORKFLOW, { id: mergeRun, completed: true });
+const [merged] = fake.merges;
+good =
+  reportStep("The merge tick: resolve", merging, [
+    ...checkMergeTick(merging, {
+      pr: RENOVATE_PR,
+      stack: "app:prod",
+      ticker: ALICE.login,
+      runId: mergeRun,
+    }),
+    ...(merged?.number === RENOVATE_PR && merged.method === "squash"
+      ? []
+      : [
+          `The fake holds the merges ${JSON.stringify(fake.merges)}, expected a squash of #${RENOVATE_PR}.`,
+        ]),
+  ]) && good;
+if (!merged) throw new Error(`#${RENOVATE_PR} was not merged.`);
+const mergeRecord = merging.records.find(
+  ({ payload }) => (payload as { merge?: unknown }).merge === RENOVATE_PR,
+);
+
+// The runner checks out the merge commit for the scan that resolve started.
+writeFileSync(join(workspace, "shared/motd.txt"), "Merged from the dashboard.\n");
+const appDeploys = await deploysOf("app", "prod");
+runNumber++;
+const handOffRun = String(runNumber);
+// GitHub knows the run of the scan while it runs.
+fake.seedRun(handOffRun, { completed: false });
+const handingOn = await loopStep("scan", {
+  runId: handOffRun,
+  sha: merged.sha,
+  event: "workflow_dispatch",
+  title: `Scan ${handOffRun}, started by resolve after the merge`,
+});
+good =
+  reportStep(
+    "The merge tick: the scan after the merge",
+    handingOn,
+    checkHandOff(handingOn, {
+      stack: "app:prod",
+      merge: mergeRecord?.id ?? 0,
+      ticker: ALICE.login,
+      runId: handOffRun,
+    }),
+  ) && good;
+const [handedEntry] = matrixEntries(handingOn.outputs.matrix ?? "");
+if (!handedEntry) throw new Error("The scan after the merge handed nothing to apply.");
+const mergedApply = await loopStep("apply", {
+  inputs: { "deployment-id": String(handedEntry.deployment) },
+  runId: handOffRun,
+  sha: merged.sha,
+  event: "workflow_dispatch",
+  title: `Run ${handOffRun}: apply of deployment record ${handedEntry.deployment}`,
+});
+good =
+  reportStep("The merge tick: apply", mergedApply, [
+    ...checkApply(mergedApply, {
+      stack: "app:prod",
+      deployment: handedEntry.deployment,
+      outcome: "deployed",
+    }),
+    ...checkDeploys("app:prod", await deploysOf("app", "prod"), appDeploys + 1),
+  ]) && good;
+const mergedSettle = await loopStep("settle", {
+  runId: handOffRun,
+  sha: merged.sha,
+  event: "workflow_dispatch",
+  title: `Run ${handOffRun}: settle`,
+});
+fake.seedRun(handOffRun, { completed: true });
+good =
+  reportStep(
+    "The merge tick: settle",
+    mergedSettle,
+    checkSettle(mergedSettle, { ended: undefined, before: mergedApply.records }),
   ) && good;
 
 console.log("::group::The dashboard after the narrowed scan");

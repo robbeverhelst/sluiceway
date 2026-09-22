@@ -3,6 +3,8 @@
 > Amended by 0025: the ticker is no longer the `sender` of an event. It is the editor of the edit that made the tick, read from the issue's edit history. Where this record says sender, read that editor. What is checked does not change.
 >
 > Amended by 0051: `apply` also writes one comment that mentions the ticker, when a change moved since the tick.
+>
+> Amended by 0054: a tick on an update waiting to merge is judged by the tick rule of the stack its pull request belongs to. A refused or failed merge shares the one comment.
 
 Record 0005 fixed who is checked: the ticker, the `sender` of the tick's own event. This record fixes what is checked. Every tick passes the same two-part test, at the moment `resolve` handles it, against GitHub's live answer: the ticker is a person with write access to the repo, and the ticker meets the stack's tick rule.
 

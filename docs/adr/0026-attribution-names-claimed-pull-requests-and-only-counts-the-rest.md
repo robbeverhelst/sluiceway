@@ -1,6 +1,8 @@
 # Attribution names the pull requests a stack claims and only counts the rest
 
 > Amended by 0037: the summary has a budget after all. When it is over, its list of pull requests is cut before any change line.
+>
+> Amended by 0054: the title of a pull request reaches the issue on the row of an update waiting to merge, escaped and cut at 80 characters, and not with redact on.
 
 A pending row says which merges made it pending. The brief put `from #123 by @robbe` on the checkbox line. Records 0003, 0010 and 0016 already fixed the frame: the range runs from the commit on the stack's last successful deployment record, "touching a stack" is the claim rule, and a list that is too long after an outside deploy is accepted. This record decides the rest. Attribution explains a pending row. It never decides that a row is pending, it is not part of the diff hash (0008), and nothing about a deploy is ever decided from it.
 

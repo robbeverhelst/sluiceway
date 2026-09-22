@@ -5,6 +5,7 @@ import { type FakeGitHub, FakeGitHubError } from "./fake-github.ts";
 import { checkRoutes } from "./server-checks.ts";
 import { commitRoutes, isWalkQuery, walkQuery } from "./server-commits.ts";
 import { deploymentRoutes, deploymentsQuery, isDeploymentsQuery } from "./server-deployments.ts";
+import { isOpenPullRequestsQuery, openPullRequestsQuery, pullRoutes } from "./server-pulls.ts";
 import { runRoutes } from "./server-runs.ts";
 
 // A small HTTP server around the fake, for the e2e workflow (build plan,
@@ -159,6 +160,7 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
     ...runRoutes(fake, REPO),
     ...commitRoutes(fake, REPO),
     ...checkRoutes(fake, REPO, baseUrl),
+    ...pullRoutes(fake, REPO),
     [
       "GET",
       new RegExp(`^${REPO}/collaborators/([^/]+)/permission$`),
@@ -181,6 +183,7 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
       async ({ body }) => {
         if (isDeploymentsQuery(text(body.query))) return deploymentsQuery(fake, body.variables);
         if (isWalkQuery(text(body.query))) return walkQuery(fake, body.variables);
+        if (isOpenPullRequestsQuery(text(body.query))) return openPullRequestsQuery(fake);
         // The GraphQL calls of the port. GraphQL answers 200 and puts what
         // went wrong in the answer.
         const variables = body.variables as { issueId?: unknown } | undefined;

@@ -171,7 +171,7 @@ One action, five modes, chosen with the `mode` input.
 
 | Output | Set by | What it is |
 |---|---|---|
-| `matrix` | `resolve` | A JSON list with one `{ stack, environment, deployment }` entry per deploy that was started, or `[]`. |
+| `matrix` | `resolve`, `scan` | A JSON list with one `{ stack, environment, deployment }` entry per deploy that was started, or `[]`. A scan starts one only after a merge from the dashboard ([Merge and deploy](#merge-and-deploy)). |
 
 `scan` and `apply` also set outputs and write a result file, so a step after Sluiceway can tell people or chart numbers. Sluiceway itself sends nothing. [docs/notifications.md](docs/notifications.md) lists them, with recipes that stay quiet unless something is pending or failed.
 
@@ -360,6 +360,48 @@ GitHub lists an environment for every name a deployment record uses, so your rep
 Without `deployment: false` GitHub records every deploy a second time. Custom deployment protection rules do not work with `deployment: false`. If you use them, leave it out and accept the second record. Sluiceway ignores it.
 
 [docs/security.md](docs/security.md) has the three setups, from what every repo has to required reviewers, and what each one protects against.
+
+#### Merge and deploy
+
+With `mergeAndDeploy.authors` in `sluiceway.yaml`, routine pull requests by those authors, such as Renovate's, get a row of their own under "Updates waiting to merge", and one tick merges the pull request and deploys its stack ([configuration](docs/configuration.md#mergeanddeployauthors)). It is off by default, and it needs three changes to the workflow above.
+
+The merge. `resolve` merges with the workflow token, which needs `contents: write`. Give the `resolve` job its own block. A job's own `permissions:` replace the workflow's, so it repeats the rest:
+
+```yaml
+  resolve:
+    permissions:
+      contents: write
+      issues: write
+      deployments: write
+      actions: write
+      pull-requests: read
+      checks: write
+```
+
+The deploy. A merge made with the workflow token starts no run of its push, so `resolve` starts a full scan instead, and that scan hands the merged change to `apply` through its own `matrix` output. Give the scan step an `id`, and let `apply` and `settle` take the matrix of whichever job ran:
+
+```yaml
+  scan:
+    outputs:
+      matrix: ${{ steps.scan.outputs.matrix }}
+    # ... the steps as above, with `id: scan` on the Sluiceway step
+
+  apply:
+    needs: [scan, resolve]
+    if: ${{ !cancelled() && (needs.resolve.outputs.matrix || needs.scan.outputs.matrix || '[]') != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.resolve.outputs.matrix || needs.scan.outputs.matrix) }}
+
+  settle:
+    needs: [scan, resolve, apply]
+    if: always() && (needs.resolve.outputs.matrix || needs.scan.outputs.matrix || '[]') != '[]'
+```
+
+The pull requests. The scan reads them with `pull-requests: read`, which the block above already gives.
+
+A merge never skips a check: branch protection and required reviews apply to the merge as to any other, and the deploy after it goes through the fresh preview and the hash check like every tick. When the change moved between the scan after the merge and the deploy, nothing is deployed, the row shows the fresh diff and the ticker gets a comment.
 
 ### 3. Tell it about your stacks
 

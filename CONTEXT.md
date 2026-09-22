@@ -160,6 +160,14 @@ _Avoid_: Refresh button, rescan tick, scan trigger
 A person who approves a waiting deploy in GitHub's own interface, where the repo's plan offers that. A second gate after the tick, owned by GitHub. Sluiceway only waits for it.
 _Avoid_: Approver, second ticker
 
+**Update waiting to merge**:
+An open pull request by an author `mergeAndDeploy.authors` lists, green, and claimed by exactly one stack, that the dashboard offers to merge. Its row shows the stack, the title and the pull request, and a tick on it merges the pull request and deploys the stack as the scan after the merge previews it. It is not a row of a stack and has no diff.
+_Avoid_: Renovate row, merge request, pending update, bump row
+
+**Merge record**:
+The deployment record `resolve` opens for a merge it made: on the merge commit, with the ticker and the pull request and no diff hash. It waits for a scan that holds the merge, which ends it and opens the record that deploys the fresh diff.
+_Avoid_: Pending merge, merge deployment, pre-deploy
+
 ### Deploys
 
 **Deploy facts**:

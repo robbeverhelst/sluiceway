@@ -54,8 +54,9 @@ inputs:
 outputs:
   matrix:
     description: >-
-      Set by resolve only. A JSON list with one { stack, environment, deployment } entry per
-      deploy it started, or []. Hand it to the matrix of the apply job.
+      Set by resolve and scan. A JSON list with one { stack, environment, deployment } entry per
+      deploy it started, or []. Hand it to the matrix of the apply job. A scan starts a deploy
+      only for a pull request merged from the dashboard (mergeAndDeploy).
   dashboard-url:
     description: >-
       Set by scan, apply and settle. The web address of the dashboard issue. Empty when the step

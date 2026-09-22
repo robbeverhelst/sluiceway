@@ -102,7 +102,15 @@ describe("the README", () => {
       .filter((fence) => {
         const parsed = Bun.YAML.parse(fence.text) as Record<string, unknown>;
         if (Array.isArray(parsed)) return false;
-        return !["jobs", "on", "environment"].some((key) => key in parsed);
+        // Jobs of a workflow, such as the ones merge and deploy changes, are
+        // a part of one too.
+        const job = Object.values(parsed).some(
+          (value) =>
+            typeof value === "object" &&
+            value !== null &&
+            ["permissions", "needs", "outputs"].some((key) => key in value),
+        );
+        return !job && !["jobs", "on", "environment"].some((key) => key in parsed);
       });
     expect(configs.length).toBe(2);
     for (const config of configs) expect(() => parseConfig(config.text)).not.toThrow();

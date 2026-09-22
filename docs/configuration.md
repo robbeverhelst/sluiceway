@@ -406,6 +406,31 @@ Default: `[]`
 
 Only with `tool: opentofu`. Var files, relative to the directory of the stack, handed to every plan with `-var-file` in this order. `terraform.tfvars` and `*.auto.tfvars` are read by the tool without being listed. A var file outside the directory of the stack is not claimed by it: add it to `inputs` too, or a change to it gives a full scan.
 
+### `mergeAndDeploy.authors`
+
+Default: `[]`
+
+Logins whose open pull requests may be merged and deployed with one tick, such as `renovate[bot]` or `dependabot[bot]`. Empty turns merge and deploy off. An app is written with `[bot]`: `renovate` without it is a person's account, and is never read as the app.
+
+A pull request by an author on the list is listed under "Updates waiting to merge", above Pending, when all of this holds:
+
+- It is not a draft and merges into the default branch.
+- The combined checks of its head commit are green. A pull request with no checks at all is not listed.
+- It does not conflict with its base.
+- One stack, and only one, claims every file it changes, by the same rule a push uses (`inputs` included). Files `scan.unrelated` matches are left out. A pull request that two stacks claim is never listed, and neither is one that changes a file no stack claims, or more than 100 files, or renames a file.
+
+At most 10 are listed, oldest first. The row shows the stack, the title of the pull request (left out when `dashboard.redact` is on) and its number and author. Nothing is previewed before the merge.
+
+A tick merges the pull request at the commit the row showed, with the merge method Renovate would use: `automergeStrategy` from `renovate.json`, `.github/renovate.json`, `.gitlab/renovate.json`, `.renovaterc` or `.renovaterc.json` when the repo allows it, else squash, rebase or a merge commit, the first one the repo allows. Branch protection and required reviews stay in force: when GitHub refuses the merge, the ticker gets a comment with GitHub's words. The merge starts a full scan, which previews the stack on the merged code and hands exactly that diff to `apply`, which previews again and deploys only if nothing moved. The tick rule of the stack is the tick rule of its pull requests.
+
+Nothing is listed on a read-only dashboard or while `deploys` is `false`. The workflow needs more than the default: [Merge and deploy](../README.md#merge-and-deploy) in the README has what to add.
+
+```yaml
+mergeAndDeploy:
+  authors:
+    - renovate[bot]
+```
+
 ## What the file does not hold
 
 - **No credentials and no environment variables.** Your workflow puts them into the job environment before Sluiceway runs ([credentials](credentials.md)).

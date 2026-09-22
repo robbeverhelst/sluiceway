@@ -56,7 +56,8 @@ describe("action.yml", () => {
   // section 3).
   test("declares the outputs of the build plan, each naming the modes that set it", () => {
     const modes: Record<string, string[]> = {
-      matrix: ["resolve"],
+      // The scan's after a merge from the dashboard (record 0054).
+      matrix: ["scan", "resolve"],
       "dashboard-url": ["scan", "apply", "settle"],
       pending: ["scan"],
       "preview-failed": ["scan"],

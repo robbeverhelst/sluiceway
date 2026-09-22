@@ -1,6 +1,8 @@
 # The edit history names the ticker, and the event is only a wake-up
 
 > Supersedes 0005.
+>
+> Amended by 0054: a scan opens a deployment record in one case: it hands a merged change on. It still never deploys and never clears a tick for it.
 
 Record 0005 took a tick from the event whose own diff contains it (unticked in `changes.body.from`, ticked in `issue.body`) and took the ticker from that event's `sender`. A lab test showed that the payload cannot carry that weight. `issue.body` and `issue.updated_at` in an `issues.edited` payload are the newest state at delivery time, not the state right after that edit. Three ticks one second apart gave three events that all carried the final body with all three rows ticked, and the runs did not even queue in edit order. So the first event's diff contains every later tick, and a later ticker's tick is authorized and recorded under the first ticker's name. This can be scripted: a person with plain write access waits for an admin's tick and ticks an `admin` stack within the same second.
 

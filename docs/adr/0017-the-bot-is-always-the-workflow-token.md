@@ -3,6 +3,8 @@
 > Amended by 0025: `resolve` no longer uses `queue: max`. The first reason below still holds in a weaker form: with another token every re-render would start a `resolve` run that finds nothing to do.
 >
 > Amended by 0050: the scan job also needs `checks: write`, for one preview page per pending stack. It adds one list request per 100 check runs on the commit and one write per pending stack, once per scan, so the worst case below becomes 405 requests on the first try and 807 with three.
+>
+> Amended by 0054: with merge and deploy on, the bot also merges pull requests, and the `resolve` job then needs `contents: write`. The merge's push starts no run, so `resolve` dispatches a scan.
 
 Sluiceway acts on GitHub as one identity, the bot: `github-actions[bot]`, through the `GITHUB_TOKEN` of the workflow run. Every write goes through it: the dashboard, comments, deployment records, the rescan dispatch. There is no supported way to hand Sluiceway a GitHub App token or a personal access token for these writes in v1.
 
