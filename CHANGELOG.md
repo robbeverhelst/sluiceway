@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.0](https://github.com/sluiceway/sluiceway/compare/v0.15.0...v0.16.0) (2026-09-22)
+
+
+### Features
+
+* a pull request that two stacks claim qualifies, more than 30 updates, presets outside the repo (slice 5.4) ([ce0126e](https://github.com/sluiceway/sluiceway/commit/ce0126e49af02354c67d41796fa1639dd18d8995))
+* mergeAndDeploy.preview shows what the merge of an update would change on its row (slice 5.4) ([5abfd29](https://github.com/sluiceway/sluiceway/commit/5abfd2989bdcdd14a0f93ad0ae1b6700b843919c))
+* the whole loop on the fake for an update that two stacks claim (slice 5.4) ([f77db49](https://github.com/sluiceway/sluiceway/commit/f77db49d2351caa77f110a1146be8a9f4e17618a))
+
 ## [0.15.0](https://github.com/sluiceway/sluiceway/compare/v0.14.0...v0.15.0) (2026-09-22)
 
 
