@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.20.0](https://github.com/sluiceway/sluiceway/compare/v0.19.0...v0.20.0) (2026-09-22)
+
+
+### Features
+
+* a paged walk for the lookback and the files of a renaming pull request over REST (slice 5.5) ([e8989ba](https://github.com/sluiceway/sluiceway/commit/e8989ba542c2bf29cccb28e27f875fd9508079d2))
+* attribution settings, the outside fold on a row and what a deploy shipped on the trail (slice 5.5) ([c72296b](https://github.com/sluiceway/sluiceway/commit/c72296bc00058712c0fefe8992abf74ff7c6601e))
+* Helm part 2, drift, createNamespace, the deploy flag per helm version and nested charts ([807be66](https://github.com/sluiceway/sluiceway/commit/807be66223546a26d46675e00d443f97279e4a5a))
+* record the Helm drift, deploy flag, namespace and nested chart scenarios ([3a89ae9](https://github.com/sluiceway/sluiceway/commit/3a89ae952c24db9a92e7de35ac9c5b4dabb4d838))
+* scan, resolve and apply write what each deploy on the trail shipped (slice 5.5) ([49e246e](https://github.com/sluiceway/sluiceway/commit/49e246e501884484a00b45feb9ac1574280b3097))
+* the Helm fixtures as CI recorded them (run 35738572765) ([65d52dd](https://github.com/sluiceway/sluiceway/commit/65d52ddb5397dedfb138afd8c7f3c70554fb58c9))
+* the Helm fixtures of the new scenarios, on helm v3.18.0 and v4.3.0 ([d3534ff](https://github.com/sluiceway/sluiceway/commit/d3534ff505beebddbfc374fe758c770245d160b3))
+
 ## [0.19.0](https://github.com/sluiceway/sluiceway/compare/v0.18.0...v0.19.0) (2026-09-22)
 
 
