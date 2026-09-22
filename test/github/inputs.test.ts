@@ -96,7 +96,25 @@ describe("the inputs of apply", () => {
       previewTimeoutMinutes: 10,
       token: "t",
       dryRun: false,
+      deployTimeoutMinutes: undefined,
     });
+  });
+
+  // Slice 5.9: a time limit on the deploy, none unless it is set.
+  test("deploy-timeout is a number of whole minutes, or nothing", () => {
+    expect(read({ ...APPLY, "deploy-timeout": "45" }).deployTimeoutMinutes).toBe(45);
+    expect(read({ ...APPLY, "deploy-timeout": "" }).deployTimeoutMinutes).toBeUndefined();
+    expect(() => read({ ...APPLY, "deploy-timeout": "0" })).toThrow(
+      'The "deploy-timeout" input must be a whole number of 1 or more, and it is "0". It is a number of whole minutes.',
+    );
+  });
+
+  test("any other mode refuses deploy-timeout", () => {
+    expect(() =>
+      refuseDeploymentId("scan", (name) => (name === "deploy-timeout" ? "30" : "")),
+    ).toThrow(
+      'The "deploy-timeout" input is only for apply mode, and this step runs scan mode. Take it out of this step.',
+    );
   });
 
   // Record 0051: a rehearsal. Only the two words GitHub's own boolean

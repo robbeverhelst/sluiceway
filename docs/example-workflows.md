@@ -16,7 +16,7 @@ Copy the file to `.github/workflows/deploy-dashboard.yml` on your default branch
 - **The branch.** The examples scan after a push to `main`. Use your default branch.
 - **The secret and variable names.** `PULUMI_READ_TOKEN`, `OP_PREVIEW_TOKEN`, `AWS_PREVIEW_ROLE` and the others are names the examples made up. Create them under the repo's settings, or rename them in the file.
 - **The environments.** The `apply` job of every example names the stack's environment, so that the credentials that change things can be secrets of a GitHub Environment ([security](security.md)). The environment of a stack is `sluiceway` unless [`sluiceway.yaml`](configuration.md#stacksenvironment) gives it another. Where your plan has no environments, remove the `environment:` block and keep those credentials as repository secrets.
-- **`timeout-minutes` on `apply`.** A deploy has no time limit of Sluiceway's. Set one that fits your slowest stack.
+- **`timeout-minutes` on `apply`.** A deploy has no time limit of Sluiceway's unless the `deploy-timeout` input gives it one. Set one that fits your slowest stack.
 - **The runner.** Change `runs-on` of `scan` and `apply` for self-hosted runners. They need runner version 2.328.0 or newer. `resolve` and `settle` hold no credentials and can stay on hosted runners.
 
 ## The monorepo

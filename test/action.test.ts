@@ -83,6 +83,7 @@ describe("action.yml", () => {
     expect(Object.keys(action.inputs).sort()).toEqual([
       "backend",
       "concurrency",
+      "deploy-timeout",
       "deployment-id",
       "dry-run",
       "github-token",

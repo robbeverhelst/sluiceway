@@ -58,6 +58,13 @@ inputs:
       the ones it does not. It runs the tool for that one question and nothing else.
     required: false
     default: "false"
+  deploy-timeout:
+    description: >-
+      apply only. A time limit on the deploy itself, in whole minutes. When it runs out the tool is
+      interrupted, gets two minutes to stop by itself, and the deploy fails with a reason that says
+      so. The stack may then be half deployed. Empty by default: no limit of Sluiceway's, and the
+      job's own timeout-minutes is the limit.
+    required: false
   job-id:
     description: >-
       Leave it at the default. The id of the running job, which GitHub gives no step in any other

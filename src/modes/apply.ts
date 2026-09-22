@@ -86,6 +86,9 @@ export interface ApplyContext {
   // The `preview-timeout` input, in whole minutes. A stack's `previewTimeout`
   // wins (record 0035).
   previewTimeoutMinutes: number;
+  // The `deploy-timeout` input, in whole minutes: a time limit on the deploy
+  // itself. None when absent (slice 5.9).
+  deployTimeoutMinutes?: number | undefined;
   // The clock of the timings in the result file (record 0061).
   now: () => Date;
   // `https://github.com/<owner>/<repo>`.
@@ -657,17 +660,28 @@ async function afterFreshPreview(
   // puts the drift back as the code says (record 0055).
   const repairDrift = (fresh.diff.drift ?? []).length > 0;
   const deployStarted = context.now();
-  let result: Awaited<ReturnType<Adapter["apply"]>>;
+  const limit = deployLimit(tool.run, context.deployTimeoutMinutes);
+  let deployed: Awaited<ReturnType<Adapter["apply"]>>;
   try {
-    result = await adapter.apply(
+    deployed = await adapter.apply(
       setup.stack.stack,
-      tool,
+      { ...tool, run: limit.run },
       previewed.ok ? previewed.plan : undefined,
       repairDrift ? { repairDrift } : undefined,
     );
   } finally {
     progress.milliseconds = context.now().getTime() - deployStarted.getTime();
   }
+  // Every adapter reads a run that ran out of time as a tool error without an
+  // exit code. The mode knows it was the limit, and says so.
+  const result: DeployResult =
+    !deployed.ok && deployed.reason.kind === "tool-error" && limit.ranOut()
+      ? {
+          ok: false,
+          reason: { kind: "timed-out", minutes: context.deployTimeoutMinutes ?? 0 },
+          toolLog: deployed.toolLog,
+        }
+      : deployed;
   const words = lines(result.toolLog);
   context.log.group(`${name}: the deploy`, [
     result.ok ? "deployed" : `deploy failed: ${deployFailureText(result.reason)}`,
@@ -896,4 +910,38 @@ async function swapRow(
       : `The dashboard (#${dashboard.number}) already says this. Nothing was written.`,
   );
   return dashboard.number;
+}
+
+// What a deploy ended with, the reason of a deploy that ran out of time
+// included (slice 5.9).
+type DeployResult =
+  | Awaited<ReturnType<Adapter["apply"]>>
+  | { ok: false; reason: { kind: "timed-out"; minutes: number }; toolLog: string };
+
+// How long the tool gets to stop by itself when the deploy ran out of time.
+// Longer than a preview's: a tool that is interrupted finishes what it is
+// doing to a resource and lets go of the state's lock (slice 5.9).
+const DEPLOY_GRACE_MS = 120_000;
+
+// The runner of the deploy. With the `deploy-timeout` input every run of the
+// tool in the deploy gets that limit, and remembers when one ran out. Without
+// it the deploy has no time limit of Sluiceway's, as before.
+function deployLimit(
+  run: ProcessRunner,
+  minutes: number | undefined,
+): { run: ProcessRunner; ranOut: () => boolean } {
+  if (minutes === undefined) return { run, ranOut: () => false };
+  let ranOut = false;
+  return {
+    run: async (one) => {
+      const result = await run({
+        ...one,
+        timeoutMs: one.timeoutMs ?? minutes * 60_000,
+        graceMs: one.graceMs ?? DEPLOY_GRACE_MS,
+      });
+      if (result.status === "timed-out") ranOut = true;
+      return result;
+    },
+    ranOut: () => ranOut,
+  };
 }

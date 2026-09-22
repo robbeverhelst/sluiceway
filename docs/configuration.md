@@ -464,7 +464,7 @@ stacks:
 
 Default: the `preview-timeout` input, `10` minutes.
 
-The time limit for one preview of this stack, in whole minutes. A preview that runs longer is stopped and the stack gets a preview failure row. `apply` uses it for the fresh preview before a deploy. The deploy itself has no time limit of Sluiceway's: set `timeout-minutes` on the `apply` job.
+The time limit for one preview of this stack, in whole minutes. A preview that runs longer is stopped and the stack gets a preview failure row. `apply` uses it for the fresh preview before a deploy. The deploy itself has no time limit of Sluiceway's unless the `deploy-timeout` input gives it one: set `timeout-minutes` on the `apply` job.
 
 ```yaml
 # Not valid: minutes are whole numbers

@@ -259,8 +259,9 @@ export interface Adapter {
   // Deploys the stack as the code is now. `apply` calls it only right after a
   // fresh preview gave the diff hash the tick approved (record 0008), and the
   // command line differs from the preview's only in what makes it a deploy
-  // (record 0015). It has no time limit of its own: a deploy stopped half way
-  // leaves a stack half deployed. It always resolves. With a plan that the
+  // (record 0015). It sets no time limit of its own: a deploy stopped half way
+  // can leave a stack half deployed. `apply` hands it a runner with the
+  // `deploy-timeout` input's limit when a workflow sets one (slice 5.9). It always resolves. With a plan that the
   // fresh preview saved, the tool deploys that plan and nothing else (record
   // 0053). An adapter whose tool saves no plan never gets one. With
   // `repairDrift` it also puts back the drift that the approved hash covered

@@ -53,7 +53,9 @@ describe("the reference's table of inputs", () => {
     const wrong = Object.entries(action.inputs).filter(([name, input]) => {
       const cell = byName.get(name)?.[1] ?? "";
       if (input.required) return cell !== "required";
-      if (input.default === undefined) return !cell.startsWith("required in ");
+      // Without a default: required in one mode, or none at all, as for
+      // deploy-timeout (slice 5.9).
+      if (input.default === undefined) return !cell.startsWith("required in ") && cell !== "none";
       // An expression such as `${{ github.token }}` is written out in words.
       if (input.default.startsWith("${{")) return codeIn(cell).length > 0;
       return codeIn(cell)[0] !== input.default;

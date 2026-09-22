@@ -9,9 +9,13 @@ export interface Run {
   cwd: string;
   // The whole environment of the child. Nothing is added to it.
   env: Record<string, string>;
-  // No time limit when absent. Only a deploy runs without one: stopping it
-  // half way would leave a stack half deployed.
+  // No time limit when absent. Only a deploy runs without one, unless the
+  // `deploy-timeout` input gives it one (slice 5.9): stopping it half way can
+  // leave a stack half deployed.
   timeoutMs?: number | undefined;
+  // How long the command gets to stop by itself after the interrupt, when not
+  // the runner's own grace period. A deploy gets longer (slice 5.9).
+  graceMs?: number | undefined;
   // Each line the tool writes to stderr, as it comes, for the job log while
   // the tool runs (slice 5.9). Never stdout, which holds values (record 0021).
   onStderrLine?: ((line: string) => void) | undefined;
@@ -121,7 +125,7 @@ export function runProcess(
                 stdout.destroy();
                 stderr.destroy();
               }, PIPES_MS);
-            }, graceMs);
+            }, run.graceMs ?? graceMs);
           }, run.timeoutMs);
 
     // An error after the start is a signal that could not be sent. The close

@@ -70,6 +70,9 @@ export type DeployFailureReason =
   // The deploy itself failed. exitCode is null when the tool could not be
   // started or a signal ended it.
   | { kind: "tool-error"; exitCode: number | null }
+  // The deploy ran out of the `deploy-timeout` input and the tool was
+  // stopped (slice 5.9). The stack may be half deployed.
+  | { kind: "timed-out"; minutes: number }
   // The fresh preview gave no diff, so there was nothing to compare.
   | { kind: "preview-failed"; reason: PreviewFailureReason }
   // The version check failed (record 0001).
@@ -96,6 +99,8 @@ export function deployFailureText(reason: DeployFailureReason): string {
       return reason.exitCode === null
         ? "the tool exited with an error"
         : `the tool exited with an error (exit code ${reason.exitCode})`;
+    case "timed-out":
+      return `the deploy ran out of its time limit of ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"} and the tool was stopped`;
     case "preview-failed":
       return `the preview before the deploy failed: ${previewFailureText(reason.reason)}`;
     case "tool-missing":

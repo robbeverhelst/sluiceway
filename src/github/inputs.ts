@@ -76,6 +76,8 @@ export interface ApplyInputs {
   // The time limit of the fresh preview, in whole minutes.
   previewTimeoutMinutes: number;
   token: string;
+  // A time limit on the deploy itself, in whole minutes, or none (slice 5.9).
+  deployTimeoutMinutes: number | undefined;
 }
 
 export function readApplyInputs(getInput: GetInput): ApplyInputs {
@@ -100,6 +102,10 @@ export function readApplyInputs(getInput: GetInput): ApplyInputs {
     previewTimeoutMinutes,
     token: readToken(getInput),
     dryRun: readBoolean(getInput, "dry-run"),
+    deployTimeoutMinutes:
+      getInput("deploy-timeout").trim() === ""
+        ? undefined
+        : wholeNumber(getInput, "deploy-timeout", " It is a number of whole minutes."),
   };
 }
 
@@ -138,5 +144,6 @@ export function refuseDeploymentId(mode: string, getInput: GetInput): void {
   if (mode !== "scan" && getInput("strict").trim() === "true") throw only("strict", "scan");
   if (mode === "apply") return;
   if (getInput("deployment-id").trim() !== "") throw only("deployment-id");
+  if (getInput("deploy-timeout").trim() !== "") throw only("deploy-timeout");
   if (getInput("dry-run").trim() === "true") throw only("dry-run");
 }

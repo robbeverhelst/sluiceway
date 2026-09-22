@@ -64,6 +64,58 @@ describe("a deploy that failed half way", () => {
   });
 });
 
+// Slice 5.9: the deploy-timeout input, off by default. When it is set, every
+// run of the tool in the deploy gets it, the tool is interrupted when it runs
+// out and has two minutes to stop by itself, and the record says why.
+describe("a deploy with a time limit", () => {
+  test("a deploy that ran out of time ends as a failure that says so", async () => {
+    const h = await handedOn(table(), ["a:prod"]);
+    const seen: { timeoutMs?: number | undefined; graceMs?: number | undefined }[] = [];
+    h.context.deployTimeoutMinutes = 30;
+    h.context.run = async (run) => {
+      seen.push({ timeoutMs: run.timeoutMs, graceMs: run.graceMs });
+      return { status: "timed-out", stdout: "", stderr: "interrupted\n" };
+    };
+    // Every adapter reads a run that timed out as a tool error without an
+    // exit code.
+    h.adapter.apply = async (_stack, tool) => {
+      await tool.run({ argv: ["tool", "up"], cwd: ".", env: {} });
+      return {
+        ok: false,
+        reason: { kind: "tool-error", exitCode: null },
+        toolLog: "interrupted\n",
+      };
+    };
+
+    await expect(runApply(h)).rejects.toThrow(
+      "a:prod was not deployed: the deploy ran out of its time limit of 30 minutes and the tool was stopped.",
+    );
+
+    expect(seen).toEqual([{ timeoutMs: 30 * 60_000, graceMs: 120_000 }]);
+    expect(states(h)).toEqual(["queued", "in_progress", "failure"]);
+    expect(h.github.deployment(h.deployment).status?.description).toBe(
+      "the deploy ran out of its time limit of 30 minutes and the tool was stopped",
+    );
+  });
+
+  test("without the input the deploy has no time limit of Sluiceway's", async () => {
+    const h = await handedOn(table(), ["a:prod"]);
+    const seen: (number | undefined)[] = [];
+    h.context.run = async (run) => {
+      seen.push(run.timeoutMs);
+      return { status: "exited", exitCode: 0, stdout: "", stderr: "" };
+    };
+    h.adapter.apply = async (_stack, tool) => {
+      await tool.run({ argv: ["tool", "up"], cwd: ".", env: {} });
+      return { ok: true, toolLog: "" };
+    };
+
+    await runApply(h);
+
+    expect(seen).toEqual([undefined]);
+  });
+});
+
 describe("before the tool deploys", () => {
   test("a fresh preview that fails deploys nothing and gives a preview failure row", async () => {
     const h = await handedOn(table(), ["a:prod"]);

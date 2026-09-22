@@ -68,6 +68,7 @@ Collected here so nobody has to search the records. The record in the last colum
 | `deployment-id` | input | `apply` | required there | The deployment record to deploy | 0035 |
 | `dry-run` | input | `apply` | `false` | A rehearsal: everything up to the hash check, then no deploy. The record ends as `inactive`, "rehearsed, nothing was deployed" | 0051 |
 | `backend` | input | `check` | `false` | Also ask the backend which of the discovered stacks it holds, with the credentials of the job, and give one `ignore` block for the ones it does not hold. Refused in every other mode | 0074 |
+| `deploy-timeout` | input | `apply` | none | A time limit on the deploy itself, whole minutes. The tool is interrupted and gets two minutes to stop (slice 5.9) | 0003 |
 | `job-id` | input | `scan`, `apply` | `${{ job.check_run_id }}` | The id of the running job, for links to its log. Never set by hand | 0044 |
 | `matrix` | output | `resolve`, `scan` | `[]` | `[{ stack, environment, deployment }]`. A scan sets one entry only after a merge from the dashboard | 0035, 0054 |
 | `dashboard-url` | output | `scan`, `apply`, `settle` | none | Web address of the dashboard issue | 0041 |
