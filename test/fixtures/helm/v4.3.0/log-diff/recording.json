@@ -1,0 +1,29 @@
+{
+  "scenario": "log-diff",
+  "description": "The tool's own diff of new values and a rotated token, for the job log (record 0048).",
+  "cliVersion": "v4.3.0",
+  "commands": [
+    {
+      "id": "tool-diff",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=diff",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "tool-diff.stdout",
+      "stderr": "tool-diff.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

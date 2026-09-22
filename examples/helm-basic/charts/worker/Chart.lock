@@ -1,0 +1,6 @@
+dependencies:
+- name: web
+  repository: file://../web
+  version: 0.1.0
+digest: sha256:76f5834ae0feb180f3a7eb0f06eb59261e662bc5382dfbf0e1d42defe3b7ede3
+generated: "2026-09-22T00:00:00Z"

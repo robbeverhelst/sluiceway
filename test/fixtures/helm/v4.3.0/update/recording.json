@@ -1,0 +1,29 @@
+{
+  "scenario": "update",
+  "description": "New values: a key with a dot in a ConfigMap, a label with a dot and a slash, and a port in a list.",
+  "cliVersion": "v4.3.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

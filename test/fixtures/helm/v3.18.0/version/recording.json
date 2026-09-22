@@ -1,0 +1,25 @@
+{
+  "scenario": "version",
+  "description": "The version of helm and of its diff plugin, which the version check reads before any preview.",
+  "cliVersion": "v3.18.0",
+  "commands": [
+    {
+      "id": "version",
+      "argv": ["helm", "version", "--template={{.Version}}"],
+      "cwd": ".",
+      "exitCode": 0,
+      "stdout": "version.stdout",
+      "stderr": "version.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "plugin-version",
+      "argv": ["helm", "diff", "version"],
+      "cwd": ".",
+      "exitCode": 0,
+      "stdout": "plugin-version.stdout",
+      "stderr": "plugin-version.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

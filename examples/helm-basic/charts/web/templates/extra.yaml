@@ -1,0 +1,8 @@
+{{- if .Values.extra.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-extra
+data:
+  note: "CANARY-VALUE extra"
+{{- end }}

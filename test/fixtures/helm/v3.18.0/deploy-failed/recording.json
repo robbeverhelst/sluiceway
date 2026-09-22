@@ -1,0 +1,83 @@
+{
+  "scenario": "deploy-failed",
+  "description": "A diff that works and a deploy the API server refuses: a port out of range. The release is rolled back.",
+  "cliVersion": "v3.18.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "render",
+      "argv": [
+        "helm",
+        "template",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--dry-run=server",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "render.stdout",
+      "stderr": "render.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "render-again",
+      "argv": [
+        "helm",
+        "template",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--dry-run=server",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "render-again.stdout",
+      "stderr": "render-again.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "deploy",
+      "argv": [
+        "helm",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--atomic",
+        "--hide-notes",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 1,
+      "stdout": "deploy.stdout",
+      "stderr": "deploy.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

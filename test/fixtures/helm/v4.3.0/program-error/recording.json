@@ -1,0 +1,29 @@
+{
+  "scenario": "program-error",
+  "description": "A values file that sets the greeting the chart requires to null: the render fails.",
+  "cliVersion": "v4.3.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 1,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

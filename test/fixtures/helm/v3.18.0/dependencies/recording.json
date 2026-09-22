@@ -1,0 +1,38 @@
+{
+  "scenario": "dependencies",
+  "description": "worker, whose chart depends on a local chart: helm dependency build in its chart directory, then a diff of all adds.",
+  "cliVersion": "v3.18.0",
+  "commands": [
+    {
+      "id": "dependencies",
+      "argv": ["helm", "dependency", "build", "."],
+      "cwd": "charts/worker",
+      "exitCode": 0,
+      "stdout": "dependencies.stdout",
+      "stderr": "dependencies.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "diff",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "worker",
+        "../charts/worker",
+        "--namespace=sluiceway-worker",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "worker",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

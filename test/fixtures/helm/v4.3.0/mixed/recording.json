@@ -1,0 +1,29 @@
+{
+  "scenario": "mixed",
+  "description": "One ConfigMap added, one changed and one removed in one diff.",
+  "cliVersion": "v4.3.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

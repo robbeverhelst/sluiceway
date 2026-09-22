@@ -1,0 +1,13 @@
+[
+  {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "namespace": "sluiceway-web",
+    "name": "web-extra",
+    "changeType": "ADD",
+    "resourceStatus": {
+      "oldExists": false,
+      "newExists": true
+    }
+  }
+]

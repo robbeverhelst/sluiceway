@@ -1,0 +1,27 @@
+sluiceway-web, web-settings, ConfigMap (v1) has changed:
+  # Source: web/templates/configmap.yaml
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: web-settings
+    labels:
+      app.kubernetes.io/name: web
+      app.kubernetes.io/version: "1.0.0"
+  data:
+    greeting: "CANARY-VALUE hello"
+    app.properties: |
+-     color=blue
++     color=green
+sluiceway-web, web-token, Secret (v1) has changed:
+  # Source: web/templates/secret.yaml
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    labels:
+      app.kubernetes.io/name: web
+    name: web-token
+  data:
+-   token: '-------- # (13 bytes)'
++   token: '++++++++ # (21 bytes)'
+  type: Opaque
+

@@ -1,0 +1,3 @@
+web:
+  greeting: working
+  token: CANARY-SECRET

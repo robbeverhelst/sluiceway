@@ -1,0 +1,13 @@
+# Every value the templates read. The stacks set their own in web/ and worker/.
+greeting: hello
+color: blue
+version: "1.0.0"
+port: 80
+# Stands in for a real secret. It is written to a Secret, and the Helm
+# adapter must never let it out.
+token: ""
+extra:
+  enabled: false
+# A template that renders differently every time, for the fixture that shows
+# how the deploy refuses a render that moved.
+unstable: false

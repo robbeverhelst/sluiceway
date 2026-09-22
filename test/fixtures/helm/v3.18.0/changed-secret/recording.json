@@ -1,0 +1,29 @@
+{
+  "scenario": "changed-secret",
+  "description": "The token in the Secret rotated. The diff plugin redacts a Secret's data before it compares it.",
+  "cliVersion": "v3.18.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

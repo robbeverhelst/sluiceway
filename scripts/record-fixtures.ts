@@ -2,26 +2,41 @@
 // the pulumi CLI on PATH, and saves what the tool printed under
 // <out>/<cli version>/<scenario>/. Fixtures are never written by hand (0001).
 // With --tool opentofu it drives examples/opentofu-basic with tofu instead
-// (record 0053).
+// (record 0053), and with --tool helm examples/helm-basic with helm and its
+// diff plugin, against the cluster KUBECONFIG names (record 0058).
 //
-//   bun run record:fixtures [--tool pulumi|opentofu] [--out <dir>]
+//   bun run record:fixtures [--tool pulumi|opentofu|helm] [--out <dir>]
 //                           [--work-dir <dir>] [--expect-version v3.229.0]
 //                           [--only <scenario>]
 //
 // The tool only runs in copies inside the work directory, against a file
 // backend made there, with an environment built from nothing. It cannot reach
-// a real stack, a real backend or an account.
+// a real stack, a real backend or an account. Helm is the exception that
+// needs a cluster: give it one made for this, such as kind, and nothing else.
 import { spawn } from "node:child_process";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
+  HELM,
+  HELM_NAMESPACES,
+  HELM_SCENARIOS,
+  helmEnvironment,
+  helmOps,
+} from "./fixtures/helm-scenarios.ts";
+import {
   OPENTOFU_SCENARIOS,
   openTofuEnvironment,
   openTofuOps,
 } from "./fixtures/opentofu-scenarios.ts";
-import { checkRecording, type Run, type RunResult, recordScenario } from "./fixtures/recorder.ts";
+import {
+  checkRecording,
+  type RecordOptions,
+  type Run,
+  type RunResult,
+  recordScenario,
+} from "./fixtures/recorder.ts";
 import { SCENARIOS } from "./fixtures/scenarios.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -58,60 +73,119 @@ function run({ argv, cwd, env }: Run): Promise<RunResult> {
   });
 }
 
-const tofu = values.tool === "opentofu";
-if (!tofu && values.tool !== "pulumi") throw new Error(`No tool is named "${values.tool}".`);
-const toolName = tofu ? "tofu" : "pulumi";
+interface Tool {
+  name: string;
+  example: string;
+  fixtures: string;
+  versionArgv: string[];
+  version: (stdout: string) => string;
+  scenarios: typeof SCENARIOS;
+  environment?: RecordOptions["environment"];
+  ops?: (document: unknown) => string[];
+}
+
+const TOOLS: Record<string, Tool> = {
+  pulumi: {
+    name: "pulumi",
+    example: "examples/pulumi-basic",
+    fixtures: "pulumi",
+    versionArgv: ["pulumi", "version"],
+    version: (stdout) => stdout.trim(),
+    scenarios: SCENARIOS,
+  },
+  opentofu: {
+    name: "tofu",
+    example: "examples/opentofu-basic",
+    fixtures: "opentofu",
+    versionArgv: ["tofu", "version", "-json"],
+    version: (stdout) =>
+      `v${(JSON.parse(stdout || "{}") as { terraform_version?: string }).terraform_version ?? ""}`,
+    scenarios: OPENTOFU_SCENARIOS,
+    environment: openTofuEnvironment,
+    ops: openTofuOps,
+  },
+  helm: {
+    name: "helm",
+    example: "examples/helm-basic",
+    fixtures: "helm",
+    versionArgv: HELM.version,
+    version: (stdout) => stdout.trim(),
+    scenarios: HELM_SCENARIOS,
+    environment: helmEnvironment,
+    ops: helmOps,
+  },
+};
+
+const tool = TOOLS[values.tool ?? ""];
+if (tool === undefined) throw new Error(`No tool is named "${values.tool}".`);
+const toolName = tool.name;
 
 const workDir = resolve(values["work-dir"]);
 rmSync(workDir, { recursive: true, force: true });
 mkdirSync(workDir, { recursive: true });
-if (tofu) {
+if (tool.environment !== undefined) {
   mkdirSync(join(workDir, "plugin-cache"), { recursive: true });
   mkdirSync(join(workDir, "home"), { recursive: true });
 }
 
 const found = await run({
-  argv: tofu ? ["tofu", "version", "-json"] : ["pulumi", "version"],
+  argv: tool.versionArgv,
   cwd: workDir,
   env: { PATH: process.env.PATH ?? "" },
 });
-const cliVersion = tofu
-  ? `v${(JSON.parse(found.exitCode === 0 ? found.stdout : "{}") as { terraform_version?: string }).terraform_version ?? ""}`
-  : found.stdout.trim();
-if (found.exitCode !== 0 || !/^v\d+\.\d+\.\d+$/.test(cliVersion)) {
+const cliVersion = found.exitCode === 0 ? tool.version(found.stdout) : "";
+if (!/^v\d+\.\d+\.\d+$/.test(cliVersion)) {
   throw new Error(`"${toolName} version" did not give a release version. Is the CLI on PATH?`);
 }
 if (values["expect-version"] !== undefined && values["expect-version"] !== cliVersion) {
   throw new Error(`Expected ${toolName} ${values["expect-version"]} on PATH, found ${cliVersion}.`);
 }
 
-const scenarios = (tofu ? OPENTOFU_SCENARIOS : SCENARIOS).filter(
+const scenarios = tool.scenarios.filter(
   (scenario) => values.only === undefined || scenario.name === values.only,
 );
 if (scenarios.length === 0) throw new Error(`No scenario is named "${values.only}".`);
 
-const outDir = join(
-  resolve(values.out ?? join(REPO, "test/fixtures", tofu ? "opentofu" : "pulumi")),
-  cliVersion,
-);
+const outDir = join(resolve(values.out ?? join(REPO, "test/fixtures", tool.fixtures)), cliVersion);
 if (values.only === undefined) rmSync(outDir, { recursive: true, force: true });
+
+// A release needs its namespace. The cluster is the recorder's own, so the
+// namespaces of the example are made once, before any scenario.
+if (tool.fixtures === "helm") {
+  const env = helmEnvironment({ workDir, parentEnv: process.env } as RecordOptions);
+  for (const namespace of HELM_NAMESPACES) {
+    const there = await run({
+      argv: ["kubectl", "get", "namespace", namespace],
+      cwd: workDir,
+      env,
+    });
+    if (there.exitCode === 0) continue;
+    const made = await run({
+      argv: ["kubectl", "create", "namespace", namespace],
+      cwd: workDir,
+      env,
+    });
+    if (made.exitCode !== 0)
+      throw new Error(`Could not make the namespace ${namespace}.\n${made.stderr}`);
+  }
+}
 
 const problems: string[] = [];
 for (const scenario of scenarios) {
   const started = Date.now();
   await recordScenario(scenario, {
-    exampleDir: join(REPO, tofu ? "examples/opentofu-basic" : "examples/pulumi-basic"),
+    exampleDir: join(REPO, tool.example),
     workDir,
     outDir,
     cliVersion,
     parentEnv: process.env,
     runner: run,
-    ...(tofu ? { environment: openTofuEnvironment } : {}),
+    ...(tool.environment === undefined ? {} : { environment: tool.environment }),
   });
   const found = checkRecording(
     join(outDir, scenario.name),
     scenario,
-    ...(tofu ? [openTofuOps] : []),
+    ...(tool.ops === undefined ? [] : [tool.ops]),
   );
   problems.push(...found);
   const seconds = ((Date.now() - started) / 1000).toFixed(1);

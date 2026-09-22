@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=../../schema/sluiceway.schema.json
+#
+# Helm has no zero config: files alone cannot say which release a chart is
+# installed as, or in which namespace. Each entry with tool: helm declares
+# one stack, a release in a namespace.
+
+stacks:
+  # A local chart outside the stack's directory, with the values of this
+  # release next to it. The stack claims its own directory, and inputs makes
+  # it claim the chart too, so a change to the chart previews it again.
+  - path: web
+    tool: helm
+    inputs:
+      - charts/web/**
+    options:
+      release: web
+      namespace: sluiceway-web
+      chart: ../charts/web
+      valuesFiles: [values.yaml]
+
+  # A chart with a dependency on another local chart: helm dependency build
+  # runs for it before any preview.
+  - path: worker
+    tool: helm
+    inputs:
+      - charts/**
+    options:
+      release: worker
+      namespace: sluiceway-worker
+      chart: ../charts/worker
+      valuesFiles: [values.yaml]

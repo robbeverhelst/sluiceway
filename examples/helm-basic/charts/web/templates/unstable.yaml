@@ -1,0 +1,8 @@
+{{- if .Values.unstable }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-nonce
+data:
+  nonce: {{ randAlphaNum 16 | quote }}
+{{- end }}

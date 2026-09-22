@@ -1,0 +1,9 @@
+apiVersion: v2
+name: worker
+description: A chart with a dependency on a local chart, so that its stack needs helm dependency build first.
+type: application
+version: 0.1.0
+dependencies:
+  - name: web
+    version: 0.1.0
+    repository: file://../web

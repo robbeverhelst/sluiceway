@@ -1,0 +1,1 @@
+Flag --atomic has been deprecated, use --rollback-on-failure instead

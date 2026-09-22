@@ -1,0 +1,5 @@
+apiVersion: v2
+name: web
+description: A chart that needs no image and no cloud account, for Sluiceway's Helm fixtures.
+type: application
+version: 0.1.0

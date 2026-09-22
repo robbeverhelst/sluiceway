@@ -1,0 +1,49 @@
+[
+  {
+    "apiVersion": "v1",
+    "kind": "Service",
+    "namespace": "sluiceway-web",
+    "name": "web",
+    "changeType": "MODIFY",
+    "resourceStatus": {
+      "oldExists": true,
+      "newExists": true
+    },
+    "changes": [
+      {
+        "path": "spec.ports[0]",
+        "field": "port",
+        "change": "replace",
+        "oldValue": 80,
+        "newValue": 8080
+      }
+    ]
+  },
+  {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "namespace": "sluiceway-web",
+    "name": "web-settings",
+    "changeType": "MODIFY",
+    "resourceStatus": {
+      "oldExists": true,
+      "newExists": true
+    },
+    "changes": [
+      {
+        "path": "data",
+        "field": "app.properties",
+        "change": "replace",
+        "oldValue": "color=blue",
+        "newValue": "color=green"
+      },
+      {
+        "path": "metadata.labels",
+        "field": "app.kubernetes.io/version",
+        "change": "replace",
+        "oldValue": "1.0.0",
+        "newValue": "1.0.1"
+      }
+    ]
+  }
+]

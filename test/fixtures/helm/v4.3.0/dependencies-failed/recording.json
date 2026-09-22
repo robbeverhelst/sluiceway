@@ -1,0 +1,16 @@
+{
+  "scenario": "dependencies-failed",
+  "description": "A dependency on a local chart that is not there: helm dependency build fails, so worker cannot be previewed.",
+  "cliVersion": "v4.3.0",
+  "commands": [
+    {
+      "id": "dependencies",
+      "argv": ["helm", "dependency", "build", "."],
+      "cwd": "charts/worker",
+      "exitCode": 1,
+      "stdout": "dependencies.stdout",
+      "stderr": "dependencies.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

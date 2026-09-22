@@ -1,0 +1,5 @@
+Error: Failed to render chart: exit status 1: Error: execution error at (web/templates/configmap.yaml:9:41): greeting is required
+
+Use --debug flag to render out invalid YAML
+
+Error: plugin "diff" exited with error

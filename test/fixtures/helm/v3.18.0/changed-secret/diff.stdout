@@ -1,0 +1,22 @@
+[
+  {
+    "apiVersion": "v1",
+    "kind": "Secret",
+    "namespace": "sluiceway-web",
+    "name": "web-token",
+    "changeType": "MODIFY",
+    "resourceStatus": {
+      "oldExists": true,
+      "newExists": true
+    },
+    "changes": [
+      {
+        "path": "data",
+        "field": "token",
+        "change": "replace",
+        "oldValue": "-------- # (13 bytes)",
+        "newValue": "++++++++ # (21 bytes)"
+      }
+    ]
+  }
+]

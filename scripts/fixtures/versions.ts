@@ -14,3 +14,12 @@ export const FIXTURE_TOFU_VERSIONS = {
   minimum: "v1.11.0",
   newest: "v1.12.6",
 } as const;
+
+// The helm versions of test/fixtures/helm/ (record 0058), each with the
+// version of the diff plugin it was recorded with: the minimums the adapter
+// supports, and the newest at the time of recording. The matrix of the
+// fixtures job in .github/workflows/ci.yml has to agree. A test checks it.
+export const FIXTURE_HELM_VERSIONS = {
+  minimum: { helm: "v3.18.0", diff: "v3.15.11" },
+  newest: { helm: "v4.3.0", diff: "v3.15.13" },
+} as const;

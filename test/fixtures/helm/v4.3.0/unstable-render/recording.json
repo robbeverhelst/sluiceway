@@ -1,0 +1,63 @@
+{
+  "scenario": "unstable-render",
+  "description": "A template with a random value: two renders of the same chart and values differ, so the deploy is refused before it starts.",
+  "cliVersion": "v4.3.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "render",
+      "argv": [
+        "helm",
+        "template",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--dry-run=server",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "render.stdout",
+      "stderr": "render.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "render-again",
+      "argv": [
+        "helm",
+        "template",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--dry-run=server",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "render-again.stdout",
+      "stderr": "render-again.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}
