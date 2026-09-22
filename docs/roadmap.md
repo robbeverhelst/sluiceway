@@ -94,11 +94,8 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - An `id:` override for a stack in `sluiceway.yaml`
 - Starting a deploy without a person ticking (unattended deploys of chosen stacks)
 - Telling authors that their merge is waiting for a deploy
-- Shipped pull requests under recently deployed
-- A configurable lookback, or number of pull requests named on a row
-- Naming changes outside a stack on its row (shared package, lockfile)
 - Paging through a pull request with more than 100 changed files, or a direct push with 300 or more
-- The old path of a file that a pull request renamed
+- The files of each change outside a stack, in the fold that names them
 - Looking past a failed record for an older success to start attribution from
 - Attribution for a scan of a commit that is not on the default branch
 - A recently deployed list longer than 50 lines

@@ -291,7 +291,7 @@ The note on a stack's row saying its last deploy failed. It rides on the row whe
 _Avoid_: Failed row, failed state, error row
 
 **Trail**:
-The Recently deployed list at the bottom of the dashboard: every deploy from the dashboard that ended, newest first, with who ticked it and when it went out, and the outside deploys a full scan found in the tool's history. A deploy that found nothing to deploy, a rehearsal and a failed deploy say so on their line. Its length is `dashboard.recentlyDeployed`. It is built from the deployment records and the tool's history, and decides nothing.
+The Recently deployed list at the bottom of the dashboard: every deploy from the dashboard that ended, newest first, with who ticked it and when it went out, and the outside deploys a full scan found in the tool's history. A deploy that found nothing to deploy, a rehearsal and a failed deploy say so on their line. Its length is `dashboard.recentlyDeployed`. A deploy from the dashboard that went out has a shipped line. It is built from the deployment records and the tool's history, and decides nothing.
 _Avoid_: History, audit log, deploy log, changelog
 
 **Pending-again line**:
@@ -327,8 +327,16 @@ A pending row that shows less than its whole diff because of the size budget, an
 _Avoid_: Truncated row, collapsed row, summary row
 
 **Attribution**:
-The line on a stack's row that names the merged pull requests, and the direct pushes, that the stack claims since its last successful deploy from the dashboard. It explains why a row is pending and never decides that it is. Changes the stack does not claim are counted, not named.
+The line on a stack's row that names the merged pull requests, and the direct pushes, that the stack claims since its last successful deploy from the dashboard. It explains why a row is pending and never decides that it is. Changes outside the stack are counted on the line and named in a fold at the end of the row.
 _Avoid_: Blame, changelog, history, provenance
+
+**Change outside a stack**:
+A merged pull request or direct push in a stack's range that the stack does not claim and that holds a file no stack claims, such as a lockfile bump or a change to a shared package. It may reach any stack, so it is counted on the attribution line and named in the fold at the end of the row. A change that only other stacks claim is not one.
+_Avoid_: Shared change, global change, unrelated change
+
+**Shipped line**:
+The line under a deploy on the trail that went out, which names what it shipped: the pull requests and direct pushes its stack claims from the stack's success before it to its own commit, in the words of the attribution line. A deploy with no success before it among the records read has none.
+_Avoid_: Release notes, changelog, deploy contents
 
 **Author**:
 The person who opened a pull request that a row names, or who made a direct push. Written as a plain login that notifies no one. An author is never the ticker by role, even when they are the same person.
@@ -339,7 +347,7 @@ A commit on the default branch that no merged pull request brought there. A row 
 _Avoid_: Unreviewed commit, hotfix, loose commit
 
 **Lookback**:
-How many of the newest commits on the default branch a job walks to work out attribution. A stack whose last deploy lies further back gets a line that says earlier changes exist.
+How many of the newest commits on the default branch a job walks to work out attribution, `attribution.lookback`. A stack whose last deploy lies further back gets a line that says earlier changes exist.
 _Avoid_: History depth, window, range
 
 **Redact**:

@@ -305,6 +305,30 @@ drift:
 - **A stack entry can turn it on or off** for its own stacks, with [`stacks[].drift.enabled`](#stacksdriftenabled).
 - **A drifted row's `preview` link** opens a preview page that lists the drift, as a pending row's lists its changes. Without `checks: write` it opens the summary.
 
+### `attribution.lookback`
+
+Default: `100`
+
+How many of the newest commits a job walks back from the scanned commit to say which pull requests made a row pending, and what each deploy on the Recently deployed list shipped. A whole number from 1 to 1000. A stack whose last deploy lies further back gets `and earlier changes` on its line, and the compare link still shows the whole range.
+
+Every 100 commits cost one GraphQL request, about 7 points of the workflow token's 1,000 per hour. A job reads the files of at most 100 changes one by one (direct pushes, and pull requests that renamed a file); a change past that counts as a change outside every stack, so a long lookback never hides one.
+
+```yaml
+attribution:
+  lookback: 300
+```
+
+### `attribution.names`
+
+Default: `5`
+
+How many pull requests and direct pushes a row, and a line of Recently deployed, names before the rest is a count (`and 3 more`). A whole number from 0 to 20. `0` names none, and the line always gives the count: `from 4 pull requests · compare`.
+
+```yaml
+attribution:
+  names: 10
+```
+
 ### `phases`
 
 Default: `[]`
@@ -732,5 +756,5 @@ ticker: admin
 
 ```text
 sluiceway.yaml is not valid:
-- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, phases, stacks, mergeAndDeploy.
+- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, attribution, phases, stacks, mergeAndDeploy.
 ```

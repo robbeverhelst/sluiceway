@@ -110,6 +110,8 @@ The file is optional and sits at the repo root. Unknown keys are an error, becau
 | `stacks[].phase` | none | One of `phases`, or `{ from: <key> }`: the text under that key of the stack's Pulumi project file, under `config` or at the top level. The stack depends on every stack in every earlier phase, and `dependsOn` adds to that (slice 4.16) | 0067 |
 | `stacks[].drift.enabled` | the top level | The drift check on or off for the stacks of this entry, in the same scans as `drift.enabled` (slice 4.7) | 0059 |
 | `stacks[].options` | `{}` | Named adapter options, only with `tool`. OpenTofu and Terraform: `workspace`, `varFiles` and `wrapper` (`terragrunt` or `cdktf`). Helm: `release`, `namespace`, `chart`, `version` (a chart reference only) and `valuesFiles`. kubectl: `context` and `namespace` | 0006, 0015, 0053, 0058, 0060, 0068 |
+| `attribution.lookback` | `100` | How many of the newest commits a job walks for attribution, 1 to 1,000, one GraphQL page per 100 (slice 5.5) | 0026, 0072 |
+| `attribution.names` | `5` | How many pull requests and direct pushes a row and a shipped line name before the rest is a count, 0 to 20 (slice 5.5) | 0026, 0072 |
 | `mergeAndDeploy.authors` | `[]` | Logins whose green pull requests are listed to merge and deploy with one tick, one deploy per stack that claims them. Empty turns it off | 0054, 0064, 0071 |
 | `mergeAndDeploy.preview` | `false` | Preview each listed update as it would be after the merge and show the counts on its row: one extra preview per stack of each of the oldest 30 updates, never for a fork | 0071 |
 
@@ -137,7 +139,7 @@ Rules for config loading:
 | Summary budget | 1,000,000 bytes | 0037 |
 | Preview page | A check run named `sluiceway / <stack id>`, `completed`, `neutral`, its text cut on a line at 65,535 bytes. Needs `checks: write` | 0050 |
 | Write loop | at most 3 tries | 0004 |
-| Lookback, names on a row, recently deployed | 100 commits, 5, 10 | 0026, 0029 |
+| Lookback, names on a row, recently deployed | 100 commits, 5, 10, the defaults of `attribution.lookback`, `attribution.names` and `dashboard.recentlyDeployed` | 0026, 0029, 0062, 0072 |
 | Minimum Pulumi CLI | v3.229.0 | 0001 |
 | Minimum OpenTofu CLI | v1.11.0 | 0053 |
 | Minimum Terraform, Terragrunt and cdktf CLIs | terraform v1.14.0, terragrunt v1.0.0, cdktf v0.21.0 | 0068 |
