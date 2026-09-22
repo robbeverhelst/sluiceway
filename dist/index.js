@@ -57479,19 +57479,44 @@ function mergeMethod(allowed, strategy) {
   return candidates.find((method) => allowed[method] !== false);
 }
 
-// src/render/destroy-alert.ts
-var ids = (rows) => rows.map((row) => `**${escapeText(row.stackId)}**`).join(", ");
-function destroyAlert(rows) {
-  const pending = rows.filter((row) => row.known && row.state === "pending" && row.destroys > 0);
-  const drifted = rows.filter((row) => row.known && row.state === "drift" && (row.gone ?? 0) > 0);
-  const paragraphs = [];
-  if (pending.length > 0) {
-    const words = pending.length === 1 ? "1 pending stack deletes or replaces resources" : `${pending.length} pending stacks delete or replace resources`;
-    paragraphs.push(`> ${words}: ${ids(pending)}`);
+// src/render/dashboard-facts.ts
+var MAX_CRATES = 20;
+function headerStateOf(total, known, facts, failed) {
+  if (total === 0)
+    return "first-run";
+  if (facts.previewFailed.length > 0 || failed > 0)
+    return "failing";
+  if (known.some((row) => row.state === "deploying"))
+    return "deploying";
+  if (facts.deploying.length > 0)
+    return "queued";
+  if (facts.pending.length > 0)
+    return "pending";
+  if (facts.drift.length > 0)
+    return "drift";
+  return "in-sync";
+}
+function signsOf(rows) {
+  const signs = { deletes: false, replaces: false };
+  for (const row of rows) {
+    const deletes = Math.min(row.deletes ?? row.destroys, row.destroys);
+    if (deletes > 0)
+      signs.deletes = true;
+    if (row.destroys - deletes > 0)
+      signs.replaces = true;
   }
-  if (drifted.length > 0) {
-    const words = drifted.length === 1 ? "1 drifted stack has resources gone outside the code" : `${drifted.length} drifted stacks have resources gone outside the code`;
-    paragraphs.push(`> ${words}: ${ids(drifted)}`);
+  return signs;
+}
+var ids = (rows) => rows.map((row) => `**${escapeText(row.stackId)}**`).join(", ");
+function alertOf(destroying, gone) {
+  const paragraphs = [];
+  if (destroying.length > 0) {
+    const words = destroying.length === 1 ? "1 pending stack deletes or replaces resources" : `${destroying.length} pending stacks delete or replace resources`;
+    paragraphs.push(`> ${words}: ${ids(destroying)}`);
+  }
+  if (gone.length > 0) {
+    const words = gone.length === 1 ? "1 drifted stack has resources gone outside the code" : `${gone.length} drifted stacks have resources gone outside the code`;
+    paragraphs.push(`> ${words}: ${ids(gone)}`);
   }
   if (paragraphs.length === 0)
     return;
@@ -57500,20 +57525,38 @@ ${paragraphs.join(`
 >
 `)}`;
 }
-
-// src/render/destroy-sign.ts
-function destroySigns(rows) {
-  const signs = { deletes: false, replaces: false };
-  for (const row of rows) {
-    if (!row.known || !(row.state === "pending" || isDeployingState(row.state)))
-      continue;
-    const deletes = Math.min(row.deletes ?? row.destroys, row.destroys);
-    if (deletes > 0)
-      signs.deletes = true;
-    if (row.destroys - deletes > 0)
-      signs.replaces = true;
-  }
-  return signs;
+var queuedLast = (row) => row.state === "queued" ? 1 : 0;
+function dashboardFacts(rows) {
+  const sorted = [...rows].sort((a, b) => byCodeUnit(a.stackId, b.stackId));
+  const known = sorted.filter((row) => row.known);
+  const of = (state) => known.filter((row) => row.state === state);
+  const pending = of("pending");
+  const deploying = known.filter((row) => isDeployingState(row.state)).sort((a, b) => byCodeUnit(a.stackId, b.stackId) || queuedLast(a) - queuedLast(b));
+  const drift = of("drift");
+  const previewFailed = of("preview-failed");
+  const inSync = of("in-sync");
+  const failed = known.filter((row) => row.failed).length;
+  const destroying = pending.filter((row) => row.destroys > 0);
+  const gone = drift.filter((row) => (row.gone ?? 0) > 0);
+  const sections = { pending, deploying, drift, previewFailed, inSync };
+  return {
+    ...sections,
+    unknown: sorted.filter((row) => !row.known),
+    counts: {
+      pending: pending.length,
+      drifted: drift.length,
+      deploying: deploying.length,
+      previewFailed: previewFailed.length,
+      inSync: inSync.length,
+      destroying: destroying.length,
+      failedDeploys: failed
+    },
+    shortened: pending.filter((row) => row.shortened > 0).length,
+    headerState: headerStateOf(rows.length, known, sections, failed),
+    crates: pending.length > MAX_CRATES ? "more" : pending.length,
+    signs: signsOf([...pending, ...deploying]),
+    alert: alertOf(destroying, gone)
+  };
 }
 
 // src/render/dots.ts
@@ -57542,25 +57585,6 @@ var HEADER_DOT = {
   "first-run": DOT_AT_ZERO,
   "in-sync": COUNT_DOT["in-sync"]
 };
-
-// src/render/header-state.ts
-function headerState(rows) {
-  if (rows.length === 0)
-    return "first-run";
-  const known = rows.filter((row) => row.known);
-  const is = (state) => known.some((row) => row.state === state);
-  if (is("preview-failed") || known.some((row) => row.failed))
-    return "failing";
-  if (is("deploying"))
-    return "deploying";
-  if (is("queued"))
-    return "queued";
-  if (is("pending"))
-    return "pending";
-  if (is("drift"))
-    return "drift";
-  return "in-sync";
-}
 
 // src/render/merge-row.ts
 var TITLE_LENGTH = 80;
@@ -57617,13 +57641,6 @@ function clearMergeTick(row, options = {}) {
 }
 function tickedMergeBlock(row) {
   return readBack(row.text.replace(/^- \[ \] /, "- [x] "));
-}
-
-// src/render/pending-crates.ts
-var MAX_CRATES = 20;
-function pendingCrates(rows) {
-  const pending = rows.filter((row) => row.known && row.state === "pending").length;
-  return pending > MAX_CRATES ? "more" : pending;
 }
 
 // src/render/voice.ts
@@ -57689,9 +57706,6 @@ function signed(state, signs) {
   const subject = state === "pending" ? "some" : "some changes";
   return { suffix, fact: suffix === "" ? "" : `, ${subject} ${verb} resources` };
 }
-function placed(row) {
-  return row.state === "queued" ? "deploying" : row.state;
-}
 function byCodeUnit13(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -57724,17 +57738,16 @@ function picture(state, crates, signs, actionRef2) {
     "</p>"
   ];
 }
-function countsLine(rows, dots) {
-  const of = (state) => rows.filter((row) => placed(row) === state).length;
+function countsLine(counts2, dots) {
+  const { pending, drifted, deploying, previewFailed, inSync, destroying } = counts2;
+  const failed = counts2.failedDeploys;
   const dot = (kind, count) => dots ? `${count === 0 ? DOT_AT_ZERO : COUNT_DOT[kind]}&nbsp;` : "";
-  const destroying = rows.filter((row) => row.state === "pending" && row.destroys > 0).length;
-  const failed = rows.filter((row) => row.failed).length;
   const parts = [
-    `${dot("pending", of("pending"))}**${of("pending")} pending**`,
-    ...of("drift") > 0 ? [`${dot("drift", of("drift"))}${of("drift")} drifted`] : [],
-    `${dot("deploying", of("deploying"))}${of("deploying")} deploying`,
-    `${dot("preview-failed", of("preview-failed"))}${of("preview-failed")} preview failed`,
-    `${dot("in-sync", of("in-sync"))}${of("in-sync")} in sync`
+    `${dot("pending", pending)}**${pending} pending**`,
+    ...drifted > 0 ? [`${dot("drift", drifted)}${drifted} drifted`] : [],
+    `${dot("deploying", deploying)}${deploying} deploying`,
+    `${dot("preview-failed", previewFailed)}${previewFailed} preview failed`,
+    `${dot("in-sync", inSync)}${inSync} in sync`
   ];
   if (destroying > 0) {
     const words = destroying === 1 ? "stack destroys" : "stacks destroy";
@@ -57764,15 +57777,15 @@ function scanDay(root) {
   const at = new Date(root.scanAt);
   return Number.isNaN(at.getTime()) ? undefined : at;
 }
-function pendingLine(input2, state, pending) {
-  if (pending > 0)
+function pendingLine(input2, facts) {
+  if (facts.pending.length > 0)
     return input2.readOnly ? READ_ONLY_LINE : INSTRUCTION_LINE;
-  if (input2.rows.some((row) => row.known && row.state === "drift"))
+  if (facts.drift.length > 0)
     return NOTHING_FROM_THE_CODE;
   const lines = input2.personality ? WARM : DRY;
-  if (state === "first-run")
+  if (facts.headerState === "first-run")
     return lines.firstRun;
-  if (state === "in-sync" && input2.rows.every((row) => row.known))
+  if (facts.headerState === "in-sync" && facts.unknown.length === 0)
     return lines.goodNews(input2.rows.length, scanDay(input2.root));
   return NOTHING_TO_DEPLOY;
 }
@@ -57807,23 +57820,19 @@ function version2(actionRef2) {
   return /^[0-9a-f]{40,}$/.test(actionRef2) ? `\`${actionRef2.slice(0, 7)}\`` : escapeText(actionRef2);
 }
 function renderBody(input2) {
-  const rows = [...input2.rows].sort((a, b) => byCodeUnit13(a.stackId, b.stackId));
-  const known = rows.filter((row) => row.known);
-  const of = (state2) => known.filter((row) => row.state === state2);
-  const state = headerState(rows);
+  const facts = dashboardFacts(input2.rows);
   const out = [rootMarker(input2.root)];
-  const counts2 = countsLine(known, input2.personality);
+  const counts2 = countsLine(facts.counts, input2.personality);
   const scan = scanLine(input2.root, input2.repoUrl);
   if (input2.personality)
-    out.push(picture(state, pendingCrates(rows), destroySigns(rows), input2.actionRef).join(`
+    out.push(picture(facts.headerState, facts.crates, facts.signs, input2.actionRef).join(`
 `), '<div align="center">', counts2, scan, "</div>");
   else
     out.push(counts2, scan);
-  const pending = of("pending");
-  const shortened = pending.filter((row) => row.shortened > 0).length;
-  if (shortened > 0)
-    out.push(shortenedNote(shortened, pending.length));
-  const deploying = [...of("deploying"), ...of("queued")].sort((a, b) => byCodeUnit13(a.stackId, b.stackId));
+  const { pending } = facts;
+  if (facts.shortened > 0)
+    out.push(shortenedNote(facts.shortened, pending.length));
+  const { deploying } = facts;
   if (deploying.length > 0)
     out.push("## Deploying", blocks(deploying));
   const merges = [...input2.merges ?? []].filter((merge3, index, all) => all.findIndex((one) => one.pr === merge3.pr) === index).sort((a, b) => a.pr - b.pr);
@@ -57837,19 +57846,18 @@ function renderBody(input2) {
 `), "</details>");
     }
   }
-  out.push("## Pending", pendingLine(input2, state, pending.length));
-  const drifted = of("drift");
-  const alert = destroyAlert([...pending, ...drifted]);
-  if (alert)
-    out.push(alert);
+  out.push("## Pending", pendingLine(input2, facts));
+  if (facts.alert)
+    out.push(facts.alert);
   if (pending.length > 0)
     out.push(blocks(pending));
+  const drifted = facts.drift;
   if (drifted.length > 0)
     out.push("## Drifted", DRIFTED_LINE, blocks(drifted));
-  const previewFailed = of("preview-failed");
+  const { previewFailed } = facts;
   if (previewFailed.length > 0)
     out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
-  const inSync = of("in-sync");
+  const { inSync } = facts;
   const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit13(a.stackId, b.stackId));
   if (inSync.length > 0 || ignored.length > 0) {
     const loud = inSync.filter((row) => row.failed);
@@ -57889,7 +57897,7 @@ function renderBody(input2) {
   if (!input2.readOnly)
     out.push(`- [ ] Rescan all stacks ${RESCAN_MARKER}`);
   out.push(`<sub>[Sluiceway](${ACTION_URL}) ${version2(input2.actionRef)} · [docs](${ACTION_URL}#readme)</sub>`);
-  const unknown2 = rows.filter((row) => !row.known);
+  const { unknown: unknown2 } = facts;
   if (unknown2.length > 0)
     out.push(blocks(unknown2));
   return out.join(`
@@ -59176,15 +59184,8 @@ var applyResultSchema = exports_external.strictObject({
   after: previewSchema.nullable()
 });
 function dashboardCounts(rows) {
-  const known = rows.filter((row) => row.known);
-  const of = (state) => known.filter((row) => row.state === state).length;
-  return {
-    pending: of("pending"),
-    deploying: of("deploying") + of("queued"),
-    previewFailed: of("preview-failed"),
-    inSync: of("in-sync"),
-    failedDeploys: known.filter((row) => row.failed).length
-  };
+  const { pending, deploying, previewFailed, inSync, failedDeploys } = dashboardFacts(rows).counts;
+  return { pending, deploying, previewFailed, inSync, failedDeploys };
 }
 function seconds(milliseconds) {
   return milliseconds / 1000;
@@ -59804,16 +59805,16 @@ async function swapRow(context3, setup, id, make) {
     const shipped = await setup.attribution.ship(facts.trail);
     const rows = [];
     const carried = [];
-    let placed2 = false;
+    let placed = false;
     for (const row of live.rows) {
-      if (!placed2 && row.known && row.stackId === id) {
+      if (!placed && row.known && row.stackId === id) {
         rows.push(mine);
-        placed2 = true;
+        placed = true;
       } else {
         carried.push(row);
       }
     }
-    if (!placed2)
+    if (!placed)
       rows.push(mine);
     const fitted = fitBody({
       root: {
@@ -64001,7 +64002,7 @@ function reportDashboard(context3, written, composed) {
   const { log } = context3;
   const shortened = composed?.shortened ?? 0;
   const size = `${written.body.length.toLocaleString("en-US")} of ${BODY_LIMIT.toLocaleString("en-US")} characters`;
-  const dot = HEADER_DOT[headerState(parseDashboard(written.body).rows)];
+  const dot = HEADER_DOT[dashboardFacts(parseDashboard(written.body).rows).headerState];
   log.info(`${dot} ${FOUND[written.found]}: ${context3.repoUrl}/issues/${written.number} (${size}).`);
   if (written.tries > 1)
     log.info(`The write took ${written.tries} tries.`);
