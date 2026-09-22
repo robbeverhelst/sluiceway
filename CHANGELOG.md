@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.14.0](https://github.com/sluiceway/sluiceway/compare/v0.13.0...v0.14.0) (2026-09-22)
+
+
+### Features
+
+* init installs kubectl for the Kubernetes manifests stacks a kept sluiceway.yaml declares ([ded0e60](https://github.com/sluiceway/sluiceway/commit/ded0e60713e8e066d04ee8eb775d62c491abe6e1))
+* init mode writes a starter workflow and sluiceway.yaml from the repo's files (slice 4.14) ([f2d2b53](https://github.com/sluiceway/sluiceway/commit/f2d2b53edd6a085c943860c943fc449ef5055965))
+* init writes the merge and deploy workflow for a kept sluiceway.yaml with mergeAndDeploy.authors ([b0d902e](https://github.com/sluiceway/sluiceway/commit/b0d902ed40a3ba9d4f4feb7ba5e0c59092ba8350))
+* rebuild dist with init after slice 4.13 ([e9e9c0c](https://github.com/sluiceway/sluiceway/commit/e9e9c0ce877338178081c49d552a969679caa083))
+* rebuild dist with init after the Kubernetes adapter ([774564d](https://github.com/sluiceway/sluiceway/commit/774564df22dff9cf9376f91a62e5f0505a6f0366))
+* rebuild dist with the init mode ([b971136](https://github.com/sluiceway/sluiceway/commit/b971136ed6d41fed46db07f2b69c590497cf3474))
+* record 0065 and docs/init.md name the Kubernetes manifests adapter ([a72edaa](https://github.com/sluiceway/sluiceway/commit/a72edaa70845001999af73ce25abd097668e6601))
+* record 0065, docs/init.md, the glossary, later.md and the onboarding log for init ([6e74edc](https://github.com/sluiceway/sluiceway/commit/6e74edcb2aeab1373c87d8aeddc6a5fed49489c6))
+* the failing and deploying pictures show one crate per pending stack ([b47b9db](https://github.com/sluiceway/sluiceway/commit/b47b9db07d6133a17db50d03981c88835f63984a))
+
 ## [0.13.0](https://github.com/sluiceway/sluiceway/compare/v0.12.0...v0.13.0) (2026-09-22)
 
 
