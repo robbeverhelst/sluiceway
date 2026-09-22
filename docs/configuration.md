@@ -793,9 +793,29 @@ mergeAndDeploy:
   preview: true
 ```
 
+### `notify.events`
+
+Default: `["pending","drift","failed","refused"]`
+
+The events Sluiceway sends a notification on, to each channel the step names in its inputs: `slack-webhook-url`, `telegram-bot-token` with `telegram-chat-id`, and `webhook-url`, each from a secret of your repo ([notifications](notifications.md)). Without a channel on the step this key does nothing.
+
+- `pending`: a scan left stacks pending that were not pending before it, with a link to the dashboard. A stack that stays pending is not news again.
+- `drift`: a scan found drift on stacks that showed none before it.
+- `deployed`: a tick deployed a stack. Left out by default: the person who ticked is watching.
+- `failed`: a deploy failed.
+- `refused`: a tick deployed nothing, because the tick rule refused it or the change moved since the tick.
+
+An empty list sends nothing, which turns notifications off with one reviewed line. Each event is written once. An event that is not one of the five is an error.
+
+```yaml
+notify:
+  events: [pending, failed, refused, deployed]
+```
+
 ## What the file does not hold
 
 - **No credentials and no environment variables.** Your workflow puts them into the job environment before Sluiceway runs ([credentials](credentials.md)).
+- **No notification channels.** A Slack webhook address, a Telegram bot token and a webhook address are secrets, so they are inputs of the step, read from your repo's secrets. A channel written under `notify` is an error that says so.
 - **No `concurrency` or `preview-timeout`.** They belong to the runner, so they are inputs of the action.
 - **No stack ids.** They are derived.
 - **No teams** in a tick rule. Not in this version.
@@ -809,5 +829,5 @@ ticker: admin
 
 ```text
 sluiceway.yaml is not valid:
-- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, attribution, phases, stacks, mergeAndDeploy.
+- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, attribution, phases, stacks, mergeAndDeploy, notify.
 ```

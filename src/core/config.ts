@@ -3,6 +3,7 @@ import { z } from "zod";
 import { LOOKBACK, NAMED_ON_A_ROW } from "./attribution.ts";
 import { knownStacks } from "./discovery.ts";
 import { globMatcher } from "./glob.ts";
+import { DEFAULT_NOTIFY_EVENTS, NOTIFY_EVENTS } from "./notify.ts";
 import { PHASE_NAME, phaseDependencies, throughPhase } from "./phases.ts";
 import { showValuesEntryProblem } from "./show-values.ts";
 import { type Stack, stackId } from "./stack.ts";
@@ -349,6 +350,20 @@ export const configSchema = z
           .default(false),
       })
       .prefault({}),
+    // Slice 5.13 (record 0078): the events the built-in notifications send
+    // on. The channels are inputs of the step, from the repo's secrets, so a
+    // secret never sits in this file.
+    notify: z
+      .strictObject({
+        events: z
+          .array(z.enum(NOTIFY_EVENTS))
+          .transform((events) => [...new Set(events)])
+          .describe(
+            "The events a notification is sent on, to each channel the step's inputs name: pending (stacks newly pending after a scan), drift (stacks newly drifted), deployed, failed and refused (a tick that deployed nothing).",
+          )
+          .default([...DEFAULT_NOTIFY_EVENTS]),
+      })
+      .prefault({}),
   })
   .superRefine((config, context) => {
     const refuse = (path: PropertyKey[], message: string) =>
@@ -434,6 +449,8 @@ function describe(issue: Issue, raw: unknown): Problem[] {
     const unknown = (name: string): string => {
       if (issue.path.length === 1 && issue.path[0] === "drift" && name === "schedule")
         return `"schedule" is not a key of sluiceway.yaml. A drift check runs in every scan that a schedule starts, so the cron goes in the workflow, under \`on: schedule\`.`;
+      if (issue.path.length === 1 && issue.path[0] === "notify")
+        return `unknown key "${name}". Known keys here: ${known.join(", ")}. A channel is an input of the step, from a secret, never a key of sluiceway.yaml.`;
       if (issue.path.length > 0 && RESERVED_KEYS.includes(name))
         return `"${name}" is not in this version of Sluiceway yet. Remove it.`;
       return `unknown key "${name}". Known keys here: ${known.join(", ")}.`;
@@ -516,6 +533,9 @@ function describe(issue: Issue, raw: unknown): Problem[] {
     return (issue.errors[1] ?? []).flatMap((inner) =>
       describe({ ...inner, path: [...issue.path, ...inner.path] }, raw),
     );
+  }
+  if (issue.code === "invalid_value" && issue.path[0] === "notify") {
+    return problem(`${show(value)} is not an event. The events are: ${NOTIFY_EVENTS.join(", ")}.`);
   }
   if (issue.code === "invalid_format" && (issue.path[0] === "phases" || key === "phase")) {
     return problem(`${show(value)} is not a phase name. Use letters, digits, ".", "_" and "-".`);

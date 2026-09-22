@@ -427,6 +427,27 @@
         }
       },
       "additionalProperties": false
+    },
+    "notify": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "events": {
+          "description": "The events a notification is sent on, to each channel the step's inputs name: pending (stacks newly pending after a scan), drift (stacks newly drifted), deployed, failed and refused (a tick that deployed nothing).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "drift",
+              "deployed",
+              "failed",
+              "refused"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
