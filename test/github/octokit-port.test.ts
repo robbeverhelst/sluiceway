@@ -375,10 +375,17 @@ describe("looking up a person's permission", () => {
     });
   });
 
-  test("a login GitHub does not know is an error", async () => {
+  // Slice 5.9: the one 404 that is an answer. Its words are the ones the real
+  // endpoint gave on 2026-09-21.
+  test("a login GitHub does not know is no account, not an error", async () => {
     const { port } = portThatAnswers([
       { status: 404, json: { message: "nobody-here is not a user" } },
     ]);
-    await expect(port.getPermission("nobody-here")).rejects.toThrow("is not a user");
+    expect(await port.getPermission("nobody-here")).toBeUndefined();
+  });
+
+  test("any other 404 is still an error", async () => {
+    const { port } = portThatAnswers([{ status: 404, json: { message: "Not Found" } }]);
+    await expect(port.getPermission("alice")).rejects.toThrow("Not Found");
   });
 });

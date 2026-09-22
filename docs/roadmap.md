@@ -68,9 +68,6 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - An empty `tickers` list, as a way to get a dashboard that nobody can tick
 - A scan that works out by itself that its workflow has no `resolve` job, so that `dashboard.readOnly` is not needed
 - `dashboard.readOnly` as a lock: `resolve` refusing a tick while it is on
-- Trying a failed permission lookup again in the same `resolve` run
-- Telling an account that was renamed or deleted after its tick apart from a failed lookup
-- A cap on the names a refusal comment lists from a tick rule
 - The stacks a narrowed scan carried, in the result file of a scan
 - `sluiceway.yml` as a second spelling of the config file
 - Who made a deploy outside the dashboard, from Pulumi Cloud's `requestedBy`

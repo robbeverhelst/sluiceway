@@ -96,6 +96,8 @@ export class FakeGitHub implements GitHubPort {
   // By login in lower case, because GitHub finds a login in any case.
   readonly #permissions = new Map<string, Permission>();
   readonly #failingLookups = new Map<string, number>();
+  readonly #failingOnce = new Map<string, number>();
+  readonly #goneAccounts = new Set<string>();
   readonly #updateLimitBytes: number;
   readonly #deployments = new FakeDeployments(() => this.#now());
   // The runs an issue edit started, by workflow file name, oldest first.
@@ -199,6 +201,17 @@ export class FakeGitHub implements GitHubPort {
 
   seedPermission(login: string, permission: Permission): void {
     this.#permissions.set(login.toLowerCase(), { ...permission });
+  }
+
+  // GitHub has no account by this login any more, as after a rename or a
+  // delete. The lookup answers 404 "<login> is not a user".
+  removeAccount(login: string): void {
+    this.#goneAccounts.add(login.toLowerCase());
+  }
+
+  // The next lookup of this person fails, and the one after answers.
+  failPermissionLookupOnce(login: string, status = 500): void {
+    this.#failingOnce.set(login.toLowerCase(), status);
   }
 
   // From now on the lookup of this person fails, as when GitHub is down.
@@ -419,10 +432,17 @@ export class FakeGitHub implements GitHubPort {
     };
   }
 
-  async getPermission(login: string): Promise<Permission> {
+  async getPermission(login: string): Promise<Permission | undefined> {
     this.#count("getPermission");
-    const status = this.#failingLookups.get(login.toLowerCase());
+    const key = login.toLowerCase();
+    const once = this.#failingOnce.get(key);
+    if (once !== undefined) {
+      this.#failingOnce.delete(key);
+      throw new FakeGitHubError(once, "Server Error");
+    }
+    const status = this.#failingLookups.get(key);
     if (status !== undefined) throw new FakeGitHubError(status, "Server Error");
+    if (this.#goneAccounts.has(key)) return undefined;
     // Real GitHub answers 200 for any account that exists, collaborator or
     // not (probed on 2026-09-21).
     return { ...(this.#permissions.get(login.toLowerCase()) ?? NO_ACCESS) };

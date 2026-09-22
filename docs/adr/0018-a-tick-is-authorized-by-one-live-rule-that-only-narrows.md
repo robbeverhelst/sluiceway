@@ -54,3 +54,9 @@ Teams are not supported in v1. The workflow token cannot read team membership (0
 Research:
 - https://github.com/sluiceway/sluiceway/blob/research/github-actions-behaviors/docs/research/github-actions-behaviors.md
 - Observed payloads: https://github.com/sluiceway/sluiceway/issues/17
+
+## Settled while building (slice 5.9)
+
+- A failed permission lookup is tried once more in the same `resolve` run, after a pause of one second, and only a second failure makes the tick unverified. A lookup fails rarely and mostly for a moment, and one retry keeps the job that an issue edit starts short. A person is still looked up once per run when the first try answers.
+- GitHub answers the lookup of a login it has no account for with 404 and the words `<login> is not a user` (seen on 2026-09-21). That one answer is read, by its status and those words, as "no account by that name any more", as after a rename or a delete since the tick. The tick is refused, not unverified: the box is cleared, the comment says the account is gone and asks for a tick from the account the person uses now, and the job stays green. Any other 404 or failure is still a failed lookup. The port gives nothing for such a login, and the fake has `removeAccount` for it.
+- A refusal comment names at most ten people of a list rule, then says how many more `sluiceway.yaml` names: `user1, ..., user10 and 2 more in sluiceway.yaml`. A list of ten or fewer is named in full as before.

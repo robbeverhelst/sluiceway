@@ -237,7 +237,7 @@ describe("looking up a person's permission", () => {
   test("like GitHub, it finds a login in any case of the letters", async () => {
     const github = new FakeGitHub();
     github.seedPermission("Alice", { push: true, maintain: false, admin: false });
-    expect((await github.getPermission("aLICE")).push).toBe(true);
+    expect((await github.getPermission("aLICE"))?.push).toBe(true);
   });
 
   test("someone who is not a collaborator is a clean answer with no access", async () => {
@@ -255,7 +255,7 @@ describe("looking up a person's permission", () => {
     github.failPermissionLookup("alice", 502);
 
     await expect(github.getPermission("Alice")).rejects.toMatchObject({ status: 502 });
-    expect((await github.getPermission("bob")).push).toBe(false);
+    expect((await github.getPermission("bob"))?.push).toBe(false);
     expect(github.requests).toEqual(["getPermission", "getPermission"]);
   });
 });

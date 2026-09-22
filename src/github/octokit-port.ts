@@ -168,10 +168,21 @@ export function createOctokitPort(octokit: Octokit, repo: Repo): GitHubPort {
     },
 
     async getPermission(login) {
-      const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({
-        ...repo,
-        username: login,
-      });
+      let data: Awaited<
+        ReturnType<typeof octokit.rest.repos.getCollaboratorPermissionLevel>
+      >["data"];
+      try {
+        ({ data } = await octokit.rest.repos.getCollaboratorPermissionLevel({
+          ...repo,
+          username: login,
+        }));
+      } catch (error) {
+        // GitHub's answer for a login it has no account for: 404 and "<login>
+        // is not a user" (seen on 2026-09-21). Any other failure gave no
+        // answer to judge (slice 5.9).
+        if (isNoAccount(error)) return undefined;
+        throw error;
+      }
       const permissions = data.user?.permissions;
       if (!permissions) throw new Error(`GitHub's answer holds no permissions for ${login}.`);
       return {
@@ -235,4 +246,14 @@ function toIssue(issue: ApiIssue): Issue {
       ? { login: issue.user.login, type: issue.user.type }
       : { login: "", type: "" },
   };
+}
+
+// The 404 of the permission lookup that is an answer: no account by the login.
+function isNoAccount(error: unknown): boolean {
+  const { status, response } = (error ?? {}) as {
+    status?: unknown;
+    response?: { data?: { message?: unknown } };
+  };
+  const message = response?.data?.message;
+  return status === 404 && typeof message === "string" && / is not a user$/.test(message);
 }

@@ -24,8 +24,11 @@ function repo() {
 }
 
 // What a `resolve` run does with its ticks: judge them, then tell the people.
+// A test does not wait for the pause before a second lookup.
+const NO_PAUSE = { pauseMs: 0 };
+
 async function handle(github: FakeGitHub, dashboard: number, ticks: Tick[]) {
-  const outcomes = await judgeTicks(github, ticks);
+  const outcomes = await judgeTicks(github, ticks, NO_PAUSE);
   await commentOnRefusedTicks(github, dashboard, outcomes);
   return outcomes.map(({ outcome }) => outcome);
 }
@@ -158,9 +161,11 @@ describe("a lookup that fails", () => {
     const { github, dashboard } = repo();
     github.failPermissionLookup("olivia", 502);
 
-    const outcomes = await judgeTicks(github, [
-      { target: stack("network:prod", "admin"), editor: person("olivia") },
-    ]);
+    const outcomes = await judgeTicks(
+      github,
+      [{ target: stack("network:prod", "admin"), editor: person("olivia") }],
+      NO_PAUSE,
+    );
     await commentOnRefusedTicks(github, dashboard, outcomes);
 
     expect(outcomes).toMatchObject([{ outcome: "unverified", error: { status: 502 } }]);
@@ -169,7 +174,9 @@ describe("a lookup that fails", () => {
     ]);
   });
 
-  test("stops nobody else: the other tickers are still judged, and it is not tried twice", async () => {
+  // Slice 5.9: a failed lookup is tried once more in the same run, after a
+  // short pause, and only then fails closed.
+  test("stops nobody else: the other tickers are still judged, and it is tried twice at most", async () => {
     const { github, dashboard } = repo();
     github.failPermissionLookup("olivia");
 
@@ -180,7 +187,48 @@ describe("a lookup that fails", () => {
         { target: stack("app:prod", "write"), editor: person("will") },
       ]),
     ).toEqual(["unverified", "unverified", "allowed"]);
-    expect(github.requests).toEqual(["getPermission", "getPermission", "createComment"]);
+    expect(github.requests).toEqual([
+      "getPermission",
+      "getPermission",
+      "getPermission",
+      "createComment",
+    ]);
+  });
+
+  test("a lookup that fails once and then answers judges the tick, and nobody is told", async () => {
+    const { github, dashboard } = repo();
+    github.failPermissionLookupOnce("olivia", 502);
+
+    expect(
+      await handle(github, dashboard, [
+        { target: stack("network:prod", "admin"), editor: person("olivia") },
+      ]),
+    ).toEqual(["allowed"]);
+    expect(github.requests).toEqual(["getPermission", "getPermission"]);
+    expect(github.comments(dashboard)).toEqual([]);
+  });
+});
+
+// Slice 5.9: GitHub answers that it has no account by the login, as after a
+// rename or a delete since the tick. That is an answer, not a failed lookup:
+// the tick is refused, the person is told, and the job stays green.
+describe("a ticker GitHub has no account for any more", () => {
+  test("is refused with a comment that says so, after one lookup", async () => {
+    const { github, dashboard } = repo();
+    github.removeAccount("will");
+
+    const outcomes = await judgeTicks(
+      github,
+      [{ target: stack("network:prod", "write"), editor: person("will") }],
+      NO_PAUSE,
+    );
+    await commentOnRefusedTicks(github, dashboard, outcomes);
+
+    expect(outcomes).toMatchObject([{ outcome: "refused", reason: "no-account" }]);
+    expect(github.requests).toEqual(["getPermission", "createComment"]);
+    expect(github.comments(dashboard)).toEqual([
+      "@will ticked **network:prod**. The tick was refused: GitHub has no account by that name any more, as after a rename or a delete. Tick the box again from the account you use now. Nothing was started and the box is cleared.",
+    ]);
   });
 });
 

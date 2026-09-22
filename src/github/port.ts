@@ -146,9 +146,10 @@ export interface GitHubPort {
   // What a person may do in the repo, live, as the three booleans the tick
   // rule reads (record 0018). Works with contents: read and issues: read
   // (issue 17). Someone who is not a collaborator is a clean answer with every
-  // boolean false. Fails when GitHub gives no answer to judge, and then the
-  // caller fails closed.
-  getPermission(login: string): Promise<Permission>;
+  // boolean false. Nothing when GitHub has no account by the login, as after a
+  // rename or a delete (slice 5.9). Fails when GitHub gives no answer to
+  // judge, and then the caller fails closed.
+  getPermission(login: string): Promise<Permission | undefined>;
 
   // A deployment record (record 0003), always with `auto_merge: false` and
   // `required_contexts: []`. It has no status yet.

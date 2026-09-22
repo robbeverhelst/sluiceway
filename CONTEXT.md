@@ -157,11 +157,11 @@ What a person needs in order to tick a stack: a level of access to the repo, or 
 _Avoid_: Approvers, reviewers, allowlist, access list
 
 **Refused tick**:
-A tick by a person the stack's tick rule does not allow. Nothing deploys, the box is cleared and the person is told why.
+A tick by a person the stack's tick rule does not allow, or by an account GitHub no longer has, as after a rename or a delete. Nothing deploys, the box is cleared and the person is told why.
 _Avoid_: Unauthorized tick, rejected tick, denied tick
 
 **Unverified tick**:
-A tick whose ticker could not be checked because GitHub gave no answer about their access. Sluiceway fails closed: nothing deploys, the box is cleared, the person is asked for a fresh tick and the job goes red.
+A tick whose ticker could not be checked because GitHub gave no answer about their access, twice: the lookup is tried once more after a short pause. Sluiceway fails closed: nothing deploys, the box is cleared, the person is asked for a fresh tick and the job goes red.
 _Avoid_: Failed tick, errored tick, unknown tick
 
 **Orphan tick**:

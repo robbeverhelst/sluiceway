@@ -17,8 +17,11 @@ export interface RefusedTick {
   // since the tick; or it no longer qualifies, with why in `detail`.
   // "waits-on": a stack the pull request's stack depends on has a change
   // waiting or deploying (record 0056), with their ids in `waitsOn`.
+  // "no-account": GitHub has no account by the login any more, as after a
+  // rename or a delete since the tick (slice 5.9).
   reason:
     | RefusalReason
+    | "no-account"
     | "unverified"
     | "merge-refused"
     | "head-moved"
@@ -27,6 +30,9 @@ export interface RefusedTick {
   detail?: string | undefined;
   waitsOn?: readonly string[] | undefined;
 }
+
+// The most names of a tick rule one refusal lists (slice 5.9).
+export const NAMES_IN_A_REFUSAL = 10;
 
 function what(target: TickTarget): string {
   if (target.kind === "rescan") return "the rescan box";
@@ -54,6 +60,9 @@ function why({ target, reason, detail, waitsOn }: RefusedTick): string {
   if (reason === "not-qualified") {
     return `The pull request no longer qualifies: ${sentence(detail ?? "")}`;
   }
+  if (reason === "no-account") {
+    return "The tick was refused: GitHub has no account by that name any more, as after a rename or a delete. Tick the box again from the account you use now.";
+  }
   if (reason === "unverified") {
     return "The tick could not be verified, because the permission lookup failed. Tick the box again for a fresh try.";
   }
@@ -63,8 +72,11 @@ function why({ target, reason, detail, waitsOn }: RefusedTick): string {
   if (typeof target.rule === "string") {
     return `The tick was refused: the tick rule of this stack is \`${target.rule}\`, which takes ${target.rule} access to this repository.`;
   }
-  // Plain logins, without the "@", notify no one.
-  const names = target.rule.map(escapeText).join(", ");
+  // Plain logins, without the "@", notify no one. A long list is cut, and the
+  // file holds the rest (slice 5.9).
+  const named = target.rule.slice(0, NAMES_IN_A_REFUSAL).map(escapeText).join(", ");
+  const rest = target.rule.length - NAMES_IN_A_REFUSAL;
+  const names = rest > 0 ? `${named} and ${rest} more in sluiceway.yaml` : named;
   return `The tick was refused: the tick rule of this stack names who can tick it: ${names}.`;
 }
 

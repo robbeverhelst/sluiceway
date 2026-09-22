@@ -170,6 +170,10 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
       new RegExp(`^${REPO}/collaborators/([^/]+)/permission$`),
       async (_call, login) => {
         const permission = await fake.getPermission(login);
+        // GitHub's words for a login it has no account for.
+        if (permission === undefined) {
+          return { status: 404, json: { message: `${login} is not a user` } };
+        }
         return {
           status: 200,
           json: {

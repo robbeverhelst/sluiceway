@@ -39,6 +39,34 @@ describe("one refused tick", () => {
     );
   });
 
+  // Slice 5.9: a long list is cut at ten names, and the comment says how many
+  // more there are and where the rest is.
+  test("names at most ten people of a list, and counts the rest", () => {
+    const names = Array.from({ length: 12 }, (_, index) => `user${index + 1}`);
+    const comment = refusedTicksComment([
+      refused({
+        target: { kind: "stack", stackId: "network:prod", rule: names },
+        reason: "not-on-list",
+      }),
+    ]);
+    expect(comment).toBe(
+      "@alice ticked **network:prod**. The tick was refused: the tick rule of this stack names who can tick it: user1, user2, user3, user4, user5, user6, user7, user8, user9, user10 and 2 more in sluiceway.yaml. Nothing was started and the box is cleared.",
+    );
+  });
+
+  test("a list of exactly ten is named in full", () => {
+    const names = Array.from({ length: 10 }, (_, index) => `user${index + 1}`);
+    const comment = refusedTicksComment([
+      refused({
+        target: { kind: "stack", stackId: "network:prod", rule: names },
+        reason: "not-on-list",
+      }),
+    ]);
+    expect(comment).toContain(
+      "who can tick it: user1, user2, user3, user4, user5, user6, user7, user8, user9, user10. Nothing",
+    );
+  });
+
   test("says that ticking needs write access, whatever the rule is", () => {
     const rules: TickRule[] = ["write", "admin", ["alice"]];
     for (const rule of rules) {
