@@ -63,3 +63,50 @@ jobs:
         env:
           PULUMI_VERSION: ${{ matrix.pulumi }}
         run: bun run e2e --work-dir "$RUNNER_TEMP/e2e" --expect-version "$PULUMI_VERSION"
+
+  mixed:
+    # One repo with Pulumi and OpenTofu stacks (record 0053): the committed
+    # bundle, the real pulumi and the real tofu, and the fake GitHub server.
+    # A full scan with the rows of both tools, a deploy of an OpenTofu stack
+    # from the plan its fresh preview saved, a change that moved after its
+    # tick, a deploy of a Pulumi stack, and a last scan. tofu runs with the
+    # minimum version the adapter supports and the newest one the fixtures
+    # were recorded with.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        tofu: ["1.11.0", "1.12.6"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      # Stands in for the runner's own node24, which starts the bundle in a
+      # real step.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      # Without a command this only installs the CLI.
+      - uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+        with:
+          pulumi-version: v3.263.0
+
+      # No wrapper: Sluiceway reads what tofu itself prints.
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ matrix.tofu }}
+          tofu_wrapper: false
+
+      - run: bun install --frozen-lockfile
+
+      - name: Scan, tick, apply and settle a repo with both tools with the committed bundle
+        env:
+          TOFU_VERSION: ${{ matrix.tofu }}
+        run: bun run e2e:mixed --work-dir "$RUNNER_TEMP/e2e-mixed" --expect-tofu "v$TOFU_VERSION"
