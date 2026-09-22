@@ -60,6 +60,11 @@ export interface DeploymentPayload {
   // A queued record: the stacks it waits behind, which have to go out first
   // (records 0009 and 0056). Absent on every other record.
   behind?: string[] | undefined;
+  // The pull request a tick merged (record 0054). Such a record has no hash,
+  // read as "", because nothing was previewed yet: the scan after the merge
+  // ends it and opens the record that deploys. It outlives its run, which is
+  // the run of `resolve`.
+  merge?: number | undefined;
 }
 
 export function deploymentPayload(payload: DeploymentPayload): Record<string, unknown> {
@@ -72,6 +77,16 @@ export function deploymentPayload(payload: DeploymentPayload): Record<string, un
   };
 }
 
+// The payload of the record a merge tick opens (record 0054). No hash at all,
+// so an older version of Sluiceway, which needs one, leaves the record alone.
+export function mergePayload(payload: {
+  ticker: string;
+  run: string;
+  merge: number;
+}): Record<string, unknown> {
+  return { v: PAYLOAD_VERSION, ticker: payload.ticker, run: payload.run, merge: payload.merge };
+}
+
 const RUN_ID = /^[1-9]\d*$/;
 
 // A payload of another version, or one a person made up, is not read. A run
@@ -79,8 +94,19 @@ const RUN_ID = /^[1-9]\d*$/;
 // built from text that came from outside.
 export function readDeploymentPayload(payload: unknown): DeploymentPayload | undefined {
   if (typeof payload !== "object" || payload === null) return undefined;
-  const { v, hash, ticker, run, behind } = payload as Record<string, unknown>;
+  const { v, hash, ticker, run, behind, merge } = payload as Record<string, unknown>;
   if (v !== PAYLOAD_VERSION) return undefined;
+  if (merge !== undefined) {
+    const number = typeof merge === "number" && Number.isInteger(merge) && merge > 0;
+    const plain = hash === undefined && behind === undefined;
+    return number &&
+      plain &&
+      typeof ticker === "string" &&
+      typeof run === "string" &&
+      RUN_ID.test(run)
+      ? { hash: "", ticker, run, merge }
+      : undefined;
+  }
   if (typeof hash !== "string" || typeof ticker !== "string" || typeof run !== "string") {
     return undefined;
   }
@@ -108,6 +134,9 @@ export type DeployFact =
       // Queued behind these stacks (record 0056): it starts only after they
       // went out, in a later run.
       behind?: string[] | undefined;
+      // The pull request a merge tick merged: the record waits for the scan
+      // after the merge, not for its run (record 0054).
+      merge?: number;
     }
   | {
       kind: "succeeded";
@@ -181,8 +210,17 @@ function isRehearsal(status: DeploymentStatus | undefined): boolean {
 // record says nothing about the stack: the new one does.
 export const HANDED_ON_DESCRIPTION = "started in a later run";
 
+// The description of the `inactive` status that ends a merge record once the
+// scan after the merge opened the record that deploys (record 0054). Nothing
+// went out under it, so it is no deploy fact and no line of the trail either:
+// the record that deploys is.
+export const MERGED_DESCRIPTION = "merged, the deploy follows in a record of its own";
+
 export function isHandedOn(status: DeploymentStatus | undefined): boolean {
-  return status?.state === "inactive" && status.description === HANDED_ON_DESCRIPTION;
+  return (
+    status?.state === "inactive" &&
+    (status.description === HANDED_ON_DESCRIPTION || status.description === MERGED_DESCRIPTION)
+  );
 }
 
 // A record with no status, or with a state that is no result, is an open
@@ -229,6 +267,7 @@ function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFac
     ticker,
     run,
     ...(payload.behind ? { behind: payload.behind } : {}),
+    ...(payload.merge === undefined ? {} : { merge: payload.merge }),
   };
 }
 

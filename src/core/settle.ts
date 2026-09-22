@@ -23,7 +23,8 @@ export function openRecordsOfRun(
     const stackId = taskStackId(record.task);
     if (stackId === undefined) continue;
     const fact = deployFacts([record]).byStack.get(stackId);
-    if (fact?.kind !== "open" || fact.run !== runId) continue;
+    // A merge record waits for the scan after the merge (record 0054).
+    if (fact?.kind !== "open" || fact.run !== runId || fact.merge !== undefined) continue;
     found.set(record.id, {
       id: record.id,
       stackId,

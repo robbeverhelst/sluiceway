@@ -89,7 +89,9 @@ export async function settleEndedRuns(
     settled.stackIds.push(stackId);
   };
   for (const [stackId, fact] of deployFacts(records).byStack) {
-    if (fact.kind !== "open" || fact.behind) continue;
+    // A merge record outlives the run of `resolve` that opened it. The scan
+    // after the merge ends it (record 0054).
+    if (fact.kind !== "open" || fact.behind || fact.merge !== undefined) continue;
     const run = await github.getWorkflowRun(fact.run);
     if (run && !run.completed) continue;
     await end(stackId, fact.deployment, fact.run, false);

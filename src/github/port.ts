@@ -5,10 +5,11 @@
 //
 // It holds the calls the dashboard, the narrowed scan, the tick rule, the walk
 // through the edit history, the deployment records, the orphan tick sweep,
-// the rescan box and attribution need.
+// the rescan box, attribution and merge and deploy need.
 
 import type { CommitWalk } from "../core/attribution.ts";
 import type { HistoryEntry, HistoryPage } from "../core/edit-history.ts";
+import type { AllowedMethods, MergeMethod, OpenPullRequest } from "../core/merge-and-deploy.ts";
 import type { IssuesRun } from "../core/orphan-tick.ts";
 import type { Comparison } from "../core/scan-plan.ts";
 import type { Permission } from "../core/tick-rule.ts";
@@ -23,7 +24,32 @@ import type {
 
 export type * from "./deployment-calls.ts";
 
-export type { CommitWalk, Comparison, HistoryEntry, HistoryPage, IssuesRun, Permission };
+export type {
+  AllowedMethods,
+  CommitWalk,
+  Comparison,
+  HistoryEntry,
+  HistoryPage,
+  IssuesRun,
+  MergeMethod,
+  OpenPullRequest,
+  Permission,
+};
+
+// The open pull requests of the repo, and the branch they are judged against
+// (record 0054).
+export interface OpenPullRequests {
+  defaultBranch: string;
+  pullRequests: OpenPullRequest[];
+}
+
+// What GitHub answered a merge. A refusal is an answer about the pull
+// request: GitHub will not merge it, such as for branch protection (405), its
+// head is not the commit that was ticked (409), or it refused what was asked
+// (422). `message` is GitHub's own words.
+export type MergeAnswer =
+  | { merged: true; sha: string }
+  | { merged: false; status: number; message: string };
 
 // An issue's body together with one page of its edit history.
 export interface EditHistory extends HistoryPage {
@@ -195,4 +221,23 @@ export interface GitHubPort {
   // It is the one thing the workflow token may start (record 0017), and it
   // needs `actions: write`: without it GitHub answers 403.
   dispatchWorkflow(workflow: string, ref: string): Promise<void>;
+
+  // The oldest 100 open pull requests, each with its files and the combined
+  // checks of its head commit, in one GraphQL query (record 0054). Needs
+  // `pull-requests: read`. Only a scan with `mergeAndDeploy.authors` makes it,
+  // and `resolve` before it merges.
+  listOpenPullRequests(): Promise<OpenPullRequests>;
+
+  // The merge methods the repo allows. GitHub gives them to a token with
+  // `contents: write` only, and a key it leaves out is absent.
+  allowedMergeMethods(): Promise<AllowedMethods>;
+
+  // Merges a pull request, only while its head is `head` (record 0054).
+  // Needs `contents: write`. A merge made with the workflow token starts no
+  // workflow run of its push (record 0017). Fails for any answer that is not
+  // a merge or a refusal.
+  mergePullRequest(
+    number: number,
+    merge: { head: string; method: MergeMethod },
+  ): Promise<MergeAnswer>;
 }

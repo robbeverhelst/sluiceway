@@ -8,6 +8,8 @@ import {
   IN_SYNC_DESCRIPTION,
   isOpenStatus,
   lastDeployedCommit,
+  MERGED_DESCRIPTION,
+  mergePayload,
   pendingAgain,
   REHEARSED_DESCRIPTION,
   readDeploymentPayload,
@@ -442,5 +444,54 @@ describe("pending again right after a deploy (onboarding log, hurdle 21)", () =>
     expect(pendingAgain(fact("failure"), "2b44350653e84a11")).toBe(false);
     expect(pendingAgain(fact("queued"), "2b44350653e84a11")).toBe(false);
     expect(pendingAgain(undefined, "2b44350653e84a11")).toBe(false);
+  });
+});
+
+// Slice 4.2 (record 0054): the record a merge tick opens. It carries the pull
+// request and no hash, because nothing was previewed yet. A scan hands it on.
+describe("a record that deploys after a merge", () => {
+  const merge = { ticker: "alice", run: "4242", merge: 418 };
+
+  test("carries the pull request instead of a hash", () => {
+    expect(mergePayload(merge)).toEqual({ v: 1, ticker: "alice", run: "4242", merge: 418 });
+  });
+
+  test("reads back with an empty hash, which no preview ever gives", () => {
+    expect(readDeploymentPayload(mergePayload(merge))).toEqual({ ...merge, hash: "" });
+  });
+
+  test("a merge that is not a pull request number is not read", () => {
+    for (const bad of [0, -1, 1.5, "418", null]) {
+      expect(readDeploymentPayload({ ...mergePayload(merge), merge: bad })).toBeUndefined();
+    }
+  });
+
+  test("while it waits for its scan, the stack is deploying and the fact names the pull request", () => {
+    const { byStack } = deployFacts([
+      record({ id: 7, state: "queued", payload: mergePayload(merge) }),
+    ]);
+    expect(byStack.get("apps/grafana:prod")).toEqual({
+      kind: "open",
+      deployment: 7,
+      waiting: true,
+      ticker: "alice",
+      run: "4242",
+      merge: 418,
+    });
+  });
+
+  test("once handed on it is no deploy fact and no line of the trail", () => {
+    const failed = record({ id: 1, createdAt: "2026-09-21T08:00:00Z", state: "failure" });
+    const handedOn = record({
+      id: 2,
+      createdAt: "2026-09-21T09:00:00Z",
+      state: "inactive",
+      payload: mergePayload(merge),
+    });
+    handedOn.status = { ...handedOn.status, description: MERGED_DESCRIPTION } as never;
+    const facts = deployFacts([failed, handedOn]);
+    expect(MERGED_DESCRIPTION).toBe("merged, the deploy follows in a record of its own");
+    expect(facts.byStack.get("apps/grafana:prod")).toMatchObject({ kind: "failed" });
+    expect(facts.succeeded).toEqual([]);
   });
 });

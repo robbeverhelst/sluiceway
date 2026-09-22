@@ -119,6 +119,22 @@ describe("an open deployment whose run is over", () => {
     expect(github.requests).toEqual(["getWorkflowRun", "createDeploymentStatus"]);
   });
 
+  // Slice 4.2 (record 0054): a merge record outlives the run that opened it.
+  // The scan after the merge ends it.
+  test("a record that waits for the scan after a merge is never ended for its run", async () => {
+    const github = new FakeGitHub();
+    const open = github.seedDeployment({
+      task: "sluiceway:a",
+      payload: { v: 1, ticker: "alice", run: "4242", merge: 418 },
+      status: { state: "queued" },
+    });
+    github.seedRun("4242", { completed: true });
+
+    const settled = await settleEndedRuns(github, [github.deployment(open.id)], REPO_URL);
+    expect(settled.stackIds).toEqual([]);
+    expect(github.requests).toEqual([]);
+  });
+
   test("a run that is still going leaves the record open, however long it waits", async () => {
     const github = new FakeGitHub();
     const open = github.seedDeployment({

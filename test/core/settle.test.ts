@@ -82,4 +82,14 @@ describe("openRecordsOfRun", () => {
   test("names a record once when it was read twice", () => {
     expect(openRecordsOfRun([record(1), record(1)], RUN)).toEqual([{ id: 1, stackId: "a:prod" }]);
   });
+
+  // Slice 4.2 (record 0054): the record a merge tick opens waits for a scan,
+  // not for its own run, so the run's settle leaves it alone.
+  test("leaves a record that waits for the scan after a merge alone", () => {
+    const merge = record(1, {
+      state: "queued",
+      payload: { v: 1, ticker: "alice", run: RUN, merge: 418 },
+    });
+    expect(openRecordsOfRun([merge], RUN)).toEqual([]);
+  });
 });

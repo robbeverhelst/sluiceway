@@ -402,3 +402,58 @@ describe("the ticks in a body", () => {
     expect(ticksIn(live)).toEqual([]);
   });
 });
+
+// Slice 4.2 (record 0054): a merge row is ticked at one head commit, the way a
+// stack's row is ticked at one hash.
+describe("a tick on an update waiting to merge", () => {
+  const HEAD = "0123456789abcdef0123456789abcdef01234567";
+  const OTHER = "fedcba9876543210fedcba9876543210fedcba98";
+  function merge(box: Box, head = HEAD, stack = "stack-a"): string {
+    return `- [${box}] **${stack}** · Update x · #418 <!-- sluiceway:merge pr="418" stack="${stack}" head="${head}" -->`;
+  }
+  const M = { kind: "merge", pr: 418, stackId: "stack-a", head: HEAD } as const satisfies Tick;
+
+  test("is read after the rows and before the rescan box", () => {
+    const text = `${body(row("stack-b", "x", B.hash), merge("x"))}\n- [x] Rescan all stacks <!-- sluiceway:rescan -->\n`;
+    expect(ticksIn(text)).toEqual([B, M, { kind: "rescan" }]);
+  });
+
+  test("of two lines for one pull request the first counts", () => {
+    expect(ticksIn(body(merge(" "), merge("x")))).toEqual([]);
+  });
+
+  test("names the person whose edit ticked it", async () => {
+    const { readPage } = history([
+      { editor: person("alice"), editedAt: "2026-09-22T07:00:00Z", body: body(merge("x")) },
+      { editor: BOT, editedAt: "2026-09-22T06:00:00Z", body: body(merge(" ")) },
+    ]);
+    expect(await nameTickers([M], readPage)).toEqual([
+      { named: true, editor: person("alice"), editedAt: "2026-09-22T07:00:00Z" },
+    ]);
+  });
+
+  test("a new head commit under the tick ends the stretch, as a new hash does", async () => {
+    const { readPage } = history([
+      { editor: BOT, editedAt: "2026-09-22T08:00:00Z", body: body(merge("x")) },
+      { editor: person("alice"), editedAt: "2026-09-22T07:00:00Z", body: body(merge("x", OTHER)) },
+      { editor: BOT, editedAt: "2026-09-22T06:00:00Z", body: body(merge(" ", OTHER)) },
+    ]);
+    expect(await nameTickers([M], readPage)).toEqual([
+      { named: true, editor: BOT, editedAt: "2026-09-22T08:00:00Z" },
+    ]);
+  });
+
+  test("a marker that names another stack is another tick", async () => {
+    const { readPage } = history([
+      { editor: person("mallory"), editedAt: "2026-09-22T08:00:00Z", body: body(merge("x")) },
+      {
+        editor: person("alice"),
+        editedAt: "2026-09-22T07:00:00Z",
+        body: body(merge("x", HEAD, "stack-b")),
+      },
+    ]);
+    expect(await nameTickers([M], readPage)).toEqual([
+      { named: true, editor: person("mallory"), editedAt: "2026-09-22T08:00:00Z" },
+    ]);
+  });
+});

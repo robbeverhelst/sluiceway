@@ -1,5 +1,6 @@
 import { HISTORY_CAP } from "../../src/core/edit-history.ts";
 import type {
+  AllowedMethods,
   CheckRun,
   CheckRunOutput,
   CommitWalk,
@@ -14,15 +15,20 @@ import type {
   Issue,
   IssueAuthor,
   IssuesRun,
+  MergeAnswer,
+  MergeMethod,
   NewCheckRun,
   NewDeployment,
   NewDeploymentStatus,
   NewIssue,
+  OpenPullRequest,
+  OpenPullRequests,
   Permission,
   WorkflowRun,
 } from "../../src/github/port.ts";
 import { FakeCommits, type SeedCommit, type SeedPullRequest } from "./commits.ts";
 import { FakeDeployments, type FakeStatus, type SeedDeployment } from "./deployments.ts";
+import { type FakeMerge, FakePulls, type SeedOpenPullRequest } from "./pulls.ts";
 
 // An in-memory GitHub behind the port. It copies the real behavior the lab
 // found (issue 17), because those are the things a naive fake gets wrong. It
@@ -102,6 +108,8 @@ export class FakeGitHub implements GitHubPort {
   #nextCheckRunId = 106_538_952_701;
   readonly #repoUrl: string;
   readonly #commits = new FakeCommits();
+  readonly #pulls = new FakePulls();
+  #contentsWrite = true;
   #nextNumber = 1;
   // The fake's clock. It moves one second each time it is read, so two things
   // never happen at the same time and every run gives the same times.
@@ -151,6 +159,31 @@ export class FakeGitHub implements GitHubPort {
 
   // What a person may do in the repo. A login that was never seeded is an
   // account that is not a collaborator.
+  // An open pull request (record 0054). Unset facts are those of a green
+  // Renovate pull request into main.
+  seedOpenPullRequest(pullRequest: SeedOpenPullRequest): OpenPullRequest {
+    return this.#pulls.seed(pullRequest);
+  }
+
+  // How GitHub answers a merge of this pull request, such as 405 for branch
+  // protection.
+  refuseMerge(number: number, status: number, message: string): void {
+    this.#pulls.refuse(number, status, message);
+  }
+
+  setAllowedMergeMethods(allowed: AllowedMethods): void {
+    this.#pulls.allowed = allowed;
+  }
+
+  // The workflow token without `contents: write`.
+  withoutContentsWrite(): void {
+    this.#contentsWrite = false;
+  }
+
+  get merges(): FakeMerge[] {
+    return this.#pulls.merges;
+  }
+
   seedPermission(login: string, permission: Permission): void {
     this.#permissions.set(login.toLowerCase(), { ...permission });
   }
@@ -511,6 +544,29 @@ export class FakeGitHub implements GitHubPort {
       throw new FakeGitHubError(403, "Resource not accessible by integration");
     }
     this.#dispatches.push({ workflow, ref });
+  }
+
+  async listOpenPullRequests(): Promise<OpenPullRequests> {
+    this.#count("listOpenPullRequests");
+    return this.#pulls.list();
+  }
+
+  // GitHub leaves the merge settings out for a token without `contents:
+  // write`.
+  async allowedMergeMethods(): Promise<AllowedMethods> {
+    this.#count("allowedMergeMethods");
+    return this.#contentsWrite ? { ...this.#pulls.allowed } : {};
+  }
+
+  async mergePullRequest(
+    number: number,
+    { head, method }: { head: string; method: MergeMethod },
+  ): Promise<MergeAnswer> {
+    this.#count("mergePullRequest");
+    if (!this.#contentsWrite) {
+      throw new FakeGitHubError(403, "Resource not accessible by integration");
+    }
+    return this.#pulls.merge(number, head, method);
   }
 
   #mayWriteChecks(): void {

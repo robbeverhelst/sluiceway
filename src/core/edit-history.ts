@@ -35,9 +35,12 @@ export interface HistoryPage {
   next: string | undefined;
 }
 
-// What a walk looks for: a row ticked at one diff hash, or the ticked rescan
-// box.
-export type Tick = { kind: "row"; stackId: string; hash: string } | { kind: "rescan" };
+// What a walk looks for: a row ticked at one diff hash, an update waiting to
+// merge ticked at one head commit (record 0054), or the ticked rescan box.
+export type Tick =
+  | { kind: "row"; stackId: string; hash: string }
+  | { kind: "merge"; pr: number; stackId: string; head: string }
+  | { kind: "rescan" };
 
 // Why the history names nobody for a tick.
 // - "entry-without-body": an entry inside the stretch has no body. It always
@@ -74,12 +77,16 @@ export const HISTORY_PAGE_SIZE = 10;
 // blocks for one stack the first counts, as it does for every writer.
 function holds(dashboard: ParsedDashboard, tick: Tick): boolean {
   if (tick.kind === "rescan") return dashboard.rescanTicked;
+  if (tick.kind === "merge") {
+    const merge = dashboard.merges.find((candidate) => candidate.pr === tick.pr);
+    return merge?.ticked === true && merge.head === tick.head && merge.stackId === tick.stackId;
+  }
   const row = dashboard.rows.find((candidate) => candidate.stackId === tick.stackId);
   return row?.known === true && row.ticked && row.hash === tick.hash;
 }
 
 // Every tick in a body, read the way the walk reads an entry: the ticked rows
-// in body order, then the rescan box. A row of a state this version does not
+// in body order, then the ticked updates waiting to merge, then the rescan box. A row of a state this version does not
 // know holds no tick, and neither does a row without a hash, which shows
 // nothing a tick could approve.
 export function ticksIn(body: string): Tick[] {
@@ -94,6 +101,12 @@ export function ticksIn(body: string): Tick[] {
     if (row.known && row.ticked && row.hash !== undefined && row.state !== "queued") {
       ticks.push({ kind: "row", stackId: row.stackId, hash: row.hash });
     }
+  }
+  const merged = new Set<number>();
+  for (const { pr, stackId, head, ticked } of dashboard.merges) {
+    if (merged.has(pr)) continue;
+    merged.add(pr);
+    if (ticked) ticks.push({ kind: "merge", pr, stackId, head });
   }
   if (dashboard.rescanTicked) ticks.push({ kind: "rescan" });
   return ticks;
