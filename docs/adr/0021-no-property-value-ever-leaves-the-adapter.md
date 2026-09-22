@@ -1,5 +1,7 @@
 # No property value ever leaves the adapter
 
+> Amended by 0059: the Pulumi adapter reads one input of a new state, the `name` of a stack reference, only on a step of that type, and turns it into a stack id of the repo inside the adapter. The name itself never leaves.
+>
 > Amended by 0037: the summary is not without a budget. GitHub drops a step summary over 1 MiB, so the summary shortens too, and the job log holds every diff in full.
 >
 > Amended by 0046: changed keys are property paths, not top-level names. A path holds names, list indexes and map keys, never a value, so a map key must not be a secret either.

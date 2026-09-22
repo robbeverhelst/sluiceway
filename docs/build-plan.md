@@ -92,7 +92,8 @@ The file is optional and sits at the repo root. Unknown keys are an error, becau
 | `stacks[].tickers` | the top level value | Tick rule for this stack | 0018 |
 | `stacks[].inputs` | `[]` | Extra globs this stack claims | 0010 |
 | `stacks[].previewTimeout` | the input | Time limit for this stack, whole minutes | 0012, 0035 |
-| `stacks[].dependsOn` | none | Stack ids this stack depends on. A tick waits while one of them is pending and not ticked, ticks in one chain deploy one layer per run (slice 4.4) | 0056 |
+| `stacks[].dependsOn` | none | Stack ids this stack depends on, or `auto`: the stacks its Pulumi program reads through stack references, read at each preview and carried on the row (slice 4.7). A tick waits while one of them is pending and not ticked, ticks in one chain deploy one layer per run (slice 4.4) | 0056, 0059 |
+| `stacks[].drift.enabled` | the top level | The drift check on or off for the stacks of this entry, in the same scans as `drift.enabled` (slice 4.7) | 0059 |
 | `stacks[].options` | `{}` | Named adapter options, only with `tool`. OpenTofu: `workspace` and `varFiles` | 0006, 0015, 0053 |
 | `mergeAndDeploy.authors` | `[]` | Logins whose green pull requests that one stack claims are listed to merge and deploy with one tick. Empty turns it off | 0054 |
 
@@ -100,7 +101,7 @@ Rules for config loading:
 
 - A `stacks[]` entry adds settings to stacks that discovery found. It never creates a stack, except an entry with `tool`, which declares one (0053). An entry that matches no discovered stack is a config error.
 - A `tickers` entry with a slash fails with the message that teams are not supported yet (0018).
-- `stacks[].drift` fails with a message that says it is not in this version yet. It is never ignored. (`dependsOn` did too until slice 4.4, 0056, and a top level `drift` until slice 4.3, 0055.)
+- No key is reserved now. A reserved key fails with a message that says it is not in this version yet, and is never ignored. (`dependsOn` was one until slice 4.4, 0056, a top level `drift` until slice 4.3, 0055, and `stacks[].drift` until slice 4.7, 0059.)
 - The JSON schema is generated from the Zod schema into `schema/sluiceway.schema.json`, committed, and checked in CI the way `dist/` is.
 
 ### Fixed strings and numbers
@@ -113,7 +114,7 @@ Rules for config loading:
 | Default environment label | `sluiceway` | 0003 |
 | Concurrency groups | `sluiceway-scan`, `sluiceway-resolve`, `sluiceway-apply-<stack id>` | 0004, 0025, 0035 |
 | Marker version | `1` | 0009 |
-| Row states | `pending`, `deploying`, `in-sync`, `preview-failed`, `queued` since slice 4.4, and `drift` since slice 4.3, with the marker key `drift="true"` on a row whose hash covers drift | 0009, 0055, 0056 |
+| Row states | `pending`, `deploying`, `in-sync`, `preview-failed`, `queued` since slice 4.4, and `drift` since slice 4.3, with the marker key `drift="true"` on a row whose hash covers drift, and since slice 4.7 `depends-on="<ids>"` on a row of a stack with `dependsOn: auto` | 0009, 0055, 0056, 0059 |
 | Diff hash | SHA-256 of the canonical document, first 16 hex characters | 0008 |
 | Body target, hard limits | 58,000 characters, 65,536 characters, 262,144 bytes | 0028 |
 | Summary budget | 1,000,000 bytes | 0037 |

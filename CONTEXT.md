@@ -95,7 +95,7 @@ A change made to real infrastructure outside the code: a property that changed, 
 _Avoid_: Out-of-band change, skew
 
 **Drift check**:
-A run of the tool that compares a stack's state with real infrastructure and changes neither. With `drift.enabled`, a scan that a schedule or a person starts runs one for every stack it previews, right after its preview. Its findings join the stack's diff hash, and `apply` runs it again before a deploy of a row whose hash covers drift.
+A run of the tool that compares a stack's state with real infrastructure and changes neither. With `drift.enabled`, or `stacks[].drift.enabled` for the stacks of an entry, a scan that a schedule or a person starts runs one for every such stack it previews, right after its preview. Its findings join the stack's diff hash, and `apply` runs it again before a deploy of a row whose hash covers drift.
 _Avoid_: Refresh (that is the tool's word, and a plain refresh changes the state), drift scan, drift detection run
 
 **In sync**:
@@ -195,8 +195,12 @@ To give an open deployment a result when its workflow run ended without reportin
 _Avoid_: Clean up, time out, expire
 
 **Dependency**:
-A stack that another stack names in `dependsOn`, because it reads something the dependency makes. A tick waits on a dependency only while its row is pending and nobody ticked it: the box is cleared with a note that names the dependency. A stack waits only on the stacks it names, not on theirs.
+A stack that another stack names in `dependsOn`, because it reads something the dependency makes. With `dependsOn: auto`, also a stack that its Pulumi program reads through a stack reference, as its last preview found and its row says. A tick waits on a dependency only while its row is pending and nobody ticked it: the box is cleared with a note that names the dependency. A stack waits only on its own dependencies, not on theirs.
 _Avoid_: Upstream (that is a side of Penny in the header), parent, prerequisite, blocker
+
+**Stack reference**:
+Pulumi's way for a program to read the outputs of another stack, by a name such as `organization/project/stack`. With `dependsOn: auto` the adapter turns each one into the stack id of a stack of the repo, and nothing else of the name leaves it.
+_Avoid_: Remote state (OpenTofu's word for something else), cross-stack link
 
 **Queued stack**:
 A ticked stack whose deployment record waits behind its dependencies, because they were ticked in the same run or are deploying. Its row says "queued behind" them, has no box and counts as deploying. It deploys in a later run once they went out, and never deploys when one of them did not.
@@ -271,7 +275,7 @@ The page of a scan's workflow run where every stack's diff is shown, with far mo
 _Avoid_: Full diff, report, native output
 
 **Preview page**:
-The page a pending row's preview link opens: a GitHub check run on the scanned commit, one per pending stack, named `sluiceway / <stack id>`, that shows that stack's diff as the summary does. Never a value, and never the tool's own words. A scan of the same commit updates it in place. Without `checks: write` there is none, and the link opens the summary.
+The page a pending or drifted row's preview link opens: a GitHub check run on the scanned commit, one per pending or drifted stack, named `sluiceway / <stack id>`, that shows that stack's diff and drift as the summary does. Never a value, and never the tool's own words. A scan of the same commit updates it in place. Without `checks: write` there is none, and the link opens the summary.
 _Avoid_: Check (that is the pass over the repo's files), check page, status check, report
 
 **Result file**:

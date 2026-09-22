@@ -283,6 +283,8 @@ drift:
 - **The deploy of a row with drift reads what is real first.** For Pulumi it runs `pulumi up --refresh`. `apply` checks the drift again before it compares the diff hash, so drift that changed after the tick stops the deploy, as a moved change does.
 - **What counts as drift is up to the tool.** A resource whose provider cannot read it back never drifts. OpenTofu stacks are not checked yet.
 - **A drift check that fails** leaves the row as the preview made it, with a warning on the run and the tool's words in the job log.
+- **A stack entry can turn it on or off** for its own stacks, with [`stacks[].drift.enabled`](#stacksdriftenabled).
+- **A drifted row's `preview` link** opens a preview page that lists the drift, as a pending row's lists its changes. Without `checks: write` it opens the summary.
 
 ### `stacks[].path`
 
@@ -392,7 +394,7 @@ stacks:
       - app:prod
 ```
 
-Every id is checked against discovery, because a dependency that could never hold anything back would be a gate that never says so. A stack that was not found, one that `ignore` leaves out, the stack itself and a circle are errors, such as:
+Every id is checked against discovery, because a dependency that could never hold anything back would be a gate that never says so. A stack that was not found, one that `ignore` leaves out (with the reason of the `ignore` entry, when it has one), the stack itself and a circle are errors, such as:
 
 - `stacks[0].dependsOn[0]: "network:staging" is not a stack that discovery found. Write the stack id as a row shows it, such as "network:dev".`
 - `dependsOn goes round in a circle: app:prod depends on network:prod, which depends on site:prod, which depends on app:prod. Nothing in a circle could ever deploy first, so take one of these out.`
@@ -406,7 +408,53 @@ stacks:
 
 ```text
 sluiceway.yaml is not valid:
-- stacks[0].dependsOn: expected a list, got "network:prod".
+- stacks[0].dependsOn: expected a list of stack ids, or auto, got "network:prod".
+```
+
+#### `dependsOn: auto`
+
+With `auto` in place of the list, a Pulumi stack depends on the stacks its program reads through stack references, such as `new pulumi.StackReference("acme/network/prod")`. Sluiceway reads them at every preview of the stack, so the list follows the code ([record 0059](adr/0059-a-stack-may-read-its-dependencies-from-its-stack-references-and-drift-is-set-per-stack.md)).
+
+```yaml
+stacks:
+  - path: app
+    dependsOn: auto
+```
+
+- **A name becomes a stack id by its project.** `organization/project/stack` is the stack of that name whose project file says `name: project`, wherever its directory is. A stack name alone is a stack of the same project. Two parts are `project/stack`, or else `organization/stack` of the same project. The organization is never compared.
+- **A reference to a stack this repo does not hold waits on nothing.** Neither does one that `ignore` leaves out, or a name that fits two stacks. The scan's job log says how many there were.
+- **What a preview read goes on the stack's row**, in its marker, and `resolve` waits on those stacks as on the ones a list names. A read that would make a circle is dropped, and the job log of `resolve` says which.
+- **Until the stack's first preview with `auto`, and while its preview fails,** it waits only on what a list in another entry names. Entries add up: one entry can say `auto` and another a list.
+- **Only Pulumi.** An OpenTofu entry with `auto` is an error. The check mode lists `auto` as it is, because it reads files only and cannot know what a preview will read.
+
+### `stacks[].drift.enabled`
+
+Default: the top level `drift.enabled`.
+
+Turns the drift check on or off for the stacks of this entry, whatever the top level says. The same scans check as for the top level: one a schedule starts and one a person starts with "Run workflow", and a push only for a stack whose row showed drift. A stack whose setting is off is never checked. An entry with a name wins over one without ([record 0059](adr/0059-a-stack-may-read-its-dependencies-from-its-stack-references-and-drift-is-set-per-stack.md)).
+
+```yaml
+drift:
+  enabled: true
+stacks:
+  # A sandbox that changes by hand all day.
+  - path: playground
+    drift:
+      enabled: false
+```
+
+It is a mapping, like the top level:
+
+```yaml
+# Not valid: true alone
+stacks:
+  - path: apps/web
+    drift: true
+```
+
+```text
+sluiceway.yaml is not valid:
+- stacks[0].drift: expected a mapping, got true. Write it as the top level has it: drift: { enabled: true }.
 ```
 
 ### `stacks[].options.workspace`
@@ -453,19 +501,7 @@ mergeAndDeploy:
 - **No credentials and no environment variables.** Your workflow puts them into the job environment before Sluiceway runs ([credentials](credentials.md)).
 - **No `concurrency` or `preview-timeout`.** They belong to the runner, so they are inputs of the action.
 - **No stack ids.** They are derived.
-- **No teams, and no `drift` on a stack.** Not in this version:
-
-```yaml
-# Not valid: drift is turned on for the whole repo
-stacks:
-  - path: apps/web
-    drift: true
-```
-
-```text
-sluiceway.yaml is not valid:
-- stacks[0]: "drift" is not in this version of Sluiceway yet. Remove it.
-```
+- **No teams** in a tick rule. Not in this version.
 
 A typo gets the list of keys that are allowed:
 

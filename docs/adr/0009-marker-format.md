@@ -1,5 +1,7 @@
 # Three marker kinds, a trailing row marker, and a body that is regenerated around its row blocks
 
+> Amended by 0059: the row marker gains the optional key `depends-on` after `drift`, the stack ids a preview of a stack with `dependsOn: auto` read from its stack references. `resolve` reads it for such a stack, a second exception that, like the first, can only hold a deploy back or order it.
+>
 > Amended by 0054: a marker of the kind `sluiceway:merge` sits on its own line outside the row blocks, one per update waiting to merge, with the keys `pr`, `stack` and `head`.
 >
 > Amended by 0055: the state `drift` and the key `drift="true"` arrived. The precedence is deploying, preview failed, pending, drift, in sync.

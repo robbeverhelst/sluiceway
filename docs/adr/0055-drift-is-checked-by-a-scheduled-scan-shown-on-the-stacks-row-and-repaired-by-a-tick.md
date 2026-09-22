@@ -1,5 +1,7 @@
 # Drift is checked by a scheduled scan, shown on the stack's own row, and repaired by a tick
 
+> Amended by 0059: `stacks[].drift.enabled` sets the check per stack, a drifted stack has a preview page and its row's link is `preview`, and the trail says when a deploy put drift back.
+
 Records 0009, 0008 and 0031 left room for drift: a row state, a marker key that says the hash covers drift, one hash over both diffs, and a header state still to be drawn. Record 0015 left open whether a deploy should also repair drift. The build plan's slice 4.3 asks for part 1: detect it, show it, and repair it by a tick. This record fixes how.
 
 Amends 0001, 0007, 0008, 0009, 0015, 0029, 0031, 0033, 0041 and 0043.
