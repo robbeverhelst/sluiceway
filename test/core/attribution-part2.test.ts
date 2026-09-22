@@ -196,10 +196,12 @@ describe("a renamed file", () => {
     expect(pullRequestsToRead(both, [sha("c2")])).toEqual([]);
   });
 
-  test("a pull request over the file cap is not read: it counts as outside already", () => {
+  // Slice 5.9: a pull request over the walk's 100 files is read too, page by
+  // page, so it is judged by all of its files and no longer counts as outside.
+  test("a pull request over the file cap is read too, page by page", () => {
     const huge = pullRequest(10, "alice", ["apps/loki/a.ts"], { renamed: true, changedFiles: 101 });
     const big = walkOf(commit("c2", ["c1"], { pullRequests: [huge] }), commit("c1", []));
-    expect(pullRequestsToRead(big, [sha("c1")])).toEqual([]);
+    expect(pullRequestsToRead(big, [sha("c1")])).toEqual([10]);
   });
 });
 
