@@ -40,3 +40,8 @@ It was weighed against "docs only" (a checklist a person follows by eye). Reject
 ## Settled while building (slice 2.22)
 
 - The summary of a push that fell back to a full scan because of files no stack claims shows the same block, under "Why this was a full scan", built from the files of that push, not the whole repo: the scan does not walk the checkout. The files are named up to 20, the config file is left out as in the log line of slice 2.13, and the block appears only when a glob of the fixed list covers one of them. A scan that is full for any other reason, or only because `sluiceway.yaml` changed, has no such section (onboarding log, hurdle 5).
+
+## Settled while building (slice 5.15)
+
+- The list of files that no stack claims leaves the config file out, as the summary of a scan already did since onboarding log hurdle 14: no stack is meant to claim it, and it must stay off `scan.unrelated` (issue 164). When nothing else is left, the summary says the config file is not listed and why.
+- The hint under the list names the lockfiles and package manifests it lists, from a fixed list of file names in the core, as files to keep off `scan.unrelated`, and says the rule even when none is listed. The check, the job log of a scan and its summary give the same hint. The block offered for `scan.unrelated` is unchanged: it never offered them.
