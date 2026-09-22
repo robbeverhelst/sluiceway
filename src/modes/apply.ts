@@ -5,7 +5,12 @@
 // ever starts from an open deployment record whose fresh preview gives the
 // diff hash the record holds.
 
-import type { Adapter, PreviewResult, ToolDiffResult } from "../adapters/adapter.ts";
+import type {
+  Adapter,
+  PreviewOptions,
+  PreviewResult,
+  ToolDiffResult,
+} from "../adapters/adapter.ts";
 import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import {
@@ -62,6 +67,7 @@ import { movedComment } from "../render/moved-comment.ts";
 import { previewRow } from "../render/preview-result.ts";
 import { type ApplyResultOutcome, applyResultFile } from "../render/result-file.ts";
 import { type AttributionLines, type FailureLine, isDestroy, type Row } from "../render/row.ts";
+import { prepareStacks } from "./prepare.ts";
 
 // Everything `apply` needs, handed in as data and seams (build plan, section
 // 5). It is the one mode besides `scan` that runs the tool.
@@ -402,7 +408,7 @@ async function deploy(
       const reason: DeployFailureReason = { kind: "deploys-off" };
       return { state: "failure", reason, failed: notDeployed(reason) };
     }
-    const found = await adapter.discover(context.root);
+    const found = await adapter.discover(context.root, config);
     const stacks = applyConfig(config, found);
     const stack = stacks.find((one) => stackId(one.stack) === id);
     if (!stack) {
@@ -447,7 +453,7 @@ async function deploy(
 
   const tool = { root: context.root, env: context.env, run: context.run };
   try {
-    await adapter.checkVersion(tool);
+    await adapter.checkVersion(tool, [setup.stack.stack]);
   } catch (error) {
     if (!(error instanceof ToolVersionError)) throw error;
     // The message is Sluiceway's own. What the tool printed stays in the job
@@ -457,15 +463,47 @@ async function deploy(
     return { state: "failure", reason, failed: notDeployed(reason, ` ${error.message}`), setup };
   }
 
+  // The stack's preparation, such as OpenTofu's init, before its fresh
+  // preview (record 0053). A failed one is a failed fresh preview.
+  const unprepared = (
+    await prepareStacks({ ...tool, log, adapter }, [setup.stack], context.previewTimeoutMinutes)
+  ).get(id);
+
   // The fresh preview: the same call as the scan's, so the hash is taken the
-  // same way (records 0008 and 0015).
+  // same way (records 0008 and 0015). It keeps its plan when the tool can
+  // save one, so the deploy goes out exactly as it was hashed (record 0053).
   const options = {
     ...tool,
     timeoutMinutes: setup.stack.previewTimeout ?? context.previewTimeoutMinutes,
     showValues: shownValues(setup.config.dashboard),
   };
+  const fresh =
+    unprepared ?? (await adapter.preview(setup.stack.stack, { ...options, savePlan: true }));
+  try {
+    return await afterFreshPreview(context, id, payload, runUrl, progress, setup, fresh, options);
+  } finally {
+    // A plan file holds values in plain text (record 0021): it goes on every
+    // way out, deployed or not.
+    if (fresh.ok) await fresh.plan?.dispose();
+  }
+}
+
+async function afterFreshPreview(
+  context: ApplyContext,
+  id: string,
+  payload: DeploymentPayload,
+  runUrl: string,
+  progress: { deploying: boolean },
+  setup: Setup,
+  fresh: PreviewResult,
+  options: PreviewOptions,
+): Promise<Attempt> {
+  const { log, adapter } = context;
+  const name = logGroupTitle(id);
+  const notDeployed = (reason: DeployFailureReason, why = ""): string =>
+    `${name} was not deployed: ${deployFailureText(reason)}.${why}`;
+  const tool = { root: context.root, env: context.env, run: context.run };
   const preview = () => adapter.preview(setup.stack.stack, options);
-  const fresh = await preview();
   // With `scan.logDiff` on, the tool's own diff of the fresh preview goes to
   // the job log before anything is decided, so a person reading this job sees
   // what went out, or what moved (record 0048). It decides nothing.
@@ -561,7 +599,7 @@ async function deploy(
   }
 
   progress.deploying = true;
-  const result = await adapter.apply(setup.stack.stack, tool);
+  const result = await adapter.apply(setup.stack.stack, tool, fresh.plan);
   const words = lines(result.toolLog);
   context.log.group(`${name}: the deploy`, [
     result.ok ? "deployed" : `deploy failed: ${deployFailureText(result.reason)}`,

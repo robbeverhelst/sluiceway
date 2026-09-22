@@ -53,7 +53,7 @@ export async function settle(context: SettleContext): Promise<void> {
   const url = eventDashboardUrl(context.repoUrl, context.event);
   if (url !== undefined) context.outputs?.set("dashboard-url", url);
   const config = loadConfig(context.root);
-  const stacks = applyConfig(config, await context.adapter.discover(context.root));
+  const stacks = applyConfig(config, await context.adapter.discover(context.root, config));
 
   const open = openRecordsOfRun(await readRecords(context, stacks), context.runId);
   if (open.length === 0) {

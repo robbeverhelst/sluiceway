@@ -100,9 +100,9 @@ describe("the pool (record 0012)", () => {
     const adapter = tableAdapter({ "a:prod": inSync("a:prod"), "b:prod": inSync("b:prod") });
     const order: string[] = [];
     const check = adapter.checkVersion;
-    adapter.checkVersion = async (context) => {
+    adapter.checkVersion = async (context, stacks) => {
       order.push(`check, ${adapter.previewed.length} previewed`);
-      return check(context);
+      return check(context, stacks);
     };
     await scan(harness(adapter).context);
     expect(order).toEqual(["check, 0 previewed"]);

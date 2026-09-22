@@ -38,7 +38,7 @@ import {
 } from "../core/scan-plan.ts";
 import { everyPreviewFailed } from "../core/scan-result.ts";
 import { shownValues } from "../core/show-values.ts";
-import { stackId } from "../core/stack.ts";
+import { type Stack, stackId } from "../core/stack.ts";
 import { attributionSource } from "../github/attribution.ts";
 import { type DashboardResult, findDashboard, writeDashboard } from "../github/dashboard.ts";
 import { readDeploymentRecords, settleEndedRuns } from "../github/deployments.ts";
@@ -69,6 +69,7 @@ import { previewOutcome, previewRow, previewSummary } from "../render/preview-re
 import { type DashboardCounts, dashboardCounts, scanResultFile } from "../render/result-file.ts";
 import { byCodeUnit, type FailureLine, isDestroy, plural, type Row } from "../render/row.ts";
 import { renderSummary, type UnclaimedFiles } from "../render/summary.ts";
+import { prepareStacks } from "./prepare.ts";
 
 // Everything a scan needs, handed in as data and seams (build plan, section
 // 5): the port, the process runner, the clock and the environment.
@@ -250,7 +251,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   // fails the job before the tool or GitHub is touched (record 0012). Every
   // scan runs discovery, a narrowed one too (record 0011).
   const config = loadConfig(context.root);
-  const found = await context.adapter.discover(context.root);
+  const found = await context.adapter.discover(context.root, config);
   const ignored = ignoredStacks(config, found);
   const stacks = applyConfig(config, found).sort((a, b) =>
     byCodeUnit(stackId(a.stack), stackId(b.stack)),
@@ -292,16 +293,23 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   const pages = previewPages(context.github, context.sha);
   let rounds = 0;
   let versionChecked = false;
+  // The stacks whose preparation worked in an earlier round (record 0053).
+  const prepared = new Set<string>();
   let composed: Composed | undefined;
   let written: DashboardResult;
   // Stacks this scan previewed a second time for a deploy that ended under it.
   const again = new Set<string>();
   for (;;) {
     if (next.length > 0 && !versionChecked) {
-      await checkVersion(context);
+      // The tools of every stack of the repo, once per job, so a later round
+      // needs no check of its own.
+      await checkVersion(
+        context,
+        stacks.map(({ stack }) => stack),
+      );
       versionChecked = true;
     }
-    const round = await previewAll(context, next, logDiff, shownValues(config.dashboard));
+    const round = await previewAll(context, next, logDiff, shownValues(config.dashboard), prepared);
     for (const one of round) previewed.set(one.id, one);
     logResults(context, round);
 
@@ -823,9 +831,12 @@ function logPlan(context: ScanContext, plan: ScanPlan, stackCount: number): void
   }
 }
 
-async function checkVersion(context: ScanContext): Promise<void> {
+async function checkVersion(context: ScanContext, stacks: Stack[]): Promise<void> {
   try {
-    await context.adapter.checkVersion({ root: context.root, env: context.env, run: context.run });
+    await context.adapter.checkVersion(
+      { root: context.root, env: context.env, run: context.run },
+      stacks,
+    );
   } catch (error) {
     // The message is Sluiceway's own and fails the job. What the tool printed
     // stays in the job log (record 0022).
@@ -844,12 +855,33 @@ async function previewAll(
   stacks: ConfiguredStack[],
   logDiff: boolean,
   showValues: readonly string[],
+  prepared: Set<string>,
 ): Promise<Previewed[]> {
   const { log, now, adapter } = context;
   // Nothing to preview, so a repo without stacks needs no tool, and neither
   // does a narrowed scan that keeps every row.
   if (stacks.length === 0) return [];
   const tool = { root: context.root, env: context.env, run: context.run };
+
+  // Every preparation runs alone and before the pool (record 0053). A stack
+  // whose preparation failed is a preview failure and is not previewed.
+  const unprepared = stacks.filter(({ stack }) => !prepared.has(stackId(stack)));
+  const failed = await prepareStacks(
+    { ...tool, log, adapter },
+    unprepared,
+    context.previewTimeoutMinutes,
+  );
+  for (const { stack } of unprepared) {
+    if (!failed.has(stackId(stack))) prepared.add(stackId(stack));
+  }
+  const unpreparedFailures: Previewed[] = stacks.flatMap(({ stack }) => {
+    const result = failed.get(stackId(stack));
+    return result === undefined
+      ? []
+      : [{ id: stackId(stack), result, startedAt: now(), milliseconds: 0 }];
+  });
+  stacks = stacks.filter(({ stack }) => !failed.has(stackId(stack)));
+  if (stacks.length === 0) return unpreparedFailures;
 
   log.info(
     `Previewing ${plural(stacks.length, "stack")} with a pool of ${context.concurrency} and a time limit of ${minutes(context.previewTimeoutMinutes)} for each preview.`,
@@ -888,7 +920,7 @@ async function previewAll(
   log.info(
     `Previewed ${plural(previewed.length, "stack")} in ${seconds(total)} with a pool of ${context.concurrency}. Added up, the previews took ${seconds(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds(slowest.milliseconds)}.`,
   );
-  return previewed;
+  return [...previewed, ...unpreparedFailures];
 }
 
 // The tool's own words and every diff in full go to the job log, grouped per

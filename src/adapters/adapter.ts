@@ -1,3 +1,4 @@
+import type { Config } from "../core/config.ts";
 import type { Diff } from "../core/diff.ts";
 import type { DeployFailureReason, PreviewFailureReason } from "../core/failure-reason.ts";
 import type { Stack } from "../core/stack.ts";
@@ -20,10 +21,27 @@ export interface PreviewOptions extends ToolContext {
   // `dashboard.showValues` (record 0052): the only paths whose values the
   // diff may hold. Absent or empty, it holds none.
   showValues?: readonly string[] | undefined;
+  // Keep the plan this preview made, so a deploy can go out exactly as it
+  // was hashed (record 0053). Only `apply` asks, and only an adapter whose
+  // tool can save a plan keeps one. Whoever asked lets the plan go.
+  savePlan?: boolean | undefined;
+}
+
+// A plan the tool saved, which only its own adapter can read. It lives inside
+// one `apply` job, is never written anywhere Sluiceway writes and never
+// travels between jobs (record 0053). A plan file holds values in plain text
+// (record 0021), so dispose removes it.
+export interface SavedPlan {
+  dispose(): Promise<void>;
 }
 
 export type PreviewResult = (
-  | { ok: true; diff: Diff }
+  | {
+      ok: true;
+      diff: Diff;
+      // Only when the preview was asked to save its plan and the tool can.
+      plan?: SavedPlan;
+    }
   | {
       ok: false;
       reason: PreviewFailureReason;
@@ -61,6 +79,23 @@ export type ToolDiffResult = (
   toolLog: string;
 };
 
+// A step a tool needs before it can preview some stacks, such as OpenTofu's
+// init of a directory. Modes run the preparations one at a time and before
+// any preview, never side by side, because inits run side by side corrupted
+// stacks in the first user's earlier dashboard (record 0053).
+export interface Preparation {
+  // What is prepared, for the job log, such as a directory.
+  title: string;
+  stacks: Stack[];
+  run(context: ToolContext & { timeoutMinutes: number }): Promise<PrepareResult>;
+}
+
+export type PrepareResult = ({ ok: true } | { ok: false; reason: PreviewFailureReason }) & {
+  // The tool's own words, with ANSI escapes stripped. They go to the job log
+  // and nowhere else (record 0022).
+  toolLog: string;
+};
+
 // The tool is missing, too old, or did not say which version it is. The scan
 // cannot do its work, so this fails the job (records 0001 and 0012). The
 // message is Sluiceway's own. What the tool printed is in toolLog, for the
@@ -84,11 +119,18 @@ export interface Adapter {
   // 0014). Paths come back in the form a stack id uses, and the stacks in the
   // same order every time. What cannot be worked out is a DiscoveryError.
   // Ignore is not the adapter's business: applyConfig drops ignored stacks.
-  discover(root: string): Promise<Stack[]>;
+  // Config is for a tool whose stacks files cannot name, whose stacks come
+  // from `stacks` entries that name the tool (record 0053).
+  discover(root: string, config: Config): Promise<Stack[]>;
 
-  // Checks once, before any preview, that the tool is there and new enough.
-  // Anything else is a ToolVersionError. No warn-and-continue (record 0001).
-  checkVersion(context: ToolContext): Promise<void>;
+  // Checks once, before any preview, that the tool of these stacks is there
+  // and new enough. Anything else is a ToolVersionError. No warn-and-continue
+  // (record 0001).
+  checkVersion(context: ToolContext, stacks: Stack[]): Promise<void>;
+
+  // The steps these stacks need before their previews, in the order to run
+  // them. Absent or empty, a preview needs nothing first.
+  prepare?(stacks: Stack[]): Preparation[];
 
   // Works out what deploying the stack would change. It always resolves: a
   // preview that gave no diff is a preview failure with a reason, so one
@@ -107,6 +149,8 @@ export interface Adapter {
   // fresh preview gave the diff hash the tick approved (record 0008), and the
   // command line differs from the preview's only in what makes it a deploy
   // (record 0015). It has no time limit of its own: a deploy stopped half way
-  // leaves a stack half deployed. It always resolves.
-  apply(stack: Stack, context: ToolContext): Promise<ApplyResult>;
+  // leaves a stack half deployed. It always resolves. With a plan that the
+  // fresh preview saved, the tool deploys that plan and nothing else (record
+  // 0053). An adapter whose tool saves no plan never gets one.
+  apply(stack: Stack, context: ToolContext, plan?: SavedPlan): Promise<ApplyResult>;
 }

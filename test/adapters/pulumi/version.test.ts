@@ -7,7 +7,7 @@ import { answering, type Replay, ROOT, replay, VERSIONS } from "./replay.ts";
 // version, the required version and the fix. No warn-and-continue.
 
 function check({ run }: Replay, env = {}): Promise<void> {
-  return pulumi.checkVersion({ root: ROOT, env, run });
+  return pulumi.checkVersion({ root: ROOT, env, run }, []);
 }
 
 function printing(stdout: string): Replay {

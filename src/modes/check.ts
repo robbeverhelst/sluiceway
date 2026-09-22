@@ -45,7 +45,7 @@ export async function check(context: CheckContext): Promise<void> {
     // In the order a scan does it, so the first error is the one a scan
     // would stop at.
     config = loadConfig(root);
-    const found = await context.adapter.discover(root);
+    const found = await context.adapter.discover(root, config);
     report = checkSetup(config, found, await repoFiles(root));
   } catch (error) {
     // The job goes red only here: the config is not valid or discovery

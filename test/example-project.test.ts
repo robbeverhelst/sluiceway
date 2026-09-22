@@ -109,7 +109,7 @@ describe("the example sluiceway.yaml", () => {
   });
 
   test("laid over the stacks that discovery finds, it leaves playground out and sets the rest", async () => {
-    expect(applyConfig(config, await pulumi.discover(ROOT))).toEqual([
+    expect(applyConfig(config, await pulumi.discover(ROOT, config))).toEqual([
       {
         stack: { path: "app", name: "prod", options: {} },
         environment: "sluiceway",

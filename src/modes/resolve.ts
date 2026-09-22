@@ -408,7 +408,7 @@ interface Discovered {
 }
 
 async function discover(context: ResolveContext, config: Config): Promise<Discovered> {
-  const found = await context.adapter.discover(context.root);
+  const found = await context.adapter.discover(context.root, config);
   return {
     stacks: new Map(applyConfig(config, found).map((stack) => [stackId(stack.stack), stack])),
     ignored: ignoredStacks(config, found),
