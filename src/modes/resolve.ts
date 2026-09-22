@@ -1,37 +1,55 @@
 // The resolve mode (records 0017, 0025 and 0035): the job that an issue edit
 // starts. It wires config, discovery, the walk through the edit history, the
-// tick rule, the deployment records, the renderers and the GitHub port
-// together and holds no rules of its own. It is handed no tool environment and
-// no process runner, so it cannot run the tool (record 0014, promise 4).
+// tick judgement, the deployment records, the renderers and the GitHub port
+// together and holds no rules of its own: it reads, hands what it read to
+// core/tick-judgement.ts, and acts on the verdict. It is handed no tool
+// environment and no process runner, so it cannot run the tool (record 0014,
+// promise 4).
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Adapter } from "../adapters/adapter.ts";
-import { type BulkAct, bulkRows, sectionChanges } from "../core/bulk.ts";
+import type { BulkAct } from "../core/bulk.ts";
 import type { Config, ConfiguredStack, IgnoredStack } from "../core/config.ts";
-import { planDeploys, queueState, withReadDependencies } from "../core/dependencies.ts";
-import {
-  type DeployFact,
-  deployFacts,
-  lastDeployedCommit,
-  taskStackId,
-} from "../core/deployment.ts";
+import { queueState, withReadDependencies } from "../core/dependencies.ts";
+import { deployFacts, lastDeployedCommit, taskStackId } from "../core/deployment.ts";
 import {
   type Tick as BodyTick,
   HISTORY_PAGE_SIZE,
   type NobodyReason,
   nameTickers,
-  type Ticker,
   ticksIn,
 } from "../core/edit-history.ts";
-import { type MergeMethod, mergeMethod, NOT_QUALIFIED, qualify } from "../core/merge-and-deploy.ts";
+import {
+  type MergeMethod,
+  mergeMethod,
+  NOT_QUALIFIED,
+  type NotQualified,
+} from "../core/merge-and-deploy.ts";
 import { declaresMergeScanInput, MERGE_SCAN_INPUT, mergeScanInputs } from "../core/merge-scan.ts";
 import { repositoryOf } from "../core/notify.ts";
-import { waitsByPhase } from "../core/phases.ts";
 import { renovateMergeSetting } from "../core/renovate-config.ts";
 import { openRepo, type Repo, type RepoStacks } from "../core/repo.ts";
 import { capDeploys, type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import { stackId } from "../core/stack.ts";
+import {
+  type AllowedMerge,
+  type Clear,
+  type Finding,
+  handOnConfirms,
+  judgeMerges,
+  judgeTicks,
+  knownTicks,
+  type LookedUp,
+  type MergeRefusal,
+  mergeAnswerRefusal,
+  type NamedTick,
+  type OpenDeployment,
+  scanAfter,
+  stacksToRead,
+  type TicksRead,
+  ticksToLookUp,
+} from "../core/tick-judgement.ts";
 import { WORKFLOW_DIRECTORY } from "../core/workflow-check.ts";
 import { type AttributionSource, attributionSource } from "../github/attribution.ts";
 import { findDashboard, isBotIssueWithRootMarker } from "../github/dashboard.ts";
@@ -48,20 +66,18 @@ import { dashboardUrl } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
 import {
   commentOnRefusedTicks,
-  judgeTicks,
+  judgeTicks as lookUpTickers,
   refusedTicks,
   type Tick,
-  type TickOutcome,
 } from "../github/ticks.ts";
 import type { WorkflowRef } from "../github/workflow-ref.ts";
 import type { Notifier } from "../notify/send.ts";
 import { BODY_LIMIT, type BudgetOptions } from "../render/budget.ts";
 import { bulkName } from "../render/bulk-box.ts";
-import { type ClearTickOptions, clearTick } from "../render/clear-tick.ts";
+import { clearTick } from "../render/clear-tick.ts";
 import { runUrl as runUrlOf } from "../render/links.ts";
 import { logGroupTitle } from "../render/log-text.ts";
 import {
-  type BulkSection,
   MARKER_VERSION,
   type ParsedMerge,
   type ParsedRow,
@@ -173,14 +189,6 @@ async function writeRunSummary(context: ResolveContext, report: RunReport): Prom
 // run, so a tick that is still moving then is that run's.
 const MAX_READS = 3;
 
-interface NamedTick {
-  tick: BodyTick;
-  ticker: Ticker;
-  // A stack's tick that a tick on the confirm box of this section made
-  // (record 0083).
-  via?: BulkSection | undefined;
-}
-
 // A deploy this run started: the record exists. With `behind` it is queued
 // behind those stacks and not handed on (record 0056).
 interface Started {
@@ -189,18 +197,6 @@ interface Started {
   deployment: number;
   ticker: string;
   behind?: string[] | undefined;
-}
-
-// A box this run clears, on the row that is still ticked at this hash.
-interface Clear {
-  hash: string;
-  // With the note that asks for a fresh tick (record 0025), or the one that
-  // says deploys are turned off (record 0051). A refused tick gets a comment
-  // instead (record 0018).
-  note: ClearTickOptions["note"];
-  // The tick came from the confirm box, so the row itself is not ticked. Its
-  // note, when it has one, still goes on the row (record 0083).
-  unticked?: boolean | undefined;
 }
 
 function message(error: unknown): string {
@@ -269,23 +265,14 @@ async function resolveTicks(
       return;
     }
 
-    // Discovery reads files only (record 0014). A stack that no file names
-    // does not exist, and a tick on its row is left for the scan, which drops
-    // the row.
+    // Discovery reads files only (record 0014).
     if (!stacks) ({ stacks, ignored } = byId(await repo.stacks()));
-    const known = ticks.filter((tick) => {
-      // The stacks of a confirm box are checked one by one when it is handed
-      // on (record 0083).
-      if (tick.kind !== "row" && tick.kind !== "merge") return true;
-      const unknown = (tick.kind === "merge" ? tick.stackIds : [tick.stackId]).filter(
-        (id) => !stacks?.has(id),
-      );
-      if (unknown.length === 0) return true;
+    const { known, unknown } = knownTicks(ticks, stacks);
+    for (const { tick, stackIds } of unknown) {
       log.info(
-        `${tick.kind === "merge" ? `${tickName(tick)} is ticked, and discovery knows no stack ${unknown.map(logGroupTitle).join(" or ")}` : `${logGroupTitle(tick.stackId)} is ticked, and discovery knows no such stack`}. Left alone.`,
+        `${tick.kind === "merge" ? `${tickName(tick)} is ticked, and discovery knows no stack ${stackIds.map(logGroupTitle).join(" or ")}` : `${tickName(tick)} is ticked, and discovery knows no such stack`}. Left alone.`,
       );
-      return false;
-    });
+    }
     const tickers = await nameTickers(known, (after) =>
       after === undefined
         ? Promise.resolve(first)
@@ -301,266 +288,39 @@ async function resolveTicks(
     if (!moved || reads === MAX_READS) break;
     log.info("The body moved between the read and the walk. Reading again.");
   }
+  if (!stacks) return;
 
   // What the rows say the previews read from stack references (record 0059).
-  if (stacks) stacks = withRowDependencies(context, stacks, liveRows);
+  stacks = withRowDependencies(context, stacks, liveRows);
 
   // A tick on a confirm box is one tick per stack it names, by its ticker
   // (record 0083). What became of the bulk and confirm ticks is drawn by the
-  // body writer, from these acts.
-  const bulk = handOnConfirms(context, config, named, liveRows, stacks);
-  named = bulk.named;
-  const bulkActs: BulkAct[] = [...bulk.acts];
-
-  // A stack with an open deployment is taken (record 0003): a second tick for
-  // it is dropped, whoever made it.
-  const hashes = new Map<string, string>();
-  // The ticked rows whose hash covers drift (record 0055).
-  const drifted = new Set<string>();
-  for (const { tick } of named) {
-    if (tick.kind !== "row") continue;
-    hashes.set(tick.stackId, tick.hash);
-    if (tick.drift) drifted.add(tick.stackId);
-  }
-  // A merge tick ends in a deploy of its stack, so it is taken the same way
-  // (record 0054).
-  const mergeTicks = new Map<number, MergeTick>();
-  for (const { tick } of named) if (tick.kind === "merge") mergeTicks.set(tick.pr, tick);
-  const tickedIds = new Set([
-    ...hashes.keys(),
-    ...[...mergeTicks.values()].flatMap((one) => one.stackIds),
-  ]);
-  const ticked = [...tickedIds].flatMap((id) => stacks?.get(id) ?? []);
-  // The stacks they depend on too: a tick waits behind one that is deploying
-  // (record 0056).
-  const dependencies = ticked.flatMap(({ dependsOn }) =>
-    (dependsOn ?? []).flatMap((id) => stacks?.get(id) ?? []),
-  );
-  const open = await openDeployments(context, [...ticked, ...dependencies]);
-
-  const dropped: string[] = [];
-  const clear = new Map<string, Clear>();
-  // Merge rows whose box this run clears, by pull request number, with the
-  // note of a tick cleared without a comment (record 0064).
-  const clearMerges = new Map<number, MergeNote | undefined>();
-  const toJudge: Tick[] = [];
-  // The rescan box sits outside the row blocks, so it is cleared by writing
-  // the body again.
-  let rescanHandled = false;
-  for (const { tick, ticker, via } of named) {
-    const name = tickName(tick);
-    const fact =
-      tick.kind === "row"
-        ? open.get(tick.stackId)
-        : tick.kind === "merge"
-          ? tick.stackIds.map((id) => open.get(id)).find((one) => one !== undefined)
-          : undefined;
-    if (tick.kind === "bulk" || tick.kind === "confirm") {
-      // The bulk box deploys nothing, so it needs a person with write access,
-      // as the rescan box does (record 0083). A confirm box never gets here:
-      // it was handed on above.
-      const section = tick.section;
-      if (!config.deploys) {
-        log.info(
-          `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). The box goes.`,
-        );
-        bulkActs.push({ tick, outcome: "clear" });
-      } else if (ticker.named) {
-        toJudge.push({ target: { kind: "bulk", section }, editor: ticker.editor });
-      } else if (ticker.reason === "not-in-newest-entry") {
-        log.info(`${name} is ticked in a body that kept moving. Left for the run that edit woke.`);
-      } else {
-        log.info(
-          `${name} is ticked and the edit history names nobody for it (${NOBODY[ticker.reason]}). The box is cleared.`,
-        );
-        bulkActs.push({ tick, outcome: "clear", note: { kind: "orphan" } });
-      }
-      continue;
-    }
-    if (tick.kind === "merge" && (fact || !config.deploys)) {
-      // Nothing is merged for a stack that is taken, or while deploys are off
-      // (record 0054). Nobody gets a comment, so the row gets a note (record
-      // 0064), and the job log says more.
-      log.info(
-        fact
-          ? `${name} is ticked, and the stack already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. Nothing is merged and the box is cleared. Tick it again once that deploy is over.`
-          : `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). Nothing is merged and the box is cleared.`,
-      );
-      clearMerges.set(tick.pr, fact ? "deploying" : "deploys-off");
-    } else if (tick.kind === "row" && fact) {
-      dropped.push(tick.stackId);
-      log.info(
-        `${name} is ticked and already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. The tick is dropped.`,
-      );
-    } else if (tick.kind === "row" && !config.deploys) {
-      // One reviewed line stops every deploy (record 0051). Nothing could go
-      // out whoever ticked, so nobody is looked up and nobody is mentioned.
-      log.info(
-        `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). The box is cleared.`,
-      );
-      clear.set(tick.stackId, { hash: tick.hash, note: "deploys-off" });
-    } else if (ticker.named && tick.kind === "merge") {
-      // Judged by the rule of every stack it deploys (record 0071): one
-      // target per stack, and it merges only when each one allows it.
-      for (const id of tick.stackIds) {
-        const stack = stacks?.get(id);
-        if (!stack) continue;
-        toJudge.push({
-          target: { kind: "merge", pr: tick.pr, stackIds: [id], rule: stack.tickers },
-          editor: ticker.editor,
-        });
-      }
-    } else if (ticker.named) {
-      const stack = tick.kind === "row" ? stacks?.get(tick.stackId) : undefined;
-      toJudge.push({
-        target: !stack
-          ? { kind: "rescan" }
-          : { kind: "stack", stackId: stackId(stack.stack), rule: stack.tickers },
-        editor: ticker.editor,
-        ...(via ? { via } : {}),
-      });
-    } else if (ticker.reason === "not-in-newest-entry") {
-      log.info(`${name} is ticked in a body that kept moving. Left for the run that edit woke.`);
-    } else {
-      // Nobody certain to mention, so no comment, and the job stays green
-      // (record 0025).
-      log.info(
-        `${name} is ticked and the edit history names nobody for it (${NOBODY[ticker.reason]}). The box is cleared.`,
-      );
-      if (tick.kind === "row") clear.set(tick.stackId, { hash: tick.hash, note: true });
-      else if (tick.kind === "merge") clearMerges.set(tick.pr, "orphan");
-      else rescanHandled = true;
-    }
-  }
-
-  const outcomes = await judgeTicks(github, toJudge);
-  const allowed: { stackId: string; ticker: string }[] = [];
-  // Merge ticks by pull request whose every stack allowed them so far.
-  const mergesAllowed = new Map<number, string>();
-  let rescan = false;
-  for (const outcome of outcomes) {
-    const { target, editor } = outcome.tick;
-    const name = targetName(target);
-    if (outcome.outcome === "not-a-person") {
-      // No comment and no row swap. The next scan clears it as an orphan tick
-      // (record 0018).
-      log.info(
-        `${name} was ticked by ${editor.login || "nobody"}, who is not a person. Left alone.`,
-      );
-      continue;
-    }
-    if (outcome.outcome === "allowed" && target.kind === "bulk") {
-      // The confirm box in its place names the rows as they are (record
-      // 0083).
-      const rows = bulkRows(liveRows, target.section).map(({ stackId: id }) => id);
-      log.info(
-        rows.length < 2
-          ? `${name} was ticked by ${editor.login}, and the section has fewer than two rows now. Each has its own box, so the box goes.`
-          : `${name} was ticked by ${editor.login}. Its confirm box names ${plural(rows.length, "stack")}: ${listed(rows)}.`,
-      );
-      bulkActs.push({
-        tick: { kind: "bulk", section: target.section },
-        outcome: "confirm",
-        by: editor.login,
-        // The scan run of the body it is drawn into, set at the late read.
-        scanRun: "",
-      });
-      continue;
-    }
-    if (outcome.outcome === "allowed") {
-      log.info(`${name} was ticked by ${editor.login}.`);
-      if (target.kind === "stack") allowed.push({ stackId: target.stackId, ticker: editor.login });
-      else if (target.kind === "merge") mergesAllowed.set(target.pr, editor.login);
-      else rescan = true;
-    } else {
-      log.info(
-        outcome.outcome === "refused"
-          ? `${name} was ticked by ${editor.login}, who may not tick it (${outcome.reason}). The box is cleared.`
-          : `${name} was ticked by ${editor.login}, and GitHub gave no answer about their access: ${message(outcome.error)}. The box is cleared.`,
-      );
-      const hash = target.kind === "stack" ? hashes.get(target.stackId) : undefined;
-      if (target.kind === "stack" && hash !== undefined) {
-        clear.set(target.stackId, { hash, note: false });
-      }
-      if (target.kind === "merge") clearMerges.set(target.pr, undefined);
-      if (target.kind === "bulk") {
-        bulkActs.push({ tick: { kind: "bulk", section: target.section }, outcome: "clear" });
-      }
-    }
-    if (target.kind === "rescan") rescanHandled = true;
-  }
-  // A merge tick goes ahead when no stack of it refused (record 0071).
-  const allowedMerges: { tick: MergeTick; ticker: string }[] = [];
-  for (const [pr, ticker] of mergesAllowed) {
-    const tick = mergeTicks.get(pr);
-    if (tick && !clearMerges.has(pr)) allowedMerges.push({ tick, ticker });
-  }
-
-  // A workflow run holds at most 256 matrix jobs (record 0035).
-  const { start, over } = capDeploys(allowed);
-  for (const { stackId: id } of over) {
-    const hash = hashes.get(id);
-    if (hash !== undefined) clear.set(id, { hash, note: true });
-  }
-  if (over.length > 0) {
-    log.info(
-      `One run starts at most ${start.length} deploys. ${plural(over.length, "tick")} beyond that ${over.length === 1 ? "is" : "are"} cleared and ${over.length === 1 ? "needs" : "need"} a fresh tick.`,
-    );
-  }
-
-  // Dependencies (record 0056): a tick whose dependency has a change waiting
-  // that nobody ticked starts nothing, and ticks in one chain go out one layer
-  // at a time. The rest get a queued record that waits behind the stacks
-  // before them, and a later `resolve` starts them.
-  const plan = planDeploys({
-    allowed: start.map(({ stackId: id }) => id),
-    dependsOn: new Map(
-      [...(stacks?.values() ?? [])].map((one) => [stackId(one.stack), one.dependsOn ?? []]),
-    ),
-    pending: new Set(
-      liveRows.flatMap((row) => (row.known && row.state === "pending" ? [row.stackId] : [])),
-    ),
-    open: new Set(open.keys()),
+  // body writer, from their acts.
+  const confirms = handOnConfirms({
+    named,
+    stacks,
+    rows: liveRows,
+    deploys: config.deploys,
   });
-  // A stack waits on a phase through every stack in it, and the note names
-  // the phase (record 0067).
-  const phaseOf = new Map(
-    [...(stacks?.values() ?? [])].flatMap((one) =>
-      one.phase === undefined ? [] : [[stackId(one.stack), one.phase] as const],
-    ),
-  );
-  for (const { stackId: id, waitingOn } of plan.refused) {
-    const one = waitingOn.length === 1;
-    const { named, phases } = waitsByPhase({
-      phases: config.phases,
-      phaseOf,
-      stackId: id,
-      waitingOn,
-    });
-    const words = [
-      ...named.map(logGroupTitle),
-      ...phases.flatMap(({ phase, stackIds }) =>
-        stackIds.map((dependency) => `${logGroupTitle(dependency)} of the ${phase} phase`),
-      ),
-    ];
-    log.info(
-      `${logGroupTitle(id)} is ticked, and it depends on ${words.join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`,
-    );
-    const hash = hashes.get(id);
-    if (hash !== undefined)
-      clear.set(id, {
-        hash,
-        note: { dependsOn: named, ...(phases.length === 0 ? {} : { phases }) },
-      });
-  }
-  // A tick the confirm box made leaves no box on the row to clear, and its
-  // note still goes on the row (record 0083).
-  for (const [id, one] of clear) if (bulk.fromConfirm.has(id)) one.unticked = true;
-  const tickers = new Map(start.map(({ stackId: id, ticker }) => [id, ticker]));
-  const toCreate = [
-    ...plan.start.map((id) => ({ id, behind: undefined })),
-    ...plan.queued.map(({ stackId: id, behind }) => ({ id, behind })),
-  ];
+  for (const finding of confirms.findings) log.info(findingText(finding));
+  named = confirms.named;
+
+  // A stack with an open deployment is taken (record 0003).
+  const open = await openDeployments(context, stacksToRead(named, stacks));
+  const read: TicksRead = {
+    named,
+    stacks,
+    open,
+    rows: liveRows,
+    deploys: config.deploys,
+    phases: config.phases,
+  };
+  // The lookups are the one read the judgement asks for (record 0018).
+  const outcomes = await lookUpTickers(github, ticksToLookUp(read));
+  const judgement = judgeTicks(read, outcomes);
+  for (const finding of judgement.findings) log.info(findingText(finding));
+  const { dropped, clear, clearMerges } = judgement;
+  const bulkActs = [...confirms.acts, ...judgement.bulk];
 
   // From here on a failure does not stop the run: what was started is handed
   // on and shown first, and the job goes red at the end.
@@ -570,28 +330,18 @@ async function resolveTicks(
   // is taken. A record without a status is an open deployment too, so one
   // whose status failed is still handed on.
   const started: Started[] = [];
-  for (const { id, behind } of toCreate) {
-    const stack = stacks?.get(id);
-    const hash = hashes.get(id);
-    const ticker = tickers.get(id);
-    if (!stack || hash === undefined || ticker === undefined) continue;
+  for (const { stackId: id, environment, ticker, hash, drift, behind } of judgement.deploys) {
     try {
       const record = await openRecord(context, {
         stackId: id,
-        environment: stack.environment,
+        environment,
         sha: context.sha,
         ticker,
         hash,
         behind,
-        drift: drifted.has(id),
+        drift,
       });
-      started.push({
-        stackId: id,
-        environment: stack.environment,
-        deployment: record.deployment,
-        ticker,
-        behind,
-      });
+      started.push({ stackId: id, environment, deployment: record.deployment, ticker, behind });
       if (record.unfinished !== undefined) throw record.unfinished;
       log.info(
         behind
@@ -616,39 +366,35 @@ async function resolveTicks(
 
   // The merges come after the hand-off, so a merge that fails never costs a
   // deploy that was already started (record 0054).
-  // A merged change deploys on its own, so it waits for nothing: a stack whose
-  // dependency has a change waiting or deploying is not merged for (record
-  // 0056).
-  const pendingIds = new Set(
-    liveRows.flatMap((row) => (row.known && row.state === "pending" ? [row.stackId] : [])),
-  );
-  const waitingOn = (id: string): string[] =>
-    (stacks?.get(id)?.dependsOn ?? []).filter((one) => pendingIds.has(one) || open.has(one));
-  const merging = await mergeAll(context, config, stacks, allowedMerges, waitingOn);
+  const merging = await mergeAll(context, config, read, judgement.merges);
   if (merging.failure !== undefined) failures.push(merging.failure);
   for (const pr of merging.cleared) clearMerges.set(pr, undefined);
   const merged = merging.merged;
 
-  // One scan for the rescan box and for every merge: a merge made with the
-  // workflow token starts no run of its push (record 0017), and the scan is
-  // what hands the merged change to `apply` (record 0054). After a merge
-  // alone it is told what was merged, so it narrows as a push does, when the
-  // workflow declares the input (record 0064). The rescan box asks for a
-  // full scan.
-  if (rescan || merging.mergedPrs.size > 0) {
-    const prs = [...merging.mergedPrs].sort((a, b) => a - b);
-    const narrow = !rescan && declaresMergeScanInput(workflowText(context));
+  // One scan for the rescan box and for every merge (records 0017, 0054 and
+  // 0064). The workflow file is read only when a merge could narrow it.
+  const scan = scanAfter({
+    rescan: judgement.rescan,
+    merged: merging.mergedPrs,
+    declaresMergeScanInput:
+      merging.mergedPrs.size > 0 && declaresMergeScanInput(workflowText(context)),
+  });
+  if (scan.kind !== "none") {
+    const narrow = scan.kind === "after-merge" && scan.narrowed;
     try {
-      const scanUrl = await dispatchScan(context, narrow ? mergeScanInputs(prs) : undefined);
+      const scanUrl = await dispatchScan(
+        context,
+        scan.kind === "after-merge" && scan.narrowed ? mergeScanInputs(scan.prs) : undefined,
+      );
       report.scanUrl = scanUrl;
       report.scanStarted = true;
       // The page of the scan, when GitHub named it (slice 5.9).
       const at = scanUrl === undefined ? "." : `: ${scanUrl}`;
       log.info(
-        rescan
+        scan.kind === "rescan"
           ? `Started a full scan for the rescan box${at}`
           : narrow
-            ? `Started the scan after the merge of ${prs.map((pr) => `#${pr}`).join(", ")}. It previews what changed since the last scan and hands the merged change to apply.`
+            ? `Started the scan after the merge of ${scan.prs.map((pr) => `#${pr}`).join(", ")}. It previews what changed since the last scan and hands the merged change to apply.`
             : `Started a full scan, which previews the merged change and hands it to apply. It is narrowed to the merged change when ${logGroupTitle(context.workflow?.file ?? "the workflow")} declares the workflow_dispatch input ${MERGE_SCAN_INPUT} (record 0064).`,
       );
     } catch (error) {
@@ -665,27 +411,20 @@ async function resolveTicks(
     started.length > 0 ||
     dropped.length > 0 ||
     clear.size > 0 ||
-    rescanHandled ||
+    judgement.rescanHandled ||
     clearMerges.size > 0 ||
     merging.mergedPrs.size > 0 ||
     bulkActs.length > 0 ||
-    bulk.stale
+    confirms.stale
   ) {
     try {
-      const result = await swapRows(
-        context,
-        config,
-        [...(stacks?.values() ?? [])],
-        ignored,
-        issue.number,
-        {
-          started: [...started, ...merged],
-          dropped,
-          clear,
-          merges: { merged: merging.mergedPrs, clear: clearMerges },
-          bulk: bulkActs,
-        },
-      );
+      const result = await swapRows(context, config, [...stacks.values()], ignored, issue.number, {
+        started: [...started, ...merged],
+        dropped,
+        clear,
+        merges: { merged: merging.mergedPrs, clear: clearMerges },
+        bulk: bulkActs,
+      });
       log.info(
         result.written
           ? `Wrote the dashboard (#${issue.number}).`
@@ -722,12 +461,98 @@ async function resolveTicks(
   }
 
   // An unverified tick fails closed and turns the job red (record 0018).
-  const unverified = outcomes.filter(({ outcome }) => outcome === "unverified");
-  if (unverified.length > 0) failures.push(unverifiedMessage(unverified));
+  if (judgement.unverified.length > 0) failures.push(unverifiedMessage(judgement.unverified));
   if (failures.length > 0) throw new Error(failures.join("\n"));
 }
 
-type MergeTick = Extract<BodyTick, { kind: "merge" }>;
+// One line of the job log for each thing the judgement found.
+function findingText(finding: Finding): string {
+  switch (finding.kind) {
+    case "taken": {
+      const { tick, fact } = finding;
+      // Nothing is merged for a stack that is taken (record 0054). Nobody gets
+      // a comment, so the row gets a note (record 0064), and the job log says
+      // more.
+      return tick.kind === "merge"
+        ? `${tickName(tick)} is ticked, and the stack already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. Nothing is merged and the box is cleared. Tick it again once that deploy is over.`
+        : `${tickName(tick)} is ticked and already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. The tick is dropped.`;
+    }
+    case "deploys-off": {
+      // One reviewed line stops every deploy (record 0051). Nothing could go
+      // out whoever ticked, so nobody is looked up and nobody is mentioned.
+      const off = `${tickName(finding.tick)} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false).`;
+      switch (finding.tick.kind) {
+        case "merge":
+          return `${off} Nothing is merged and the box is cleared.`;
+        case "bulk":
+          return `${off} The box goes.`;
+        case "confirm":
+          return `${off} Nothing is deployed and the box goes.`;
+        default:
+          return `${off} The box is cleared.`;
+      }
+    }
+    case "moving":
+      return `${tickName(finding.tick)} is ticked in a body that kept moving. Left for the run that edit woke.`;
+    case "nameless":
+      // Nobody certain to mention, so no comment, and the job stays green
+      // (record 0025).
+      return `${tickName(finding.tick)} is ticked and the edit history names nobody for it (${NOBODY[finding.reason]}). The box is cleared.`;
+    case "not-a-person":
+      return `${targetName(finding.target)} was ticked by ${finding.editor.login || "nobody"}, who is not a person. Left alone.`;
+    case "allowed":
+      return `${targetName(finding.target)} was ticked by ${finding.login}.`;
+    case "bulk-allowed": {
+      const { rows } = finding;
+      const name = capitalized(bulkName("box", finding.section));
+      return rows.length < 2
+        ? `${name} was ticked by ${finding.login}, and the section has fewer than two rows now. Each has its own box, so the box goes.`
+        : `${name} was ticked by ${finding.login}. Its confirm box names ${plural(rows.length, "stack")}: ${listed(rows)}.`;
+    }
+    case "refused":
+      return `${targetName(finding.target)} was ticked by ${finding.login}, who may not tick it (${finding.reason}). The box is cleared.`;
+    case "unverified":
+      return `${targetName(finding.target)} was ticked by ${finding.login}, and GitHub gave no answer about their access: ${message(finding.error)}. The box is cleared.`;
+    case "over-cap": {
+      const one = finding.over === 1;
+      return `One run starts at most ${finding.started} deploys. ${plural(finding.over, "tick")} beyond that ${one ? "is" : "are"} cleared and ${one ? "needs" : "need"} a fresh tick.`;
+    }
+    case "waits-on": {
+      const words = [
+        ...finding.named.map(logGroupTitle),
+        ...finding.phases.flatMap(({ phase, stackIds }) =>
+          stackIds.map((dependency) => `${logGroupTitle(dependency)} of the ${phase} phase`),
+        ),
+      ];
+      const one = finding.waitingOn.length === 1;
+      return `${logGroupTitle(finding.stackId)} is ticked, and it depends on ${words.join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`;
+    }
+    case "confirm-stale": {
+      const { tick, changes } = finding;
+      const section = tick.kind === "confirm" ? tick.section : "pending";
+      const what = [
+        ...(changes.added.length > 0
+          ? [`${listed(changes.added)} ${changes.added.length === 1 ? "is" : "are"} new`]
+          : []),
+        ...(changes.gone.length > 0
+          ? [
+              `${listed(changes.gone)} ${changes.gone.length === 1 ? "is" : "are"} not ${section === "pending" ? "pending" : "drifted"} any more`,
+            ]
+          : []),
+        ...(changes.moved.length > 0
+          ? [`${listed(changes.moved)} ${changes.moved.length === 1 ? "has" : "have"} a new diff`]
+          : []),
+      ];
+      return `${tickName(tick)} was ticked, and its rows changed since it was drawn (${what.join(", ")}). Nothing is deployed and the bulk box asks for a fresh tick.`;
+    }
+    case "confirm-own-row":
+      return `${logGroupTitle(finding.stackId)} is ticked on its own row too. That tick and its ticker count.`;
+    case "confirm-unknown":
+      return `${logGroupTitle(finding.stackId)} is in ${bulkName("confirm", finding.section)}, and discovery knows no such stack. Left alone.`;
+    case "confirm-handed-on":
+      return `${tickName(finding.tick)} was ticked by ${finding.login}. It stands for a tick on each of ${plural(finding.stackIds.length, "stack")}: ${listed(finding.stackIds)}.`;
+  }
+}
 
 // The stacks of the refused ticks, each once, in code unit order. The rescan
 // box has none.
@@ -758,117 +583,6 @@ function listed(ids: readonly string[]): string {
   return names.length < 2
     ? names.join("")
     : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
-
-// What the confirm boxes of one run come to (record 0083).
-interface HandedOn {
-  // The ticks to act on: every tick but the confirm boxes, and one tick per
-  // stack of a confirm box that was handed on, by its ticker.
-  named: NamedTick[];
-  acts: BulkAct[];
-  // The stacks whose tick a confirm box made.
-  fromConfirm: Set<string>;
-  // A confirm box went stale under its tick, so the body is written again.
-  stale: boolean;
-}
-
-// A tick on a confirm box goes through the same path as a tick on each row it
-// names (record 0083). It is handed on only while the rows of its section are
-// still the stacks at the hashes it names: a stale box deploys nothing, and
-// the bulk box that takes its place says what changed. A stack whose row is
-// ticked on its own keeps that tick and its ticker. A stack discovery does not
-// know is left out, as a tick on its row would be.
-function handOnConfirms(
-  context: ResolveContext,
-  config: Config,
-  named: readonly NamedTick[],
-  liveRows: readonly ParsedRow[],
-  stacks: ReadonlyMap<string, ConfiguredStack> | undefined,
-): HandedOn {
-  const { log } = context;
-  const result: HandedOn = { named: [], acts: [], fromConfirm: new Set(), stale: false };
-  const rowTicks = new Set(
-    named.flatMap(({ tick }) => (tick.kind === "row" ? [tick.stackId] : [])),
-  );
-  for (const one of named) {
-    const { tick, ticker } = one;
-    if (tick.kind !== "confirm") {
-      result.named.push(one);
-      continue;
-    }
-    const name = tickName(tick);
-    if (!config.deploys) {
-      log.info(
-        `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). Nothing is deployed and the box goes.`,
-      );
-      result.acts.push({ tick, outcome: "clear" });
-      continue;
-    }
-    if (!ticker.named) {
-      if (ticker.reason === "not-in-newest-entry") {
-        log.info(`${name} is ticked in a body that kept moving. Left for the run that edit woke.`);
-      } else {
-        log.info(
-          `${name} is ticked and the edit history names nobody for it (${NOBODY[ticker.reason]}). The box is cleared.`,
-        );
-        result.acts.push({ tick, outcome: "clear", note: { kind: "orphan" } });
-      }
-      continue;
-    }
-    const changes = sectionChanges(tick.stacks, bulkRows(liveRows, tick.section));
-    if (changes) {
-      const what = [
-        ...(changes.added.length > 0
-          ? [`${listed(changes.added)} ${changes.added.length === 1 ? "is" : "are"} new`]
-          : []),
-        ...(changes.gone.length > 0
-          ? [
-              `${listed(changes.gone)} ${changes.gone.length === 1 ? "is" : "are"} not ${tick.section === "pending" ? "pending" : "drifted"} any more`,
-            ]
-          : []),
-        ...(changes.moved.length > 0
-          ? [`${listed(changes.moved)} ${changes.moved.length === 1 ? "has" : "have"} a new diff`]
-          : []),
-      ];
-      log.info(
-        `${name} was ticked, and its rows changed since it was drawn (${what.join(", ")}). Nothing is deployed and the bulk box asks for a fresh tick.`,
-      );
-      result.stale = true;
-      continue;
-    }
-    result.acts.push({ tick, outcome: "consumed" });
-    const handed: string[] = [];
-    for (const { stackId: id, hash } of tick.stacks) {
-      if (rowTicks.has(id)) {
-        log.info(
-          `${logGroupTitle(id)} is ticked on its own row too. That tick and its ticker count.`,
-        );
-        continue;
-      }
-      if (!stacks?.has(id)) {
-        log.info(
-          `${logGroupTitle(id)} is in ${bulkName("confirm", tick.section)}, and discovery knows no such stack. Left alone.`,
-        );
-        continue;
-      }
-      handed.push(id);
-      result.fromConfirm.add(id);
-      result.named.push({
-        tick: {
-          kind: "row",
-          stackId: id,
-          hash,
-          ...(tick.section === "drift" ? { drift: true as const } : {}),
-        },
-        ticker,
-        via: tick.section,
-      });
-    }
-    log.info(
-      `${name} was ticked by ${ticker.editor.login}. It stands for a tick on each of ${plural(handed.length, "stack")}: ${listed(handed)}.`,
-    );
-  }
-  return result;
 }
 
 function targetName(target: Tick["target"]): string {
@@ -939,13 +653,12 @@ async function renovateStrategyOf(context: ResolveContext): Promise<string | und
 async function mergeAll(
   context: ResolveContext,
   config: Config,
-  stacks: Map<string, ConfiguredStack> | undefined,
-  ticks: readonly { tick: MergeTick; ticker: string }[],
-  waitingOn: (stackId: string) => string[],
+  read: TicksRead,
+  ticks: readonly AllowedMerge[],
 ): Promise<Merging> {
   const { github, log } = context;
   const result: Merging = { merged: [], mergedPrs: new Set(), cleared: [], problems: [] };
-  if (ticks.length === 0 || !stacks) return result;
+  if (ticks.length === 0) return result;
 
   let open: Awaited<ReturnType<GitHubPort["listOpenPullRequests"]>>;
   let method: MergeMethod | undefined;
@@ -962,16 +675,22 @@ async function mergeAll(
     return result;
   }
 
-  const claimants = [...stacks.values()].map(({ stack, inputs }) => ({
-    id: stackId(stack),
-    path: stack.path,
-    inputs,
-  }));
-  const dependsOn = new Map(
-    [...stacks.values()].map((one) => [stackId(one.stack), one.dependsOn ?? []] as const),
+  const { stacks } = read;
+  const verdicts = judgeMerges(
+    {
+      stacks,
+      open: read.open,
+      rows: read.rows,
+      pullRequests: open.pullRequests,
+      defaultBranch: open.defaultBranch,
+      method,
+      authors: config.mergeAndDeploy.authors,
+      unrelated: config.scan.unrelated,
+    },
+    ticks,
   );
-  const sorted = [...ticks].sort((a, b) => a.tick.pr - b.tick.pr);
-  for (const { tick, ticker } of sorted) {
+  for (const verdict of verdicts) {
+    const { tick, ticker } = verdict;
     const name = tickName(tick);
     const target = {
       kind: "merge" as const,
@@ -979,59 +698,19 @@ async function mergeAll(
       stackIds: tick.stackIds,
       rule: "write" as const,
     };
-    const refuse = (reason: RefusedTick["reason"], detail?: string, waitsOn?: string[]) => {
+    const refuse = (refusal: MergeRefusal) => {
       result.cleared.push(tick.pr);
-      result.problems.push({ target, login: ticker, reason, detail, waitsOn });
+      result.problems.push({ target, login: ticker, ...mergeProblem(refusal) });
     };
-    const waits = [...new Set(tick.stackIds.flatMap(waitingOn))];
-    if (waits.length > 0) {
-      log.info(
-        `${name} was ticked by ${ticker}, and the stack depends on ${waits.map(logGroupTitle).join(" and ")}, which ${waits.length === 1 ? "has a change" : "have changes"} waiting. Nothing is merged.`,
-      );
-      refuse("waits-on", undefined, waits);
-      continue;
-    }
-    const pullRequest = open.pullRequests.find(({ number }) => number === tick.pr);
-    if (!pullRequest) {
-      log.info(`${name} was ticked by ${ticker}, and the pull request is not open any more.`);
-      refuse("not-qualified", "it is not open any more");
-      continue;
-    }
-    if (pullRequest.head !== tick.head) {
-      log.info(
-        `${name} was ticked by ${ticker}, and the pull request has a new head commit since.`,
-      );
-      refuse("head-moved");
-      continue;
-    }
-    const qualified = qualify(pullRequest, {
-      authors: config.mergeAndDeploy.authors,
-      defaultBranch: open.defaultBranch,
-      stacks: claimants,
-      unrelated: config.scan.unrelated,
-      dependsOn,
-    });
-    const why = !qualified.qualifies
-      ? NOT_QUALIFIED[qualified.why]
-      : JSON.stringify(qualified.stackIds) !== JSON.stringify(tick.stackIds)
-        ? "its files belong to another stack"
-        : undefined;
-    if (why !== undefined) {
-      log.info(
-        `${name} was ticked by ${ticker}, and the pull request no longer qualifies: ${why}.`,
-      );
-      refuse("not-qualified", why);
-      continue;
-    }
-    if (method === undefined) {
-      log.info(`${name} was ticked by ${ticker}, and the repo allows no merge method.`);
-      refuse("merge-refused", "the repository allows no merge method");
+    if (!verdict.merge) {
+      log.info(`${name} was ticked by ${ticker}, ${mergeRefusalText(verdict.refusal)}`);
+      refuse(verdict.refusal);
       continue;
     }
 
     let answer: Awaited<ReturnType<GitHubPort["mergePullRequest"]>>;
     try {
-      answer = await github.mergePullRequest(tick.pr, { head: tick.head, method });
+      answer = await github.mergePullRequest(tick.pr, { head: tick.head, method: verdict.method });
     } catch (error) {
       result.failure = `#${tick.pr} could not be merged: ${message(error)}. The resolve job needs the permission \`contents: write\` to merge (record 0054). Nothing more was merged, and the boxes that are left stay ticked for the next run.`;
       return result;
@@ -1040,12 +719,11 @@ async function mergeAll(
       log.info(
         `${name} was ticked by ${ticker}, and GitHub refused the merge (${answer.status}): ${answer.message}`,
       );
-      if (answer.status === 409) refuse("head-moved");
-      else refuse("merge-refused", answer.message);
+      refuse(mergeAnswerRefusal(answer));
       continue;
     }
     log.info(
-      `${name} was ticked by ${ticker} and is merged (${method}) as ${answer.sha.slice(0, 7)}.`,
+      `${name} was ticked by ${ticker} and is merged (${verdict.method}) as ${answer.sha.slice(0, 7)}.`,
     );
     result.mergedPrs.add(tick.pr);
 
@@ -1082,6 +760,50 @@ async function mergeAll(
   return result;
 }
 
+// The half sentence of the job log after "... was ticked by <login>,".
+function mergeRefusalText(refusal: Exclude<MergeRefusal, { kind: "refused-by-github" }>): string {
+  switch (refusal.kind) {
+    case "waits-on": {
+      const one = refusal.stackIds.length === 1;
+      return `and the stack depends on ${refusal.stackIds.map(logGroupTitle).join(" and ")}, which ${one ? "has a change" : "have changes"} waiting. Nothing is merged.`;
+    }
+    case "closed":
+      return "and the pull request is not open any more.";
+    case "head-moved":
+      return "and the pull request has a new head commit since.";
+    case "not-qualified":
+      return `and the pull request no longer qualifies: ${notQualifiedText(refusal.why)}.`;
+    case "no-method":
+      return "and the repo allows no merge method.";
+  }
+}
+
+function notQualifiedText(why: NotQualified | "other-stacks"): string {
+  return why === "other-stacks" ? "its files belong to another stack" : NOT_QUALIFIED[why];
+}
+
+// What the comment says about a merge that started nothing (record 0054).
+function mergeProblem(refusal: MergeRefusal): Pick<RefusedTick, "reason" | "detail" | "waitsOn"> {
+  switch (refusal.kind) {
+    case "waits-on":
+      return { reason: "waits-on", detail: undefined, waitsOn: refusal.stackIds };
+    case "closed":
+      return { reason: "not-qualified", detail: "it is not open any more", waitsOn: undefined };
+    case "head-moved":
+      return { reason: "head-moved", detail: undefined, waitsOn: undefined };
+    case "not-qualified":
+      return { reason: "not-qualified", detail: notQualifiedText(refusal.why), waitsOn: undefined };
+    case "no-method":
+      return {
+        reason: "merge-refused",
+        detail: "the repository allows no merge method",
+        waitsOn: undefined,
+      };
+    case "refused-by-github":
+      return { reason: "merge-refused", detail: refusal.message, waitsOn: undefined };
+  }
+}
+
 const NOBODY: Record<NobodyReason, string> = {
   "entry-without-body": "an entry of the edit history has no body",
   "end-of-history": "the tick is older than the edit history GitHub keeps",
@@ -1092,7 +814,7 @@ function runUrl(context: ResolveContext): string {
   return runUrlOf(context.repoUrl, context.runId, context.runAttempt);
 }
 
-function unverifiedMessage(unverified: TickOutcome[]): string {
+function unverifiedMessage(unverified: readonly LookedUp[]): string {
   const logins = [...new Set(unverified.map(({ tick }) => tick.editor.login))].join(", ");
   return `GitHub gave no answer about the access of ${logins}, so ${plural(unverified.length, "tick")} could not be verified. Nothing was deployed for ${unverified.length === 1 ? "it" : "them"}, and the comment on the dashboard asks for a fresh tick (record 0018).`;
 }
@@ -1141,8 +863,6 @@ async function dispatchScan(
     );
   }
 }
-
-type OpenDeployment = Extract<DeployFact, { kind: "open" }>;
 
 async function readRecords(
   context: ResolveContext,
