@@ -6,7 +6,7 @@ import type { Stack } from "../../core/stack.ts";
 import type { DriftResult, PreviewOptions } from "../adapter.ts";
 import { pulumiEnvironment } from "./environment.ts";
 import { typeAndName } from "./fold.ts";
-import { STACK_NOT_FOUND_EXIT_CODE } from "./preview.ts";
+import { exitReason } from "./preview.ts";
 import { stripAnsi } from "./tool-log.ts";
 
 // The drift check (record 0055): a refresh that only previews. It compares the
@@ -92,11 +92,7 @@ export async function detectDrift(stack: Stack, options: PreviewOptions): Promis
   );
   if (result.exitCode !== 0) {
     // As on the preview, the reason comes from the exit code alone.
-    const reason: PreviewFailureReason =
-      result.exitCode === STACK_NOT_FOUND_EXIT_CODE
-        ? { kind: "stack-not-found" }
-        : { kind: "tool-error", exitCode: result.exitCode };
-    return failed(reason, words);
+    return failed(exitReason(result.exitCode), words);
   }
   if (typeof read === "string") return failed({ kind: "unreadable-output" }, words, [read]);
   if (read.unknown.length > 0) return failed({ kind: "unknown-step" }, words, read.unknown);

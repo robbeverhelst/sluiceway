@@ -35,6 +35,23 @@ describe("why a preview failed, in Sluiceway's own words", () => {
     );
   });
 
+  // Slice 5.9: four of the tool's documented exit codes, each a constant
+  // string with nothing filled in, like the stack that does not exist.
+  test("the reasons of the tool's documented exit codes", () => {
+    expect(previewFailureText({ kind: "configuration-error" })).toBe(
+      "the tool found the configuration invalid or incomplete",
+    );
+    expect(previewFailureText({ kind: "authentication-error" })).toBe(
+      "the tool could not authenticate or is not authorized",
+    );
+    expect(previewFailureText({ kind: "resource-error" })).toBe(
+      "a resource operation failed in the tool",
+    );
+    expect(previewFailureText({ kind: "tool-timed-out" })).toBe(
+      "the tool gave up on a time limit of its own",
+    );
+  });
+
   test("the tool's output could not be read", () => {
     expect(previewFailureText({ kind: "unreadable-output" })).toBe(
       "the tool's output could not be read",

@@ -2,7 +2,7 @@ import { join } from "node:path";
 import type { Stack } from "../../core/stack.ts";
 import type { PreviewOptions, ToolDiffResult } from "../adapter.ts";
 import { pulumiEnvironment } from "./environment.ts";
-import { STACK_NOT_FOUND_EXIT_CODE } from "./preview.ts";
+import { exitReason } from "./preview.ts";
 import { stripAnsi } from "./tool-log.ts";
 
 // The preview as the tool displays it (record 0048). `--diff` shows every
@@ -52,11 +52,7 @@ export async function toolDiff(stack: Stack, options: PreviewOptions): Promise<T
   if (result.exitCode !== 0) {
     // As on the preview, the reason comes from the exit code alone (record
     // 0022 as amended).
-    const reason =
-      result.exitCode === STACK_NOT_FOUND_EXIT_CODE
-        ? ({ kind: "stack-not-found" } as const)
-        : ({ kind: "tool-error", exitCode: result.exitCode } as const);
-    return { ok: false, reason, toolLog: words };
+    return { ok: false, reason: exitReason(result.exitCode), toolLog: words };
   }
   return { ok: true, text: stripAnsi(result.stdout), toolLog: stripAnsi(result.stderr) };
 }

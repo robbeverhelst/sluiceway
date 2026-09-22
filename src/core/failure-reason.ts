@@ -8,6 +8,12 @@ export type PreviewFailureReason =
   // name (record 0022 as amended). The adapter picks it from a fact of its
   // own, never from the tool's message.
   | { kind: "stack-not-found" }
+  // Four more of the tool's documented exit codes, picked the same way from
+  // the exit code alone (slice 5.9): 2, 3, 4 and 9 for Pulumi.
+  | { kind: "configuration-error" }
+  | { kind: "authentication-error" }
+  | { kind: "resource-error" }
+  | { kind: "tool-timed-out" }
   | { kind: "timed-out"; minutes: number }
   | { kind: "unreadable-output" }
   | { kind: "unknown-step" };
@@ -25,6 +31,14 @@ export function previewFailureText(reason: PreviewFailureReason): string {
         : `the tool exited with an error (exit code ${reason.exitCode})`;
     case "stack-not-found":
       return "the stack does not exist in the backend";
+    case "configuration-error":
+      return "the tool found the configuration invalid or incomplete";
+    case "authentication-error":
+      return "the tool could not authenticate or is not authorized";
+    case "resource-error":
+      return "a resource operation failed in the tool";
+    case "tool-timed-out":
+      return "the tool gave up on a time limit of its own";
     case "timed-out":
       return `the preview timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}`;
     case "unreadable-output":

@@ -21,6 +21,26 @@ function previewCommand(name: string): string[] {
 // no such stack. The recorded missing-stack scenario shows it on both versions.
 export const STACK_NOT_FOUND_EXIT_CODE = 6;
 
+// The other documented exit codes with a reason of their own (slice 5.9):
+// 2 configuration and validation, 3 authentication or authorization, 4 a
+// resource operation, 9 a time limit of the tool's. Every other code but 0
+// stays a tool error with the code on the row.
+const EXIT_REASONS: Readonly<Record<number, PreviewFailureReason>> = {
+  2: { kind: "configuration-error" },
+  3: { kind: "authentication-error" },
+  4: { kind: "resource-error" },
+  [STACK_NOT_FOUND_EXIT_CODE]: { kind: "stack-not-found" },
+  9: { kind: "tool-timed-out" },
+};
+
+// The reason of a run that exited with an error, from the exit code alone. The
+// tool's message is never read for it, so none of it can reach a row (record
+// 0022 as amended).
+export function exitReason(exitCode: number | null): PreviewFailureReason {
+  const own = exitCode === null ? undefined : EXIT_REASONS[exitCode];
+  return own ?? { kind: "tool-error", exitCode };
+}
+
 // The preview, and the names its stack references give (record 0059). The
 // names stay inside the adapter: its index turns them into stack ids, and
 // nothing else sees them.
@@ -49,13 +69,10 @@ export async function previewWithReferences(
   // Any exit code but 0 is a failure. The document of a failed preview is not
   // read for steps: it may be whole, empty or no JSON at all (Pulumi research).
   if (result.exitCode !== 0) {
-    // The reason comes from the exit code alone. The tool's message is never
-    // read for it, so none of it can reach a row (record 0022 as amended).
-    const reason: PreviewFailureReason =
-      result.exitCode === STACK_NOT_FOUND_EXIT_CODE
-        ? { kind: "stack-not-found" }
-        : { kind: "tool-error", exitCode: result.exitCode };
-    return failed(reason, toolLog(result.stderr, parseDiagnostics(result.stdout)));
+    return failed(
+      exitReason(result.exitCode),
+      toolLog(result.stderr, parseDiagnostics(result.stdout)),
+    );
   }
 
   const parsed = parsePreview(result.stdout, options.showValues);

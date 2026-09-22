@@ -113,7 +113,28 @@ describe("which exit code means that the stack does not exist", () => {
     });
   });
 
-  for (const exitCode of [1, 2, 3, 4, 5, 7, 8, 9, 255]) {
+  // Slice 5.9: four more of the documented exit codes have a reason of their
+  // own, picked from the code alone as for 6 (Pulumi docs, CLI exit codes).
+  const OWN_REASONS = [
+    [2, "configuration-error"],
+    [3, "authentication-error"],
+    [4, "resource-error"],
+    [9, "tool-timed-out"],
+  ] as const;
+  for (const [exitCode, kind] of OWN_REASONS) {
+    test(`exit code ${exitCode} gives a reason of its own whatever the tool printed`, async () => {
+      const runner = answering({ status: "exited", exitCode, stdout: "", stderr: MISSING });
+
+      expect(await previewWith(NETWORK_DEV, runner)).toEqual({
+        ok: false,
+        reason: { kind },
+        detail: [],
+        toolLog: MISSING,
+      });
+    });
+  }
+
+  for (const exitCode of [1, 5, 7, 8, 255]) {
     test(`exit code ${exitCode} stays a tool error, also when the tool's words say the stack is missing`, async () => {
       const runner = answering({ status: "exited", exitCode, stdout: "", stderr: MISSING });
 
