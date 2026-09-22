@@ -61260,6 +61260,363 @@ async function renovateMergeSetting(readFile3, repo, readRemote) {
   return { strategy: await strategyOf(config2, 0), file: file2, unread };
 }
 
+// src/core/tick-judgement.ts
+function knownTicks(ticks, stacks2) {
+  const known = [];
+  const unknown2 = [];
+  for (const tick of ticks) {
+    if (tick.kind !== "row" && tick.kind !== "merge") {
+      known.push(tick);
+      continue;
+    }
+    const ids2 = (tick.kind === "merge" ? tick.stackIds : [tick.stackId]).filter((id) => !stacks2.has(id));
+    if (ids2.length === 0)
+      known.push(tick);
+    else
+      unknown2.push({ tick, stackIds: ids2 });
+  }
+  return { known, unknown: unknown2 };
+}
+function indexTicks(named2) {
+  const hashes = new Map;
+  const drifted = new Set;
+  for (const { tick } of named2) {
+    if (tick.kind !== "row")
+      continue;
+    hashes.set(tick.stackId, tick.hash);
+    if (tick.drift)
+      drifted.add(tick.stackId);
+  }
+  const mergeTicks = new Map;
+  for (const { tick } of named2)
+    if (tick.kind === "merge")
+      mergeTicks.set(tick.pr, tick);
+  return { hashes, drifted, mergeTicks };
+}
+function handOnConfirms(read3) {
+  const result = { named: [], acts: [], stale: false, findings: [] };
+  const rowTicks = new Set(read3.named.flatMap(({ tick }) => tick.kind === "row" ? [tick.stackId] : []));
+  for (const one of read3.named) {
+    const { tick, ticker } = one;
+    if (tick.kind !== "confirm") {
+      result.named.push(one);
+      continue;
+    }
+    if (!read3.deploys) {
+      result.findings.push({ kind: "deploys-off", tick });
+      result.acts.push({ tick, outcome: "clear" });
+      continue;
+    }
+    if (!ticker.named) {
+      if (ticker.reason === "not-in-newest-entry") {
+        result.findings.push({ kind: "moving", tick });
+      } else {
+        result.findings.push({ kind: "nameless", tick, reason: ticker.reason });
+        result.acts.push({ tick, outcome: "clear", note: { kind: "orphan" } });
+      }
+      continue;
+    }
+    const changes = sectionChanges(tick.stacks, bulkRows(read3.rows, tick.section));
+    if (changes) {
+      result.findings.push({ kind: "confirm-stale", tick, changes });
+      result.stale = true;
+      continue;
+    }
+    result.acts.push({ tick, outcome: "consumed" });
+    const handed = [];
+    for (const { stackId: id, hash: hash2 } of tick.stacks) {
+      if (rowTicks.has(id)) {
+        result.findings.push({ kind: "confirm-own-row", stackId: id });
+        continue;
+      }
+      if (!read3.stacks.has(id)) {
+        result.findings.push({ kind: "confirm-unknown", stackId: id, section: tick.section });
+        continue;
+      }
+      handed.push(id);
+      result.named.push({
+        tick: {
+          kind: "row",
+          stackId: id,
+          hash: hash2,
+          ...tick.section === "drift" ? { drift: true } : {}
+        },
+        ticker,
+        via: tick.section
+      });
+    }
+    result.findings.push({
+      kind: "confirm-handed-on",
+      tick,
+      login: ticker.editor.login,
+      stackIds: handed
+    });
+  }
+  return result;
+}
+function stacksToRead(named2, stacks2) {
+  const { hashes, mergeTicks } = indexTicks(named2);
+  const tickedIds = new Set([
+    ...hashes.keys(),
+    ...[...mergeTicks.values()].flatMap((one) => one.stackIds)
+  ]);
+  const ticked = [...tickedIds].flatMap((id) => stacks2.get(id) ?? []);
+  const dependencies = ticked.flatMap(({ dependsOn }) => (dependsOn ?? []).flatMap((id) => stacks2.get(id) ?? []));
+  return [...ticked, ...dependencies];
+}
+function triage(read3) {
+  const out = {
+    findings: [],
+    bulk: [],
+    toJudge: [],
+    dropped: [],
+    clear: new Map,
+    clearMerges: new Map,
+    rescanHandled: false
+  };
+  for (const { tick, ticker, via } of read3.named) {
+    const fact = tick.kind === "row" ? read3.open.get(tick.stackId) : tick.kind === "merge" ? tick.stackIds.map((id) => read3.open.get(id)).find((one) => one !== undefined) : undefined;
+    if (tick.kind === "bulk" || tick.kind === "confirm") {
+      if (!read3.deploys) {
+        out.findings.push({ kind: "deploys-off", tick });
+        out.bulk.push({ tick, outcome: "clear" });
+      } else if (ticker.named) {
+        out.toJudge.push({
+          target: { kind: "bulk", section: tick.section },
+          editor: ticker.editor
+        });
+      } else if (ticker.reason === "not-in-newest-entry") {
+        out.findings.push({ kind: "moving", tick });
+      } else {
+        out.findings.push({ kind: "nameless", tick, reason: ticker.reason });
+        out.bulk.push({ tick, outcome: "clear", note: { kind: "orphan" } });
+      }
+      continue;
+    }
+    if (tick.kind === "merge" && (fact || !read3.deploys)) {
+      out.findings.push(fact ? { kind: "taken", tick, fact } : { kind: "deploys-off", tick });
+      out.clearMerges.set(tick.pr, fact ? "deploying" : "deploys-off");
+    } else if (tick.kind === "row" && fact) {
+      out.dropped.push(tick.stackId);
+      out.findings.push({ kind: "taken", tick, fact });
+    } else if (tick.kind === "row" && !read3.deploys) {
+      out.findings.push({ kind: "deploys-off", tick });
+      out.clear.set(tick.stackId, { hash: tick.hash, note: "deploys-off" });
+    } else if (ticker.named && tick.kind === "merge") {
+      for (const id of tick.stackIds) {
+        const stack = read3.stacks.get(id);
+        if (!stack)
+          continue;
+        out.toJudge.push({
+          target: { kind: "merge", pr: tick.pr, stackIds: [id], rule: stack.tickers },
+          editor: ticker.editor
+        });
+      }
+    } else if (ticker.named) {
+      const stack = tick.kind === "row" ? read3.stacks.get(tick.stackId) : undefined;
+      out.toJudge.push({
+        target: !stack ? { kind: "rescan" } : { kind: "stack", stackId: stackId(stack.stack), rule: stack.tickers },
+        editor: ticker.editor,
+        ...via ? { via } : {}
+      });
+    } else if (ticker.reason === "not-in-newest-entry") {
+      out.findings.push({ kind: "moving", tick });
+    } else {
+      out.findings.push({ kind: "nameless", tick, reason: ticker.reason });
+      if (tick.kind === "row")
+        out.clear.set(tick.stackId, { hash: tick.hash, note: true });
+      else if (tick.kind === "merge")
+        out.clearMerges.set(tick.pr, "orphan");
+      else
+        out.rescanHandled = true;
+    }
+  }
+  return out;
+}
+function ticksToLookUp(read3) {
+  return triage(read3).toJudge;
+}
+function judgeTicks(read3, lookedUp) {
+  const { hashes, drifted, mergeTicks } = indexTicks(read3.named);
+  const { findings, bulk, dropped, clear, clearMerges, ...triaged } = triage(read3);
+  let rescanHandled = triaged.rescanHandled;
+  const allowed = [];
+  const mergesAllowed = new Map;
+  let rescan = false;
+  for (const answer of lookedUp) {
+    const { target: target2, editor } = answer.tick;
+    if (answer.outcome === "not-a-person") {
+      findings.push({ kind: "not-a-person", target: target2, editor });
+      continue;
+    }
+    if (answer.outcome === "allowed" && target2.kind === "bulk") {
+      findings.push({
+        kind: "bulk-allowed",
+        section: target2.section,
+        login: editor.login,
+        rows: bulkRows(read3.rows, target2.section).map(({ stackId: id }) => id)
+      });
+      bulk.push({
+        tick: { kind: "bulk", section: target2.section },
+        outcome: "confirm",
+        by: editor.login,
+        scanRun: ""
+      });
+      continue;
+    }
+    if (answer.outcome === "allowed") {
+      findings.push({ kind: "allowed", target: target2, login: editor.login });
+      if (target2.kind === "stack")
+        allowed.push({ stackId: target2.stackId, ticker: editor.login });
+      else if (target2.kind === "merge")
+        mergesAllowed.set(target2.pr, editor.login);
+      else
+        rescan = true;
+    } else {
+      findings.push(answer.outcome === "refused" ? { kind: "refused", target: target2, login: editor.login, reason: answer.reason } : { kind: "unverified", target: target2, login: editor.login, error: answer.error });
+      const hash2 = target2.kind === "stack" ? hashes.get(target2.stackId) : undefined;
+      if (target2.kind === "stack" && hash2 !== undefined) {
+        clear.set(target2.stackId, { hash: hash2, note: false });
+      }
+      if (target2.kind === "merge")
+        clearMerges.set(target2.pr, undefined);
+      if (target2.kind === "bulk") {
+        bulk.push({ tick: { kind: "bulk", section: target2.section }, outcome: "clear" });
+      }
+    }
+    if (target2.kind === "rescan")
+      rescanHandled = true;
+  }
+  const merges = [];
+  for (const [pr, ticker] of mergesAllowed) {
+    const tick = mergeTicks.get(pr);
+    if (tick && !clearMerges.has(pr))
+      merges.push({ tick, ticker });
+  }
+  const { start, over } = capDeploys(allowed);
+  for (const { stackId: id } of over) {
+    const hash2 = hashes.get(id);
+    if (hash2 !== undefined)
+      clear.set(id, { hash: hash2, note: true });
+  }
+  if (over.length > 0)
+    findings.push({ kind: "over-cap", started: start.length, over: over.length });
+  const plan = planDeploys({
+    allowed: start.map(({ stackId: id }) => id),
+    dependsOn: dependsOnOf2(read3.stacks),
+    pending: pendingOf(read3.rows),
+    open: new Set(read3.open.keys())
+  });
+  const phaseOf = new Map([...read3.stacks.values()].flatMap((one) => one.phase === undefined ? [] : [[stackId(one.stack), one.phase]]));
+  for (const { stackId: id, waitingOn } of plan.refused) {
+    const { named: named2, phases } = waitsByPhase({
+      phases: read3.phases,
+      phaseOf,
+      stackId: id,
+      waitingOn
+    });
+    findings.push({ kind: "waits-on", stackId: id, waitingOn, named: named2, phases });
+    const hash2 = hashes.get(id);
+    if (hash2 !== undefined) {
+      clear.set(id, {
+        hash: hash2,
+        note: { dependsOn: named2, ...phases.length === 0 ? {} : { phases } }
+      });
+    }
+  }
+  const fromConfirm = new Set(read3.named.flatMap(({ tick, via }) => via && tick.kind === "row" ? [tick.stackId] : []));
+  for (const [id, one] of clear)
+    if (fromConfirm.has(id))
+      one.unticked = true;
+  const tickers2 = new Map(start.map(({ stackId: id, ticker }) => [id, ticker]));
+  const deploys = [
+    ...plan.start.map((id) => ({ id, behind: undefined })),
+    ...plan.queued.map(({ stackId: id, behind }) => ({ id, behind }))
+  ].flatMap(({ id, behind }) => {
+    const stack = read3.stacks.get(id);
+    const hash2 = hashes.get(id);
+    const ticker = tickers2.get(id);
+    if (!stack || hash2 === undefined || ticker === undefined)
+      return [];
+    return [
+      { stackId: id, environment: stack.environment, ticker, hash: hash2, drift: drifted.has(id), behind }
+    ];
+  });
+  return {
+    findings,
+    deploys,
+    dropped,
+    clear,
+    clearMerges,
+    merges,
+    bulk,
+    rescan,
+    rescanHandled,
+    unverified: lookedUp.filter(({ outcome }) => outcome === "unverified")
+  };
+}
+function pendingOf(rows) {
+  return new Set(rows.flatMap((row) => row.known && row.state === "pending" ? [row.stackId] : []));
+}
+function dependsOnOf2(stacks2) {
+  return new Map([...stacks2.values()].map((one) => [stackId(one.stack), one.dependsOn ?? []]));
+}
+function judgeMerges(read3, ticks) {
+  const claimants = [...read3.stacks.values()].map(({ stack, inputs }) => ({
+    id: stackId(stack),
+    path: stack.path,
+    inputs
+  }));
+  const dependsOn = dependsOnOf2(read3.stacks);
+  const pending = pendingOf(read3.rows);
+  const waitingOn = (id) => (read3.stacks.get(id)?.dependsOn ?? []).filter((one) => pending.has(one) || read3.open.has(one));
+  return [...ticks].sort((a, b) => a.tick.pr - b.tick.pr).map((allowed) => {
+    const refuse2 = (refusal) => ({
+      ...allowed,
+      merge: false,
+      refusal
+    });
+    const { tick } = allowed;
+    const waits = [...new Set(tick.stackIds.flatMap(waitingOn))];
+    if (waits.length > 0)
+      return refuse2({ kind: "waits-on", stackIds: waits });
+    const pullRequest = read3.pullRequests.find(({ number: number4 }) => number4 === tick.pr);
+    if (!pullRequest)
+      return refuse2({ kind: "closed" });
+    if (pullRequest.head !== tick.head)
+      return refuse2({ kind: "head-moved" });
+    const qualified = qualify(pullRequest, {
+      authors: read3.authors,
+      defaultBranch: read3.defaultBranch,
+      stacks: claimants,
+      unrelated: read3.unrelated,
+      dependsOn
+    });
+    if (!qualified.qualifies)
+      return refuse2({ kind: "not-qualified", why: qualified.why });
+    if (JSON.stringify(qualified.stackIds) !== JSON.stringify(tick.stackIds)) {
+      return refuse2({ kind: "not-qualified", why: "other-stacks" });
+    }
+    if (read3.method === undefined)
+      return refuse2({ kind: "no-method" });
+    return { ...allowed, merge: true, method: read3.method };
+  });
+}
+function mergeAnswerRefusal(answer) {
+  return answer.status === 409 ? { kind: "head-moved" } : { kind: "refused-by-github", message: answer.message };
+}
+function scanAfter(input2) {
+  if (input2.rescan)
+    return { kind: "rescan" };
+  if (input2.merged.size === 0)
+    return { kind: "none" };
+  return {
+    kind: "after-merge",
+    prs: [...input2.merged].sort((a, b) => a - b),
+    narrowed: input2.declaresMergeScanInput
+  };
+}
+
 // src/core/workflow-check.ts
 import { readdirSync as readdirSync3, readFileSync as readFileSync7 } from "node:fs";
 import { join as join30 } from "node:path";
@@ -61679,7 +62036,7 @@ async function lookUp(github, login, pauseMs) {
     return github.getPermission(login).then((permission) => ({ permission }), (error63) => ({ error: error63 }));
   }
 }
-async function judgeTicks(github, ticks, { pauseMs = PAUSE_MS } = {}) {
+async function judgeTicks2(github, ticks, { pauseMs = PAUSE_MS } = {}) {
   const lookups = new Map;
   const outcomes = [];
   for (const tick of ticks) {
@@ -61859,18 +62216,13 @@ async function resolveTicks(context3, handOn, report) {
     }
     if (!stacks2)
       ({ stacks: stacks2, ignored } = byId(await repo.stacks()));
-    const known = ticks.filter((tick) => {
-      if (tick.kind !== "row" && tick.kind !== "merge")
-        return true;
-      const unknown2 = (tick.kind === "merge" ? tick.stackIds : [tick.stackId]).filter((id) => !stacks2?.has(id));
-      if (unknown2.length === 0)
-        return true;
-      log.info(`${tick.kind === "merge" ? `${tickName(tick)} is ticked, and discovery knows no stack ${unknown2.map(logGroupTitle).join(" or ")}` : `${logGroupTitle(tick.stackId)} is ticked, and discovery knows no such stack`}. Left alone.`);
-      return false;
-    });
-    const tickers3 = await nameTickers(known, (after) => after === undefined ? Promise.resolve(first) : github.readEditHistory(issue3.number, { size: HISTORY_PAGE_SIZE, after }));
+    const { known, unknown: unknown2 } = knownTicks(ticks, stacks2);
+    for (const { tick, stackIds } of unknown2) {
+      log.info(`${tick.kind === "merge" ? `${tickName(tick)} is ticked, and discovery knows no stack ${stackIds.map(logGroupTitle).join(" or ")}` : `${tickName(tick)} is ticked, and discovery knows no such stack`}. Left alone.`);
+    }
+    const tickers2 = await nameTickers(known, (after) => after === undefined ? Promise.resolve(first) : github.readEditHistory(issue3.number, { size: HISTORY_PAGE_SIZE, after }));
     named2 = known.flatMap((tick, index) => {
-      const ticker = tickers3[index];
+      const ticker = tickers2[index];
       return ticker ? [{ tick, ticker }] : [];
     });
     const moved = named2.some(({ ticker }) => !ticker.named && ticker.reason === "not-in-newest-entry");
@@ -61878,212 +62230,47 @@ async function resolveTicks(context3, handOn, report) {
       break;
     log.info("The body moved between the read and the walk. Reading again.");
   }
-  if (stacks2)
-    stacks2 = withRowDependencies(context3, stacks2, liveRows);
-  const bulk = handOnConfirms(context3, config2, named2, liveRows, stacks2);
-  named2 = bulk.named;
-  const bulkActs = [...bulk.acts];
-  const hashes = new Map;
-  const drifted = new Set;
-  for (const { tick } of named2) {
-    if (tick.kind !== "row")
-      continue;
-    hashes.set(tick.stackId, tick.hash);
-    if (tick.drift)
-      drifted.add(tick.stackId);
-  }
-  const mergeTicks = new Map;
-  for (const { tick } of named2)
-    if (tick.kind === "merge")
-      mergeTicks.set(tick.pr, tick);
-  const tickedIds = new Set([
-    ...hashes.keys(),
-    ...[...mergeTicks.values()].flatMap((one) => one.stackIds)
-  ]);
-  const ticked = [...tickedIds].flatMap((id) => stacks2?.get(id) ?? []);
-  const dependencies = ticked.flatMap(({ dependsOn }) => (dependsOn ?? []).flatMap((id) => stacks2?.get(id) ?? []));
-  const open2 = await openDeployments(context3, [...ticked, ...dependencies]);
-  const dropped = [];
-  const clear = new Map;
-  const clearMerges = new Map;
-  const toJudge = [];
-  let rescanHandled = false;
-  for (const { tick, ticker, via } of named2) {
-    const name = tickName(tick);
-    const fact = tick.kind === "row" ? open2.get(tick.stackId) : tick.kind === "merge" ? tick.stackIds.map((id) => open2.get(id)).find((one) => one !== undefined) : undefined;
-    if (tick.kind === "bulk" || tick.kind === "confirm") {
-      const section = tick.section;
-      if (!config2.deploys) {
-        log.info(`${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). The box goes.`);
-        bulkActs.push({ tick, outcome: "clear" });
-      } else if (ticker.named) {
-        toJudge.push({ target: { kind: "bulk", section }, editor: ticker.editor });
-      } else if (ticker.reason === "not-in-newest-entry") {
-        log.info(`${name} is ticked in a body that kept moving. Left for the run that edit woke.`);
-      } else {
-        log.info(`${name} is ticked and the edit history names nobody for it (${NOBODY[ticker.reason]}). The box is cleared.`);
-        bulkActs.push({ tick, outcome: "clear", note: { kind: "orphan" } });
-      }
-      continue;
-    }
-    if (tick.kind === "merge" && (fact || !config2.deploys)) {
-      log.info(fact ? `${name} is ticked, and the stack already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. Nothing is merged and the box is cleared. Tick it again once that deploy is over.` : `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). Nothing is merged and the box is cleared.`);
-      clearMerges.set(tick.pr, fact ? "deploying" : "deploys-off");
-    } else if (tick.kind === "row" && fact) {
-      dropped.push(tick.stackId);
-      log.info(`${name} is ticked and already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. The tick is dropped.`);
-    } else if (tick.kind === "row" && !config2.deploys) {
-      log.info(`${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). The box is cleared.`);
-      clear.set(tick.stackId, { hash: tick.hash, note: "deploys-off" });
-    } else if (ticker.named && tick.kind === "merge") {
-      for (const id of tick.stackIds) {
-        const stack = stacks2?.get(id);
-        if (!stack)
-          continue;
-        toJudge.push({
-          target: { kind: "merge", pr: tick.pr, stackIds: [id], rule: stack.tickers },
-          editor: ticker.editor
-        });
-      }
-    } else if (ticker.named) {
-      const stack = tick.kind === "row" ? stacks2?.get(tick.stackId) : undefined;
-      toJudge.push({
-        target: !stack ? { kind: "rescan" } : { kind: "stack", stackId: stackId(stack.stack), rule: stack.tickers },
-        editor: ticker.editor,
-        ...via ? { via } : {}
-      });
-    } else if (ticker.reason === "not-in-newest-entry") {
-      log.info(`${name} is ticked in a body that kept moving. Left for the run that edit woke.`);
-    } else {
-      log.info(`${name} is ticked and the edit history names nobody for it (${NOBODY[ticker.reason]}). The box is cleared.`);
-      if (tick.kind === "row")
-        clear.set(tick.stackId, { hash: tick.hash, note: true });
-      else if (tick.kind === "merge")
-        clearMerges.set(tick.pr, "orphan");
-      else
-        rescanHandled = true;
-    }
-  }
-  const outcomes = await judgeTicks(github, toJudge);
-  const allowed = [];
-  const mergesAllowed = new Map;
-  let rescan = false;
-  for (const outcome of outcomes) {
-    const { target: target2, editor } = outcome.tick;
-    const name = targetName(target2);
-    if (outcome.outcome === "not-a-person") {
-      log.info(`${name} was ticked by ${editor.login || "nobody"}, who is not a person. Left alone.`);
-      continue;
-    }
-    if (outcome.outcome === "allowed" && target2.kind === "bulk") {
-      const rows = bulkRows(liveRows, target2.section).map(({ stackId: id }) => id);
-      log.info(rows.length < 2 ? `${name} was ticked by ${editor.login}, and the section has fewer than two rows now. Each has its own box, so the box goes.` : `${name} was ticked by ${editor.login}. Its confirm box names ${plural2(rows.length, "stack")}: ${listed4(rows)}.`);
-      bulkActs.push({
-        tick: { kind: "bulk", section: target2.section },
-        outcome: "confirm",
-        by: editor.login,
-        scanRun: ""
-      });
-      continue;
-    }
-    if (outcome.outcome === "allowed") {
-      log.info(`${name} was ticked by ${editor.login}.`);
-      if (target2.kind === "stack")
-        allowed.push({ stackId: target2.stackId, ticker: editor.login });
-      else if (target2.kind === "merge")
-        mergesAllowed.set(target2.pr, editor.login);
-      else
-        rescan = true;
-    } else {
-      log.info(outcome.outcome === "refused" ? `${name} was ticked by ${editor.login}, who may not tick it (${outcome.reason}). The box is cleared.` : `${name} was ticked by ${editor.login}, and GitHub gave no answer about their access: ${message2(outcome.error)}. The box is cleared.`);
-      const hash2 = target2.kind === "stack" ? hashes.get(target2.stackId) : undefined;
-      if (target2.kind === "stack" && hash2 !== undefined) {
-        clear.set(target2.stackId, { hash: hash2, note: false });
-      }
-      if (target2.kind === "merge")
-        clearMerges.set(target2.pr, undefined);
-      if (target2.kind === "bulk") {
-        bulkActs.push({ tick: { kind: "bulk", section: target2.section }, outcome: "clear" });
-      }
-    }
-    if (target2.kind === "rescan")
-      rescanHandled = true;
-  }
-  const allowedMerges = [];
-  for (const [pr, ticker] of mergesAllowed) {
-    const tick = mergeTicks.get(pr);
-    if (tick && !clearMerges.has(pr))
-      allowedMerges.push({ tick, ticker });
-  }
-  const { start, over } = capDeploys(allowed);
-  for (const { stackId: id } of over) {
-    const hash2 = hashes.get(id);
-    if (hash2 !== undefined)
-      clear.set(id, { hash: hash2, note: true });
-  }
-  if (over.length > 0) {
-    log.info(`One run starts at most ${start.length} deploys. ${plural2(over.length, "tick")} beyond that ${over.length === 1 ? "is" : "are"} cleared and ${over.length === 1 ? "needs" : "need"} a fresh tick.`);
-  }
-  const plan = planDeploys({
-    allowed: start.map(({ stackId: id }) => id),
-    dependsOn: new Map([...stacks2?.values() ?? []].map((one) => [stackId(one.stack), one.dependsOn ?? []])),
-    pending: new Set(liveRows.flatMap((row) => row.known && row.state === "pending" ? [row.stackId] : [])),
-    open: new Set(open2.keys())
+  if (!stacks2)
+    return;
+  stacks2 = withRowDependencies(context3, stacks2, liveRows);
+  const confirms = handOnConfirms({
+    named: named2,
+    stacks: stacks2,
+    rows: liveRows,
+    deploys: config2.deploys
   });
-  const phaseOf = new Map([...stacks2?.values() ?? []].flatMap((one) => one.phase === undefined ? [] : [[stackId(one.stack), one.phase]]));
-  for (const { stackId: id, waitingOn: waitingOn2 } of plan.refused) {
-    const one = waitingOn2.length === 1;
-    const { named: named3, phases } = waitsByPhase({
-      phases: config2.phases,
-      phaseOf,
-      stackId: id,
-      waitingOn: waitingOn2
-    });
-    const words = [
-      ...named3.map(logGroupTitle),
-      ...phases.flatMap(({ phase, stackIds }) => stackIds.map((dependency) => `${logGroupTitle(dependency)} of the ${phase} phase`))
-    ];
-    log.info(`${logGroupTitle(id)} is ticked, and it depends on ${words.join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`);
-    const hash2 = hashes.get(id);
-    if (hash2 !== undefined)
-      clear.set(id, {
-        hash: hash2,
-        note: { dependsOn: named3, ...phases.length === 0 ? {} : { phases } }
-      });
-  }
-  for (const [id, one] of clear)
-    if (bulk.fromConfirm.has(id))
-      one.unticked = true;
-  const tickers2 = new Map(start.map(({ stackId: id, ticker }) => [id, ticker]));
-  const toCreate = [
-    ...plan.start.map((id) => ({ id, behind: undefined })),
-    ...plan.queued.map(({ stackId: id, behind }) => ({ id, behind }))
-  ];
+  for (const finding of confirms.findings)
+    log.info(findingText(finding));
+  named2 = confirms.named;
+  const open2 = await openDeployments(context3, stacksToRead(named2, stacks2));
+  const read3 = {
+    named: named2,
+    stacks: stacks2,
+    open: open2,
+    rows: liveRows,
+    deploys: config2.deploys,
+    phases: config2.phases
+  };
+  const outcomes = await judgeTicks2(github, ticksToLookUp(read3));
+  const judgement = judgeTicks(read3, outcomes);
+  for (const finding of judgement.findings)
+    log.info(findingText(finding));
+  const { dropped, clear, clearMerges } = judgement;
+  const bulkActs = [...confirms.acts, ...judgement.bulk];
   const failures = [];
   const started = [];
-  for (const { id, behind } of toCreate) {
-    const stack = stacks2?.get(id);
-    const hash2 = hashes.get(id);
-    const ticker = tickers2.get(id);
-    if (!stack || hash2 === undefined || ticker === undefined)
-      continue;
+  for (const { stackId: id, environment, ticker, hash: hash2, drift, behind } of judgement.deploys) {
     try {
       const record3 = await openRecord(context3, {
         stackId: id,
-        environment: stack.environment,
+        environment,
         sha: context3.sha,
         ticker,
         hash: hash2,
         behind,
-        drift: drifted.has(id)
+        drift
       });
-      started.push({
-        stackId: id,
-        environment: stack.environment,
-        deployment: record3.deployment,
-        ticker,
-        behind
-      });
+      started.push({ stackId: id, environment, deployment: record3.deployment, ticker, behind });
       if (record3.unfinished !== undefined)
         throw record3.unfinished;
       log.info(behind ? `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.` : `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued.`);
@@ -62093,31 +62280,33 @@ async function resolveTicks(context3, handOn, report) {
     }
   }
   handOn(started.flatMap(({ stackId: stack, environment, deployment, behind }) => behind ? [] : [{ stack, environment, deployment }]));
-  const pendingIds = new Set(liveRows.flatMap((row) => row.known && row.state === "pending" ? [row.stackId] : []));
-  const waitingOn = (id) => (stacks2?.get(id)?.dependsOn ?? []).filter((one) => pendingIds.has(one) || open2.has(one));
-  const merging = await mergeAll(context3, config2, stacks2, allowedMerges, waitingOn);
+  const merging = await mergeAll(context3, config2, read3, judgement.merges);
   if (merging.failure !== undefined)
     failures.push(merging.failure);
   for (const pr of merging.cleared)
     clearMerges.set(pr, undefined);
   const merged = merging.merged;
-  if (rescan || merging.mergedPrs.size > 0) {
-    const prs = [...merging.mergedPrs].sort((a, b) => a - b);
-    const narrow = !rescan && declaresMergeScanInput(workflowText(context3));
+  const scan = scanAfter({
+    rescan: judgement.rescan,
+    merged: merging.mergedPrs,
+    declaresMergeScanInput: merging.mergedPrs.size > 0 && declaresMergeScanInput(workflowText(context3))
+  });
+  if (scan.kind !== "none") {
+    const narrow = scan.kind === "after-merge" && scan.narrowed;
     try {
-      const scanUrl = await dispatchScan(context3, narrow ? mergeScanInputs(prs) : undefined);
+      const scanUrl = await dispatchScan(context3, scan.kind === "after-merge" && scan.narrowed ? mergeScanInputs(scan.prs) : undefined);
       report.scanUrl = scanUrl;
       report.scanStarted = true;
       const at = scanUrl === undefined ? "." : `: ${scanUrl}`;
-      log.info(rescan ? `Started a full scan for the rescan box${at}` : narrow ? `Started the scan after the merge of ${prs.map((pr) => `#${pr}`).join(", ")}. It previews what changed since the last scan and hands the merged change to apply.` : `Started a full scan, which previews the merged change and hands it to apply. It is narrowed to the merged change when ${logGroupTitle(context3.workflow?.file ?? "the workflow")} declares the workflow_dispatch input ${MERGE_SCAN_INPUT} (record 0064).`);
+      log.info(scan.kind === "rescan" ? `Started a full scan for the rescan box${at}` : narrow ? `Started the scan after the merge of ${scan.prs.map((pr) => `#${pr}`).join(", ")}. It previews what changed since the last scan and hands the merged change to apply.` : `Started a full scan, which previews the merged change and hands it to apply. It is narrowed to the merged change when ${logGroupTitle(context3.workflow?.file ?? "the workflow")} declares the workflow_dispatch input ${MERGE_SCAN_INPUT} (record 0064).`);
     } catch (error63) {
       failures.push(message2(error63));
     }
   }
   let written = true;
-  if (started.length > 0 || dropped.length > 0 || clear.size > 0 || rescanHandled || clearMerges.size > 0 || merging.mergedPrs.size > 0 || bulkActs.length > 0 || bulk.stale) {
+  if (started.length > 0 || dropped.length > 0 || clear.size > 0 || judgement.rescanHandled || clearMerges.size > 0 || merging.mergedPrs.size > 0 || bulkActs.length > 0 || confirms.stale) {
     try {
-      const result = await swapRows2(context3, config2, [...stacks2?.values() ?? []], ignored, issue3.number, {
+      const result = await swapRows2(context3, config2, [...stacks2.values()], ignored, issue3.number, {
         started: [...started, ...merged],
         dropped,
         clear,
@@ -62149,12 +62338,79 @@ async function resolveTicks(context3, handOn, report) {
       ], config2.notify.events);
     }
   }
-  const unverified = outcomes.filter(({ outcome }) => outcome === "unverified");
-  if (unverified.length > 0)
-    failures.push(unverifiedMessage(unverified));
+  if (judgement.unverified.length > 0)
+    failures.push(unverifiedMessage(judgement.unverified));
   if (failures.length > 0)
     throw new Error(failures.join(`
 `));
+}
+function findingText(finding) {
+  switch (finding.kind) {
+    case "taken": {
+      const { tick, fact } = finding;
+      return tick.kind === "merge" ? `${tickName(tick)} is ticked, and the stack already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. Nothing is merged and the box is cleared. Tick it again once that deploy is over.` : `${tickName(tick)} is ticked and already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. The tick is dropped.`;
+    }
+    case "deploys-off": {
+      const off = `${tickName(finding.tick)} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false).`;
+      switch (finding.tick.kind) {
+        case "merge":
+          return `${off} Nothing is merged and the box is cleared.`;
+        case "bulk":
+          return `${off} The box goes.`;
+        case "confirm":
+          return `${off} Nothing is deployed and the box goes.`;
+        default:
+          return `${off} The box is cleared.`;
+      }
+    }
+    case "moving":
+      return `${tickName(finding.tick)} is ticked in a body that kept moving. Left for the run that edit woke.`;
+    case "nameless":
+      return `${tickName(finding.tick)} is ticked and the edit history names nobody for it (${NOBODY[finding.reason]}). The box is cleared.`;
+    case "not-a-person":
+      return `${targetName(finding.target)} was ticked by ${finding.editor.login || "nobody"}, who is not a person. Left alone.`;
+    case "allowed":
+      return `${targetName(finding.target)} was ticked by ${finding.login}.`;
+    case "bulk-allowed": {
+      const { rows } = finding;
+      const name = capitalized(bulkName("box", finding.section));
+      return rows.length < 2 ? `${name} was ticked by ${finding.login}, and the section has fewer than two rows now. Each has its own box, so the box goes.` : `${name} was ticked by ${finding.login}. Its confirm box names ${plural2(rows.length, "stack")}: ${listed4(rows)}.`;
+    }
+    case "refused":
+      return `${targetName(finding.target)} was ticked by ${finding.login}, who may not tick it (${finding.reason}). The box is cleared.`;
+    case "unverified":
+      return `${targetName(finding.target)} was ticked by ${finding.login}, and GitHub gave no answer about their access: ${message2(finding.error)}. The box is cleared.`;
+    case "over-cap": {
+      const one = finding.over === 1;
+      return `One run starts at most ${finding.started} deploys. ${plural2(finding.over, "tick")} beyond that ${one ? "is" : "are"} cleared and ${one ? "needs" : "need"} a fresh tick.`;
+    }
+    case "waits-on": {
+      const words = [
+        ...finding.named.map(logGroupTitle),
+        ...finding.phases.flatMap(({ phase, stackIds }) => stackIds.map((dependency) => `${logGroupTitle(dependency)} of the ${phase} phase`))
+      ];
+      const one = finding.waitingOn.length === 1;
+      return `${logGroupTitle(finding.stackId)} is ticked, and it depends on ${words.join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`;
+    }
+    case "confirm-stale": {
+      const { tick, changes } = finding;
+      const section = tick.kind === "confirm" ? tick.section : "pending";
+      const what2 = [
+        ...changes.added.length > 0 ? [`${listed4(changes.added)} ${changes.added.length === 1 ? "is" : "are"} new`] : [],
+        ...changes.gone.length > 0 ? [
+          `${listed4(changes.gone)} ${changes.gone.length === 1 ? "is" : "are"} not ${section === "pending" ? "pending" : "drifted"} any more`
+        ] : [],
+        ...changes.moved.length > 0 ? [`${listed4(changes.moved)} ${changes.moved.length === 1 ? "has" : "have"} a new diff`] : []
+      ];
+      return `${tickName(tick)} was ticked, and its rows changed since it was drawn (${what2.join(", ")}). Nothing is deployed and the bulk box asks for a fresh tick.`;
+    }
+    case "confirm-own-row":
+      return `${logGroupTitle(finding.stackId)} is ticked on its own row too. That tick and its ticker count.`;
+    case "confirm-unknown":
+      return `${logGroupTitle(finding.stackId)} is in ${bulkName("confirm", finding.section)}, and discovery knows no such stack. Left alone.`;
+    case "confirm-handed-on":
+      return `${tickName(finding.tick)} was ticked by ${finding.login}. It stands for a tick on each of ${plural2(finding.stackIds.length, "stack")}: ${listed4(finding.stackIds)}.`;
+  }
 }
 function refusedStacks(refused) {
   const ids2 = refused.flatMap(({ target: target2 }) => target2.kind === "stack" ? [target2.stackId] : target2.kind === "merge" ? target2.stackIds : []);
@@ -62178,72 +62434,6 @@ function capitalized(text6) {
 function listed4(ids2) {
   const names2 = ids2.map(logGroupTitle);
   return names2.length < 2 ? names2.join("") : `${names2.slice(0, -1).join(", ")} and ${names2[names2.length - 1]}`;
-}
-function handOnConfirms(context3, config2, named2, liveRows, stacks2) {
-  const { log } = context3;
-  const result = { named: [], acts: [], fromConfirm: new Set, stale: false };
-  const rowTicks = new Set(named2.flatMap(({ tick }) => tick.kind === "row" ? [tick.stackId] : []));
-  for (const one of named2) {
-    const { tick, ticker } = one;
-    if (tick.kind !== "confirm") {
-      result.named.push(one);
-      continue;
-    }
-    const name = tickName(tick);
-    if (!config2.deploys) {
-      log.info(`${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). Nothing is deployed and the box goes.`);
-      result.acts.push({ tick, outcome: "clear" });
-      continue;
-    }
-    if (!ticker.named) {
-      if (ticker.reason === "not-in-newest-entry") {
-        log.info(`${name} is ticked in a body that kept moving. Left for the run that edit woke.`);
-      } else {
-        log.info(`${name} is ticked and the edit history names nobody for it (${NOBODY[ticker.reason]}). The box is cleared.`);
-        result.acts.push({ tick, outcome: "clear", note: { kind: "orphan" } });
-      }
-      continue;
-    }
-    const changes = sectionChanges(tick.stacks, bulkRows(liveRows, tick.section));
-    if (changes) {
-      const what2 = [
-        ...changes.added.length > 0 ? [`${listed4(changes.added)} ${changes.added.length === 1 ? "is" : "are"} new`] : [],
-        ...changes.gone.length > 0 ? [
-          `${listed4(changes.gone)} ${changes.gone.length === 1 ? "is" : "are"} not ${tick.section === "pending" ? "pending" : "drifted"} any more`
-        ] : [],
-        ...changes.moved.length > 0 ? [`${listed4(changes.moved)} ${changes.moved.length === 1 ? "has" : "have"} a new diff`] : []
-      ];
-      log.info(`${name} was ticked, and its rows changed since it was drawn (${what2.join(", ")}). Nothing is deployed and the bulk box asks for a fresh tick.`);
-      result.stale = true;
-      continue;
-    }
-    result.acts.push({ tick, outcome: "consumed" });
-    const handed = [];
-    for (const { stackId: id, hash: hash2 } of tick.stacks) {
-      if (rowTicks.has(id)) {
-        log.info(`${logGroupTitle(id)} is ticked on its own row too. That tick and its ticker count.`);
-        continue;
-      }
-      if (!stacks2?.has(id)) {
-        log.info(`${logGroupTitle(id)} is in ${bulkName("confirm", tick.section)}, and discovery knows no such stack. Left alone.`);
-        continue;
-      }
-      handed.push(id);
-      result.fromConfirm.add(id);
-      result.named.push({
-        tick: {
-          kind: "row",
-          stackId: id,
-          hash: hash2,
-          ...tick.section === "drift" ? { drift: true } : {}
-        },
-        ticker,
-        via: tick.section
-      });
-    }
-    log.info(`${name} was ticked by ${ticker.editor.login}. It stands for a tick on each of ${plural2(handed.length, "stack")}: ${listed4(handed)}.`);
-  }
-  return result;
 }
 function targetName(target2) {
   if (target2.kind === "stack")
@@ -62270,10 +62460,10 @@ async function renovateStrategyOf(context3) {
   context3.log.info(setting.strategy === undefined ? `${none}, so the method is the first the repo allows of squash, merge and rebase, as Renovate picks it.${unread}` : `Renovate's config is ${logGroupTitle(setting.file ?? "")}, and it sets automergeStrategy to ${logGroupTitle(setting.strategy)}.${unread}`);
   return setting.strategy;
 }
-async function mergeAll(context3, config2, stacks2, ticks, waitingOn) {
+async function mergeAll(context3, config2, read3, ticks) {
   const { github, log } = context3;
   const result = { merged: [], mergedPrs: new Set, cleared: [], problems: [] };
-  if (ticks.length === 0 || !stacks2)
+  if (ticks.length === 0)
     return result;
   let open2;
   let method;
@@ -62289,14 +62479,19 @@ async function mergeAll(context3, config2, stacks2, ticks, waitingOn) {
     result.failure = `The merge settings of the repo could not be read: ${message2(error63)}. The resolve job needs the permission \`contents: write\` to merge (record 0054). Nothing was merged, and the boxes stay ticked for the next run.`;
     return result;
   }
-  const claimants = [...stacks2.values()].map(({ stack, inputs }) => ({
-    id: stackId(stack),
-    path: stack.path,
-    inputs
-  }));
-  const dependsOn = new Map([...stacks2.values()].map((one) => [stackId(one.stack), one.dependsOn ?? []]));
-  const sorted = [...ticks].sort((a, b) => a.tick.pr - b.tick.pr);
-  for (const { tick, ticker } of sorted) {
+  const { stacks: stacks2 } = read3;
+  const verdicts = judgeMerges({
+    stacks: stacks2,
+    open: read3.open,
+    rows: read3.rows,
+    pullRequests: open2.pullRequests,
+    defaultBranch: open2.defaultBranch,
+    method,
+    authors: config2.mergeAndDeploy.authors,
+    unrelated: config2.scan.unrelated
+  }, ticks);
+  for (const verdict of verdicts) {
+    const { tick, ticker } = verdict;
     const name = tickName(tick);
     const target2 = {
       kind: "merge",
@@ -62304,61 +62499,28 @@ async function mergeAll(context3, config2, stacks2, ticks, waitingOn) {
       stackIds: tick.stackIds,
       rule: "write"
     };
-    const refuse2 = (reason, detail, waitsOn) => {
+    const refuse2 = (refusal) => {
       result.cleared.push(tick.pr);
-      result.problems.push({ target: target2, login: ticker, reason, detail, waitsOn });
+      result.problems.push({ target: target2, login: ticker, ...mergeProblem(refusal) });
     };
-    const waits = [...new Set(tick.stackIds.flatMap(waitingOn))];
-    if (waits.length > 0) {
-      log.info(`${name} was ticked by ${ticker}, and the stack depends on ${waits.map(logGroupTitle).join(" and ")}, which ${waits.length === 1 ? "has a change" : "have changes"} waiting. Nothing is merged.`);
-      refuse2("waits-on", undefined, waits);
-      continue;
-    }
-    const pullRequest = open2.pullRequests.find(({ number: number4 }) => number4 === tick.pr);
-    if (!pullRequest) {
-      log.info(`${name} was ticked by ${ticker}, and the pull request is not open any more.`);
-      refuse2("not-qualified", "it is not open any more");
-      continue;
-    }
-    if (pullRequest.head !== tick.head) {
-      log.info(`${name} was ticked by ${ticker}, and the pull request has a new head commit since.`);
-      refuse2("head-moved");
-      continue;
-    }
-    const qualified = qualify(pullRequest, {
-      authors: config2.mergeAndDeploy.authors,
-      defaultBranch: open2.defaultBranch,
-      stacks: claimants,
-      unrelated: config2.scan.unrelated,
-      dependsOn
-    });
-    const why2 = !qualified.qualifies ? NOT_QUALIFIED[qualified.why] : JSON.stringify(qualified.stackIds) !== JSON.stringify(tick.stackIds) ? "its files belong to another stack" : undefined;
-    if (why2 !== undefined) {
-      log.info(`${name} was ticked by ${ticker}, and the pull request no longer qualifies: ${why2}.`);
-      refuse2("not-qualified", why2);
-      continue;
-    }
-    if (method === undefined) {
-      log.info(`${name} was ticked by ${ticker}, and the repo allows no merge method.`);
-      refuse2("merge-refused", "the repository allows no merge method");
+    if (!verdict.merge) {
+      log.info(`${name} was ticked by ${ticker}, ${mergeRefusalText(verdict.refusal)}`);
+      refuse2(verdict.refusal);
       continue;
     }
     let answer;
     try {
-      answer = await github.mergePullRequest(tick.pr, { head: tick.head, method });
+      answer = await github.mergePullRequest(tick.pr, { head: tick.head, method: verdict.method });
     } catch (error63) {
       result.failure = `#${tick.pr} could not be merged: ${message2(error63)}. The resolve job needs the permission \`contents: write\` to merge (record 0054). Nothing more was merged, and the boxes that are left stay ticked for the next run.`;
       return result;
     }
     if (!answer.merged) {
       log.info(`${name} was ticked by ${ticker}, and GitHub refused the merge (${answer.status}): ${answer.message}`);
-      if (answer.status === 409)
-        refuse2("head-moved");
-      else
-        refuse2("merge-refused", answer.message);
+      refuse2(mergeAnswerRefusal(answer));
       continue;
     }
-    log.info(`${name} was ticked by ${ticker} and is merged (${method}) as ${answer.sha.slice(0, 7)}.`);
+    log.info(`${name} was ticked by ${ticker} and is merged (${verdict.method}) as ${answer.sha.slice(0, 7)}.`);
     result.mergedPrs.add(tick.pr);
     for (const id of tick.stackIds) {
       const stack = stacks2.get(id);
@@ -62388,6 +62550,45 @@ async function mergeAll(context3, config2, stacks2, ticks, waitingOn) {
     }
   }
   return result;
+}
+function mergeRefusalText(refusal) {
+  switch (refusal.kind) {
+    case "waits-on": {
+      const one = refusal.stackIds.length === 1;
+      return `and the stack depends on ${refusal.stackIds.map(logGroupTitle).join(" and ")}, which ${one ? "has a change" : "have changes"} waiting. Nothing is merged.`;
+    }
+    case "closed":
+      return "and the pull request is not open any more.";
+    case "head-moved":
+      return "and the pull request has a new head commit since.";
+    case "not-qualified":
+      return `and the pull request no longer qualifies: ${notQualifiedText(refusal.why)}.`;
+    case "no-method":
+      return "and the repo allows no merge method.";
+  }
+}
+function notQualifiedText(why2) {
+  return why2 === "other-stacks" ? "its files belong to another stack" : NOT_QUALIFIED[why2];
+}
+function mergeProblem(refusal) {
+  switch (refusal.kind) {
+    case "waits-on":
+      return { reason: "waits-on", detail: undefined, waitsOn: refusal.stackIds };
+    case "closed":
+      return { reason: "not-qualified", detail: "it is not open any more", waitsOn: undefined };
+    case "head-moved":
+      return { reason: "head-moved", detail: undefined, waitsOn: undefined };
+    case "not-qualified":
+      return { reason: "not-qualified", detail: notQualifiedText(refusal.why), waitsOn: undefined };
+    case "no-method":
+      return {
+        reason: "merge-refused",
+        detail: "the repository allows no merge method",
+        waitsOn: undefined
+      };
+    case "refused-by-github":
+      return { reason: "merge-refused", detail: refusal.message, waitsOn: undefined };
+  }
 }
 var NOBODY = {
   "entry-without-body": "an entry of the edit history has no body",
