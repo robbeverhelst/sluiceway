@@ -6,55 +6,21 @@
 import type { Adapter, FileReference } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import { type BackendCheck, checkSetup } from "../core/check.ts";
-import { ConfigError, type IgnoreEntry } from "../core/config.ts";
+import { ConfigError } from "../core/config.ts";
 import { hasConfigFile, loadConfig } from "../core/config-file.ts";
 import { DiscoveryError } from "../core/discovery.ts";
 import { repoFiles } from "../core/repo-files.ts";
 import { type Stack, stackId } from "../core/stack.ts";
-import { checkWorkflows, readWorkflowFiles, type WorkflowReport } from "../core/workflow-check.ts";
+import { checkWorkflows, readWorkflowFiles } from "../core/workflow-check.ts";
 import type { JobLog } from "../github/job-log.ts";
 import {
-  ALL_IN_BACKEND,
-  BACKEND_OFF,
-  BACKEND_PASTE_NOTE,
-  BACKEND_PASTE_TITLE,
-  BACKEND_TITLE,
-  backendText,
-  CANNOT_TELL,
-  CANNOT_TELL_WITH_BACKEND,
-  COULD_NOT_ASK_TITLE,
-  couldNotAskText,
-  foundText,
-  ignoreBlock,
-  ignoreText,
-  inputsBlock,
-  NO_CONFIG_FILE,
-  NO_SCAN_WORKFLOW,
-  NOT_IN_BACKEND_TITLE,
-  NOTHING_MISSING,
-  notInBackendText,
-  phaseLines,
-  READ_WARNING_TITLE,
-  READS_NOTE,
-  READS_PASTE_TITLE,
-  READS_TITLE,
-  readText,
-  readWarningText,
+  backendPart,
+  type CheckPart,
+  checkParts,
+  closingPart,
   renderCheckFailure,
   renderCheckSummary,
-  scansSomewhere,
-  settingsText,
-  unclaimedText,
-  unmatchedText,
-  unrelatedBlock,
-  VALID,
-  WORKFLOW_WARNING_TITLE,
-  whereFilesBelong,
-  workflowJobText,
-  workflowNoteText,
-  workflowWarningText,
 } from "../render/check.ts";
-import { logGroupTitle } from "../render/log-text.ts";
 
 export interface CheckContext {
   // The directory of the checked-out repo.
@@ -70,9 +36,6 @@ export interface CheckContext {
     run: ProcessRunner;
   };
 }
-
-// A name from the repo never starts a line of its own in the job log.
-const line = logGroupTitle;
 
 export async function check(context: CheckContext): Promise<void> {
   const { log, root } = context;
@@ -102,94 +65,37 @@ export async function check(context: CheckContext): Promise<void> {
     throw error;
   }
 
-  const configFile = hasConfigFile(root);
-  if (!configFile) log.info(NO_CONFIG_FILE);
-
-  log.info(foundText(report.stacks.length));
-  if (report.stacks.length > 0) {
-    log.group(
-      "Stacks",
-      report.stacks.map((configured) =>
-        line(`${stackId(configured.stack)}: ${settingsText(configured, report.phases)}`),
-      ),
-    );
-  }
-  if (report.phases.length > 0) log.group("Phases", phaseLines(report.phases).map(line));
-
-  for (const entry of report.ignore) {
-    if (entry.stacks.length > 0) log.info(line(ignoreText(entry)));
-    else log.warning(line(unmatchedText(entry)), "An ignore glob matches no stack");
-  }
-
-  const unclaimed = report.unclaimed.flatMap((group) => group.files);
-  if (unclaimed.length > 0) {
-    log.info(unclaimedText(unclaimed.length));
-    log.group("Files that no stack claims", unclaimed.map(line));
-    log.info(whereFilesBelong(report.shared));
-    if (report.suggested.length > 0) {
-      log.group(
-        "Ready to paste into sluiceway.yaml",
-        unrelatedBlock(config.scan.unrelated, report.suggested).map(line),
-      );
-    }
-  }
-
-  if (report.reads.length > 0) {
-    log.group(
-      READS_TITLE,
-      report.reads.map((read) => line(readText(read))),
-    );
-    for (const read of report.reads.filter((one) => one.missed)) {
-      log.warning(line(readWarningText(read)), READ_WARNING_TITLE);
-    }
-    log.info(READS_NOTE);
-    log.group(READS_PASTE_TITLE, inputsBlock(report.inputs).map(line));
-  }
-
-  // The workflow files (record 0061). What they lack is a warning, never a
-  // red job: GitHub is the one that validates and runs them.
+  // The workflow files (record 0061).
   const workflows = checkWorkflows(readWorkflowFiles(root), config);
-  logWorkflows(log, workflows);
+  const parts = checkParts({
+    report,
+    workflows,
+    unrelated: config.scan.unrelated,
+    hasConfigFile: hasConfigFile(root),
+  });
+  for (const part of parts) write(log, part);
 
-  const backend =
-    context.backend === undefined
-      ? undefined
-      : await askBackend(
-          context.backend,
-          root,
-          report.stacks.map(({ stack }) => stack),
-          config.ignore,
-          log,
-        );
-
-  await summary(
-    context,
-    renderCheckSummary({
-      report,
-      workflows,
-      unrelated: config.scan.unrelated,
-      hasConfigFile: configFile,
-      backend: backend === undefined ? undefined : { checks: backend, ignore: config.ignore },
-    }),
-  );
-  log.info(VALID);
-  if (backend === undefined) {
-    log.info(CANNOT_TELL);
-    log.info(BACKEND_OFF);
-  } else {
-    log.info(CANNOT_TELL_WITH_BACKEND);
+  // What the files say is in the job log before the backend is asked, which
+  // may take minutes.
+  if (context.backend !== undefined) {
+    const stacks = report.stacks.map(({ stack }) => stack);
+    const { checks, toolLog } = await askBackend(context.backend, root, stacks);
+    const backend = backendPart(checks, config.ignore, toolLog);
+    write(log, backend);
+    parts.push(backend);
   }
+
+  const closing = closingPart(context.backend !== undefined);
+  await summary(context, renderCheckSummary([...parts, closing]));
+  write(log, closing);
 }
 
-// Asks the backend about every stack that has a row (record 0074). What it
-// finds is a warning: the job's red stays the verdict of record 0042.
+// Asks the backend about every stack that has a row (record 0074).
 async function askBackend(
   backend: NonNullable<CheckContext["backend"]>,
   root: string,
   stacks: Stack[],
-  ignore: IgnoreEntry[],
-  log: JobLog,
-): Promise<BackendCheck[]> {
+): Promise<{ checks: BackendCheck[]; toolLog: string }> {
   const result = await backend.adapter.findInBackend?.(stacks, {
     root,
     env: backend.env,
@@ -204,45 +110,14 @@ async function askBackend(
       ? { stackId: id, found: "unknown", reason: answer.reason }
       : { stackId: id, found: answer.found };
   });
-
-  if (result !== undefined && result.toolLog !== "") {
-    log.group("The tool's own words", result.toolLog.replace(/\n$/, "").split("\n"));
-  }
-  log.group(
-    BACKEND_TITLE,
-    checks.map((check) => line(backendText(check))),
-  );
-  for (const check of checks) {
-    if (check.found === "unknown") log.warning(line(couldNotAskText(check)), COULD_NOT_ASK_TITLE);
-    if (check.found === false)
-      log.warning(line(notInBackendText(check.stackId)), NOT_IN_BACKEND_TITLE);
-  }
-  const missing = checks.filter((check) => check.found === false).map((check) => check.stackId);
-  if (missing.length > 0) {
-    log.info(BACKEND_PASTE_NOTE);
-    log.group(BACKEND_PASTE_TITLE, ignoreBlock(ignore, missing).map(line));
-  } else if (checks.some((check) => check.found === true)) {
-    log.info(ALL_IN_BACKEND);
-  }
-  return checks;
+  return { checks, toolLog: result?.toolLog ?? "" };
 }
 
-function logWorkflows(log: JobLog, workflows: WorkflowReport): void {
-  if (workflows.workflows.length > 0) {
-    log.group(
-      "Workflows",
-      workflows.workflows.flatMap(({ path, jobs }) =>
-        jobs.map((job) => line(workflowJobText(path, job))),
-      ),
-    );
-  }
-  if (!scansSomewhere(workflows)) log.info(NO_SCAN_WORKFLOW);
-  for (const warning of workflows.warnings) {
-    log.warning(line(workflowWarningText(warning)), WORKFLOW_WARNING_TITLE);
-  }
-  for (const note of workflows.notes) log.info(line(workflowNoteText(note)));
-  if (workflows.workflows.length > 0 && workflows.warnings.length === 0) {
-    log.info(NOTHING_MISSING);
+function write(log: JobLog, { log: entries }: CheckPart): void {
+  for (const entry of entries) {
+    if ("info" in entry) log.info(entry.info);
+    else if ("warning" in entry) log.warning(entry.warning, entry.title);
+    else log.group(entry.group, entry.lines);
   }
 }
 
