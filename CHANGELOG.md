@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.19.0](https://github.com/sluiceway/sluiceway/compare/v0.18.0...v0.19.0) (2026-09-22)
+
+
+### Features
+
+* fixtures recorded on CI, a Terraform plan must be complete, the mixed e2e with seven tools ([5b8022a](https://github.com/sluiceway/sluiceway/commit/5b8022a55a3502fb6582fd56b17d072f3423bba1))
+* the terraform binary, terragrunt and cdktf behind the OpenTofu adapter ([01c56f8](https://github.com/sluiceway/sluiceway/commit/01c56f8039a11fd0badd188becea6a281556ab38))
+
 ## [0.18.0](https://github.com/sluiceway/sluiceway/compare/v0.17.0...v0.18.0) (2026-09-22)
 
 
