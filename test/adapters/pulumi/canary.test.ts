@@ -8,6 +8,7 @@ import { parsePreview } from "../../../src/adapters/pulumi/schema.ts";
 import type { Diff } from "../../../src/core/diff.ts";
 import { canonicalDiff, diffHash } from "../../../src/core/diff-hash.ts";
 import { previewFailureText } from "../../../src/core/failure-reason.ts";
+import { outsideDeploys } from "../../../src/core/outside-deploy.ts";
 import { type Stack, stackId } from "../../../src/core/stack.ts";
 import { scan } from "../../../src/modes/scan.ts";
 import { scanResultFile } from "../../../src/render/result-file.ts";
@@ -15,7 +16,7 @@ import { renderRow } from "../../../src/render/row.ts";
 import { renderSummary } from "../../../src/render/summary.ts";
 import { harness, repoRoot } from "../../modes/harness.ts";
 import { rememberingOutputs } from "../../modes/outputs-harness.ts";
-import { annex, RESULT, rows } from "../canary-surfaces.ts";
+import { annex, RESULT, rows, trailWith } from "../canary-surfaces.ts";
 import { FIXTURES, ROOT, readRecording, replay, scenarioNames, VERSIONS } from "./replay.ts";
 
 // The canary test of record 0021 (build plan, section 6). Every program of
@@ -48,6 +49,12 @@ function isDriftCheck(command: Command): boolean {
 // (record 0074).
 function isStackList(command: Command): boolean {
   return command.argv[1] === "stack" && command.argv[2] === "ls";
+}
+
+// The tool's history (record 0073), whose entries hold every plain config
+// value, a commit title and the people behind the commit.
+function isHistory(command: Command): boolean {
+  return command.argv[1] === "stack" && command.argv[2] === "history";
 }
 
 function stackOf(command: Command): Stack {
@@ -84,9 +91,14 @@ for (const version of VERSIONS) {
       const toolDiffs = commands.filter(isToolDiff);
       const driftChecks = commands.filter(isDriftCheck);
       const stackLists = commands.filter(isStackList);
-      if (previews.length + toolDiffs.length + driftChecks.length + stackLists.length === 0) {
-        continue;
-      }
+      const histories = commands.filter(isHistory);
+      const count =
+        previews.length +
+        toolDiffs.length +
+        driftChecks.length +
+        stackLists.length +
+        histories.length;
+      if (count === 0) continue;
 
       test(scenario, async () => {
         const runner = replay(version, scenario);
@@ -164,6 +176,25 @@ for (const version of VERSIONS) {
           });
           expect(leaks(JSON.stringify(result))).toEqual([]);
         }
+        // What the history hands over, and the trail lines and markers the
+        // body makes of it.
+        for (const command of histories) {
+          const stack = stackOf(command);
+          const result = await pulumi.deployHistory?.(stack, {
+            root: ROOT,
+            env: {},
+            run: runner.run,
+            timeoutMinutes: 10,
+            limit: Number(command.argv[command.argv.indexOf("--page-size") + 1]),
+          });
+          if (result === undefined) throw new Error("Pulumi always reads its history.");
+          const made = trailWith(
+            outsideDeploys(stackId(stack), result.ok ? result.deploys : [], undefined),
+          );
+          expect(leaks(JSON.stringify(result) + made)).toEqual([]);
+          if (result.ok && result.deploys.length > 0)
+            expect(made).toContain("outside the dashboard");
+        }
       });
     }
   });
@@ -177,7 +208,8 @@ test("every scenario but the version check is covered", () => {
           !isPreview(command) &&
           !isToolDiff(command) &&
           !isDriftCheck(command) &&
-          !isStackList(command),
+          !isStackList(command) &&
+          !isHistory(command),
       ),
     );
     expect(without).toEqual(["version"]);
@@ -192,8 +224,11 @@ test("every scenario but the version check is covered", () => {
 for (const version of VERSIONS) {
   test(`with scan.logDiff on the value reaches the stack's log group and nothing else, replaying pulumi ${version}`, async () => {
     const root = repoRoot("scan:\n  logDiff: true\n");
+    // The recording holds no history. The history scenario has its own
+    // canary check above (record 0073).
+    const { deployHistory: _history, ...withoutHistory } = pulumi;
     const adapter: Adapter = {
-      ...pulumi,
+      ...withoutHistory,
       discover: async () => [{ path: "network", name: "dev", options: {} }],
       checkVersion: async () => {},
     };

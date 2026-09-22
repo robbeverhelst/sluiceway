@@ -875,6 +875,8 @@ async function swapRow(
         ignored: setup.ignored,
         // Carried as they stand: only a scan lists them (record 0054).
         merges: live.merges,
+        // Only a full scan reads the tool's history (record 0073).
+        outsideDeploys: live.outside,
       },
       // A writer that swaps rows aims at the hard limit (record 0028).
       { ...context.limits?.body, target: Number.POSITIVE_INFINITY },

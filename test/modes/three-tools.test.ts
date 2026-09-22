@@ -100,7 +100,10 @@ describe("a repo with Pulumi, OpenTofu and Helm stacks", () => {
       "tofu init -input=false",
       "helm dependency build",
     ]);
-    expect(commands.slice(6).sort()).toEqual([
+    // After every preview the scan reads the Pulumi stack's history, and no
+    // other: OpenTofu and Helm keep none (record 0073).
+    expect(commands.at(-1)).toBe("pulumi stack history");
+    expect(commands.slice(6, -1).sort()).toEqual([
       "helm diff upgrade",
       "pulumi preview --json",
       "tofu plan -input=false",

@@ -10,7 +10,7 @@ import type { Change } from "../../src/core/diff.ts";
 import { scan } from "../../src/modes/scan.ts";
 import { BODY_LIMIT, BODY_TARGET } from "../../src/render/budget.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
-import { FIXTURES, readRecording } from "../adapters/pulumi/replay.ts";
+import { FIXTURES, readRecording, unrecordedHistory } from "../adapters/pulumi/replay.ts";
 import type { FakeGitHub } from "../fake-github/fake-github.ts";
 import { rows100, stackIdOf } from "../render/fixtures.ts";
 import { change, dashboardBody, failing, harness, pending, SHA, tableAdapter } from "./harness.ts";
@@ -353,6 +353,8 @@ function replayedTool(milliseconds = 0): ProcessRunner {
   );
   return async (run) => {
     if (run.argv.join(" ") === "pulumi version") return answers.get("version") as never;
+    const history = unrecordedHistory(VERSION, run);
+    if (history) return history;
     const index = Number(basename(run.cwd).slice(1));
     const scenario =
       index % 10 === 9 ? "many-resources" : (SCENARIOS[index % SCENARIOS.length] ?? "");

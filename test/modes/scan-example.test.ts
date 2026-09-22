@@ -6,7 +6,7 @@ import type { ProcessRunner } from "../../src/adapters/process.ts";
 import { pulumi } from "../../src/adapters/pulumi/index.ts";
 import { scan } from "../../src/modes/scan.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
-import { FIXTURES, readRecording, VERSIONS } from "../adapters/pulumi/replay.ts";
+import { FIXTURES, readRecording, unrecordedHistory, VERSIONS } from "../adapters/pulumi/replay.ts";
 import { dashboardBody, harness, SHA } from "./harness.ts";
 
 // The scan of the example project with the real adapter and a replayed tool
@@ -38,6 +38,8 @@ function replayedTool(version: string, scenarios = SCENARIO_OF): ProcessRunner {
   };
   return async (run) => {
     if (run.argv.join(" ") === "pulumi version") return answer("version");
+    const history = unrecordedHistory(version, run);
+    if (history) return history;
     const scenario = scenarios[`${relative(ROOT, run.cwd)} ${run.argv.at(-1)}`];
     if (scenario === undefined) {
       throw new Error(`No scenario for "${run.argv.join(" ")}" in ${run.cwd}.`);

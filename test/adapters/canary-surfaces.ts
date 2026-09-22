@@ -2,6 +2,7 @@
 // the Pulumi one and the OpenTofu one (record 0053) search the same surfaces.
 import type { Diff } from "../../src/core/diff.ts";
 import { diffHash } from "../../src/core/diff-hash.ts";
+import type { OutsideDeploy } from "../../src/core/outside-deploy.ts";
 import { renderBody, rowBlock } from "../../src/render/body.ts";
 import { fitBody } from "../../src/render/budget.ts";
 import { diffLogLines, logGroupTitle } from "../../src/render/log-text.ts";
@@ -93,3 +94,21 @@ export function annex(diff: Diff): string {
 export const RESULT = { run: "run-url", commit: "sha", milliseconds: 1 };
 const PAGE_LINKS = { dashboard: "dashboard-url", summary: "summary-url", log: "log-url" };
 const APPLIED = { deployment: 1, outcome: "deployed", stack: "a", ticker: "alice" } as const;
+
+// The trail with deploys made outside the dashboard (record 0073), with and
+// without a header, as it reaches the issue.
+export function trailWith(outside: OutsideDeploy[]): string {
+  return [true, false]
+    .map((personality) =>
+      renderBody({
+        root: { scanSha: "sha", scanRun: "1", scanAt: "2026-09-21T10:02:41Z" },
+        rows: [],
+        recentlyDeployed: [],
+        outsideDeploys: outside,
+        repoUrl: "repo-url",
+        actionRef: "v0.1.0",
+        personality,
+      }),
+    )
+    .join("\n");
+}

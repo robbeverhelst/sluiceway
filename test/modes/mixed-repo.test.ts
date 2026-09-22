@@ -81,7 +81,10 @@ describe("a repo with Pulumi and OpenTofu stacks", () => {
     ]);
     const commands = runs.map((one) => one.argv.slice(0, 2).join(" "));
     expect(commands.slice(0, 3)).toEqual(["pulumi version", "tofu version", "tofu init"]);
-    expect(commands.slice(3).sort()).toEqual(["pulumi preview", "tofu plan", "tofu show"]);
+    // After every preview the scan reads the Pulumi stack's history, and
+    // never an OpenTofu one: OpenTofu keeps none (record 0073).
+    expect(commands.slice(3, -1).sort()).toEqual(["pulumi preview", "tofu plan", "tofu show"]);
+    expect(commands.at(-1)).toBe("pulumi stack");
     expect(log.groups.map((group) => group.title)).toContain("Prepared tofu/network");
     expect(dashboardBody(github)).toContain("**tofu/network:dev** · 4 creates");
   });
@@ -93,6 +96,7 @@ describe("a repo with Pulumi and OpenTofu stacks", () => {
 
     await scan(context);
 
-    expect(runs.map((one) => one.argv[0])).toEqual(["pulumi", "pulumi"]);
+    // The version, the preview and the history (record 0073).
+    expect(runs.map((one) => one.argv[0])).toEqual(["pulumi", "pulumi", "pulumi"]);
   });
 });

@@ -79,7 +79,10 @@ describe("a repo with Pulumi and Kubernetes manifests stacks", () => {
     ]);
     const commands = runs.map((one) => one.argv.slice(0, 2).join(" "));
     expect(commands.slice(0, 2)).toEqual(["pulumi version", "kubectl version"]);
-    expect(commands.slice(2).sort()).toEqual(["kubectl diff", "pulumi preview"]);
+    // After every preview the scan reads the Pulumi stack's history, and
+    // never a kubectl one: kubectl keeps none (record 0073).
+    expect(commands.slice(2, -1).sort()).toEqual(["kubectl diff", "pulumi preview"]);
+    expect(commands.at(-1)).toBe("pulumi stack");
     expect(dashboardBody(github)).toContain("**k8s/web** · 4 creates");
   });
 
@@ -90,7 +93,8 @@ describe("a repo with Pulumi and Kubernetes manifests stacks", () => {
 
     await scan(context);
 
-    expect(runs.map((one) => one.argv[0])).toEqual(["pulumi", "pulumi"]);
+    // The version, the preview and the history (record 0073).
+    expect(runs.map((one) => one.argv[0])).toEqual(["pulumi", "pulumi", "pulumi"]);
   });
 });
 

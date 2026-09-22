@@ -10,6 +10,7 @@ import type {
   DriftResult,
   PreviewResult,
   ReadDependencies,
+  ToolDeploy,
   ToolDiffResult,
 } from "../adapters/adapter.ts";
 import { ToolVersionError } from "../adapters/adapter.ts";
@@ -40,6 +41,7 @@ import {
   waitingUpdates,
 } from "../core/merge-and-deploy.ts";
 import { resolveOnItsWay, type TickAtLateRead, tickAtLateRead } from "../core/orphan-tick.ts";
+import { outsideDeploys, ownRuns, trailOutside } from "../core/outside-deploy.ts";
 import { runPool } from "../core/pool.ts";
 import { type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import {
@@ -109,6 +111,7 @@ import {
 } from "../render/row.ts";
 import { renderSummary, type UnclaimedFiles } from "../render/summary.ts";
 import { previewBranches } from "./branch-preview.ts";
+import { readHistories } from "./outside-deploys.ts";
 import { prepareStacks } from "./prepare.ts";
 
 // Everything a scan needs, handed in as data and seams (build plan, section
@@ -375,6 +378,8 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   let written: DashboardResult;
   // Stacks this scan previewed a second time for a deploy that ended under it.
   const again = new Set<string>();
+  // The tools' own histories, read once the scan is full (record 0073).
+  let histories: Map<string, ToolDeploy[]> | undefined;
   for (;;) {
     if (next.length > 0 && !versionChecked) {
       // The tools of every stack of the repo, once per job, so a later round
@@ -575,6 +580,18 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           readOnly: config.dashboard.readOnly,
           ignored,
           merges,
+          // What this scan read of the tools' histories, and for every other
+          // stack the lines the live body has (record 0073).
+          outsideDeploys: trailOutside(
+            ids,
+            new Map(
+              [...(histories ?? [])].map(([id, history]) => [
+                id,
+                outsideDeploys(id, history, deploys.runs.get(id)),
+              ]),
+            ),
+            live?.root?.version === MARKER_VERSION ? live.outside : [],
+          ),
         },
         // A writer that swaps rows aims at the hard limit, because the room
         // between the target and the limit exists for that writer (0028).
@@ -605,6 +622,13 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         mergesLeftOut: fitted.mergesLeftOut,
       };
     };
+
+    // Only a full scan reads the tools' histories: after every preview, once,
+    // and before the late read that matches them with the records (record
+    // 0073).
+    if (histories === undefined && ids.length > 0 && ids.every((id) => previewed.has(id))) {
+      histories = await readHistories(context, stacks, config.dashboard.recentlyDeployed);
+    }
 
     try {
       // With a fresh row for every stack the body depends on the live one only
@@ -723,11 +747,15 @@ interface LateDeploys {
   facts: DeployFacts;
   // Stacks whose open deployment this scan ended, because its run was over.
   settled: Set<string>;
+  // The runs on the records of each stack, which tell its own deploys in the
+  // tool's history apart (record 0073).
+  runs: Map<string, Set<string>>;
 }
 
 const NO_DEPLOYS: LateDeploys = {
   facts: { byStack: new Map(), succeeded: [], trail: [], unread: 0 },
   settled: new Set(),
+  runs: new Map(),
 };
 
 // What attribution found, by stack id. A stack is missing when the lookup
@@ -810,7 +838,11 @@ async function lateDeploys(
         `Ended the open deployment of ${logGroupTitle(id)}: run ${fact?.kind === "open" ? fact.run : ""} is over and never reported a result.`,
       );
     }
-    return { facts: deployFacts(settled.records), settled: new Set(settled.stackIds) };
+    return {
+      facts: deployFacts(settled.records),
+      settled: new Set(settled.stackIds),
+      runs: ownRuns(settled.records),
+    };
   } catch (error) {
     throw new Error(
       `The deployment records could not be read: ${error instanceof Error ? error.message : error}. The scan job needs the permissions \`deployments: write\` and \`actions: read\` next to \`contents: read\` and \`issues: write\` (record 0003).`,

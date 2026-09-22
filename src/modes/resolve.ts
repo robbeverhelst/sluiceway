@@ -1085,6 +1085,8 @@ async function swapRows(
       readOnly: config.dashboard.readOnly,
       ignored,
       merges,
+      // Only a full scan reads the tool's history (record 0073).
+      outsideDeploys: live.outside,
     },
     // A writer that swaps rows aims at the hard limit (record 0028).
     { ...context.limits?.body, target: Number.POSITIVE_INFINITY },
