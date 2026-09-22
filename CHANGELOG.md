@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.18.0](https://github.com/sluiceway/sluiceway/compare/v0.17.0...v0.18.0) (2026-09-22)
+
+
+### Features
+
+* a deploy made outside the dashboard is a line of the trail ([bac73f9](https://github.com/sluiceway/sluiceway/commit/bac73f90d7a70a209cea89f9c446583edd966b2d))
+* a full scan reads each stack's history and puts outside deploys on the trail ([29c085e](https://github.com/sluiceway/sluiceway/commit/29c085e47911b6fc24f4b88ba848e633441a398e))
+* the e2e checks that a stack deployed by hand is on the trail ([610bb99](https://github.com/sluiceway/sluiceway/commit/610bb99f642268d1abc867566dbb53e756b19ae5))
+* the history fixtures as the CI fixtures job recorded them ([8e3c821](https://github.com/sluiceway/sluiceway/commit/8e3c821ed4a1eeda58b57c1a563d5db54f909da0))
+* the Pulumi adapter reads the tool's own history of a stack ([1b7cc61](https://github.com/sluiceway/sluiceway/commit/1b7cc6123028779202859137f19004cec031ec9b))
+
 ## [0.17.0](https://github.com/sluiceway/sluiceway/compare/v0.16.0...v0.17.0) (2026-09-22)
 
 
