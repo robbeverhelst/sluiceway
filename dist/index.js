@@ -51961,7 +51961,9 @@ function knownStacks(found, ignore) {
 }
 function describe3(stack) {
   const path = JSON.stringify(stack.path);
-  return stack.name === undefined ? `the stack in ${path}` : `${JSON.stringify(stack.name)} in ${path}`;
+  const where = stack.name === undefined ? `in ${path}` : `${JSON.stringify(stack.name)} in ${path}`;
+  const { tool } = stack.options;
+  return typeof tool === "string" ? `the stack ${where} that a stacks entry declares with tool: ${tool}` : `the Pulumi stack ${where}`;
 }
 
 // src/core/notify.ts
@@ -61797,8 +61799,157 @@ var backendContext = (env) => {
   return { adapter: tools, env, run: (run) => runProcess(run) };
 };
 
+// src/core/scan-plan.ts
+var COMPARE_FILE_CAP = 300;
+var COMMIT2 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+function narrowsOn(event, afterMerge = []) {
+  return event === "push" || event === "workflow_dispatch" && afterMerge.length > 0;
+}
+function comparisonBase(event, dashboard, markerVersion, afterMerge = []) {
+  if (!narrowsOn(event, afterMerge))
+    return { kind: "event", event };
+  if (dashboard === undefined)
+    return { kind: "no-dashboard" };
+  const { root } = dashboard;
+  if (root === undefined)
+    return { kind: "no-root-marker" };
+  if (root.version !== markerVersion)
+    return { kind: "other-version", version: root.version };
+  if (root.scanSha === undefined || !COMMIT2.test(root.scanSha))
+    return { kind: "no-scan-sha" };
+  return { kind: "compare", from: root.scanSha };
+}
+function changedPaths2(comparison) {
+  if (comparison.status !== "ahead" && comparison.status !== "identical") {
+    return { kind: "not-a-straight-line", status: comparison.status };
+  }
+  if (comparison.files.length >= COMPARE_FILE_CAP)
+    return { kind: "file-cap" };
+  return {
+    kind: "changed",
+    paths: comparison.files.flatMap(({ path, previousPath }) => previousPath === undefined ? [path] : [path, previousPath])
+  };
+}
+function treeChanges(base, head) {
+  const ids2 = (tree) => new Map(tree.filter(({ type }) => type !== "tree").map(({ path, sha }) => [path, sha]));
+  const before = ids2(base);
+  const after = ids2(head);
+  const changed = new Set;
+  for (const [path, sha] of before)
+    if (after.get(path) !== sha)
+      changed.add(path);
+  for (const [path, sha] of after)
+    if (before.get(path) !== sha)
+      changed.add(path);
+  return [...changed].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+}
+function planScan(stacks, changed, unrelated, rows) {
+  const { claims, unclaimed } = claim2(stacks, changed, unrelated);
+  if (unclaimed.length > 0)
+    return { kind: "full", why: { kind: "unclaimed", files: unclaimed } };
+  const states = new Map(rows.map((row) => [row.stackId, row.state]));
+  const previews = stacks.flatMap(({ id }) => {
+    const files = claims.get(id);
+    if (files)
+      return [{ id, why: { kind: "claims", files } }];
+    if (!states.has(id))
+      return [{ id, why: { kind: "no-row" } }];
+    if (states.get(id) === "preview-failed")
+      return [{ id, why: { kind: "preview-failed" } }];
+    return [];
+  });
+  return { kind: "narrowed", previews };
+}
+function oneRowPerStack(discovered, fresh, live) {
+  const onDashboard = new Set(live);
+  const known = new Set(discovered);
+  const stale = discovered.filter((id) => !fresh.has(id));
+  return {
+    carried: stale.filter((id) => onDashboard.has(id)),
+    missing: stale.filter((id) => !onDashboard.has(id)),
+    dropped: [...onDashboard].filter((id) => !known.has(id))
+  };
+}
+function unclaimedToPlace(files) {
+  return files.filter((file2) => !isConfigFile(file2));
+}
+function isConfigFile(file2) {
+  return CONFIG_FILES.includes(file2);
+}
+function noClaimant(files) {
+  const [first = "", ...rest] = files;
+  return rest.length === 0 ? `no stack claims ${first}` : `no stack claims ${first} and ${rest.length} more changed ${rest.length === 1 ? "file" : "files"}`;
+}
+function fullScanReasonText(reason) {
+  switch (reason.kind) {
+    case "event":
+      return `the event is ${reason.event}, and only a push, or the scan resolve starts after a merge, gives a narrowed scan`;
+    case "no-dashboard":
+      return "there is no dashboard yet";
+    case "no-root-marker":
+      return "the dashboard has no root marker that can be read";
+    case "other-version":
+      return `the root marker of the dashboard has version ${reason.version}, which this version of Sluiceway does not write`;
+    case "no-scan-sha":
+      return "the root marker of the dashboard names no commit to compare from";
+    case "compare-failed":
+      return "GitHub did not give the comparison from the commit of the last scan";
+    case "not-a-straight-line":
+      return `the checked-out commit does not follow the commit of the last scan in a straight line (GitHub calls it ${JSON.stringify(reason.status)}), as after a force push or a re-run of an older run`;
+    case "file-cap":
+      return `the comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, and the trees of the two commits could not be compared, so files may be missing from it`;
+    case "unclaimed": {
+      const others = unclaimedToPlace(reason.files);
+      if (others.length === reason.files.length)
+        return noClaimant(others);
+      const file2 = reason.files.find(isConfigFile);
+      const changed = `${file2} changed, so every stack is previewed`;
+      return others.length === 0 ? changed : `${changed}, and ${noClaimant(others)}`;
+    }
+    case "does-not-fit":
+      return `the body does not fit in one issue with ${reason.carried} ${reason.carried === 1 ? "row" : "rows"} carried through, and only a fresh row can be shortened`;
+  }
+}
+
 // src/core/check.ts
 var SUGGESTIONS = ["docs/**"];
+var SHARED_FILES = new Set([
+  "package.json",
+  "package-lock.json",
+  "npm-shrinkwrap.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "bun.lock",
+  "bun.lockb",
+  "deno.json",
+  "deno.lock",
+  "go.mod",
+  "go.sum",
+  "go.work",
+  "go.work.sum",
+  "Cargo.toml",
+  "Cargo.lock",
+  "pyproject.toml",
+  "poetry.lock",
+  "uv.lock",
+  "Pipfile",
+  "Pipfile.lock",
+  "requirements.txt",
+  "Gemfile",
+  "Gemfile.lock",
+  "composer.json",
+  "composer.lock",
+  "pom.xml",
+  "build.gradle",
+  "build.gradle.kts",
+  "gradle.lockfile",
+  "packages.lock.json",
+  "Directory.Packages.props"
+]);
+function sharedFiles(files) {
+  return files.filter((file2) => SHARED_FILES.has(file2.slice(file2.lastIndexOf("/") + 1))).sort(byCodeUnit17);
+}
 function checkSetup(config2, found, files, references = new Map) {
   const stacks = applyConfig(config2, found);
   const claimants = stacks.map(({ stack, inputs }) => ({
@@ -61806,13 +61957,17 @@ function checkSetup(config2, found, files, references = new Map) {
     path: stack.path,
     inputs
   }));
-  const { unclaimed } = claim2(claimants, files, config2.scan.unrelated);
-  const reads = readsOf(claimants, files, new Set(unclaimed), references);
+  const claimed = claim2(claimants, files, config2.scan.unrelated);
+  const unclaimed = unclaimedToPlace(claimed.unclaimed);
+  const configFile = claimed.unclaimed.find((file2) => !unclaimed.includes(file2));
+  const reads = readsOf(claimants, files, new Set(claimed.unclaimed), references);
   return {
     stacks,
     ignore: config2.ignore.map((entry3) => ignoreReport(ignoreGlob(entry3), found)),
     unclaimed: groups(unclaimed),
     suggested: suggestedUnrelated(unclaimed),
+    shared: sharedFiles(unclaimed),
+    ...configFile === undefined ? {} : { configFile },
     phases: phaseGroups(config2.phases, new Map(stacks.flatMap((one) => one.phase === undefined ? [] : [[stackId(one.stack), one.phase]]))),
     reads,
     inputs: inputsEntries(stacks, reads)
@@ -61919,7 +62074,18 @@ var NOT_IN_BACKEND_TITLE = "A stack is not in the backend";
 var COULD_NOT_ASK_TITLE = "Could not ask the backend";
 var ALL_IN_BACKEND = "Every stack the backend was asked about is in it.";
 var BACKEND_PASTE_NOTE = "The block below keeps what ignore has and adds the stacks the backend does not hold. Leave out any stack you are about to create.";
-var WHERE_FILES_BELONG = "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.";
+function whereFilesBelong(shared, show2 = logGroupTitle) {
+  const start = "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no program reads, such as docs, can be listed under scan.unrelated.";
+  if (shared.length === 0) {
+    return `${start} Keep lockfiles and package manifests off that list: a change to one should preview every stack.`;
+  }
+  const names2 = shared.slice(0, SHARED_NAMED).map(show2);
+  const rest = shared.length - names2.length;
+  const listed4 = rest > 0 ? `${names2.join(", ")} and ${rest} more` : names2.length === 1 ? names2[0] ?? "" : `${names2.slice(0, -1).join(", ")} and ${names2.at(-1)}`;
+  const why2 = shared.length === 1 ? "it is a lockfile or a package manifest, and a change to it should preview every stack" : "they are lockfiles and package manifests, and a change to one should preview every stack";
+  return `${start} Keep ${listed4} off that list: ${why2}.`;
+}
+var SHARED_NAMED = 5;
 var PASTE_NOTE = "The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.";
 var READS_TITLE = "Files stacks read and do not claim";
 var READS_PASTE_TITLE = "Ready to paste into sluiceway.yaml, under stacks";
@@ -62230,10 +62396,11 @@ function renderCheckSummary({
   parts.push("### Files that no stack claims");
   const count3 = report.unclaimed.reduce((sum, group) => sum + group.files.length, 0);
   if (count3 === 0) {
-    parts.push("Every file is claimed by a stack, covered by scan.unrelated, or one of the docs and tooling files that force nothing by default.");
+    const configFile = report.configFile === undefined ? "" : ` ${escapeText(report.configFile)} is not listed: no stack claims it, and a change to it previews every stack.`;
+    parts.push(`Every file is claimed by a stack, covered by scan.unrelated, or one of the docs and tooling files that force nothing by default.${configFile}`);
   } else {
     parts.push(unclaimedText(count3), report.unclaimed.map(groupLine).join(`
-`), WHERE_FILES_BELONG);
+`), whereFilesBelong(report.shared, escapeText));
     if (report.suggested.length > 0) {
       parts.push(PASTE_NOTE, ["```yaml", ...unrelatedBlock(unrelated, report.suggested), "```"].join(`
 `));
@@ -62344,7 +62511,7 @@ async function check2(context3) {
   if (unclaimed.length > 0) {
     log.info(unclaimedText(unclaimed.length));
     log.group("Files that no stack claims", unclaimed.map(line2));
-    log.info(WHERE_FILES_BELONG);
+    log.info(whereFilesBelong(report.shared));
     if (report.suggested.length > 0) {
       log.group("Ready to paste into sluiceway.yaml", unrelatedBlock(config2.scan.unrelated, report.suggested).map(line2));
     }
@@ -62568,118 +62735,6 @@ async function runPool(items, size, work) {
   };
   await Promise.all(Array.from({ length: Math.min(size, items.length) }, slot));
   return results;
-}
-
-// src/core/scan-plan.ts
-var COMPARE_FILE_CAP = 300;
-var COMMIT2 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-function narrowsOn(event, afterMerge = []) {
-  return event === "push" || event === "workflow_dispatch" && afterMerge.length > 0;
-}
-function comparisonBase(event, dashboard, markerVersion, afterMerge = []) {
-  if (!narrowsOn(event, afterMerge))
-    return { kind: "event", event };
-  if (dashboard === undefined)
-    return { kind: "no-dashboard" };
-  const { root } = dashboard;
-  if (root === undefined)
-    return { kind: "no-root-marker" };
-  if (root.version !== markerVersion)
-    return { kind: "other-version", version: root.version };
-  if (root.scanSha === undefined || !COMMIT2.test(root.scanSha))
-    return { kind: "no-scan-sha" };
-  return { kind: "compare", from: root.scanSha };
-}
-function changedPaths2(comparison) {
-  if (comparison.status !== "ahead" && comparison.status !== "identical") {
-    return { kind: "not-a-straight-line", status: comparison.status };
-  }
-  if (comparison.files.length >= COMPARE_FILE_CAP)
-    return { kind: "file-cap" };
-  return {
-    kind: "changed",
-    paths: comparison.files.flatMap(({ path, previousPath }) => previousPath === undefined ? [path] : [path, previousPath])
-  };
-}
-function treeChanges(base, head) {
-  const ids2 = (tree) => new Map(tree.filter(({ type }) => type !== "tree").map(({ path, sha }) => [path, sha]));
-  const before = ids2(base);
-  const after = ids2(head);
-  const changed = new Set;
-  for (const [path, sha] of before)
-    if (after.get(path) !== sha)
-      changed.add(path);
-  for (const [path, sha] of after)
-    if (before.get(path) !== sha)
-      changed.add(path);
-  return [...changed].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
-}
-function planScan(stacks, changed, unrelated, rows) {
-  const { claims, unclaimed } = claim2(stacks, changed, unrelated);
-  if (unclaimed.length > 0)
-    return { kind: "full", why: { kind: "unclaimed", files: unclaimed } };
-  const states = new Map(rows.map((row2) => [row2.stackId, row2.state]));
-  const previews = stacks.flatMap(({ id }) => {
-    const files = claims.get(id);
-    if (files)
-      return [{ id, why: { kind: "claims", files } }];
-    if (!states.has(id))
-      return [{ id, why: { kind: "no-row" } }];
-    if (states.get(id) === "preview-failed")
-      return [{ id, why: { kind: "preview-failed" } }];
-    return [];
-  });
-  return { kind: "narrowed", previews };
-}
-function oneRowPerStack(discovered, fresh, live) {
-  const onDashboard = new Set(live);
-  const known = new Set(discovered);
-  const stale = discovered.filter((id) => !fresh.has(id));
-  return {
-    carried: stale.filter((id) => onDashboard.has(id)),
-    missing: stale.filter((id) => !onDashboard.has(id)),
-    dropped: [...onDashboard].filter((id) => !known.has(id))
-  };
-}
-function unclaimedToPlace(files) {
-  return files.filter((file2) => !isConfigFile(file2));
-}
-function isConfigFile(file2) {
-  return CONFIG_FILES.includes(file2);
-}
-function noClaimant(files) {
-  const [first = "", ...rest] = files;
-  return rest.length === 0 ? `no stack claims ${first}` : `no stack claims ${first} and ${rest.length} more changed ${rest.length === 1 ? "file" : "files"}`;
-}
-function fullScanReasonText(reason) {
-  switch (reason.kind) {
-    case "event":
-      return `the event is ${reason.event}, and only a push, or the scan resolve starts after a merge, gives a narrowed scan`;
-    case "no-dashboard":
-      return "there is no dashboard yet";
-    case "no-root-marker":
-      return "the dashboard has no root marker that can be read";
-    case "other-version":
-      return `the root marker of the dashboard has version ${reason.version}, which this version of Sluiceway does not write`;
-    case "no-scan-sha":
-      return "the root marker of the dashboard names no commit to compare from";
-    case "compare-failed":
-      return "GitHub did not give the comparison from the commit of the last scan";
-    case "not-a-straight-line":
-      return `the checked-out commit does not follow the commit of the last scan in a straight line (GitHub calls it ${JSON.stringify(reason.status)}), as after a force push or a re-run of an older run`;
-    case "file-cap":
-      return `the comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, and the trees of the two commits could not be compared, so files may be missing from it`;
-    case "unclaimed": {
-      const others = unclaimedToPlace(reason.files);
-      if (others.length === reason.files.length)
-        return noClaimant(others);
-      const file2 = reason.files.find(isConfigFile);
-      const changed = `${file2} changed, so every stack is previewed`;
-      return others.length === 0 ? changed : `${changed}, and ${noClaimant(others)}`;
-    }
-    case "does-not-fit":
-      return `the body does not fit in one issue with ${reason.carried} ${reason.carried === 1 ? "row" : "rows"} carried through, and only a fresh row can be shortened`;
-  }
 }
 
 // src/core/scan-result.ts
@@ -62961,14 +63016,14 @@ function fitToBudget(entries, frameCost, budget) {
   }
 }
 var UNCLAIMED_FILES_SHOWN = 20;
-function unclaimedParts({ files, unrelated, suggested }) {
+function unclaimedParts({ files, unrelated, suggested, shared }) {
   const shown3 = files.slice(0, UNCLAIMED_FILES_SHOWN).map(escapeText).join(", ");
   const rest = files.length - UNCLAIMED_FILES_SHOWN;
   const more = rest > 0 ? `, and ${plural2(rest, "more file")}. The job log lists them all` : "";
   const parts = [
     "### Why this was a full scan",
     `This push fell back to a full scan, because no stack claims ${files.length} of the changed files: ${shown3}${more}. A push that changes one of them previews every stack.`,
-    WHERE_FILES_BELONG
+    whereFilesBelong(shared, escapeText)
   ];
   if (suggested.length > 0) {
     parts.push(PASTE_NOTE, ["```yaml", ...unrelatedBlock(unrelated, suggested), "```"].join(`
@@ -63700,7 +63755,8 @@ function unclaimedFiles(plan, config2) {
   return {
     files: files.map(fileName),
     unrelated: config2.scan.unrelated,
-    suggested: suggestedUnrelated(files)
+    suggested: suggestedUnrelated(files),
+    shared: sharedFiles(files)
   };
 }
 function logPlan(context3, plan, stackCount) {
@@ -63717,7 +63773,7 @@ function logPlan(context3, plan, stackCount) {
     if (toPlace.length > 0) {
       log.group("Changed files that no stack claims", [
         ...toPlace.map((file2) => `unclaimed: ${fileName(file2)}`),
-        "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated."
+        whereFilesBelong(sharedFiles(toPlace))
       ]);
     }
     return;
