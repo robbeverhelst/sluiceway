@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.21.0](https://github.com/sluiceway/sluiceway/compare/v0.20.1...v0.21.0) (2026-09-22)
+
+
+### Features
+
+* kubernetes manifests part 2, pruning, a drift check, -R and two apply options ([bc48e1e](https://github.com/sluiceway/sluiceway/commit/bc48e1eaf4183eb668e3029ae1f70b4b6667969a))
+* the kubectl fixtures from CI run 35738442226 ([64036b3](https://github.com/sluiceway/sluiceway/commit/64036b347fef7a439082b6a990ae22c4b68286ce))
+
+
+### Bug Fixes
+
+* a deploy-timeout input gives the deploy a time limit of Sluiceway's (slice 5.9) ([de833e9](https://github.com/sluiceway/sluiceway/commit/de833e922697c4619e377066886b53873c1cc705))
+* a failed permission lookup is tried once more in the same resolve run (slice 5.9) ([1d00538](https://github.com/sluiceway/sluiceway/commit/1d00538cc33bc8d88f0885d6ac66b4b49e2f93a9))
+* a fault inside Sluiceway during a preview is that stack's preview failure row, and the job still goes red (slice 5.9) ([d695f2b](https://github.com/sluiceway/sluiceway/commit/d695f2bb62bee39ea5c3320d3a8be8f9f7877f58))
+* a preview failure reason of its own for Pulumi's exit codes 2, 3, 4 and 9 (slice 5.9) ([bc8af91](https://github.com/sluiceway/sluiceway/commit/bc8af911e32a4a831ce22fef1da41ac57b28eaed))
+* a push past the 300 files of a comparison is narrowed by the trees of the two commits (slice 5.9) ([4d52b1e](https://github.com/sluiceway/sluiceway/commit/4d52b1eb341f62d46e179e8cadbae17dce69be7c))
+* a refusal comment names at most ten people of a tick rule (slice 5.9) ([1d00538](https://github.com/sluiceway/sluiceway/commit/1d00538cc33bc8d88f0885d6ac66b4b49e2f93a9))
+* a renaming pull request over the walk's 100 files is read too (slice 5.9) ([05d3054](https://github.com/sluiceway/sluiceway/commit/05d30540d3fea755c61ea4e1fa01c6b3c0ae52eb))
+* a row's link to the run of a deploy lands on the attempt that created its record (slice 5.9) ([a39d81e](https://github.com/sluiceway/sluiceway/commit/a39d81e5c17242088cbfca01dd1f9b854d86d3fb))
+* a scan pins a dashboard that exists when it is not pinned (slice 5.9) ([7bc04b3](https://github.com/sluiceway/sluiceway/commit/7bc04b3e93d412059f648fc4bf8b2dcadd9afad9))
+* a scan renames the dashboard when dashboard.title changes (slice 5.9) ([7bc04b3](https://github.com/sluiceway/sluiceway/commit/7bc04b3e93d412059f648fc4bf8b2dcadd9afad9))
+* a stacks entry may give its stack an id with id: (slice 5.9) ([4bc32ee](https://github.com/sluiceway/sluiceway/commit/4bc32ee7101042745438cb840fa632c6c2663b66))
+* a strict input turns the scan job red on any preview failure (slice 5.9) ([76e48e7](https://github.com/sluiceway/sluiceway/commit/76e48e7a94642cc62ac1148ef02638216584e6a1))
+* a tick by an account GitHub no longer has is refused, not unverified (slice 5.9) ([1d00538](https://github.com/sluiceway/sluiceway/commit/1d00538cc33bc8d88f0885d6ac66b4b49e2f93a9))
+* attribution reads every file of a pull request past 100 and of a direct push past 300 (slice 5.9) ([e72fd15](https://github.com/sluiceway/sluiceway/commit/e72fd15f2a949d69aef8c0c333b239b9ddc4a19f))
+* docs and tooling files that no stack claims force no full scan by default (slice 5.9) ([ae32b7b](https://github.com/sluiceway/sluiceway/commit/ae32b7b29654a2c7b43baf91dfcb2b24be4cb70d))
+* looking for a closed dashboard reads one page of the closed issues that changed last (slice 5.9) ([7bc04b3](https://github.com/sluiceway/sluiceway/commit/7bc04b3e93d412059f648fc4bf8b2dcadd9afad9))
+* merge and deploy reads the open pull requests past the oldest 1,000 (slice 5.9) ([88a5887](https://github.com/sluiceway/sluiceway/commit/88a58870ed522aee2168cb5b6d8fffab2263528d))
+* resolve links to the scan it started, by the run GitHub names for the dispatch (slice 5.9) ([ddc868a](https://github.com/sluiceway/sluiceway/commit/ddc868ac77d696674baee719eab5301cc0322490))
+* resolve writes a job summary of what happened to every tick (slice 5.9) ([ddc868a](https://github.com/sluiceway/sluiceway/commit/ddc868ac77d696674baee719eab5301cc0322490))
+* sluiceway.yml is read as a second spelling of sluiceway.yaml (slice 5.9) ([19dd5d6](https://github.com/sluiceway/sluiceway/commit/19dd5d6c54185aaed942f260b03ce2fca27d17c2))
+* the process runner holds at most 128 MB of each stream of the tool's output (slice 5.9) ([aad4630](https://github.com/sluiceway/sluiceway/commit/aad463067436e0465d9a523cde10edfc0ce6874c))
+* the tool's stderr reaches the job log while a preview runs, each line behind its stack id (slice 5.9) ([aad4630](https://github.com/sluiceway/sluiceway/commit/aad463067436e0465d9a523cde10edfc0ce6874c))
+
 ## [0.20.1](https://github.com/sluiceway/sluiceway/compare/v0.20.0...v0.20.1) (2026-09-22)
 
 
