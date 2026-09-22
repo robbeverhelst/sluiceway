@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.22.0](https://github.com/sluiceway/sluiceway/compare/v0.21.0...v0.22.0) (2026-09-22)
+
+
+### Features
+
+* header art for a delete sign, 20 crates and a queued state ([66700e3](https://github.com/sluiceway/sluiceway/commit/66700e363e1507c48e0372548dfa428c31424ec2))
+* the header tells a delete from a replace, counts to 20 and shows a queue ([f23e497](https://github.com/sluiceway/sluiceway/commit/f23e497e008774fe3140352fb0a3ca837723ab76))
+* the queued header snapshot follows the trail's wording from main ([a1c1e4d](https://github.com/sluiceway/sluiceway/commit/a1c1e4d1428dcac83ae79532f1985b500b8b370a))
+
 ## [0.21.0](https://github.com/sluiceway/sluiceway/compare/v0.20.1...v0.21.0) (2026-09-22)
 
 
