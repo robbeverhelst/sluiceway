@@ -163,6 +163,8 @@ describe("a workflow that deploys", () => {
       deployments: "write",
       actions: "write",
       "pull-requests": "read",
+      // The preview pages (record 0050).
+      checks: "write",
     });
   });
 

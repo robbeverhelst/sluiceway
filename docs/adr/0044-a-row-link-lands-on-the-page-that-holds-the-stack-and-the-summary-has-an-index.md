@@ -1,6 +1,8 @@
 # A row's link lands on the page that holds the stack, and the summary has an index
 
 > Amended by 0048: with `scan.logDiff` on, a pending row's `preview` link lands on the log of the job, which holds the tool's own diff.
+>
+> Amended by 0050: a pending row's `preview` link lands on the stack's preview page, a check run with its diff, when the scan could write one. Without it the rule below still holds. Every other link of this record stays.
 
 The first real user clicked `preview` on a row and landed on the overview of the whole run (onboarding log, hurdle 15). Record 0027 fixed the look of a row with its links pointing at the run, and record 0037 made the summary the place where every diff is shown. This record fixes where the links land. It is the closest to one stack's detail that GitHub allows. That was measured, not assumed.
 

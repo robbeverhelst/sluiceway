@@ -22,6 +22,7 @@ permissions:
   deployments: write
   actions: write
   pull-requests: read
+  checks: write
 
 jobs:
   scan:

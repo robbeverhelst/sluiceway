@@ -68,9 +68,9 @@ Anyone who can edit the dashboard can start the `resolve` job. It is built to be
 
 ## What reaches the issue
 
-- **Never a value.** The dashboard shows resource types, resource names and the paths of changed properties (property names, list indexes and map keys), never what a property is set to, whether or not the tool marks it secret. The job summary and the job log's diff follow the same rule.
+- **Never a value.** The dashboard shows resource types, resource names and the paths of changed properties (property names, list indexes and map keys), never what a property is set to, whether or not the tool marks it secret. The job summary, the preview pages and the job log's diff follow the same rule.
 - **Never the tool's own words.** Error messages, warnings and anything else the tool prints stay in the job log. A failure row says why in a fixed phrase and links to the run.
-- **Names, unless you redact.** Resource types, resource names and property paths, map keys included, are in the issue, which is emailed, sent to integrations and indexed on a public repo. `dashboard.redact: true` keeps them out of the issue and leaves the job summary full. It is about reach, not access: anyone who can read the repo can open the run and read the code ([configuration](configuration.md#dashboardredact)).
+- **Names, unless you redact.** Resource types, resource names and property paths, map keys included, are in the issue, which is emailed, sent to integrations and indexed on a public repo. `dashboard.redact: true` keeps them out of the issue and leaves the job summary and the preview pages full. It is about reach, not access: anyone who can read the repo can open the run and read the code ([configuration](configuration.md#dashboardredact)).
 - **No value in the job log either, unless you ask for one.** `scan.logDiff: true` prints the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else. See [The tool's own diff in the job log](#the-tools-own-diff-in-the-job-log).
 - **The job log is yours to protect.** The tool's own messages are printed there as they are, grouped per stack, and an error can quote a value. Sluiceway adds no mask of its own: GitHub masks what the step that loaded a secret registered, and nothing else. A secret the tool prints in another shape, base64 or with escaped newlines, is not caught by any mask. Logs are only readable by people who can read the repo, and they expire with the run.
 
@@ -86,6 +86,21 @@ Who can read it:
 What masks a secret there is what masks it anywhere in the log: the tool's own `[secret]` for a value it holds as secret, and the masks the step that loaded your secrets registered. Nothing else. A value nobody marked as secret, such as a password written into a config map or a token a provider returns unmarked, is printed as it is. Sluiceway prints the tool's text with workflow commands stopped, so a value can never turn into an annotation on the run's page.
 
 What the tool prints comes from a second run of the program, next to the one that was hashed. It shows what a tick is about to deploy, and a tick still approves the diff hash, not the text.
+
+## The preview pages
+
+A scan writes one preview page per pending stack: a check run on the scanned commit, named `sluiceway / <stack id>`, with what the summary shows of that stack. Resource types, resource names and property paths, never a value, and never the tool's own words ([record 0050](adr/0050-a-pending-row-links-to-a-preview-page-a-check-run-with-the-stacks-diff.md)). That rule has one more reason here: the masks your workflow registers only apply to the job log, and a check run never passes through it. So even with `scan.logDiff` on, the tool's diff stays in the job log and the page only says where it is.
+
+Who can read a page: everyone who can read the repository, in the web interface and through the API. In a public repository, anyone, logged in or not. Its name shows in the commit's list of checks and, when the page joined a check suite of a `push`, in a pull request's checks. A page lives as long as the repository's retention setting keeps checks, and goes away earlier when someone deletes the workflow run whose check suite it joined. GitHub has no way to delete a check run on its own.
+
+### What `checks: write` allows
+
+The preview pages need `checks: write` in the workflow's permissions. With it, the token of every job of that workflow can:
+
+- create a check run on any commit of the repository, under any name and with any result, `success` included, from the same source as your CI jobs;
+- rewrite the output of any check run that GitHub Actions made, other workflows' jobs included.
+
+It cannot change the result of a job that Actions runs. Sluiceway only ever writes `neutral` check runs named `sluiceway / <stack id>`. But the scan job also runs your programs, so if your branch protection requires checks, anything that runs in this workflow could write a passing check under a required name. Require checks from a workflow that does not have `checks: write`, or accept that. Without `checks: write` Sluiceway works as before and `preview` opens the run's summary.
 
 ## What Sluiceway sends
 

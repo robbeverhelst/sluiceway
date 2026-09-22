@@ -22,6 +22,7 @@ permissions:
   deployments: write
   actions: write
   pull-requests: read
+  checks: write
 
 jobs:
   scan:
@@ -36,6 +37,7 @@ jobs:
       deployments: write
       actions: write
       pull-requests: read
+      checks: write
       id-token: write
     steps:
       - uses: actions/checkout@v7
@@ -88,6 +90,7 @@ jobs:
       deployments: write
       actions: write
       pull-requests: read
+      checks: write
       id-token: write
     steps:
       - uses: actions/checkout@v7

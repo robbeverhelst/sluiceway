@@ -30,6 +30,7 @@ This pass exists because CI runs against a fake GitHub. Each line checks somethi
 - [ ] A stack with a delete shows the plain header, the open `DELETE` line and bold counts.
 - [ ] A resource named `#1 @octocat www.example.com *x*` shows as that plain text on its row: no link, no mention, no emphasis. If GitHub links any of it, the escaping in `src/render/escape.ts` needs one more step (see `docs/later.md`).
 - [ ] Open the summary of a scan run. Key caps, folds, the warning sign and the links to pull requests render, and no list runs into the one before it. The job log holds one group per previewed stack, titled with the stack id, with the same changes in it.
+- [ ] Click `preview` on a pending row. It opens that stack's preview page, `sluiceway / <stack id>`, with the counts, the warning when it destroys something, every change with its property paths, and links to the dashboard, the summary and the job log that land. Note which workflow run's jobs list shows the page, and whether a pull request's checks show it. Scan the same commit again from the rescan box: the commit still has one page per pending stack. Take `checks: write` out of the workflow and scan: the rows link to the summary and the job log says `No preview page was written` (record 0050).
 
 ## Part 2: what the owner prepares in the homelab repo
 
@@ -55,7 +56,7 @@ When: first after M1, read only, at a pinned commit SHA with only the `scan` job
 - [ ] The dashboard has exactly one row for every stack: 58, or the number that `ignore` leaves. No stack is missing and none is listed twice. Both stacks of a project with two stack files are there.
 - [ ] Pick five pending rows. For each, run the wrapper's own preview without refresh. The resources, the ops and the changed property paths agree with the row.
 - [ ] Pick five in sync rows and do the same. The preview is empty.
-- [ ] No row, no summary and none of Sluiceway's own log lines shows a property value. Search the issue body and the summary for a known secret and for a known plain value.
+- [ ] No row, no summary, no preview page and none of Sluiceway's own log lines shows a property value. Search the issue body, the summary and three preview pages for a known secret and for a known plain value.
 - [ ] Every preview failure row links to a run whose log explains it, and the failure reason on the row is one of the fixed ones.
 - [ ] The body is under 58,000 characters with every row in full, or the shortened rows note is there and its links work.
 - [ ] Read the timings from the job log and write them here. Total scan: `____`. Slowest preview: `____`. Median preview: `____`. Peak memory, if the runner reports it: `____`.

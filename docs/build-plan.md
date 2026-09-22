@@ -110,6 +110,7 @@ Rules for config loading:
 | Diff hash | SHA-256 of the canonical document, first 16 hex characters | 0008 |
 | Body target, hard limits | 58,000 characters, 65,536 characters, 262,144 bytes | 0028 |
 | Summary budget | 1,000,000 bytes | 0037 |
+| Preview page | A check run named `sluiceway / <stack id>`, `completed`, `neutral`, its text cut on a line at 65,535 bytes. Needs `checks: write` | 0050 |
 | Write loop | at most 3 tries | 0004 |
 | Lookback, names on a row, recently deployed | 100 commits, 5, 10 | 0026, 0029 |
 | Minimum Pulumi CLI | v3.229.0 | 0001 |

@@ -1,5 +1,7 @@
 # The tool's own diff may reach the job log, when a repo asks for it
 
+> Amended by 0050: a pending row's `preview` link lands on the stack's preview page when there is one, with `scan.logDiff` on too. The page says where the tool's diff is. The job log link below is the fall back.
+
 Record 0021 keeps every value out of everything Sluiceway writes, the job log included, and record 0022 keeps the tool's own words in the job log and out of everything else. The first real user could not see what a tick would deploy: rows said that `values` changed on a Helm release, eleven times, and nothing more (onboarding log, hurdle 18). A gate a person cannot see through is a weak gate. Property paths (record 0046, slice 2.15) say where inside a property a change is, and still never what it changes to. The owner decided on 2026-09-21 that a repo may also ask for the values, in one place.
 
 So a repo can turn on `scan.logDiff`. A scan then runs the tool a second time for every pending stack and prints the tool's own diff, values included, in that stack's group of the job log. That group is the only place a value may appear. It never reaches the issue, a comment, the summary, the result file, an output, an annotation or a deployment record. `apply` prints the tool's own diff of its fresh preview the same way.

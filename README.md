@@ -257,6 +257,7 @@ permissions:
   deployments: write
   actions: write
   pull-requests: read
+  checks: write
 
 jobs:
   scan:
@@ -416,6 +417,7 @@ permissions:
   deployments: write
   actions: read
   pull-requests: read
+  checks: write
 
 jobs:
   scan:
@@ -444,7 +446,7 @@ dashboard:
 
 What this does and does not do:
 
-- **Nothing can be deployed.** The workflow has no `resolve` and no `apply` job, and it does not listen to issue edits. With `dashboard.readOnly: true` the dashboard shows that: pending rows have no box, there is no rescan box, and a line under the Pending heading says the dashboard is read only. Without it the rows get boxes that do nothing, and a tick sits there until the next scan clears it. A scan only ever asks the tool for a preview. The token can read the code, write issues, and read and write deployment records, and nothing else. A scan reads the deployment records, which is where Sluiceway keeps who deployed what and when, and with no `resolve` job there are none. `actions: read` lets it see whether a workflow run is over, and whether a run that an issue edit started is still on its way. `pull-requests: read` lets a row name the pull requests that made it pending.
+- **Nothing can be deployed.** The workflow has no `resolve` and no `apply` job, and it does not listen to issue edits. With `dashboard.readOnly: true` the dashboard shows that: pending rows have no box, there is no rescan box, and a line under the Pending heading says the dashboard is read only. Without it the rows get boxes that do nothing, and a tick sits there until the next scan clears it. A scan only ever asks the tool for a preview. The token can read the code, write issues, read and write deployment records, and write check runs, and nothing else. A scan reads the deployment records, which is where Sluiceway keeps who deployed what and when, and with no `resolve` job there are none. `actions: read` lets it see whether a workflow run is over, and whether a run that an issue edit started is still on its way. `pull-requests: read` lets a row name the pull requests that made it pending. `checks: write` gives every pending stack its preview page.
 - **The header image is served from an exact release tag or commit SHA.** Never from one that can move, so that a picture never changes behind a dashboard that was already written. Started from `@v0` or a branch, Sluiceway names the release tag of its own version, such as `v0.1.1`. Started from a copy inside your own repo (`uses: ./`), it names a commit that this repository does not have, and the picture is broken while the scan still works. `dashboard.personality: false` in `sluiceway.yaml` takes the picture out.
 - **A push gives a narrowed scan**: only the stacks that claim a changed file are previewed, and every other row stays as it is. The schedule and "Run workflow" give a full scan. The first scan is always full.
 
@@ -453,6 +455,7 @@ To turn it into the whole workflow later, replace the file with the one of step 
 ## Using the dashboard
 
 - **A row with a box has changes waiting.** Its details show the resources that would change and the paths of the properties that change, down to the key inside a map or a list. A delete or a replace is always shown open under the row, never folded away. When the dashboard grows past what an issue holds, the biggest rows are shortened first and link to the full diff in the run's summary.
+- **`preview` opens that stack's preview page.** It is a check run on the scanned commit, named `sluiceway / <stack id>`, with the stack's whole diff: every resource that changes and every property path, never a value. It links back to the dashboard, the run's summary and the job log. The scan updates the page in place when it scans the same commit again. GitHub files the page as a job of whichever workflow run came first on that commit, which may be another workflow of yours, and lists it in a pull request's checks as neutral. It never fails a check. Without `checks: write` in the workflow's permissions there is no page, and `preview` opens the run's summary.
 - **Tick the box to deploy that stack.** Sluiceway checks that you may tick it, previews the stack again, and deploys only if the fresh preview still matches what the row showed. The row says deploying, then goes back to in sync, or shows a failure line with a link to the run.
 - **A tick approves the change as shown.** The row shows which properties change, never their values, so a tick means "change these properties on these resources, at whatever value the code has when the deploy runs". A new resource, a delete or a different property stops the deploy and brings the row back with the fresh diff. [docs/security.md](docs/security.md#what-a-tick-promises) has the whole promise.
 - **A refused tick deploys nothing.** The box is cleared and one comment on the dashboard says why.
@@ -470,12 +473,13 @@ The job log of a scan says what it did, in fixed lines:
 | `Previewing 58 stacks with a pool of 4 and a time limit of 10 minutes for each preview.` | The `concurrency` and `preview-timeout` this scan ran with. |
 | `Previewed <stack id> in 8.3 s: pending` | How long one preview took, and how it ended. One line per preview, in the order they finish. |
 | `Previewed 58 stacks in 412.6 s with a pool of 4. Added up, the previews took 1530.2 s. The slowest was <stack id> with 45.1 s.` | The total. The total against the sum shows what the pool gains. The slowest preview is what `preview-timeout` has to clear. |
+| `Wrote the preview pages of 12 pending stacks on 0123456: 2 created, 10 updated.` | One page per pending stack this scan previewed. Without `checks: write` it reads `No preview page was written: ...` and says what to add. |
 | `Wrote the dashboard: <url> (41,210 of 65,536 characters).` | Where the dashboard is, and how full the issue body is. `Carried 56 rows through as they were` follows on a narrowed scan. |
 | `Cleared an orphan tick on <stack id>: ...` | A box was ticked and nothing picked the tick up, so the scan cleared it and the row asks for a fresh one. A scan never deploys. While a run that an issue edit started is queued or in progress the line reads `Left the tick on <stack id> alone: ...` and the box stays ticked. |
 
 Under those lines there is one group per previewed stack, titled with the stack id. It holds the whole diff and everything the tool printed. The tool's own words never leave the job log.
 
-To see the values a tick would deploy, turn on `scan.logDiff` in `sluiceway.yaml`. Every pending stack's group then also holds the tool's own diff, values included, and a pending row's `preview` link opens the job log. It costs one more tool run per pending stack, and anyone who can read the repo can read its job logs: in a public repo, anyone. [docs/configuration.md](docs/configuration.md#scanlogdiff) and [docs/security.md](docs/security.md#the-tools-own-diff-in-the-job-log) say what to weigh first.
+To see the values a tick would deploy, turn on `scan.logDiff` in `sluiceway.yaml`. Every pending stack's group then also holds the tool's own diff, values included, and the stack's preview page says it is there. The page itself never shows a value. It costs one more tool run per pending stack, and anyone who can read the repo can read its job logs: in a public repo, anyone. [docs/configuration.md](docs/configuration.md#scanlogdiff) and [docs/security.md](docs/security.md#the-tools-own-diff-in-the-job-log) say what to weigh first.
 
 ## Limits
 
@@ -497,7 +501,9 @@ Sluiceway never holds credentials. That is five promises you can check against t
 4. **Only the modes that run the tool need credentials.** `scan` and `apply` run the tool. `resolve` and `settle` never do, so the job that reacts to an issue edit holds no infrastructure secrets.
 5. **A hosted version would keep all of this.** The tool always runs in your own runners.
 
-The dashboard shows resource types, resource names and the paths of changed properties. It never shows a property value, whether or not the tool marks it secret. The job log shows values only when you turn on `scan.logDiff`, and then anyone who can read the repo can read them: in a public repo, anyone.
+The dashboard shows resource types, resource names and the paths of changed properties. It never shows a property value, whether or not the tool marks it secret. The job log shows values only when you turn on `scan.logDiff`, and then anyone who can read the repo can read them: in a public repo, anyone. A preview page shows what the summary shows and never a value.
+
+`checks: write` lets any job of the workflow write a check run under any name, a passing one included. If your branch protection requires checks, [docs/security.md](docs/security.md#what-checks-write-allows) says what that means.
 
 A tick rule protects against the wrong person ticking. On its own it does not protect against a collaborator with write access who means harm, because anyone with write access can push a workflow that reads the repo's secrets. Where your plan has GitHub Environments, lock the credentials that change things into one and the tick rules can be relied on. [docs/security.md](docs/security.md) explains the three setups.
 

@@ -58,6 +58,7 @@ No cloud key is stored anywhere: the job asks GitHub for a short-lived token and
       deployments: write
       actions: write
       pull-requests: read
+      checks: write
       id-token: write
     steps:
       - uses: actions/checkout@v7

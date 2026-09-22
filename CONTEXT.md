@@ -219,8 +219,12 @@ Why a preview or a deploy failed, in words from a short fixed list that Sluicewa
 _Avoid_: Error message, error text, tool error
 
 **Summary**:
-The page of a scan's workflow run where every stack's diff is shown, with far more room than the dashboard has. It shows the same kind of facts as a row and nothing more. It opens with an index of the stacks that rows link to, and every stack has its own anchor in it. Shortened and redacted rows link to it, and so does a pending row's preview link. On the rare scan that does not fit even there, it says so and points at the job log, which holds every diff in full. An `apply` writes one too, about its one stack: what went out, or why nothing did.
+The page of a scan's workflow run where every stack's diff is shown, with far more room than the dashboard has. It shows the same kind of facts as a row and nothing more. It opens with an index of the stacks that rows link to, and every stack has its own anchor in it. Shortened and redacted rows link to it, and so does a pending row's preview link when the stack has no preview page. On the rare scan that does not fit even there, it says so and points at the job log, which holds every diff in full. An `apply` writes one too, about its one stack: what went out, or why nothing did.
 _Avoid_: Full diff, report, native output
+
+**Preview page**:
+The page a pending row's preview link opens: a GitHub check run on the scanned commit, one per pending stack, named `sluiceway / <stack id>`, that shows that stack's diff as the summary does. Never a value, and never the tool's own words. A scan of the same commit updates it in place. Without `checks: write` there is none, and the link opens the summary.
+_Avoid_: Check (that is the pass over the repo's files), check page, status check, report
 
 **Result file**:
 A JSON file that a scan or an `apply` leaves in the job's temporary directory for a later step of the workflow, with what its summary holds and nothing more. Sluiceway never sends it anywhere: a step the user adds does, with its own secret.
