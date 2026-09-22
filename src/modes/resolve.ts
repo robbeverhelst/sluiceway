@@ -57,7 +57,7 @@ import {
   type ParsedRow,
   parseDashboard,
 } from "../render/marker.ts";
-import { clearMergeTick } from "../render/merge-row.ts";
+import { clearMergeTick, type MergeNote } from "../render/merge-row.ts";
 import type { RefusedTick } from "../render/refused-ticks.ts";
 import { type DeployingRow, plural, type Row } from "../render/row.ts";
 
@@ -250,8 +250,9 @@ async function resolveTicks(
 
   const dropped: string[] = [];
   const clear = new Map<string, Clear>();
-  // Merge rows whose box this run clears, by pull request number.
-  const clearMerges = new Set<number>();
+  // Merge rows whose box this run clears, by pull request number, with the
+  // note of a tick cleared without a comment (record 0064).
+  const clearMerges = new Map<number, MergeNote | undefined>();
   const toJudge: Tick[] = [];
   // The rescan box sits outside the row blocks, so it is cleared by writing
   // the body again.
@@ -261,14 +262,14 @@ async function resolveTicks(
     const fact = tick.kind === "rescan" ? undefined : open.get(tick.stackId);
     if (tick.kind === "merge" && (fact || !config.deploys)) {
       // Nothing is merged for a stack that is taken, or while deploys are off
-      // (record 0054). A merge row is one line with no room for a note, so
-      // the job log says why.
+      // (record 0054). Nobody gets a comment, so the row gets a note (record
+      // 0064), and the job log says more.
       log.info(
         fact
           ? `${name} is ticked, and the stack already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. Nothing is merged and the box is cleared. Tick it again once that deploy is over.`
           : `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). Nothing is merged and the box is cleared.`,
       );
-      clearMerges.add(tick.pr);
+      clearMerges.set(tick.pr, fact ? "deploying" : "deploys-off");
     } else if (tick.kind === "row" && fact) {
       dropped.push(tick.stackId);
       log.info(
@@ -300,7 +301,7 @@ async function resolveTicks(
         `${name} is ticked and the edit history names nobody for it (${NOBODY[ticker.reason]}). The box is cleared.`,
       );
       if (tick.kind === "row") clear.set(tick.stackId, { hash: tick.hash, note: true });
-      else if (tick.kind === "merge") clearMerges.add(tick.pr);
+      else if (tick.kind === "merge") clearMerges.set(tick.pr, "orphan");
       else rescanHandled = true;
     }
   }
@@ -337,7 +338,7 @@ async function resolveTicks(
       if (target.kind === "stack" && hash !== undefined) {
         clear.set(target.stackId, { hash, note: false });
       }
-      if (target.kind === "merge") clearMerges.add(target.pr);
+      if (target.kind === "merge") clearMerges.set(target.pr, undefined);
     }
     if (target.kind === "rescan") rescanHandled = true;
   }
@@ -449,7 +450,7 @@ async function resolveTicks(
     (stacks?.get(id)?.dependsOn ?? []).filter((one) => pendingIds.has(one) || open.has(one));
   const merging = await mergeAll(context, config, stacks, allowedMerges, waitingOn);
   if (merging.failure !== undefined) failures.push(merging.failure);
-  for (const pr of merging.cleared) clearMerges.add(pr);
+  for (const pr of merging.cleared) clearMerges.set(pr, undefined);
   const merged = merging.merged;
 
   // One full scan for the rescan box and for every merge: a merge made with
@@ -831,7 +832,9 @@ interface Swap {
   clear: ReadonlyMap<string, Clear>;
   // The merge rows of pull requests this run merged go, and the ones whose
   // box it clears stay without their tick (record 0054).
-  merges?: { merged: ReadonlySet<number>; clear: ReadonlySet<number> } | undefined;
+  merges?:
+    | { merged: ReadonlySet<number>; clear: ReadonlyMap<number, MergeNote | undefined> }
+    | undefined;
 }
 
 // The builder of the write loop (record 0004): swap this run's own row blocks,
@@ -964,7 +967,11 @@ async function swapRows(
   const merges: ParsedMerge[] = [];
   for (const merge of live.merges) {
     if (swap.merges?.merged.has(merge.pr) || merges.some((one) => one.pr === merge.pr)) continue;
-    merges.push(swap.merges?.clear.has(merge.pr) ? clearMergeTick(merge) : merge);
+    merges.push(
+      swap.merges?.clear.has(merge.pr)
+        ? clearMergeTick(merge, { note: swap.merges.clear.get(merge.pr) })
+        : merge,
+    );
   }
 
   const fitted = fitBody(

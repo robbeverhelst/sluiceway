@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseDashboard } from "../../src/render/marker.ts";
-import { renderMergeRow } from "../../src/render/merge-row.ts";
+import {
+  MERGE_DEPLOYING_NOTE,
+  MERGE_DEPLOYS_OFF_NOTE,
+  MERGE_ORPHAN_NOTE,
+  renderMergeRow,
+} from "../../src/render/merge-row.ts";
 import { BOT } from "../fake-github/fake-github.ts";
 import { change, inSync, pending, SPINNER } from "./harness.ts";
 import {
@@ -251,6 +256,7 @@ describe("a merge that does not happen", () => {
     expect(h.github.merges).toEqual([]);
     expect(merges(h).map(({ ticked }) => ticked)).toEqual([false]);
     expect(h.github.comments(h.number)).toEqual([]);
+    expect(merges(h)[0]?.text.split("\n")[1]).toBe(`  ${MERGE_DEPLOYS_OFF_NOTE}`);
   });
 
   test("a stack that is deploying drops the tick and clears the box", async () => {
@@ -267,6 +273,22 @@ describe("a merge that does not happen", () => {
 
     expect(h.github.merges).toEqual([]);
     expect(merges(h).map(({ ticked }) => ticked)).toEqual([false]);
+    expect(merges(h)[0]?.text.split("\n")[1]).toBe(`  ${MERGE_DEPLOYING_NOTE}`);
+  });
+
+  test("a tick the edit history names nobody for merges nothing and gets the note (slice 4.13)", async () => {
+    const h = await ready();
+    tickMerge(h, BOB);
+    h.github.editBody(h.number, `${h.github.issue(h.number).body}\nA note.`, ALICE);
+    // Bob deletes the content of his own entry (record 0025).
+    h.github.deleteHistoryEntry(h.number, 2);
+
+    await wake(h);
+
+    expect(h.github.merges).toEqual([]);
+    expect(h.github.comments(h.number)).toEqual([]);
+    expect(merges(h).map(({ ticked }) => ticked)).toEqual([false]);
+    expect(merges(h)[0]?.text.split("\n")[1]).toBe(`  ${MERGE_ORPHAN_NOTE}`);
   });
 
   test("without contents: write the job goes red, says which permission, and leaves the box ticked", async () => {

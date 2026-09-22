@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { diffHash } from "../../src/core/diff-hash.ts";
 import { scan } from "../../src/modes/scan.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
-import { renderMergeRow } from "../../src/render/merge-row.ts";
+import { MERGE_ORPHAN_NOTE, renderMergeRow } from "../../src/render/merge-row.ts";
 import { BOT } from "../fake-github/fake-github.ts";
 import {
   change,
@@ -151,9 +151,10 @@ describe("the updates waiting to merge", () => {
 
       await scan(context);
 
-      expect(parseDashboard(dashboardBody(github)).merges.map(({ ticked }) => ticked)).toEqual([
-        waits,
-      ]);
+      const [merge] = parseDashboard(dashboardBody(github)).merges;
+      expect(merge?.ticked).toBe(waits);
+      // A cleared orphan tick says so under the row (slice 4.13).
+      expect(merge?.text.split("\n")[1]).toBe(waits ? undefined : `  ${MERGE_ORPHAN_NOTE}`);
     }
   });
 });

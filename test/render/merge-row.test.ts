@@ -1,7 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { renderBody } from "../../src/render/body.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
-import { clearMergeTick, mergeBlock, renderMergeRow } from "../../src/render/merge-row.ts";
+import {
+  clearMergeTick,
+  MERGE_DEPLOYING_NOTE,
+  MERGE_DEPLOYS_OFF_NOTE,
+  MERGE_FOLD_AFTER,
+  MERGE_ORPHAN_NOTE,
+  mergeBlock,
+  renderMergeRow,
+  tickedMergeBlock,
+} from "../../src/render/merge-row.ts";
 
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
 
@@ -71,6 +80,64 @@ describe("a merge row", () => {
   });
 });
 
+describe("a merge row whose tick was cleared without a comment (slice 4.13)", () => {
+  function ticked() {
+    const row = parseDashboard(renderMergeRow(UPDATE).replace("- [ ] ", "- [x] ")).merges[0];
+    if (!row) throw new Error("no merge row");
+    return row;
+  }
+
+  test("gets the note under its line, and reads back as one row, not ticked", () => {
+    for (const [note, text] of [
+      ["orphan", MERGE_ORPHAN_NOTE],
+      ["deploying", MERGE_DEPLOYING_NOTE],
+      ["deploys-off", MERGE_DEPLOYS_OFF_NOTE],
+    ] as const) {
+      const cleared = clearMergeTick(ticked(), { note });
+      expect(cleared.text).toBe(`${mergeBlock(UPDATE).text}\n  ${text}`);
+      expect(parseDashboard(cleared.text).merges).toEqual([cleared]);
+      expect(cleared.ticked).toBe(false);
+    }
+  });
+
+  test("the notes are fixed words that say why nothing was merged", () => {
+    expect(MERGE_ORPHAN_NOTE).toBe(
+      ":information_source: a tick on this row was not picked up. Tick again to merge.",
+    );
+    expect(MERGE_DEPLOYING_NOTE).toBe(
+      ":information_source: this tick merged nothing: the stack has a deploy in progress. Tick again once it is over.",
+    );
+    expect(MERGE_DEPLOYS_OFF_NOTE).toBe(
+      ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick merged nothing.",
+    );
+  });
+
+  test("a second clear keeps one note, and a tick on a row with a note keeps it", () => {
+    const once = clearMergeTick(ticked(), { note: "orphan" });
+    const again = tickedMergeBlock(once);
+    expect(again.ticked).toBe(true);
+    expect(again.text.split("\n")).toHaveLength(2);
+    expect(clearMergeTick(again, { note: "orphan" }).text).toBe(once.text);
+    expect(clearMergeTick(again, { note: "deploying" }).text).toBe(
+      `${mergeBlock(UPDATE).text}\n  ${MERGE_DEPLOYING_NOTE}`,
+    );
+  });
+
+  test("a body carries the note through a writer that reads it back", () => {
+    const base = {
+      root: { scanSha: HEAD, scanRun: "7", scanAt: "2026-09-22T08:00:00.000Z" },
+      rows: [],
+      recentlyDeployed: [],
+      repoUrl: "https://github.com/acme/infra",
+      actionRef: "v0.4.0",
+      personality: false,
+    };
+    const body = renderBody({ ...base, merges: [clearMergeTick(ticked(), { note: "orphan" })] });
+    expect(body).toContain(`${mergeBlock(UPDATE).text}\n  ${MERGE_ORPHAN_NOTE}`);
+    expect(renderBody({ ...base, merges: parseDashboard(body).merges })).toBe(body);
+  });
+});
+
 describe("the section in the body", () => {
   const base = {
     root: { scanSha: HEAD, scanRun: "7", scanAt: "2026-09-22T08:00:00.000Z" },
@@ -103,6 +170,52 @@ describe("the section in the body", () => {
   test("is left out when nothing waits", () => {
     expect(renderBody({ ...base, merges: [] })).not.toContain("Updates waiting to merge");
     expect(renderBody(base)).not.toContain("Updates waiting to merge");
+  });
+
+  test("folds the updates after the first ten (slice 4.13)", () => {
+    expect(MERGE_FOLD_AFTER).toBe(10);
+    const merges = Array.from({ length: 11 }, (_, index) =>
+      mergeBlock({ ...UPDATE, pr: 401 + index }),
+    );
+    const body = renderBody({ ...base, merges });
+    const section = body.slice(
+      body.indexOf("## Updates waiting to merge"),
+      body.indexOf("## Pending"),
+    );
+    expect(section).toBe(
+      [
+        "## Updates waiting to merge",
+        "Tick a box to merge that pull request. Its stack is then previewed again and deployed as that preview shows it.",
+        merges
+          .slice(0, 10)
+          .map((merge) => merge.text)
+          .join("\n"),
+        "<details><summary>1 more update waiting to merge</summary>",
+        merges[10]?.text,
+        "</details>",
+        "",
+      ].join("\n\n"),
+    );
+    // A tick in the fold is read as any other.
+    const ticked = body.replace(
+      "- [ ] **apps/odoo:prod** · Update Helm release odoo to v17.0.4 · #411",
+      "- [x] **apps/odoo:prod** · Update Helm release odoo to v17.0.4 · #411",
+    );
+    expect(parseDashboard(ticked).merges.find((merge) => merge.pr === 411)?.ticked).toBe(true);
+    expect(renderBody({ ...base, merges: parseDashboard(body).merges })).toBe(body);
+  });
+
+  test("shows ten without a fold, and names the count in the fold's title", () => {
+    const ten = Array.from({ length: 10 }, (_, index) =>
+      mergeBlock({ ...UPDATE, pr: 401 + index }),
+    );
+    expect(renderBody({ ...base, merges: ten })).not.toContain("<details><summary>");
+    const fifteen = Array.from({ length: 15 }, (_, index) =>
+      mergeBlock({ ...UPDATE, pr: 401 + index }),
+    );
+    expect(renderBody({ ...base, merges: fifteen })).toContain(
+      "<details><summary>5 more updates waiting to merge</summary>",
+    );
   });
 
   test("is carried by a writer that reads it back from the live body", () => {

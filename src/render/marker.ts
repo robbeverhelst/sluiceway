@@ -189,7 +189,8 @@ export type ParsedRow =
   // such a row is carried through and never acted on.
   | { known: false; stackId: string; state: string; text: string };
 
-// A merge row as it stands in the body. `text` is its one line.
+// A merge row as it stands in the body. `text` is its line, and the note under
+// it when it has one (record 0064).
 export interface ParsedMerge extends MergeFacts {
   ticked: boolean;
   text: string;
@@ -251,7 +252,15 @@ export function parseDashboard(body: string): ParsedDashboard {
     const line = lines[index] ?? "";
     if (RESCAN_LINE.test(line)) rescanTicked = true;
     const merge = readMerge(line);
-    if (merge) merges.push(merge);
+    if (merge) {
+      // A merge row is its line and the indented note lines under it (record
+      // 0064). Only Sluiceway writes such a line there.
+      let end = index;
+      while (/^ {2}\S/.test(lines[end + 1] ?? "")) end++;
+      merges.push({ ...merge, text: lines.slice(index, end + 1).join("\n") });
+      index = end;
+      continue;
+    }
 
     const match = ROW_LINE.exec(line);
     if (!match) continue;

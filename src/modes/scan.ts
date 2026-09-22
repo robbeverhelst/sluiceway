@@ -90,7 +90,7 @@ import {
   type ParsedRow,
   parseDashboard,
 } from "../render/marker.ts";
-import { mergeBlock, tickedMergeBlock } from "../render/merge-row.ts";
+import { clearMergeTick, mergeBlock, tickedMergeBlock } from "../render/merge-row.ts";
 import { renderPreviewPage } from "../render/preview-page.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, dashboardCounts, scanResultFile } from "../render/result-file.ts";
@@ -1404,7 +1404,11 @@ function mergeRows(
     const same = ticked.head === block.head && ticked.stackId === block.stackId;
     const carry = same && waits;
     mergeTicks.push({ pr: block.pr, tick: carry ? "carry" : "sweep" });
-    return carry ? tickedMergeBlock(block) : block;
+    // A tick swept away gets the orphan note, as a stack's row does (record
+    // 0064).
+    return carry
+      ? tickedMergeBlock(block)
+      : clearMergeTick(tickedMergeBlock(block), { note: "orphan" });
   });
   return { merges, mergeTicks };
 }

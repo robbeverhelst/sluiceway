@@ -18,6 +18,7 @@ import {
   type RootFacts,
   rootMarker,
 } from "./marker.ts";
+import { MERGE_FOLD_AFTER } from "./merge-row.ts";
 import { type Crates, MAX_CRATES, pendingCrates } from "./pending-crates.ts";
 import { type Row, type RowOptions, renderRow } from "./row.ts";
 import { utcMinute } from "./time.ts";
@@ -305,11 +306,22 @@ export function renderBody(input: BodyInput): string {
     .filter((merge, index, all) => all.findIndex((one) => one.pr === merge.pr) === index)
     .sort((a, b) => a.pr - b.pr);
   if (merges.length > 0) {
+    out.push("## Updates waiting to merge", MERGE_LINE);
     out.push(
-      "## Updates waiting to merge",
-      MERGE_LINE,
-      merges.map((merge) => merge.text).join("\n"),
+      merges
+        .slice(0, MERGE_FOLD_AFTER)
+        .map((merge) => merge.text)
+        .join("\n"),
     );
+    // The rest in a fold (record 0064). A box in it ticks like any other.
+    const folded = merges.slice(MERGE_FOLD_AFTER);
+    if (folded.length > 0) {
+      out.push(
+        `<details><summary>${folded.length} more ${folded.length === 1 ? "update" : "updates"} waiting to merge</summary>`,
+        folded.map((merge) => merge.text).join("\n"),
+        "</details>",
+      );
+    }
   }
 
   // Pending is always shown. The other sections are left out when empty.
