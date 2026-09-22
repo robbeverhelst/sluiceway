@@ -39,9 +39,15 @@ export function knownStacks(found: Stack[], ignore: string[]): Stack[] {
   return known;
 }
 
+// Each side names its tool, because a Pulumi stack and a declared stack with
+// the same path and name read the same otherwise (issue 168). A stack
+// without a tool in its options is a Pulumi stack, found from its files.
 function describe(stack: Stack): string {
   const path = JSON.stringify(stack.path);
-  return stack.name === undefined
-    ? `the stack in ${path}`
-    : `${JSON.stringify(stack.name)} in ${path}`;
+  const where =
+    stack.name === undefined ? `in ${path}` : `${JSON.stringify(stack.name)} in ${path}`;
+  const { tool } = stack.options;
+  return typeof tool === "string"
+    ? `the stack ${where} that a stacks entry declares with tool: ${tool}`
+    : `the Pulumi stack ${where}`;
 }

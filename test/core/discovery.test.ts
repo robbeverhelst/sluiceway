@@ -92,13 +92,30 @@ describe("two stacks with one id", () => {
     })();
     expect(error).toBeInstanceOf(DiscoveryError);
     expect((error as DiscoveryError).problems).toEqual([
-      'two stacks have the id "apps:web:prod": "web:prod" in "apps", and "prod" in "apps:web". A stack id has to name one stack. Rename or move one of them.',
+      'two stacks have the id "apps:web:prod": the Pulumi stack "web:prod" in "apps", and the Pulumi stack "prod" in "apps:web". A stack id has to name one stack. Rename or move one of them.',
     ]);
   });
 
   test("a stack without a name can meet one with a name", () => {
     expect(() => knownStacks([stack("envs:prod"), stack("envs", "prod")], [])).toThrow(
-      'two stacks have the id "envs:prod": the stack in "envs:prod", and "prod" in "envs".',
+      'two stacks have the id "envs:prod": the Pulumi stack in "envs:prod", and the Pulumi stack "prod" in "envs".',
+    );
+  });
+
+  test("names the tool of each side, so the reader knows which entry to change", () => {
+    // Issue 168: a Pulumi stack and a declared stack
+    // with the same path and name read the same without their tools.
+    const declared: Stack = { path: "app", name: "dev", options: { tool: "opentofu" } };
+    expect(() => knownStacks([stack("app", "dev"), declared], [])).toThrow(
+      'two stacks have the id "app:dev": the Pulumi stack "dev" in "app", and the stack "dev" in "app" that a stacks entry declares with tool: opentofu.',
+    );
+  });
+
+  test("a declared stack without a name names its tool too", () => {
+    const chart: Stack = { path: "charts/web", options: { tool: "helm" } };
+    const manifests: Stack = { path: "charts/web", options: { tool: "kubectl" } };
+    expect(() => knownStacks([chart, manifests], [])).toThrow(
+      'two stacks have the id "charts/web": the stack in "charts/web" that a stacks entry declares with tool: helm, and the stack in "charts/web" that a stacks entry declares with tool: kubectl.',
     );
   });
 
