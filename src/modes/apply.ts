@@ -465,6 +465,8 @@ async function deploy(
           repoUrl: context.repoUrl,
           // The preview of this job ran on this commit.
           scanSha: context.sha,
+          ...config.attribution,
+          trailLength: config.dashboard.recentlyDeployed,
         },
         (why) =>
           log.info(
@@ -829,6 +831,7 @@ async function swapRow(
       new Map([[id, lastDeployedCommit(facts, id)]]),
     );
     const mine = make(facts, attributed.get(id)?.lines);
+    const shipped = await setup.attribution.ship(facts.trail);
 
     const rows: Row[] = [];
     const carried: ParsedRow[] = [];
@@ -857,16 +860,15 @@ async function swapRow(
         rows,
         carried,
         redact: setup.config.dashboard.redact,
-        recentlyDeployed: facts.trail.map(
-          ({ stackId: stack, ticker, run, at, result, reason }) => ({
-            stackId: stack,
-            result,
-            reason,
-            ticker,
-            at,
-            runUrl: `${context.repoUrl}/actions/runs/${run}`,
-          }),
-        ),
+        recentlyDeployed: facts.trail.map((entry) => ({
+          stackId: entry.stackId,
+          result: entry.result,
+          reason: entry.reason,
+          ticker: entry.ticker,
+          at: entry.at,
+          runUrl: `${context.repoUrl}/actions/runs/${entry.run}`,
+          shipped: shipped.get(entry),
+        })),
         repoUrl: context.repoUrl,
         actionRef: context.actionRef,
         recentLength: setup.config.dashboard.recentlyDeployed,

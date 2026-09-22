@@ -974,6 +974,8 @@ async function swapRows(
         unrelated: config.scan.unrelated,
         repoUrl: context.repoUrl,
         scanSha: root.scanSha,
+        ...config.attribution,
+        trailLength: config.dashboard.recentlyDeployed,
       },
       (why) =>
         context.log.info(
@@ -988,6 +990,7 @@ async function swapRows(
   const lines = await source.attribute(
     new Map(deployingIds.map((id) => [id, lastDeployedCommit(facts, id)])),
   );
+  const shipped = await source.ship(facts.trail);
 
   const startedBy = new Map(swap.started.map((one) => [one.stackId, one]));
   const mine = (one: Started, destroys: number): DeployingRow => ({
@@ -1070,13 +1073,14 @@ async function swapRows(
       rows,
       carried,
       redact: config.dashboard.redact,
-      recentlyDeployed: facts.trail.map(({ stackId: id, ticker, run, at, result, reason }) => ({
-        stackId: id,
-        result,
-        reason,
-        ticker,
-        at,
-        runUrl: `${context.repoUrl}/actions/runs/${run}`,
+      recentlyDeployed: facts.trail.map((entry) => ({
+        stackId: entry.stackId,
+        result: entry.result,
+        reason: entry.reason,
+        ticker: entry.ticker,
+        at: entry.at,
+        runUrl: `${context.repoUrl}/actions/runs/${entry.run}`,
+        shipped: shipped.get(entry),
       })),
       repoUrl: context.repoUrl,
       actionRef: context.actionRef,

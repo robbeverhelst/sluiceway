@@ -31,6 +31,7 @@ import {
   type PreviewFirstWhy,
   pendingAgain,
   rowAtLateRead,
+  type TrailEntry,
 } from "../core/deployment.ts";
 import { diffHash } from "../core/diff-hash.ts";
 import { deployFailureText, previewFailureText } from "../core/failure-reason.ts";
@@ -102,6 +103,7 @@ import { renderPreviewPage } from "../render/preview-page.ts";
 import { previewOutcome, previewRow, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, dashboardCounts, scanResultFile } from "../render/result-file.ts";
 import {
+  type AttributionLines,
   byCodeUnit,
   driftCounts,
   type FailureLine,
@@ -358,6 +360,8 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       unrelated: config.scan.unrelated,
       repoUrl: context.repoUrl,
       scanSha: context.sha,
+      ...config.attribution,
+      trailLength: config.dashboard.recentlyDeployed,
     },
     (message) =>
       log.info(
@@ -427,6 +431,8 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       // A run that an issue edit started is queued or in progress.
       waits: boolean,
       lines: Attributed,
+      // What each deploy of the trail shipped (record 0072).
+      shipped: ReadonlyMap<TrailEntry, AttributionLines> = new Map(),
     ): Composed => {
       const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
       // Rows under a root marker that is missing or of another version are not
@@ -563,16 +569,15 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           rows,
           carried,
           redact: config.dashboard.redact,
-          recentlyDeployed: deploys.facts.trail.map(
-            ({ stackId: id, ticker, run, at: when, result, reason }) => ({
-              stackId: id,
-              result,
-              reason,
-              ticker,
-              at: when,
-              runUrl: runUrlOf(context, run),
-            }),
-          ),
+          recentlyDeployed: deploys.facts.trail.map((entry) => ({
+            stackId: entry.stackId,
+            result: entry.result,
+            reason: entry.reason,
+            ticker: entry.ticker,
+            at: entry.at,
+            runUrl: runUrlOf(context, entry.run),
+            shipped: shipped.get(entry),
+          })),
           repoUrl: context.repoUrl,
           actionRef: context.actionRef,
           recentLength: config.dashboard.recentlyDeployed,
@@ -654,11 +659,13 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           if (ended) deploys = await lateDeploys(context, stacks, previewed, liveBody);
         }
         attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
+        const shipped = await attribution.ship(deploys.facts.trail);
         composed = compose(
           liveBody,
           deploys,
           !config.dashboard.readOnly && (await resolveWaits(context, liveBody, deploys)),
           attributed,
+          shipped,
         );
         return composed.body;
       });
