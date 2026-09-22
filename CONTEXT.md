@@ -291,7 +291,7 @@ A stack whose preview did not produce a diff. Its row has no checkbox and links 
 _Avoid_: Error row, broken stack, failed stack
 
 **Failure line**:
-The note on a stack's row saying its last deploy failed. It rides on the row wherever the row sits and is not a row state.
+The note on a stack's row saying its last deploy failed. It rides on the row wherever the row sits and is not a row state. It goes once a deploy of the stack ends after the failure, from the dashboard or an outside deploy on the trail, and the trail keeps the failed deploy.
 _Avoid_: Failed row, failed state, error row
 
 **Trail**:

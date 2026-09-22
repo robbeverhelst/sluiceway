@@ -1,5 +1,7 @@
 # The body puts pending first and folds away only what is calm
 
+> Amended by 0076: a failure line stays only while no deploy of its stack, from the dashboard or outside it, ended after the failure. An in sync row whose stack was deployed outside the dashboard after the failure, and whose tool keeps a history, has no failure line and sits in the fold.
+>
 > Amended by 0073: Recently deployed also lists deploys made outside the dashboard, from the tool's own history. Those lines carry a marker, so the section is no longer drawn from the deployment records alone.
 >
 > Amended by 0040: the header, the counts line and the scan line are centered, and every count has a dot. The wording of both lines stays as it is here.

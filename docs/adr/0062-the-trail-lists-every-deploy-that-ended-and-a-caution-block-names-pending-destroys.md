@@ -1,5 +1,7 @@
 # The trail lists every deploy that ended, and a caution block names pending destroys
 
+> Amended by 0076: the failed line stays on the trail, and the row's failure line goes once a deploy of the stack, from the dashboard or outside it, ended after the failure.
+>
 > Amended by 0073: the trail also lists deploys made outside the dashboard that a full scan found in the tool's own history, in the same list by time and within the same length. Their facts ride on a marker at the end of each line.
 >
 > Amended by 0072: a deploy that went out has a second line inside its list item that says what it shipped, and the size budget turns those lines into counts before it shortens any pending row.

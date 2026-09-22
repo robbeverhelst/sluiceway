@@ -1,5 +1,7 @@
 # A full scan lists deploys made outside the dashboard from the tool's own history
 
+> Amended by 0076: an outside deploy that ended after a stack's failed deploy clears that row's failure line. The trail keeps both lines.
+
 Record 0016 made deploys outside Sluiceway legal and left them undetected, and rejected reading `pulumi stack history` because all it would improve was the list of commits on a row. Its note of 2026-09-21 names a second benefit the owner asked for: a trail that lists every deploy, not only the dashboard's own. The research on Pulumi's update history (branch `research/pulumi-update-history`) found that a history entry says what went out, when, and from which commit, that it names the GitHub Actions run it ran in, and that it does not say who ran it on a self-managed backend. Build plan slice 5.6 brings it in.
 
 This amends 0016 (outside deploys are now listed, and still legal and never stopped), 0029 and 0062 (the trail holds more than deployment records).
