@@ -5,6 +5,8 @@
 > Amended by 0050: the scan job also needs `checks: write`, for one preview page per pending stack. It adds one list request per 100 check runs on the commit and one write per pending stack, once per scan, so the worst case below becomes 405 requests on the first try and 807 with three.
 >
 > Amended by 0054: with merge and deploy on, the bot also merges pull requests, and the `resolve` job then needs `contents: write`. The merge's push starts no run, so `resolve` dispatches a scan.
+>
+> Amended by 0077: auto mode runs the cheap check before any mode, and in the one-step workflow an edit of an ordinary issue starts a runner that ends with a notice.
 
 Sluiceway acts on GitHub as one identity, the bot: `github-actions[bot]`, through the `GITHUB_TOKEN` of the workflow run. Every write goes through it: the dashboard, comments, deployment records, the rescan dispatch. There is no supported way to hand Sluiceway a GitHub App token or a personal access token for these writes in v1.
 

@@ -4,7 +4,8 @@ The manual for Sluiceway. The [README](../README.md) is the short version.
 
 ## Setting it up
 
-- [The workflow](workflow.md): the check, the whole workflow part by part, merge and deploy, stack dependencies, self-hosted runners, GitHub Environments, and pinning a commit.
+- [The workflow](workflow.md): the check, the whole workflow part by part, what one job gives up, merge and deploy, stack dependencies, self-hosted runners, GitHub Environments, and pinning a commit.
+- [The split workflow](split-workflow.md): the same loop as four jobs, for credentials that only read in scans, an environment per stack and ticks on hosted runners.
 - [Start read only](read-only-trial.md): a scan alone, with nothing that can deploy.
 - [Example workflows](example-workflows.md): complete workflows for common setups.
 - [Start with init](init.md): a first workflow and `sluiceway.yaml`, written from what it finds in your repo.

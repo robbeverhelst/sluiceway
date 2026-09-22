@@ -1,5 +1,7 @@
 # The check suggests inputs, asks the backend on request, and reads the rest of the workflow
 
+> Amended by 0077: for a job in auto mode the check asks for one concurrency group with `queue: max` and no `cancel-in-progress`, and no status check or second apply job.
+
 Record 0042 made the check a pass over the repo's files with no credential, no tool and no GitHub call, and record 0061 added the workflow files. Three things stayed with the person, and the first real trial caught each of them by hand: a stack file with no stack in the backend became a red row on the first dashboard (onboarding log, hurdle 9), a program that read a shared file had to be given it as an input by someone who knew, and a workflow could lack a concurrency group, a status check or the second apply job of merge and deploy and run without an error until the day it mattered. Build plan slice 5.7 brings them into the check.
 
 This amends 0042 and 0061.

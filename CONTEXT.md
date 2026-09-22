@@ -60,6 +60,18 @@ _Avoid_: Strategy, scan mode, selection
 A step a tool needs before it can preview a stack, such as OpenTofu's init of a directory, CDK for Terraform's synth of an app, or Helm's build of a chart's dependencies. A scan runs every preparation one at a time and before the pool, and a failed one is a preview failure of each stack that needs it.
 _Avoid_: Setup, init step, pre-hook
 
+**Auto mode**:
+What the action does when its step names no mode: it reads the event of the run and runs the modes that event asks for, one after the other in the same step. A push to the default branch and the schedule scan, an edit of the dashboard resolves and then deploys and settles what it started, a dispatch resolves and scans, a pull request checks, and any other event ends with a notice.
+_Avoid_: Default mode, smart mode, magic mode, router
+
+**One-step workflow**:
+The workflow people copy: one job with one Sluiceway step in auto mode, and no `if:` and no `needs:`. It previews and deploys with one set of credentials.
+_Avoid_: Simple workflow, single-job workflow, minimal workflow
+
+**Split workflow**:
+The same loop as four jobs, `scan`, `resolve`, `apply` and `settle`, each naming its mode and joined with `if:` and `needs:`. It is for credentials that only read in scans, an environment per stack, and a job an issue edit starts that holds no credentials.
+_Avoid_: Advanced workflow, full workflow, four-job workflow
+
 **Check**:
 A pass over the repo's files and nothing else that says whether Sluiceway understands the setup: the config, the stacks discovery finds, what `ignore` leaves out, which files no stack claims, which files a stack's own files name that it does not claim, and what the workflow files lack to run it. It holds no credentials and never starts the tool, so it can never say that a preview will work. The one exception is a workflow's own choice, `backend: true`: then it asks the backend which stacks it holds, with the credentials of its job, and nothing more.
 _Avoid_: Validate, lint, dry run, preflight

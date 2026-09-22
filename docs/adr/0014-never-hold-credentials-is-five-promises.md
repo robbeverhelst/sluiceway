@@ -1,6 +1,8 @@
 # "Never hold credentials" is five promises that can be checked
 
 > Amended by 0078: promise 1 allows the opt-in notification channels (a Slack webhook address, a Telegram bot token and chat id, a webhook address) as inputs, from the repo's own secrets. They are credentials of the user's messaging, never of their infrastructure. Promise 3 gains the calls to those channels.
+>
+> Amended by 0077: in the one-step workflow one job previews and deploys, so the job an issue edit starts loads the credentials. Promise 4 still holds of the modes, and the gain named below holds of the split workflow only.
 
 The brief says Sluiceway never holds credentials and only passes env through. With 0013 the secrets sit in the environment of the same job, so the action's process could read them. Read as "Sluiceway cannot see them", the principle is false, and a false security claim is worse than none. It is restated as five promises that a reviewer can check against the code and the example workflow.
 

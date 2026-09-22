@@ -45,6 +45,9 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Zero-config discovery of kustomizations, and a hint in the check for a directory of manifests that no entry declares
 - `init`, part 2: a credential step for a secret manager other than 1Password's env file of references or for a cloud through OIDC, a setup action for languages other than Node, a check workflow next to the starter workflow, adding to a `sluiceway.yaml` that is there, and Kubernetes manifests stacks (slice 4.9 landed while this slice was built)
 - `init` as an npm package or a command of its own (`npx sluiceway init`)
+- Credentials that only read in scans, and an environment per stack, without an `if:`: `resolve` dispatches a second workflow once per deploy, whose one job names the stack's environment, loads the credentials that write and deploys that record
+- One set of outputs and one result file per deploy when one step deploys several stacks, and deploys side by side in one step
+- A check in auto mode that knows a repo's issue edits are many and suggests the split workflow
 - An AWS CDK and CloudFormation adapter (change sets as the preview)
 - A branch preview of updates past the oldest 30, and a branch preview carried over by a scan that did not preview its stack
 - Reading Renovate presets from npm, a web address or another platform, presets with parameters, and `packageRules`, for the merge method

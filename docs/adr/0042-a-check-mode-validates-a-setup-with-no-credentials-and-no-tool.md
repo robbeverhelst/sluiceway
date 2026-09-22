@@ -5,6 +5,8 @@
 > Amended by 0065: a sixth mode, `init`, holds the same promise. It reads the same files and writes a starter workflow and `sluiceway.yaml` into the checkout, and the check treats a step that runs it like its own.
 >
 > Amended by 0061: the check also reads the workflow files under `.github/workflows` and warns about a missing trigger, permission or job, a forbidden trigger and a ref that is not a release. None of it turns the job red.
+>
+> Amended by 0077: a step with no mode is auto mode, which runs the check on a pull request.
 
 The first real user could only learn whether their setup was right by merging a workflow and waiting for a scan. What gave confidence before that push was a dry run of the config loader and stack discovery, done by hand with Sluiceway's internal code. A stranger cannot do that (onboarding log, hurdle 1). So there is a fifth mode, `check`. It reads files and nothing else: no credentials, no infrastructure tool, no GitHub API, no write of any kind. The owner decided on 2026-09-21 that it is part of v1.
 

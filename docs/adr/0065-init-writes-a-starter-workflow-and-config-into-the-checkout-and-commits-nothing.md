@@ -1,5 +1,7 @@
 # Init writes a starter workflow and config into the checkout, and commits nothing
 
+> Amended by 0077: `init` writes the one-step workflow, one job with one Sluiceway step and no `if:`.
+
 A new user's first hour goes into two files: a workflow that is mostly not about Sluiceway (onboarding log, hurdle 2) and a `sluiceway.yaml` whose `scan.unrelated` block and `tool` entries they have to work out (hurdles 4 and 5). The check (0042, 0061) says what is wrong with both once they exist. The example workflows of slice 2.10 show what a finished one looks like for three setups. What was missing is the step between: a first version of both files, from the repo itself. Build plan slice 4.14 brings it in, agreed with the owner on 2026-09-22.
 
 ## Decision
