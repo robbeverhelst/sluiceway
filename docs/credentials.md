@@ -164,6 +164,24 @@ Then load the backend's and the providers' credentials into the environment as f
 - **`TF_CLI_ARGS` reaches the tool too.** Whatever it adds to a plan is in the plan file, and a tick deploys exactly that file, so the deploy never differs from the row. Prefer the named options.
 - **The plan file holds every value in plain text.** Sluiceway keeps it in a temporary directory of its own and removes it when the preview or the deploy ends. It is never uploaded.
 
+### Helm
+
+For Helm releases (record 0058), install helm v3.18.0 or newer and the [helm-diff](https://github.com/databus23/helm-diff) plugin v3.15.11 or newer in steps before Sluiceway. Helm 4 checks a plugin's signature unless told not to, and Helm 3 knows no such flag:
+
+```yaml
+- uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+  with:
+    version: v4.3.0
+- name: Install the diff plugin
+  run: helm plugin install https://github.com/databus23/helm-diff --version v3.15.13 --verify=false
+```
+
+Then give the job a kubeconfig for the cluster, the way your own CI does: a cloud's own login action writes one for EKS, GKE or AKS through OIDC, and `KUBECONFIG` can point at a file a step writes from a secret. Sluiceway hands helm the whole environment, `KUBECONFIG`, `HELM_*` and the plugin's `HELM_DIFF_*` included, and sets nothing. A chart reference needs its repository: add it with `helm repo add` in a step before Sluiceway, or log in to an OCI registry with `helm registry login` (see below).
+
+- **The namespace of every release must exist.** Sluiceway does not create it.
+- **The credentials need what a deploy needs.** The preview reads the release and renders with `--dry-run=server`, which the cluster answers as it would a deploy. The `scan` job and the `apply` job both need them. `check`, `resolve` and `settle` never reach the cluster.
+- **Rendered manifests hold every value in plain text.** Sluiceway keeps only a digest of the render in memory while `apply` runs, and never writes the manifests anywhere.
+
 ## What your programs fetch, the runner has to fetch
 
 A preview runs your programs, and your programs fetch things: packages, provider plugins, container images, Helm charts, modules. On a laptop that works because the person is logged in. On a runner nothing is logged in until a step does it. When one stack fails in CI and works on your machine, look here first.

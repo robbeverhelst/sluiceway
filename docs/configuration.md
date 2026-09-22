@@ -23,7 +23,9 @@ Every stack has a **stack id**, derived from where it lives and what it is calle
 
 For OpenTofu there is no zero config. A root module and a child module look the same on disk, and a workspace lives in the backend, so files alone cannot say what a stack is. A `stacks` entry with `tool: opentofu` declares one: the root module in `path`, with an optional `name`, workspace and var files. Its stack id is `path`, or `path:name` when the entry gives a name, so one directory in two workspaces is two stacks, such as `infra/network:dev` and `infra/network:prod`. Discovery checks from the files that the directory holds OpenTofu files and that every var file is there, and still never starts the tool.
 
-A repo can hold Pulumi and OpenTofu stacks side by side. They share one dashboard, one tick rule and one workflow.
+For Helm there is no zero config either. A chart can be installed as any number of releases, in any namespace, so files alone cannot say which release a chart is. A `stacks` entry with `tool: helm` declares one: a release in a namespace, with the chart and the values files it is installed with. `path` is the directory the chart and the values files are relative to, and the directory the stack claims. Its stack id is `path`, or `path:name`, as for OpenTofu. Discovery checks from the files that the directory is there, that a local chart holds a `Chart.yaml` and that every values file is there, and never starts helm or reaches a cluster.
+
+A repo can hold Pulumi, OpenTofu and Helm stacks side by side. They share one dashboard, one tick rule and one workflow.
 
 `ignore` matches stack ids. `stacks` entries point at stacks by `path` and `name`.
 
@@ -281,7 +283,7 @@ drift:
 - **When is the workflow's business.** There is no `drift.schedule`: add a `schedule` trigger to the workflow, and every scan it starts checks drift. A scan that a push starts checks only the stacks whose row showed drift, so known drift is not lost.
 - **It costs one more tool run per stack** in those scans, in the same pool slot and with the same time limit as the stack's preview. For Pulumi it is `pulumi refresh --preview-only`, which changes neither the state nor anything real, and from v3.229.0 takes no stack lock, so it never blocks a deploy.
 - **The deploy of a row with drift reads what is real first.** For Pulumi it runs `pulumi up --refresh`. `apply` checks the drift again before it compares the diff hash, so drift that changed after the tick stops the deploy, as a moved change does.
-- **What counts as drift is up to the tool.** A resource whose provider cannot read it back never drifts. OpenTofu stacks are not checked yet.
+- **What counts as drift is up to the tool.** A resource whose provider cannot read it back never drifts. OpenTofu and Helm stacks are not checked yet.
 - **A drift check that fails** leaves the row as the preview made it, with a warning on the run and the tool's words in the job log.
 - **A stack entry can turn it on or off** for its own stacks, with [`stacks[].drift.enabled`](#stacksdriftenabled).
 - **A drifted row's `preview` link** opens a preview page that lists the drift, as a pending row's lists its changes. Without `checks: write` it opens the summary.
@@ -304,7 +306,7 @@ The name of the stack, the part of the stack id after the colon. Without it the 
 
 Default: none, the entry adds settings to stacks that discovery found.
 
-The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at `path`, and `options` holds that tool's options. One tool takes it in this version: `opentofu`, for an OpenTofu root module. Pulumi stacks are found from their files and need no `tool`.
+The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at `path`, and `options` holds that tool's options. Two tools take it in this version: `opentofu`, for an OpenTofu root module, and `helm`, for a Helm release in a namespace. Pulumi stacks are found from their files and need no `tool`.
 
 ```yaml
 stacks:
@@ -316,11 +318,28 @@ stacks:
       varFiles: [prod.tfvars]
   - path: infra/dns
     tool: opentofu
+  - path: apps/web
+    tool: helm
+    inputs: [charts/web/**]
+    options:
+      release: web
+      namespace: shop
+      chart: ../../charts/web
+      valuesFiles: [values.yaml, prod.yaml]
+  - path: apps/ingress
+    tool: helm
+    options:
+      release: ingress-nginx
+      namespace: ingress
+      chart: oci://ghcr.io/example/charts/ingress-nginx
+      version: 4.11.3
 ```
 
-An unknown tool, an unknown option or an option of the wrong kind stops every mode, with the same kind of message as any other mistake in the file, such as `stacks[0].tool: unknown tool "terraform". Known tools: opentofu.`
+An unknown tool, an unknown option or an option of the wrong kind stops every mode, with the same kind of message as any other mistake in the file, such as `stacks[0].tool: unknown tool "terraform". Known tools: opentofu, helm.`
 
 Sluiceway runs `tofu init` for every directory of the stacks it is about to preview, one directory at a time, before the first preview. Then `tofu plan -refresh=false -out` and `tofu show -json` give the preview, and a tick deploys the plan file that `apply`'s own fresh preview saved and hashed, with `tofu apply` of that file. Install `tofu` in the workflow before Sluiceway, v1.11.0 or newer ([credentials](credentials.md)).
+
+For Helm, Sluiceway runs `helm dependency build` for every local chart that has dependencies, one chart at a time, before the first preview. `helm diff upgrade --install --reset-values --dry-run=server --output=structured`, from the [helm-diff](https://github.com/databus23/helm-diff) plugin, gives the preview: the objects the release would add, change and remove, and the path of every field that changes. A tick deploys with `helm upgrade --install --reset-values --atomic`. Helm saves no plan, so `apply` renders the chart with `helm template` in its fresh preview and once more right before the deploy, and deploys only when both renders are the same. A chart that renders differently every time, such as one with a random value, is refused as a moved change and never deploys. Install helm v3.18.0 or newer and the diff plugin v3.15.11 or newer in the workflow before Sluiceway ([credentials](credentials.md)). The release's namespace must exist.
 
 ### `stacks[].environment`
 
@@ -470,6 +489,36 @@ Named options are the only way to change the tool's command line. Sluiceway neve
 Default: `[]`
 
 Only with `tool: opentofu`. Var files, relative to the directory of the stack, handed to every plan with `-var-file` in this order. `terraform.tfvars` and `*.auto.tfvars` are read by the tool without being listed. A var file outside the directory of the stack is not claimed by it: add it to `inputs` too, or a change to it gives a full scan.
+
+### `stacks[].options.release`
+
+Required with `tool: helm`.
+
+The name of the Helm release, by helm's own rule: lower case letters, digits, `-` and `.`, at most 53 characters. Two stacks in one directory are two releases, told apart by `name`.
+
+### `stacks[].options.namespace`
+
+Required with `tool: helm`.
+
+The namespace of the release, passed with `--namespace` to every command of the stack. It must exist before the first deploy: Sluiceway does not create it.
+
+### `stacks[].options.chart`
+
+Required with `tool: helm`.
+
+The chart. A local chart is a path relative to the directory of the stack that starts with `./` or `../`, and must hold a `Chart.yaml` inside the repo. A chart outside the directory of the stack is not claimed by it: add it to `inputs`, or a change to it gives a full scan. Anything else is a chart reference: `repo/name` from a repository the workflow adds with `helm repo add`, or `oci://registry/name`.
+
+### `stacks[].options.version`
+
+Default: none. Required with a chart reference.
+
+The exact version of a chart reference, such as `4.11.3`, never a range: the deploy installs the chart the preview saw. A local chart takes none, because the repo holds it.
+
+### `stacks[].options.valuesFiles`
+
+Default: `[]`
+
+Only with `tool: helm`. Values files, relative to the directory of the stack, handed to every command with `--values` in this order, after the chart's own `values.yaml`. Every deploy starts from the chart's values and these files, with `--reset-values`, so nothing a release kept from an earlier deploy by hand stays. A values file outside the directory of the stack is not claimed by it: add it to `inputs` too.
 
 ### `mergeAndDeploy.authors`
 

@@ -7,7 +7,7 @@ Sluiceway keeps one GitHub issue, the dashboard, that shows which infrastructure
 ### Stacks
 
 **Stack**:
-The smallest thing Sluiceway can preview and deploy on its own. It has its own state, one row on the dashboard and one checkbox. This is Sluiceway's word, not a tool's: a Pulumi stack is a stack, and so is an OpenTofu root module with a chosen workspace and var files. Not every stack is a Pulumi stack.
+The smallest thing Sluiceway can preview and deploy on its own. It has its own state, one row on the dashboard and one checkbox. This is Sluiceway's word, not a tool's: a Pulumi stack is a stack, and so is an OpenTofu root module with a chosen workspace and var files, and a Helm release in a namespace. Not every stack is a Pulumi stack.
 _Avoid_: Unit, project, workspace, module, target
 
 **Stack id**:
@@ -19,7 +19,7 @@ Finding the stacks of a repo from its files alone. It never asks a backend and n
 _Avoid_: Detection, lookup, stack listing
 
 **Declared stack**:
-A stack that a `stacks` entry names with `tool`, because files alone cannot say what it is: an OpenTofu root module, with the workspace and var files the entry gives. Discovery still checks from the files that it can exist, and never starts the tool.
+A stack that a `stacks` entry names with `tool`, because files alone cannot say what it is: an OpenTofu root module, with the workspace and var files the entry gives, or a Helm release in a namespace, with its chart and values files. Discovery still checks from the files that it can exist, and never starts the tool.
 _Avoid_: Configured stack, manual stack, custom stack
 
 **Ignored stack**:
@@ -53,7 +53,7 @@ What a scan decides before it previews anything: a full scan with the reason for
 _Avoid_: Strategy, scan mode, selection
 
 **Preparation**:
-A step a tool needs before it can preview a stack, such as OpenTofu's init of a directory. A scan runs every preparation one at a time and before the pool, and a failed one is a preview failure of each stack that needs it.
+A step a tool needs before it can preview a stack, such as OpenTofu's init of a directory, or Helm's build of a chart's dependencies. A scan runs every preparation one at a time and before the pool, and a failed one is a preview failure of each stack that needs it.
 _Avoid_: Setup, init step, pre-hook
 
 **Check**:
@@ -83,7 +83,7 @@ What a deploy of a stack would change as the tool itself displays it, values inc
 _Avoid_: Full diff, native diff, raw diff, plan output
 
 **Saved plan**:
-The plan file that the fresh preview of `apply` keeps, for a tool that can save one. When its diff hash is the one the tick approved, the deploy applies that file and nothing else. It lives inside one `apply` job and is removed on every way out.
+The plan file that the fresh preview of `apply` keeps, for a tool that can save one. When its diff hash is the one the tick approved, the deploy applies that file and nothing else. It lives inside one `apply` job and is removed on every way out. Helm saves no plan: a digest of the manifests the fresh preview rendered stands in for one, kept in memory, and the deploy goes out only when a render right before it gives the same.
 _Avoid_: Plan handle, plan artifact, cached plan
 
 **Pending**:

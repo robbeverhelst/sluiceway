@@ -27,12 +27,12 @@ bun install
 | `bun run test` | Unit tests with `bun test`. |
 | `bun run build:schema` | Writes `schema/sluiceway.schema.json` from the Zod schema in `src/core/config.ts`. |
 | `bun run check:schema` | Generates, then fails if `schema/` differs from what is committed. |
-| `bun run record:fixtures` | Records `test/fixtures/pulumi/` with the `pulumi` CLI on your PATH. With `--tool opentofu` it records `test/fixtures/opentofu/` with `tofu`. See below before you commit its output. |
+| `bun run record:fixtures` | Records `test/fixtures/pulumi/` with the `pulumi` CLI on your PATH. With `--tool opentofu` it records `test/fixtures/opentofu/` with `tofu`, and with `--tool helm` `test/fixtures/helm/` with `helm` and its diff plugin against the cluster `KUBECONFIG` names. See below before you commit its output. |
 | `bun run build` | Bundles `src/main.ts` into `dist/index.js` for the Node runtime of GitHub Actions. |
 | `bun run check:dist` | Builds, then fails if `dist/` differs from what is committed. |
 | `bun run check` | All of the above, as CI runs them. |
 | `bun run e2e` | Scans a copy of `examples/pulumi-basic` with the committed bundle, the `pulumi` CLI on your PATH and the fake GitHub server: a full scan and a narrowed one, then the whole loop of ticks, `resolve`, `apply` with the real tool and `settle`, with a refused tick, a cancelled deploy, a moved change and a re-run. `node` on your PATH has to be Node 24, because it stands in for the runner's own. The `e2e` workflow runs it on every pull request. |
-| `bun run e2e:mixed` | One repo with `examples/pulumi-basic` and `examples/opentofu-basic` in `infra/`, scanned and deployed with the committed bundle, `pulumi` and `tofu` on your PATH and the fake GitHub server: a full scan, an OpenTofu deploy of its saved plan, a change that moved, a Pulumi deploy and a last scan. The `mixed` job of the `e2e` workflow runs it with both tofu versions of the fixtures. |
+| `bun run e2e:mixed` | One repo with `examples/pulumi-basic`, `examples/opentofu-basic` in `infra/` and `examples/helm-basic` in `helm/`, scanned and deployed with the committed bundle, `pulumi`, `tofu` and `helm` with its diff plugin on your PATH, a cluster in `KUBECONFIG`, the plugin's directory in `HELM_PLUGINS`, and the fake GitHub server: a full scan, an OpenTofu deploy of its saved plan, a change that moved, a Pulumi deploy, a Helm release that moved and then deploys, and a last scan. The `mixed` job of the `e2e` workflow runs it with both tofu and helm versions of the fixtures, on a kind cluster. |
 
 ## dist/ is committed
 
@@ -81,6 +81,14 @@ OpenTofu works the same way (record 0053): `scripts/fixtures/opentofu-scenarios.
 rm -rf test/fixtures/opentofu
 gh run download <run id> --pattern 'fixtures-opentofu-*' --dir test/fixtures/opentofu
 mv test/fixtures/opentofu/fixtures-opentofu-*/* test/fixtures/opentofu/ && rmdir test/fixtures/opentofu/fixtures-opentofu-*
+```
+
+Helm works the same way too (record 0058), with one difference: a diff needs a release to compare with, so the recorder needs a cluster. Give it one that holds nothing else, such as `kind create cluster`, in `KUBECONFIG`, and the diff plugin's directory in `HELM_PLUGINS` (`helm env HELM_PLUGINS`). It makes the example's namespaces, and each scenario starts by uninstalling the example's releases. `scripts/fixtures/helm-scenarios.ts` drives `examples/helm-basic`, `FIXTURE_HELM_VERSIONS` names the helm and plugin versions, and the `fixtures-helm` job of CI records them on a kind cluster:
+
+```sh
+rm -rf test/fixtures/helm
+gh run download <run id> --pattern 'fixtures-helm-*' --dir test/fixtures/helm
+mv test/fixtures/helm/fixtures-helm-*/* test/fixtures/helm/ && rmdir test/fixtures/helm/fixtures-helm-*
 ```
 
 The Pulumi download pattern `fixtures-*` also matches these artifacts, so download the Pulumi ones with `--pattern 'fixtures-v*'`.

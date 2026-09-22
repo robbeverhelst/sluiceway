@@ -98,14 +98,14 @@ The file is optional and sits at the repo root. Unknown keys are an error, becau
 | `drift.enabled` | `false` | Check every stack for drift in each scan that a schedule starts or a person starts with Run workflow, and in a push's scan only for the stacks whose row showed drift. There is no `drift.schedule`: the loader says the cron goes in the workflow | 0055 |
 | `stacks[].path` | required per entry | Directory of the stack, relative to the repo root | 0006 |
 | `stacks[].name` | none | Name of the stack. Without it the entry covers every stack in `path` | 0006 |
-| `stacks[].tool` | none | `opentofu`: the entry declares a stack of that tool at `path`, because files alone cannot name one | 0053 |
+| `stacks[].tool` | none | `opentofu` or `helm`: the entry declares a stack of that tool at `path`, because files alone cannot name one | 0053, 0058 |
 | `stacks[].environment` | `sluiceway` | Label on the deployment record, and the GitHub Environment where one is used | 0003 |
 | `stacks[].tickers` | the top level value | Tick rule for this stack | 0018 |
 | `stacks[].inputs` | `[]` | Extra globs this stack claims | 0010 |
 | `stacks[].previewTimeout` | the input | Time limit for this stack, whole minutes | 0012, 0035 |
 | `stacks[].dependsOn` | none | Stack ids this stack depends on, or `auto`: the stacks its Pulumi program reads through stack references, read at each preview and carried on the row (slice 4.7). A tick waits while one of them is pending and not ticked, ticks in one chain deploy one layer per run (slice 4.4) | 0056, 0059 |
 | `stacks[].drift.enabled` | the top level | The drift check on or off for the stacks of this entry, in the same scans as `drift.enabled` (slice 4.7) | 0059 |
-| `stacks[].options` | `{}` | Named adapter options, only with `tool`. OpenTofu: `workspace` and `varFiles` | 0006, 0015, 0053 |
+| `stacks[].options` | `{}` | Named adapter options, only with `tool`. OpenTofu: `workspace` and `varFiles`. Helm: `release`, `namespace`, `chart`, `version` (a chart reference only) and `valuesFiles` | 0006, 0015, 0053, 0058 |
 | `mergeAndDeploy.authors` | `[]` | Logins whose green pull requests that one stack claims are listed to merge and deploy with one tick. Empty turns it off | 0054 |
 
 Rules for config loading:
@@ -134,6 +134,7 @@ Rules for config loading:
 | Lookback, names on a row, recently deployed | 100 commits, 5, 10 | 0026, 0029 |
 | Minimum Pulumi CLI | v3.229.0 | 0001 |
 | Minimum OpenTofu CLI | v1.11.0 | 0053 |
+| Minimum Helm CLI and diff plugin | helm v3.18.0, helm-diff v3.15.11 | 0058 |
 | Minimum self-hosted runner | v2.328.0, no ARM32 | Actions research |
 | API budget | 1,000 requests per hour per repo | 0017 |
 
