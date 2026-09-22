@@ -4,6 +4,7 @@
 
 import type { IgnoredStack } from "../core/config.ts";
 import { IN_SYNC_DESCRIPTION, REHEARSED_DESCRIPTION } from "../core/deployment.ts";
+import { destroyAlert } from "./destroy-alert.ts";
 import { destroySign } from "./destroy-sign.ts";
 import { COUNT_DOT, DOT_AT_ZERO, RESULT_DOT } from "./dots.ts";
 import { escapeText } from "./escape.ts";
@@ -40,8 +41,11 @@ export interface RecentDeploy {
   at: Date;
   runUrl: string;
   // Absent for a deploy that went out (record 0051). A drift repair went out
-  // too, and says so (record 0059).
-  result?: "in-sync" | "rehearsed" | "drift-repaired" | undefined;
+  // too, and says so (record 0059). "failed" for a deploy that failed (record
+  // 0062).
+  result?: "in-sync" | "rehearsed" | "drift-repaired" | "failed" | undefined;
+  // The failure reason of a failed deploy, as its failure line shows it.
+  reason?: string | undefined;
 }
 
 export interface BodyInput {
@@ -50,8 +54,11 @@ export interface BodyInput {
   // it carries through as `parseDashboard` read them, and its own through
   // `rowBlock`.
   rows: readonly ParsedRow[];
-  // Successful deployment records, in any order. The newest ten are listed.
+  // Deployment records that ended, in any order. The newest are listed.
   recentlyDeployed: readonly RecentDeploy[];
+  // How many lines Recently deployed lists, `dashboard.recentlyDeployed`
+  // (record 0062). 0 leaves the section out. Ten when not given.
+  recentLength?: number | undefined;
   // The repo the dashboard lives in, `https://github.com/<owner>/<repo>`.
   repoUrl: string;
   // The exact release tag of the running action, or its commit SHA (build
@@ -239,10 +246,16 @@ const RESULT_WORDS = {
 } as const;
 
 // Under a header each line starts with the dot of its result (slice 4.5), as
-// every count does (record 0040). A failed deploy is never listed (record
-// 0029), so a line is green, white or purple.
+// every count does (record 0040): green went out, white nothing to deploy,
+// purple rehearsed, and red for a failed deploy (record 0062).
 function recentLine(deploy: RecentDeploy, dots: boolean): string {
-  const result = deploy.result === undefined ? "" : ` · ${RESULT_WORDS[deploy.result]}`;
+  // A failed deploy says so with its reason, as its failure line does (record
+  // 0062). The reason is display text from the record, never trusted.
+  const words =
+    deploy.result === "failed"
+      ? `failed: ${escapeText(deploy.reason ?? "")}`
+      : deploy.result && RESULT_WORDS[deploy.result];
+  const result = words ? ` · ${words}` : "";
   // A drift repair went out, so it is green like any deploy (record 0059).
   const outcome =
     deploy.result === undefined || deploy.result === "drift-repaired" ? "deployed" : deploy.result;
@@ -302,6 +315,9 @@ export function renderBody(input: BodyInput): string {
 
   // Pending is always shown. The other sections are left out when empty.
   out.push("## Pending", pendingLine(input, state, pending.length));
+  // The destroy alert sits right above the pending list (record 0062).
+  const alert = destroyAlert(pending);
+  if (alert) out.push(alert);
   if (pending.length > 0) out.push(blocks(pending));
 
   // Drift sits right under Pending: its rows have boxes too (record 0055).
@@ -347,7 +363,7 @@ export function renderBody(input: BodyInput): string {
 
   const recent = [...input.recentlyDeployed]
     .sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit(a.stackId, b.stackId))
-    .slice(0, RECENTLY_DEPLOYED);
+    .slice(0, input.recentLength ?? RECENTLY_DEPLOYED);
   if (recent.length > 0)
     out.push(
       "## Recently deployed",

@@ -19,11 +19,14 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 </div>
 
 > [!NOTE]
-> This dashboard is too large for one issue, so 39 of 53 pending rows are shortened. The summary that a shortened row links to shows every change. Deletes and replaces are the last thing to be cut.
+> This dashboard is too large for one issue, so 40 of 53 pending rows are shortened. The summary that a shortened row links to shows every change. Deletes and replaces are the last thing to be cut.
 
 ## Pending
 
 Tick a box to deploy that stack exactly as its row shows it.
+
+> [!CAUTION]
+> 13 pending stacks delete or replace resources: **apps/legacy-worker:prod**, **data/postgres:prod**, **platform/ingress:prod**, **services/svc-06:staging**, **services/svc-09:prod**, **services/svc-12:staging**, **services/svc-18:staging**, **services/svc-24:staging**, **services/svc-27:prod**, **services/svc-30:staging**, **services/svc-36:staging**, **services/svc-42:staging**, **storage/buckets:prod**
 
 - [ ] **apps/api:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="962ea94dcf7ae8b4" -->
   from #5 by alice, #4 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/4193607...8c41f0e)
@@ -257,43 +260,9 @@ Tick a box to deploy that stack exactly as its row shows it.
   from 4 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/9670833...8c41f0e)
   35 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **services/svc-23:prod** · 10 creates, 23 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-23:prod" state="pending" hash="5c211f57ad5f1326" -->
-  from #463 by carol, #423 by renovate[bot], #403 by dave, and 2 more, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/43c196b...8c41f0e)
-  <details><summary>33 changes</summary>
-  <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-admission-4</b><br>
-  <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-controller-27</b><br>
-  <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-controller-33</b><br>
-  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-controller-6</b> · <code>spec</code><br>
-  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-metrics-3</b> · <code>spec</code><br>
-  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-private-12</b> · <code>spec</code><br>
-  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-private-13</b> · <code>spec</code><br>
-  <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-public-25</b><br>
-  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-public-30</b> · <code>spec</code><br>
-  <kbd>update</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>svc23-webhook-8</b> · <code>spec</code><br>
-  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>svc23-admission-1</b> · <code>spec</code><br>
-  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc23-default-backend-32</b> · <code>data</code><br>
-  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc23-public-14</b> · <code>data</code><br>
-  <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>svc23-udp-services-26</b> · <code>data</code><br>
-  <kbd>create</kbd> <code>kubernetes:core/v1:Service</code> <b>svc23-canary-15</b><br>
-  <kbd>create</kbd> <code>kubernetes:core/v1:Service</code> <b>svc23-canary-23</b><br>
-  <kbd>create</kbd> <code>kubernetes:core/v1:Service</code> <b>svc23-external-28</b><br>
-  <kbd>update</kbd> <code>kubernetes:core/v1:Service</code> <b>svc23-internal-17</b> · <code>spec</code><br>
-  <kbd>create</kbd> <code>kubernetes:core/v1:Service</code> <b>svc23-public-19</b><br>
-  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc23-controller-10</b> · <code>metadata</code><br>
-  <kbd>create</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc23-internal-31</b><br>
-  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc23-tcp-services-11</b> · <code>metadata</code><br>
-  <kbd>update</kbd> <code>kubernetes:core/v1:ServiceAccount</code> <b>svc23-webhook-7</b> · <code>metadata</code><br>
-  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc23-external-29</b> · <code>metadata</code>, <code>spec</code><br>
-  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc23-public-16</b> · <code>metadata</code>, <code>spec</code><br>
-  <kbd>update</kbd> <code>kubernetes:networking.k8s.io/v1:Ingress</code> <b>svc23-tcp-services-22</b> · <code>metadata</code>, <code>spec</code><br>
-  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-config-18</b> · <code>rules</code><br>
-  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-default-backend-9</b> · <code>rules</code><br>
-  <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-leader-election-5</b><br>
-  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-private-24</b> · <code>rules</code><br>
-  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-tcp-services-2</b> · <code>rules</code><br>
-  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-tcp-services-21</b> · <code>rules</code><br>
-  <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>svc23-udp-services-20</b> · <code>rules</code><br>
-  </details>
+- [ ] **services/svc-23:prod** · 10 creates, 23 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-23:prod" state="pending" hash="5c211f57ad5f1326" shortened="2" -->
+  from 5 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/43c196b...8c41f0e)
+  33 changes not listed here, see the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
 - [ ] **services/svc-24:staging** · 13 creates, 19 updates, **451 deletes** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="services/svc-24:staging" state="pending" hash="70a4c89d680934f4" destroys="451" shortened="3" -->
   from 3 pull requests, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/ff5070e...8c41f0e)

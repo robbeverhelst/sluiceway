@@ -48,6 +48,13 @@
             "minLength": 1
           },
           "description": "Property paths whose old and new value may appear on the dashboard, as \"old → new\". Exact paths, or \"*\" for part of one name. Never a value the tool marks secret, and none at all with redact on."
+        },
+        "recentlyDeployed": {
+          "default": 10,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50,
+          "description": "How many deploys the Recently deployed list shows, newest first, failed ones included. 0 leaves the list out."
         }
       },
       "additionalProperties": false

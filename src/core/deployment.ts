@@ -26,6 +26,11 @@ export interface DeploymentStatus {
   // A failure reason from Sluiceway's fixed list, or "" (record 0022).
   description: string;
   createdAt: string;
+  // On an `inactive` status that superseded a success: when that success was
+  // written, while GitHub still keeps it. It is when the deploy really ended
+  // (record 0062). The port reads it from the status before the latest, in
+  // the same request.
+  succeededAt?: string | undefined;
 }
 
 // A record with its latest status, which is all GitHub keeps for 90 days and
@@ -181,11 +186,29 @@ export interface SucceededDeploy {
   result?: "in-sync" | "rehearsed" | "drift-repaired";
 }
 
+// One line of the recently deployed list (records 0029 and 0062): a deploy
+// that ended, whichever way.
+export interface TrailEntry {
+  stackId: string;
+  ticker: string;
+  run: string;
+  at: Date;
+  // Absent for a deploy that went out. "in-sync", "rehearsed" and
+  // "drift-repaired" as on `SucceededDeploy`, "failed" for a record that
+  // ended as `failure` or `error` (record 0062).
+  result?: "in-sync" | "rehearsed" | "drift-repaired" | "failed";
+  // The failure reason of a failed deploy, as the failure line shows it.
+  reason?: string;
+}
+
 export interface DeployFacts {
   byStack: Map<string, DeployFact>;
   // Every success among the records, oldest first, and every rehearsal: the
   // trail of recently deployed (record 0051).
   succeeded: SucceededDeploy[];
+  // Every deploy that ended, oldest first: the successes and rehearsals above
+  // and every failed deploy (record 0062).
+  trail: TrailEntry[];
   // Records of Sluiceway's whose payload this version cannot read. They are
   // left alone, as a body of another marker version is.
   unread: number;
@@ -250,12 +273,17 @@ function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFac
   const state = record.status?.state ?? "";
   const at = new Date(record.status?.createdAt ?? record.createdAt);
   if (SUCCEEDED.has(state)) {
+    // GitHub's `inactive` status is written when the deploy was superseded,
+    // so its time is not when the deploy ended. The success before it is,
+    // while GitHub keeps it (record 0062).
+    const ended =
+      state === "inactive" && record.status?.succeededAt ? new Date(record.status.succeededAt) : at;
     const inSync = state === "success" && record.status?.description === IN_SYNC_DESCRIPTION;
     return {
       kind: "succeeded",
       ticker,
       run,
-      at,
+      at: Number.isNaN(ended.getTime()) ? at : ended,
       hash: payload.hash,
       ...(inSync ? { inSync } : {}),
     };
@@ -281,7 +309,7 @@ function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFac
 }
 
 export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
-  const facts: DeployFacts = { byStack: new Map(), succeeded: [], unread: 0 };
+  const facts: DeployFacts = { byStack: new Map(), succeeded: [], trail: [], unread: 0 };
   for (const record of [...records].sort(newestLast)) {
     const stackId = taskStackId(record.task);
     if (stackId === undefined) continue;
@@ -295,30 +323,44 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
     // A rehearsal changed nothing about the stack: it is only a line of the
     // trail, and the fact before it stands.
     if (isRehearsal(record.status)) {
-      facts.succeeded.push({
+      const rehearsed = {
         stackId,
         ticker: payload.ticker,
         run: payload.run,
         at: new Date(record.status?.createdAt ?? record.createdAt),
-        sha: record.sha,
-        result: "rehearsed",
-      });
+        result: "rehearsed" as const,
+      };
+      facts.succeeded.push({ ...rehearsed, sha: record.sha });
+      facts.trail.push(rehearsed);
       continue;
     }
     // Newest last, so the newest record of a stack is the one that stays.
     facts.byStack.set(stackId, fact);
     if (fact.kind === "succeeded") {
-      facts.succeeded.push({
+      const succeeded = {
         stackId,
         ticker: fact.ticker,
         run: fact.run,
         at: fact.at,
-        sha: record.sha,
         ...(fact.inSync
           ? { result: "in-sync" as const }
           : payload.drift
             ? { result: "drift-repaired" as const }
             : {}),
+      };
+      facts.succeeded.push({ ...succeeded, sha: record.sha });
+      facts.trail.push(succeeded);
+    }
+    // A failure keeps its failure line on the row and is a line of the trail
+    // too, so the trail is every deploy that ended (record 0062).
+    if (fact.kind === "failed") {
+      facts.trail.push({
+        stackId,
+        ticker: fact.ticker,
+        run: fact.run,
+        at: fact.at,
+        result: "failed",
+        reason: fact.reason,
       });
     }
   }

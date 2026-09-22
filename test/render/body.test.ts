@@ -1151,11 +1151,17 @@ describe("sizes", () => {
     expect(body.length).toBeLessThan(45_000);
   });
 
-  test("everything outside the row blocks is under 2,000 characters", () => {
+  // Slice 4.11: the destroy alert above the pending list (record 0062) names
+  // the pending stacks with a destroy, so the frame grows by one short id per
+  // such stack. Without it the frame stays under 2,000.
+  test("everything outside the row blocks is under 2,000 characters, plus the destroy alert", () => {
     const rows = rows58().map((row) => rowBlock(row));
     const body = renderBody({ ...input([], { recentlyDeployed: RECENT }), rows });
     const inside = rows.reduce((sum, row) => sum + row.text.length + 1, 0);
-    expect(body.length - inside).toBeLessThan(2_000);
+    const alert = body.split("\n\n").find((paragraph) => paragraph.startsWith("> [!CAUTION]"));
+    expect(alert).toBeDefined();
+    expect(body.length - inside - (alert?.length ?? 0)).toBeLessThan(2_000);
+    expect(alert?.length).toBeLessThan(500);
   });
 });
 

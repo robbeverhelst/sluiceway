@@ -11,6 +11,7 @@ const DEFAULTS: Config = {
     personality: true,
     readOnly: false,
     showValues: [],
+    recentlyDeployed: 10,
   },
   tickers: "write",
   deploys: true,
@@ -67,6 +68,7 @@ drift:
         personality: false,
         readOnly: true,
         showValues: [],
+        recentlyDeployed: 10,
       },
       tickers: "admin",
       deploys: true,
@@ -348,8 +350,24 @@ describe("wrong types", () => {
       'dashboard.readOnly: expected true or false, got "yes".',
     ]);
     expect(problems("dashboard:\n  read-only: true\n")).toEqual([
-      'dashboard: unknown key "read-only". Known keys here: title, label, pin, redact, personality, readOnly, showValues.',
+      'dashboard: unknown key "read-only". Known keys here: title, label, pin, redact, personality, readOnly, showValues, recentlyDeployed.',
     ]);
+  });
+
+  // Slice 4.11 (record 0062): how many lines Recently deployed lists.
+  test("dashboard.recentlyDeployed is a whole number from 0 to 50", () => {
+    expect(parseConfig("dashboard:\n  recentlyDeployed: 0\n").dashboard.recentlyDeployed).toBe(0);
+    expect(parseConfig("dashboard:\n  recentlyDeployed: 50\n").dashboard.recentlyDeployed).toBe(50);
+    for (const [value, shown] of [
+      ["-1", "-1"],
+      ["51", "51"],
+      ["2.5", "2.5"],
+      ['"ten"', '"ten"'],
+    ]) {
+      expect(problems(`dashboard:\n  recentlyDeployed: ${value}\n`)).toEqual([
+        `dashboard.recentlyDeployed: expected a whole number of lines from 0 to 50, got ${shown}.`,
+      ]);
+    }
   });
 
   test("a glob must be text that is not empty", () => {

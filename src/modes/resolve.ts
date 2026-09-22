@@ -968,15 +968,17 @@ async function swapRows(
       rows,
       carried,
       redact: config.dashboard.redact,
-      recentlyDeployed: facts.succeeded.map(({ stackId: id, ticker, run, at, result }) => ({
+      recentlyDeployed: facts.trail.map(({ stackId: id, ticker, run, at, result, reason }) => ({
         stackId: id,
         result,
+        reason,
         ticker,
         at,
         runUrl: `${context.repoUrl}/actions/runs/${run}`,
       })),
       repoUrl: context.repoUrl,
       actionRef: context.actionRef,
+      recentLength: config.dashboard.recentlyDeployed,
       personality: config.dashboard.personality,
       readOnly: config.dashboard.readOnly,
       ignored,

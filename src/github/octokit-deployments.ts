@@ -37,6 +37,12 @@ const NEWEST_DEPLOYMENTS = `query ($owner: String!, $repo: String!, $environment
           description
           createdAt
         }
+        statuses(first: 2) {
+          nodes {
+            state
+            createdAt
+          }
+        }
       }
     }
   }
@@ -65,6 +71,8 @@ interface DeploymentNode {
   payload: string | null;
   createdAt: string;
   latestStatus: { state: string; description: string | null; createdAt: string } | null;
+  // Newest first, as GitHub lists them (seen in the lab repo on 2026-09-22).
+  statuses?: { nodes: ({ state: string; createdAt: string } | null)[] | null } | null;
 }
 
 interface NewestDeployments {
@@ -105,6 +113,21 @@ function toStatus(status: ApiStatus): DeploymentStatus {
     description: status.description ?? "",
     createdAt: status.created_at,
   };
+}
+
+// GitHub writes `inactive` when another writer's success supersedes a record
+// (record 0003), so the latest status holds that moment and not when the
+// deploy ended. The status right under it, newest first, is the success,
+// while GitHub keeps it (record 0062).
+function withSucceededAt(
+  latest: DeploymentStatus,
+  newestFirst: readonly ({ state: string; createdAt: string } | null)[],
+): DeploymentStatus {
+  if (latest.state !== "inactive") return latest;
+  const under = newestFirst[1];
+  return under?.state.toLowerCase() === "success"
+    ? { ...latest, succeededAt: under.createdAt }
+    : latest;
 }
 
 export function deploymentCalls(
@@ -160,12 +183,15 @@ export function deploymentCalls(
                 payload: parsePayload(node.payload),
                 createdAt: node.createdAt,
                 status: node.latestStatus
-                  ? {
-                      // GraphQL shouts the words REST writes in lower case.
-                      state: node.latestStatus.state.toLowerCase(),
-                      description: node.latestStatus.description ?? "",
-                      createdAt: node.latestStatus.createdAt,
-                    }
+                  ? withSucceededAt(
+                      {
+                        // GraphQL shouts the words REST writes in lower case.
+                        state: node.latestStatus.state.toLowerCase(),
+                        description: node.latestStatus.description ?? "",
+                        createdAt: node.latestStatus.createdAt,
+                      },
+                      node.statuses?.nodes ?? [],
+                    )
                   : undefined,
               },
         ),
@@ -183,9 +209,15 @@ export function deploymentCalls(
       const { data } = await octokit.rest.repos.listDeploymentStatuses({
         ...repo,
         deployment_id: id,
-        per_page: 1,
+        // Two, for the success under an inactive (record 0062).
+        per_page: 2,
       });
-      return data[0] ? toStatus(data[0]) : undefined;
+      return data[0]
+        ? withSucceededAt(
+            toStatus(data[0]),
+            data.map(({ state, created_at }) => ({ state, createdAt: created_at })),
+          )
+        : undefined;
     },
 
     async getDeployment(id) {

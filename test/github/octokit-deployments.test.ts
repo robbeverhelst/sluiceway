@@ -240,6 +240,78 @@ describe("the newest deployment records of an environment", () => {
     expect((await port.listNewestDeployments("sluiceway")).records[0]?.payload).toBe("not json");
   });
 
+  // Slice 4.11 (record 0062). GitHub writes `inactive` when another writer's
+  // success supersedes a record, and `latestStatus` then holds that moment.
+  // The statuses of a record come newest first, the success right under the
+  // `inactive` (seen in the lab repo on 2026-09-22), so the page asks for two.
+  test("an inactive record carries the time of the success it superseded", async () => {
+    const statuses = {
+      nodes: [
+        { state: "INACTIVE", createdAt: "2026-09-21T08:00:00Z" },
+        { state: "SUCCESS", createdAt: "2026-09-21T07:59:58Z" },
+      ],
+    };
+    const { port, sent } = portThatAnswers([
+      {
+        json: {
+          data: {
+            repository: {
+              deployments: {
+                pageInfo: { hasNextPage: false },
+                nodes: [
+                  node({
+                    latestStatus: {
+                      state: "INACTIVE",
+                      description: "",
+                      createdAt: "2026-09-21T08:00:00Z",
+                    },
+                    statuses,
+                  }),
+                ],
+              },
+            },
+          },
+        },
+      },
+    ]);
+    expect((await port.listNewestDeployments("sluiceway")).records[0]?.status).toEqual({
+      state: "inactive",
+      description: "",
+      createdAt: "2026-09-21T08:00:00Z",
+      succeededAt: "2026-09-21T07:59:58Z",
+    });
+    expect(sent).toHaveLength(1);
+    const { query } = (sent[0]?.body ?? {}) as { query: string };
+    expect(query).toContain("statuses(first: 2)");
+  });
+
+  test("a status that is not inactive, or no success under it, carries no success time", async () => {
+    const nodes = [
+      node({
+        statuses: { nodes: [{ state: "IN_PROGRESS", createdAt: "2026-09-21T18:52:30Z" }] },
+      }),
+      node({
+        databaseId: 2,
+        latestStatus: { state: "INACTIVE", description: "", createdAt: "2026-09-21T08:00:00Z" },
+        statuses: {
+          nodes: [
+            { state: "INACTIVE", createdAt: "2026-09-21T08:00:00Z" },
+            { state: "IN_PROGRESS", createdAt: "2026-09-21T07:59:00Z" },
+          ],
+        },
+      }),
+    ];
+    const { port } = portThatAnswers([
+      {
+        json: {
+          data: { repository: { deployments: { pageInfo: { hasNextPage: false }, nodes } } },
+        },
+      },
+    ]);
+    const { records } = await port.listNewestDeployments("sluiceway");
+    expect(records.map((record) => record.status?.succeededAt)).toEqual([undefined, undefined]);
+  });
+
   test("a repo GitHub does not show has no records to read, which is an error", async () => {
     const { port } = portThatAnswers([{ json: { data: { repository: null } } }]);
     await expect(port.listNewestDeployments("sluiceway")).rejects.toThrow(
@@ -297,10 +369,29 @@ describe("the REST fall back for a stack that is not on the page", () => {
       {
         method: "GET",
         path: "/repos/acme/infra/deployments/7/statuses",
-        query: { per_page: "1" },
+        // Two, for the success under an inactive (record 0062).
+        query: { per_page: "2" },
         body: undefined,
       },
     ]);
+  });
+
+  test("an inactive status carries the time of the success under it, in the same request", async () => {
+    const { port, sent } = portThatAnswers([
+      {
+        json: [
+          { state: "inactive", description: "", created_at: "2026-09-21T08:00:00Z" },
+          { state: "success", description: "", created_at: "2026-09-21T07:59:58Z" },
+        ],
+      },
+    ]);
+    expect(await port.latestDeploymentStatus(7)).toEqual({
+      state: "inactive",
+      description: "",
+      createdAt: "2026-09-21T08:00:00Z",
+      succeededAt: "2026-09-21T07:59:58Z",
+    });
+    expect(sent).toHaveLength(1);
   });
 
   test("a record without a status yet gives nothing", async () => {

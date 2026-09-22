@@ -150,6 +150,10 @@ const stackEntries = z.array(stackEntry).superRefine((entries, context) => {
 // The shape of sluiceway.yaml (build-plan.md, section 3). Unknown keys are an
 // error, because a typo in "tickers" would change who can deploy. The JSON
 // schema in schema/ is generated from this.
+// The longest Recently deployed list `dashboard.recentlyDeployed` allows
+// (record 0062).
+export const RECENTLY_DEPLOYED_MAX = 50;
+
 export const configSchema = z.strictObject({
   dashboard: z
     .strictObject({
@@ -187,6 +191,16 @@ export const configSchema = z.strictObject({
           'Property paths whose old and new value may appear on the dashboard, as "old → new". Exact paths, or "*" for part of one name. Never a value the tool marks secret, and none at all with redact on.',
         )
         .default([]),
+      // Slice 4.11 (record 0062). At most 50, so the list stays a small part
+      // of the size budget and inside the page of records a writer reads.
+      recentlyDeployed: z
+        .int()
+        .min(0)
+        .max(RECENTLY_DEPLOYED_MAX)
+        .describe(
+          "How many deploys the Recently deployed list shows, newest first, failed ones included. 0 leaves the list out.",
+        )
+        .default(10),
     })
     .prefault({}),
   tickers: tickers
@@ -336,6 +350,11 @@ function describe(issue: Issue, raw: unknown): Problem[] {
     if (value === undefined && key === "glob") {
       return problem("is required. It is matched against the stack id.");
     }
+  }
+  if (key === "recentlyDeployed" && issue.path[0] === "dashboard") {
+    return problem(
+      `expected a whole number of lines from 0 to ${RECENTLY_DEPLOYED_MAX}, got ${show(value)}.`,
+    );
   }
   if (key === "previewTimeout" && issue.code !== "custom") {
     return problem(`expected a whole number of minutes, 1 or more, got ${show(value)}.`);

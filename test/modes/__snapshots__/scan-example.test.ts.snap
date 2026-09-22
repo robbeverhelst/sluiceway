@@ -22,6 +22,9 @@ Scanned [\`0123456\`](https://github.com/acme/infra/commit/0123456789abcdef01234
 
 Tick a box to deploy that stack exactly as its row shows it.
 
+> [!CAUTION]
+> 1 pending stack deletes or replaces resources: **network:dev**
+
 - [ ] **app:prod** · 3 creates · [preview](https://github.com/acme/infra/runs/106538952701) <!-- sluiceway:row stack="app:prod" state="pending" hash="6f5afda2b3712163" -->
   not deployed from this dashboard yet
   <details><summary>3 changes</summary>

@@ -101,7 +101,15 @@ export class FakeDeployments {
   record(id: number): DeploymentRecord {
     const { deployment, statuses } = this.#find(id);
     const latest = statuses.at(-1);
-    return { ...structuredClone(deployment), status: latest ? { ...latest } : undefined };
+    // GitHub lists the statuses of a record, and the port reads the success
+    // under an `inactive` with the latest (record 0062).
+    const under = statuses.at(-2);
+    const succeededAt =
+      latest?.state === "inactive" && under?.state === "success" ? under.createdAt : undefined;
+    return {
+      ...structuredClone(deployment),
+      status: latest ? { ...latest, ...(succeededAt ? { succeededAt } : {}) } : undefined,
+    };
   }
 
   statuses(id: number): DeploymentStatus[] {

@@ -51166,6 +51166,7 @@ var stackEntries = exports_external.array(stackEntry).superRefine((entries, cont
       });
   });
 });
+var RECENTLY_DEPLOYED_MAX = 50;
 var configSchema = exports_external.strictObject({
   dashboard: exports_external.strictObject({
     title: text.describe("Title of the dashboard issue.").default("Sluiceway dashboard"),
@@ -51178,7 +51179,8 @@ var configSchema = exports_external.strictObject({
       const problem = showValuesEntryProblem(entry);
       if (problem !== undefined)
         context3.addIssue({ code: "custom", message: problem });
-    })).describe('Property paths whose old and new value may appear on the dashboard, as "old → new". Exact paths, or "*" for part of one name. Never a value the tool marks secret, and none at all with redact on.').default([])
+    })).describe('Property paths whose old and new value may appear on the dashboard, as "old → new". Exact paths, or "*" for part of one name. Never a value the tool marks secret, and none at all with redact on.').default([]),
+    recentlyDeployed: exports_external.int().min(0).max(RECENTLY_DEPLOYED_MAX).describe("How many deploys the Recently deployed list shows, newest first, failed ones included. 0 leaves the list out.").default(10)
   }).prefault({}),
   tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
   deploys: exports_external.boolean().describe("false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.").default(true),
@@ -51255,6 +51257,9 @@ function describe4(issue3, raw) {
     if (value === undefined && key === "glob") {
       return problem("is required. It is matched against the stack id.");
     }
+  }
+  if (key === "recentlyDeployed" && issue3.path[0] === "dashboard") {
+    return problem(`expected a whole number of lines from 0 to ${RECENTLY_DEPLOYED_MAX}, got ${show(value)}.`);
   }
   if (key === "previewTimeout" && issue3.code !== "custom") {
     return problem(`expected a whole number of minutes, 1 or more, got ${show(value)}.`);
@@ -53865,6 +53870,12 @@ var NEWEST_DEPLOYMENTS = `query ($owner: String!, $repo: String!, $environment: 
           description
           createdAt
         }
+        statuses(first: 2) {
+          nodes {
+            state
+            createdAt
+          }
+        }
       }
     }
   }
@@ -53896,6 +53907,12 @@ function toStatus(status) {
     description: status.description ?? "",
     createdAt: status.created_at
   };
+}
+function withSucceededAt(latest, newestFirst) {
+  if (latest.state !== "inactive")
+    return latest;
+  const under = newestFirst[1];
+  return under?.state.toLowerCase() === "success" ? { ...latest, succeededAt: under.createdAt } : latest;
 }
 function deploymentCalls(octokit, repo) {
   return {
@@ -53939,11 +53956,11 @@ function deploymentCalls(octokit, repo) {
           sha: node2.commitOid,
           payload: parsePayload(node2.payload),
           createdAt: node2.createdAt,
-          status: node2.latestStatus ? {
+          status: node2.latestStatus ? withSucceededAt({
             state: node2.latestStatus.state.toLowerCase(),
             description: node2.latestStatus.description ?? "",
             createdAt: node2.latestStatus.createdAt
-          } : undefined
+          }, node2.statuses?.nodes ?? []) : undefined
         }),
         more: repository.deployments.pageInfo.hasNextPage
       };
@@ -53956,9 +53973,9 @@ function deploymentCalls(octokit, repo) {
       const { data } = await octokit.rest.repos.listDeploymentStatuses({
         ...repo,
         deployment_id: id,
-        per_page: 1
+        per_page: 2
       });
-      return data[0] ? toStatus(data[0]) : undefined;
+      return data[0] ? withSucceededAt(toStatus(data[0]), data.map(({ state, created_at }) => ({ state, createdAt: created_at }))) : undefined;
     },
     async getDeployment(id) {
       const { data } = await octokit.rest.repos.getDeployment({ ...repo, deployment_id: id });
@@ -54341,12 +54358,13 @@ function factOf(record3, payload) {
   const state = record3.status?.state ?? "";
   const at = new Date(record3.status?.createdAt ?? record3.createdAt);
   if (SUCCEEDED.has(state)) {
+    const ended = state === "inactive" && record3.status?.succeededAt ? new Date(record3.status.succeededAt) : at;
     const inSync = state === "success" && record3.status?.description === IN_SYNC_DESCRIPTION;
     return {
       kind: "succeeded",
       ticker,
       run,
-      at,
+      at: Number.isNaN(ended.getTime()) ? at : ended,
       hash: payload.hash,
       ...inSync ? { inSync } : {}
     };
@@ -54371,7 +54389,7 @@ function factOf(record3, payload) {
   };
 }
 function deployFacts(records) {
-  const facts = { byStack: new Map, succeeded: [], unread: 0 };
+  const facts = { byStack: new Map, succeeded: [], trail: [], unread: 0 };
   for (const record3 of [...records].sort(newestLast)) {
     const stackId2 = taskStackId(record3.task);
     if (stackId2 === undefined)
@@ -54385,25 +54403,37 @@ function deployFacts(records) {
       continue;
     const fact = factOf(record3, payload);
     if (isRehearsal(record3.status)) {
-      facts.succeeded.push({
+      const rehearsed = {
         stackId: stackId2,
         ticker: payload.ticker,
         run: payload.run,
         at: new Date(record3.status?.createdAt ?? record3.createdAt),
-        sha: record3.sha,
         result: "rehearsed"
-      });
+      };
+      facts.succeeded.push({ ...rehearsed, sha: record3.sha });
+      facts.trail.push(rehearsed);
       continue;
     }
     facts.byStack.set(stackId2, fact);
     if (fact.kind === "succeeded") {
-      facts.succeeded.push({
+      const succeeded = {
         stackId: stackId2,
         ticker: fact.ticker,
         run: fact.run,
         at: fact.at,
-        sha: record3.sha,
         ...fact.inSync ? { result: "in-sync" } : payload.drift ? { result: "drift-repaired" } : {}
+      };
+      facts.succeeded.push({ ...succeeded, sha: record3.sha });
+      facts.trail.push(succeeded);
+    }
+    if (fact.kind === "failed") {
+      facts.trail.push({
+        stackId: stackId2,
+        ticker: fact.ticker,
+        run: fact.run,
+        at: fact.at,
+        result: "failed",
+        reason: fact.reason
       });
     }
   }
@@ -54433,6 +54463,27 @@ function rowAtLateRead(stack) {
   if (usableLive)
     return { row: "live" };
   return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
+}
+
+// src/render/escape.ts
+var NAMED = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;"
+};
+function escapeText(text5) {
+  return text5.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
+}
+
+// src/render/destroy-alert.ts
+function destroyAlert(rows) {
+  const ids = rows.filter((row) => row.known && row.state === "pending" && row.destroys > 0).map((row) => `**${escapeText(row.stackId)}**`);
+  if (ids.length === 0)
+    return;
+  const words = ids.length === 1 ? "1 pending stack deletes or replaces resources" : `${ids.length} pending stacks delete or replace resources`;
+  return `> [!CAUTION]
+> ${words}: ${ids.join(", ")}`;
 }
 
 // src/render/marker.ts
@@ -54648,17 +54699,6 @@ var HEADER_DOT = {
   "first-run": DOT_AT_ZERO,
   "in-sync": COUNT_DOT["in-sync"]
 };
-
-// src/render/escape.ts
-var NAMED = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;"
-};
-function escapeText(text5) {
-  return text5.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
-}
 
 // src/render/header-state.ts
 function headerState(rows) {
@@ -55092,7 +55132,8 @@ var RESULT_WORDS = {
   "drift-repaired": DRIFT_REPAIRED_WORDS
 };
 function recentLine(deploy, dots) {
-  const result = deploy.result === undefined ? "" : ` · ${RESULT_WORDS[deploy.result]}`;
+  const words = deploy.result === "failed" ? `failed: ${escapeText(deploy.reason ?? "")}` : deploy.result && RESULT_WORDS[deploy.result];
+  const result = words ? ` · ${words}` : "";
   const outcome = deploy.result === undefined || deploy.result === "drift-repaired" ? "deployed" : deploy.result;
   const dot = dots ? `${RESULT_DOT[outcome]}&nbsp;` : "";
   return `- ${dot}${escapeText(deploy.stackId)} · ticked by ${escapeText(deploy.ticker)}${result} · ${utcMinute(deploy.at)} · [run](${deploy.runUrl})`;
@@ -55123,6 +55164,9 @@ function renderBody(input2) {
 `));
   }
   out.push("## Pending", pendingLine(input2, state, pending.length));
+  const alert = destroyAlert(pending);
+  if (alert)
+    out.push(alert);
   if (pending.length > 0)
     out.push(blocks(pending));
   const drifted = of("drift");
@@ -55151,7 +55195,7 @@ function renderBody(input2) {
 `), "</details>");
     }
   }
-  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit7(a.stackId, b.stackId)).slice(0, RECENTLY_DEPLOYED);
+  const recent = [...input2.recentlyDeployed].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit7(a.stackId, b.stackId)).slice(0, input2.recentLength ?? RECENTLY_DEPLOYED);
   if (recent.length > 0)
     out.push("## Recently deployed", recent.map((deploy) => recentLine(deploy, input2.personality)).join(`
 `));
@@ -56677,15 +56721,17 @@ async function swapRow(context3, setup, id, make) {
       rows,
       carried,
       redact: setup.config.dashboard.redact,
-      recentlyDeployed: facts.succeeded.map(({ stackId: stack, ticker, run, at, result: result2 }) => ({
+      recentlyDeployed: facts.trail.map(({ stackId: stack, ticker, run, at, result: result2, reason }) => ({
         stackId: stack,
         result: result2,
+        reason,
         ticker,
         at,
         runUrl: `${context3.repoUrl}/actions/runs/${run}`
       })),
       repoUrl: context3.repoUrl,
       actionRef: context3.actionRef,
+      recentLength: setup.config.dashboard.recentlyDeployed,
       personality: setup.config.dashboard.personality,
       readOnly: setup.config.dashboard.readOnly,
       ignored: setup.ignored,
@@ -57889,15 +57935,17 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
     rows,
     carried,
     redact: config2.dashboard.redact,
-    recentlyDeployed: facts.succeeded.map(({ stackId: id, ticker, run, at, result }) => ({
+    recentlyDeployed: facts.trail.map(({ stackId: id, ticker, run, at, result, reason }) => ({
       stackId: id,
       result,
+      reason,
       ticker,
       at,
       runUrl: `${context3.repoUrl}/actions/runs/${run}`
     })),
     repoUrl: context3.repoUrl,
     actionRef: context3.actionRef,
+    recentLength: config2.dashboard.recentlyDeployed,
     personality: config2.dashboard.personality,
     readOnly: config2.dashboard.readOnly,
     ignored,
@@ -58784,15 +58832,17 @@ async function scanning(context3, report) {
         rows,
         carried,
         redact: config2.dashboard.redact,
-        recentlyDeployed: deploys.facts.succeeded.map(({ stackId: id, ticker, run, at: when, result }) => ({
+        recentlyDeployed: deploys.facts.trail.map(({ stackId: id, ticker, run, at: when, result, reason }) => ({
           stackId: id,
           result,
+          reason,
           ticker,
           at: when,
           runUrl: runUrlOf(context3, run)
         })),
         repoUrl: context3.repoUrl,
         actionRef: context3.actionRef,
+        recentLength: config2.dashboard.recentlyDeployed,
         personality: config2.dashboard.personality,
         readOnly: config2.dashboard.readOnly,
         ignored,
@@ -58877,7 +58927,7 @@ var PREVIEW_FIRST = {
   merged: "is previewed now: a pull request for it was merged, and its deploy waits for this preview."
 };
 var NO_DEPLOYS = {
-  facts: { byStack: new Map, succeeded: [], unread: 0 },
+  facts: { byStack: new Map, succeeded: [], trail: [], unread: 0 },
   settled: new Set
 };
 function startingCommits(facts, previewed) {

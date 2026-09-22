@@ -26,6 +26,15 @@ function apiStatus(status: DeploymentStatus): unknown {
   return { state: status.state, description: status.description, created_at: status.createdAt };
 }
 
+// The newest two statuses of a record, newest first, as GitHub lists them: the
+// latest, and the success under an `inactive` that the fake read with it.
+function newestTwo(status: DeploymentStatus): DeploymentStatus[] {
+  const { succeededAt, ...latest } = status;
+  return succeededAt
+    ? [latest, { state: "success", description: "", createdAt: succeededAt }]
+    : [latest];
+}
+
 export function deploymentRoutes(fake: FakeGitHub, repo: string): [string, RegExp, Route][] {
   return [
     [
@@ -84,7 +93,7 @@ export function deploymentRoutes(fake: FakeGitHub, repo: string): [string, RegEx
       new RegExp(`^${repo}/deployments/(\\d+)/statuses$`),
       async (_call, id) => {
         const latest = await fake.latestDeploymentStatus(Number(id));
-        return { status: 200, json: latest ? [apiStatus(latest)] : [] };
+        return { status: 200, json: latest ? newestTwo(latest).map(apiStatus) : [] };
       },
     ],
     [
@@ -136,6 +145,14 @@ export async function deploymentsQuery(fake: FakeGitHub, variables: unknown): Pr
                     createdAt: record.status.createdAt,
                   }
                 : null,
+              statuses: {
+                nodes: record.status
+                  ? newestTwo(record.status).map(({ state, createdAt }) => ({
+                      state: state.toUpperCase(),
+                      createdAt,
+                    }))
+                  : [],
+              },
             })),
           },
         },

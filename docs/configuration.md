@@ -159,6 +159,19 @@ dashboard:
 
 Check every path against your own stacks before you add it. A chart can put a token anywhere in its `values`, such as `values.githubConfigSecret.github_token`, and the tool does not know it is one. That is why the list takes exact paths and `*` never reaches a level further down.
 
+### `dashboard.recentlyDeployed`
+
+Default: `10`
+
+How many lines the Recently deployed list at the bottom of the dashboard shows, newest first. A whole number from 0 to 50. `0` leaves the list out, heading and all.
+
+Every deploy from the dashboard that ended is a line: one that went out, one that found nothing to deploy, a rehearsal, and a failed one with its failure reason. The list is built from the deployment records a writer already reads, one page of the newest 100 per environment, so a longer list costs no extra request. Each line is about 150 characters of the issue's room, which is why the list stops at 50.
+
+```yaml
+dashboard:
+  recentlyDeployed: 25
+```
+
 ### `tickers`
 
 Default: `write`

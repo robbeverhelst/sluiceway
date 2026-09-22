@@ -217,7 +217,8 @@ describe("a stack whose last deploy failed", () => {
 });
 
 describe("recently deployed", () => {
-  test("lists the newest ten deploys that went out, and a superseded one is still one", async () => {
+  // Slice 4.11 (record 0062): a failed deploy is a line of the trail too.
+  test("lists the newest ten deploys that ended, failed ones too, and a superseded one is still one", async () => {
     const { context, github } = harness(tableAdapter({ "a:prod": inSync("a:prod") }));
     for (let i = 1; i <= 11; i++) {
       const minute = String(i).padStart(2, "0");
@@ -243,9 +244,41 @@ describe("recently deployed", () => {
     const list = section(dashboardBody(github), "Recently deployed").split("\n");
     expect(list).toHaveLength(10);
     expect(list[0]).toBe(
+      `- 🔴&nbsp;failed:prod · ticked by alice · failed: no reason was recorded · 2026-09-21 05:31 UTC · [run](${REPO_URL}/actions/runs/4242)`,
+    );
+    expect(list[1]).toBe(
       `- 🟢&nbsp;s11:prod · ticked by alice · 2026-09-21 05:11 UTC · [run](${REPO_URL}/actions/runs/111)`,
     );
-    expect(list.at(-1)).toContain("- 🟢&nbsp;s02:prod · ");
+    expect(list.at(-1)).toContain("- 🟢&nbsp;s03:prod · ");
+  });
+
+  test("its length is dashboard.recentlyDeployed, and 0 leaves it out", async () => {
+    const seed = (github: ReturnType<typeof harness>["github"]) => {
+      for (const minute of ["01", "02", "03"]) {
+        github.seedDeployment({
+          task: `sluiceway:s${minute}:prod`,
+          createdAt: `2026-09-21T05:${minute}:00Z`,
+          status: { state: "success", createdAt: `2026-09-21T05:${minute}:30Z` },
+        });
+      }
+    };
+    const two = harness(tableAdapter({ "a:prod": inSync("a:prod") }), {
+      config: "dashboard:\n  recentlyDeployed: 2\n",
+    });
+    seed(two.github);
+    await scan(two.context);
+    const list = section(dashboardBody(two.github), "Recently deployed").split("\n");
+    expect(list.map((line) => line.split(" · ")[0])).toEqual([
+      "- 🟢&nbsp;s03:prod",
+      "- 🟢&nbsp;s02:prod",
+    ]);
+
+    const none = harness(tableAdapter({ "a:prod": inSync("a:prod") }), {
+      config: "dashboard:\n  recentlyDeployed: 0\n",
+    });
+    seed(none.github);
+    await scan(none.context);
+    expect(dashboardBody(none.github)).not.toContain("## Recently deployed");
   });
 
   test("another writer's success with GitHub's default does not erase this stack's deploy", async () => {
@@ -263,7 +296,10 @@ describe("recently deployed", () => {
 
     expect(github.deployment(1).status?.state).toBe("inactive");
     const body = dashboardBody(github);
-    expect(section(body, "Recently deployed")).toContain("- 🟢&nbsp;a:prod · ticked by alice · ");
+    // At the time it went out, not the time GitHub superseded it (record 0062).
+    expect(section(body, "Recently deployed")).toContain(
+      "- 🟢&nbsp;a:prod · ticked by alice · 2026-09-21 05:11 UTC · ",
+    );
     expect(body).not.toContain("last deploy failed");
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderBody, rowBlock } from "../../src/render/body.ts";
 import { BODY_LIMIT, BODY_TARGET, type BudgetInput, fitBody } from "../../src/render/budget.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
-import type { PendingRow, Row } from "../../src/render/row.ts";
+import type { PendingRow, Row, RowLevel } from "../../src/render/row.ts";
 import { rows58, rows100, stackIdOf } from "./fixtures.ts";
 
 const FRAME = {
@@ -66,8 +66,18 @@ describe("the 100 stack fixture", () => {
     expect(fitted.size).toBeLessThanOrEqual(BODY_TARGET);
   });
 
+  // Checked row by row since slice 4.11: the destroy alert (record 0062) takes
+  // room above the rows, so the room left is no longer a fixed amount.
   test("uses the room it has: giving one more row its details back would not fit", () => {
-    expect(fitted.size).toBeGreaterThan(BODY_TARGET - 2_000);
+    const levelOf = (row: Row) => (levels.get(stackIdOf(row)) ?? 0) as RowLevel;
+    const shortened = rows.filter((row) => levelOf(row) > 0);
+    expect(shortened.length).toBeGreaterThan(0);
+    for (const row of shortened) {
+      const blocks = rows.map((each) =>
+        rowBlock(each, { level: (levelOf(each) - (each === row ? 1 : 0)) as RowLevel }),
+      );
+      expect(renderBody({ ...FRAME, rows: blocks }).length).toBeGreaterThan(BODY_TARGET);
+    }
   });
 
   test("every stack has exactly one row, with its checkbox and its hash", () => {

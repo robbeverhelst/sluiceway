@@ -36,6 +36,9 @@ Scanned [`8c41f0e`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f
 
 Tick a box to deploy that stack exactly as its row shows it.
 
+> [!CAUTION]
+> 1 pending stack deletes or replaces resources: **apps/legacy-worker:prod**
+
 - [ ] **apps/api:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121)
   from [#5](https://github.com/example-org/infra/pull/5) by alice, [#4](https://github.com/example-org/infra/pull/4) by renovate[bot] · [compare](https://github.com/example-org/infra/compare/4193607...8c41f0e)
   <details><summary>1 change</summary>
@@ -501,7 +504,7 @@ To turn it into the whole workflow later, replace the file with the one of step 
 
 ## Using the dashboard
 
-- **A row with a box has changes waiting.** Its details show the resources that would change and the paths of the properties that change, down to the key inside a map or a list. A delete or a replace is always shown open under the row, never folded away. When the dashboard grows past what an issue holds, the biggest rows are shortened first and link to the full diff in the run's summary.
+- **A row with a box has changes waiting.** Its details show the resources that would change and the paths of the properties that change, down to the key inside a map or a list. A delete or a replace is always shown open under the row, never folded away, and a caution block above the pending list names every pending stack that has one. When the dashboard grows past what an issue holds, the biggest rows are shortened first and link to the full diff in the run's summary.
 - **`preview` opens that stack's preview page.** It is a check run on the scanned commit, named `sluiceway / <stack id>`, with the stack's whole diff: every resource that changes and every property path, and a value only where `dashboard.showValues` lists the path. It links back to the dashboard, the run's summary and the job log. The scan updates the page in place when it scans the same commit again. GitHub files the page as a job of whichever workflow run came first on that commit, which may be another workflow of yours, and lists it in a pull request's checks as neutral. It never fails a check. Without `checks: write` in the workflow's permissions there is no page, and `preview` opens the run's summary.
 - **Tick the box to deploy that stack.** Sluiceway checks that you may tick it, previews the stack again, and deploys only if the fresh preview still matches what the row showed. The row says deploying, then goes back to in sync, or shows a failure line with a link to the run.
 - **A tick approves the change as shown.** The row shows which properties change, not their values, so a tick means "change these properties on these resources, at whatever value the code has when the deploy runs". A value the row does show, through `dashboard.showValues`, is approved as shown. A new resource, a delete or a different property stops the deploy and brings the row back with the fresh diff. [docs/security.md](docs/security.md#what-a-tick-promises) has the whole promise.
@@ -510,6 +513,7 @@ To turn it into the whole workflow later, replace the file with the one of step 
 - **A row under Drifted changed outside the code.** With [`drift.enabled`](docs/configuration.md#driftenabled), the daily scan also checks every stack against its real infrastructure. A stack whose code has nothing to deploy and whose real resources changed gets a row there, with a box: what changed, and what is gone. A tick deploys the code as it is, which puts it back, after the drift is checked again. A pending stack that also drifted shows its drift on its own row. The row's `preview` link opens a page that lists the drift, and a stack entry can turn the check on or off for its own stacks.
 - **The rescan box**, `Rescan all stacks` at the bottom, starts a full scan, for example after you deployed a stack from somewhere else. It deploys nothing.
 - **To try a failed deploy again, tick the box again.** Re-running the job deploys nothing.
+- **Recently deployed, at the bottom, is the trail.** Every deploy from the dashboard that ended, newest first: what went out, what found nothing to deploy, a rehearsal, and a failed deploy with its failure reason. Ten lines unless [`dashboard.recentlyDeployed`](docs/configuration.md#dashboardrecentlydeployed) says otherwise.
 
 ## Reading the job log
 

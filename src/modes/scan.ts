@@ -534,10 +534,11 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           rows,
           carried,
           redact: config.dashboard.redact,
-          recentlyDeployed: deploys.facts.succeeded.map(
-            ({ stackId: id, ticker, run, at: when, result }) => ({
+          recentlyDeployed: deploys.facts.trail.map(
+            ({ stackId: id, ticker, run, at: when, result, reason }) => ({
               stackId: id,
               result,
+              reason,
               ticker,
               at: when,
               runUrl: runUrlOf(context, run),
@@ -545,6 +546,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           ),
           repoUrl: context.repoUrl,
           actionRef: context.actionRef,
+          recentLength: config.dashboard.recentlyDeployed,
           personality: config.dashboard.personality,
           readOnly: config.dashboard.readOnly,
           ignored,
@@ -695,7 +697,7 @@ interface LateDeploys {
 }
 
 const NO_DEPLOYS: LateDeploys = {
-  facts: { byStack: new Map(), succeeded: [], unread: 0 },
+  facts: { byStack: new Map(), succeeded: [], trail: [], unread: 0 },
   settled: new Set(),
 };
 

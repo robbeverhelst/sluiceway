@@ -389,6 +389,9 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 Tick a box to deploy that stack exactly as its row shows it.
 
+> [!CAUTION]
+> 1 pending stack deletes or replaces resources: **stack-0**
+
 - [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" -->
   :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-1</b>
   <details><summary>1 other change</summary>
@@ -544,6 +547,9 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 ## Pending
 
 Tick a box to deploy that stack exactly as its row shows it.
+
+> [!CAUTION]
+> 1 pending stack deletes or replaces resources: **stack-0**
 
 - [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" -->
   :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-1</b>
@@ -750,6 +756,9 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 ## Pending
 
 Tick a box to deploy that stack exactly as its row shows it.
+
+> [!CAUTION]
+> 1 pending stack deletes or replaces resources: **stack-0**
 
 - [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" -->
   :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-1</b>
@@ -1325,6 +1334,9 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 Tick a box to deploy that stack exactly as its row shows it.
 
+> [!CAUTION]
+> 4 pending stacks delete or replace resources: **apps/legacy-worker:prod**, **data/postgres:prod**, **platform/ingress:prod**, **storage/buckets:prod**
+
 - [ ] **apps/api:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="962ea94dcf7ae8b4" -->
   from #5 by alice, #4 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/4193607...8c41f0e)
   <details><summary>1 change</summary>
@@ -1729,6 +1741,9 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 ## Pending
 
 Tick a box to deploy that stack exactly as its row shows it.
+
+> [!CAUTION]
+> 4 pending stacks delete or replace resources: **apps/legacy-worker:prod**, **data/postgres:prod**, **platform/ingress:prod**, **storage/buckets:prod**
 
 - [ ] **apps/api:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="962ea94dcf7ae8b4" -->
   from #5 by alice, #4 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/4193607...8c41f0e)

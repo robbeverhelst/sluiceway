@@ -160,6 +160,33 @@ for (const [way, portOf] of ways) {
       expect(await states("production")).toEqual({ "sluiceway:c": "success" });
     });
 
+    // Slice 4.11 (record 0062): the success under GitHub's `inactive` is read
+    // with it, on the page and in the REST fall back.
+    test("a superseded record carries the time of its own success", async () => {
+      const fake = new FakeGitHub();
+      const port = await portOf(fake);
+      const a = await port.createDeployment(newDeployment("a"));
+      await port.createDeploymentStatus(a.id, { state: "success" });
+      const outside = fake.seedDeployment({ task: "deploy" });
+      fake.addDeploymentStatus(outside.id, { state: "success" });
+      await port.listNewestDeployments("sluiceway");
+      await port.listNewestDeployments("sluiceway");
+
+      const [success, inactive] = fake.deploymentStatuses(a.id);
+      expect(inactive?.state).toBe("inactive");
+      const expected = {
+        state: "inactive",
+        description: "",
+        createdAt: inactive?.createdAt ?? "",
+        succeededAt: success?.createdAt ?? "",
+      };
+      const onPage = (await port.listNewestDeployments("sluiceway")).records.find(
+        ({ id }) => id === a.id,
+      );
+      expect(onPage?.status).toEqual(expected);
+      expect(await port.latestDeploymentStatus(a.id)).toEqual(expected);
+    });
+
     test("a page holds the newest 100 records and says when there are more", async () => {
       const fake = new FakeGitHub();
       const port = await portOf(fake);
