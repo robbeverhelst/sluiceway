@@ -173,6 +173,60 @@ describe("a valid setup", () => {
     );
   });
 
+  // Slice 4.16 (record 0067): the check lists the phases in order, the
+  // stacks in each, and the edges a phase gives each stack.
+  test("lists phases and the edges they give, in the job log and the summary", async () => {
+    const files = {
+      ...FIXTURE,
+      "sluiceway.yaml": [
+        "phases: [infrastructure, monitoring, applications]",
+        "ignore: [playground]",
+        "stacks:",
+        "  - path: network",
+        "    phase: infrastructure",
+        "  - path: app",
+        "    phase: { from: example:phase }",
+        "    dependsOn: [site:prod]",
+        "  - path: site",
+        "    phase: infrastructure",
+        "",
+      ].join("\n"),
+      "app/Pulumi.yaml": `${project("app")}example:phase: applications\n`,
+      "site/Pulumi.yaml": project("site"),
+      "site/Pulumi.prod.yaml": "",
+    };
+    const { error, log, summary } = await run(files);
+    expect(error).toBeUndefined();
+    expect(log.groups.find((group) => group.title === "Stacks")?.lines).toEqual([
+      "app:prod: environment sluiceway, tickers write, no inputs, phase applications (read from example:phase), depends on network:dev, network:prod, site:prod through the infrastructure phase",
+      "network:dev: environment sluiceway, tickers write, no inputs, phase infrastructure",
+      "network:prod: environment sluiceway, tickers write, no inputs, phase infrastructure",
+      "playground:dev: environment sluiceway, tickers write, no inputs",
+      "site:prod: environment sluiceway, tickers write, no inputs, phase infrastructure",
+    ]);
+    expect(log.groups.find((group) => group.title === "Phases")?.lines).toEqual([
+      "1. infrastructure: network:dev, network:prod, site:prod",
+      "2. monitoring: no stack. Waits on every stack of infrastructure",
+      "3. applications: app:prod. Waits on every stack of infrastructure and monitoring",
+    ]);
+    expect(summary).toContain("| Stack | Environment | Tickers | Inputs | Phase | Depends on |");
+    expect(summary).toContain(
+      "| app:prod | sluiceway | write | none | applications, from example:phase | the infrastructure phase |",
+    );
+    expect(summary).toContain("| site:prod | sluiceway | write | none | infrastructure | none |");
+    expect(summary).toContain(
+      [
+        "### Phases",
+        "",
+        "| Phase | Stacks | Waits on |",
+        "|---|---|---|",
+        "| infrastructure | network:dev, network:prod, site:prod | nothing |",
+        "| monitoring | none | infrastructure |",
+        "| applications | app:prod | infrastructure, monitoring |",
+      ].join("\n"),
+    );
+  });
+
   test("a setup without dependsOn has no such column", async () => {
     const { summary } = await run(FIXTURE);
     expect(summary).not.toContain("Depends on");
@@ -262,7 +316,7 @@ describe("a valid setup", () => {
 const CONFIG_MESSAGES: [string, string][] = [
   [
     "tickerz: write",
-    'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, stacks, mergeAndDeploy.',
+    'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, phases, stacks, mergeAndDeploy.',
   ],
   [
     "stacks:\n  - path: network\n    dependsOn: [app]",

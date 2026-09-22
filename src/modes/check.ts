@@ -19,6 +19,7 @@ import {
   NO_CONFIG_FILE,
   NO_SCAN_WORKFLOW,
   NOTHING_MISSING,
+  phaseLines,
   renderCheckFailure,
   renderCheckSummary,
   scansSomewhere,
@@ -75,10 +76,11 @@ export async function check(context: CheckContext): Promise<void> {
     log.group(
       "Stacks",
       report.stacks.map((configured) =>
-        line(`${stackId(configured.stack)}: ${settingsText(configured)}`),
+        line(`${stackId(configured.stack)}: ${settingsText(configured, report.phases)}`),
       ),
     );
   }
+  if (report.phases.length > 0) log.group("Phases", phaseLines(report.phases).map(line));
 
   for (const entry of report.ignore) {
     if (entry.stacks.length > 0) log.info(line(ignoreText(entry)));

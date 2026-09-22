@@ -113,3 +113,40 @@ describe("three ticked stacks in a chain", () => {
     expect(matrix(h)).toEqual([]);
   });
 });
+
+// Phases (record 0067): the same loop, with three lines of config in place of
+// the edges. Each stack waits on every stack of every earlier phase.
+const PHASES = `phases: [infrastructure, monitoring, applications]
+stacks:
+  - path: network
+    phase: infrastructure
+  - path: app
+    phase: monitoring
+  - path: site
+    phase: applications
+`;
+
+describe("three ticked stacks in three phases", () => {
+  test("deploy one phase per run, in the order of the phases", async () => {
+    const h = await scanned(TABLE, { config: PHASES });
+    tick(h, ALICE, ["site:prod", "app:prod", "network:prod"]);
+    await wake(h);
+
+    expect((matrix(h) as MatrixEntry[]).map(({ stack }) => stack)).toEqual(["network:prod"]);
+    expect(rowsOf(h)["site:prod"]?.split("\n")[0]).toContain(
+      "queued behind **app:prod** and **network:prod**",
+    );
+    expect(await applyAndSettle(h, RESOLVE_RUN)).toEqual(["dispatched"]);
+
+    await dispatchedRun(h, "6161");
+    expect((matrix(h) as MatrixEntry[]).map(({ stack }) => stack)).toEqual(["app:prod"]);
+    expect(await applyAndSettle(h, "6161")).toEqual(["dispatched"]);
+
+    await dispatchedRun(h, "7171");
+    expect((matrix(h) as MatrixEntry[]).map(({ stack }) => stack)).toEqual(["site:prod"]);
+    expect(await applyAndSettle(h, "7171")).toEqual([]);
+
+    expect(h.adapter.applied).toEqual(["network:prod", "app:prod", "site:prod"]);
+    expect(Object.values(rowsOf(h)).some((row) => row.includes('state="queued"'))).toBe(false);
+  });
+});

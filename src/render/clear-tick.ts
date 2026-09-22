@@ -5,6 +5,7 @@
 // the box, and carries every other byte of the block through. The text between
 // the box and the marker is never read.
 
+import type { PhaseGroup } from "../core/phases.ts";
 import { type ParsedRow, parseDashboard } from "./marker.ts";
 import { DEPLOYS_OFF_NOTE, dependencyNote, INDENT, ORPHAN_TICK_NOTE } from "./row.ts";
 
@@ -13,8 +14,13 @@ export interface ClearTickOptions {
   // that deploys are turned off (record 0051). A writer without a diff cannot
   // tell the lines of a block apart, so the note goes right under the first
   // line. The next scan renders the row in the order of record 0027. With
-  // `dependsOn` the note names the stacks the tick waits on (record 0056).
-  note?: boolean | "deploys-off" | { dependsOn: readonly string[] } | undefined;
+  // `dependsOn` the note names the stacks the tick waits on (record 0056),
+  // and with `phases` the phases it waits on (record 0067).
+  note?:
+    | boolean
+    | "deploys-off"
+    | { dependsOn: readonly string[]; phases?: readonly PhaseGroup[] }
+    | undefined;
 }
 
 const TICKED_BOX = /^- \[[xX]\] /;
@@ -29,7 +35,7 @@ export function clearTick(row: ParsedRow, options: ClearTickOptions = {}): Parse
     (options.note === "deploys-off"
       ? DEPLOYS_OFF_NOTE
       : typeof options.note === "object"
-        ? dependencyNote(options.note.dependsOn)
+        ? dependencyNote(options.note.dependsOn, options.note.phases)
         : ORPHAN_TICK_NOTE);
   // The note is a fixed line of Sluiceway's own, so finding it again is a
   // comparison with a constant and not a reading of the row.

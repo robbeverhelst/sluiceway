@@ -5,6 +5,7 @@
 
 import type { CheckReport, IgnoreReport, UnclaimedGroup } from "../core/check.ts";
 import type { ConfiguredStack } from "../core/config.ts";
+import { type PhaseGroup, waitsByPhase } from "../core/phases.ts";
 import { stackId } from "../core/stack.ts";
 import type {
   SluicewayJob,
@@ -39,31 +40,82 @@ export function foundText(count: number): string {
   return count === 0 ? "Found no stacks." : `Found ${plural(count, "stack")}.`;
 }
 
-// The settings of one stack, in the words of sluiceway.yaml.
-export function settingsText(configured: ConfiguredStack): string {
+// The settings of one stack, in the words of sluiceway.yaml. `phases` are
+// the phases of the repo with their stacks (record 0067).
+export function settingsText(
+  configured: ConfiguredStack,
+  phases: readonly PhaseGroup[] = [],
+): string {
   const { environment, tickers, inputs } = configured;
   const rule = typeof tickers === "string" ? tickers : tickers.join(", ");
   const claims = inputs.length === 0 ? "no inputs" : `inputs ${inputs.join(", ")}`;
-  const waits = dependsOnWords(configured);
-  return `environment ${environment}, tickers ${rule}, ${claims}${waits === undefined ? "" : `, depends on ${waits}`}`;
+  const phase =
+    configured.phase === undefined ? "" : `, phase ${phaseWords(configured, " (read from ", ")")}`;
+  const waits = dependsOnWords(configured, phases);
+  return `environment ${environment}, tickers ${rule}, ${claims}${phase}${waits === undefined ? "" : `, depends on ${waits}`}`;
 }
 
-// What a stack depends on (records 0056 and 0059): the stack ids the file
-// names, and auto, whose stacks only a preview can read. Undefined for none.
-function dependsOnWords({ dependsOn, dependsOnAuto }: ConfiguredStack): string | undefined {
+function phaseWords({ phase, phaseFrom }: ConfiguredStack, before: string, after: string): string {
+  return phaseFrom === undefined ? `${phase}` : `${phase}${before}${phaseFrom}${after}`;
+}
+
+// What a stack depends on through its phase, grouped by the phase, and the
+// rest by stack id (record 0067).
+function split(configured: ConfiguredStack, phases: readonly PhaseGroup[]) {
+  return waitsByPhase({
+    phases: phases.map(({ phase }) => phase),
+    phaseOf: new Map(phases.flatMap(({ phase, stackIds }) => stackIds.map((id) => [id, phase]))),
+    stackId: stackId(configured.stack),
+    waitingOn: configured.dependsOn ?? [],
+  });
+}
+
+// What a stack depends on (records 0056, 0059 and 0067): the stack ids the
+// file names, auto, whose stacks only a preview can read, and every stack of
+// every earlier phase, each named with the phase that gives it. Undefined for
+// none.
+function dependsOnWords(
+  configured: ConfiguredStack,
+  phases: readonly PhaseGroup[],
+): string | undefined {
+  const { named, phases: through } = split(configured, phases);
   const parts = [
-    ...(dependsOn ?? []),
-    ...(dependsOnAuto ? ["the stacks its stack references name, read at each preview (auto)"] : []),
+    ...named,
+    ...through.map(({ phase, stackIds }) => `${stackIds.join(", ")} through the ${phase} phase`),
+    ...(configured.dependsOnAuto
+      ? ["the stacks its stack references name, read at each preview (auto)"]
+      : []),
   ];
   return parts.length === 0 ? undefined : parts.join(", ");
 }
 
-function dependsOnCell({ dependsOn, dependsOnAuto }: ConfiguredStack): string {
+// The summary names a phase, not every stack in it.
+function dependsOnCell(configured: ConfiguredStack, phases: readonly PhaseGroup[]): string {
+  const { named, phases: through } = split(configured, phases);
   const parts = [
-    ...(dependsOn ?? []),
-    ...(dependsOnAuto ? ["auto: its stack references, read at each preview"] : []),
+    ...named,
+    ...through.map(({ phase }) => `the ${phase} phase`),
+    ...(configured.dependsOnAuto ? ["auto: its stack references, read at each preview"] : []),
   ];
   return parts.length === 0 ? "none" : parts.join(", ");
+}
+
+// The phases in order for the job log: the stacks of each, and the phases
+// whose every stack it waits on (record 0067).
+export function phaseLines(phases: readonly PhaseGroup[]): string[] {
+  return phases.map(({ phase, stackIds }, index) => {
+    const earlier = phases.slice(0, index).map((one) => one.phase);
+    const stacks = stackIds.length === 0 ? "no stack" : stackIds.join(", ");
+    const waits = earlier.length === 0 ? "" : `. Waits on every stack of ${listed(earlier)}`;
+    return `${index + 1}. ${phase}: ${stacks}${waits}`;
+  });
+}
+
+// "a", "a and b", "a, b and c".
+function listed(words: readonly string[]): string {
+  return words.length <= 1
+    ? (words[0] ?? "")
+    : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 }
 
 export function ignoreText({ glob, stacks }: IgnoreReport): string {
@@ -196,10 +248,12 @@ export function renderCheckSummary({
     const waits = report.stacks.some(
       (configured) => configured.dependsOn !== undefined || configured.dependsOnAuto,
     );
+    // The same for the phase (record 0067).
+    const phased = report.stacks.some((configured) => configured.phase !== undefined);
     parts.push(
       [
-        `| Stack | Environment | Tickers | Inputs |${waits ? " Depends on |" : ""}`,
-        `|---|---|---|---|${waits ? "---|" : ""}`,
+        `| Stack | Environment | Tickers | Inputs |${phased ? " Phase |" : ""}${waits ? " Depends on |" : ""}`,
+        `|---|---|---|---|${phased ? "---|" : ""}${waits ? "---|" : ""}`,
         ...report.stacks.map((configured) => {
           const { environment, tickers, inputs } = configured;
           return row([
@@ -207,7 +261,28 @@ export function renderCheckSummary({
             environment,
             typeof tickers === "string" ? tickers : tickers.join(", "),
             inputs.length === 0 ? "none" : inputs.join(", "),
-            ...(waits ? [dependsOnCell(configured)] : []),
+            ...(phased
+              ? [configured.phase === undefined ? "none" : phaseWords(configured, ", from ", "")]
+              : []),
+            ...(waits ? [dependsOnCell(configured, report.phases)] : []),
+          ]);
+        }),
+      ].join("\n"),
+    );
+  }
+
+  if (report.phases.length > 0) {
+    parts.push(
+      "### Phases",
+      [
+        "| Phase | Stacks | Waits on |",
+        "|---|---|---|",
+        ...report.phases.map(({ phase, stackIds }, index) => {
+          const earlier = report.phases.slice(0, index).map((one) => one.phase);
+          return row([
+            phase,
+            stackIds.length === 0 ? "none" : stackIds.join(", "),
+            earlier.length === 0 ? "nothing" : earlier.join(", "),
           ]);
         }),
       ].join("\n"),

@@ -2,6 +2,7 @@
 // is a pure function of plain data: no clock, no environment, no GitHub.
 
 import type { Change, Diff } from "../core/diff.ts";
+import type { PhaseGroup } from "../core/phases.ts";
 import { escapeText } from "./escape.ts";
 import { mascotUrl } from "./images.ts";
 import { ROW_CLOSE_MARKER, rowMarker } from "./marker.ts";
@@ -247,12 +248,50 @@ export const DEPLOYS_OFF_NOTE =
 // The note on a row whose tick `resolve` cleared because a stack it depends on
 // has a change waiting that nobody ticked (record 0056). It names them, so a
 // refusal never stays silent.
-export function dependencyNote(ids: readonly string[]): string {
+// With phases (record 0067) it names each phase the tick waits on and the
+// stacks in it that have a change waiting, at most five of them, not every
+// stack of the phase.
+export function dependencyNote(ids: readonly string[], phases: readonly PhaseGroup[] = []): string {
   const names = ids.map((id) => `**${escapeText(id)}**`).join(" and ");
   const one = ids.length === 1;
-  return `:information_source: this tick started nothing: it depends on ${names}, which ${
-    one ? "has a change" : "have changes"
-  } waiting. Tick ${one ? "both" : "them all"} to deploy them in order, or deploy ${names} first.`;
+  if (phases.length === 0) {
+    return `:information_source: this tick started nothing: it depends on ${names}, which ${
+      one ? "has a change" : "have changes"
+    } waiting. Tick ${one ? "both" : "them all"} to deploy them in order, or deploy ${names} first.`;
+  }
+  const waiting = (count: number) => (count === 1 ? "has a change" : "have changes");
+  const clauses = [
+    ...(ids.length === 0 ? [] : [`it depends on ${names}, which ${waiting(ids.length)} waiting`]),
+    ...phases.map(
+      ({ phase, stackIds }) =>
+        `it waits on the **${escapeText(phase)}** phase: ${shortList(stackIds)} ${waiting(stackIds.length)} waiting`,
+    ),
+  ];
+  const count = ids.length + phases.reduce((sum, { stackIds }) => sum + stackIds.length, 0);
+  const first = [
+    ...ids.map((id) => `**${escapeText(id)}**`),
+    ...phases.map(({ phase }) => `the **${escapeText(phase)}** phase`),
+  ];
+  return `:information_source: this tick started nothing: ${clauses.join(", and ")}. Tick ${
+    count === 1 ? "both" : "them all"
+  } to deploy them in order, or deploy ${listWords(first)} first.`;
+}
+
+// A phase is named by its stacks up to this many, and the rest are counted,
+// as a row names at most five authors (record 0029).
+const NAMES_PER_PHASE = 5;
+
+function shortList(ids: readonly string[]): string {
+  const shown = ids.slice(0, NAMES_PER_PHASE).map((id) => `**${escapeText(id)}**`);
+  const more = ids.length - shown.length;
+  return more > 0 ? `${shown.join(", ")} and ${more} more` : listWords(shown);
+}
+
+// "a", "a and b", "a, b and c".
+function listWords(words: readonly string[]): string {
+  return words.length <= 1
+    ? (words[0] ?? "")
+    : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 }
 
 // The note on a row that a deploy of this same change did not bring in sync

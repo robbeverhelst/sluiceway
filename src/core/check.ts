@@ -5,6 +5,7 @@
 import { claim } from "./claim.ts";
 import { applyConfig, type Config, type ConfiguredStack, ignoreGlob } from "./config.ts";
 import { globMatcher } from "./glob.ts";
+import { type PhaseGroup, phaseGroups } from "./phases.ts";
 import { type Stack, stackId } from "./stack.ts";
 
 // One `ignore` glob and the stacks it leaves out.
@@ -36,6 +37,8 @@ export interface CheckReport {
   // offered for scan.unrelated and never applied: whether a program reads a
   // file is the user's to say (record 0042).
   suggested: string[];
+  // Every phase in order with its stacks (record 0067). Empty without phases.
+  phases: PhaseGroup[];
 }
 
 // Files that look like docs and tooling, which programs seldom read. A fixed
@@ -67,6 +70,14 @@ export function checkSetup(config: Config, found: Stack[], files: string[]): Che
     ignore: config.ignore.map((entry) => ignoreReport(ignoreGlob(entry), found)),
     unclaimed: groups(unclaimed),
     suggested: suggestedUnrelated(unclaimed),
+    phases: phaseGroups(
+      config.phases,
+      new Map(
+        stacks.flatMap((one) =>
+          one.phase === undefined ? [] : [[stackId(one.stack), one.phase] as const],
+        ),
+      ),
+    ),
   };
 }
 

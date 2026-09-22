@@ -37,6 +37,7 @@ import {
 } from "../core/edit-history.ts";
 import { type MergeMethod, mergeMethod, NOT_QUALIFIED, qualify } from "../core/merge-and-deploy.ts";
 import { declaresMergeScanInput, MERGE_SCAN_INPUT, mergeScanInputs } from "../core/merge-scan.ts";
+import { waitsByPhase } from "../core/phases.ts";
 import { renovateMergeSetting } from "../core/renovate-config.ts";
 import { capDeploys, type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import { stackId } from "../core/stack.ts";
@@ -371,13 +372,36 @@ async function resolveTicks(
     ),
     open: new Set(open.keys()),
   });
+  // A stack waits on a phase through every stack in it, and the note names
+  // the phase (record 0067).
+  const phaseOf = new Map(
+    [...(stacks?.values() ?? [])].flatMap((one) =>
+      one.phase === undefined ? [] : [[stackId(one.stack), one.phase] as const],
+    ),
+  );
   for (const { stackId: id, waitingOn } of plan.refused) {
     const one = waitingOn.length === 1;
+    const { named, phases } = waitsByPhase({
+      phases: config.phases,
+      phaseOf,
+      stackId: id,
+      waitingOn,
+    });
+    const words = [
+      ...named.map(logGroupTitle),
+      ...phases.flatMap(({ phase, stackIds }) =>
+        stackIds.map((dependency) => `${logGroupTitle(dependency)} of the ${phase} phase`),
+      ),
+    ];
     log.info(
-      `${logGroupTitle(id)} is ticked, and it depends on ${waitingOn.map(logGroupTitle).join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`,
+      `${logGroupTitle(id)} is ticked, and it depends on ${words.join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`,
     );
     const hash = hashes.get(id);
-    if (hash !== undefined) clear.set(id, { hash, note: { dependsOn: waitingOn } });
+    if (hash !== undefined)
+      clear.set(id, {
+        hash,
+        note: { dependsOn: named, ...(phases.length === 0 ? {} : { phases }) },
+      });
   }
   const tickers = new Map(start.map(({ stackId: id, ticker }) => [id, ticker]));
   const toCreate = [
@@ -1083,9 +1107,12 @@ async function startQueued(
 ): Promise<void> {
   const { log, github } = context;
   const config = loadConfig(context.root);
-  if (!config.stacks.some(({ dependsOn }) => dependsOn !== undefined)) {
+  // A phase gives dependencies too (record 0067).
+  if (
+    !config.stacks.some(({ dependsOn, phase }) => dependsOn !== undefined || phase !== undefined)
+  ) {
     log.info(
-      "The event that started this job is not about an issue, and no stack has dependsOn. Nothing to do.",
+      "The event that started this job is not about an issue, and no stack has dependsOn or a phase. Nothing to do.",
     );
     return;
   }
