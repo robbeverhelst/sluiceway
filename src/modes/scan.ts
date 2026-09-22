@@ -15,7 +15,7 @@ import type {
 } from "../adapters/adapter.ts";
 import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
-import { stripAnsi } from "../adapters/pulumi/tool-log.ts";
+import { stripAnsi } from "../adapters/tool-run.ts";
 import type { Attribution } from "../core/attribution.ts";
 import { sharedFiles, suggestedUnrelated } from "../core/check.ts";
 import type { Config, ConfiguredStack } from "../core/config.ts";
