@@ -151,6 +151,7 @@ describe("where values appear", () => {
         outcome: "deployed",
         stack: "apps:prod",
         ticker: "alice",
+        milliseconds: 1,
         applied: { kind: "deployed", diff: DIFF },
       }),
     );

@@ -12,7 +12,7 @@ import type { AppliedPreview, ApplyOutcome } from "./apply-summary.ts";
 import { orderChanges } from "./changes.ts";
 import type { ParsedRow } from "./marker.ts";
 import { byCodeUnit, sortedDrift, sortedKeys } from "./row.ts";
-import type { SummaryStack } from "./summary.ts";
+import type { SummaryMerge, SummaryStack } from "./summary.ts";
 
 // The shape of the file. A reader checks it before anything else, and a
 // change that breaks a reader raises it.
@@ -71,8 +71,38 @@ const failedSchema = {
   reason: z.string(),
 };
 
+// A merged pull request or a direct push the stack claims since its last
+// successful deploy (record 0026), as the summary lists it: the title of a
+// pull request, the first line of a push's message, the plain login of the
+// author when GitHub has one (record 0061).
+const attributionSchema = z.array(
+  z.union([
+    z.strictObject({
+      kind: z.literal("pull-request"),
+      number: count(),
+      title: z.string(),
+      url: z.string(),
+      author: z.string().optional(),
+    }),
+    z.strictObject({
+      kind: z.literal("push"),
+      commit: z.string(),
+      message: z.string(),
+      url: z.string(),
+      author: z.string().optional(),
+    }),
+  ]),
+);
+
 const scanStackSchema = z.union([
-  z.strictObject({ stack: z.string(), seconds: z.number(), ...diffSchema }),
+  z.strictObject({
+    stack: z.string(),
+    seconds: z.number(),
+    ...diffSchema,
+    // Newest first. Absent when the lookup failed or the stack is not one a
+    // row names merges for: attribution never blocks (record 0026).
+    attribution: attributionSchema.optional(),
+  }),
   z.strictObject({
     stack: z.string(),
     seconds: z.number(),
@@ -131,6 +161,11 @@ export const applyResultSchema = z.strictObject({
   ticker: z.string().nullable(),
   // The deploy failure reason from the fixed list (record 0022), when there is one.
   reason: z.string().nullable(),
+  // How long the job took, and how long the tool's deploy inside it took.
+  // `deploySeconds` is null when the tool was never asked to deploy (record
+  // 0061).
+  seconds: z.number(),
+  deploySeconds: z.number().nullable(),
   // The fresh preview that was held against the tick. After a deploy it is
   // what went out, after a rehearsal what would have.
   preview: previewSchema.nullable(),
@@ -188,6 +223,10 @@ export interface ApplyResultInput {
   reason?: string | undefined;
   // What the summary of the apply shows, when the job wrote one.
   applied?: ApplyOutcome | undefined;
+  // From the start of the job to this file.
+  milliseconds: number;
+  // The tool's deploy, when it was asked to deploy.
+  deployMilliseconds?: number | undefined;
 }
 
 function seconds(milliseconds: number): number {
@@ -231,6 +270,21 @@ function diffOf(diff: Diff) {
   };
 }
 
+function attributionOf(merges: SummaryMerge[]): z.infer<typeof attributionSchema> {
+  return merges.map((merge) => {
+    const author = merge.author === undefined ? {} : { author: merge.author };
+    return merge.kind === "pull-request"
+      ? { kind: merge.kind, number: merge.number, title: merge.title, url: merge.url, ...author }
+      : {
+          kind: merge.kind,
+          commit: merge.sha,
+          message: merge.message.split(/\r?\n/, 1)[0] ?? "",
+          url: merge.url,
+          ...author,
+        };
+  });
+}
+
 function stackIdOf(stack: SummaryStack): string {
   return stack.kind === "diff" ? stack.diff.stackId : stack.stackId;
 }
@@ -244,7 +298,12 @@ export function scanResultFile(input: ScanResultInput): string {
     .sort((a, b) => byCodeUnit(stackIdOf(a.stack), stackIdOf(b.stack)))
     .map(({ stack, milliseconds }) =>
       stack.kind === "diff"
-        ? { stack: stack.diff.stackId, seconds: seconds(milliseconds), ...diffOf(stack.diff) }
+        ? {
+            stack: stack.diff.stackId,
+            seconds: seconds(milliseconds),
+            ...diffOf(stack.diff),
+            ...(stack.merges === undefined ? {} : { attribution: attributionOf(stack.merges) }),
+          }
         : {
             stack: stack.stackId,
             seconds: seconds(milliseconds),
@@ -290,6 +349,9 @@ export function applyResultFile(input: ApplyResultInput): string {
       stack: input.stack ?? null,
       ticker: input.ticker ?? null,
       reason: input.reason ?? null,
+      seconds: seconds(input.milliseconds),
+      deploySeconds:
+        input.deployMilliseconds === undefined ? null : seconds(input.deployMilliseconds),
       preview:
         applied?.kind === "deployed" || applied?.kind === "rehearsed"
           ? diffOf(applied.diff)

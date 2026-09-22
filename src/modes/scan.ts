@@ -227,6 +227,8 @@ interface ScanReport {
   previewed?: Previewed[];
   // The dashboard this scan wrote, or found already saying the same.
   dashboard?: { url: string; changed: boolean; counts: DashboardCounts };
+  // The merges each stack claims, once the late read found them (record 0061).
+  attributed?: Attributed;
 }
 
 export async function scan(context: ScanContext): Promise<void> {
@@ -276,8 +278,9 @@ function reportOutputs(context: ScanContext, report: ScanReport): void {
     milliseconds: context.now().getTime() - startedAt.getTime(),
     dashboard,
     stacks: previewed.map(({ id, result, milliseconds }) => ({
-      // The same stacks as the summary, made the same way (record 0041).
-      stack: previewSummary(id, result),
+      // The same stacks as the summary, made the same way (records 0041 and
+      // 0061).
+      stack: previewSummary(id, result, report.attributed?.get(id)?.merges),
       milliseconds,
     })),
   });
@@ -630,6 +633,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   }
 
   reportDashboard(context, written, composed);
+  report.attributed = attributed;
   report.dashboard = {
     url: dashboardUrl(context.repoUrl, written.number),
     changed: written.written,

@@ -47,6 +47,10 @@ describe("the outputs of apply", () => {
       stack: "a:prod",
       ticker: "alice",
       reason: null,
+      // The clock moves half a second a read: the start, both sides of the
+      // deploy and the end (record 0061).
+      seconds: 1.5,
+      deploySeconds: 0.5,
       preview: {
         state: "pending",
         counts: { create: 0, update: 1, replace: 0, delete: 0, trackingOnly: 0 },
@@ -74,6 +78,8 @@ describe("the outputs of apply", () => {
     expect(file(h.outputs)).toMatchObject({
       outcome: "refused",
       reason: "the change moved since the tick",
+      // The tool was never asked to deploy.
+      deploySeconds: null,
       preview: { state: "pending", counts: { create: 1, update: 1 } },
       after: null,
     });

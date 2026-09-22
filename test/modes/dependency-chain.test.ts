@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { MatrixEntry } from "../../src/core/resolve.ts";
 import { apply } from "../../src/modes/apply.ts";
 import { settle } from "../../src/modes/settle.ts";
-import { ACTION_REF, change, pending, SHA } from "./harness.ts";
+import { ACTION_REF, change, pending, SHA, steppingClock } from "./harness.ts";
 import {
   ALICE,
   matrix,
@@ -44,6 +44,7 @@ async function applyAndSettle(h: ResolveHarness, runId: string): Promise<string[
       github: h.github,
       log: h.log,
       previewTimeoutMinutes: 10,
+      now: steppingClock(),
       repoUrl: h.context.repoUrl,
       runId,
       runAttempt: "1",

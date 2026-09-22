@@ -56041,8 +56041,29 @@ var failedSchema = {
   state: exports_external.literal("preview-failed"),
   reason: exports_external.string()
 };
+var attributionSchema = exports_external.array(exports_external.union([
+  exports_external.strictObject({
+    kind: exports_external.literal("pull-request"),
+    number: count2(),
+    title: exports_external.string(),
+    url: exports_external.string(),
+    author: exports_external.string().optional()
+  }),
+  exports_external.strictObject({
+    kind: exports_external.literal("push"),
+    commit: exports_external.string(),
+    message: exports_external.string(),
+    url: exports_external.string(),
+    author: exports_external.string().optional()
+  })
+]));
 var scanStackSchema = exports_external.union([
-  exports_external.strictObject({ stack: exports_external.string(), seconds: exports_external.number(), ...diffSchema }),
+  exports_external.strictObject({
+    stack: exports_external.string(),
+    seconds: exports_external.number(),
+    ...diffSchema,
+    attribution: attributionSchema.optional()
+  }),
   exports_external.strictObject({
     stack: exports_external.string(),
     seconds: exports_external.number(),
@@ -56079,6 +56100,8 @@ var applyResultSchema = exports_external.strictObject({
   stack: exports_external.string().nullable(),
   ticker: exports_external.string().nullable(),
   reason: exports_external.string().nullable(),
+  seconds: exports_external.number(),
+  deploySeconds: exports_external.number().nullable(),
   preview: previewSchema.nullable(),
   after: previewSchema.nullable()
 });
@@ -56124,6 +56147,18 @@ function diffOf(diff) {
     ...drift.length === 0 ? {} : { drift: drift.map(changeOf) }
   };
 }
+function attributionOf(merges) {
+  return merges.map((merge3) => {
+    const author2 = merge3.author === undefined ? {} : { author: merge3.author };
+    return merge3.kind === "pull-request" ? { kind: merge3.kind, number: merge3.number, title: merge3.title, url: merge3.url, ...author2 } : {
+      kind: merge3.kind,
+      commit: merge3.sha,
+      message: merge3.message.split(/\r?\n/, 1)[0] ?? "",
+      url: merge3.url,
+      ...author2
+    };
+  });
+}
 function stackIdOf(stack) {
   return stack.kind === "diff" ? stack.diff.stackId : stack.stackId;
 }
@@ -56132,7 +56167,12 @@ function json2(value) {
 `;
 }
 function scanResultFile(input2) {
-  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit6(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? { stack: stack.diff.stackId, seconds: seconds(milliseconds), ...diffOf(stack.diff) } : {
+  const stacks = [...input2.stacks].sort((a, b) => byCodeUnit6(stackIdOf(a.stack), stackIdOf(b.stack))).map(({ stack, milliseconds }) => stack.kind === "diff" ? {
+    stack: stack.diff.stackId,
+    seconds: seconds(milliseconds),
+    ...diffOf(stack.diff),
+    ...stack.merges === undefined ? {} : { attribution: attributionOf(stack.merges) }
+  } : {
     stack: stack.stackId,
     seconds: seconds(milliseconds),
     state: "preview-failed",
@@ -56168,6 +56208,8 @@ function applyResultFile(input2) {
     stack: input2.stack ?? null,
     ticker: input2.ticker ?? null,
     reason: input2.reason ?? null,
+    seconds: seconds(input2.milliseconds),
+    deploySeconds: input2.deployMilliseconds === undefined ? null : seconds(input2.deployMilliseconds),
     preview: applied?.kind === "deployed" || applied?.kind === "rehearsed" ? diffOf(applied.diff) : previewOf(applied?.kind === "not-deployed" ? applied.checked : undefined),
     after: previewOf(applied?.kind === "not-deployed" ? applied.after : undefined)
   }));
@@ -56236,7 +56278,7 @@ function lines2(text5) {
 }
 var RECORD_PERMISSIONS = "The apply job needs the permission `deployments: write`, and `deployment-id` has to be the `deployment` of a matrix entry that `resolve` set (record 0035).";
 async function apply4(context3) {
-  const report = {};
+  const report = { startedAt: context3.now() };
   try {
     await applying(context3, report);
   } finally {
@@ -56263,7 +56305,9 @@ function reportOutputs(context3, report) {
     stack: report.stack,
     ticker: report.ticker,
     reason: report.reason,
-    applied: report.applied
+    applied: report.applied,
+    milliseconds: context3.now().getTime() - (report.startedAt?.getTime() ?? 0),
+    deployMilliseconds: report.deployMilliseconds
   });
   writeResultFile(outputs, context3.log, "apply", text5);
 }
@@ -56335,6 +56379,8 @@ ${ALREADY_ENDED}
   report.outcome = attempt.summary?.kind === "in-sync" || attempt.summary?.kind === "rehearsed" ? attempt.summary.kind : attempt.state === "success" ? "deployed" : attempt.reason?.kind === "moved" || attempt.reason?.kind === "deploys-off" ? "refused" : "failed";
   report.reason = attempt.reason && deployFailureText(attempt.reason);
   report.applied = attempt.summary;
+  if (progress.milliseconds !== undefined)
+    report.deployMilliseconds = progress.milliseconds;
   const failures = [];
   let ended = false;
   try {
@@ -56551,7 +56597,13 @@ async function afterFreshPreview(context3, id, payload, runUrl, progress, setup,
   }
   progress.deploying = true;
   const repairDrift = (fresh.diff.drift ?? []).length > 0;
-  const result = await adapter.apply(setup.stack.stack, tool, previewed.ok ? previewed.plan : undefined, repairDrift ? { repairDrift } : undefined);
+  const deployStarted = context3.now();
+  let result;
+  try {
+    result = await adapter.apply(setup.stack.stack, tool, previewed.ok ? previewed.plan : undefined, repairDrift ? { repairDrift } : undefined);
+  } finally {
+    progress.milliseconds = context3.now().getTime() - deployStarted.getTime();
+  }
   const words = lines2(result.toolLog);
   context3.log.group(`${name}: the deploy`, [
     result.ok ? "deployed" : `deploy failed: ${deployFailureText(result.reason)}`,
@@ -56713,6 +56765,7 @@ async function runApply(directory) {
     github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),
     log: actionsLog(),
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
+    now: () => new Date,
     repoUrl: job.repoUrl,
     runId: job.runId,
     runAttempt: job.runAttempt,
@@ -56794,12 +56847,241 @@ async function repoFiles(root) {
   return files.sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
 }
 
+// src/core/workflow-check.ts
+import { readdirSync as readdirSync2, readFileSync as readFileSync5 } from "node:fs";
+import { join as join21 } from "node:path";
+var WORKFLOW_DIRECTORY = ".github/workflows";
+function readWorkflowFiles(root) {
+  let names;
+  try {
+    names = readdirSync2(join21(root, WORKFLOW_DIRECTORY), { withFileTypes: true }).filter((entry2) => entry2.isFile() && /\.ya?ml$/.test(entry2.name)).map((entry2) => entry2.name);
+  } catch {
+    return [];
+  }
+  return names.sort(byCodeUnit11).map((name) => ({
+    path: `${WORKFLOW_DIRECTORY}/${name}`,
+    text: readFileSync5(join21(root, WORKFLOW_DIRECTORY, name), "utf8")
+  }));
+}
+var MODES = ["scan", "resolve", "apply", "settle", "check"];
+function needs(mode, config2) {
+  switch (mode) {
+    case "scan":
+      return {
+        contents: "read",
+        issues: "write",
+        deployments: "write",
+        actions: "read",
+        "pull-requests": "read"
+      };
+    case "resolve":
+      return {
+        contents: config2.mergeAndDeploy.authors.length > 0 ? "write" : "read",
+        issues: "write",
+        deployments: "write",
+        actions: "write",
+        "pull-requests": "read"
+      };
+    case "apply":
+      return {
+        contents: "read",
+        issues: "write",
+        deployments: "write",
+        "pull-requests": "read"
+      };
+    case "settle":
+      return { contents: "read", issues: "read", deployments: "write", actions: "write" };
+    case "check":
+      return { contents: "read" };
+  }
+}
+var SLUICEWAY_STEP = /^sluiceway\/sluiceway@(.+)$/i;
+function refKind(ref) {
+  if (/^v\d+$/.test(ref))
+    return "moving";
+  if (/^v\d+\.\d+\.\d+$/.test(ref))
+    return "release";
+  if (/^[0-9a-f]{40}$/.test(ref))
+    return "commit";
+  return "other";
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function permissionsOf(value) {
+  if (value === "read-all" || value === "write-all")
+    return value;
+  if (!isRecord(value))
+    return;
+  return Object.fromEntries(Object.entries(value).map(([key, level]) => [key, String(level)]));
+}
+function triggersOf(value) {
+  if (typeof value === "string")
+    return { [value]: null };
+  if (Array.isArray(value))
+    return Object.fromEntries(value.map((event) => [String(event), null]));
+  return isRecord(value) ? value : {};
+}
+function parseWorkflow(text5) {
+  let document;
+  try {
+    document = $parse(text5);
+  } catch {
+    return "unreadable";
+  }
+  if (!isRecord(document) || !isRecord(document.jobs))
+    return;
+  const jobs = {};
+  for (const [name, job] of Object.entries(document.jobs)) {
+    if (!isRecord(job))
+      continue;
+    jobs[name] = {
+      permissions: permissionsOf(job.permissions),
+      steps: Array.isArray(job.steps) ? job.steps : []
+    };
+  }
+  return { on: triggersOf(document.on), permissions: permissionsOf(document.permissions), jobs };
+}
+function sluicewayJob(job, steps) {
+  for (const step2 of steps) {
+    if (!isRecord(step2) || typeof step2.uses !== "string")
+      continue;
+    const ref = SLUICEWAY_STEP.exec(step2.uses.trim())?.[1];
+    if (ref === undefined)
+      continue;
+    const named = isRecord(step2.with) ? String(step2.with.mode ?? "") : "";
+    const mode = MODES.includes(named) ? named : undefined;
+    return { job, mode, ref, refKind: refKind(ref), named };
+  }
+  return;
+}
+function missing(granted, wanted) {
+  return Object.entries(wanted).filter(([scope, level]) => {
+    if (granted === "write-all")
+      return false;
+    if (granted === "read-all")
+      return level === "write";
+    const has = granted?.[scope];
+    return !(has === "write" || has === "read" && level === "read");
+  }).map(([scope, level]) => `${scope}: ${level}`);
+}
+function has(granted, scope) {
+  return granted === "write-all" || isRecord(granted) && granted[scope] === "write";
+}
+function checkWorkflows(files, config2) {
+  const report = { workflows: [], warnings: [], notes: [] };
+  for (const { path, text: text5 } of files) {
+    const parsed = parseWorkflow(text5);
+    if (parsed === "unreadable") {
+      if (/sluiceway\/sluiceway@/i.test(text5)) {
+        report.warnings.push({ kind: "unreadable", path });
+      }
+      continue;
+    }
+    if (parsed === undefined)
+      continue;
+    checkOne(path, parsed, config2, report);
+  }
+  return report;
+}
+function checkOne(path, workflow, config2, report) {
+  const found = Object.entries(workflow.jobs).flatMap(([name, job]) => {
+    const step2 = sluicewayJob(name, job.steps);
+    return step2 ? [{ step: step2, permissions: job.permissions ?? workflow.permissions }] : [];
+  });
+  if (found.length === 0)
+    return;
+  const { warnings, notes } = report;
+  report.workflows.push({
+    path,
+    jobs: found.map(({ step: { job, mode, ref, refKind: refKind2 } }) => ({ job, mode, ref, refKind: refKind2 }))
+  });
+  for (const { step: step2 } of found) {
+    if (step2.mode === undefined) {
+      warnings.push({ kind: "unknown-mode", path, job: step2.job, mode: step2.named });
+    }
+    if (step2.refKind === "other") {
+      warnings.push({ kind: "unreleased-ref", path, job: step2.job, ref: step2.ref });
+    }
+  }
+  const refs = [...new Set(found.map(({ step: step2 }) => step2.ref))];
+  if (refs.length > 1)
+    warnings.push({ kind: "mixed-refs", path, refs });
+  const called = "workflow_call" in workflow.on;
+  if (called)
+    notes.push({ kind: "called", path });
+  const modes = new Set(found.map(({ step: step2 }) => step2.mode));
+  const runs = (mode) => modes.has(mode);
+  const deploys = [...modes].some((mode) => mode !== undefined && mode !== "check");
+  if (!called && deploys) {
+    for (const trigger of ["pull_request", "pull_request_target", "merge_group"]) {
+      if (trigger in workflow.on)
+        warnings.push({ kind: "forbidden-trigger", path, trigger });
+    }
+  }
+  if (!called && runs("scan")) {
+    for (const trigger of ["push", "schedule", "workflow_dispatch"]) {
+      if (!(trigger in workflow.on))
+        warnings.push({ kind: "missing-trigger", path, trigger });
+    }
+  }
+  if (!called && runs("resolve") && !listensToEdits(workflow.on.issues, "issues" in workflow.on)) {
+    warnings.push({ kind: "missing-trigger", path, trigger: "issues" });
+  }
+  if (runs("resolve") || runs("apply") || runs("settle")) {
+    for (const mode of ["scan", "resolve", "apply", "settle"]) {
+      if (!runs(mode))
+        warnings.push({ kind: "missing-job", path, mode });
+    }
+  } else if (runs("scan") && !config2.dashboard.readOnly) {
+    warnings.push({ kind: "boxes-do-nothing", path });
+  }
+  if (called)
+    return;
+  for (const { step: step2, permissions } of found) {
+    if (step2.mode === undefined)
+      continue;
+    const { job, mode } = step2;
+    if (permissions === undefined) {
+      warnings.push({
+        kind: "no-permissions",
+        path,
+        job,
+        mode,
+        needs: missing({}, needs(mode, config2))
+      });
+      continue;
+    }
+    const lacks = missing(permissions, needs(mode, config2));
+    if (lacks.length > 0)
+      warnings.push({ kind: "missing-permissions", path, job, mode, missing: lacks });
+    if (mode === "scan" && !has(permissions, "checks")) {
+      notes.push({ kind: "no-preview-pages", path, job });
+    }
+  }
+}
+function listensToEdits(issues, present3) {
+  if (!present3)
+    return false;
+  if (!isRecord(issues) || issues.types === undefined)
+    return true;
+  const types = issues.types;
+  return Array.isArray(types) ? types.includes("edited") : types === "edited";
+}
+function byCodeUnit11(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 // src/render/check.ts
 var VALID = "The setup is valid.";
 var NO_CONFIG_FILE = "No sluiceway.yaml, so every setting is its default.";
 var CANNOT_TELL = "A check reads files only, so it cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan.";
 var WHERE_FILES_BELONG = "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.";
 var PASTE_NOTE = "The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.";
+var WORKFLOW_WARNING_TITLE = "A workflow is missing something";
+var NOTHING_MISSING = "Nothing is missing from the workflows.";
+var NO_SCAN_WORKFLOW = "No workflow in .github/workflows runs a scan yet.";
+var WORKFLOWS_AS_TEXT = "The check reads the workflow files as text. The repo's default token permissions, the rules of an environment and what GitHub itself validates live elsewhere and do not show here.";
 var FILES_PER_DIRECTORY = 20;
 function foundText(count3) {
   return count3 === 0 ? "Found no stacks." : `Found ${plural2(count3, "stack")}.`;
@@ -56842,7 +57124,71 @@ function unrelatedBlock(existing, suggested) {
   const globs2 = [...new Set([...existing, ...suggested])];
   return ["scan:", "  unrelated:", ...globs2.map((glob) => `    - ${JSON.stringify(glob)}`)];
 }
-function renderCheckSummary({ report, unrelated, hasConfigFile: hasConfigFile2 }) {
+function refText({ ref, refKind: refKind2 }) {
+  switch (refKind2) {
+    case "moving":
+      return `at ${ref}, which follows every release of ${ref}`;
+    case "release":
+      return `at ${ref}, one release that stays as it is`;
+    case "commit":
+      return `at commit ${ref.slice(0, 12)}, pinned`;
+    case "other":
+      return `at ${ref}, which is not a release`;
+  }
+}
+function workflowJobText(path, job) {
+  const mode = job.mode === undefined ? "no known mode" : `mode ${job.mode}`;
+  return `${path}, job ${job.job}: ${mode}, ${refText(job)}.`;
+}
+var MODE_LIST = "scan, resolve, apply, settle, check";
+function workflowWarningText(warning2) {
+  const { path } = warning2;
+  switch (warning2.kind) {
+    case "unreadable":
+      return `${path} is not valid YAML, so the check cannot read how it runs Sluiceway. The Actions tab of the repo shows GitHub's own error.`;
+    case "unknown-mode":
+      return warning2.mode === "" ? `${path}, job ${warning2.job}: the Sluiceway step has no mode. Use one of: ${MODE_LIST}.` : `${path}, job ${warning2.job}: the Sluiceway step has mode ${JSON.stringify(warning2.mode)}, which does not exist. Use one of: ${MODE_LIST}.`;
+    case "unreleased-ref":
+      return `${path}, job ${warning2.job}: sluiceway/sluiceway@${warning2.ref} is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.`;
+    case "mixed-refs":
+      return `${path} runs Sluiceway at ${warning2.refs.join(" and ")}. Use one ref in every job, so that a scan and the deploy it leads to run the same version.`;
+    case "missing-trigger":
+      return MISSING_TRIGGER[warning2.trigger](path);
+    case "forbidden-trigger":
+      return `${path} runs on ${warning2.trigger}. A scan would write the dashboard from code that is not on the default branch yet. Only the workflow of the check may run on pull requests or in a merge queue.`;
+    case "missing-job":
+      return `${path} has no ${warning2.mode} job. The four jobs scan, resolve, apply and settle stay in one file: a scan looks for waiting ticks among the runs of its own workflow, and the rescan box and settle start that same workflow again.`;
+    case "boxes-do-nothing":
+      return `${path} scans, and no job in it resolves a tick, so a box on the dashboard does nothing. For a workflow that only scans, set dashboard.readOnly: true in sluiceway.yaml.`;
+    case "no-permissions":
+      return `${path}, job ${warning2.job}: there is no permissions block, so the token gets the repo's default, which a file does not show. ${warning2.mode} needs ${warning2.needs.join(", ")}.`;
+    case "missing-permissions":
+      return `${path}, job ${warning2.job}: ${warning2.mode} needs ${warning2.missing.join(", ")}. A job's own permissions replace the workflow's.`;
+  }
+}
+var MISSING_TRIGGER = {
+  push: (path) => `${path} scans and has no push trigger. A push to the default branch starts the scan that shows its change as pending.`,
+  schedule: (path) => `${path} scans and has no schedule. The daily full scan catches a change that is not a file in the repo, such as another stack's output.`,
+  workflow_dispatch: (path) => `${path} has no workflow_dispatch trigger. The rescan box and settle start a scan through it.`,
+  issues: (path) => `${path} has a resolve job and does not listen to issue edits (issues, with the type edited). A tick would start nothing.`
+};
+function workflowNoteText(note) {
+  switch (note.kind) {
+    case "no-preview-pages":
+      return `${note.path}, job ${note.job}: without checks: write there are no preview pages, and a pending row's preview link opens the run's summary.`;
+    case "called":
+      return `${note.path} is called from another workflow. Its triggers and permissions come from the caller, which the check does not follow.`;
+  }
+}
+function scansSomewhere(workflows) {
+  return workflows.workflows.some(({ jobs }) => jobs.some((job) => job.mode === "scan"));
+}
+function renderCheckSummary({
+  report,
+  workflows,
+  unrelated,
+  hasConfigFile: hasConfigFile2
+}) {
   const parts = ["## Sluiceway check", VALID];
   if (!hasConfigFile2)
     parts.push(NO_CONFIG_FILE);
@@ -56888,6 +57234,7 @@ function renderCheckSummary({ report, unrelated, hasConfigFile: hasConfigFile2 }
 `));
     }
   }
+  parts.push("### Workflows", ...workflowParts(workflows));
   parts.push("### What a check cannot tell", CANNOT_TELL);
   return `${parts.join(`
 
@@ -56906,6 +57253,32 @@ function renderCheckFailure(kind, problems) {
 
 `)}
 `;
+}
+function workflowParts(workflows) {
+  const parts = [];
+  if (workflows.workflows.length > 0) {
+    parts.push([
+      "| Workflow | Job | Mode | Action ref |",
+      "|---|---|---|---|",
+      ...workflows.workflows.flatMap(({ path, jobs }) => jobs.map((job) => row([path, job.job, job.mode ?? "none", refText(job)])))
+    ].join(`
+`));
+  }
+  if (!scansSomewhere(workflows))
+    parts.push(NO_SCAN_WORKFLOW);
+  if (workflows.warnings.length > 0) {
+    parts.push(workflows.warnings.map((warning2) => `- ${escapeText(workflowWarningText(warning2))}`).join(`
+`));
+  }
+  if (workflows.notes.length > 0) {
+    parts.push(workflows.notes.map((note) => `- ${escapeText(workflowNoteText(note))}`).join(`
+`));
+  }
+  if (workflows.workflows.length > 0 && workflows.warnings.length === 0) {
+    parts.push(NOTHING_MISSING);
+  }
+  parts.push(WORKFLOWS_AS_TEXT);
+  return parts;
 }
 function groupLine({ directory, files }) {
   const where2 = directory === "." ? "The repo root" : escapeText(`${directory}/`);
@@ -56956,9 +57329,31 @@ async function check2(context3) {
       log.group("Ready to paste into sluiceway.yaml", unrelatedBlock(config2.scan.unrelated, report.suggested).map(line));
     }
   }
-  await summary2(context3, renderCheckSummary({ report, unrelated: config2.scan.unrelated, hasConfigFile: configFile }));
+  const workflows = checkWorkflows(readWorkflowFiles(root), config2);
+  logWorkflows(log, workflows);
+  await summary2(context3, renderCheckSummary({
+    report,
+    workflows,
+    unrelated: config2.scan.unrelated,
+    hasConfigFile: configFile
+  }));
   log.info(VALID);
   log.info(CANNOT_TELL);
+}
+function logWorkflows(log, workflows) {
+  if (workflows.workflows.length > 0) {
+    log.group("Workflows", workflows.workflows.flatMap(({ path, jobs }) => jobs.map((job) => line(workflowJobText(path, job)))));
+  }
+  if (!scansSomewhere(workflows))
+    log.info(NO_SCAN_WORKFLOW);
+  for (const warning2 of workflows.warnings) {
+    log.warning(line(workflowWarningText(warning2)), WORKFLOW_WARNING_TITLE);
+  }
+  for (const note of workflows.notes)
+    log.info(line(workflowNoteText(note)));
+  if (workflows.workflows.length > 0 && workflows.warnings.length === 0) {
+    log.info(NOTHING_MISSING);
+  }
 }
 async function summary2(context3, text5) {
   try {
@@ -56982,7 +57377,7 @@ async function runCheck() {
 }
 
 // src/modes/resolve-job.ts
-import { readFileSync as readFileSync6 } from "node:fs";
+import { readFileSync as readFileSync7 } from "node:fs";
 
 // src/github/workflow-ref.ts
 function readWorkflowRef(env) {
@@ -56996,8 +57391,8 @@ function readWorkflowRef(env) {
 }
 
 // src/modes/resolve.ts
-import { readFileSync as readFileSync5 } from "node:fs";
-import { join as join21 } from "node:path";
+import { readFileSync as readFileSync6 } from "node:fs";
+import { join as join22 } from "node:path";
 
 // src/core/edit-history.ts
 var HISTORY_CAP = 100;
@@ -57197,8 +57592,8 @@ function why({ target, reason, detail, waitsOn }) {
     return `GitHub refused the merge: ${sentence(detail ?? "")}`;
   if (reason === "waits-on") {
     const ids = (waitsOn ?? []).map((id) => `**${escapeText(id)}**`);
-    const has = ids.length === 1 ? "has a change" : "have changes";
-    return `It was not merged: the stack depends on ${ids.join(" and ")}, which ${has} waiting. Deploy that first, then tick this again.`;
+    const has2 = ids.length === 1 ? "has a change" : "have changes";
+    return `It was not merged: the stack depends on ${ids.join(" and ")}, which ${has2} waiting. Deploy that first, then tick this again.`;
   }
   if (reason === "head-moved") {
     return "The pull request changed since the tick, so it was not merged.";
@@ -57628,7 +58023,7 @@ function renovateStrategyOf(root) {
   for (const file2 of RENOVATE_CONFIG_FILES) {
     let text5;
     try {
-      text5 = readFileSync5(join21(root, file2), "utf8");
+      text5 = readFileSync6(join22(root, file2), "utf8");
     } catch {
       continue;
     }
@@ -58010,7 +58405,7 @@ async function startQueued(context3, handOn) {
 // src/modes/resolve-job.ts
 async function runResolve(directory) {
   const env = process.env;
-  const read3 = (path) => readFileSync6(path, "utf8");
+  const read3 = (path) => readFileSync7(path, "utf8");
   const token = readToken(getInput);
   const job = readJob(env);
   await resolve({
@@ -58029,7 +58424,7 @@ async function runResolve(directory) {
 }
 
 // src/modes/scan-job.ts
-import { readFileSync as readFileSync7 } from "node:fs";
+import { readFileSync as readFileSync8 } from "node:fs";
 
 // src/github/request-count.ts
 function countRequests(octokit) {
@@ -58610,7 +59005,7 @@ function reportOutputs2(context3, report) {
     milliseconds: context3.now().getTime() - startedAt.getTime(),
     dashboard,
     stacks: previewed.map(({ id, result, milliseconds }) => ({
-      stack: previewSummary(id, result),
+      stack: previewSummary(id, result, report.attributed?.get(id)?.merges),
       milliseconds
     }))
   });
@@ -58855,6 +59250,7 @@ async function scanning(context3, report) {
     }
   }
   reportDashboard(context3, written, composed);
+  report.attributed = attributed;
   report.dashboard = {
     url: dashboardUrl(context3.repoUrl, written.number),
     changed: written.written,
@@ -59396,7 +59792,7 @@ async function runScan(directory) {
   const inputs = readScanInputs(getInput);
   const job = readJob(env);
   const octokit = getOctokit(inputs.token);
-  const payload = readEventPayload(env, (path) => readFileSync7(path, "utf8"));
+  const payload = readEventPayload(env, (path) => readFileSync8(path, "utf8"));
   await scan({
     root: job.root,
     env,
@@ -59415,7 +59811,7 @@ async function runScan(directory) {
     sha: job.sha,
     event: job.event,
     workflow: job.workflow,
-    actionRef: readActionRef(env, directory, (path) => readFileSync7(path, "utf8")),
+    actionRef: readActionRef(env, directory, (path) => readFileSync8(path, "utf8")),
     outputs: actionsOutputs(env.RUNNER_TEMP),
     publicRepo: publicRepo(payload),
     startedByPerson: startedByPerson(payload)
@@ -59423,7 +59819,7 @@ async function runScan(directory) {
 }
 
 // src/modes/settle-job.ts
-import { readFileSync as readFileSync8 } from "node:fs";
+import { readFileSync as readFileSync9 } from "node:fs";
 
 // src/core/settle.ts
 function openRecordsOfRun(records, runId) {
@@ -59542,25 +59938,25 @@ async function runSettle() {
     log: actionsLog(),
     repoUrl: job.repoUrl,
     runId: job.runId,
-    event: readEventPayload(env, (path) => readFileSync8(path, "utf8")),
+    event: readEventPayload(env, (path) => readFileSync9(path, "utf8")),
     workflow: readWorkflowRef(env),
     outputs: actionsOutputs(env.RUNNER_TEMP)
   });
 }
 
 // src/mode.ts
-var MODES = ["scan", "resolve", "apply", "settle", "check"];
+var MODES2 = ["scan", "resolve", "apply", "settle", "check"];
 function parseMode(input2) {
   const mode = input2.trim();
   if (isMode(mode))
     return mode;
   if (mode === "") {
-    throw new Error(`The "mode" input is required. Use one of: ${MODES.join(", ")}.`);
+    throw new Error(`The "mode" input is required. Use one of: ${MODES2.join(", ")}.`);
   }
-  throw new Error(`Unknown mode "${mode}". Use one of: ${MODES.join(", ")}.`);
+  throw new Error(`Unknown mode "${mode}". Use one of: ${MODES2.join(", ")}.`);
 }
 function isMode(value) {
-  return MODES.includes(value);
+  return MODES2.includes(value);
 }
 var handlers = {
   scan: runScan,

@@ -44,6 +44,12 @@ scan:
     - "LICENSE*"
 \`\`\`
 
+### Workflows
+
+No workflow in .github/workflows runs a scan yet.
+
+The check reads the workflow files as text. The repo's default token permissions, the rules of an environment and what GitHub itself validates live elsewhere and do not show here.
+
 ### What a check cannot tell
 
 A check reads files only, so it cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan.
@@ -59,5 +65,60 @@ sluiceway.yaml is not valid.
 - drift: expected a mapping, got true.
 
 Fix these and run the check again. A scan stops at the same place.
+"
+`;
+
+exports[`the workflow files a broken workflow: a warning each, and the job stays green 1`] = `
+"## Sluiceway check
+
+The setup is valid.
+
+No sluiceway.yaml, so every setting is its default.
+
+### Stacks
+
+Found no stacks.
+
+### Files that no stack claims
+
+2 files are claimed by no stack. A push that changes one of them gives a full scan.
+
+- The repo root, 1 file: README.md
+- .github/, 1 file: .github/workflows/deploy-dashboard.yml
+
+A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.
+
+The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.
+
+\`\`\`yaml
+scan:
+  unrelated:
+    - "**/*.md"
+    - ".github/**"
+\`\`\`
+
+### Workflows
+
+| Workflow | Job | Mode | Action ref |
+|---|---|---|---|
+| .github/workflows/deploy-dashboard.yml | scan | scan | at main, which is not a release |
+| .github/workflows/deploy-dashboard.yml | resolve | resolve | at main, which is not a release |
+| .github/workflows/deploy-dashboard.yml | apply | apply | at main, which is not a release |
+| .github/workflows/deploy-dashboard.yml | settle | settle | at main, which is not a release |
+
+- .github/workflows/deploy-dashboard.yml, job scan: sluiceway/sluiceway@main is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.
+- .github/workflows/deploy-dashboard.yml, job resolve: sluiceway/sluiceway@main is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.
+- .github/workflows/deploy-dashboard.yml, job apply: sluiceway/sluiceway@main is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.
+- .github/workflows/deploy-dashboard.yml, job settle: sluiceway/sluiceway@main is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.
+- .github/workflows/deploy-dashboard.yml runs on pull&#95;request. A scan would write the dashboard from code that is not on the default branch yet. Only the workflow of the check may run on pull requests or in a merge queue.
+- .github/workflows/deploy-dashboard.yml has no workflow&#95;dispatch trigger. The rescan box and settle start a scan through it.
+- .github/workflows/deploy-dashboard.yml, job resolve: resolve needs actions: write. A job's own permissions replace the workflow's.
+- .github/workflows/deploy-dashboard.yml, job settle: settle needs actions: write. A job's own permissions replace the workflow's.
+
+The check reads the workflow files as text. The repo's default token permissions, the rules of an environment and what GitHub itself validates live elsewhere and do not show here.
+
+### What a check cannot tell
+
+A check reads files only, so it cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan.
 "
 `;

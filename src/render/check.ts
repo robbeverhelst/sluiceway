@@ -6,6 +6,12 @@
 import type { CheckReport, IgnoreReport, UnclaimedGroup } from "../core/check.ts";
 import type { ConfiguredStack } from "../core/config.ts";
 import { stackId } from "../core/stack.ts";
+import type {
+  SluicewayJob,
+  WorkflowNote,
+  WorkflowReport,
+  WorkflowWarning,
+} from "../core/workflow-check.ts";
 import { escapeText } from "./escape.ts";
 import { plural } from "./row.ts";
 
@@ -18,6 +24,13 @@ export const WHERE_FILES_BELONG =
   "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.";
 export const PASTE_NOTE =
   "The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.";
+
+// The workflow part (record 0061).
+export const WORKFLOW_WARNING_TITLE = "A workflow is missing something";
+export const NOTHING_MISSING = "Nothing is missing from the workflows.";
+export const NO_SCAN_WORKFLOW = "No workflow in .github/workflows runs a scan yet.";
+export const WORKFLOWS_AS_TEXT =
+  "The check reads the workflow files as text. The repo's default token permissions, the rules of an environment and what GitHub itself validates live elsewhere and do not show here.";
 
 // A summary lists this many files of a directory. The job log lists them all.
 const FILES_PER_DIRECTORY = 20;
@@ -81,14 +94,98 @@ export function unrelatedBlock(existing: string[], suggested: string[]): string[
   return ["scan:", "  unrelated:", ...globs.map((glob) => `    - ${JSON.stringify(glob)}`)];
 }
 
+function refText({ ref, refKind }: SluicewayJob): string {
+  switch (refKind) {
+    case "moving":
+      return `at ${ref}, which follows every release of ${ref}`;
+    case "release":
+      return `at ${ref}, one release that stays as it is`;
+    case "commit":
+      return `at commit ${ref.slice(0, 12)}, pinned`;
+    case "other":
+      return `at ${ref}, which is not a release`;
+  }
+}
+
+// One job that runs Sluiceway, for the job log.
+export function workflowJobText(path: string, job: SluicewayJob): string {
+  const mode = job.mode === undefined ? "no known mode" : `mode ${job.mode}`;
+  return `${path}, job ${job.job}: ${mode}, ${refText(job)}.`;
+}
+
+const MODE_LIST = "scan, resolve, apply, settle, check";
+
+export function workflowWarningText(warning: WorkflowWarning): string {
+  const { path } = warning;
+  switch (warning.kind) {
+    case "unreadable":
+      return `${path} is not valid YAML, so the check cannot read how it runs Sluiceway. The Actions tab of the repo shows GitHub's own error.`;
+    case "unknown-mode":
+      return warning.mode === ""
+        ? `${path}, job ${warning.job}: the Sluiceway step has no mode. Use one of: ${MODE_LIST}.`
+        : `${path}, job ${warning.job}: the Sluiceway step has mode ${JSON.stringify(warning.mode)}, which does not exist. Use one of: ${MODE_LIST}.`;
+    case "unreleased-ref":
+      return `${path}, job ${warning.job}: sluiceway/sluiceway@${warning.ref} is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.`;
+    case "mixed-refs":
+      return `${path} runs Sluiceway at ${warning.refs.join(" and ")}. Use one ref in every job, so that a scan and the deploy it leads to run the same version.`;
+    case "missing-trigger":
+      return MISSING_TRIGGER[warning.trigger](path);
+    case "forbidden-trigger":
+      return `${path} runs on ${warning.trigger}. A scan would write the dashboard from code that is not on the default branch yet. Only the workflow of the check may run on pull requests or in a merge queue.`;
+    case "missing-job":
+      return `${path} has no ${warning.mode} job. The four jobs scan, resolve, apply and settle stay in one file: a scan looks for waiting ticks among the runs of its own workflow, and the rescan box and settle start that same workflow again.`;
+    case "boxes-do-nothing":
+      return `${path} scans, and no job in it resolves a tick, so a box on the dashboard does nothing. For a workflow that only scans, set dashboard.readOnly: true in sluiceway.yaml.`;
+    case "no-permissions":
+      return `${path}, job ${warning.job}: there is no permissions block, so the token gets the repo's default, which a file does not show. ${warning.mode} needs ${warning.needs.join(", ")}.`;
+    case "missing-permissions":
+      return `${path}, job ${warning.job}: ${warning.mode} needs ${warning.missing.join(", ")}. A job's own permissions replace the workflow's.`;
+  }
+}
+
+const MISSING_TRIGGER: Record<
+  Extract<WorkflowWarning, { kind: "missing-trigger" }>["trigger"],
+  (path: string) => string
+> = {
+  push: (path) =>
+    `${path} scans and has no push trigger. A push to the default branch starts the scan that shows its change as pending.`,
+  schedule: (path) =>
+    `${path} scans and has no schedule. The daily full scan catches a change that is not a file in the repo, such as another stack's output.`,
+  workflow_dispatch: (path) =>
+    `${path} has no workflow_dispatch trigger. The rescan box and settle start a scan through it.`,
+  issues: (path) =>
+    `${path} has a resolve job and does not listen to issue edits (issues, with the type edited). A tick would start nothing.`,
+};
+
+export function workflowNoteText(note: WorkflowNote): string {
+  switch (note.kind) {
+    case "no-preview-pages":
+      return `${note.path}, job ${note.job}: without checks: write there are no preview pages, and a pending row's preview link opens the run's summary.`;
+    case "called":
+      return `${note.path} is called from another workflow. Its triggers and permissions come from the caller, which the check does not follow.`;
+  }
+}
+
+// True when some workflow runs a scan.
+export function scansSomewhere(workflows: WorkflowReport): boolean {
+  return workflows.workflows.some(({ jobs }) => jobs.some((job) => job.mode === "scan"));
+}
+
 export interface CheckFacts {
   report: CheckReport;
+  // What the workflow files say (record 0061).
+  workflows: WorkflowReport;
   // The scan.unrelated globs the config has.
   unrelated: string[];
   hasConfigFile: boolean;
 }
 
-export function renderCheckSummary({ report, unrelated, hasConfigFile }: CheckFacts): string {
+export function renderCheckSummary({
+  report,
+  workflows,
+  unrelated,
+  hasConfigFile,
+}: CheckFacts): string {
   const parts = ["## Sluiceway check", VALID];
   if (!hasConfigFile) parts.push(NO_CONFIG_FILE);
 
@@ -151,6 +248,8 @@ export function renderCheckSummary({ report, unrelated, hasConfigFile }: CheckFa
     }
   }
 
+  parts.push("### Workflows", ...workflowParts(workflows));
+
   parts.push("### What a check cannot tell", CANNOT_TELL);
   return `${parts.join("\n\n")}\n`;
 }
@@ -168,6 +267,37 @@ export function renderCheckFailure(kind: "config" | "discovery", problems: strin
     problems.map((problem) => `- ${escapeText(problem)}`).join("\n"),
     "Fix these and run the check again. A scan stops at the same place.",
   ].join("\n\n")}\n`;
+}
+
+function workflowParts(workflows: WorkflowReport): string[] {
+  const parts: string[] = [];
+  if (workflows.workflows.length > 0) {
+    parts.push(
+      [
+        "| Workflow | Job | Mode | Action ref |",
+        "|---|---|---|---|",
+        ...workflows.workflows.flatMap(({ path, jobs }) =>
+          jobs.map((job) => row([path, job.job, job.mode ?? "none", refText(job)])),
+        ),
+      ].join("\n"),
+    );
+  }
+  if (!scansSomewhere(workflows)) parts.push(NO_SCAN_WORKFLOW);
+  if (workflows.warnings.length > 0) {
+    parts.push(
+      workflows.warnings
+        .map((warning) => `- ${escapeText(workflowWarningText(warning))}`)
+        .join("\n"),
+    );
+  }
+  if (workflows.notes.length > 0) {
+    parts.push(workflows.notes.map((note) => `- ${escapeText(workflowNoteText(note))}`).join("\n"));
+  }
+  if (workflows.workflows.length > 0 && workflows.warnings.length === 0) {
+    parts.push(NOTHING_MISSING);
+  }
+  parts.push(WORKFLOWS_AS_TEXT);
+  return parts;
 }
 
 function groupLine({ directory, files }: UnclaimedGroup): string {

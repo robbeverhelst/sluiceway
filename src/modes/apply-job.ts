@@ -29,6 +29,7 @@ export async function runApply(directory: string): Promise<void> {
     github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),
     log: actionsLog(),
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
+    now: () => new Date(),
     repoUrl: job.repoUrl,
     runId: job.runId,
     runAttempt: job.runAttempt,

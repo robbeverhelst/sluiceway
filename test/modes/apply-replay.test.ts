@@ -12,7 +12,7 @@ import { resolve } from "../../src/modes/resolve.ts";
 import { scan } from "../../src/modes/scan.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
 import { FIXTURES, replay, VERSIONS } from "../adapters/pulumi/replay.ts";
-import { ACTION_REF, harness, REPO_URL, repoRoot, SHA, stack } from "./harness.ts";
+import { ACTION_REF, harness, REPO_URL, repoRoot, SHA, stack, steppingClock } from "./harness.ts";
 import { rememberingOutputs } from "./outputs-harness.ts";
 import {
   ALICE,
@@ -95,6 +95,7 @@ async function deployed(
     github,
     log,
     previewTimeoutMinutes: 10,
+    now: steppingClock(),
     repoUrl: REPO_URL,
     runId: RESOLVE_RUN,
     runAttempt: "1",

@@ -13,6 +13,7 @@ import {
   SHA,
   tableAdapter,
 } from "./harness.ts";
+import { rememberingOutputs } from "./outputs-harness.ts";
 
 // The scan and attribution (record 0026): a row says which merges made it
 // pending, and never blocks.
@@ -175,6 +176,57 @@ describe("the walk", () => {
     succeeded(github, "a:prod");
     await scan(context);
     expect(github.requests).not.toContain("walkCommits");
+  });
+});
+
+// Record 0061: the result file names the same merges the summary does.
+describe("the result file", () => {
+  test("holds the pull requests a pending stack claims, and none for a stack with none", async () => {
+    const outputs = rememberingOutputs();
+    const adapter = tableAdapter({
+      "a:prod": pending("a:prod", change("logs")),
+      "b:prod": pending("b:prod", change("logs")),
+    });
+    const { context, github } = harness(adapter, { outputs });
+    merged(github, ["a/index.ts"]);
+    succeeded(github, "a:prod");
+    succeeded(github, "b:prod");
+
+    await scan(context);
+
+    const stacks = (outputs.resultFile("scan") as { stacks: Record<string, unknown>[] }).stacks;
+    expect(stacks.map(({ stack, attribution }) => ({ stack, attribution }))).toEqual([
+      {
+        stack: "a:prod",
+        attribution: [
+          {
+            kind: "pull-request",
+            number: 3,
+            title: "Grafana alerts",
+            url: `${REPO_URL}/pull/3`,
+            author: "alice",
+          },
+        ],
+      },
+      { stack: "b:prod", attribution: [] },
+    ]);
+  });
+
+  test("has no attribution when the lookup failed", async () => {
+    const outputs = rememberingOutputs();
+    const { context, github } = harness(
+      tableAdapter({ "a:prod": pending("a:prod", change("x")) }),
+      {
+        outputs,
+      },
+    );
+    // The fake repo has no commits, so the walk fails.
+    succeeded(github, "a:prod");
+
+    await scan(context);
+
+    const stacks = (outputs.resultFile("scan") as { stacks: Record<string, unknown>[] }).stacks;
+    expect(stacks[0]).not.toHaveProperty("attribution");
   });
 });
 

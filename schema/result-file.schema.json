@@ -1,7 +1,4 @@
-// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
-
-exports[`the JSON schema of the result file 1`] = `
-"{
+{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Sluiceway result file",
   "description": "What the summary of a scan or an apply holds, written under RUNNER_TEMP. No property value except at the paths dashboard.showValues lists, and none of the tool's own words.",
@@ -962,5 +959,4 @@ exports[`the JSON schema of the result file 1`] = `
       "additionalProperties": false
     }
   ]
-}"
-`;
+}

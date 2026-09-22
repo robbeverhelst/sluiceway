@@ -86,6 +86,8 @@ export interface ApplyContext {
   // The `preview-timeout` input, in whole minutes. A stack's `previewTimeout`
   // wins (record 0035).
   previewTimeoutMinutes: number;
+  // The clock of the timings in the result file (record 0061).
+  now: () => Date;
   // `https://github.com/<owner>/<repo>`.
   repoUrl: string;
   // The run of this job. `resolve` created the record in the same run.
@@ -144,10 +146,13 @@ interface ApplyReport {
   ticker?: string;
   reason?: string | undefined;
   applied?: ApplyOutcome | undefined;
+  startedAt?: Date;
+  // How long the tool's deploy took, once it was asked to deploy.
+  deployMilliseconds?: number;
 }
 
 export async function apply(context: ApplyContext): Promise<void> {
-  const report: ApplyReport = {};
+  const report: ApplyReport = { startedAt: context.now() };
   try {
     await applying(context, report);
   } finally {
@@ -177,6 +182,8 @@ function reportOutputs(context: ApplyContext, report: ApplyReport): void {
     ticker: report.ticker,
     reason: report.reason,
     applied: report.applied,
+    milliseconds: context.now().getTime() - (report.startedAt?.getTime() ?? 0),
+    deployMilliseconds: report.deployMilliseconds,
   });
   writeResultFile(outputs, context.log, "apply", text);
 }
@@ -266,7 +273,7 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
 
   // From here the record is this job's, and every way out gives it a result,
   // also an error nobody planned for.
-  const progress = { deploying: false };
+  const progress: Progress = { deploying: false };
   let attempt: Attempt;
   try {
     attempt = await deploy(context, id_, payload, runUrl, progress);
@@ -292,6 +299,7 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
           : "failed";
   report.reason = attempt.reason && deployFailureText(attempt.reason);
   report.applied = attempt.summary;
+  if (progress.milliseconds !== undefined) report.deployMilliseconds = progress.milliseconds;
   const failures: string[] = [];
   let ended = false;
   try {
@@ -364,6 +372,14 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
   if (failures.length > 0) throw new ApplyFailedError(failures.join("\n"));
 }
 
+// How far the job got with the tool's deploy.
+interface Progress {
+  // Set once the tool was asked to deploy.
+  deploying: boolean;
+  // How long the deploy took, once it ended (record 0061).
+  milliseconds?: number;
+}
+
 // What the stack's config and discovery gave, which the row swap needs.
 interface Setup {
   config: Config;
@@ -402,8 +418,7 @@ async function deploy(
   id: string,
   payload: DeploymentPayload,
   runUrl: string,
-  // Set once the tool was asked to deploy.
-  progress: { deploying: boolean },
+  progress: Progress,
 ): Promise<Attempt> {
   const { log, adapter } = context;
   const name = logGroupTitle(id);
@@ -504,7 +519,7 @@ async function afterFreshPreview(
   id: string,
   payload: DeploymentPayload,
   runUrl: string,
-  progress: { deploying: boolean },
+  progress: Progress,
   setup: Setup,
   previewed: PreviewResult,
   options: PreviewOptions,
@@ -639,12 +654,18 @@ async function afterFreshPreview(
   // The deploy reads what is real first when the hash covers drift, which
   // puts the drift back as the code says (record 0055).
   const repairDrift = (fresh.diff.drift ?? []).length > 0;
-  const result = await adapter.apply(
-    setup.stack.stack,
-    tool,
-    previewed.ok ? previewed.plan : undefined,
-    repairDrift ? { repairDrift } : undefined,
-  );
+  const deployStarted = context.now();
+  let result: Awaited<ReturnType<Adapter["apply"]>>;
+  try {
+    result = await adapter.apply(
+      setup.stack.stack,
+      tool,
+      previewed.ok ? previewed.plan : undefined,
+      repairDrift ? { repairDrift } : undefined,
+    );
+  } finally {
+    progress.milliseconds = context.now().getTime() - deployStarted.getTime();
+  }
   const words = lines(result.toolLog);
   context.log.group(`${name}: the deploy`, [
     result.ok ? "deployed" : `deploy failed: ${deployFailureText(result.reason)}`,

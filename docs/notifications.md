@@ -23,7 +23,7 @@ Two things work with nothing from Sluiceway at all, because every deploy is a Gi
 
 The three counts are the counts line of the dashboard as this scan left it, so they include the rows of stacks a narrowed scan did not preview. A scan that fails before it writes the dashboard, for example on a broken `sluiceway.yaml`, sets them to `0` and `dashboard-changed` to `false`, so check the outcome of the step too.
 
-The result file is written under `RUNNER_TEMP` as `sluiceway-scan-result.json` or `sluiceway-apply-result.json`. It holds what the summary of the run holds: stack ids, what each preview found, ops, resource types and names, property paths, counts, failure reasons from Sluiceway's fixed list, and how long each preview took. It never holds a property value, a stack output or any of the tool's own words. Sluiceway does not upload it, and the runner removes it when the job ends. Add an `actions/upload-artifact` step if you want to keep it.
+The result file is written under `RUNNER_TEMP` as `sluiceway-scan-result.json` or `sluiceway-apply-result.json`. It holds what the summary of the run holds: stack ids, what each preview found, ops, resource types and names, property paths, counts, failure reasons from Sluiceway's fixed list, how long each preview took, and the pull requests and direct pushes a pending stack claims since its last deploy. Its shape is published as a JSON schema, [`schema/result-file.schema.json`](../schema/result-file.schema.json), which covers both files. It never holds a property value, a stack output or any of the tool's own words. Sluiceway does not upload it, and the runner removes it when the job ends. Add an `actions/upload-artifact` step if you want to keep it.
 
 A scan's file, shortened:
 
@@ -51,13 +51,16 @@ A scan's file, shortened:
       "counts": { "create": 1, "update": 0, "replace": 0, "delete": 0, "trackingOnly": 0 },
       "changes": [
         { "type": "aws:s3/bucket:Bucket", "name": "logs", "op": "create", "changedKeys": [], "replaceKeys": [] }
+      ],
+      "attribution": [
+        { "kind": "pull-request", "number": 42, "title": "Add a logs bucket", "url": "https://github.com/acme/infra/pull/42", "author": "alice" }
       ]
     }
   ]
 }
 ```
 
-`dashboard` is `null` when the scan did not get as far as writing it. `stacks` lists the stacks this run previewed. An `apply` file names the `deployment`, the `outcome`, the `stack`, the `ticker`, the failure `reason`, the fresh `preview` the tick was held against, and the preview `after` a deploy that failed half way. A reader should check `version` first: it goes up when the shape changes in a way that breaks a reader.
+`dashboard` is `null` when the scan did not get as far as writing it. `stacks` lists the stacks this run previewed. `attribution` lists, newest first, what the summary lists for a stack: a pull request with its number, title, address and author, or a direct push with its `commit`, the first line of its message, address and author. It is missing when the lookup failed, and an empty list when nothing the stack claims changed. A pull request title is free text a person wrote, so treat it as such where you send it. An `apply` file names the `deployment`, the `outcome`, the `stack`, the `ticker`, the failure `reason`, how long the job took in `seconds` and the tool's deploy in `deploySeconds` (`null` when nothing was deployed), the fresh `preview` the tick was held against, and the preview `after` a deploy that failed half way. A reader should check `version` first: it goes up when the shape changes in a way that breaks a reader.
 
 Resource names, types and property paths are in the file, as they are on the dashboard. They come from your code, so do not put a secret in a resource name or a map key. Send the file only to a place that people with read access to the repo may see.
 

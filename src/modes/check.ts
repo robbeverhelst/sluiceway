@@ -10,20 +10,28 @@ import { hasConfigFile, loadConfig } from "../core/config-file.ts";
 import { DiscoveryError } from "../core/discovery.ts";
 import { repoFiles } from "../core/repo-files.ts";
 import { stackId } from "../core/stack.ts";
+import { checkWorkflows, readWorkflowFiles, type WorkflowReport } from "../core/workflow-check.ts";
 import type { JobLog } from "../github/job-log.ts";
 import {
   CANNOT_TELL,
   foundText,
   ignoreText,
   NO_CONFIG_FILE,
+  NO_SCAN_WORKFLOW,
+  NOTHING_MISSING,
   renderCheckFailure,
   renderCheckSummary,
+  scansSomewhere,
   settingsText,
   unclaimedText,
   unmatchedText,
   unrelatedBlock,
   VALID,
   WHERE_FILES_BELONG,
+  WORKFLOW_WARNING_TITLE,
+  workflowJobText,
+  workflowNoteText,
+  workflowWarningText,
 } from "../render/check.ts";
 import { logGroupTitle } from "../render/log-text.ts";
 
@@ -90,12 +98,41 @@ export async function check(context: CheckContext): Promise<void> {
     }
   }
 
+  // The workflow files (record 0061). What they lack is a warning, never a
+  // red job: GitHub is the one that validates and runs them.
+  const workflows = checkWorkflows(readWorkflowFiles(root), config);
+  logWorkflows(log, workflows);
+
   await summary(
     context,
-    renderCheckSummary({ report, unrelated: config.scan.unrelated, hasConfigFile: configFile }),
+    renderCheckSummary({
+      report,
+      workflows,
+      unrelated: config.scan.unrelated,
+      hasConfigFile: configFile,
+    }),
   );
   log.info(VALID);
   log.info(CANNOT_TELL);
+}
+
+function logWorkflows(log: JobLog, workflows: WorkflowReport): void {
+  if (workflows.workflows.length > 0) {
+    log.group(
+      "Workflows",
+      workflows.workflows.flatMap(({ path, jobs }) =>
+        jobs.map((job) => line(workflowJobText(path, job))),
+      ),
+    );
+  }
+  if (!scansSomewhere(workflows)) log.info(NO_SCAN_WORKFLOW);
+  for (const warning of workflows.warnings) {
+    log.warning(line(workflowWarningText(warning)), WORKFLOW_WARNING_TITLE);
+  }
+  for (const note of workflows.notes) log.info(line(workflowNoteText(note)));
+  if (workflows.workflows.length > 0 && workflows.warnings.length === 0) {
+    log.info(NOTHING_MISSING);
+  }
 }
 
 // The job log holds everything the summary holds, so a summary that cannot be

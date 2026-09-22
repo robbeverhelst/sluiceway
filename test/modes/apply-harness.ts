@@ -6,7 +6,13 @@ import type { PreviewResult } from "../../src/adapters/adapter.ts";
 import type { MatrixEntry } from "../../src/core/resolve.ts";
 import { type ApplyContext, apply } from "../../src/modes/apply.ts";
 import type { FakeGitHub } from "../fake-github/fake-github.ts";
-import { ACTION_REF, type RememberingLog, SHA, type TableAdapter } from "./harness.ts";
+import {
+  ACTION_REF,
+  type RememberingLog,
+  SHA,
+  steppingClock,
+  type TableAdapter,
+} from "./harness.ts";
 import { ALICE, matrix, RESOLVE_RUN, rowsOf, scanned, tick, wake } from "./resolve-harness.ts";
 
 // The id of the apply job (record 0044).
@@ -55,6 +61,7 @@ export async function handedOn(
     github: h.github,
     log: h.log,
     previewTimeoutMinutes: 10,
+    now: steppingClock(),
     repoUrl: h.context.repoUrl,
     // `apply` runs in the run that `resolve` started.
     runId: RESOLVE_RUN,

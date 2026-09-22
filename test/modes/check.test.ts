@@ -7,6 +7,7 @@ import { ConfigError } from "../../src/core/config.ts";
 import { DiscoveryError } from "../../src/core/discovery.ts";
 import { check } from "../../src/modes/check.ts";
 import { escapeText } from "../../src/render/escape.ts";
+import { fences, read } from "../docs/docs.ts";
 import { rememberingLog } from "./harness.ts";
 
 type Files = Record<string, string>;
@@ -393,4 +394,63 @@ describe("discovery errors", () => {
       expect(summary).toContain(escapeText(message));
     },
   );
+});
+
+// Record 0061: the check reads the workflow files too, and says what a
+// workflow is missing before its first run. It never turns the job red.
+describe("the workflow files", () => {
+  const readme = read("README.md");
+  const whole =
+    fences(readme).find(({ text }) => text.includes("mode: resolve") && /^on:/m.test(text))?.text ??
+    "";
+  const at = ".github/workflows/deploy-dashboard.yml";
+
+  test("the README's workflow: every job listed, nothing missing", async () => {
+    const { log, error, summary } = await run({ "README.md": "", [at]: whole });
+    expect(error).toBeUndefined();
+    expect(log.groups.find((group) => group.title === "Workflows")?.lines).toEqual([
+      ".github/workflows/deploy-dashboard.yml, job scan: mode scan, at v0, which follows every release of v0.",
+      ".github/workflows/deploy-dashboard.yml, job resolve: mode resolve, at v0, which follows every release of v0.",
+      ".github/workflows/deploy-dashboard.yml, job apply: mode apply, at v0, which follows every release of v0.",
+      ".github/workflows/deploy-dashboard.yml, job settle: mode settle, at v0, which follows every release of v0.",
+    ]);
+    expect(log.lines).toContain("Nothing is missing from the workflows.");
+    expect(log.warnings).toEqual([]);
+    expect(summary).toContain("Nothing is missing from the workflows.");
+  });
+
+  test("a broken workflow: a warning each, and the job stays green", async () => {
+    const broken = whole
+      .replace("  workflow_dispatch:\n", "")
+      .replace("actions: write", "actions: read")
+      .replaceAll("sluiceway/sluiceway@v0", "sluiceway/sluiceway@main")
+      .replace("on:\n", "on:\n  pull_request:\n");
+    const { log, error, summary } = await run({ "README.md": "", [at]: broken });
+    expect(error).toBeUndefined();
+    expect(log.warnings.map((warning) => warning.title)).toEqual(
+      Array(8).fill("A workflow is missing something"),
+    );
+    expect(log.warnings.map((warning) => warning.message)).toContain(
+      ".github/workflows/deploy-dashboard.yml has no workflow_dispatch trigger. The rescan box and settle start a scan through it.",
+    );
+    expect(log.lines.slice(-2)[0]).toBe("The setup is valid.");
+    expect(summary).toMatchSnapshot();
+  });
+
+  test("a repo with no workflow that scans says so", async () => {
+    const { log, summary } = await run({ "README.md": "" });
+    expect(log.lines).toContain("No workflow in .github/workflows runs a scan yet.");
+    expect(summary).toContain("No workflow in .github/workflows runs a scan yet.");
+  });
+
+  test("the read-only trial without dashboard.readOnly", async () => {
+    const trial =
+      fences(readme).find(
+        ({ text }) => text.includes("mode: scan") && !text.includes("mode: resolve"),
+      )?.text ?? "";
+    const { log } = await run({ "README.md": "", [at]: trial });
+    expect(log.warnings.map((warning) => warning.message)).toEqual([
+      ".github/workflows/deploy-dashboard.yml scans, and no job in it resolves a tick, so a box on the dashboard does nothing. For a workflow that only scans, set dashboard.readOnly: true in sluiceway.yaml.",
+    ]);
+  });
 });

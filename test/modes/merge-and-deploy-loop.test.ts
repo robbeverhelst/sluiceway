@@ -12,6 +12,7 @@ import {
   inSync,
   pending,
   REPO_URL,
+  steppingClock,
   tableAdapter,
 } from "./harness.ts";
 import { rememberingOutputs } from "./outputs-harness.ts";
@@ -102,6 +103,7 @@ async function loop(options: { moveBeforeApply?: boolean } = {}) {
     github,
     log,
     previewTimeoutMinutes: 10,
+    now: steppingClock(),
     repoUrl: REPO_URL,
     // The apply job runs in the run of the scan that handed it on.
     runId: SECOND_SCAN,

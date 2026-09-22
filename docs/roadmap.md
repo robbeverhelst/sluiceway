@@ -70,9 +70,7 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Trying a failed permission lookup again in the same `resolve` run
 - Telling an account that was renamed or deleted after its tick apart from a failed lookup
 - A cap on the names a refusal comment lists from a tick rule
-- Attribution in the result file (the pull requests and direct pushes a pending stack claims)
-- Timings in the result file of an `apply`, and the stacks a narrowed scan carried in the result file of a scan
-- The JSON schema of the result file as a committed file next to `schema/sluiceway.schema.json`
+- The stacks a narrowed scan carried, in the result file of a scan
 - `sluiceway.yml` as a second spelling of the config file
 - Logging deploys made outside the dashboard under recently deployed (a manual `pulumi up` from a laptop, a script, another pipeline), with when and from which commit
 - A link to the scan that the rescan box started
@@ -134,7 +132,8 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A live example dashboard in this repo
 - A setting for which directories discovery never enters, or reading `.gitignore` for it
 - The check reading git's own list of tracked files
-- The check reading the workflow files (triggers, permissions, a pinned SHA) or suggesting `inputs`
+- The check suggesting `inputs`
+- The check reading more of a workflow than triggers, permissions, the jobs and the ref: the concurrency groups, `!cancelled()` on `apply`, the label in the `if:` of `resolve`, the branch a `push` listens to, and a reusable workflow's caller
 - Checking discovered stacks against the backend (`pulumi stack ls`)
 - A preview failure reason of its own for more of the tool's documented exit codes (2 configuration, 3 authentication, 4 resource, 9 timeout)
 - The `ignore` glob on the row of a stack that does not exist in the backend, or one ready-to-paste `ignore` block for all such stacks

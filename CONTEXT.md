@@ -57,7 +57,7 @@ A step a tool needs before it can preview a stack, such as OpenTofu's init of a 
 _Avoid_: Setup, init step, pre-hook
 
 **Check**:
-A pass over the repo's files and nothing else that says whether Sluiceway understands the setup: the config, the stacks discovery finds, what `ignore` leaves out and which files no stack claims. It holds no credentials and never starts the tool, so it can never say that a preview will work.
+A pass over the repo's files and nothing else that says whether Sluiceway understands the setup: the config, the stacks discovery finds, what `ignore` leaves out, which files no stack claims, and what the workflow files lack to run it. It holds no credentials and never starts the tool, so it can never say that a preview will work.
 _Avoid_: Validate, lint, dry run, preflight
 
 ### Diffs
@@ -279,7 +279,7 @@ The page a pending or drifted row's preview link opens: a GitHub check run on th
 _Avoid_: Check (that is the pass over the repo's files), check page, status check, report
 
 **Result file**:
-A JSON file that a scan or an `apply` leaves in the job's temporary directory for a later step of the workflow, with what its summary holds and nothing more. Sluiceway never sends it anywhere: a step the user adds does, with its own secret.
+A JSON file that a scan or an `apply` leaves in the job's temporary directory for a later step of the workflow, with what its summary holds and how long the job took, and nothing more. A published JSON schema describes it. Sluiceway never sends it anywhere: a step the user adds does, with its own secret.
 _Avoid_: Report, artifact, export, metrics
 
 **Read-only dashboard**:

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { Change } from "../../src/core/diff.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
 import {
@@ -40,7 +42,7 @@ const BUCKETS: SummaryStack = {
       change("delete", "aws:s3/bucketPolicy:BucketPolicy", "uploads-public-read"),
     ],
   },
-  // Attribution stays out of the file in v1 (later.md).
+  // Attribution joins the file as the summary shows it (record 0061).
   merges: [{ kind: "pull-request", number: 433, title: "Rename", url: "u", author: "alice" }],
 };
 
@@ -132,6 +134,9 @@ describe("the result file of a scan", () => {
               replaceKeys: [],
             },
           ],
+          attribution: [
+            { kind: "pull-request", number: 433, title: "Rename", url: "u", author: "alice" },
+          ],
         },
       ],
     });
@@ -145,7 +150,7 @@ describe("the result file of a scan", () => {
     expect(JSON.parse(text)).toMatchObject({ dashboard: null, stacks: [] });
   });
 
-  test("no address, no pull request, no title: only what a row can show", () => {
+  test("no address: only what the summary can show", () => {
     const text = scanResultFile({
       run: RUN,
       commit: SHA,
@@ -153,9 +158,63 @@ describe("the result file of a scan", () => {
       stacks: [{ stack: BUCKETS, milliseconds: 0 }],
     });
 
-    for (const word of ["::", "old-archive", "Rename", "alice", "433"]) {
-      expect(text).not.toContain(word);
-    }
+    for (const word of ["::", "old-archive"]) expect(text).not.toContain(word);
+  });
+
+  // Record 0061: the pull requests and direct pushes the summary lists for a
+  // stack, newest first, with the first line of a push's message.
+  test("attribution, as the summary lists it", () => {
+    const stack: SummaryStack = {
+      kind: "diff",
+      diff: { stackId: "app:prod", changes: [change("update", "random:x", "a")] },
+      merges: [
+        { kind: "pull-request", number: 12, title: "Bump the chart", url: "https://x/pull/12" },
+        {
+          kind: "push",
+          sha: SHA,
+          message: "Hotfix the tag\n\nA longer body.",
+          url: `https://x/commit/${SHA}`,
+          author: "bob",
+        },
+      ],
+    };
+    const text = scanResultFile({
+      run: RUN,
+      commit: SHA,
+      milliseconds: 0,
+      stacks: [{ stack, milliseconds: 0 }],
+    });
+
+    expect(JSON.parse(text).stacks[0].attribution).toEqual([
+      { kind: "pull-request", number: 12, title: "Bump the chart", url: "https://x/pull/12" },
+      {
+        kind: "push",
+        commit: SHA,
+        message: "Hotfix the tag",
+        url: `https://x/commit/${SHA}`,
+        author: "bob",
+      },
+    ]);
+    expect(scanResultSchema.safeParse(JSON.parse(text)).success).toBe(true);
+  });
+
+  test("no attribution key when the lookup failed, an empty list when it found nothing", () => {
+    const of = (merges: Extract<SummaryStack, { kind: "diff" }>["merges"]) =>
+      JSON.parse(
+        scanResultFile({
+          run: RUN,
+          commit: SHA,
+          milliseconds: 0,
+          stacks: [
+            {
+              stack: { kind: "diff", diff: { stackId: "a", changes: [] }, merges },
+              milliseconds: 0,
+            },
+          ],
+        }),
+      ).stacks[0];
+    expect(of(undefined)).not.toHaveProperty("attribution");
+    expect(of([]).attribution).toEqual([]);
   });
 
   // Record 0046: a step that reads the file gets what the summary shows,
@@ -271,6 +330,8 @@ describe("the result file of an apply", () => {
       outcome: "deployed",
       stack: "storage/buckets:prod",
       ticker: "alice",
+      milliseconds: 95_500,
+      deployMilliseconds: 61_250,
       applied: { kind: "deployed", diff: QUIET.kind === "diff" ? QUIET.diff : never() },
     });
 
@@ -285,6 +346,9 @@ describe("the result file of an apply", () => {
       stack: "storage/buckets:prod",
       ticker: "alice",
       reason: null,
+      // Record 0061: the whole job, and the tool's deploy inside it.
+      seconds: 95.5,
+      deploySeconds: 61.25,
       preview: { state: "in-sync", counts: counts(), changes: [] },
       after: null,
     });
@@ -300,6 +364,8 @@ describe("the result file of an apply", () => {
       stack: "network:dev",
       ticker: "alice",
       reason: "the tool exited with an error (exit code 1)",
+      milliseconds: 1_000,
+      deployMilliseconds: 500,
       applied: {
         kind: "not-deployed",
         reason: "the tool exited with an error (exit code 1)",
@@ -326,7 +392,13 @@ describe("the result file of an apply", () => {
   });
 
   test("a refused re-run knows no stack and no ticker", () => {
-    const text = applyResultFile({ run: RUN, commit: SHA, deployment: 42, outcome: "refused" });
+    const text = applyResultFile({
+      run: RUN,
+      commit: SHA,
+      deployment: 42,
+      outcome: "refused",
+      milliseconds: 750,
+    });
 
     expect(JSON.parse(text)).toEqual({
       version: 1,
@@ -339,6 +411,9 @@ describe("the result file of an apply", () => {
       stack: null,
       ticker: null,
       reason: null,
+      seconds: 0.75,
+      // The tool never deployed.
+      deploySeconds: null,
       preview: null,
       after: null,
     });
@@ -371,6 +446,13 @@ describe("the counts of the dashboard", () => {
 
 test("the JSON schema of the result file", () => {
   expect(JSON.stringify(resultFileJsonSchema(), null, 2)).toMatchSnapshot();
+});
+
+// Record 0061: the schema is published next to the one of sluiceway.yaml, and
+// CI fails when it is stale, as it does for dist/.
+test("the committed schema file is what the generator writes now", () => {
+  const file = resolve(import.meta.dir, "../../schema/result-file.schema.json");
+  expect(readFileSync(file, "utf8")).toBe(`${JSON.stringify(resultFileJsonSchema(), null, 2)}\n`);
 });
 
 function counts(some: Partial<Record<string, number>> = {}) {

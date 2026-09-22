@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { scanResultSchema } from "../../src/render/result-file.ts";
 import { fences, read } from "./docs.ts";
 
 // Slice 2.22: the recipes of docs/notifications.md tell people about a deploy
@@ -145,4 +146,12 @@ describe("the message of a recipe", () => {
       "🔴 Sluiceway: a stack was not deployed (failed). d",
     );
   });
+});
+
+// Record 0061: the result file has a published schema, and the example the
+// page shows is a file a reader could get.
+test("the example scan file fits the schema of the result file", () => {
+  const example = fences(page).find(({ language }) => language === "json");
+  expect(scanResultSchema.safeParse(JSON.parse(example?.text ?? "")).success).toBe(true);
+  expect(page).toContain("../schema/result-file.schema.json");
 });

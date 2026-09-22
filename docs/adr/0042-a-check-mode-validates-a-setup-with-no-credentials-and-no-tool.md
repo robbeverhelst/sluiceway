@@ -1,5 +1,7 @@
 # A check mode validates a setup with no credentials and no tool
 
+> Amended by 0061: the check also reads the workflow files under `.github/workflows` and warns about a missing trigger, permission or job, a forbidden trigger and a ref that is not a release. None of it turns the job red.
+
 The first real user could only learn whether their setup was right by merging a workflow and waiting for a scan. What gave confidence before that push was a dry run of the config loader and stack discovery, done by hand with Sluiceway's internal code. A stranger cannot do that (onboarding log, hurdle 1). So there is a fifth mode, `check`. It reads files and nothing else: no credentials, no infrastructure tool, no GitHub API, no write of any kind. The owner decided on 2026-09-21 that it is part of v1.
 
 It was weighed against "docs only" (a checklist a person follows by eye). Rejected, because the mistakes it catches are exactly the ones a person does not see: a glob that matches nothing, a stack that discovery does not find, a file nobody claims.
