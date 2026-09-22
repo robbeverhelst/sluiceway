@@ -1,0 +1,8 @@
+Release "web" has been upgraded. Happy Helming!
+NAME: web
+LAST DEPLOYED: Tue Sep 22 15:43:36 2026
+NAMESPACE: sluiceway-web
+STATUS: deployed
+REVISION: 2
+DESCRIPTION: Upgrade complete
+TEST SUITE: None

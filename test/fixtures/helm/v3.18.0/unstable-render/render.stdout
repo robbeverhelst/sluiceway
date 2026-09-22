@@ -29,7 +29,7 @@ kind: ConfigMap
 metadata:
   name: web-nonce
 data:
-  nonce: "VNmoq5eLV8gd4KJW"
+  nonce: "D2iQafBB1tfAk5He"
 ---
 # Source: web/templates/service.yaml
 apiVersion: v1

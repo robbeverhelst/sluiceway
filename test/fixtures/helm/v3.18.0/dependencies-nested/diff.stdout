@@ -1,0 +1,46 @@
+[
+  {
+    "apiVersion": "v1",
+    "kind": "Service",
+    "namespace": "sluiceway-worker",
+    "name": "worker",
+    "changeType": "ADD",
+    "resourceStatus": {
+      "oldExists": false,
+      "newExists": true
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "namespace": "sluiceway-worker",
+    "name": "worker-base",
+    "changeType": "ADD",
+    "resourceStatus": {
+      "oldExists": false,
+      "newExists": true
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "namespace": "sluiceway-worker",
+    "name": "worker-settings",
+    "changeType": "ADD",
+    "resourceStatus": {
+      "oldExists": false,
+      "newExists": true
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "kind": "Secret",
+    "namespace": "sluiceway-worker",
+    "name": "worker-token",
+    "changeType": "ADD",
+    "resourceStatus": {
+      "oldExists": false,
+      "newExists": true
+    }
+  }
+]

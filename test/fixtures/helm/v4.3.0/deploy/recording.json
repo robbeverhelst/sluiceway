@@ -1,6 +1,6 @@
 {
   "scenario": "deploy",
-  "description": "web deployed the way apply does it: the diff, the render the deploy is held to, the render again right before the deploy, the deploy, and a diff after it.",
+  "description": "web deployed the way apply does it: the diff, the render the deploy is held to, the render again right before the deploy, the version for the deploy's flags, the deploy, and a diff after it.",
   "cliVersion": "v4.3.0",
   "commands": [
     {
@@ -60,6 +60,19 @@
       "stdoutFormat": "text"
     },
     {
+      "id": "version",
+      "argv": [
+        "helm",
+        "version",
+        "--template={{.Version}}"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "version.stdout",
+      "stderr": "version.stderr",
+      "stdoutFormat": "text"
+    },
+    {
       "id": "deploy",
       "argv": [
         "helm",
@@ -69,7 +82,7 @@
         "--namespace=sluiceway-web",
         "--install",
         "--reset-values",
-        "--atomic",
+        "--rollback-on-failure",
         "--hide-notes",
         "--values=values.yaml"
       ],

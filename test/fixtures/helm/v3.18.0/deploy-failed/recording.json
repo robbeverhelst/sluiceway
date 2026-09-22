@@ -60,6 +60,19 @@
       "stdoutFormat": "text"
     },
     {
+      "id": "version",
+      "argv": [
+        "helm",
+        "version",
+        "--template={{.Version}}"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "version.stdout",
+      "stderr": "version.stderr",
+      "stdoutFormat": "text"
+    },
+    {
       "id": "deploy",
       "argv": [
         "helm",

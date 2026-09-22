@@ -1,0 +1,119 @@
+{
+  "scenario": "create-namespace",
+  "description": "web into a namespace that is not there, with createNamespace: the diff and the render work without it, and the deploy makes it.",
+  "cliVersion": "v3.18.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-new",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "render",
+      "argv": [
+        "helm",
+        "template",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-new",
+        "--dry-run=server",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "render.stdout",
+      "stderr": "render.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "render-again",
+      "argv": [
+        "helm",
+        "template",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-new",
+        "--dry-run=server",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "render-again.stdout",
+      "stderr": "render-again.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "version",
+      "argv": [
+        "helm",
+        "version",
+        "--template={{.Version}}"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "version.stdout",
+      "stderr": "version.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "deploy",
+      "argv": [
+        "helm",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-new",
+        "--install",
+        "--reset-values",
+        "--atomic",
+        "--create-namespace",
+        "--hide-notes",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "deploy.stdout",
+      "stderr": "deploy.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "diff-after",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-new",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "diff-after.stdout",
+      "stderr": "diff-after.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

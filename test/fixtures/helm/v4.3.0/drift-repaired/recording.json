@@ -1,0 +1,205 @@
+{
+  "scenario": "drift-repaired",
+  "description": "web drifted, and apply deploys over it: the fresh preview and its render, the drift check again, the render right before the deploy, the version, on Helm 4 how the release is applied, the deploy, and the drift check after it, which finds nothing.",
+  "cliVersion": "v4.3.0",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "render",
+      "argv": [
+        "helm",
+        "template",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--dry-run=server",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "render.stdout",
+      "stderr": "render.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "diff-again",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "diff-again.stdout",
+      "stderr": "diff-again.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "three-way",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--three-way-merge",
+        "--no-hooks",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "three-way.stdout",
+      "stderr": "three-way.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "render-again",
+      "argv": [
+        "helm",
+        "template",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--dry-run=server",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "render-again.stdout",
+      "stderr": "render-again.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "version",
+      "argv": [
+        "helm",
+        "version",
+        "--template={{.Version}}"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "version.stdout",
+      "stderr": "version.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "metadata",
+      "argv": [
+        "helm",
+        "get",
+        "metadata",
+        "web",
+        "--namespace=sluiceway-web",
+        "--output=json"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "metadata.stdout",
+      "stderr": "metadata.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "deploy",
+      "argv": [
+        "helm",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--rollback-on-failure",
+        "--force-conflicts",
+        "--hide-notes",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "deploy.stdout",
+      "stderr": "deploy.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "diff-after",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "diff-after.stdout",
+      "stderr": "diff-after.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "three-way-after",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "web",
+        "../charts/web",
+        "--namespace=sluiceway-web",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--three-way-merge",
+        "--no-hooks",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "web",
+      "exitCode": 0,
+      "stdout": "three-way-after.stdout",
+      "stderr": "three-way-after.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

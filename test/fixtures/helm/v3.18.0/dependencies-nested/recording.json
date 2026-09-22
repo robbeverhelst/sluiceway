@@ -1,0 +1,57 @@
+{
+  "scenario": "dependencies-nested",
+  "description": "worker's dependency web depends on base: web's dependencies are built first, then worker's, and the diff holds base's ConfigMap.",
+  "cliVersion": "v3.18.0",
+  "commands": [
+    {
+      "id": "dependencies-web",
+      "argv": [
+        "helm",
+        "dependency",
+        "build",
+        "."
+      ],
+      "cwd": "charts/web",
+      "exitCode": 0,
+      "stdout": "dependencies-web.stdout",
+      "stderr": "dependencies-web.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "dependencies",
+      "argv": [
+        "helm",
+        "dependency",
+        "build",
+        "."
+      ],
+      "cwd": "charts/worker",
+      "exitCode": 0,
+      "stdout": "dependencies.stdout",
+      "stderr": "dependencies.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "diff",
+      "argv": [
+        "helm",
+        "diff",
+        "upgrade",
+        "worker",
+        "../charts/worker",
+        "--namespace=sluiceway-worker",
+        "--install",
+        "--reset-values",
+        "--dry-run=server",
+        "--output=structured",
+        "--no-color",
+        "--values=values.yaml"
+      ],
+      "cwd": "worker",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

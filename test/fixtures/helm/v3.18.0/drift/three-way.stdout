@@ -1,0 +1,53 @@
+[
+  {
+    "apiVersion": "v1",
+    "kind": "Service",
+    "namespace": "sluiceway-web",
+    "name": "web",
+    "changeType": "MODIFY",
+    "resourceStatus": {
+      "oldExists": true,
+      "newExists": true
+    },
+    "changes": [
+      {
+        "path": "spec.ports[0]",
+        "field": "targetPort",
+        "change": "replace",
+        "oldValue": 9090,
+        "newValue": 8080
+      }
+    ]
+  },
+  {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "namespace": "sluiceway-web",
+    "name": "web-settings",
+    "changeType": "MODIFY",
+    "resourceStatus": {
+      "oldExists": true,
+      "newExists": true
+    },
+    "changes": [
+      {
+        "path": "data",
+        "field": "greeting",
+        "change": "replace",
+        "oldValue": "CANARY-VALUE drifted",
+        "newValue": "CANARY-VALUE hello"
+      }
+    ]
+  },
+  {
+    "apiVersion": "v1",
+    "kind": "Secret",
+    "namespace": "sluiceway-web",
+    "name": "web-token",
+    "changeType": "ADD",
+    "resourceStatus": {
+      "oldExists": false,
+      "newExists": true
+    }
+  }
+]

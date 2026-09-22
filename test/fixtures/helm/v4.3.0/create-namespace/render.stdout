@@ -1,0 +1,42 @@
+---
+# Source: web/templates/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: web-token
+  labels:
+    app.kubernetes.io/name: web
+type: Opaque
+stringData:
+  token: "CANARY-SECRET"
+
+---
+# Source: web/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-settings
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/version: "1.0.0"
+data:
+  greeting: "CANARY-VALUE hello"
+  app.properties: |
+    color=blue
+
+---
+# Source: web/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: web
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080

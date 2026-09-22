@@ -1,3 +1,2 @@
-Flag --atomic has been deprecated, use --rollback-on-failure instead
 level=WARN msg="upgrade failed" name=web error="server-side apply failed for object sluiceway-web/web /v1, Kind=Service: Service \"web\" is invalid: spec.ports[0].port: Invalid value: 99999: must be between 1 and 65535, inclusive"
 Error: UPGRADE FAILED: release web failed, and has been rolled back due to rollback-on-failure being set: server-side apply failed for object sluiceway-web/web /v1, Kind=Service: Service "web" is invalid: spec.ports[0].port: Invalid value: 99999: must be between 1 and 65535, inclusive
