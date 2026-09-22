@@ -35,7 +35,7 @@ export function readWorkflowFiles(root: string): WorkflowFile[] {
   }));
 }
 
-const MODES = ["scan", "resolve", "apply", "settle", "check", "init"] as const;
+const MODES = ["auto", "scan", "resolve", "apply", "settle", "check", "init"] as const;
 type Mode = (typeof MODES)[number];
 
 // How a step names the version of the action it runs.
@@ -47,8 +47,12 @@ export type RefKind = "moving" | "release" | "commit" | "other";
 
 export interface SluicewayJob {
   job: string;
-  // Nothing when the step names no mode, or one that does not exist.
+  // Nothing when the step names a mode that does not exist. A step with no
+  // mode is auto (record 0077).
   mode: Mode | undefined;
+  // The modes the job runs: its own, or for auto the ones the triggers of its
+  // file start (record 0077). Empty for a mode that does not exist.
+  runs: Mode[];
   ref: string;
   refKind: RefKind;
 }
@@ -77,7 +81,7 @@ export type WorkflowWarning =
     }
   // A scan would write the dashboard from code that is not on the default
   // branch yet.
-  | { kind: "forbidden-trigger"; path: string; trigger: string }
+  | { kind: "forbidden-trigger"; path: string; trigger: string; auto?: true }
   // All four jobs stay in one file (slice 2.7, records 0009 and 0035).
   | { kind: "missing-job"; path: string; mode: Exclude<Mode, "check" | "init"> }
   // A scan with no `resolve` in its file draws boxes that nothing acts on
@@ -89,7 +93,16 @@ export type WorkflowWarning =
   | { kind: "missing-permissions"; path: string; job: string; mode: Mode; missing: string[] }
   // Record 0074 from here on. Scans run one at a time, ticks too, and deploys
   // one at a time per stack (records 0004, 0025, 0035).
-  | { kind: "no-concurrency"; path: string; job: string; mode: "scan" | "resolve" | "apply" }
+  | {
+      kind: "no-concurrency";
+      path: string;
+      job: string;
+      mode: "scan" | "resolve" | "apply" | "auto";
+    }
+  // Record 0077: the one job of auto mode waits in line, and a waiting run is
+  // never dropped, nor a running one stopped.
+  | { kind: "auto-no-queue"; path: string; job: string }
+  | { kind: "auto-cancels"; path: string; job: string }
   // One group for every stack makes a deploy wait for another stack's.
   | { kind: "apply-group-shared"; path: string; job: string }
   // Without queue: max a waiting deploy is cancelled by a newer one.
@@ -154,6 +167,9 @@ function needs(mode: Mode, config: Config): Record<string, Level> {
       };
     case "settle":
       return { contents: "read", issues: "read", deployments: "write", actions: "write" };
+    // The union of the modes it runs, worked out by the caller.
+    case "auto":
+      return {};
     case "check":
     // init reads the files of the checkout and writes into it, nowhere else
     // (record 0065).
@@ -258,16 +274,49 @@ function parseWorkflow(text: string): Parsed | "unreadable" | undefined {
 function sluicewayJob(
   job: string,
   steps: unknown[],
+  auto: Mode[],
 ): (SluicewayJob & { named: string }) | undefined {
   for (const step of steps) {
     if (!isRecord(step) || typeof step.uses !== "string") continue;
     const ref = SLUICEWAY_STEP.exec(step.uses.trim())?.[1];
     if (ref === undefined) continue;
-    const named = isRecord(step.with) ? String(step.with.mode ?? "") : "";
+    const written = isRecord(step.with) ? String(step.with.mode ?? "").trim() : "";
+    // No mode is auto, as action.yml's default says (record 0077).
+    const named = written === "" ? "auto" : written;
     const mode = (MODES as readonly string[]).includes(named) ? (named as Mode) : undefined;
-    return { job, mode, ref, refKind: refKind(ref), named };
+    const runs = mode === undefined ? [] : mode === "auto" ? auto : [mode];
+    return { job, mode, runs, ref, refKind: refKind(ref), named };
   }
   return undefined;
+}
+
+// What an auto job runs, from the triggers of its file, by the rule of
+// core/auto-mode.ts. A job that resolves also deploys what it hands on and
+// settles. A reusable workflow gets its triggers from its caller, so it may
+// run all of it.
+function autoRuns(on: Record<string, unknown>, config: Config): Mode[] {
+  const called = "workflow_call" in on;
+  const scans = called || "push" in on || "schedule" in on || "workflow_dispatch" in on;
+  const resolves =
+    !config.dashboard.readOnly &&
+    (called || "workflow_dispatch" in on || listensToEdits(on.issues, "issues" in on));
+  const checks = "pull_request" in on || "merge_group" in on;
+  return [
+    ...(scans ? (["scan"] as const) : []),
+    ...(resolves ? (["resolve", "apply", "settle"] as const) : []),
+    ...(checks ? (["check"] as const) : []),
+  ];
+}
+
+// What a job's token needs for every mode it runs, the stronger level of two.
+function needsAll(modes: Mode[], config: Config): Record<string, Level> {
+  const all: Record<string, Level> = {};
+  for (const mode of modes) {
+    for (const [scope, level] of Object.entries(needs(mode, config))) {
+      if (all[scope] !== "write") all[scope] = level;
+    }
+  }
+  return all;
 }
 
 // The levels a job's token lacks. A job's own block replaces the workflow's.
@@ -303,15 +352,22 @@ export function checkWorkflows(files: WorkflowFile[], config: Config): WorkflowR
 }
 
 function checkOne(path: string, workflow: Parsed, config: Config, report: WorkflowReport): void {
+  const auto = autoRuns(workflow.on, config);
   const found = Object.entries(workflow.jobs).flatMap(([name, job]) => {
-    const step = sluicewayJob(name, job.steps);
+    const step = sluicewayJob(name, job.steps, auto);
     return step ? [{ step, permissions: job.permissions ?? workflow.permissions }] : [];
   });
   if (found.length === 0) return;
   const { warnings, notes } = report;
   report.workflows.push({
     path,
-    jobs: found.map(({ step: { job, mode, ref, refKind } }) => ({ job, mode, ref, refKind })),
+    jobs: found.map(({ step: { job, mode, runs, ref, refKind } }) => ({
+      job,
+      mode,
+      runs,
+      ref,
+      refKind,
+    })),
   });
 
   for (const { step } of found) {
@@ -327,15 +383,21 @@ function checkOne(path: string, workflow: Parsed, config: Config, report: Workfl
 
   const called = "workflow_call" in workflow.on;
   if (called) notes.push({ kind: "called", path });
-  const modes = new Set(found.map(({ step }) => step.mode));
+  const modes = new Set(found.flatMap(({ step }) => step.runs));
   const runs = (mode: Mode) => modes.has(mode);
-  const deploys = [...modes].some(
-    (mode) => mode !== undefined && mode !== "check" && mode !== "init",
+  const deploys = [...modes].some((mode) => mode !== "check" && mode !== "init");
+  const autoDeploys = found.some(
+    ({ step }) => step.mode === "auto" && step.runs.some((mode) => mode !== "check"),
   );
 
   if (!called && deploys) {
     for (const trigger of ["pull_request", "pull_request_target", "merge_group"]) {
-      if (trigger in workflow.on) warnings.push({ kind: "forbidden-trigger", path, trigger });
+      if (!(trigger in workflow.on)) continue;
+      warnings.push(
+        autoDeploys
+          ? { kind: "forbidden-trigger", path, trigger, auto: true }
+          : { kind: "forbidden-trigger", path, trigger },
+      );
     }
   }
   if (!called && runs("scan")) {
@@ -343,7 +405,8 @@ function checkOne(path: string, workflow: Parsed, config: Config, report: Workfl
       if (!(trigger in workflow.on)) warnings.push({ kind: "missing-trigger", path, trigger });
     }
   }
-  if (!called && runs("resolve") && !listensToEdits(workflow.on.issues, "issues" in workflow.on)) {
+  const needsEdits = runs("resolve") || (autoDeploys && !config.dashboard.readOnly);
+  if (!called && needsEdits && !listensToEdits(workflow.on.issues, "issues" in workflow.on)) {
     warnings.push({ kind: "missing-trigger", path, trigger: "issues" });
   }
   if (runs("resolve") || runs("apply") || runs("settle")) {
@@ -360,20 +423,15 @@ function checkOne(path: string, workflow: Parsed, config: Config, report: Workfl
   for (const { step, permissions } of found) {
     if (step.mode === undefined) continue;
     const { job, mode } = step;
+    const wanted = needsAll(step.runs, config);
     if (permissions === undefined) {
-      warnings.push({
-        kind: "no-permissions",
-        path,
-        job,
-        mode,
-        needs: missing({}, needs(mode, config)),
-      });
+      warnings.push({ kind: "no-permissions", path, job, mode, needs: missing({}, wanted) });
       continue;
     }
-    const lacks = missing(permissions, needs(mode, config));
+    const lacks = missing(permissions, wanted);
     if (lacks.length > 0)
       warnings.push({ kind: "missing-permissions", path, job, mode, missing: lacks });
-    if (mode === "scan" && !has(permissions, "checks")) {
+    if (step.runs.includes("scan") && !has(permissions, "checks")) {
       notes.push({ kind: "no-preview-pages", path, job });
     }
   }
@@ -395,6 +453,16 @@ function checkJobs(
   for (const { step } of found) {
     const { job, mode } = step;
     const { concurrency, condition } = jobOf(job);
+    // One job for the whole loop: one run at a time, none dropped, none
+    // stopped half way (record 0077). A job that only checks needs none.
+    if (mode === "auto" && step.runs.some((one) => one !== "check")) {
+      if (concurrency === undefined) {
+        warnings.push({ kind: "no-concurrency", path, job, mode });
+      } else {
+        if (concurrency.queue !== "max") warnings.push({ kind: "auto-no-queue", path, job });
+        if (concurrency.cancels) warnings.push({ kind: "auto-cancels", path, job });
+      }
+    }
     if (mode === "scan" || mode === "resolve" || mode === "apply") {
       if (concurrency === undefined) {
         warnings.push({ kind: "no-concurrency", path, job, mode });

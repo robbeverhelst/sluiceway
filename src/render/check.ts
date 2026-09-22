@@ -292,11 +292,21 @@ function refText({ ref, refKind }: SluicewayJob): string {
 
 // One job that runs Sluiceway, for the job log.
 export function workflowJobText(path: string, job: SluicewayJob): string {
-  const mode = job.mode === undefined ? "no known mode" : `mode ${job.mode}`;
+  const mode =
+    job.mode === undefined
+      ? "no known mode"
+      : job.mode === "auto"
+        ? `mode auto, which runs ${job.runs.length === 0 ? "nothing on these triggers" : job.runs.join(", ")}`
+        : `mode ${job.mode}`;
   return `${path}, job ${job.job}: ${mode}, ${refText(job)}.`;
 }
 
-const MODE_LIST = "scan, resolve, apply, settle, check";
+// Auto runs several modes, and needs what all of them need (record 0077).
+function needsWho(mode: string): string {
+  return mode === "auto" ? "the modes it runs need" : `${mode} needs`;
+}
+
+const MODE_LIST = "auto, scan, resolve, apply, settle, check";
 
 export function workflowWarningText(warning: WorkflowWarning): string {
   const { path } = warning;
@@ -304,9 +314,7 @@ export function workflowWarningText(warning: WorkflowWarning): string {
     case "unreadable":
       return `${path} is not valid YAML, so the check cannot read how it runs Sluiceway. The Actions tab of the repo shows GitHub's own error.`;
     case "unknown-mode":
-      return warning.mode === ""
-        ? `${path}, job ${warning.job}: the Sluiceway step has no mode. Use one of: ${MODE_LIST}.`
-        : `${path}, job ${warning.job}: the Sluiceway step has mode ${JSON.stringify(warning.mode)}, which does not exist. Use one of: ${MODE_LIST}.`;
+      return `${path}, job ${warning.job}: the Sluiceway step has mode ${JSON.stringify(warning.mode)}, which does not exist. Leave the mode out, or use one of: ${MODE_LIST}.`;
     case "unreleased-ref":
       return `${path}, job ${warning.job}: sluiceway/sluiceway@${warning.ref} is not a release. A branch runs code that is not released yet. Use a major tag such as @v0 to follow every release, an exact tag such as @v0.8.0, or a full commit SHA.`;
     case "mixed-refs":
@@ -314,17 +322,24 @@ export function workflowWarningText(warning: WorkflowWarning): string {
     case "missing-trigger":
       return MISSING_TRIGGER[warning.trigger](path);
     case "forbidden-trigger":
+      if (warning.auto) {
+        return `${path} runs on ${warning.trigger}, and its Sluiceway job loads the credentials of your stacks before it. On ${warning.trigger} those steps would run code that is not on the default branch yet. Keep the check in a workflow of its own, which needs no credentials.`;
+      }
       return `${path} runs on ${warning.trigger}. A scan would write the dashboard from code that is not on the default branch yet. Only the workflow of the check may run on pull requests or in a merge queue.`;
     case "missing-job":
       return `${path} has no ${warning.mode} job. The four jobs scan, resolve, apply and settle stay in one file: a scan looks for waiting ticks among the runs of its own workflow, and the rescan box and settle start that same workflow again.`;
     case "boxes-do-nothing":
       return `${path} scans, and no job in it resolves a tick, so a box on the dashboard does nothing. For a workflow that only scans, set dashboard.readOnly: true in sluiceway.yaml.`;
     case "no-permissions":
-      return `${path}, job ${warning.job}: there is no permissions block, so the token gets the repo's default, which a file does not show. ${warning.mode} needs ${warning.needs.join(", ")}.`;
+      return `${path}, job ${warning.job}: there is no permissions block, so the token gets the repo's default, which a file does not show. ${needsWho(warning.mode)} ${warning.needs.join(", ")}.`;
     case "missing-permissions":
-      return `${path}, job ${warning.job}: ${warning.mode} needs ${warning.missing.join(", ")}. A job's own permissions replace the workflow's.`;
+      return `${path}, job ${warning.job}: ${needsWho(warning.mode)} ${warning.missing.join(", ")}. A job's own permissions replace the workflow's.`;
     case "no-concurrency":
       return `${path}, job ${warning.job}: there is no concurrency group. ${NO_CONCURRENCY[warning.mode]}`;
+    case "auto-no-queue":
+      return `${path}, job ${warning.job}: the concurrency group has no queue: max, so a run that waits is dropped when a newer one arrives, a push's scan or a deploy that a dispatch started with it.`;
+    case "auto-cancels":
+      return `${path}, job ${warning.job}: cancel-in-progress stops a deploy half way when a newer run arrives. Take it out of this job.`;
     case "apply-group-shared":
       return `${path}, job ${warning.job}: the concurrency group does not name the stack, so a deploy waits for the deploy of every other stack. Use group: sluiceway-apply-\${{ matrix.stack }}.`;
     case "apply-no-queue":
@@ -358,7 +373,8 @@ const MISSING_TRIGGER: Record<
     `${path} has a resolve job and does not listen to issue edits (issues, with the type edited). A tick would start nothing.`,
 };
 
-const NO_CONCURRENCY: Record<"scan" | "resolve" | "apply", string> = {
+const NO_CONCURRENCY: Record<"scan" | "resolve" | "apply" | "auto", string> = {
+  auto: "Two runs could scan or deploy at once. Use one group with queue: max, such as group: sluiceway-${{ github.event.issue.number }}, so the runs wait in line and an edit of another issue waits for none of them.",
   scan: "Scans would run side by side. Use concurrency: sluiceway-scan, so they run one at a time.",
   resolve:
     "Two runs could handle the same tick. Use concurrency: sluiceway-resolve, so ticks are handled one run at a time.",
@@ -377,7 +393,7 @@ export function workflowNoteText(note: WorkflowNote): string {
 
 // True when some workflow runs a scan.
 export function scansSomewhere(workflows: WorkflowReport): boolean {
-  return workflows.workflows.some(({ jobs }) => jobs.some((job) => job.mode === "scan"));
+  return workflows.workflows.some(({ jobs }) => jobs.some((job) => job.runs.includes("scan")));
 }
 
 export interface CheckFacts {

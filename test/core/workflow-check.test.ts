@@ -58,10 +58,10 @@ describe("the workflows the docs ship", () => {
       {
         path: ".github/workflows/deploy-dashboard.yml",
         jobs: [
-          { job: "scan", mode: "scan", ref: "v0", refKind: "moving" },
-          { job: "resolve", mode: "resolve", ref: "v0", refKind: "moving" },
-          { job: "apply", mode: "apply", ref: "v0", refKind: "moving" },
-          { job: "settle", mode: "settle", ref: "v0", refKind: "moving" },
+          { job: "scan", mode: "scan", runs: ["scan"], ref: "v0", refKind: "moving" },
+          { job: "resolve", mode: "resolve", runs: ["resolve"], ref: "v0", refKind: "moving" },
+          { job: "apply", mode: "apply", runs: ["apply"], ref: "v0", refKind: "moving" },
+          { job: "settle", mode: "settle", runs: ["settle"], ref: "v0", refKind: "moving" },
         ],
       },
     ]);
@@ -221,7 +221,7 @@ describe("a broken workflow", () => {
     ]);
   });
 
-  test("a step with no mode, or one that does not exist", () => {
+  test("a step with a mode that does not exist", () => {
     const { warnings } = broken((text) => text.replace("mode: settle", "mode: settel"));
     expect(warnings).toEqual([
       { kind: "unknown-mode", path: PATH, job: "settle", mode: "settel" },

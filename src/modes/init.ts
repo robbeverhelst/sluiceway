@@ -50,7 +50,9 @@ export async function init(context: InitContext): Promise<void> {
 
   // One workflow runs Sluiceway, and init never overwrites a file.
   const running = checkWorkflows(readWorkflowFiles(root), existing)
-    .workflows.filter(({ jobs }) => jobs.some(({ mode }) => mode !== "check" && mode !== "init"))
+    .workflows.filter(({ jobs }) =>
+      jobs.some(({ runs }) => runs.some((mode) => mode !== "check" && mode !== "init")),
+    )
     .map(({ path }) => path);
   const taken = [...new Set([...running, ...(exists(root, WORKFLOW_FILE) ? [WORKFLOW_FILE] : [])])];
   if (taken.length > 0) throw new Error(workflowExistsText(taken.sort()));
@@ -134,7 +136,6 @@ export async function init(context: InitContext): Promise<void> {
   const workflow = starterWorkflow({
     findings,
     branch,
-    label: config.dashboard.label,
     merges: config.mergeAndDeploy.authors.length > 0,
   });
 
