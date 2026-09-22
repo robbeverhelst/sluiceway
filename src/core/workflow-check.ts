@@ -137,8 +137,10 @@ type Level = "read" | "write";
 
 // What the workflow token needs in each mode, from the calls the mode makes.
 // The README's block gives all of it at once. `resolve` merges with
-// `contents: write` when merge and deploy is on (record 0054).
-function needs(mode: Mode, config: Config): Record<string, Level> {
+// `contents: write` when merge and deploy is on (record 0054). Written by
+// hand: the calls live in the modes and the GitHub port, which core cannot
+// read, and a test pins the table.
+export function tokenNeeds(mode: Mode, config: Config): Record<string, Level> {
   switch (mode) {
     case "scan":
       return {
@@ -304,7 +306,7 @@ function autoRuns(on: Record<string, unknown>, config: Config): Mode[] {
 function needsAll(modes: Mode[], config: Config): Record<string, Level> {
   const all: Record<string, Level> = {};
   for (const mode of modes) {
-    for (const [scope, level] of Object.entries(needs(mode, config))) {
+    for (const [scope, level] of Object.entries(tokenNeeds(mode, config))) {
       if (all[scope] !== "write") all[scope] = level;
     }
   }

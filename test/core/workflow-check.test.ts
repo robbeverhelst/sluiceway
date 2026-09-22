@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { MODES } from "../../src/core/auto-mode.ts";
 import { parseConfig } from "../../src/core/config.ts";
-import { checkWorkflows, type WorkflowFile } from "../../src/core/workflow-check.ts";
+import { checkWorkflows, tokenNeeds, type WorkflowFile } from "../../src/core/workflow-check.ts";
 import { EXAMPLE_WORKFLOWS, fences, read } from "../docs/docs.ts";
 
 // Slice 4.10, record 0061: the check reads the workflow files and says what a
@@ -481,5 +482,40 @@ describe("the second apply job of merge and deploy", () => {
     expect(warnings).toEqual([
       { kind: "no-status-check", path: PATH, job: "apply-merged", mode: "apply" },
     ]);
+  });
+});
+
+// The permissions each mode needs are written by hand from the calls it makes
+// on the GitHub port. A mode that starts a new call changes this table, and
+// this test says so.
+describe("the permissions of each mode", () => {
+  const MERGES = parseConfig("mergeAndDeploy:\n  authors:\n    - renovate[bot]\n");
+
+  test("are pinned", () => {
+    expect(Object.fromEntries(MODES.map((mode) => [mode, tokenNeeds(mode, DEFAULTS)]))).toEqual({
+      auto: {},
+      scan: {
+        contents: "read",
+        issues: "write",
+        deployments: "write",
+        actions: "read",
+        "pull-requests": "read",
+      },
+      resolve: {
+        contents: "read",
+        issues: "write",
+        deployments: "write",
+        actions: "write",
+        "pull-requests": "read",
+      },
+      apply: { contents: "read", issues: "write", deployments: "write", "pull-requests": "read" },
+      settle: { contents: "read", issues: "read", deployments: "write", actions: "write" },
+      check: { contents: "read" },
+      init: { contents: "read" },
+    });
+  });
+
+  test("resolve merges with contents: write when merge and deploy is on", () => {
+    expect(tokenNeeds("resolve", MERGES).contents).toBe("write");
   });
 });
