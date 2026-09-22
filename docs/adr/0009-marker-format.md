@@ -1,5 +1,7 @@
 # Three marker kinds, a trailing row marker, and a body that is regenerated around its row blocks
 
+> Amended by 0083: a marker of the kind `sluiceway:bulk` sits on its own line outside the row blocks, under the pending or the drifted rows: the bulk box of that section, or its confirm box with the stacks and hashes it names.
+>
 > Amended by 0075: the row marker gains the optional key `deletes` right after `destroys`, how many of the destroys are deletes, written whenever `destroys` is. A drifted row's marker gains `gone` after `drift`, how many resources its drift check found gone outside the code. Both are display caches for the header and the destroy alert, like `destroys`.
 >
 > Amended by 0059: the row marker gains the optional key `depends-on` after `drift`, the stack ids a preview of a stack with `dependsOn: auto` read from its stack references. `resolve` reads it for such a stack, a second exception that, like the first, can only hold a deploy back or order it.

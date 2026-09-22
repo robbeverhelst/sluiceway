@@ -118,7 +118,7 @@ Show the header image and the two lines in the voice of the dashboard. `false` r
 
 Default: `false`
 
-Draw a dashboard that nothing can be deployed from: pending rows have no box, there is no rescan box, and the line under the Pending heading says that the dashboard is read only. Everything else is the same: the rows, the diffs, the counts, the links and the summary.
+Draw a dashboard that nothing can be deployed from: pending rows have no box, there is no rescan box and no box that deploys a whole section, and the line under the Pending heading says that the dashboard is read only. Everything else is the same: the rows, the diffs, the counts, the links and the summary.
 
 Turn it on for a workflow that only scans, such as the [read-only trial](read-only-trial.md). Such a workflow does not listen to issue edits, so a box would look live and do nothing. Sluiceway cannot see that from inside a scan, which is why it is a setting. With it on, a step with no mode only ever scans: it acts on no issue edit and on a dispatch it scans and does nothing else.
 
@@ -204,6 +204,8 @@ The rule is checked against GitHub's live answer at every tick. Nothing is cache
 
 The rescan box has no rule of its own. Anyone with write access can tick it, and it only starts a full scan.
 
+The box that deploys every pending stack, and the one that repairs every drifted stack, have no rule of their own either: a tick on them deploys nothing and only asks for a confirmation. A tick on the confirm box is judged as a tick on each row it names, by each stack's own rule, so a stack whose rule refuses you is left out with a line in the comment and the others deploy.
+
 ### `deploys`
 
 Default: `true`
@@ -215,6 +217,7 @@ Default: `true`
 deploys: false
 ```
 
+- The boxes that deploy every pending or every drifted stack at once are not drawn, and a confirm box that was already there goes ([record 0083](adr/0083-deploy-all-is-a-bulk-box-and-a-confirm-box-and-the-confirm-box-is-a-tick-on-each-row.md)).
 - `resolve` clears every ticked box, puts a note on the row that says deploys are turned off, and starts nothing. No deployment record is made, nobody's access is looked up and no comment is written, because nothing could go out whoever ticked. The rescan box still works: a scan deploys nothing.
 - A deploy that was ticked before the switch was merged and that starts after it ends before the tool runs. Its deployment record ends as `failure` with the reason "deploys are turned off in sluiceway.yaml", which the row shows as its failure line, the `outcome` output is `refused` and the job is red.
 - Scans go on as before, so the dashboard keeps showing what is pending.

@@ -143,6 +143,9 @@ export function exampleDashboard(): string {
     repoUrl: REPO_URL,
     actionRef: EXAMPLE_ACTION_REF,
     personality: true,
+    // Deploys are on, so the pending rows get the box that deploys them all
+    // (record 0083).
+    bulk: { on: true, live: [] },
   });
   const readme = body
     .replace(/^<!-- sluiceway:dashboard [^\n]*-->\n\n/, "")

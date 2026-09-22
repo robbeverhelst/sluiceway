@@ -1,5 +1,7 @@
 # A team can stop, rehearse and explain, and an empty fresh preview is not a failure
 
+> Amended by 0083: while `deploys` is `false` there is no bulk box and no confirm box.
+
 The first real user compared Sluiceway with the internal dashboard that inspired it, on 2026-09-22 (onboarding log, hurdle 23). That dashboard had five things a team misses here, and the owner decided to adopt all five (build plan, slice 2.20). This record fixes each one. Every part stands on its own and was built as its own commit.
 
 ## 1. An exclusion can say why

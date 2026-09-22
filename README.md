@@ -65,6 +65,8 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>update</kbd> <code>kubernetes:helm.sh/v3:Release</code> <b>ingress-nginx</b> · <code>values.controller.image.tag</code>, <code>values.controller.replicaCount</code><br>
   </details>
 
+- [ ] Deploy all 4 pending stacks
+
 ### In sync
 
 <details><summary>9 stacks in sync</summary>

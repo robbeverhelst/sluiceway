@@ -26,3 +26,13 @@ describe("the job log table on updates waiting to merge", () => {
     expect(table).toContain(`\`${line}`);
   });
 });
+
+// Slice 5.18 (record 0083): what a scan did with a bulk box or a confirm box.
+describe("the job log table on the bulk boxes", () => {
+  test.each([
+    "Cleared an orphan tick on the box that deploys all pending stacks: ...",
+    "Took back the confirm box of the pending stacks: ...",
+  ])("names the line %p", (line) => {
+    expect(table).toContain(`\`${line}`);
+  });
+});

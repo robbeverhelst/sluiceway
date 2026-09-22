@@ -1,5 +1,7 @@
 # A read-only dashboard draws no boxes
 
+> Amended by 0083: a read-only dashboard has no bulk box and no confirm box.
+
 In the read-only trial the first real user ticked a box. The workflow had no `resolve` job and did not listen to issue edits, so nothing happened and nothing said why, and the tick sat there until the next scan cleared it with a note that said "tick again", in a workflow where no tick can ever work (onboarding log, hurdle 16). A scan cannot see from inside its job whether the workflow it runs in has a `resolve` job, so the person has to say so.
 
 ```yaml

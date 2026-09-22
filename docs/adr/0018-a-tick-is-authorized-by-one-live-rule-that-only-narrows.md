@@ -1,5 +1,7 @@
 # A tick is authorized by one live rule that only narrows, and only a person can tick
 
+> Amended by 0083: the bulk box needs a person with write access, like the rescan box. A tick on the confirm box is one tick per stack it names, each judged by that stack's rule.
+>
 > Amended by 0025: the ticker is no longer the `sender` of an event. It is the editor of the edit that made the tick, read from the issue's edit history. Where this record says sender, read that editor. What is checked does not change.
 >
 > Amended by 0051: `apply` also writes one comment that mentions the ticker, when a change moved since the tick.

@@ -1,5 +1,7 @@
 # The edit history names the ticker, and the event is only a wake-up
 
+> Amended by 0083: the walk reads the bulk box and the confirm box as ticks, and the scan sweeps a tick on either like an orphan tick. A confirm box is taken back by the second scan after it.
+>
 > Supersedes 0005.
 >
 > Amended by 0054: a scan opens a deployment record in one case: it hands a merged change on. It still never deploys and never clears a tick for it.

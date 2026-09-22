@@ -188,6 +188,14 @@ _Avoid_: Duplicate tick, ignored tick, second deploy
 The one checkbox on the dashboard that belongs to no stack. Ticked by a person with write access, it starts a full scan and deploys nothing. A read-only dashboard has none.
 _Avoid_: Refresh button, rescan tick, scan trigger
 
+**Bulk box**:
+The box under the pending rows, `Deploy all N pending stacks`, or under the drifted rows, `Repair all N drifted stacks`, when the section has two rows or more. A tick on it deploys nothing: it asks for a confirm box. There is none while deploys are off or on a read-only dashboard.
+_Avoid_: Select all, deploy-all button, batch tick
+
+**Confirm box**:
+The box that takes the place of a ticked bulk box, naming the stacks of its section at their diff hashes and who asked. A tick on it is a tick on each of those rows, by its ticker, each judged by its own tick rule. It goes when the rows change under it, and when the second scan after it finds it unticked.
+_Avoid_: Are-you-sure box, confirmation dialog, second tick
+
 **Reviewer**:
 A person who approves a waiting deploy in GitHub's own interface, where the repo's plan offers that. A second gate after the tick, owned by GitHub. Sluiceway only waits for it.
 _Avoid_: Approver, second ticker
