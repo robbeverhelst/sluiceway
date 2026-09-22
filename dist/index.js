@@ -63289,6 +63289,231 @@ async function runPool(items, size, work) {
   return results;
 }
 
+// src/render/waiting-line.ts
+function renderWaitingLine(line3, options = {}) {
+  const by2 = line3.author === undefined ? "" : ` by ${escapeText(line3.author)}`;
+  const parts = [
+    line3.stackIds.map((id) => `**${escapeText(id)}**`).join(", "),
+    ...options.redact ? [] : [escapeText(shortenTitle(line3.title))],
+    `#${line3.pr}${by2}`,
+    "waits on its checks"
+  ];
+  return `- ${parts.join(" · ")} ${waitingMarker(line3)}`;
+}
+function waitingBlock(line3, options = {}) {
+  const [block] = parseDashboard(renderWaitingLine(line3, options)).waiting;
+  if (!block)
+    throw new Error("A rendered waiting line did not read back as one.");
+  return block;
+}
+
+// src/core/row-placement.ts
+var NO_DEPLOYS = {
+  facts: { byStack: new Map, succeeded: [], trail: [], unread: 0 },
+  settled: new Set,
+  runs: new Map
+};
+function isFullScan(so) {
+  return so.ids.every((id) => so.previewed.has(id));
+}
+function placeRows(so, late) {
+  const { ids: ids2, previewed, links: links2, logDiff } = so;
+  const { live, deploys, resolveWaits: waits, attributed } = late;
+  const full = isFullScan(so);
+  const liveRows = live.current ? live.first : new Map;
+  const { dropped } = oneRowPerStack([...ids2], new Set(previewed.keys()), [...liveRows.keys()]);
+  const liveTicks = new Map;
+  for (const [id, row2] of so.readOnly ? [] : live.first) {
+    if (row2.known && row2.ticked)
+      liveTicks.set(id, row2.hash);
+  }
+  const { merges, mergeTicks } = mergeRows(so.listing, so.branchPreviews, live.current ? live.merges : [], waits, so.redact);
+  const waiting = waitingLines(so.listing, live.current ? live.waiting : [], so.redact);
+  const outside = trailOutside(ids2, new Map([...so.histories ?? []].map(([id, history]) => [
+    id,
+    outsideDeploys(id, history, deploys.runs.get(id))
+  ])), live.current ? live.outside : []);
+  const rows = new Map;
+  const carried = new Map;
+  const first = [];
+  const deploying = [];
+  const deferred = [];
+  const ticks = [];
+  for (const id of ids2) {
+    const mine = previewed.get(id);
+    const liveRow = liveRows.get(id);
+    const fact = deploys.facts.byStack.get(id);
+    const decided = rowAtLateRead({
+      previewedAt: mine?.startedAt,
+      liveState: liveRow?.state,
+      fact,
+      settledHere: deploys.settled.has(id),
+      again: so.again.has(id)
+    });
+    const ticked = liveTicks.has(id);
+    if (decided.row === "preview-first")
+      first.push({ id, why: decided.why });
+    else if (decided.row === "fresh" && mine) {
+      const fresh = previewRow(id, mine.result, links2, failureLine2(so.repoUrl, id, fact, outside), {
+        toolDiffInLog: logDiff,
+        pageUrl: so.pageUrls.get(id)
+      });
+      const row2 = fresh.state === "pending" ? {
+        ...fresh,
+        attribution: attributed.get(id)?.lines,
+        pendingAgain: pendingAgain(fact, fresh.hash) ? { logUrl: logDiff ? links2.log : undefined } : undefined
+      } : fresh;
+      if (!ticked) {
+        rows.set(id, row2);
+        continue;
+      }
+      const box = row2.state === "pending" || row2.state === "drift";
+      const carry = tickAtLateRead({
+        liveHash: liveTicks.get(id),
+        writes: { row: "fresh", hash: box ? row2.hash : undefined },
+        resolveOnItsWay: waits
+      }) === "carry";
+      ticks.push({ id, tick: carry ? "carry" : "sweep", box });
+      rows.set(id, !box ? row2 : carry ? { ...row2, ticked: true } : { ...row2, orphanTick: true });
+    } else if (decided.row === "deploying" && decided.from === "record" && fact?.kind === "open") {
+      deploying.push(id);
+      rows.set(id, {
+        state: "deploying",
+        stackId: id,
+        ticker: fact.ticker,
+        runUrl: runUrl(so.repoUrl, fact.run, fact.attempt),
+        waiting: fact.waiting,
+        destroys: destroysOf(mine, liveRow),
+        deletes: deletesOf(mine, liveRow),
+        attribution: attributed.get(id)?.lines,
+        behind: fact.behind
+      });
+    } else if (liveRow) {
+      if (ticked && decided.row === "live") {
+        const tick = tickAtLateRead({
+          liveHash: liveTicks.get(id),
+          writes: { row: "live", previewed: mine !== undefined },
+          resolveOnItsWay: waits
+        });
+        if (tick === "preview-first") {
+          first.push({ id, why: "orphan-tick" });
+          continue;
+        }
+        ticks.push({ id, tick, box: true });
+      }
+      if (decided.row === "deploying")
+        deploying.push(id);
+      else if (mine)
+        deferred.push(id);
+      carried.set(id, liveRow);
+    }
+  }
+  if (first.length > 0)
+    return { kind: "preview-first", stacks: first };
+  return {
+    kind: "placed",
+    rows: {
+      root: {
+        scanSha: so.scan.sha,
+        scanRun: so.scan.runId,
+        scanAt: so.scan.at,
+        fullScanAt: full ? so.scan.at : live.root?.fullScanAt,
+        fullScanRun: full ? so.scan.runId : live.root?.fullScanRun
+      },
+      facts: deploys.facts,
+      shipped: late.shipped ?? new Map,
+      rows,
+      carried,
+      merges,
+      waiting,
+      outside
+    },
+    placed: {
+      carried: [...carried.keys()].filter((id) => !previewed.has(id)),
+      carriedBlocks: carried.size,
+      dropped,
+      deploying,
+      deferred,
+      ticks,
+      mergeTicks,
+      resolveWaits: waits,
+      unread: deploys.facts.unread
+    }
+  };
+}
+function mergesAtLateRead(so, facts) {
+  const waiting = [];
+  for (const [id, fact] of facts.byStack) {
+    if (fact.kind === "open" && fact.merge !== undefined) {
+      waiting.push({ id, fact: { ...fact, merge: fact.merge } });
+    }
+  }
+  waiting.sort((a, b) => byCodeUnit(a.id, b.id));
+  const toPreview = waiting.filter(({ id }) => so.ids.includes(id) && !so.previewed.has(id));
+  if (toPreview.length > 0) {
+    return { kind: "preview-first", stacks: toPreview.map(({ id }) => ({ id, why: "merged" })) };
+  }
+  return { kind: "hand-off", waiting };
+}
+function failureLine2(repoUrl, id, deployFact, outside) {
+  const fact = standingFailure(id, deployFact, outside);
+  if (fact === undefined)
+    return;
+  return {
+    reason: fact.reason,
+    ticker: fact.ticker,
+    at: fact.at,
+    runUrl: runUrl(repoUrl, fact.run, fact.attempt)
+  };
+}
+function destroysOf(mine, liveRow) {
+  if (mine?.result.ok)
+    return mine.result.diff.changes.filter(isDestroy).length;
+  return liveRow?.known ? liveRow.destroys : 0;
+}
+function deletesOf(mine, liveRow) {
+  if (mine?.result.ok)
+    return mine.result.diff.changes.filter((change3) => change3.op === "delete").length;
+  return liveRow?.known ? liveRow.deletes : undefined;
+}
+function mergeRows(listing, previews, live, waits, redact) {
+  if (listing.kind === "off")
+    return { merges: [], mergeTicks: [] };
+  if (listing.kind === "failed")
+    return { merges: [...live], mergeTicks: [] };
+  const mergeTicks = [];
+  const merges = listing.updates.map(({ pullRequest, stackIds }) => {
+    const block = mergeBlock({
+      pr: pullRequest.number,
+      stackIds,
+      head: pullRequest.head,
+      title: pullRequest.title,
+      author: pullRequest.author,
+      preview: previews.get(pullRequest.number)
+    }, { redact });
+    const ticked = live.find((one) => one.pr === block.pr);
+    if (!ticked?.ticked)
+      return block;
+    const same2 = ticked.head === block.head && JSON.stringify(ticked.stackIds) === JSON.stringify(block.stackIds);
+    const carry = same2 && waits;
+    mergeTicks.push({ pr: block.pr, tick: carry ? "carry" : "sweep" });
+    return carry ? tickedMergeBlock(block) : clearMergeTick(tickedMergeBlock(block), { note: "orphan" });
+  });
+  return { merges, mergeTicks };
+}
+function waitingLines(listing, live, redact) {
+  if (listing.kind === "off")
+    return [];
+  if (listing.kind === "failed")
+    return [...live];
+  return listing.onChecks.map(({ pullRequest, stackIds }) => waitingBlock({
+    pr: pullRequest.number,
+    stackIds,
+    title: pullRequest.title,
+    author: pullRequest.author
+  }, { redact }));
+}
+
 // src/core/scan-result.ts
 function everyPreviewFailed(attempted, failed2) {
   return attempted > 1 && failed2 === attempted;
@@ -63654,24 +63879,6 @@ function renderSummary(stacks, options = {}) {
   return { text: text7, bytes, shortened, fits: bytes <= (options.budget ?? SUMMARY_BUDGET) };
 }
 
-// src/render/waiting-line.ts
-function renderWaitingLine(line3, options = {}) {
-  const by2 = line3.author === undefined ? "" : ` by ${escapeText(line3.author)}`;
-  const parts = [
-    line3.stackIds.map((id) => `**${escapeText(id)}**`).join(", "),
-    ...options.redact ? [] : [escapeText(shortenTitle(line3.title))],
-    `#${line3.pr}${by2}`,
-    "waits on its checks"
-  ];
-  return `- ${parts.join(" · ")} ${waitingMarker(line3)}`;
-}
-function waitingBlock(line3, options = {}) {
-  const [block] = parseDashboard(renderWaitingLine(line3, options)).waiting;
-  if (!block)
-    throw new Error("A rendered waiting line did not read back as one.");
-  return block;
-}
-
 // src/modes/branch-preview.ts
 import { cp, mkdir as mkdir2, mkdtemp as mkdtemp3, realpath, rm as rm4, writeFile as writeFile4 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
@@ -63807,13 +64014,18 @@ class ScanFailedError extends Error {
   }
 }
 
-class PreviewFirst extends Error {
-  stacks;
-  constructor(stacks) {
+class PreviewFirstError extends Error {
+  first;
+  constructor(first) {
     super("More stacks have to be previewed before the dashboard can be written.");
-    this.stacks = stacks;
-    this.name = "PreviewFirst";
+    this.first = first;
+    this.name = "PreviewFirstError";
   }
+}
+function placed(answer) {
+  if (answer.kind === "preview-first")
+    throw new PreviewFirstError(answer);
+  return answer;
 }
 function seconds2(milliseconds) {
   return `${(milliseconds / 1000).toFixed(1)} s`;
@@ -63920,7 +64132,7 @@ async function scanning(context3, report) {
   const pages = previewPages(context3.github, context3.sha);
   let rounds = 0;
   const prepared = new Set;
-  let composed;
+  let lastPlaced;
   let written;
   let startedFrom;
   const again = new Set;
@@ -63945,128 +64157,7 @@ async function scanning(context3, report) {
       label: config2.dashboard.label,
       logDiff
     });
-    const full = ids2.every((id) => previewed.has(id));
-    const place3 = (live, deploys, waits, lines5, shipped = new Map) => {
-      const liveRows = live.current ? live.first : new Map;
-      const { dropped } = oneRowPerStack(ids2, new Set(previewed.keys()), [...liveRows.keys()]);
-      const liveTicks = new Map;
-      for (const [id, row2] of config2.dashboard.readOnly ? [] : live.first) {
-        if (row2.known && row2.ticked)
-          liveTicks.set(id, row2.hash);
-      }
-      const { merges, mergeTicks } = mergeRows(listing, branchPreviews, live.current ? live.merges : [], waits, config2.dashboard.redact);
-      const waiting = waitingLines(listing, live.current ? live.waiting : [], config2.dashboard.redact);
-      const outside = trailOutside(ids2, new Map([...histories ?? []].map(([id, history]) => [
-        id,
-        outsideDeploys(id, history, deploys.runs.get(id))
-      ])), live.current ? live.outside : []);
-      const rows = new Map;
-      const carried = new Map;
-      const first = [];
-      const deploying = [];
-      const deferred = [];
-      const ticks = [];
-      for (const id of ids2) {
-        const mine = previewed.get(id);
-        const liveRow = liveRows.get(id);
-        const fact = deploys.facts.byStack.get(id);
-        const decided = rowAtLateRead({
-          previewedAt: mine?.startedAt,
-          liveState: liveRow?.state,
-          fact,
-          settledHere: deploys.settled.has(id),
-          again: again.has(id)
-        });
-        const ticked = liveTicks.has(id);
-        if (decided.row === "preview-first")
-          first.push({ id, why: decided.why });
-        else if (decided.row === "fresh" && mine) {
-          const fresh = previewRow(id, mine.result, links2, failureLine2(context3, id, fact, outside), {
-            toolDiffInLog: logDiff,
-            pageUrl: pageUrls.get(id)
-          });
-          const row2 = fresh.state === "pending" ? {
-            ...fresh,
-            attribution: lines5.get(id)?.lines,
-            pendingAgain: pendingAgain(fact, fresh.hash) ? { logUrl: logDiff ? links2.log : undefined } : undefined
-          } : fresh;
-          if (!ticked) {
-            rows.set(id, row2);
-            continue;
-          }
-          const box = row2.state === "pending" || row2.state === "drift";
-          const carry = tickAtLateRead({
-            liveHash: liveTicks.get(id),
-            writes: { row: "fresh", hash: box ? row2.hash : undefined },
-            resolveOnItsWay: waits
-          }) === "carry";
-          ticks.push({ id, tick: carry ? "carry" : "sweep", box });
-          rows.set(id, !box ? row2 : carry ? { ...row2, ticked: true } : { ...row2, orphanTick: true });
-        } else if (decided.row === "deploying" && decided.from === "record" && fact?.kind === "open") {
-          deploying.push(id);
-          rows.set(id, {
-            state: "deploying",
-            stackId: id,
-            ticker: fact.ticker,
-            runUrl: runUrl(context3.repoUrl, fact.run, fact.attempt),
-            waiting: fact.waiting,
-            destroys: destroysOf(mine, liveRow),
-            deletes: deletesOf(mine, liveRow),
-            attribution: lines5.get(id)?.lines,
-            behind: fact.behind
-          });
-        } else if (liveRow) {
-          if (ticked && decided.row === "live") {
-            const tick = tickAtLateRead({
-              liveHash: liveTicks.get(id),
-              writes: { row: "live", previewed: mine !== undefined },
-              resolveOnItsWay: waits
-            });
-            if (tick === "preview-first") {
-              first.push({ id, why: "orphan-tick" });
-              continue;
-            }
-            ticks.push({ id, tick, box: true });
-          }
-          if (decided.row === "deploying")
-            deploying.push(id);
-          else if (mine)
-            deferred.push(id);
-          carried.set(id, liveRow);
-        }
-      }
-      if (first.length > 0)
-        throw new PreviewFirst(first);
-      return {
-        rows: {
-          root: {
-            scanSha: context3.sha,
-            scanRun: context3.runId,
-            scanAt: at,
-            fullScanAt: full ? at : live.root?.fullScanAt,
-            fullScanRun: full ? context3.runId : live.root?.fullScanRun
-          },
-          facts: deploys.facts,
-          shipped,
-          rows,
-          carried,
-          merges,
-          waiting,
-          outside
-        },
-        composed: {
-          carried: [...carried.keys()].filter((id) => !previewed.has(id)),
-          carriedBlocks: carried.size,
-          dropped,
-          deploying,
-          deferred,
-          ticks,
-          mergeTicks,
-          resolveWaits: waits,
-          unread: deploys.facts.unread
-        }
-      };
-    };
+    const full = isFullScan({ ids: ids2, previewed });
     const writer = {
       github: context3.github,
       log,
@@ -64076,13 +64167,33 @@ async function scanning(context3, report) {
       ignored,
       budget: context3.limits?.body
     };
-    if (histories === undefined && ids2.length > 0 && ids2.every((id) => previewed.has(id))) {
+    if (histories === undefined && ids2.length > 0 && full) {
       histories = await readHistories(context3, stacks, config2.dashboard.recentlyDeployed);
     }
+    const soFar = {
+      ids: ids2,
+      scan: { sha: context3.sha, runId: context3.runId, at },
+      repoUrl: context3.repoUrl,
+      links: links2,
+      logDiff,
+      readOnly: config2.dashboard.readOnly,
+      redact: config2.dashboard.redact,
+      listing,
+      branchPreviews,
+      previewed,
+      again,
+      pageUrls,
+      histories
+    };
     let answer;
     try {
       if (full) {
-        const alone = place3(liveDashboard(""), NO_DEPLOYS, false, new Map).rows;
+        const alone = placed(placeRows(soFar, {
+          live: liveDashboard(""),
+          deploys: NO_DEPLOYS,
+          resolveWaits: false,
+          attributed: new Map
+        })).rows;
         const fitted2 = fitScan(writer, full, alone);
         if (!fitted2.fits)
           throw new ScanFailedError(bodyDoesNotFitMessage(fitted2.size));
@@ -64090,11 +64201,10 @@ async function scanning(context3, report) {
       answer = await writeScan(writer, full, async (live) => {
         startedFrom ??= live.body;
         let deploys = await lateDeploys(context3, stacks, previewed, live);
-        const waiting = mergesWaiting(deploys.facts);
-        const toPreview = waiting.filter(({ id }) => ids2.includes(id) && !previewed.has(id));
-        if (toPreview.length > 0) {
-          throw new PreviewFirst(toPreview.map(({ id }) => ({ id, why: "merged" })));
-        }
+        const merges = mergesAtLateRead(soFar, deploys.facts);
+        if (merges.kind === "preview-first")
+          throw new PreviewFirstError(merges);
+        const { waiting } = merges;
         if (waiting.length > 0) {
           const ended = await handOffMerges(context3, config2, stacks, previewed, waiting, handedOn);
           context3.outputs?.set("matrix", matrixOutput(handedOn));
@@ -64103,16 +64213,22 @@ async function scanning(context3, report) {
         }
         attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
         const shipped = await attribution.ship(deploys.facts.trail);
-        const placed = place3(live, deploys, !config2.dashboard.readOnly && await resolveWaits(context3, live, deploys), attributed, shipped);
-        composed = placed.composed;
-        return placed.rows;
+        const late = placed(placeRows(soFar, {
+          live,
+          deploys,
+          resolveWaits: !config2.dashboard.readOnly && await resolveWaits(context3, live, deploys),
+          attributed,
+          shipped
+        }));
+        lastPlaced = late.placed;
+        return late.rows;
       });
     } catch (error63) {
-      if (!(error63 instanceof PreviewFirst))
+      if (!(error63 instanceof PreviewFirstError))
         throw error63;
-      const late = new Set(error63.stacks.map(({ id }) => id));
+      const late = new Set(error63.first.stacks.map(({ id }) => id));
       next = stacks.filter(({ stack }) => late.has(stackId(stack)));
-      for (const { id, why: why3 } of error63.stacks) {
+      for (const { id, why: why3 } of error63.first.stacks) {
         if (why3 === "deploy-ended")
           again.add(id);
         log.info(`${logGroupTitle(id)} ${PREVIEW_FIRST[why3]}`);
@@ -64125,11 +64241,11 @@ async function scanning(context3, report) {
     }
     if (full)
       throw new ScanFailedError(bodyDoesNotFitMessage(answer.size));
-    const why2 = { kind: "does-not-fit", carried: composed?.carriedBlocks ?? 0 };
+    const why2 = { kind: "does-not-fit", carried: lastPlaced?.carriedBlocks ?? 0 };
     next = stacks.filter(({ stack }) => !previewed.has(stackId(stack)));
     log.info(`This scan falls back to a full scan: ${fullScanReasonText(why2)}. Previewing the other ${plural2(next.length, "stack")} now.`);
   }
-  reportDashboard(context3, written, composed);
+  reportDashboard(context3, written, lastPlaced);
   report.attributed = attributed;
   report.dashboard = {
     url: dashboardUrl(context3.repoUrl, written.number),
@@ -64164,11 +64280,6 @@ var PREVIEW_FIRST = {
   "orphan-tick": "is previewed now: its row holds an orphan tick, and only a fresh row can ask for a fresh tick.",
   merged: "is previewed now: a pull request for it was merged, and its deploy waits for this preview."
 };
-var NO_DEPLOYS = {
-  facts: { byStack: new Map, succeeded: [], trail: [], unread: 0 },
-  settled: new Set,
-  runs: new Map
-};
 function startingCommits(facts, previewed) {
   const from = new Map;
   const add = (id) => from.set(id, lastDeployedCommit(facts, id));
@@ -64179,27 +64290,6 @@ function startingCommits(facts, previewed) {
     if (fact.kind === "open")
       add(id);
   return from;
-}
-function failureLine2(context3, id, deployFact, outside) {
-  const fact = standingFailure(id, deployFact, outside);
-  if (fact === undefined)
-    return;
-  return {
-    reason: fact.reason,
-    ticker: fact.ticker,
-    at: fact.at,
-    runUrl: runUrl(context3.repoUrl, fact.run, fact.attempt)
-  };
-}
-function destroysOf(mine, liveRow) {
-  if (mine?.result.ok)
-    return mine.result.diff.changes.filter(isDestroy).length;
-  return liveRow?.known ? liveRow.destroys : 0;
-}
-function deletesOf(mine, liveRow) {
-  if (mine?.result.ok)
-    return mine.result.diff.changes.filter((change3) => change3.op === "delete").length;
-  return liveRow?.known ? liveRow.deletes : undefined;
 }
 async function lateDeploys(context3, stacks, previewed, live) {
   const { log, github } = context3;
@@ -64550,7 +64640,7 @@ var FOUND = {
   reopened: "Reopened the dashboard and wrote it",
   created: "Created the dashboard"
 };
-function reportDashboard(context3, written, composed) {
+function reportDashboard(context3, written, lastPlaced) {
   const { log } = context3;
   const { shortened } = written;
   const size = `${written.body.length.toLocaleString("en-US")} of ${BODY_LIMIT.toLocaleString("en-US")} characters`;
@@ -64564,25 +64654,25 @@ function reportDashboard(context3, written, composed) {
   if (left > 0) {
     log.info(`${plural2(left, "more pull request")} ${left === 1 ? "qualifies" : "qualify"} and ${left === 1 ? "is" : "are"} not listed: the dashboard has no room for ${left === 1 ? "it" : "them"}. They are listed as the older ones merge.`);
   }
-  if (composed && composed.carried.length > 0) {
-    log.info(`Carried ${plural2(composed.carried.length, "row")} through as ${composed.carried.length === 1 ? "it was" : "they were"}, for the stacks this scan did not preview.`);
+  if (lastPlaced && lastPlaced.carried.length > 0) {
+    log.info(`Carried ${plural2(lastPlaced.carried.length, "row")} through as ${lastPlaced.carried.length === 1 ? "it was" : "they were"}, for the stacks this scan did not preview.`);
   }
-  for (const id of composed?.dropped ?? []) {
+  for (const id of lastPlaced?.dropped ?? []) {
     log.info(`Dropped the row of ${logGroupTitle(id)}: discovery knows no such stack.`);
   }
-  for (const id of composed?.deploying ?? []) {
+  for (const id of lastPlaced?.deploying ?? []) {
     log.info(`${logGroupTitle(id)} has an open deployment, so its row says deploying and has no box, whatever the preview says.`);
   }
-  for (const id of composed?.deferred ?? []) {
+  for (const id of lastPlaced?.deferred ?? []) {
     log.info(`Kept the live row of ${logGroupTitle(id)}: a deploy of it ended after its preview started.`);
   }
-  for (const { id, tick, box } of composed?.ticks ?? []) {
-    log.info(tickText(logGroupTitle(id), tick, box, composed?.resolveWaits ?? false));
+  for (const { id, tick, box } of lastPlaced?.ticks ?? []) {
+    log.info(tickText(logGroupTitle(id), tick, box, lastPlaced?.resolveWaits ?? false));
   }
-  for (const { pr, tick } of composed?.mergeTicks ?? []) {
+  for (const { pr, tick } of lastPlaced?.mergeTicks ?? []) {
     log.info(tick === "carry" ? `Left the tick on the merge of #${pr} alone: a run that an issue edit started is queued or in progress, and its \`resolve\` job handles every tick.` : `Cleared an orphan tick on the merge of #${pr}: no run that an issue edit started is queued or in progress. Tick it again to merge.`);
   }
-  const unread = composed?.unread ?? 0;
+  const unread = lastPlaced?.unread ?? 0;
   if (unread > 0) {
     log.info(unread === 1 ? "1 deployment record carries a payload this version of Sluiceway cannot read. It was left alone." : `${unread} deployment records carry a payload this version of Sluiceway cannot read. They were left alone.`);
   }
@@ -64641,52 +64731,6 @@ async function listUpdates(context3, config2, stacks) {
     log.info(`${plural2(rest.length, "more pull request")} ${rest.length === 1 ? "waits on its checks and is" : "wait on their checks and are"} not listed: ${numbers(rest)}.`);
   }
   return { kind: "listed", updates, onChecks: shown3 };
-}
-function mergeRows(listing, previews, live, waits, redact) {
-  if (listing.kind === "off")
-    return { merges: [], mergeTicks: [] };
-  if (listing.kind === "failed")
-    return { merges: [...live], mergeTicks: [] };
-  const mergeTicks = [];
-  const merges = listing.updates.map(({ pullRequest, stackIds }) => {
-    const block = mergeBlock({
-      pr: pullRequest.number,
-      stackIds,
-      head: pullRequest.head,
-      title: pullRequest.title,
-      author: pullRequest.author,
-      preview: previews.get(pullRequest.number)
-    }, { redact });
-    const ticked = live.find((one) => one.pr === block.pr);
-    if (!ticked?.ticked)
-      return block;
-    const same2 = ticked.head === block.head && JSON.stringify(ticked.stackIds) === JSON.stringify(block.stackIds);
-    const carry = same2 && waits;
-    mergeTicks.push({ pr: block.pr, tick: carry ? "carry" : "sweep" });
-    return carry ? tickedMergeBlock(block) : clearMergeTick(tickedMergeBlock(block), { note: "orphan" });
-  });
-  return { merges, mergeTicks };
-}
-function waitingLines(listing, live, redact) {
-  if (listing.kind === "off")
-    return [];
-  if (listing.kind === "failed")
-    return [...live];
-  return listing.onChecks.map(({ pullRequest, stackIds }) => waitingBlock({
-    pr: pullRequest.number,
-    stackIds,
-    title: pullRequest.title,
-    author: pullRequest.author
-  }, { redact }));
-}
-function mergesWaiting(facts) {
-  const waiting = [];
-  for (const [id, fact] of facts.byStack) {
-    if (fact.kind === "open" && fact.merge !== undefined) {
-      waiting.push({ id, fact: { ...fact, merge: fact.merge } });
-    }
-  }
-  return waiting.sort((a, b) => byCodeUnit(a.id, b.id));
 }
 async function handOffMerges(context3, config2, stacks, previewed, waiting, handedOn) {
   const { log } = context3;
