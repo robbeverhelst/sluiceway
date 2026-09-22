@@ -50,4 +50,4 @@ These facts come from Renovate's source on 2026-09-22 (`lib/config/app-strings.t
 
 ## Settled while building (slice 5.9)
 
-- The open pull requests are read to the last page, where slice 4.13 stopped at the oldest 1,000. The cost is one request of the hourly budget per 100 open pull requests on every scan, and only a repo with `mergeAndDeploy.authors` pays it: a repo with 2,000 open pull requests pays 20. A pull request older than the first 1,000 was never listed before, so an update that waited behind them could not be merged from the dashboard at all. The `docs/later.md` line keeps its other half, more than 30 updates waiting to merge, which slice 5.4 builds.
+- The open pull requests are read to the last page, where slice 4.13 stopped at the oldest 1,000. The cost is one request of the hourly budget per 100 open pull requests on every scan, and only a repo with `mergeAndDeploy.authors` pays it: a repo with 2,000 open pull requests pays 20. A pull request older than the first 1,000 was never listed before, so an update that waited behind them could not be merged from the dashboard at all.
