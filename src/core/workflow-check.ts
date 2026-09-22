@@ -7,6 +7,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
+import { autoModesOn, isMode, type Mode } from "./auto-mode.ts";
 import type { Config } from "./config.ts";
 
 // Where GitHub reads workflows from, relative to the repo root.
@@ -34,9 +35,6 @@ export function readWorkflowFiles(root: string): WorkflowFile[] {
     text: readFileSync(join(root, WORKFLOW_DIRECTORY, name), "utf8"),
   }));
 }
-
-const MODES = ["auto", "scan", "resolve", "apply", "settle", "check", "init"] as const;
-type Mode = (typeof MODES)[number];
 
 // How a step names the version of the action it runs.
 //   moving   a major tag such as `v0`, which follows every release of it
@@ -283,7 +281,7 @@ function sluicewayJob(
     const written = isRecord(step.with) ? String(step.with.mode ?? "").trim() : "";
     // No mode is auto, as action.yml's default says (record 0077).
     const named = written === "" ? "auto" : written;
-    const mode = (MODES as readonly string[]).includes(named) ? (named as Mode) : undefined;
+    const mode = isMode(named) ? named : undefined;
     const runs = mode === undefined ? [] : mode === "auto" ? auto : [mode];
     return { job, mode, runs, ref, refKind: refKind(ref), named };
   }
@@ -291,22 +289,15 @@ function sluicewayJob(
 }
 
 // What an auto job runs, from the triggers of its file, by the rule of
-// core/auto-mode.ts. A job that resolves also deploys what it hands on and
-// settles. A reusable workflow gets its triggers from its caller, so it may
-// run all of it.
+// core/auto-mode.ts. An `issues` trigger counts only when it takes an edit.
 function autoRuns(on: Record<string, unknown>, config: Config): Mode[] {
-  const called = "workflow_call" in on;
-  const scans = called || "push" in on || "schedule" in on || "workflow_dispatch" in on;
-  // Without issue edits nothing is ever ticked, so the file only scans, and a
-  // dispatch finds nothing to resolve.
-  const resolves =
-    !config.dashboard.readOnly && (called || listensToEdits(on.issues, "issues" in on));
-  const checks = "pull_request" in on || "merge_group" in on;
-  return [
-    ...(scans ? (["scan"] as const) : []),
-    ...(resolves ? (["resolve", "apply", "settle"] as const) : []),
-    ...(checks ? (["check"] as const) : []),
-  ];
+  const events = Object.keys(on).filter(
+    (event) => event !== "issues" || listensToEdits(on.issues, true),
+  );
+  return autoModesOn(
+    { events, called: "workflow_call" in on },
+    { readOnly: config.dashboard.readOnly },
+  );
 }
 
 // What a job's token needs for every mode it runs, the stronger level of two.

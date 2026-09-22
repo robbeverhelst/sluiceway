@@ -3,6 +3,7 @@
 // the repo's files. Nothing comes from the tool, and no value (records 0021,
 // 0022).
 
+import { MODES } from "../core/auto-mode.ts";
 import type {
   BackendCheck,
   CheckReport,
@@ -337,7 +338,9 @@ function needsWho(mode: string): string {
   return mode === "auto" ? "the modes it runs need" : `${mode} needs`;
 }
 
-const MODE_LIST = "auto, scan, resolve, apply, settle, check";
+// The modes a workflow step may name. init writes the workflow and runs once,
+// outside one, so the words do not offer it.
+const MODE_LIST = MODES.filter((mode) => mode !== "init").join(", ");
 
 export function workflowWarningText(warning: WorkflowWarning): string {
   const { path } = warning;

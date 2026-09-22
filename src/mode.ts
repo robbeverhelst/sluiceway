@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import { isMode, MODES, type Mode } from "./core/auto-mode.ts";
 import { type GetInput, refuseDeploymentId, unusedNotifyInputs } from "./github/inputs.ts";
 import { runApply } from "./modes/apply-job.ts";
 import { HANDED_ON_STATE, runAuto, SETTLED_STATE } from "./modes/auto-job.ts";
@@ -9,9 +10,7 @@ import { runResolve } from "./modes/resolve-job.ts";
 import { runScan } from "./modes/scan-job.ts";
 import { runSettle } from "./modes/settle-job.ts";
 
-export const MODES = ["auto", "scan", "resolve", "apply", "settle", "check", "init"] as const;
-
-export type Mode = (typeof MODES)[number];
+export { MODES, type Mode };
 
 export class NotImplementedError extends Error {
   constructor(mode: Mode) {
@@ -26,10 +25,6 @@ export function parseMode(input: string): Mode {
   // No mode is auto mode: the step picks from the event (record 0077).
   if (mode === "") return "auto";
   throw new Error(`Unknown mode "${mode}". Use one of: ${MODES.join(", ")}.`);
-}
-
-function isMode(value: string): value is Mode {
-  return (MODES as readonly string[]).includes(value);
 }
 
 // A handler is handed the directory the action was downloaded to, where its
