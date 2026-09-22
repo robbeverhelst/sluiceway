@@ -13,6 +13,7 @@ import {
   type PackageManager,
   type WorkflowFindings,
 } from "../adapters/init-findings.ts";
+import { MERGE_SCAN_INPUT } from "../core/merge-scan.ts";
 
 export const WORKFLOW_FILE = ".github/workflows/deploy-dashboard.yml";
 export const EXPORT_ENV_FILE = ".github/scripts/export-env.sh";
@@ -27,7 +28,8 @@ export interface WorkflowOptions {
   branch: string | undefined;
   // dashboard.label, which the `if:` of resolve names.
   label: string;
-  // mergeAndDeploy.authors is set, so resolve merges (record 0054).
+  // mergeAndDeploy.authors is set, so resolve merges and the scan after the
+  // merge hands the change to a job of its own (record 0054).
   merges: boolean;
 }
 
@@ -36,7 +38,7 @@ const RUNS_ON = "ubuntu-latest";
 // The workflow of the README's step 2, with the steps that install what the
 // stacks need filled in the way examples/workflows does it.
 export function starterWorkflow(options: WorkflowOptions): string {
-  const { findings, label } = options;
+  const { findings, label, merges } = options;
   const branch = options.branch ?? DEFAULT_BRANCH;
   const lines = [
     "# Written by sluiceway init from the files of this repo. Review every step",
@@ -53,27 +55,34 @@ export function starterWorkflow(options: WorkflowOptions): string {
     "  schedule:",
     '    - cron: "0 6 * * *"',
     "  workflow_dispatch:",
+    // The narrowed scan after a merge from the dashboard (record 0064).
+    ...(merges
+      ? [
+          "    inputs:",
+          `      ${MERGE_SCAN_INPUT}:`,
+          "        description: Set by Sluiceway after a merge from the dashboard. Leave it empty.",
+          "        required: false",
+        ]
+      : []),
     "  issues:",
     "    types: [edited]",
     "",
     "permissions:",
-    `  contents: ${options.merges ? "write" : "read"}`,
-    "  issues: write",
-    "  deployments: write",
-    "  actions: write",
-    "  pull-requests: read",
-    "  checks: write",
+    ...PERMISSIONS.map((line) => `  ${line}`),
     "",
     "jobs:",
     "  scan:",
     "    if: github.event_name != 'issues'",
     `    runs-on: ${RUNS_ON}`,
     "    concurrency: sluiceway-scan",
+    ...(merges ? ["    outputs:", "      matrix: ${{ steps.scan.outputs.matrix }}"] : []),
     "    steps:",
     "      - uses: actions/checkout@v7",
     ...toolSteps(findings, "scan"),
     ...credentialSteps(findings.envFiles, "scan"),
-    "      - uses: sluiceway/sluiceway@v0",
+    ...(merges
+      ? ["      - id: scan", "        uses: sluiceway/sluiceway@v0"]
+      : ["      - uses: sluiceway/sluiceway@v0"]),
     "        with:",
     "          mode: scan",
     "",
@@ -81,6 +90,16 @@ export function starterWorkflow(options: WorkflowOptions): string {
     `    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, ${quoted(label)}))`,
     `    runs-on: ${RUNS_ON}`,
     "    concurrency: sluiceway-resolve",
+    // It merges with the workflow token (record 0054). A job's block replaces
+    // the workflow's, so it repeats the rest.
+    ...(merges
+      ? [
+          "    permissions:",
+          ...PERMISSIONS.map((line) =>
+            line.startsWith("contents:") ? "      contents: write" : `      ${line}`,
+          ),
+        ]
+      : []),
     "    outputs:",
     "      matrix: ${{ steps.resolve.outputs.matrix }}",
     "    steps:",
@@ -91,13 +110,50 @@ export function starterWorkflow(options: WorkflowOptions): string {
     "        with:",
     "          mode: resolve",
     "",
-    "  apply:",
-    "    needs: resolve",
-    "    if: ${{ !cancelled() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]' }}",
+    ...applyJob("apply", "resolve", findings),
+    // The scan after a merge hands the merged change on through its own
+    // matrix (record 0054).
+    ...(merges ? ["", ...applyJob("apply-merged", "scan", findings)] : []),
+    "",
+    "  settle:",
+    ...(merges
+      ? [
+          "    needs: [scan, resolve, apply, apply-merged]",
+          "    if: always() && ((needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]') || (needs.scan.outputs.matrix != '' && needs.scan.outputs.matrix != '[]'))",
+        ]
+      : [
+          "    needs: [resolve, apply]",
+          "    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'",
+        ]),
+    `    runs-on: ${RUNS_ON}`,
+    "    steps:",
+    "      - uses: actions/checkout@v7",
+    "      - uses: sluiceway/sluiceway@v0",
+    "        with:",
+    "          mode: settle",
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+const PERMISSIONS = [
+  "contents: read",
+  "issues: write",
+  "deployments: write",
+  "actions: write",
+  "pull-requests: read",
+  "checks: write",
+];
+
+// An apply job that deploys the matrix of the job it needs.
+function applyJob(name: string, source: string, findings: WorkflowFindings): string[] {
+  return [
+    `  ${name}:`,
+    `    needs: ${source}`,
+    `    if: \${{ !cancelled() && needs.${source}.outputs.matrix != '' && needs.${source}.outputs.matrix != '[]' }}`,
     "    strategy:",
     "      fail-fast: false",
     "      matrix:",
-    "        include: ${{ fromJson(needs.resolve.outputs.matrix) }}",
+    `        include: \${{ fromJson(needs.${source}.outputs.matrix) }}`,
     `    runs-on: ${RUNS_ON}`,
     "    timeout-minutes: 60",
     "    concurrency:",
@@ -114,18 +170,7 @@ export function starterWorkflow(options: WorkflowOptions): string {
     "        with:",
     "          mode: apply",
     "          deployment-id: ${{ matrix.deployment }}",
-    "",
-    "  settle:",
-    "    needs: [resolve, apply]",
-    "    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]'",
-    `    runs-on: ${RUNS_ON}`,
-    "    steps:",
-    "      - uses: actions/checkout@v7",
-    "      - uses: sluiceway/sluiceway@v0",
-    "        with:",
-    "          mode: settle",
   ];
-  return `${lines.join("\n")}\n`;
 }
 
 type Job = "scan" | "apply";

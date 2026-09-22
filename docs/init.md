@@ -20,7 +20,7 @@ Like the [check](workflow.md#check-your-setup), `init` reads the files of your c
 - **The programs' language and lockfile.** For Pulumi programs in JavaScript or TypeScript, the nearest `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock` or `bun.lock`, and `.nvmrc` or `.node-version`. Programs in another language get their packages with `pulumi install`.
 - **An env file of secret references.** A file named `.env`, `.env.<something>` or `<something>.env` with at least one 1Password reference (`op://`), loaded the way [the secret manager example](example-workflows.md#the-secret-manager) does it.
 - **The workflows that are there.** A workflow that already runs Sluiceway's scan, resolve, apply or settle, or a file at `.github/workflows/deploy-dashboard.yml`, stops `init` before it writes anything. A check workflow does not.
-- **A `sluiceway.yaml` that is there.** It is loaded as a scan loads it, kept as it is, and the workflow is built from it.
+- **A `sluiceway.yaml` that is there.** It is loaded as a scan loads it, kept as it is, and the workflow is built from it. With `mergeAndDeploy.authors`, that is the workflow of [merge and deploy](workflow.md#merge-and-deploy).
 
 ## What it writes
 

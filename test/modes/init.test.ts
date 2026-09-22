@@ -209,11 +209,36 @@ describe("a sluiceway.yaml that is there", () => {
     expect((await checked(root)).warnings).toEqual([]);
   });
 
-  test("with merge and deploy gives the workflow contents: write", async () => {
+  // docs/workflow.md, "Merge and deploy": resolve merges with its own
+  // contents: write, the scan hands the merged change to apply-merged, settle
+  // waits for both, and the dispatch declares the input of record 0064.
+  test("with merge and deploy gets the workflow of docs/workflow.md", async () => {
     const own = "mergeAndDeploy:\n  authors: [renovate]\n";
     const root = example("pulumi-basic", { [CONFIG]: own });
-    const { workflow } = await run(root);
-    expect(workflow).toContain("  contents: write\n");
+    const { workflow: text } = await run(root);
+    const workflow = Bun.YAML.parse(text ?? "") as Workflow & {
+      on: { workflow_dispatch: { inputs: Record<string, unknown> } };
+      jobs: Record<string, { needs?: unknown; outputs?: Record<string, string> }>;
+    };
+    expect(workflow.permissions?.contents).toBe("read");
+    expect(workflow.jobs.resolve?.permissions).toEqual({
+      contents: "write",
+      issues: "write",
+      deployments: "write",
+      actions: "write",
+      "pull-requests": "read",
+      checks: "write",
+    });
+    expect(Object.keys(workflow.on.workflow_dispatch.inputs)).toEqual(["sluiceway-merged"]);
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a GitHub expression, not a template.
+    expect(workflow.jobs.scan?.outputs).toEqual({ matrix: "${{ steps.scan.outputs.matrix }}" });
+    expect(workflow.jobs.scan?.steps.find(isSluiceway)?.id).toBe("scan");
+    const { apply, "apply-merged": merged } = workflow.jobs;
+    expect(merged?.needs).toBe("scan");
+    expect(merged?.if).toContain("needs.scan.outputs.matrix");
+    expect(merged?.steps).toEqual(apply?.steps ?? []);
+    expect(workflow.jobs.settle?.needs).toEqual(["scan", "resolve", "apply", "apply-merged"]);
+    expect(workflow.jobs.settle?.if).toContain("needs.scan.outputs.matrix");
     expect((await checked(root)).warnings).toEqual([]);
   });
 
