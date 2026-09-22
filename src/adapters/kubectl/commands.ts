@@ -1,3 +1,4 @@
+import type { ExitCodes } from "../tool-run.ts";
 import type { KubectlOptions } from "./options.ts";
 
 // The command lines of the Kubernetes manifests adapter, checked against the
@@ -46,8 +47,11 @@ function applier(options: KubectlOptions): string[] {
 }
 
 // Exit code 0: no differences. 1: differences. Above 1: kubectl or diff
-// failed (kubectl reference, "kubectl diff"). The drift check asks for the
-// field managers of both sides as well (record 0070).
+// failed (kubectl reference, "kubectl diff"), a tool error with the code.
+export const DIFF_EXIT_CODES: ExitCodes = { success: [0, 1] };
+
+// The drift check asks for the field managers of both sides as well (record
+// 0070).
 export function diffCommand(
   file: string,
   options: KubectlOptions,

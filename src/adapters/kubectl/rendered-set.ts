@@ -6,8 +6,7 @@ import type { Change } from "../../core/diff.ts";
 import type { PreviewFailureReason } from "../../core/failure-reason.ts";
 import { type Stack, stackId } from "../../core/stack.ts";
 import type { SavedPlan, ToolContext } from "../adapter.ts";
-import type { RunResult } from "../process.ts";
-import { stripAnsi } from "../pulumi/tool-log.ts";
+import { runTool, stripAnsi } from "../tool-run.ts";
 import { inventoryCommand, kustomizeCommand, liveCommand } from "./commands.ts";
 import { kubectlEnvironment, optionsOf } from "./environment.ts";
 import { identityOf } from "./fold.ts";
@@ -129,16 +128,15 @@ export async function renderSet(
   if (sourceOf(dir) === "manifests") {
     text = bundleManifests(dir, options.recursive === true);
   } else {
-    const result = await context.run({
+    const result = await runTool(context.run, {
       argv: kustomizeCommand(),
       cwd: dir,
       env: kubectlEnvironment(context.env),
-      timeoutMs: context.timeoutMinutes * 60_000,
+      timeoutMinutes: context.timeoutMinutes,
     });
-    const failed = failure(result, context.timeoutMinutes);
-    toolLog = result.status === "not-started" ? "" : stripAnsi(result.stderr);
-    if (failed !== undefined) return { ok: false, reason: failed, detail: [], toolLog };
-    text = (result as { stdout: string }).stdout;
+    toolLog = stripAnsi(result.stderr);
+    if (!result.ok) return { ok: false, reason: result.reason, detail: [], toolLog };
+    text = result.stdout;
   }
   if (options.prune !== true) {
     return { ok: true, set: await RenderedSet.create(stackId(stack), text), toolLog };
@@ -170,20 +168,19 @@ async function prune(
   const id = stackId(stack);
   const name = inventoryName(id, context.env.GITHUB_REPOSITORY);
   const run = (argv: string[]) =>
-    context.run({
+    runTool(context.run, {
       argv,
       cwd: join(context.root, stack.path),
       env: kubectlEnvironment(context.env),
-      timeoutMs: context.timeoutMinutes * 60_000,
+      timeoutMinutes: context.timeoutMinutes,
     });
 
   // Neither get prints a value to the log: stdout is the objects, which stay
   // here, and only stderr is the tool's words.
   const inventory = await run(inventoryCommand(name, options));
-  let toolLog = inventory.status === "not-started" ? "" : stripAnsi(inventory.stderr);
-  const failed = failure(inventory, context.timeoutMinutes);
-  if (failed !== undefined) return { ok: false, reason: failed, detail: [], toolLog };
-  const read = readInventory((inventory as { stdout: string }).stdout);
+  let toolLog = stripAnsi(inventory.stderr);
+  if (!inventory.ok) return { ok: false, reason: inventory.reason, detail: [], toolLog };
+  const read = readInventory(inventory.stdout);
   if (!read.ok) {
     return { ok: false, reason: { kind: "unreadable-output" }, detail: read.problems, toolLog };
   }
@@ -193,10 +190,9 @@ async function prune(
   if (candidates.length > 0) {
     await writeFile(set.scratchPath, stubs(candidates), { mode: 0o600 });
     const live = await run(liveCommand(set.scratchPath, options));
-    if (live.status !== "not-started") toolLog += stripAnsi(live.stderr);
-    const failedLive = failure(live, context.timeoutMinutes);
-    if (failedLive !== undefined) return { ok: false, reason: failedLive, detail: [], toolLog };
-    const found = readLive((live as { stdout: string }).stdout);
+    toolLog += stripAnsi(live.stderr);
+    if (!live.ok) return { ok: false, reason: live.reason, detail: [], toolLog };
+    const found = readLive(live.stdout);
     if (!found.ok) {
       return { ok: false, reason: { kind: "unreadable-output" }, detail: found.problems, toolLog };
     }
@@ -236,12 +232,4 @@ async function prune(
     resolved.length === 0 ? undefined : stubs(resolved),
   );
   return { ok: true, pruning: { inventory: name, listed: read.objects, deletes }, toolLog };
-}
-
-// The reason a run of kubectl gives no output to read, or nothing when it
-// ended well.
-function failure(result: RunResult, minutes: number): PreviewFailureReason | undefined {
-  if (result.status === "not-started") return { kind: "tool-error", exitCode: null };
-  if (result.status === "timed-out") return { kind: "timed-out", minutes };
-  return result.exitCode === 0 ? undefined : { kind: "tool-error", exitCode: result.exitCode };
 }

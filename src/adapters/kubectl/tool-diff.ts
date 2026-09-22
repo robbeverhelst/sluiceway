@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import type { Stack } from "../../core/stack.ts";
 import type { PreviewOptions, ToolDiffResult } from "../adapter.ts";
-import { stripAnsi } from "../pulumi/tool-log.ts";
-import { diffCommand } from "./commands.ts";
+import { runTool, stripAnsi } from "../tool-run.ts";
+import { DIFF_EXIT_CODES, diffCommand } from "./commands.ts";
 import { kubectlEnvironment, optionsOf } from "./environment.ts";
 import { renderSet } from "./rendered-set.ts";
 
@@ -17,27 +17,16 @@ export async function toolDiff(stack: Stack, options: PreviewOptions): Promise<T
   // With pruning the set holds the inventory, and the log shows it as kubectl
   // does, with the names it lists and no value (record 0070).
   try {
-    const result = await options.run({
+    const result = await runTool(options.run, {
       argv: diffCommand(rendered.set.path, optionsOf(stack)),
       cwd: join(options.root, stack.path),
       env: kubectlEnvironment(options.env),
-      timeoutMs: options.timeoutMinutes * 60_000,
+      timeoutMinutes: options.timeoutMinutes,
+      // 1 is differences, which is what this diff is for.
+      exitCodes: DIFF_EXIT_CODES,
     });
-    if (result.status === "not-started") {
-      return {
-        ok: false,
-        reason: { kind: "tool-error", exitCode: null },
-        toolLog: rendered.toolLog,
-      };
-    }
     const toolLog = rendered.toolLog + stripAnsi(result.stderr);
-    if (result.status === "timed-out") {
-      return { ok: false, reason: { kind: "timed-out", minutes: options.timeoutMinutes }, toolLog };
-    }
-    // 1 is differences, which is what this diff is for.
-    if (result.exitCode !== 0 && result.exitCode !== 1) {
-      return { ok: false, reason: { kind: "tool-error", exitCode: result.exitCode }, toolLog };
-    }
+    if (!result.ok) return { ok: false, reason: result.reason, toolLog };
     return { ok: true, text: stripAnsi(result.stdout), toolLog };
   } finally {
     await rendered.set.dispose();

@@ -2,8 +2,8 @@ import { join } from "node:path";
 import type { PreviewFailureReason } from "../../core/failure-reason.ts";
 import { type Stack, stackId } from "../../core/stack.ts";
 import type { PreviewOptions, PreviewResult } from "../adapter.ts";
-import { stripAnsi } from "../pulumi/tool-log.ts";
-import { diffCommand, PREVIEW_DIFF } from "./commands.ts";
+import { runTool, stripAnsi } from "../tool-run.ts";
+import { DIFF_EXIT_CODES, diffCommand, PREVIEW_DIFF } from "./commands.ts";
 import { kubectlEnvironment, optionsOf } from "./environment.ts";
 import { foldObjects } from "./fold.ts";
 import { type Rendered, renderSet } from "./rendered-set.ts";
@@ -50,23 +50,17 @@ async function diff(
     detail: string[] = [],
   ): PreviewResult => ({ ok: false, reason, detail, toolLog });
 
-  const result = await options.run({
+  const result = await runTool(options.run, {
     argv: diffCommand(set.path, optionsOf(stack)),
     cwd: join(options.root, stack.path),
     env: kubectlEnvironment(options.env, { KUBECTL_EXTERNAL_DIFF: PREVIEW_DIFF }),
-    timeoutMs: options.timeoutMinutes * 60_000,
+    timeoutMinutes: options.timeoutMinutes,
+    exitCodes: DIFF_EXIT_CODES,
   });
-  if (result.status === "not-started")
-    return failed({ kind: "tool-error", exitCode: null }, renderLog);
   // Never stdout: it is both sides of every object, values and all (record
   // 0021). The reason comes from the exit code alone (record 0022).
   const log = renderLog + stripAnsi(result.stderr);
-  if (result.status === "timed-out") {
-    return failed({ kind: "timed-out", minutes: options.timeoutMinutes }, log);
-  }
-  if (result.exitCode !== 0 && result.exitCode !== 1) {
-    return failed({ kind: "tool-error", exitCode: result.exitCode }, log);
-  }
+  if (!result.ok) return failed(result.reason, log);
 
   const read = readDiff(result.stdout);
   if (!read.ok) return failed({ kind: "unreadable-output" }, log, read.problems);

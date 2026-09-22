@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { type Stack, stackId } from "../../core/stack.ts";
 import type { ApplyResult, SavedPlan, ToolContext } from "../adapter.ts";
-import { stripAnsi } from "../pulumi/tool-log.ts";
+import { runDeploy, stripAnsi } from "../tool-run.ts";
 import { applyCommand, deleteCommand } from "./commands.ts";
 import { kubectlEnvironment, optionsOf } from "./environment.ts";
 import { RenderedSet } from "./rendered-set.ts";
@@ -36,33 +36,24 @@ export async function apply(
       `The rendered set of ${stackId(stack)} changed after its preview. Nothing was deployed.`,
     );
   }
-  const result = await context.run({
+  const result = await runDeploy(context.run, {
     argv: applyCommand(plan.path, optionsOf(stack)),
     cwd: join(context.root, stack.path),
     env: kubectlEnvironment(context.env),
   });
-  if (result.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog: "" };
-  }
   // A server-side apply prints each object's kind and name and what happened
   // to it, and no value.
   const toolLog = stripAnsi(result.stdout + result.stderr);
-  if (result.status !== "exited" || result.exitCode !== 0) {
-    const exitCode = result.status === "exited" ? result.exitCode : null;
-    return { ok: false, reason: { kind: "tool-error", exitCode }, toolLog };
-  }
+  if (!result.ok) return { ok: false, reason: result.reason, toolLog };
   if (plan.prunePath === undefined) return { ok: true, toolLog };
   // kubectl delete prints the kind and name of each object it deleted.
-  const deleted = await context.run({
+  const deleted = await runDeploy(context.run, {
     argv: deleteCommand(plan.prunePath, optionsOf(stack)),
     cwd: join(context.root, stack.path),
     env: kubectlEnvironment(context.env),
   });
-  if (deleted.status === "not-started") {
-    return { ok: false, reason: { kind: "tool-error", exitCode: null }, toolLog };
-  }
   const log = toolLog + stripAnsi(deleted.stdout + deleted.stderr);
-  if (deleted.status === "exited" && deleted.exitCode === 0) return { ok: true, toolLog: log };
-  const exitCode = deleted.status === "exited" ? deleted.exitCode : null;
-  return { ok: false, reason: { kind: "tool-error", exitCode }, toolLog: log };
+  return deleted.ok
+    ? { ok: true, toolLog: log }
+    : { ok: false, reason: deleted.reason, toolLog: log };
 }

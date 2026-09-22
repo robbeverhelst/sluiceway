@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import type { Stack } from "../../core/stack.ts";
 import type { DriftResult, PreviewOptions } from "../adapter.ts";
-import { stripAnsi } from "../pulumi/tool-log.ts";
-import { diffCommand, PREVIEW_DIFF } from "./commands.ts";
+import { runTool, stripAnsi } from "../tool-run.ts";
+import { DIFF_EXIT_CODES, diffCommand, PREVIEW_DIFF } from "./commands.ts";
 import { kubectlEnvironment, optionsOf } from "./environment.ts";
 import { foldDrift } from "./fold.ts";
 import { renderSet } from "./rendered-set.ts";
@@ -31,38 +31,16 @@ export async function detectDrift(
   const rendered = await renderSet(stack, options);
   if (!rendered.ok) return rendered;
   try {
-    const result = await options.run({
+    const result = await runTool(options.run, {
       argv: diffCommand(rendered.set.path, stackOptions, { managedFields: true }),
       cwd: join(options.root, stack.path),
       env: kubectlEnvironment(options.env, { KUBECTL_EXTERNAL_DIFF: PREVIEW_DIFF }),
-      timeoutMs: options.timeoutMinutes * 60_000,
+      timeoutMinutes: options.timeoutMinutes,
+      exitCodes: DIFF_EXIT_CODES,
     });
-    if (result.status === "not-started") {
-      return {
-        ok: false,
-        reason: { kind: "tool-error", exitCode: null },
-        detail: [],
-        toolLog: rendered.toolLog,
-      };
-    }
     // Never stdout: it is both sides of every object, values and all.
     const toolLog = rendered.toolLog + stripAnsi(result.stderr);
-    if (result.status === "timed-out") {
-      return {
-        ok: false,
-        reason: { kind: "timed-out", minutes: options.timeoutMinutes },
-        detail: [],
-        toolLog,
-      };
-    }
-    if (result.exitCode !== 0 && result.exitCode !== 1) {
-      return {
-        ok: false,
-        reason: { kind: "tool-error", exitCode: result.exitCode },
-        detail: [],
-        toolLog,
-      };
-    }
+    if (!result.ok) return { ok: false, reason: result.reason, detail: [], toolLog };
     const read = readDiff(result.stdout);
     if (!read.ok) {
       return { ok: false, reason: { kind: "unreadable-output" }, detail: read.problems, toolLog };
