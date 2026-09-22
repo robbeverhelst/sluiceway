@@ -12,7 +12,7 @@ One action, six modes, chosen with the `mode` input.
 | `resolve` | Reacts to a tick: checks who ticked, records the deploy and hands the stack to `apply`. | No |
 | `apply` | Previews the stack again and deploys it if nothing moved since the tick. | Yes |
 | `settle` | Gives a deploy a result when its workflow run ended without reporting one. | No |
-| `check` | Reads the repo's files and says whether the setup is valid. It needs no credentials, no tool and no GitHub API, so it is safe on any pull request. | No |
+| `check` | Reads the repo's files and says whether the setup is valid. It needs no credentials, no tool and no GitHub API, so it is safe on any pull request. With `backend: true` it also asks the backend which stacks it holds, with the credentials of its job. | No |
 | `init` | Writes a starter workflow and `sluiceway.yaml` into your clone from what it finds there, and says what is left for you. You run it once on your own machine, and it commits nothing ([init](init.md)). | No |
 
 ## Inputs
@@ -25,6 +25,7 @@ One action, six modes, chosen with the `mode` input.
 | `github-token` | the workflow token | Leave it at the default. Sluiceway always acts as the workflow's own `GITHUB_TOKEN`. A GitHub App token or a personal access token is not supported. `check` never uses it. |
 | `deployment-id` | required in `apply` | The deployment record to deploy. It comes from the `matrix` output of `resolve`. An error in every other mode. |
 | `dry-run` | `false` | `apply` only. `true` rehearses a tick: the deployment record, the fresh preview and the check that it matches the row run as for a deploy, and then nothing is deployed. The record ends as `inactive` with "rehearsed, nothing was deployed", the row is pending again and Recently deployed says `rehearsed`. Set it on the `apply` step while you try out a new workflow. |
+| `backend` | `false` | `check` only. `true` also asks the backend which of the stacks the check found it holds, with the credentials your job loads before the step, and gives a ready-to-paste `ignore` block for the ones it does not hold. It runs the tool for that one question. An error in every other mode. See [the check](workflow.md#check-your-setup). |
 | `job-id` | the id of the running job | Leave it at the default. GitHub gives a step its job's id in no other way, and it needs no permission. A row's link to a failed preview uses it to land on the job's log. |
 
 ## Outputs

@@ -57,7 +57,7 @@ A step a tool needs before it can preview a stack, such as OpenTofu's init of a 
 _Avoid_: Setup, init step, pre-hook
 
 **Check**:
-A pass over the repo's files and nothing else that says whether Sluiceway understands the setup: the config, the stacks discovery finds, what `ignore` leaves out, which files no stack claims, and what the workflow files lack to run it. It holds no credentials and never starts the tool, so it can never say that a preview will work.
+A pass over the repo's files and nothing else that says whether Sluiceway understands the setup: the config, the stacks discovery finds, what `ignore` leaves out, which files no stack claims, which files a stack's own files name that it does not claim, and what the workflow files lack to run it. It holds no credentials and never starts the tool, so it can never say that a preview will work. The one exception is a workflow's own choice, `backend: true`: then it asks the backend which stacks it holds, with the credentials of its job, and nothing more.
 _Avoid_: Validate, lint, dry run, preflight
 
 **Init**:

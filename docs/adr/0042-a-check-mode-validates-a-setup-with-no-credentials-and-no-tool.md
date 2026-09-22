@@ -1,5 +1,7 @@
 # A check mode validates a setup with no credentials and no tool
 
+> Amended by 0074: with the input `backend: true`, and only then, the check asks the backend which stacks it holds, with the credentials of its job, and gives one `ignore` block for the ones it does not hold. It also suggests `inputs` from the files a stack's own files name. Without `backend` the promise below is unchanged.
+>
 > Amended by 0065: a sixth mode, `init`, holds the same promise. It reads the same files and writes a starter workflow and `sluiceway.yaml` into the checkout, and the check treats a step that runs it like its own.
 >
 > Amended by 0061: the check also reads the workflow files under `.github/workflows` and warns about a missing trigger, permission or job, a forbidden trigger and a ref that is not a release. None of it turns the job red.

@@ -1,5 +1,7 @@
 # The check reads the workflow files, and the result file has a published schema
 
+> Amended by 0074: the check also reads the concurrency groups, the status checks in the `if:` of `apply` and `settle`, the `needs` of `settle` and the second apply job of merge and deploy, each only where the text plainly lacks it. Still a warning, never a red job.
+
 Record 0042 made the check a pass over the repo's files that says whether Sluiceway understands the setup: the config, the stacks, `ignore` and the files no stack claims. It left the workflow out, because GitHub validates a workflow. What GitHub does not validate is whether a workflow is the one Sluiceway needs: a missing `workflow_dispatch`, `actions: read` where a mode dispatches, a `resolve` job in a second file or a branch as the ref all run without an error and fail later, on the first tick or the first rescan. The workflow is a file in the checkout, so the check can read it with the same promise: no credentials, no tool, no GitHub API.
 
 Record 0041 made the result file what the summary holds, and left attribution, the timings of an `apply` and a committed schema to later (slice 2.11). Build plan slice 4.10 brings them in.

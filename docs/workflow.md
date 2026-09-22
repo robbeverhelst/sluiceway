@@ -52,9 +52,20 @@ The job log and the summary of the run say:
 - every stack that discovery found, with its environment, its tick rule and its inputs,
 - which stacks each `ignore` glob leaves out. A glob that leaves out nothing is a warning. `ignore` matches the stack id, so `apps/web` ignores nothing, and the warning names the glob that would work (`apps/web:*`),
 - the files that no stack claims, grouped by directory. A push that changes one of them previews every stack. A ready-to-paste `scan.unrelated` block covers the ones that look like docs and tooling. Sluiceway never decides this for you, so leave out any file one of your programs reads.
-- what the workflow files in `.github/workflows` are missing for the jobs that run Sluiceway: a trigger (`push`, the schedule, `workflow_dispatch`, issue edits for `resolve`), a permission a mode needs, a job of the four that is not in the same file, a trigger that must not be there (`pull_request`, `merge_group`), and a ref that is not a release, such as a branch. Each is a warning. It also says when a workflow scans without `resolve` while `dashboard.readOnly` is off, so the boxes would do nothing. Before you add [the workflow](#the-workflow), it says that no workflow runs a scan yet.
+- the files a stack's own files name as read and that the stack does not claim, with a ready-to-paste block of `stacks` entries that adds them as `inputs`: what a Pulumi YAML program reads with `fn::readFile`, `fn::fileAsset` or `fn::fileArchive`, a Pulumi config value that is the path of a file of the repo, and a Helm stack's local chart and values files. It is a warning when a push that changes the file would not preview the stack, because another stack claims it or `scan.unrelated` covers it. A path a program builds while it runs does not show here.
+- what the workflow files in `.github/workflows` are missing for the jobs that run Sluiceway: a trigger (`push`, the schedule, `workflow_dispatch`, issue edits for `resolve`), a permission a mode needs, a job of the four that is not in the same file, a trigger that must not be there (`pull_request`, `merge_group`), a ref that is not a release, such as a branch, a concurrency group on `scan`, `resolve` or `apply` (one per stack, with `queue: max` and without `cancel-in-progress` on `apply`), `!cancelled()` in the `if:` of `apply` and `always()` in the `if:` of `settle`, a `settle` that does not wait for every apply job, and with merge and deploy the [second apply job](#merge-and-deploy). Each is a warning. It also says when a workflow scans without `resolve` while `dashboard.readOnly` is off, so the boxes would do nothing. Before you add [the workflow](#the-workflow), it says that no workflow runs a scan yet.
 
 The job is red only when the config is not valid or discovery fails. What a workflow lacks is a warning, because GitHub validates and runs the workflow, and the repo's default token permissions and an environment's rules are settings a file does not show. A check cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan. The check reads the files of the checkout, so run it right after `actions/checkout`, before anything writes files into the workspace.
+
+To learn before the first scan which stacks have files in the repo and no stack in the backend, which is the usual first red row, set `backend: true` on the check step and load the credentials of your state backend before it, as in the scan job. The check then asks the tool for the list of stacks of each Pulumi project, changes nothing, and gives one ready-to-paste `ignore` block for the stacks the backend does not hold. It needs those credentials, so do not run it on pull requests from forks: a separate workflow on `workflow_dispatch` is the usual place. OpenTofu, Helm and Kubernetes manifests stacks are listed as not checked.
+
+```yaml
+      # Your credential step for the state backend goes here.
+      - uses: sluiceway/sluiceway@v0
+        with:
+          mode: check
+          backend: true
+```
 
 If your repo uses a merge queue and you make this check required, add `merge_group:` next to `pull_request:` in this file, so the queue gets its result. This is the only Sluiceway workflow that may have it.
 

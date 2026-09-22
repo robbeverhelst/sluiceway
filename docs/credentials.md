@@ -24,7 +24,7 @@ Sluiceway never holds credentials. That is five promises you can check against t
 1. **No credential inputs.** The action takes one secret, the GitHub token. No input and no config key ever carries a cloud, backend or secret manager credential.
 2. **Never read by name.** No Sluiceway code reads a credential variable. The environment goes to the tool as one opaque block.
 3. **Never stored, never sent.** Nothing from the environment reaches the issue, deployment records, job summaries, artifacts or caches. The only network calls are to the GitHub API and whatever the tool itself makes.
-4. **Only the modes that run the tool need credentials.** `scan` and `apply` run the tool. `resolve` and `settle` never do.
+4. **Only the modes that run the tool need credentials.** `scan` and `apply` run the tool. `resolve` and `settle` never do. `check` does only when its step sets `backend: true`, to ask the backend which stacks it holds, and then only with the credentials you loaded before that step.
 5. **A hosted version would keep all of this.** The tool always runs in your own runners.
 
 The credentials are in the same job as Sluiceway's own process, so the promise is not that Sluiceway cannot see them. It is that its code, which you pin and can read, never looks. The [security page](security.md) says what that protects against and what it does not.

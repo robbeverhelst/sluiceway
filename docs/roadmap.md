@@ -132,11 +132,11 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A live example dashboard in this repo
 - A setting for which directories discovery never enters, or reading `.gitignore` for it
 - The check reading git's own list of tracked files
-- The check suggesting `inputs`
-- The check reading more of a workflow than triggers, permissions, the jobs and the ref: the concurrency groups, `!cancelled()` on `apply`, the label in the `if:` of `resolve`, the branch a `push` listens to, and a reusable workflow's caller
-- Checking discovered stacks against the backend (`pulumi stack ls`)
+- The check suggesting `inputs`, part 2: files a program in a general-purpose language builds a path to, OpenTofu var files and module sources outside the stack, the bases a kustomization names
+- The check reading more of a workflow than triggers, permissions, the jobs, the ref, the concurrency groups, the status checks in `if:` and the second apply job: the label in the `if:` of `resolve`, the branch a `push` listens to, and a reusable workflow's caller
+- The check asking the backend about OpenTofu workspaces, Helm releases or Kubernetes objects
 - A preview failure reason of its own for more of the tool's documented exit codes (2 configuration, 3 authentication, 4 resource, 9 timeout)
-- The `ignore` glob on the row of a stack that does not exist in the backend, or one ready-to-paste `ignore` block for all such stacks
+- The `ignore` glob on the row of a stack that does not exist in the backend, or one ready-to-paste `ignore` block for all such stacks in the summary of a scan
 - Reading a Pulumi project file for more than `stackConfigDir`
 - Showing a Pulumi resource that only moves to a new address through an alias (`tracking: move`)
 - Folding the Pulumi step ops that no recording shows (`create-replacement`, `delete-replaced`, `read-replacement`, `import-replacement`, `discard`, `discard-replaced`, `remove-pending-replace`)
