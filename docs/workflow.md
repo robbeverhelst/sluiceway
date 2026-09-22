@@ -189,7 +189,7 @@ Without `deployment: false` GitHub records every deploy a second time. Custom de
 
 ## Merge and deploy
 
-With `mergeAndDeploy.authors` in `sluiceway.yaml`, routine pull requests by those authors, such as Renovate's, get a row of their own under "Updates waiting to merge", and one tick merges the pull request and deploys its stack ([configuration](configuration.md#mergeanddeployauthors)). It is off by default, and it needs three changes to the workflow above.
+With `mergeAndDeploy.authors` in `sluiceway.yaml`, routine pull requests by those authors, such as Renovate's, get a row of their own under "Updates waiting to merge", and one tick merges the pull request and deploys its stack ([configuration](configuration.md#mergeanddeployauthors)). It is off by default, and it needs three changes to the workflow above, and a fourth for a narrowed scan after the merge.
 
 The merge. `resolve` merges with the workflow token, which needs `contents: write`. Give the `resolve` job its own block. A job's own `permissions:` replace the workflow's, so it repeats the rest:
 
@@ -228,6 +228,17 @@ The deploy. A merge made with the workflow token starts no run of its push, so `
 ```
 
 The pull requests. The scan reads them with `pull-requests: read`, which the block above already gives.
+
+The scan after the merge. `resolve` names the pull requests it merged in a dispatch input, and the scan then previews only what changed, as for a push. GitHub refuses a dispatch with an input the workflow does not declare, so `resolve` sends it only when the workflow's `workflow_dispatch` trigger declares it. Without it the scan after a merge is a full scan:
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      sluiceway-merged:
+        description: Set by Sluiceway after a merge from the dashboard. Leave it empty.
+        required: false
+```
 
 A merge never skips a check: branch protection and required reviews apply to the merge as to any other, and the deploy after it goes through the fresh preview and the hash check like every tick. When the change moved between the scan after the merge and the deploy, nothing is deployed, the row shows the fresh diff and the ticker gets a comment.
 

@@ -176,6 +176,10 @@ _Avoid_: Renovate row, merge request, pending update, bump row
 The deployment record `resolve` opens for a merge it made: on the merge commit, with the ticker and the pull request and no diff hash. It waits for a scan that holds the merge, which ends it and opens the record that deploys the fresh diff.
 _Avoid_: Pending merge, merge deployment, pre-deploy
 
+**Scan after a merge**:
+The scan `resolve` starts by dispatching its own workflow after it merged a pull request from the dashboard, because a merge made with the workflow token starts no run of its push. It hands the merged change to `apply`. It is a narrowed scan when the workflow declares the dispatch input that names the merged pull requests, and a full scan otherwise.
+_Avoid_: Merge scan, post-merge scan
+
 ### Deploys
 
 **Deploy facts**:

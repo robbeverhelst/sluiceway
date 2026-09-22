@@ -107,7 +107,7 @@ The file is optional and sits at the repo root. Unknown keys are an error, becau
 | `stacks[].dependsOn` | none | Stack ids this stack depends on, or `auto`: the stacks its Pulumi program reads through stack references, read at each preview and carried on the row (slice 4.7). A tick waits while one of them is pending and not ticked, ticks in one chain deploy one layer per run (slice 4.4) | 0056, 0059 |
 | `stacks[].drift.enabled` | the top level | The drift check on or off for the stacks of this entry, in the same scans as `drift.enabled` (slice 4.7) | 0059 |
 | `stacks[].options` | `{}` | Named adapter options, only with `tool`. OpenTofu: `workspace` and `varFiles`. Helm: `release`, `namespace`, `chart`, `version` (a chart reference only) and `valuesFiles`. kubectl: `context` and `namespace` | 0006, 0015, 0053, 0058, 0060 |
-| `mergeAndDeploy.authors` | `[]` | Logins whose green pull requests that one stack claims are listed to merge and deploy with one tick. Empty turns it off | 0054 |
+| `mergeAndDeploy.authors` | `[]` | Logins whose green pull requests that one stack claims are listed to merge and deploy with one tick. Empty turns it off | 0054, 0064 |
 
 Rules for config loading:
 
@@ -125,6 +125,7 @@ Rules for config loading:
 | Deployment payload | `{ "v": 1, "hash", "ticker", "run" }`, plus `"drift": true` when the approved hash covers drift | 0003, 0055 |
 | Default environment label | `sluiceway` | 0003 |
 | Concurrency groups | `sluiceway-scan`, `sluiceway-resolve`, `sluiceway-apply-<stack id>` | 0004, 0025, 0035 |
+| Dispatch input of the scan after a merge | `sluiceway-merged`, the merged pull request numbers joined with commas, sent only to a workflow that declares it | 0064 |
 | Marker version | `1` | 0009 |
 | Row states | `pending`, `deploying`, `in-sync`, `preview-failed`, `queued` since slice 4.4, and `drift` since slice 4.3, with the marker key `drift="true"` on a row whose hash covers drift, and since slice 4.7 `depends-on="<ids>"` on a row of a stack with `dependsOn: auto` | 0009, 0055, 0056, 0059 |
 | Diff hash | SHA-256 of the canonical document, first 16 hex characters | 0008 |

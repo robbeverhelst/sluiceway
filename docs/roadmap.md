@@ -49,11 +49,10 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - An AWS CDK and CloudFormation adapter (change sets as the preview)
 - A preview of a pull request's branch before its merge, on the row of an update waiting to merge
 - Merging a pull request that two stacks claim, with one deploy each
-- A narrowed scan after a merge from the dashboard
-- Reading Renovate's JSON5 config, its presets and its `packageRules` for the merge method
-- A note on the row of an update waiting to merge whose tick was cleared without a comment
+- Reading Renovate presets that live outside this repo, and its `packageRules`, for the merge method
 - Waiting, in the scan after a merge, for a dependency that became pending after the merge
-- Listing more than 10 updates waiting to merge, or pull requests beyond the oldest 100 open ones
+- Listing more than 30 updates waiting to merge, or reading past the oldest 1,000 open pull requests
+- A warning from the check when `mergeAndDeploy` is on and the workflow does not declare the `sluiceway-merged` input
 - Drift detection, part 3
 - Stack dependencies, part 3
 - A named `refresh` option (preview, re-preview and deploy with refresh on every run of a stack)
