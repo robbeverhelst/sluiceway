@@ -1,3 +1,5 @@
+import type { NotifyTargets } from "../notify/send.ts";
+
 // The inputs of the action (build plan, section 3). GitHub hands each one over
 // as text. They are read once, here, and passed on as data.
 
@@ -146,4 +148,78 @@ export function refuseDeploymentId(mode: string, getInput: GetInput): void {
   if (getInput("deployment-id").trim() !== "") throw only("deployment-id");
   if (getInput("deploy-timeout").trim() !== "") throw only("deploy-timeout");
   if (getInput("dry-run").trim() === "true") throw only("dry-run");
+}
+
+// The channels of the built-in notifications (record 0078), each from a
+// secret of the repo. In the order action.yml lists them.
+export const NOTIFY_INPUTS = [
+  "slack-webhook-url",
+  "telegram-bot-token",
+  "telegram-chat-id",
+  "webhook-url",
+] as const;
+
+export interface NotifyInputs {
+  targets: NotifyTargets;
+  // A channel set up wrong sends nothing and is a warning, never an error: a
+  // notification never stops a scan or a deploy. No problem quotes a value.
+  problems: string[];
+  // Every value that was set, for the runner to mask, the wrong ones too.
+  secrets: string[];
+}
+
+// A token as BotFather gives it: digits, a colon, and letters, digits, "_"
+// and "-". It goes into the path of the address, so nothing else may.
+const TELEGRAM_TOKEN = /^\d+:[\w-]+$/;
+// A chat id, or the @ name of a public channel.
+const TELEGRAM_CHAT = /^(-?\d+|@\w+)$/;
+
+export function readNotifyTargets(getInput: GetInput): NotifyInputs {
+  const [slack, token, chatId, webhook] = NOTIFY_INPUTS.map((name) => getInput(name).trim());
+  const targets: NotifyTargets = {};
+  const problems: string[] = [];
+  const secrets = [slack, token, chatId, webhook].filter((value): value is string => !!value);
+  if (slack) {
+    if (/^https:\/\//.test(slack)) targets.slack = slack;
+    else
+      problems.push(
+        'The "slack-webhook-url" input is not an https:// address, so nothing is sent to Slack. Set it to the address of an incoming webhook, from a secret.',
+      );
+  }
+  if (token && !chatId) {
+    problems.push(
+      'The "telegram-bot-token" input is set and "telegram-chat-id" is not, so nothing is sent to Telegram. Set both.',
+    );
+  } else if (chatId && !token) {
+    problems.push(
+      'The "telegram-chat-id" input is set and "telegram-bot-token" is not, so nothing is sent to Telegram. Set both.',
+    );
+  } else if (token && chatId) {
+    if (!TELEGRAM_TOKEN.test(token)) {
+      problems.push(
+        'The "telegram-bot-token" input is not a bot token as BotFather gives it, so nothing is sent to Telegram.',
+      );
+    } else if (!TELEGRAM_CHAT.test(chatId)) {
+      problems.push(
+        'The "telegram-chat-id" input is not a chat id or an @ name, so nothing is sent to Telegram.',
+      );
+    } else {
+      targets.telegram = { token, chatId };
+    }
+  }
+  if (webhook) {
+    if (/^https?:\/\//.test(webhook)) targets.webhook = webhook;
+    else
+      problems.push(
+        'The "webhook-url" input is not an http:// or https:// address, so nothing is sent to it.',
+      );
+  }
+  return { targets, problems, secrets };
+}
+
+// `settle`, `check` and `init` send nothing, so a channel there is a mistake
+// worth a warning, and never an error.
+export function unusedNotifyInputs(mode: string, getInput: GetInput): string[] {
+  if (mode === "scan" || mode === "resolve" || mode === "apply") return [];
+  return NOTIFY_INPUTS.filter((name) => getInput(name).trim() !== "");
 }

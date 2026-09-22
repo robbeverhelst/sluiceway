@@ -61,6 +61,7 @@
                       "@octokit/*",
                       "**/github/**",
                       "**/modes/**",
+                      "**/notify/**",
                       "**/main.ts",
                       "**/main",
                       "**/mode.ts",

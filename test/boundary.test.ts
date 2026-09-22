@@ -9,7 +9,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 const SRC = resolve(import.meta.dir, "../src");
 const PURE_DIRS = ["core", "adapters", "render"];
 const BANNED_PACKAGES = ["@actions/", "@octokit/"];
-const BANNED_PATHS = ["github", "modes", "main.ts", "mode.ts"];
+const BANNED_PATHS = ["github", "modes", "notify", "main.ts", "mode.ts"];
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 
@@ -48,6 +48,12 @@ describe("the check itself", () => {
   test("flags the glue directories and the entry point", () => {
     const code = 'import "../github/issue.ts";\nimport "../main.ts";\nimport "../mode.ts";';
     expect(violations(file, code)).toEqual(["../github/issue.ts", "../main.ts", "../mode.ts"]);
+  });
+
+  // The sender of record 0078 calls the network, so it is glue too.
+  test("flags the notify directory", () => {
+    const code = 'import "../notify/send.ts";';
+    expect(violations(file, code)).toEqual(["../notify/send.ts"]);
   });
 
   test("flags the modes directory", () => {
