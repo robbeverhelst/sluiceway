@@ -7,19 +7,20 @@ import { HELM } from "./helm/options.ts";
 import { discoverKubectl } from "./kubectl/discover.ts";
 import { KUBECTL } from "./kubectl/options.ts";
 import { discoverOpenTofu } from "./opentofu/discover.ts";
-import { OPENTOFU } from "./opentofu/options.ts";
+import { OPENTOFU, TERRAFORM } from "./opentofu/options.ts";
 import { discover as discoverPulumi } from "./pulumi/discover.ts";
 
 // Discovery of every tool, on its own so that the check job reaches files and
 // nothing that starts a tool (record 0042). Pulumi stacks are found from their
 // files, as before. OpenTofu stacks come from `stacks` entries with
-// `tool: opentofu` (record 0053), Helm releases from entries with
+// `tool: opentofu` (record 0053), Terraform stacks from `tool: terraform`
+// (record 0068), Helm releases from entries with
 // `tool: helm` (record 0058), and Kubernetes manifests from entries with
 // `tool: kubectl` (record 0060). A repo with only Pulumi stacks gets exactly
 // what the Pulumi adapter finds.
 
 // The tools a `stacks` entry may name.
-export const TOOLS = [OPENTOFU, HELM, KUBECTL] as const;
+export const TOOLS = [OPENTOFU, TERRAFORM, HELM, KUBECTL] as const;
 
 export async function discoverAll(root: string, config: Config): Promise<Stack[]> {
   const toolProblems = config.stacks.flatMap((entry, index) => {

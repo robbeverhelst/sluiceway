@@ -1,0 +1,7 @@
+{
+  "language": "typescript",
+  "app": "node main.js",
+  "terraformProviders": [],
+  "terraformModules": [],
+  "projectId": "9789d102-c42f-43ee-a2d9-66a32fcca989"
+}

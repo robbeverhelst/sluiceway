@@ -1,0 +1,28 @@
+{
+  "scenario": "init-failed",
+  "description": "A provider version that does not exist: init through terragrunt fails.",
+  "cliVersion": "v1.1.6",
+  "commands": [
+    {
+      "id": "init",
+      "argv": [
+        "terragrunt",
+        "run",
+        "--tf-forward-stdout",
+        "--no-color",
+        "--no-auto-init",
+        "--tf-path",
+        "tofu",
+        "--",
+        "init",
+        "-input=false",
+        "-no-color"
+      ],
+      "cwd": "live/dev",
+      "exitCode": 1,
+      "stdout": "init.stdout",
+      "stderr": "init.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

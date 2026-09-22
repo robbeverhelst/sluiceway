@@ -1,0 +1,76 @@
+{
+  "scenario": "deploy",
+  "description": "live/dev deployed from the plan file of its own plan, the way apply does it.",
+  "cliVersion": "v1.0.0",
+  "commands": [
+    {
+      "id": "plan",
+      "argv": [
+        "terragrunt",
+        "run",
+        "--tf-forward-stdout",
+        "--no-color",
+        "--no-auto-init",
+        "--tf-path",
+        "tofu",
+        "--",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-json",
+        "-out={plan}"
+      ],
+      "cwd": "live/dev",
+      "exitCode": 0,
+      "stdout": "plan.stdout",
+      "stderr": "plan.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "show",
+      "argv": [
+        "terragrunt",
+        "run",
+        "--tf-forward-stdout",
+        "--no-color",
+        "--no-auto-init",
+        "--tf-path",
+        "tofu",
+        "--",
+        "show",
+        "-json",
+        "-no-color",
+        "{plan}"
+      ],
+      "cwd": "live/dev",
+      "exitCode": 0,
+      "stdout": "show.stdout",
+      "stderr": "show.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "apply",
+      "argv": [
+        "terragrunt",
+        "run",
+        "--tf-forward-stdout",
+        "--no-color",
+        "--no-auto-init",
+        "--tf-path",
+        "tofu",
+        "--",
+        "apply",
+        "-input=false",
+        "-no-color",
+        "-json",
+        "{plan}"
+      ],
+      "cwd": "live/dev",
+      "exitCode": 0,
+      "stdout": "apply.stdout",
+      "stderr": "apply.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

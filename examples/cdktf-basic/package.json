@@ -1,0 +1,9 @@
+{
+  "name": "cdktf-basic",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "cdktf": "0.21.0",
+    "constructs": "10.4.2"
+  }
+}

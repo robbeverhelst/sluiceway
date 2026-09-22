@@ -1,0 +1,20 @@
+{
+  "scenario": "version",
+  "description": "terraform version -json, which the version check reads.",
+  "cliVersion": "v1.16.3",
+  "commands": [
+    {
+      "id": "version",
+      "argv": [
+        "terraform",
+        "version",
+        "-json"
+      ],
+      "cwd": ".",
+      "exitCode": 0,
+      "stdout": "version.stdout",
+      "stderr": "version.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

@@ -141,6 +141,147 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  fixtures-terraform:
+    # The same for Terraform behind the OpenTofu adapter (record 0068): the
+    # recorder with the real terraform, the minimum version the adapter
+    # supports and the newest one the fixtures were recorded with, on a copy
+    # of examples/opentofu-basic with its state in the local backend.
+    # Providers come from the Terraform registry.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        terraform: ["1.14.0", "1.16.3"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      # No wrapper: the recorder needs what terraform itself prints.
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ matrix.terraform }}
+          terraform_wrapper: false
+
+      - run: bun install --frozen-lockfile
+
+      - name: Record the fixtures
+        env:
+          TERRAFORM_VERSION: ${{ matrix.terraform }}
+        run: bun run record:fixtures --tool terraform --out "$RUNNER_TEMP/fixtures" --expect-version "v$TERRAFORM_VERSION"
+
+      # The fixtures in the repo come from here. See CONTRIBUTING.md.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: fixtures-terraform-v${{ matrix.terraform }}
+          path: ${{ runner.temp }}/fixtures
+          retention-days: 7
+          if-no-files-found: error
+
+  fixtures-terragrunt:
+    # The same for Terragrunt in front of tofu (record 0068): one unit of
+    # examples/terragrunt-basic, with the minimum terragrunt the adapter
+    # supports and the newest one the fixtures were recorded with. Terragrunt
+    # has no setup action of its own, so its release binary is downloaded and
+    # checked against the release's SHA256SUMS.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        terragrunt: [v1.0.0, v1.1.6]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+
+      - name: Install terragrunt
+        env:
+          TERRAGRUNT_VERSION: ${{ matrix.terragrunt }}
+        run: scripts/ci/install-terragrunt.sh "$TERRAGRUNT_VERSION" "$RUNNER_TEMP/terragrunt"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Record the fixtures
+        env:
+          TERRAGRUNT_VERSION: ${{ matrix.terragrunt }}
+        run: bun run record:fixtures --tool terragrunt --out "$RUNNER_TEMP/fixtures" --expect-version "$TERRAGRUNT_VERSION"
+
+      # The fixtures in the repo come from here. See CONTRIBUTING.md.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: fixtures-terragrunt-${{ matrix.terragrunt }}
+          path: ${{ runner.temp }}/fixtures
+          retention-days: 7
+          if-no-files-found: error
+
+  fixtures-cdktf:
+    # The same for CDK for Terraform in front of tofu (record 0068): cdktf
+    # synth of examples/cdktf-basic, then tofu in the directory of one of its
+    # stacks. cdktf's last release is its only version: HashiCorp archived it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cdktf: ["0.21.0"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+
+      - name: Install cdktf and the packages of the example
+        env:
+          CDKTF_VERSION: ${{ matrix.cdktf }}
+        run: |
+          npm install --global "cdktf-cli@$CDKTF_VERSION"
+          npm ci --prefix examples/cdktf-basic
+
+      - run: bun install --frozen-lockfile
+
+      - name: Record the fixtures
+        env:
+          CDKTF_VERSION: ${{ matrix.cdktf }}
+        run: bun run record:fixtures --tool cdktf --out "$RUNNER_TEMP/fixtures" --expect-version "v$CDKTF_VERSION"
+
+      # The fixtures in the repo come from here. See CONTRIBUTING.md.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: fixtures-cdktf-v${{ matrix.cdktf }}
+          path: ${{ runner.temp }}/fixtures
+          retention-days: 7
+          if-no-files-found: error
+
   fixtures-helm:
     # The same for Helm (record 0058): the recorder with the real helm and its
     # diff plugin, the minimum versions the adapter supports and the newest

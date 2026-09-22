@@ -13,6 +13,9 @@
       "!schema",
       "!test/fixtures/pulumi",
       "!test/fixtures/opentofu",
+      "!test/fixtures/terraform",
+      "!test/fixtures/terragrunt",
+      "!test/fixtures/cdktf",
       "!test/fixtures/helm",
       "!test/fixtures/kubectl"
     ]

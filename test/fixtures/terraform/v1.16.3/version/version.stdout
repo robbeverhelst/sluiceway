@@ -1,0 +1,6 @@
+{
+  "terraform_version": "1.16.3",
+  "platform": "darwin_arm64",
+  "provider_selections": {},
+  "terraform_outdated": false
+}

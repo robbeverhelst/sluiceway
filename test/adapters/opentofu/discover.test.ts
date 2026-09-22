@@ -128,7 +128,7 @@ describe("what discovery refuses", () => {
     const config = [
       "stacks:",
       "  - path: infra/network",
-      "    tool: terraform",
+      "    tool: cloudformation",
       "  - path: infra/network",
       "    name: prod",
       "    tool: opentofu",
@@ -139,8 +139,8 @@ describe("what discovery refuses", () => {
       "",
     ].join("\n");
     expect(await problems(MODULE, config)).toEqual([
-      'stacks[0].tool: unknown tool "terraform". Known tools: opentofu, helm, kubectl.',
-      'stacks[1].options: unknown option "refresh". Known options for opentofu: workspace, varFiles.',
+      'stacks[0].tool: unknown tool "cloudformation". Known tools: opentofu, terraform, helm, kubectl.',
+      'stacks[1].options: unknown option "refresh". Known options for opentofu: workspace, varFiles, wrapper.',
       "stacks[1].options.workspace: expected text.",
       "stacks[1].options.varFiles: expected a list of file names.",
     ]);

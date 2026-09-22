@@ -1,0 +1,19 @@
+{
+  "scenario": "version",
+  "description": "terragrunt --version, which the version check reads.",
+  "cliVersion": "v1.1.6",
+  "commands": [
+    {
+      "id": "version",
+      "argv": [
+        "terragrunt",
+        "--version"
+      ],
+      "cwd": ".",
+      "exitCode": 0,
+      "stdout": "version.stdout",
+      "stderr": "version.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

@@ -180,10 +180,11 @@
             "type": "string",
             "enum": [
               "opentofu",
+              "terraform",
               "helm",
               "kubectl"
             ],
-            "description": "The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at path. opentofu: a root module. helm: a release in a namespace. kubectl: a directory of Kubernetes manifests or a kustomization."
+            "description": "The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at path. opentofu and terraform: a root module, or with the wrapper option a Terragrunt unit or a CDK for Terraform app. helm: a release in a namespace. kubectl: a directory of Kubernetes manifests or a kustomization."
           },
           "environment": {
             "type": "string",
@@ -286,7 +287,7 @@
               "workspace": {
                 "type": "string",
                 "minLength": 1,
-                "description": "opentofu: The workspace of the stack, selected with TF_WORKSPACE for every command. Without it, the one the environment selects, which is default."
+                "description": "opentofu and terraform: The workspace of the stack, selected with TF_WORKSPACE for every command. Without it, the one the environment selects, which is default."
               },
               "varFiles": {
                 "default": [],
@@ -295,7 +296,15 @@
                   "type": "string",
                   "minLength": 1
                 },
-                "description": "opentofu: Var files, relative to the directory of the stack, passed with -var-file in this order to every plan."
+                "description": "opentofu and terraform: Var files, relative to the directory of the stack, passed with -var-file in this order to every plan. Not with a wrapper."
+              },
+              "wrapper": {
+                "type": "string",
+                "enum": [
+                  "terragrunt",
+                  "cdktf"
+                ],
+                "description": "opentofu and terraform: What stands in front of the tool. terragrunt: path is one Terragrunt unit, and terragrunt runs the tool there. cdktf: path is a CDK for Terraform app, cdktf synth writes its stacks, and name picks the one this entry deploys."
               },
               "release": {
                 "type": "string",

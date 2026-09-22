@@ -1,0 +1,2 @@
+{"@level":"info","@message":"Terraform 1.14.0","@module":"terraform.ui","@timestamp":"2026-09-22T15:48:43.680359+02:00","terraform":"1.14.0","type":"version","ui":"1.2"}
+{"@level":"error","@message":"Error: Saved plan is stale","@module":"terraform.ui","@timestamp":"2026-09-22T15:48:46.060167+02:00","diagnostic":{"severity":"error","summary":"Saved plan is stale","detail":"The given plan file can no longer be applied because the state was changed by another operation after the plan was created."},"type":"diagnostic"}

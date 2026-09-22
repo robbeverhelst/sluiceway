@@ -6,7 +6,8 @@ import { kubectlOptionsSchema } from "./kubectl/options.ts";
 import { openTofuOptionsSchema } from "./opentofu/options.ts";
 
 // The JSON schema of sluiceway.yaml with what the adapters know: the tools a
-// `stacks` entry may name and their options (records 0053, 0058 and 0060). Only
+// `stacks` entry may name and their options (records 0053, 0058, 0060 and
+// 0068). Only
 // scripts/generate-schema.ts calls this, never the action.
 //
 // The options of every tool sit in one closed object, each described with the
@@ -31,13 +32,13 @@ export function sluicewayJsonSchema(): Record<string, unknown> {
       type: "string",
       enum: [...TOOLS],
       description:
-        "The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at path. opentofu: a root module. helm: a release in a namespace. kubectl: a directory of Kubernetes manifests or a kustomization.",
+        "The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at path. opentofu and terraform: a root module, or with the wrapper option a Terragrunt unit or a CDK for Terraform app. helm: a release in a namespace. kubectl: a directory of Kubernetes manifests or a kustomization.",
     },
     options: {
       description: "Named adapter options of the tool. Only an entry with tool takes them.",
       type: "object",
       properties: merged([
-        propertiesOf(openTofuOptionsSchema, "opentofu"),
+        propertiesOf(openTofuOptionsSchema, "opentofu and terraform"),
         propertiesOf(helmOptionsSchema, "helm"),
         propertiesOf(kubectlOptionsSchema, "kubectl"),
       ]),

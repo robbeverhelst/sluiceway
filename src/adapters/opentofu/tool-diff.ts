@@ -1,8 +1,7 @@
-import { join } from "node:path";
 import type { Stack } from "../../core/stack.ts";
 import type { PreviewOptions, ToolDiffResult } from "../adapter.ts";
 import { stripAnsi } from "../pulumi/tool-log.ts";
-import { toolDiffCommand } from "./commands.ts";
+import { command, toolDiffArgs, workingDirectory } from "./commands.ts";
 import { optionsOf, tofuEnvironment } from "./environment.ts";
 
 // The plan as the tool displays it (record 0048), in the same directory,
@@ -13,8 +12,8 @@ import { optionsOf, tofuEnvironment } from "./environment.ts";
 // its output unmarked. That is the risk a repo takes on with scan.logDiff.
 export async function toolDiff(stack: Stack, options: PreviewOptions): Promise<ToolDiffResult> {
   const result = await options.run({
-    argv: toolDiffCommand(optionsOf(stack).varFiles),
-    cwd: join(options.root, stack.path),
+    argv: command(stack, toolDiffArgs(optionsOf(stack).varFiles)),
+    cwd: workingDirectory(options.root, stack),
     env: tofuEnvironment(options.env, stack),
     timeoutMs: options.timeoutMinutes * 60_000,
   });

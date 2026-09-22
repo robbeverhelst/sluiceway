@@ -1,0 +1,2 @@
+15:54:51.674 INFO   Downloading Terraform configurations from ../../modules/notes into ./.terragrunt-cache/g5u_Omy3vQlOkTrc3osvAN9tf6A/iQZDEzBfUYCLndLyK0SOzJ3EzY4
+15:54:51.677 WARN   Detected that init is needed, but Auto-Init is disabled. Continuing with further actions, but subsequent terraform commands may fail.

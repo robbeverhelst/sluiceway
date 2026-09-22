@@ -1,0 +1,9 @@
+15:54:42.207 INFO   Downloading Terraform configurations from ../../modules/notes into ./.terragrunt-cache/NKV9eliZiegscnq5sMRWwMHuhs4/cSrOgjgrqn2TBpGaAR6TdgWSANk
+15:54:42.209 WARN   Detected that init is needed, but Auto-Init is disabled. Continuing with further actions, but subsequent terraform commands may fail.
+15:54:42.261 INFO   TIP (debugging-docs): For help troubleshooting errors, visit https://docs.terragrunt.com/troubleshooting/debugging
+15:54:42.261 ERROR  error occurred:
+
+* Failed to execute "tofu plan -input=false -refresh=false -json -out=/private/tmp/claude-501/-Users-robbe-orca-workspaces-sluiceway-m5-1-terraform-family/6ebc45a8-3c19-47d3-afe6-191ca63d3dfd/scratchpad/work/scenarios/program-error/plan/tfplan -no-color" in ./.terragrunt-cache/NKV9eliZiegscnq5sMRWwMHuhs4/cSrOgjgrqn2TBpGaAR6TdgWSANk
+  
+  exit status 1
+

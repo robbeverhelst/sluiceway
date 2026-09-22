@@ -1,0 +1,31 @@
+[32m[2026-09-22T15:55:57.130] [INFO] default - [39mUnable to determine Terraform version: Error: Terraform CLI not present - Please install a current version https://learn.hashicorp.com/terraform/getting-started/install.html
+
+⠋  Starting
+[2K[1A[2K[1A[2K[G
+⠋  Synthesizing
+[2K[1A[2K[1A[2K[G
+⠙  Synthesizing
+[2K[1A[2K[1A[2K[G
+⠹  Synthesizing
+[2K[1A[2K[1A[2K[G
+⠸  Synthesizing
+[2K[1A[2K[1A[2K[G
+⠼  Synthesizing
+[2K[1A[2K[1A[2K[G
+⠴  Synthesizing
+[2K[1A[2K[1A[2K[G
+⠦  Synthesizing
+[91m[2026-09-22T15:55:57.994] [ERROR] default - [39mfile:///private/tmp/claude-501/-Users-robbe-orca-workspaces-sluiceway-m5-1-terraform-family/6ebc45a8-3c19-47d3-afe6-191ca63d3dfd/scratchpad/work/scenarios/program-error/project/main.js:29
+throw new Error("broken");
+      ^
+
+Error: broken
+    at file:///private/tmp/claude-501/-Users-robbe-orca-workspaces-sluiceway-m5-1-terraform-family/6ebc45a8-3c19-47d3-afe6-191ca63d3dfd/scratchpad/work/scenarios/program-error/project/main.js:29:7
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v22.23.2
+
+[2K[1A[2K[1A[2K[G
+⠦  Synthesizing

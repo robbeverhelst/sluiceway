@@ -1,0 +1,7 @@
+# What terragrunt and the tool write into a copy of the example.
+.terragrunt-cache/
+.terraform/
+.terraform.lock.hcl
+backend.tf
+*.tfstate
+*.tfstate.*

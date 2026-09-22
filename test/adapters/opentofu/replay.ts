@@ -1,4 +1,5 @@
-// Replays what the real tofu printed (records 0001 and 0053) through the
+// Replays what the real tofu printed (records 0001 and 0053), or terraform,
+// terragrunt or cdktf with tofu behind them (record 0068), through the
 // process runner seam. No test starts the tool. A command the scenario did not
 // record fails the test, so the adapter's command lines, working directories
 // and workspaces are held to the recorded ones. The recordings write the plan
@@ -15,12 +16,12 @@ export const VERSIONS = Object.values(FIXTURE_TOFU_VERSIONS).sort();
 // Where the replayed repo pretends to be. Nothing is read from it.
 export const ROOT = resolve("/replayed/repo");
 
-export function scenarioNames(version: string): string[] {
-  return readdirSync(join(FIXTURES, version)).sort();
+export function scenarioNames(version: string, fixtures = FIXTURES): string[] {
+  return readdirSync(join(fixtures, version)).sort();
 }
 
-export function readRecording(version: string, scenario: string): Recording {
-  const file = join(FIXTURES, version, scenario, RECORDING_FILE);
+export function readRecording(version: string, scenario: string, fixtures = FIXTURES): Recording {
+  const file = join(fixtures, version, scenario, RECORDING_FILE);
   return JSON.parse(readFileSync(file, "utf8")) as Recording;
 }
 
@@ -56,9 +57,14 @@ function fits(recorded: string[], asked: string[]): { plan?: string } | undefine
 // Commands are handed out in the order they were recorded. The workspace is
 // part of the command: a recorded TF_WORKSPACE must be what the adapter set,
 // and a command recorded without one must get none from the adapter.
-export function replay(version: string, scenario: string, root = ROOT): Replay {
-  const dir = join(FIXTURES, version, scenario);
-  const waiting = [...readRecording(version, scenario).commands];
+export function replay(
+  version: string,
+  scenario: string,
+  root = ROOT,
+  fixtures = FIXTURES,
+): Replay {
+  const dir = join(fixtures, version, scenario);
+  const waiting = [...readRecording(version, scenario, fixtures).commands];
   const runs: Run[] = [];
   const plans: string[] = [];
   const run = async (asked: Run): Promise<RunResult> => {

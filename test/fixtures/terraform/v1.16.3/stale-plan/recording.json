@@ -1,0 +1,65 @@
+{
+  "scenario": "stale-plan",
+  "description": "A saved plan, then another deploy changes the state, then the saved plan is applied: the tool refuses it as stale.",
+  "cliVersion": "v1.16.3",
+  "commands": [
+    {
+      "id": "plan",
+      "argv": [
+        "terraform",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-json",
+        "-out={plan}",
+        "-var-file=dev.tfvars"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "plan.stdout",
+      "stderr": "plan.stderr",
+      "stdoutFormat": "text",
+      "env": {
+        "TF_WORKSPACE": "dev"
+      }
+    },
+    {
+      "id": "show",
+      "argv": [
+        "terraform",
+        "show",
+        "-json",
+        "-no-color",
+        "{plan}"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "show.stdout",
+      "stderr": "show.stderr",
+      "stdoutFormat": "json",
+      "env": {
+        "TF_WORKSPACE": "dev"
+      }
+    },
+    {
+      "id": "apply",
+      "argv": [
+        "terraform",
+        "apply",
+        "-input=false",
+        "-no-color",
+        "-json",
+        "{plan}"
+      ],
+      "cwd": "network",
+      "exitCode": 1,
+      "stdout": "apply.stdout",
+      "stderr": "apply.stderr",
+      "stdoutFormat": "text",
+      "env": {
+        "TF_WORKSPACE": "dev"
+      }
+    }
+  ]
+}

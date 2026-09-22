@@ -5,9 +5,13 @@
 // (record 0053), and with --tool helm examples/helm-basic with helm and its
 // diff plugin, against the cluster KUBECONFIG names (record 0058), and with
 // --tool kubectl examples/kubernetes-basic with kubectl, against that cluster
-// too, which has to be a kind cluster (record 0060).
+// too, which has to be a kind cluster (record 0060). --tool terraform drives
+// examples/opentofu-basic with terraform, --tool terragrunt
+// examples/terragrunt-basic and --tool cdktf examples/cdktf-basic, both with
+// tofu behind them (record 0068). cdktf needs the example's packages
+// installed first, with npm ci in examples/cdktf-basic.
 //
-//   bun run record:fixtures [--tool pulumi|opentofu|helm|kubectl] [--out <dir>]
+//   bun run record:fixtures [--tool pulumi|opentofu|terraform|terragrunt|cdktf|helm|kubectl] [--out <dir>]
 //                           [--work-dir <dir>] [--expect-version v3.229.0]
 //                           [--only <scenario>]
 //
@@ -21,6 +25,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { bundleManifests } from "../src/adapters/kubectl/render.ts";
+import { CDKTF_SCENARIOS, cdktfEnvironment } from "./fixtures/cdktf-scenarios.ts";
 import {
   HELM,
   HELM_NAMESPACES,
@@ -39,6 +44,7 @@ import {
   OPENTOFU_SCENARIOS,
   openTofuEnvironment,
   openTofuOps,
+  TERRAFORM_SCENARIOS,
 } from "./fixtures/opentofu-scenarios.ts";
 import {
   checkRecording,
@@ -48,6 +54,7 @@ import {
   recordScenario,
 } from "./fixtures/recorder.ts";
 import { SCENARIOS } from "./fixtures/scenarios.ts";
+import { TERRAGRUNT_SCENARIOS } from "./fixtures/terragrunt-scenarios.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 
@@ -115,6 +122,41 @@ const TOOLS: Record<string, Tool> = {
       `v${(JSON.parse(stdout || "{}") as { terraform_version?: string }).terraform_version ?? ""}`,
     scenarios: OPENTOFU_SCENARIOS,
     environment: openTofuEnvironment,
+    ops: openTofuOps,
+  },
+  // The Terraform family behind the OpenTofu adapter (record 0068).
+  // terraform drives the same example as tofu. terragrunt and cdktf drive an
+  // example of their own, with tofu behind them, and are named by their own
+  // version.
+  terraform: {
+    name: "terraform",
+    example: "examples/opentofu-basic",
+    fixtures: "terraform",
+    versionArgv: ["terraform", "version", "-json"],
+    version: (stdout) =>
+      `v${(JSON.parse(stdout || "{}") as { terraform_version?: string }).terraform_version ?? ""}`,
+    scenarios: TERRAFORM_SCENARIOS,
+    environment: openTofuEnvironment,
+    ops: openTofuOps,
+  },
+  terragrunt: {
+    name: "terragrunt",
+    example: "examples/terragrunt-basic",
+    fixtures: "terragrunt",
+    versionArgv: ["terragrunt", "--version"],
+    version: (stdout) => /v\d+\.\d+\.\d+/.exec(stdout)?.[0] ?? "",
+    scenarios: TERRAGRUNT_SCENARIOS,
+    environment: openTofuEnvironment,
+    ops: openTofuOps,
+  },
+  cdktf: {
+    name: "cdktf",
+    example: "examples/cdktf-basic",
+    fixtures: "cdktf",
+    versionArgv: ["cdktf", "--version"],
+    version: (stdout) => `v${stdout.trim()}`,
+    scenarios: CDKTF_SCENARIOS,
+    environment: cdktfEnvironment,
     ops: openTofuOps,
   },
   helm: {

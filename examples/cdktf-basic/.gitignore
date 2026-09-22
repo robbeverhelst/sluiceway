@@ -1,0 +1,7 @@
+# What cdktf synth and the tool write into a copy of the example.
+node_modules/
+cdktf.out/
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*

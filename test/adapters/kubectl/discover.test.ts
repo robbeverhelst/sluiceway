@@ -151,7 +151,9 @@ describe("what discovery refuses", () => {
   test("an unknown tool names kubectl among the known ones", async () => {
     expect(
       await problems(MANIFESTS, "stacks:\n  - path: deploy/web\n    tool: kustomize\n"),
-    ).toEqual(['stacks[0].tool: unknown tool "kustomize". Known tools: opentofu, helm, kubectl.']);
+    ).toEqual([
+      'stacks[0].tool: unknown tool "kustomize". Known tools: opentofu, terraform, helm, kubectl.',
+    ]);
   });
 });
 

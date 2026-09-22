@@ -1,8 +1,7 @@
-import { join } from "node:path";
 import { type Stack, stackId } from "../../core/stack.ts";
 import type { ApplyResult, SavedPlan, ToolContext } from "../adapter.ts";
 import { stripAnsi } from "../pulumi/tool-log.ts";
-import { applyCommand } from "./commands.ts";
+import { applyArgs, command, workingDirectory } from "./commands.ts";
 import { tofuEnvironment } from "./environment.ts";
 import { PlanFile } from "./plan-file.ts";
 import { jsonLogWords } from "./tool-log.ts";
@@ -22,8 +21,8 @@ export async function apply(
     throw new Error("An OpenTofu stack deploys only the plan its fresh preview saved.");
   }
   const result = await context.run({
-    argv: applyCommand(plan.path),
-    cwd: join(context.root, stack.path),
+    argv: command(stack, applyArgs(plan.path)),
+    cwd: workingDirectory(context.root, stack),
     // The same workspace the plan was made in.
     env: tofuEnvironment(context.env, stack),
   });

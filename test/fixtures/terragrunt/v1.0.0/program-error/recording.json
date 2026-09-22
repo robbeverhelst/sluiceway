@@ -1,0 +1,31 @@
+{
+  "scenario": "program-error",
+  "description": "A resource block that is never closed: the plan through terragrunt fails.",
+  "cliVersion": "v1.0.0",
+  "commands": [
+    {
+      "id": "plan",
+      "argv": [
+        "terragrunt",
+        "run",
+        "--tf-forward-stdout",
+        "--no-color",
+        "--no-auto-init",
+        "--tf-path",
+        "tofu",
+        "--",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-json",
+        "-out={plan}"
+      ],
+      "cwd": "live/dev",
+      "exitCode": 1,
+      "stdout": "plan.stdout",
+      "stderr": "plan.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

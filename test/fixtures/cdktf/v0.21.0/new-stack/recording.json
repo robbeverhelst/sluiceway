@@ -1,0 +1,67 @@
+{
+  "scenario": "new-stack",
+  "description": "The stack dev before its first deploy: synth, init in its directory, then a plan of all creates.",
+  "cliVersion": "v0.21.0",
+  "commands": [
+    {
+      "id": "synth",
+      "argv": [
+        "cdktf",
+        "synth",
+        "--output",
+        "cdktf.out"
+      ],
+      "cwd": ".",
+      "exitCode": 0,
+      "stdout": "synth.stdout",
+      "stderr": "synth.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "init",
+      "argv": [
+        "tofu",
+        "init",
+        "-input=false",
+        "-no-color"
+      ],
+      "cwd": "cdktf.out/stacks/dev",
+      "exitCode": 0,
+      "stdout": "init.stdout",
+      "stderr": "init.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "plan",
+      "argv": [
+        "tofu",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-json",
+        "-out={plan}"
+      ],
+      "cwd": "cdktf.out/stacks/dev",
+      "exitCode": 0,
+      "stdout": "plan.stdout",
+      "stderr": "plan.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "show",
+      "argv": [
+        "tofu",
+        "show",
+        "-json",
+        "-no-color",
+        "{plan}"
+      ],
+      "cwd": "cdktf.out/stacks/dev",
+      "exitCode": 0,
+      "stdout": "show.stdout",
+      "stderr": "show.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

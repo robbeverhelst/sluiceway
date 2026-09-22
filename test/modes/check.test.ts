@@ -129,7 +129,7 @@ describe("a repo with OpenTofu roots", () => {
     expect(error).toBeInstanceOf(ConfigError);
     expect(summary).toContain(
       escapeText(
-        'stacks[0].options: unknown option "refresh". Known options for opentofu: workspace, varFiles.',
+        'stacks[0].options: unknown option "refresh". Known options for opentofu: workspace, varFiles, wrapper.',
       ),
     );
   });

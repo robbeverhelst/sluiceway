@@ -1,0 +1,28 @@
+{
+  "scenario": "missing-variable",
+  "description": "The var file of network:dev without the variable env: the plan cannot ask for it and fails.",
+  "cliVersion": "v1.14.0",
+  "commands": [
+    {
+      "id": "plan",
+      "argv": [
+        "terraform",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-json",
+        "-out={plan}",
+        "-var-file=dev.tfvars"
+      ],
+      "cwd": "network",
+      "exitCode": 1,
+      "stdout": "plan.stdout",
+      "stderr": "plan.stderr",
+      "stdoutFormat": "text",
+      "env": {
+        "TF_WORKSPACE": "dev"
+      }
+    }
+  ]
+}

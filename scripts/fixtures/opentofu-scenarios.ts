@@ -7,31 +7,49 @@ import { join } from "node:path";
 import type { Expectation, RecordOptions, Scenario, Step } from "./recorder.ts";
 import { PLAN_FILE } from "./recorder.ts";
 
-// The command lines are the ones the adapter runs (src/adapters/opentofu/).
-export const TOFU = {
-  init: ["tofu", "init", "-input=false", "-no-color"],
-  plan: (varFiles: string[]) => [
-    "tofu",
-    "plan",
-    "-input=false",
-    "-no-color",
-    "-refresh=false",
-    "-json",
-    `-out=${PLAN_FILE}`,
-    ...varFiles.map((file) => `-var-file=${file}`),
-  ],
-  show: ["tofu", "show", "-json", "-no-color", PLAN_FILE],
-  apply: ["tofu", "apply", "-input=false", "-no-color", "-json", PLAN_FILE],
-  diff: (varFiles: string[]) => [
-    "tofu",
-    "plan",
-    "-input=false",
-    "-no-color",
-    "-refresh=false",
-    ...varFiles.map((file) => `-var-file=${file}`),
-  ],
-  version: ["tofu", "version", "-json"],
-};
+// The command lines are the ones the adapter runs (src/adapters/opentofu/),
+// behind a prefix: the binary, or Terragrunt in front of it (record 0068).
+export function familyCommands(prefix: string[]) {
+  return {
+    init: [...prefix, "init", "-input=false", "-no-color"],
+    plan: (varFiles: string[]) => [
+      ...prefix,
+      "plan",
+      "-input=false",
+      "-no-color",
+      "-refresh=false",
+      "-json",
+      `-out=${PLAN_FILE}`,
+      ...varFiles.map((file) => `-var-file=${file}`),
+    ],
+    show: [...prefix, "show", "-json", "-no-color", PLAN_FILE],
+    apply: [...prefix, "apply", "-input=false", "-no-color", "-json", PLAN_FILE],
+    diff: (varFiles: string[]) => [
+      ...prefix,
+      "plan",
+      "-input=false",
+      "-no-color",
+      "-refresh=false",
+      ...varFiles.map((file) => `-var-file=${file}`),
+    ],
+    version: [...prefix, "version", "-json"],
+    // A deploy the plain way, to put a stack where a scenario needs it.
+    deploy: (varFiles: string[]) => [
+      ...prefix,
+      "apply",
+      "-input=false",
+      "-no-color",
+      "-auto-approve",
+      "-refresh=false",
+      ...varFiles.map((file) => `-var-file=${file}`),
+    ],
+  };
+}
+
+export type FamilyCommands = ReturnType<typeof familyCommands>;
+
+export const TOFU = familyCommands(["tofu"]);
+export const TERRAFORM = familyCommands(["terraform"]);
 
 // The stacks of examples/opentofu-basic/sluiceway.yaml.
 interface TofuStack {
@@ -51,35 +69,27 @@ function withEnv(stack: TofuStack): { env?: Record<string, string> } {
   return stack.env === undefined ? {} : { env: stack.env };
 }
 
-function init(stack: TofuStack): Step {
-  return { kind: "setup", cwd: stack.cwd, argv: TOFU.init };
+function init(c: FamilyCommands, stack: TofuStack): Step {
+  return { kind: "setup", cwd: stack.cwd, argv: c.init };
 }
 
 // A deploy the plain way, to put a stack where a scenario needs it.
-function deployed(stack: TofuStack): Step {
+function deployed(c: FamilyCommands, stack: TofuStack): Step {
   return {
     kind: "setup",
     cwd: stack.cwd,
-    argv: [
-      "tofu",
-      "apply",
-      "-input=false",
-      "-no-color",
-      "-auto-approve",
-      "-refresh=false",
-      ...stack.varFiles.map((file) => `-var-file=${file}`),
-    ],
+    argv: c.deploy(stack.varFiles),
     ...withEnv(stack),
   };
 }
 
-function plan(stack: TofuStack, expect: Expectation, suffix = ""): Step[] {
+function plan(c: FamilyCommands, stack: TofuStack, expect: Expectation, suffix = ""): Step[] {
   return [
     {
       kind: "record",
       id: `plan${suffix}`,
       cwd: stack.cwd,
-      argv: TOFU.plan(stack.varFiles),
+      argv: c.plan(stack.varFiles),
       stdout: "text",
       expect: { exit: expect.exit },
       ...withEnv(stack),
@@ -90,7 +100,7 @@ function plan(stack: TofuStack, expect: Expectation, suffix = ""): Step[] {
             kind: "record" as const,
             id: `show${suffix}`,
             cwd: stack.cwd,
-            argv: TOFU.show,
+            argv: c.show,
             stdout: "json" as const,
             expect,
             ...withEnv(stack),
@@ -100,12 +110,12 @@ function plan(stack: TofuStack, expect: Expectation, suffix = ""): Step[] {
   ];
 }
 
-function apply(stack: TofuStack, expect: Expectation): Step {
+function apply(c: FamilyCommands, stack: TofuStack, expect: Expectation): Step {
   return {
     kind: "record",
     id: "apply",
     cwd: stack.cwd,
-    argv: TOFU.apply,
+    argv: c.apply,
     stdout: "text",
     expect,
     ...withEnv(stack),
@@ -197,6 +207,7 @@ const rotatedSecret = edit(
 const addedOutput = edit(OUTPUT, `output "greeting" {\n  value = var.motd\n}\n\n${OUTPUT}`);
 
 function afterDeploy(
+  c: FamilyCommands,
   name: string,
   description: string,
   edits: Step[],
@@ -205,219 +216,243 @@ function afterDeploy(
   return {
     name,
     description,
-    steps: [init(DEV), deployed(DEV), ...edits, ...plan(DEV, expect)],
+    steps: [init(c, DEV), deployed(c, DEV), ...edits, ...plan(c, DEV, expect)],
   };
 }
 
-export const OPENTOFU_SCENARIOS: Scenario[] = [
-  {
-    name: "version",
-    description: "tofu version -json, which the version check reads.",
-    steps: [
-      {
-        kind: "record",
-        id: "version",
-        cwd: ".",
-        argv: TOFU.version,
-        stdout: "json",
-        expect: { exit: "zero" },
-      },
-    ],
-  },
-  {
-    name: "new-stack",
-    description:
-      "network:dev before its first deploy: init, then a plan of all creates in the workspace dev.",
-    steps: [
-      {
-        kind: "record",
-        id: "init",
-        cwd: "network",
-        argv: TOFU.init,
-        stdout: "text",
-        expect: { exit: "zero" },
-      },
-      ...plan(DEV, { exit: "zero", ops: ["create"] }),
-    ],
-  },
-  {
-    name: "init-failed",
-    description:
-      "A provider version that does not exist: init fails, so no stack of the directory can be previewed.",
-    steps: [
-      edit(
-        'null   = { source = "hashicorp/null", version = "3.2.4" }',
-        'null   = { source = "hashicorp/null", version = "99.0.0" }',
-      ),
-      {
-        kind: "record",
-        id: "init",
-        cwd: "network",
-        argv: TOFU.init,
-        stdout: "text",
-        expect: { exit: "nonzero" },
-      },
-    ],
-  },
-  {
-    name: "other-workspace",
-    description: "network:prod, the same root module in the workspace prod with its own var file.",
-    steps: [init(PROD), ...plan(PROD, { exit: "zero", ops: ["create"] })],
-  },
-  {
-    name: "tofu-files",
-    description:
-      "dns, a root module of .tofu files in the default workspace, before its first deploy.",
-    steps: [init(DNS), ...plan(DNS, { exit: "zero", ops: ["create"] })],
-  },
-  afterDeploy("no-changes", "network:dev, deployed, and nothing changed.", [], {
-    exit: "zero",
-    ops: ["no-op"],
-  }),
-  afterDeploy(
-    "update",
-    "A new input of terraform_data, which changes it in place.",
-    [updatedConfig],
+// The scenarios of the plain binary, tofu or terraform (record 0068).
+export function familyScenarios(c: FamilyCommands, binary: string): Scenario[] {
+  return [
     {
-      exit: "zero",
-      ops: ["update"],
+      name: "version",
+      description: `${binary} version -json, which the version check reads.`,
+      steps: [
+        {
+          kind: "record",
+          id: "version",
+          cwd: ".",
+          argv: c.version,
+          stdout: "json",
+          expect: { exit: "zero" },
+        },
+      ],
     },
-  ),
-  afterDeploy("replace", "A new content of local_file, which forces a new one.", [replacedNotes], {
-    exit: "zero",
-    ops: ["delete,create"],
-  }),
-  afterDeploy("delete", "null_resource taken out of the code.", [removedTrigger], {
-    exit: "zero",
-    ops: ["delete"],
-  }),
-  afterDeploy(
-    "forget",
-    "null_resource under a removed block with destroy = false: the record goes, the object stays.",
-    [forgottenTrigger],
-    { exit: "zero", ops: ["forget"] },
-  ),
-  afterDeploy("move", "random_pet renamed with a moved block.", movedPet, {
-    exit: "zero",
-    ops: ["move"],
-  }),
-  afterDeploy(
-    "import",
-    "An import block for a random_string that the code then tracks.",
-    [importedString],
     {
-      exit: "zero",
-      ops: ["import"],
+      name: "new-stack",
+      description:
+        "network:dev before its first deploy: init, then a plan of all creates in the workspace dev.",
+      steps: [
+        {
+          kind: "record",
+          id: "init",
+          cwd: "network",
+          argv: c.init,
+          stdout: "text",
+          expect: { exit: "zero" },
+        },
+        ...plan(c, DEV, { exit: "zero", ops: ["create"] }),
+      ],
     },
-  ),
-  afterDeploy(
-    "mixed",
-    "An update, a replace, a delete, a create and a data source read in one plan.",
-    [updatedConfig, replacedNotes, removedTrigger, addedResource, readBack],
-    { exit: "zero", ops: ["update", "delete,create", "delete", "create", "read"] },
-  ),
-  afterDeploy(
-    "changed-secret",
-    "The sensitive variable rotated: an update of terraform_data and a replace of null_resource, at sensitive paths.",
-    [rotatedSecret],
-    { exit: "zero", ops: ["update", "delete,create"] },
-  ),
-  afterDeploy(
-    "outputs-only",
-    "A new root output and no resource change (record 0036).",
-    [addedOutput],
     {
+      name: "init-failed",
+      description:
+        "A provider version that does not exist: init fails, so no stack of the directory can be previewed.",
+      steps: [
+        edit(
+          'null   = { source = "hashicorp/null", version = "3.2.4" }',
+          'null   = { source = "hashicorp/null", version = "99.0.0" }',
+        ),
+        {
+          kind: "record",
+          id: "init",
+          cwd: "network",
+          argv: c.init,
+          stdout: "text",
+          expect: { exit: "nonzero" },
+        },
+      ],
+    },
+    {
+      name: "other-workspace",
+      description:
+        "network:prod, the same root module in the workspace prod with its own var file.",
+      steps: [init(c, PROD), ...plan(c, PROD, { exit: "zero", ops: ["create"] })],
+    },
+    {
+      name: "tofu-files",
+      description:
+        "dns, a root module of .tofu files in the default workspace, before its first deploy.",
+      steps: [init(c, DNS), ...plan(c, DNS, { exit: "zero", ops: ["create"] })],
+    },
+    afterDeploy(c, "no-changes", "network:dev, deployed, and nothing changed.", [], {
       exit: "zero",
       ops: ["no-op"],
-    },
-  ),
-  {
-    name: "same-plan-twice",
-    description:
-      "The same plan of network:dev twice, to see that the order of resource_changes holds.",
-    steps: [
-      init(DEV),
-      ...plan(DEV, { exit: "zero", ops: ["create"] }),
-      ...plan(DEV, { exit: "zero", ops: ["create"] }, "-again"),
-    ],
-  },
-  {
-    name: "program-error",
-    description:
-      "A resource block that is never closed: the plan fails with diagnostics in its JSON log.",
-    steps: [
-      init(DEV),
-      edit(OUTPUT, `resource "terraform_data" "broken" {\n\n${OUTPUT}`),
-      ...plan(DEV, { exit: "nonzero" }),
-    ],
-  },
-  {
-    name: "missing-variable",
-    description:
-      "The var file of network:dev without the variable env: the plan cannot ask for it and fails.",
-    steps: [
-      init(DEV),
-      edit('env = "dev"\n', "", "network/dev.tfvars"),
-      ...plan(DEV, { exit: "nonzero" }),
-    ],
-  },
-  {
-    name: "deploy",
-    description: "network:dev deployed from the plan file of its own plan, the way apply does it.",
-    steps: [
-      init(DEV),
-      ...plan(DEV, { exit: "zero", ops: ["create"] }),
-      apply(DEV, { exit: "zero" }),
-    ],
-  },
-  {
-    name: "deploy-failed",
-    description:
-      "A plan that works and a deploy that fails: a provisioner of a new resource exits with 3.",
-    steps: [
-      init(DEV),
-      deployed(DEV),
-      edit(
-        OUTPUT,
-        `resource "null_resource" "fails" {\n  provisioner "local-exec" {\n    command = "exit 3"\n  }\n}\n\n${OUTPUT}`,
-      ),
-      ...plan(DEV, { exit: "zero", ops: ["create"] }),
-      apply(DEV, { exit: "nonzero" }),
-    ],
-  },
-  {
-    name: "stale-plan",
-    description:
-      "A saved plan, then another deploy changes the state, then the saved plan is applied: the tool refuses it as stale.",
-    steps: [
-      init(DEV),
-      deployed(DEV),
-      updatedConfig,
-      ...plan(DEV, { exit: "zero", ops: ["update"] }),
-      deployed(DEV),
-      apply(DEV, { exit: "nonzero" }),
-    ],
-  },
-  {
-    name: "log-diff-changed-secret",
-    description:
-      "The tool's own diff of a rotated sensitive variable, for the job log (record 0048).",
-    steps: [
-      init(DEV),
-      deployed(DEV),
-      rotatedSecret,
+    }),
+    afterDeploy(
+      c,
+      "update",
+      "A new input of terraform_data, which changes it in place.",
+      [updatedConfig],
       {
-        kind: "record",
-        id: "diff",
-        cwd: "network",
-        argv: TOFU.diff(DEV.varFiles),
-        stdout: "text",
-        expect: { exit: "zero" },
-        ...withEnv(DEV),
+        exit: "zero",
+        ops: ["update"],
       },
-    ],
-  },
-];
+    ),
+    afterDeploy(
+      c,
+      "replace",
+      "A new content of local_file, which forces a new one.",
+      [replacedNotes],
+      {
+        exit: "zero",
+        ops: ["delete,create"],
+      },
+    ),
+    afterDeploy(c, "delete", "null_resource taken out of the code.", [removedTrigger], {
+      exit: "zero",
+      ops: ["delete"],
+    }),
+    afterDeploy(
+      c,
+      "forget",
+      "null_resource under a removed block with destroy = false: the record goes, the object stays.",
+      [forgottenTrigger],
+      { exit: "zero", ops: ["forget"] },
+    ),
+    afterDeploy(c, "move", "random_pet renamed with a moved block.", movedPet, {
+      exit: "zero",
+      ops: ["move"],
+    }),
+    afterDeploy(
+      c,
+      "import",
+      "An import block for a random_string that the code then tracks.",
+      [importedString],
+      {
+        exit: "zero",
+        ops: ["import"],
+      },
+    ),
+    afterDeploy(
+      c,
+      "mixed",
+      "An update, a replace, a delete, a create and a data source read in one plan.",
+      [updatedConfig, replacedNotes, removedTrigger, addedResource, readBack],
+      { exit: "zero", ops: ["update", "delete,create", "delete", "create", "read"] },
+    ),
+    afterDeploy(
+      c,
+      "changed-secret",
+      "The sensitive variable rotated: an update of terraform_data and a replace of null_resource, at sensitive paths.",
+      [rotatedSecret],
+      { exit: "zero", ops: ["update", "delete,create"] },
+    ),
+    afterDeploy(
+      c,
+      "outputs-only",
+      "A new root output and no resource change (record 0036).",
+      [addedOutput],
+      {
+        exit: "zero",
+        ops: ["no-op"],
+      },
+    ),
+    {
+      name: "same-plan-twice",
+      description:
+        "The same plan of network:dev twice, to see that the order of resource_changes holds.",
+      steps: [
+        init(c, DEV),
+        ...plan(c, DEV, { exit: "zero", ops: ["create"] }),
+        ...plan(c, DEV, { exit: "zero", ops: ["create"] }, "-again"),
+      ],
+    },
+    {
+      name: "program-error",
+      description:
+        "A resource block that is never closed: the plan fails with diagnostics in its JSON log.",
+      steps: [
+        init(c, DEV),
+        edit(OUTPUT, `resource "terraform_data" "broken" {\n\n${OUTPUT}`),
+        ...plan(c, DEV, { exit: "nonzero" }),
+      ],
+    },
+    {
+      name: "missing-variable",
+      description:
+        "The var file of network:dev without the variable env: the plan cannot ask for it and fails.",
+      steps: [
+        init(c, DEV),
+        edit('env = "dev"\n', "", "network/dev.tfvars"),
+        ...plan(c, DEV, { exit: "nonzero" }),
+      ],
+    },
+    {
+      name: "deploy",
+      description:
+        "network:dev deployed from the plan file of its own plan, the way apply does it.",
+      steps: [
+        init(c, DEV),
+        ...plan(c, DEV, { exit: "zero", ops: ["create"] }),
+        apply(c, DEV, { exit: "zero" }),
+      ],
+    },
+    {
+      name: "deploy-failed",
+      description:
+        "A plan that works and a deploy that fails: a provisioner of a new resource exits with 3.",
+      steps: [
+        init(c, DEV),
+        deployed(c, DEV),
+        edit(
+          OUTPUT,
+          `resource "null_resource" "fails" {\n  provisioner "local-exec" {\n    command = "exit 3"\n  }\n}\n\n${OUTPUT}`,
+        ),
+        ...plan(c, DEV, { exit: "zero", ops: ["create"] }),
+        apply(c, DEV, { exit: "nonzero" }),
+      ],
+    },
+    {
+      name: "stale-plan",
+      description:
+        "A saved plan, then another deploy changes the state, then the saved plan is applied: the tool refuses it as stale.",
+      steps: [
+        init(c, DEV),
+        deployed(c, DEV),
+        updatedConfig,
+        ...plan(c, DEV, { exit: "zero", ops: ["update"] }),
+        deployed(c, DEV),
+        apply(c, DEV, { exit: "nonzero" }),
+      ],
+    },
+    {
+      name: "log-diff-changed-secret",
+      description:
+        "The tool's own diff of a rotated sensitive variable, for the job log (record 0048).",
+      steps: [
+        init(c, DEV),
+        deployed(c, DEV),
+        rotatedSecret,
+        {
+          kind: "record",
+          id: "diff",
+          cwd: "network",
+          argv: c.diff(DEV.varFiles),
+          stdout: "text",
+          expect: { exit: "zero" },
+          ...withEnv(DEV),
+        },
+      ],
+    },
+  ];
+}
+
+export const OPENTOFU_SCENARIOS = familyScenarios(TOFU, "tofu");
+
+// Terraform reads no .tofu files, so the dns root module is not one of its.
+export const TERRAFORM_SCENARIOS = familyScenarios(TERRAFORM, "terraform").filter(
+  (scenario) => scenario.name !== "tofu-files",
+);
 
 // Built from nothing, not from the environment of whoever runs the recorder.
 // Only PATH comes through, so the tool can be found. HOME points into the work

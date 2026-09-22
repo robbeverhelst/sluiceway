@@ -1,0 +1,21 @@
+{
+  "scenario": "init-failed",
+  "description": "A provider version that does not exist: init fails, so no stack of the directory can be previewed.",
+  "cliVersion": "v1.16.3",
+  "commands": [
+    {
+      "id": "init",
+      "argv": [
+        "terraform",
+        "init",
+        "-input=false",
+        "-no-color"
+      ],
+      "cwd": "network",
+      "exitCode": 1,
+      "stdout": "init.stdout",
+      "stderr": "init.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

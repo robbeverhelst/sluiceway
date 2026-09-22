@@ -1,9 +1,8 @@
-import { join } from "node:path";
 import type { PreviewFailureReason } from "../../core/failure-reason.ts";
 import { type Stack, stackId } from "../../core/stack.ts";
 import type { PreviewOptions, PreviewResult } from "../adapter.ts";
 import { stripAnsi } from "../pulumi/tool-log.ts";
-import { planCommand, showCommand } from "./commands.ts";
+import { command, planArgs, showArgs, workingDirectory } from "./commands.ts";
 import { optionsOf, tofuEnvironment } from "./environment.ts";
 import { foldChanges } from "./fold.ts";
 import { PlanFile } from "./plan-file.ts";
@@ -38,8 +37,8 @@ async function planAndShow(
 ): Promise<PreviewResult> {
   const run = (argv: string[]) =>
     options.run({
-      argv,
-      cwd: join(options.root, stack.path),
+      argv: command(stack, argv),
+      cwd: workingDirectory(options.root, stack),
       env: tofuEnvironment(options.env, stack),
       timeoutMs: options.timeoutMinutes * 60_000,
     });
@@ -49,7 +48,7 @@ async function planAndShow(
     detail: string[] = [],
   ): PreviewResult => ({ ok: false, reason, detail, toolLog });
 
-  const planned = await run(planCommand(plan.path, optionsOf(stack).varFiles));
+  const planned = await run(planArgs(plan.path, optionsOf(stack).varFiles));
   if (planned.status === "not-started") return failed({ kind: "tool-error", exitCode: null }, "");
   // The plan's JSON log holds its diagnostics and no values (record 0022).
   const planWords = stripAnsi(planned.stderr) + jsonLogWords(planned.stdout);
@@ -63,7 +62,7 @@ async function planAndShow(
     return failed({ kind: "tool-error", exitCode: planned.exitCode }, planWords);
   }
 
-  const shown = await run(showCommand(plan.path));
+  const shown = await run(showArgs(plan.path));
   if (shown.status === "not-started") {
     return failed({ kind: "tool-error", exitCode: null }, planWords);
   }

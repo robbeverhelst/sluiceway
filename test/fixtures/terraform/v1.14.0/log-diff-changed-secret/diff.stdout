@@ -1,0 +1,31 @@
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  ~ update in-place
+-/+ destroy and then create replacement
+
+Terraform will perform the following actions:
+
+  # null_resource.trigger must be replaced
+-/+ resource "null_resource" "trigger" {
+      ~ id       = "2256230552779576321" -> (known after apply)
+      ~ triggers = { # forces replacement
+          ~ "secret" = (sensitive value)
+        }
+    }
+
+  # terraform_data.config will be updated in-place
+  ~ resource "terraform_data" "config" {
+        id     = "48812e61-e38c-eda4-3143-00d9442414de"
+      ~ input  = {
+          ~ secret   = (sensitive value)
+            # (2 unchanged attributes hidden)
+        }
+      ~ output = {
+          - canary   = "CANARY-VALUE"
+          - greeting = "hello"
+          - secret   = "CANARY-SECRET"
+        } -> (known after apply)
+    }
+
+Plan: 1 to add, 1 to change, 1 to destroy.

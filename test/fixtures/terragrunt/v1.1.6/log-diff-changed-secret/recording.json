@@ -1,0 +1,29 @@
+{
+  "scenario": "log-diff-changed-secret",
+  "description": "The tool's own diff through terragrunt of a rotated sensitive variable (record 0048).",
+  "cliVersion": "v1.1.6",
+  "commands": [
+    {
+      "id": "diff",
+      "argv": [
+        "terragrunt",
+        "run",
+        "--tf-forward-stdout",
+        "--no-color",
+        "--no-auto-init",
+        "--tf-path",
+        "tofu",
+        "--",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false"
+      ],
+      "cwd": "live/dev",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

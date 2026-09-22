@@ -32,3 +32,27 @@ export const FIXTURE_KUBECTL_VERSIONS = {
   minimum: "v1.34.0",
   newest: "v1.37.0",
 } as const;
+
+// The versions of the Terraform family (record 0068), each the minimum the
+// adapter supports and the newest at the time of recording: terraform under
+// test/fixtures/terraform/, and terragrunt and cdktf, with tofu behind them,
+// under test/fixtures/terragrunt/ and test/fixtures/cdktf/. cdktf had its
+// last release before it was archived, so it has one. The matrix of the
+// fixtures job in .github/workflows/ci.yml has to agree. A test checks it.
+export const FIXTURE_TERRAFORM_VERSIONS = {
+  minimum: "v1.14.0",
+  newest: "v1.16.3",
+} as const;
+
+export const FIXTURE_TERRAGRUNT_VERSIONS = {
+  minimum: "v1.0.0",
+  newest: "v1.1.6",
+} as const;
+
+export const FIXTURE_CDKTF_VERSIONS = {
+  minimum: "v0.21.0",
+  newest: "v0.21.0",
+} as const;
+
+// The tofu behind terragrunt and cdktf in their recordings.
+export const FIXTURE_WRAPPED_TOFU_VERSION = "v1.12.6";

@@ -1,0 +1,74 @@
+{
+  "scenario": "new-stack",
+  "description": "live/dev before its first deploy: init through terragrunt, then a plan of all creates.",
+  "cliVersion": "v1.0.0",
+  "commands": [
+    {
+      "id": "init",
+      "argv": [
+        "terragrunt",
+        "run",
+        "--tf-forward-stdout",
+        "--no-color",
+        "--no-auto-init",
+        "--tf-path",
+        "tofu",
+        "--",
+        "init",
+        "-input=false",
+        "-no-color"
+      ],
+      "cwd": "live/dev",
+      "exitCode": 0,
+      "stdout": "init.stdout",
+      "stderr": "init.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "plan",
+      "argv": [
+        "terragrunt",
+        "run",
+        "--tf-forward-stdout",
+        "--no-color",
+        "--no-auto-init",
+        "--tf-path",
+        "tofu",
+        "--",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-json",
+        "-out={plan}"
+      ],
+      "cwd": "live/dev",
+      "exitCode": 0,
+      "stdout": "plan.stdout",
+      "stderr": "plan.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "show",
+      "argv": [
+        "terragrunt",
+        "run",
+        "--tf-forward-stdout",
+        "--no-color",
+        "--no-auto-init",
+        "--tf-path",
+        "tofu",
+        "--",
+        "show",
+        "-json",
+        "-no-color",
+        "{plan}"
+      ],
+      "cwd": "live/dev",
+      "exitCode": 0,
+      "stdout": "show.stdout",
+      "stderr": "show.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

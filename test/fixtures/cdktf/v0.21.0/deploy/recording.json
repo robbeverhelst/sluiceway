@@ -1,0 +1,55 @@
+{
+  "scenario": "deploy",
+  "description": "The stack dev deployed from the plan file of its own plan, the way apply does it.",
+  "cliVersion": "v0.21.0",
+  "commands": [
+    {
+      "id": "plan",
+      "argv": [
+        "tofu",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-json",
+        "-out={plan}"
+      ],
+      "cwd": "cdktf.out/stacks/dev",
+      "exitCode": 0,
+      "stdout": "plan.stdout",
+      "stderr": "plan.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "show",
+      "argv": [
+        "tofu",
+        "show",
+        "-json",
+        "-no-color",
+        "{plan}"
+      ],
+      "cwd": "cdktf.out/stacks/dev",
+      "exitCode": 0,
+      "stdout": "show.stdout",
+      "stderr": "show.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "apply",
+      "argv": [
+        "tofu",
+        "apply",
+        "-input=false",
+        "-no-color",
+        "-json",
+        "{plan}"
+      ],
+      "cwd": "cdktf.out/stacks/dev",
+      "exitCode": 0,
+      "stdout": "apply.stdout",
+      "stderr": "apply.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}

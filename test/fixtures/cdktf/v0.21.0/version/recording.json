@@ -1,0 +1,19 @@
+{
+  "scenario": "version",
+  "description": "cdktf --version, which the version check reads.",
+  "cliVersion": "v0.21.0",
+  "commands": [
+    {
+      "id": "version",
+      "argv": [
+        "cdktf",
+        "--version"
+      ],
+      "cwd": ".",
+      "exitCode": 0,
+      "stdout": "version.stdout",
+      "stderr": "version.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}
