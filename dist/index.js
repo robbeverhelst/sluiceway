@@ -51141,12 +51141,16 @@ function rowMarker(facts) {
     pairs.push(["hash", facts.hash]);
   if (facts.destroys)
     pairs.push(["destroys", String(facts.destroys)]);
+  if (facts.destroys && facts.deletes !== undefined)
+    pairs.push(["deletes", String(facts.deletes)]);
   if (facts.failed)
     pairs.push(["failed", "true"]);
   if (facts.shortened)
     pairs.push(["shortened", String(facts.shortened)]);
   if (facts.drift)
     pairs.push(["drift", "true"]);
+  if (facts.gone)
+    pairs.push(["gone", String(facts.gone)]);
   if (facts.dependsOn && facts.dependsOn.length > 0) {
     pairs.push(["depends-on", encodeIds(facts.dependsOn)]);
   }
@@ -51257,15 +51261,18 @@ function parseDashboard(body) {
       return /^\d+$/.test(value) ? Number(value) : 0;
     };
     const dependsOn = pairs.get("depends-on") ?? "";
+    const deletes = pairs.get("deletes") ?? "";
     rows.push({
       known: true,
       stackId,
       state,
       hash: pairs.get("hash"),
       destroys: count("destroys"),
+      .../^\d+$/.test(deletes) ? { deletes: Number(deletes) } : {},
       failed: pairs.get("failed") === "true",
       shortened: count("shortened"),
       drift: pairs.get("drift") === "true",
+      ...count("gone") > 0 ? { gone: count("gone") } : {},
       ...dependsOn === "" ? {} : { dependsOn: decodeIds(dependsOn) },
       ticked: match[1] === "x" || match[1] === "X",
       text
@@ -51486,6 +51493,7 @@ function driftRow(row, options) {
       failed: row.failure !== undefined,
       shortened: level >= 2 ? level : 0,
       drift: true,
+      gone: drift.filter((change) => change.op === "delete").length,
       dependsOn: row.dependsOn
     })}`
   ];
@@ -51513,6 +51521,7 @@ function pendingRow(row, options) {
       state: "pending",
       hash: row.hash,
       destroys,
+      deletes: deletes.length,
       failed: row.failure !== undefined,
       shortened: level,
       drift: drift.length > 0,
@@ -51568,7 +51577,7 @@ function deployingRow(row, options) {
   const word = behind.length > 0 ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}` : row.waiting ? "waiting to start" : "deploying";
   const state = behind.length > 0 ? "queued" : "deploying";
   const lines = [
-    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef)}**${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys })}`
+    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef)}**${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys, deletes: row.deletes })}`
   ];
   if (row.attribution)
     lines.push(row.attribution.full, ...outsideFold(row.attribution, 0));
@@ -57350,18 +57359,40 @@ function mergeMethod(allowed, strategy) {
 }
 
 // src/render/destroy-alert.ts
+var ids = (rows) => rows.map((row) => `**${escapeText(row.stackId)}**`).join(", ");
 function destroyAlert(rows) {
-  const ids = rows.filter((row) => row.known && row.state === "pending" && row.destroys > 0).map((row) => `**${escapeText(row.stackId)}**`);
-  if (ids.length === 0)
+  const pending = rows.filter((row) => row.known && row.state === "pending" && row.destroys > 0);
+  const drifted = rows.filter((row) => row.known && row.state === "drift" && (row.gone ?? 0) > 0);
+  const paragraphs = [];
+  if (pending.length > 0) {
+    const words = pending.length === 1 ? "1 pending stack deletes or replaces resources" : `${pending.length} pending stacks delete or replace resources`;
+    paragraphs.push(`> ${words}: ${ids(pending)}`);
+  }
+  if (drifted.length > 0) {
+    const words = drifted.length === 1 ? "1 drifted stack has resources gone outside the code" : `${drifted.length} drifted stacks have resources gone outside the code`;
+    paragraphs.push(`> ${words}: ${ids(drifted)}`);
+  }
+  if (paragraphs.length === 0)
     return;
-  const words = ids.length === 1 ? "1 pending stack deletes or replaces resources" : `${ids.length} pending stacks delete or replace resources`;
   return `> [!CAUTION]
-> ${words}: ${ids.join(", ")}`;
+${paragraphs.join(`
+>
+`)}`;
 }
 
 // src/render/destroy-sign.ts
-function destroySign(rows) {
-  return rows.some((row) => row.known && (row.state === "pending" || isDeployingState(row.state)) && row.destroys > 0);
+function destroySigns(rows) {
+  const signs = { deletes: false, replaces: false };
+  for (const row of rows) {
+    if (!row.known || !(row.state === "pending" || isDeployingState(row.state)))
+      continue;
+    const deletes = Math.min(row.deletes ?? row.destroys, row.destroys);
+    if (deletes > 0)
+      signs.deletes = true;
+    if (row.destroys - deletes > 0)
+      signs.replaces = true;
+  }
+  return signs;
 }
 
 // src/render/dots.ts
@@ -57384,6 +57415,7 @@ var RESULT_DOT = {
 var HEADER_DOT = {
   failing: COUNT_DOT.failed,
   deploying: COUNT_DOT.deploying,
+  queued: COUNT_DOT.deploying,
   pending: COUNT_DOT.pending,
   drift: COUNT_DOT.drift,
   "first-run": DOT_AT_ZERO,
@@ -57398,8 +57430,10 @@ function headerState(rows) {
   const is = (state) => known.some((row) => row.state === state);
   if (is("preview-failed") || known.some((row) => row.failed))
     return "failing";
-  if (known.some((row) => isDeployingState(row.state)))
+  if (is("deploying"))
     return "deploying";
+  if (is("queued"))
+    return "queued";
   if (is("pending"))
     return "pending";
   if (is("drift"))
@@ -57465,15 +57499,25 @@ function tickedMergeBlock(row) {
 }
 
 // src/render/pending-crates.ts
-var MAX_CRATES = 12;
+var MAX_CRATES = 20;
 function pendingCrates(rows) {
   const pending = rows.filter((row) => row.known && row.state === "pending").length;
   return pending > MAX_CRATES ? "more" : pending;
 }
 
 // src/render/voice.ts
+var GOOD_NEWS = [
+  "Gate closed, water calm. Nothing to deploy.",
+  "Level water on both sides of the gate. Nothing to deploy.",
+  "Still water upstream. Nothing to deploy."
+];
+var DAY_MS = 24 * 60 * 60 * 1000;
+function goodNewsOf(day) {
+  const days = Math.floor((day?.getTime() ?? Number.NaN) / DAY_MS);
+  return GOOD_NEWS[Number.isNaN(days) ? 0 : days % GOOD_NEWS.length] ?? GOOD_NEWS[0];
+}
 var WARM = {
-  goodNews: () => "Gate closed, water calm. Nothing to deploy.",
+  goodNews: (_stacks, day) => goodNewsOf(day),
   firstRun: "The channel is dry. Add a stack to `sluiceway.yaml` and the next scan fills it."
 };
 var DRY = {
@@ -57501,6 +57545,7 @@ var ACTION_URL = `https://github.com/${ACTION_REPO2}`;
 var ALT = {
   failing: "Sluiceway: something failed",
   deploying: "Sluiceway: deploying",
+  queued: "Sluiceway: queued behind dependencies",
   drift: "Sluiceway: something changed outside the code",
   "first-run": "Sluiceway: no stacks yet",
   "in-sync": "Sluiceway: everything is in sync"
@@ -57510,18 +57555,19 @@ function pendingWords(crates) {
     return `more than ${MAX_CRATES} stacks are pending`;
   return crates === 1 ? "1 stack is pending" : `${crates} stacks are pending`;
 }
-var COUNTED = ["pending", "failing", "deploying"];
+var COUNTED = ["pending", "failing", "deploying", "queued"];
 var isCounted = (state) => COUNTED.includes(state);
 function countedAlt(state, crates) {
   if (state === "pending")
     return `Sluiceway: ${pendingWords(crates)}`;
   return crates === 0 ? ALT[state] : `${ALT[state]}, ${pendingWords(crates)}`;
 }
-var SIGNED_FACT = {
-  pending: ", some delete or replace resources",
-  failing: ", some changes delete or replace resources",
-  deploying: ", some changes delete or replace resources"
-};
+function signed(state, signs) {
+  const verb = signs.deletes && signs.replaces ? "delete or replace" : signs.deletes ? "delete" : "replace";
+  const suffix = `${signs.deletes ? "-deletes" : ""}${signs.replaces ? "-replaces" : ""}`;
+  const subject = state === "pending" ? "some" : "some changes";
+  return { suffix, fact: suffix === "" ? "" : `, ${subject} ${verb} resources` };
+}
 function placed(row) {
   return row.state === "queued" ? "deploying" : row.state;
 }
@@ -57537,13 +57583,16 @@ function rowBlock(row, options = {}) {
     throw new Error("A rendered row did not read back as a row block.");
   return block;
 }
-function picture(state, crates, sign, actionRef2) {
-  const counted = isCounted(state);
-  const base = counted ? `${state}-${crates}` : state;
-  const signed = sign && counted;
-  const name = signed ? `${base}-destroys` : base;
-  const plainAlt = counted ? countedAlt(state, crates) : ALT[state];
-  const alt = signed ? `${plainAlt}${SIGNED_FACT[state]}` : plainAlt;
+function picture(state, crates, signs, actionRef2) {
+  let name = state;
+  let alt;
+  if (isCounted(state)) {
+    const { suffix, fact } = signed(state, signs);
+    name = `${state}-${crates}${suffix}`;
+    alt = `${countedAlt(state, crates)}${fact}`;
+  } else {
+    alt = ALT[state];
+  }
   const file2 = (theme) => mascotUrl(actionRef2, `${name}-${theme}.svg`);
   return [
     '<p align="center">',
@@ -57590,6 +57639,10 @@ function scanLine(root, repoUrl) {
     parts.push(`<sub>last full scan ${fullAt}</sub>`);
   return parts.join(" · ");
 }
+function scanDay(root) {
+  const at = new Date(root.scanAt);
+  return Number.isNaN(at.getTime()) ? undefined : at;
+}
 function pendingLine(input2, state, pending) {
   if (pending > 0)
     return input2.readOnly ? READ_ONLY_LINE : INSTRUCTION_LINE;
@@ -57599,7 +57652,7 @@ function pendingLine(input2, state, pending) {
   if (state === "first-run")
     return lines.firstRun;
   if (state === "in-sync" && input2.rows.every((row) => row.known))
-    return lines.goodNews(input2.rows.length);
+    return lines.goodNews(input2.rows.length, scanDay(input2.root));
   return NOTHING_TO_DEPLOY;
 }
 function blocks(rows) {
@@ -57641,7 +57694,7 @@ function renderBody(input2) {
   const counts2 = countsLine(known, input2.personality);
   const scan = scanLine(input2.root, input2.repoUrl);
   if (input2.personality)
-    out.push(picture(state, pendingCrates(rows), destroySign(rows), input2.actionRef).join(`
+    out.push(picture(state, pendingCrates(rows), destroySigns(rows), input2.actionRef).join(`
 `), '<div align="center">', counts2, scan, "</div>");
   else
     out.push(counts2, scan);
@@ -57664,12 +57717,12 @@ function renderBody(input2) {
     }
   }
   out.push("## Pending", pendingLine(input2, state, pending.length));
-  const alert = destroyAlert(pending);
+  const drifted = of("drift");
+  const alert = destroyAlert([...pending, ...drifted]);
   if (alert)
     out.push(alert);
   if (pending.length > 0)
     out.push(blocks(pending));
-  const drifted = of("drift");
   if (drifted.length > 0)
     out.push("## Drifted", DRIFTED_LINE, blocks(drifted));
   const previewFailed = of("preview-failed");
@@ -58082,11 +58135,11 @@ function readDeploymentPayload(payload) {
     read3.drift = true;
   if (behind === undefined)
     return read3;
-  const ids = Array.isArray(behind) ? behind : [];
-  if (ids.length === 0 || !ids.every((id) => typeof id === "string" && id !== "")) {
+  const ids2 = Array.isArray(behind) ? behind : [];
+  if (ids2.length === 0 || !ids2.every((id) => typeof id === "string" && id !== "")) {
     return;
   }
-  return { ...read3, behind: ids };
+  return { ...read3, behind: ids2 };
 }
 var SUCCEEDED = new Set(["success", "inactive"]);
 var FAILED = new Set(["failure", "error"]);
@@ -58410,12 +58463,12 @@ function byCodeUnit15(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function planDeploys(input2) {
-  const ids = [...new Set(input2.allowed)].sort(byCodeUnit15);
-  const going = new Set(ids);
+  const ids2 = [...new Set(input2.allowed)].sort(byCodeUnit15);
+  const going = new Set(ids2);
   const refused = new Map;
   for (let changed = true;changed; ) {
     changed = false;
-    for (const id of ids) {
+    for (const id of ids2) {
       if (refused.has(id))
         continue;
       const waitingOn = (input2.dependsOn.get(id) ?? []).filter((dependency) => !input2.open.has(dependency) && !going.has(dependency) && (input2.pending.has(dependency) || refused.has(dependency)));
@@ -58428,7 +58481,7 @@ function planDeploys(input2) {
   }
   const start = [];
   const queued = [];
-  for (const id of ids) {
+  for (const id of ids2) {
     if (refused.has(id))
       continue;
     const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit15);
@@ -58463,7 +58516,7 @@ function queueState(behind, records) {
   return waiting ? "waiting" : "ready";
 }
 function withReadDependencies(input2) {
-  const dependsOn = new Map([...input2.configured].map(([id, ids]) => [id, [...ids]]));
+  const dependsOn = new Map([...input2.configured].map(([id, ids2]) => [id, [...ids2]]));
   const reaches = (from, to) => {
     const seen = new Set;
     const walk3 = (at) => {
@@ -58967,24 +59020,24 @@ async function prepareStacks(context3, stacks, defaultTimeoutMinutes) {
   const timeouts = new Map(stacks.map((one) => [stackId(one.stack), one.previewTimeout ?? defaultTimeoutMinutes]));
   const tool = { root: context3.root, env: context3.env, run: context3.run };
   for (const preparation of context3.adapter.prepare(stacks.map(({ stack }) => stack))) {
-    const ids = preparation.stacks.map(stackId);
-    const timeoutMinutes = Math.max(...ids.map((id) => timeouts.get(id) ?? defaultTimeoutMinutes));
+    const ids2 = preparation.stacks.map(stackId);
+    const timeoutMinutes = Math.max(...ids2.map((id) => timeouts.get(id) ?? defaultTimeoutMinutes));
     const result = await preparation.run({ ...tool, timeoutMinutes });
     const words = lines(result.toolLog);
     const told = words.length > 0 ? ["The tool's own words:", ...words] : [];
     if (result.ok) {
       context3.log.group(`Prepared ${preparation.title}`, [
-        `Stacks that need it: ${ids.join(", ")}.`,
+        `Stacks that need it: ${ids2.join(", ")}.`,
         ...told
       ]);
       continue;
     }
     context3.log.group(`Preparing ${preparation.title} failed`, [
       previewFailureText(result.reason),
-      `Stacks that need it: ${ids.join(", ")}.`,
+      `Stacks that need it: ${ids2.join(", ")}.`,
       ...told
     ]);
-    for (const id of ids) {
+    for (const id of ids2) {
       failed.set(id, {
         ok: false,
         reason: result.reason,
@@ -59336,6 +59389,7 @@ async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup
       runUrl: runUrl2,
       waiting: false,
       destroys: fresh.diff.changes.filter(isDestroy).length,
+      deletes: fresh.diff.changes.filter((change3) => change3.op === "delete").length,
       attribution
     }));
   } catch (error63) {
@@ -61688,9 +61742,9 @@ function why({ target: target2, reason, detail, waitsOn }) {
   if (reason === "merge-refused")
     return `GitHub refused the merge: ${sentence(detail ?? "")}`;
   if (reason === "waits-on") {
-    const ids = (waitsOn ?? []).map((id) => `**${escapeText(id)}**`);
-    const has2 = ids.length === 1 ? "has a change" : "have changes";
-    return `It was not merged: the stack depends on ${ids.join(" and ")}, which ${has2} waiting. Deploy that first, then tick this again.`;
+    const ids2 = (waitsOn ?? []).map((id) => `**${escapeText(id)}**`);
+    const has2 = ids2.length === 1 ? "has a change" : "have changes";
+    return `It was not merged: the stack depends on ${ids2.join(" and ")}, which ${has2} waiting. Deploy that first, then tick this again.`;
   }
   if (reason === "head-moved") {
     return "The pull request changed since the tick, so it was not merged.";
@@ -62371,9 +62425,9 @@ async function readRecords(context3, environments, fallBack) {
 async function openDeployments(context3, ticked) {
   if (ticked.length === 0)
     return new Map;
-  const ids = new Set(ticked.map(({ stack }) => stackId(stack)));
+  const ids2 = new Set(ticked.map(({ stack }) => stackId(stack)));
   const records = await readRecords(context3, ticked.map(({ environment }) => environment), ticked);
-  const theirs = records.filter((record3) => ids.has(taskStackId(record3.task) ?? ""));
+  const theirs = records.filter((record3) => ids2.has(taskStackId(record3.task) ?? ""));
   const settled = await settleEndedRuns(context3.github, theirs, context3.repoUrl);
   for (const id of settled.stackIds) {
     context3.log.info(`Ended the open deployment of ${logGroupTitle(id)}: its run is over and never reported a result.`);
@@ -62414,13 +62468,14 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
   const lines3 = await source.attribute(new Map(deployingIds.map((id) => [id, lastDeployedCommit(facts, id)])));
   const shipped = await source.ship(facts.trail);
   const startedBy = new Map(swap.started.map((one) => [one.stackId, one]));
-  const mine = (one, destroys) => ({
+  const mine = (one, destroys, deletes) => ({
     state: "deploying",
     stackId: one.stackId,
     ticker: one.ticker,
     runUrl: runUrl2(context3),
     waiting: true,
     destroys,
+    deletes,
     attribution: lines3.get(one.stackId)?.lines,
     behind: one.behind
   });
@@ -62434,10 +62489,11 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
     const fact = facts.byStack.get(row2.stackId);
     const wanted = swap.clear.get(row2.stackId);
     const destroys = row2.known ? row2.destroys : 0;
+    const deletes = row2.known ? row2.deletes : undefined;
     if (!first || !row2.known) {
       carried.push(row2);
     } else if (one) {
-      rows.push(mine(one, destroys));
+      rows.push(mine(one, destroys, deletes));
     } else if (swap.dropped.includes(row2.stackId) && fact?.kind === "open" && row2.state !== "deploying") {
       rows.push({
         state: "deploying",
@@ -62446,6 +62502,7 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
         runUrl: runUrl(context3.repoUrl, fact.run, fact.attempt),
         waiting: fact.waiting,
         destroys,
+        deletes,
         attribution: lines3.get(row2.stackId)?.lines,
         behind: fact.behind
       });
@@ -62457,7 +62514,7 @@ async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attr
   }
   for (const one of swap.started)
     if (!seen.has(one.stackId))
-      rows.push(mine(one, 0));
+      rows.push(mine(one, 0, undefined));
   const merges = [];
   for (const merge3 of live.merges) {
     if (swap.merges?.merged.has(merge3.pr) || merges.some((one) => one.pr === merge3.pr))
@@ -62516,9 +62573,9 @@ function withRowDependencies(context3, stacks, rows) {
     context3.log.info(`${logGroupTitle(id)} reads ${logGroupTitle(dependency)} through its stack references, and ${logGroupTitle(dependency)} already depends on ${logGroupTitle(id)}. That would be a circle, so ${logGroupTitle(id)} does not wait on ${logGroupTitle(dependency)}.`);
   }
   return new Map([...stacks].map(([id, one]) => {
-    const ids = dependsOn.get(id) ?? [];
+    const ids2 = dependsOn.get(id) ?? [];
     const { dependsOn: _, ...rest } = one;
-    return [id, ids.length === 0 ? rest : { ...rest, dependsOn: ids }];
+    return [id, ids2.length === 0 ? rest : { ...rest, dependsOn: ids2 }];
   }));
 }
 async function startQueued(context3, handOn) {
@@ -63393,7 +63450,7 @@ async function scanning(context3, report) {
   const found = await context3.adapter.discover(context3.root, config2);
   const ignored = ignoredStacks(config2, found);
   const stacks = applyConfig(config2, found).sort((a, b) => byCodeUnit(stackId(a.stack), stackId(b.stack)));
-  const ids = stacks.map(({ stack }) => stackId(stack));
+  const ids2 = stacks.map(({ stack }) => stackId(stack));
   log.info(stacks.length === 0 ? "Found no stacks." : `Found ${plural2(stacks.length, "stack")}.`);
   const { logDiff } = config2.scan;
   if (logDiff && context3.publicRepo) {
@@ -63461,7 +63518,7 @@ async function scanning(context3, report) {
           if (!liveRows.has(row2.stackId))
             liveRows.set(row2.stackId, row2);
       }
-      const { dropped } = oneRowPerStack(ids, new Set(previewed.keys()), [...liveRows.keys()]);
+      const { dropped } = oneRowPerStack(ids2, new Set(previewed.keys()), [...liveRows.keys()]);
       const liveTicks = new Map;
       const seen = new Set;
       for (const row2 of config2.dashboard.readOnly ? [] : live?.rows ?? []) {
@@ -63478,7 +63535,7 @@ async function scanning(context3, report) {
       const deploying = [];
       const deferred = [];
       const ticks = [];
-      for (const id of ids) {
+      for (const id of ids2) {
         const mine = previewed.get(id);
         const liveRow = liveRows.get(id);
         const fact = deploys.facts.byStack.get(id);
@@ -63523,6 +63580,7 @@ async function scanning(context3, report) {
             runUrl: runUrlOf(context3, fact.run, fact.attempt),
             waiting: fact.waiting,
             destroys: destroysOf(mine, liveRow),
+            deletes: deletesOf(mine, liveRow),
             attribution: lines5.get(id)?.lines,
             behind: fact.behind
           });
@@ -63548,7 +63606,7 @@ async function scanning(context3, report) {
       }
       if (first.length > 0)
         throw new PreviewFirst(first);
-      const full = ids.every((id) => previewed.has(id));
+      const full = ids2.every((id) => previewed.has(id));
       const fitted = fitBody({
         root: {
           scanSha: context3.sha,
@@ -63576,7 +63634,7 @@ async function scanning(context3, report) {
         readOnly: config2.dashboard.readOnly,
         ignored,
         merges,
-        outsideDeploys: trailOutside(ids, new Map([...histories ?? []].map(([id, history]) => [
+        outsideDeploys: trailOutside(ids2, new Map([...histories ?? []].map(([id, history]) => [
           id,
           outsideDeploys(id, history, deploys.runs.get(id))
         ])), live?.root?.version === MARKER_VERSION ? live.outside : [])
@@ -63584,7 +63642,7 @@ async function scanning(context3, report) {
       if (!fitted.fits) {
         if (full)
           throw new ScanFailedError(bodyDoesNotFitMessage(fitted.size));
-        throw new PreviewFirst(ids.filter((id) => !previewed.has(id)).map((id) => ({ id, why: "no-row" })), { kind: "does-not-fit", carried: carried.length });
+        throw new PreviewFirst(ids2.filter((id) => !previewed.has(id)).map((id) => ({ id, why: "no-row" })), { kind: "does-not-fit", carried: carried.length });
       }
       return {
         body: fitted.body,
@@ -63601,16 +63659,16 @@ async function scanning(context3, report) {
         mergesLeftOut: fitted.mergesLeftOut
       };
     };
-    if (histories === undefined && ids.length > 0 && ids.every((id) => previewed.has(id))) {
+    if (histories === undefined && ids2.length > 0 && ids2.every((id) => previewed.has(id))) {
       histories = await readHistories(context3, stacks, config2.dashboard.recentlyDeployed);
     }
     try {
-      if (previewed.size === ids.length)
+      if (previewed.size === ids2.length)
         compose(undefined, NO_DEPLOYS, false, new Map);
       written = await writeDashboard(context3.github, config2.dashboard, async (liveBody) => {
         let deploys = await lateDeploys(context3, stacks, previewed, liveBody);
         const waiting = mergesWaiting(deploys.facts);
-        const toPreview = waiting.filter(({ id }) => ids.includes(id) && !previewed.has(id));
+        const toPreview = waiting.filter(({ id }) => ids2.includes(id) && !previewed.has(id));
         if (toPreview.length > 0) {
           throw new PreviewFirst(toPreview.map(({ id }) => ({ id, why: "merged" })));
         }
@@ -63706,6 +63764,11 @@ function destroysOf(mine, liveRow) {
   if (mine?.result.ok)
     return mine.result.diff.changes.filter(isDestroy).length;
   return liveRow?.known ? liveRow.destroys : 0;
+}
+function deletesOf(mine, liveRow) {
+  if (mine?.result.ok)
+    return mine.result.diff.changes.filter((change3) => change3.op === "delete").length;
+  return liveRow?.known ? liveRow.deletes : undefined;
 }
 async function lateDeploys(context3, stacks, previewed, liveBody) {
   const { log, github } = context3;
