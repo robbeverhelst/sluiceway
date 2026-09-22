@@ -12,6 +12,7 @@ const DEFAULTS: Config = {
     readOnly: false,
   },
   tickers: "write",
+  deploys: true,
   ignore: [],
   scan: { unrelated: [], logDiff: false },
   stacks: [],
@@ -62,6 +63,7 @@ scan:
         readOnly: true,
       },
       tickers: "admin",
+      deploys: true,
       ignore: ["**/*:dev"],
       scan: { unrelated: ["**/*.md"], logDiff: false },
       stacks: [],
@@ -83,7 +85,7 @@ function problems(text: string): string[] {
 describe("unknown keys", () => {
   test("a typo at the top level is an error that lists the known keys", () => {
     expect(problems("tickerz: admin\n")).toEqual([
-      'unknown key "tickerz". Known keys here: dashboard, tickers, ignore, scan, stacks.',
+      'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, stacks.',
     ]);
   });
 });
@@ -327,7 +329,7 @@ describe("a file that is not a mapping", () => {
 describe("the error", () => {
   test("names the file and lists every problem", () => {
     expect(() => parseConfig("tickerz: admin\ndashboard:\n  pin: 1\n")).toThrow(
-      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, ignore, scan, stacks.\n- dashboard.pin: expected true or false, got 1.',
+      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, stacks.\n- dashboard.pin: expected true or false, got 1.',
     );
   });
 });
@@ -395,5 +397,17 @@ ignore:
     expect(problems("ignore:\n  - 3\n")).toEqual([
       "ignore[0]: expected a glob as text, or a mapping with glob and reason, got 3.",
     ]);
+  });
+});
+
+// Slice 2.20 (record 0051): one reviewed line stops every deploy.
+describe("deploys", () => {
+  test("is on unless the file turns it off", () => {
+    expect(parseConfig(undefined).deploys).toBe(true);
+    expect(parseConfig("deploys: false\n").deploys).toBe(false);
+  });
+
+  test("takes true or false and nothing else", () => {
+    expect(problems('deploys: "off"\n')).toEqual(['deploys: expected true or false, got "off".']);
   });
 });

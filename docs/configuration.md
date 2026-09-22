@@ -147,6 +147,23 @@ The rule is checked against GitHub's live answer at every tick. Nothing is cache
 
 The rescan box has no rule of its own. Anyone with write access can tick it, and it only starts a full scan.
 
+### `deploys`
+
+Default: `true`
+
+`false` stops every deploy from the dashboard, with one reviewed line in a pull request, and without touching the workflow:
+
+```yaml
+# Change freeze until the migration is done.
+deploys: false
+```
+
+- `resolve` clears every ticked box, puts a note on the row that says deploys are turned off, and starts nothing. No deployment record is made, nobody's access is looked up and no comment is written, because nothing could go out whoever ticked. The rescan box still works: a scan deploys nothing.
+- A deploy that was ticked before the switch was merged and whose `apply` job starts after it ends before the tool runs. Its deployment record ends as `failure` with the reason "deploys are turned off in sluiceway.yaml", which the row shows as its failure line, the `outcome` output is `refused` and the job is red.
+- Scans go on as before, so the dashboard keeps showing what is pending.
+
+Setting it back to `true` (or taking the line out) is all it takes to deploy again. A tick that was cleared needs a fresh tick.
+
 ### `ignore`
 
 Default: `[]`
@@ -308,5 +325,5 @@ ticker: admin
 
 ```text
 sluiceway.yaml is not valid:
-- unknown key "ticker". Known keys here: dashboard, tickers, ignore, scan, stacks.
+- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, stacks.
 ```

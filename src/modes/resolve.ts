@@ -41,7 +41,7 @@ import { commentOnRefusedTicks, judgeTicks, type Tick, type TickOutcome } from "
 import type { WorkflowRef } from "../github/workflow-ref.ts";
 import { writeBody } from "../github/write-loop.ts";
 import { BODY_LIMIT, type BudgetOptions, fitBody } from "../render/budget.ts";
-import { clearTick } from "../render/clear-tick.ts";
+import { type ClearTickOptions, clearTick } from "../render/clear-tick.ts";
 import { logGroupTitle } from "../render/log-text.ts";
 import { MARKER_VERSION, type ParsedRow, parseDashboard } from "../render/marker.ts";
 import { type DeployingRow, plural, type Row } from "../render/row.ts";
@@ -106,9 +106,10 @@ interface Started {
 // A box this run clears, on the row that is still ticked at this hash.
 interface Clear {
   hash: string;
-  // With the note that asks for a fresh tick (record 0025). A refused tick
-  // gets a comment instead (record 0018).
-  note: boolean;
+  // With the note that asks for a fresh tick (record 0025), or the one that
+  // says deploys are turned off (record 0051). A refused tick gets a comment
+  // instead (record 0018).
+  note: ClearTickOptions["note"];
 }
 
 function message(error: unknown): string {
@@ -220,6 +221,13 @@ async function resolveTicks(
       log.info(
         `${name} is ticked and already has an open deployment, ticked by ${fact.ticker} in run ${fact.run}. The tick is dropped.`,
       );
+    } else if (tick.kind === "row" && !config.deploys) {
+      // One reviewed line stops every deploy (record 0051). Nothing could go
+      // out whoever ticked, so nobody is looked up and nobody is mentioned.
+      log.info(
+        `${name} is ticked, and deploys are turned off in sluiceway.yaml (deploys: false). The box is cleared.`,
+      );
+      clear.set(tick.stackId, { hash: tick.hash, note: "deploys-off" });
     } else if (ticker.named) {
       const stack = tick.kind === "row" ? stacks?.get(tick.stackId) : undefined;
       toJudge.push({

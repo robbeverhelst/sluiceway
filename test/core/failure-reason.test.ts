@@ -86,6 +86,12 @@ describe("why a deploy failed, in Sluiceway's own words", () => {
     );
   });
 
+  test("deploys are turned off (record 0051)", () => {
+    expect(deployFailureText({ kind: "deploys-off" })).toBe(
+      "deploys are turned off in sluiceway.yaml",
+    );
+  });
+
   test("the deploy stopped before the tool ran", () => {
     expect(deployFailureText({ kind: "not-started" })).toBe(
       "the deploy stopped before the tool ran",

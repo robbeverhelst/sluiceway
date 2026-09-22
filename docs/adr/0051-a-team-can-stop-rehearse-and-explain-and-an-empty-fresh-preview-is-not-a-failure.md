@@ -23,3 +23,15 @@ This amends 0010, where an ignored stack has no row and nothing else. It still h
 - The In sync heading is shown when there are in sync rows or listed stacks. With no in sync rows the heading holds only this fold.
 - The reason is text a person wrote in a reviewed file. It is escaped like a stack id (0027), so it is never Markdown and can never start a row. It is shown on a redacted dashboard too: redact keeps the tool's names out of the issue (0023), and a reason is not one of them.
 - The check mode lists what each `ignore` glob leaves out, as before, and does not repeat the reason.
+
+## 2. One reviewed line stops every deploy
+
+`deploys: false` at the top of `sluiceway.yaml` stops every deploy from the dashboard. A team that wants a change freeze used to edit the workflow. Now it is one line in a reviewed pull request, and taking it out is the way back. The default is `true`.
+
+- `resolve` clears every ticked row box with a note under the first line of the row: ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick started nothing." It creates no deployment record, hands on an empty `matrix`, looks nobody up and writes no comment. A tick that nothing could deploy is not a refusal of a person (0018), so it gets a note on the row and not a mention. The job stays green: Sluiceway did its work (0012).
+- A tick on a stack that already has an open deployment is dropped as before. The switch does not end deploys that are running.
+- The rescan box still starts a full scan. A scan deploys nothing, and a team in a freeze still wants the dashboard to be right.
+- `apply` reads the switch right after the config, before discovery, the version check and the fresh preview, so the tool and its credentials are never used. This covers a tick made before the switch was merged whose `apply` job starts after it: it waited for a runner or a reviewer. The record gets `in_progress` first, as every record `apply` takes (0019), and then ends as `failure` with a new reason from the fixed list of 0022, "deploys are turned off in sluiceway.yaml". The row keeps the failure line until a deploy of that stack succeeds, which says to the ticker what happened. The `outcome` output is `refused`, like a change that moved: nothing is wrong with the stack or the tool. The job is red, because a green `apply` job means "this went out" (0035).
+- `apply` writes no row in that case, as for every other way out before the fresh preview: the next scan previews the deploying row whose record ended (slice 2.1).
+- The switch is a config key and not an input, for the reason of 0045: a change of `sluiceway.yaml` is reviewed, and `resolve` and `apply` read the file of the default branch.
+- A scan does not show the switch on the dashboard. Boxes are still drawn, and a tick is cleared with the note. A line under the Pending heading was left out of this slice.

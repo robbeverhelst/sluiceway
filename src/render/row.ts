@@ -188,6 +188,11 @@ export function changeLine(change: Change, options: { row?: boolean } = {}): str
 export const ORPHAN_TICK_NOTE =
   ":information_source: a tick on this row was not picked up. Tick again to deploy.";
 
+// The note on a row whose tick `resolve` cleared because `deploys: false`
+// (record 0051). Fixed words of Sluiceway's own, like the orphan note.
+export const DEPLOYS_OFF_NOTE =
+  ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick started nothing.";
+
 function failureLine(failure: FailureLine): string {
   return `:x: last deploy failed: ${escapeText(failure.reason)} · ticked by ${escapeText(
     failure.ticker,

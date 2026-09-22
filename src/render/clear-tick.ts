@@ -6,13 +6,14 @@
 // the box and the marker is never read.
 
 import { type ParsedRow, parseDashboard } from "./marker.ts";
-import { INDENT, ORPHAN_TICK_NOTE } from "./row.ts";
+import { DEPLOYS_OFF_NOTE, INDENT, ORPHAN_TICK_NOTE } from "./row.ts";
 
 export interface ClearTickOptions {
-  // Adds the note that asks for a fresh tick. A writer without a diff cannot
+  // Adds the note that asks for a fresh tick, or with "deploys-off" the note
+  // that deploys are turned off (record 0051). A writer without a diff cannot
   // tell the lines of a block apart, so the note goes right under the first
   // line. The next scan renders the row in the order of record 0027.
-  note?: boolean | undefined;
+  note?: boolean | "deploys-off" | undefined;
 }
 
 const TICKED_BOX = /^- \[[xX]\] /;
@@ -22,7 +23,7 @@ const TICKED_BOX = /^- \[[xX]\] /;
 export function clearTick(row: ParsedRow, options: ClearTickOptions = {}): ParsedRow {
   if (!row.known || !row.ticked) return row;
   const [first = "", ...rest] = row.text.split("\n");
-  const note = INDENT + ORPHAN_TICK_NOTE;
+  const note = INDENT + (options.note === "deploys-off" ? DEPLOYS_OFF_NOTE : ORPHAN_TICK_NOTE);
   // The note is a fixed line of Sluiceway's own, so finding it again is a
   // comparison with a constant and not a reading of the row.
   const lines = options.note && !rest.includes(note) ? [note, ...rest] : rest;

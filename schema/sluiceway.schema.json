@@ -64,6 +64,11 @@
       ],
       "description": "Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access."
     },
+    "deploys": {
+      "default": true,
+      "type": "boolean",
+      "description": "false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on."
+    },
     "ignore": {
       "default": [],
       "type": "array",

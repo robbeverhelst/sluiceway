@@ -141,7 +141,8 @@ export async function apply(context: ApplyContext): Promise<void> {
 }
 
 // The outputs are set on every way out (record 0041). `refused` is a record
-// this job may not deploy, or a change that moved since the tick. Anything
+// this job may not deploy, a change that moved since the tick, or deploys
+// turned off in sluiceway.yaml (record 0051). Anything
 // else that did not go out, an error nobody planned for too, is `failed`.
 function reportOutputs(context: ApplyContext, report: ApplyReport): void {
   const { outputs } = context;
@@ -261,7 +262,7 @@ async function applying(context: ApplyContext, report: ApplyReport): Promise<voi
   report.outcome =
     attempt.state === "success"
       ? "deployed"
-      : attempt.reason?.kind === "moved"
+      : attempt.reason?.kind === "moved" || attempt.reason?.kind === "deploys-off"
         ? "refused"
         : "failed";
   report.reason = attempt.reason && deployFailureText(attempt.reason);
@@ -371,6 +372,12 @@ async function deploy(
   let setup: Setup;
   try {
     const config = loadConfig(context.root);
+    if (!config.deploys) {
+      // One reviewed line stops every deploy, also one ticked before it was
+      // merged (record 0051). The tool never runs.
+      const reason: DeployFailureReason = { kind: "deploys-off" };
+      return { state: "failure", reason, failed: notDeployed(reason) };
+    }
     const found = await adapter.discover(context.root);
     const stacks = applyConfig(config, found);
     const stack = stacks.find((one) => stackId(one.stack) === id);

@@ -52,6 +52,9 @@ export type DeployFailureReason =
   | { kind: "tool-missing" }
   // Discovery does not know the stack of the record (record 0035).
   | { kind: "unknown-stack" }
+  // `deploys: false` in sluiceway.yaml (record 0051). `apply` checks it
+  // before the tool runs.
+  | { kind: "deploys-off" }
   // Anything else that stopped `apply` before the tool ran, such as a
   // broken `sluiceway.yaml`. The job log says what.
   | { kind: "not-started" };
@@ -72,6 +75,8 @@ export function deployFailureText(reason: DeployFailureReason): string {
       return "the tool is missing or older than Sluiceway needs";
     case "unknown-stack":
       return "the stack is not in the repo any more";
+    case "deploys-off":
+      return "deploys are turned off in sluiceway.yaml";
     case "not-started":
       return "the deploy stopped before the tool ran";
   }

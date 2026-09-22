@@ -1,6 +1,8 @@
 # The tool's own words stay in the job log, and nothing is masked by guessing
 
 > Amended by 0048: with `scan.logDiff` on, the tool's words in the job log include its own diff, printed with workflow commands stopped.
+>
+> Amended by 0051: the list for a deploy gains "deploys are turned off in sluiceway.yaml".
 
 Record 0021 keeps values out of the diff. The other way a value can reach the dashboard is free text: an error from the tool can quote a connection string, a rendered config file or a provider's request body. So text that the tool wrote never leaves the job log. The issue body, comments, deployment records and job summaries carry only words that Sluiceway wrote itself.
 

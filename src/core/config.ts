@@ -128,6 +128,13 @@ export const configSchema = z.strictObject({
       "Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.",
     )
     .default("write"),
+  // One reviewed line that stops every deploy (record 0051).
+  deploys: z
+    .boolean()
+    .describe(
+      "false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.",
+    )
+    .default(true),
   ignore: z
     .array(ignoreEntry)
     .describe(

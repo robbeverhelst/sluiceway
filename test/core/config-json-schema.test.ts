@@ -24,6 +24,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
     expect(Object.keys(schema.properties ?? {})).toEqual([
       "dashboard",
       "tickers",
+      "deploys",
       "ignore",
       "scan",
       "stacks",
