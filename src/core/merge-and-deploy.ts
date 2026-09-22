@@ -150,6 +150,38 @@ export function waitingUpdates(
     });
 }
 
+// A pull request that qualifies in every way but its checks, which have not
+// all finished (record 0081), gives the stacks it would deploy. Its line on the
+// dashboard has no box: nothing can be merged yet, and GitHub may still turn a
+// check red. Checks that failed, and a pull request with no checks at all, get
+// no line: neither is waiting for anything that is sure to come.
+export function waitsOnChecks(
+  pullRequest: OpenPullRequest,
+  options: QualifyOptions,
+): string[] | undefined {
+  if (pullRequest.checks !== "pending") return undefined;
+  const qualified = qualify({ ...pullRequest, checks: "success" }, options);
+  return qualified.qualifies ? qualified.stackIds : undefined;
+}
+
+// The dashboard lists at most this many updates waiting on their checks, the
+// oldest first, and the job log names the rest (record 0081). They offer
+// nothing to tick, so they never take the room of an update that does.
+export const MAX_WAITING_ON_CHECKS = 10;
+
+// The pull requests that wait on their checks, oldest first.
+export function updatesWaitingOnChecks(
+  pullRequests: readonly OpenPullRequest[],
+  options: QualifyOptions,
+): WaitingUpdate[] {
+  return [...pullRequests]
+    .sort((a, b) => a.number - b.number)
+    .flatMap((pullRequest) => {
+      const stackIds = waitsOnChecks(pullRequest, options);
+      return stackIds ? [{ pullRequest, stackIds }] : [];
+    });
+}
+
 export type MergeMethod = "squash" | "rebase" | "merge";
 
 // What the repo allows. A key is absent when GitHub did not say.

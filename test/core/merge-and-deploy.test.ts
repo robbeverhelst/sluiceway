@@ -5,7 +5,9 @@ import {
   type OpenPullRequest,
   type QualifyOptions,
   qualify,
+  updatesWaitingOnChecks,
   waitingUpdates,
+  waitsOnChecks,
 } from "../../src/core/merge-and-deploy.ts";
 
 const OPTIONS: QualifyOptions = {
@@ -211,5 +213,57 @@ describe("the merge method", () => {
 
   test("is nothing when the repo allows no method at all", () => {
     expect(mergeMethod({ squash: false, rebase: false, merge: false }, undefined)).toBeUndefined();
+  });
+});
+
+describe("a pull request that waits on its checks (slice 5.17)", () => {
+  const waits = (overrides: Partial<OpenPullRequest>, options: Partial<QualifyOptions> = {}) =>
+    waitsOnChecks(pr(overrides), { ...OPTIONS, ...options });
+
+  test("gives its stacks when it qualifies in every way but its checks, which have not finished", () => {
+    expect(waits({ checks: "pending" })).toEqual(["apps/odoo:prod"]);
+    expect(waits({ checks: "pending", files: ["site/index.ts", "apps/odoo/index.ts"] })).toEqual([
+      "apps/odoo:prod",
+      "site:prod",
+    ]);
+  });
+
+  test("is not one whose checks failed, or that has no checks at all", () => {
+    expect(waits({ checks: "failure" })).toBeUndefined();
+    expect(waits({ checks: "none" })).toBeUndefined();
+  });
+
+  test("is not one that is green: that one is an update waiting to merge", () => {
+    expect(waits({ checks: "success" })).toBeUndefined();
+  });
+
+  test("is not one that would never qualify once its checks are green", () => {
+    expect(waits({ checks: "pending", author: "alice" })).toBeUndefined();
+    expect(waits({ checks: "pending", draft: true })).toBeUndefined();
+    expect(waits({ checks: "pending", base: "release" })).toBeUndefined();
+    expect(waits({ checks: "pending", mergeable: "conflicting" })).toBeUndefined();
+    expect(waits({ checks: "pending", filesComplete: false })).toBeUndefined();
+    expect(waits({ checks: "pending", files: ["README.md"] })).toBeUndefined();
+    expect(waits({ checks: "pending", files: ["apps/odoo/a.ts", "package.json"] })).toBeUndefined();
+    const dependsOn = new Map([["site:prod", ["apps/odoo:prod"]]]);
+    expect(
+      waits({ checks: "pending", files: ["apps/odoo/a.ts", "site/a.ts"] }, { dependsOn }),
+    ).toBeUndefined();
+  });
+
+  test("are listed oldest first, and never next to the updates waiting to merge", () => {
+    const listed = updatesWaitingOnChecks(
+      [
+        pr({ number: 421, checks: "pending" }),
+        pr({ number: 418 }),
+        pr({ number: 419, checks: "pending" }),
+        pr({ number: 420, checks: "failure" }),
+      ],
+      OPTIONS,
+    );
+    expect(listed.map(({ pullRequest, stackIds }) => [pullRequest.number, stackIds])).toEqual([
+      [419, ["apps/odoo:prod"]],
+      [421, ["apps/odoo:prod"]],
+    ]);
   });
 });
