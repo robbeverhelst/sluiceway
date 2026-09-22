@@ -49,8 +49,8 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A note on the row of an update waiting to merge whose tick was cleared without a comment
 - Waiting, in the scan after a merge, for a dependency that became pending after the merge
 - Listing more than 10 updates waiting to merge, or pull requests beyond the oldest 100 open ones
-- Drift detection, part 2
-- Stack dependencies, part 2
+- Drift detection, part 3
+- Stack dependencies, part 3
 - A named `refresh` option (preview, re-preview and deploy with refresh on every run of a stack)
 - Showing property values on the dashboard or in the summary without a list
 - A finer `dashboard.redact` (per stack, or a middle level such as types without names)
