@@ -1,6 +1,7 @@
 import * as core from "@actions/core";
 import { type GetInput, refuseDeploymentId } from "./github/inputs.ts";
 import { runApply } from "./modes/apply-job.ts";
+import { backendContext } from "./modes/check-backend.ts";
 import { runCheck } from "./modes/check-job.ts";
 import { runInit } from "./modes/init-job.ts";
 import { runResolve } from "./modes/resolve-job.ts";
@@ -40,7 +41,8 @@ const handlers: Record<Mode, Handler> = {
   resolve: runResolve,
   apply: runApply,
   settle: runSettle,
-  check: runCheck,
+  // The check starts no tool unless backend: true (record 0074).
+  check: () => runCheck(backendContext),
   init: runInit,
 };
 

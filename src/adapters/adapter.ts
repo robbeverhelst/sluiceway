@@ -1,3 +1,4 @@
+import type { FileReference } from "../core/check.ts";
 import type { Config } from "../core/config.ts";
 import type { Change, Diff } from "../core/diff.ts";
 import type { DeployFailureReason, PreviewFailureReason } from "../core/failure-reason.ts";
@@ -147,6 +148,25 @@ export class ToolVersionError extends Error {
   }
 }
 
+// A file or a directory of the repo that a stack's own files name as read
+// (record 0074). It is the check's, so core/ holds it.
+export type { FileReference } from "../core/check.ts";
+
+// What the stacks in the backend are (record 0074), for the check with
+// backend: true. Per stack: there, not there, or not known because the tool
+// could not be asked.
+export type BackendAnswer =
+  | { stack: Stack; found: boolean }
+  // The reason names no word of the tool's (record 0022).
+  | { stack: Stack; found: "unknown"; reason: PreviewFailureReason };
+
+export interface BackendResult {
+  answers: BackendAnswer[];
+  // The tool's own words, with ANSI escapes stripped. They go to the job log
+  // and nowhere else (record 0022).
+  toolLog: string;
+}
+
 // What Sluiceway needs from an infrastructure tool. Everything the tool's own
 // words mean stays behind this interface (record 0006).
 export interface Adapter {
@@ -159,6 +179,17 @@ export interface Adapter {
   // Config is for a tool whose stacks files cannot name, whose stacks come
   // from `stacks` entries that name the tool (record 0053).
   discover(root: string, config: Config): Promise<Stack[]>;
+
+  // The files and directories of the repo that the stack's own files name as
+  // read (record 0074), for the check to suggest as inputs. It reads files
+  // only and never starts the tool. An adapter that cannot tell leaves it out.
+  readsFiles?(root: string, stack: Stack): Promise<FileReference[]>;
+
+  // Asks the backend which of these stacks it holds (record 0074). Only the
+  // check with backend: true calls it, with the credentials of its job. It
+  // reads and changes nothing, and it always resolves. An adapter whose tool
+  // has no such list leaves it out, or answers nothing for a stack.
+  findInBackend?(stacks: Stack[], context: ToolContext): Promise<BackendResult>;
 
   // Checks once, before any preview, that the tool of these stacks is there
   // and new enough. Anything else is a ToolVersionError. No warn-and-continue

@@ -296,9 +296,11 @@ describe("a valid setup", () => {
 
   test("ends with the verdict and what a check cannot tell", async () => {
     const { log } = await run(FIXTURE);
-    expect(log.lines.slice(-2)).toEqual([
+    expect(log.lines.slice(-3)).toEqual([
       "The setup is valid.",
       "A check reads files only, so it cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan.",
+      // Slice 5.7, record 0074.
+      "With backend: true the check also asks the backend which stacks it holds, with the credentials of its job.",
     ]);
   });
 
@@ -487,7 +489,7 @@ describe("the workflow files", () => {
     expect(log.warnings.map((warning) => warning.message)).toContain(
       ".github/workflows/deploy-dashboard.yml has no workflow_dispatch trigger. The rescan box and settle start a scan through it.",
     );
-    expect(log.lines.slice(-2)[0]).toBe("The setup is valid.");
+    expect(log.lines.slice(-3)[0]).toBe("The setup is valid.");
     expect(summary).toMatchSnapshot();
   });
 

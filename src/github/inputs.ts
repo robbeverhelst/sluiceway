@@ -103,11 +103,27 @@ function readDryRun(getInput: GetInput): boolean {
   throw new Error(`The "dry-run" input is true or false, and it is ${JSON.stringify(text)}.`);
 }
 
+// `backend: true` makes the check ask the backend which stacks it holds, with
+// the credentials of its job (record 0074). Off by default, and read the way
+// dry-run is, so a typo never starts a tool.
+export function readBackend(getInput: GetInput): boolean {
+  const text = getInput("backend").trim();
+  if (text === "" || text === "false") return false;
+  if (text === "true") return true;
+  throw new Error(`The "backend" input is true or false, and it is ${JSON.stringify(text)}.`);
+}
+
 // `deployment-id` is an error in every mode but apply (record 0035), so a
 // workflow that hands it to the wrong step hears about it.
 // `dry-run: true` is refused the same way (record 0051). Its default, false,
 // reaches every mode and says nothing.
+// `backend: true` is refused in every mode but check (record 0074).
 export function refuseDeploymentId(mode: string, getInput: GetInput): void {
+  if (mode !== "check" && getInput("backend").trim() === "true") {
+    throw new Error(
+      `The "backend" input is only for check mode, and this step runs ${mode} mode. Take it out of this step.`,
+    );
+  }
   if (mode === "apply") return;
   const only = (name: string) =>
     new Error(

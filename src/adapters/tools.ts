@@ -1,6 +1,7 @@
 import type { Stack } from "../core/stack.ts";
 import type { Adapter } from "./adapter.ts";
 import { discoverAll } from "./discover-all.ts";
+import { readsFiles } from "./file-references.ts";
 import { helm } from "./helm/index.ts";
 import { isHelmOptions } from "./helm/options.ts";
 import { kubectl } from "./kubectl/index.ts";
@@ -29,6 +30,7 @@ function adapterOf(stack: Stack): Adapter {
 
 export const tools: Adapter = {
   discover: discoverAll,
+  readsFiles,
 
   // The tools of these stacks, each once, Pulumi first.
   async checkVersion(context, stacks) {
@@ -56,4 +58,18 @@ export const tools: Adapter = {
   // never checked.
   detectDrift: async (stack, options) => adapterOf(stack).detectDrift?.(stack, options),
   apply: (stack, context, plan, options) => adapterOf(stack).apply(stack, context, plan, options),
+
+  // Each tool that can list its stacks is asked about its own (record 0074).
+  // Only Pulumi can, so a stack of another tool gets no answer.
+  async findInBackend(stacks, context) {
+    const answers = [];
+    const logs = [];
+    for (const [adapter, own] of Map.groupBy(stacks, adapterOf)) {
+      const result = await adapter.findInBackend?.(own, context);
+      if (result === undefined) continue;
+      answers.push(...result.answers);
+      logs.push(result.toolLog);
+    }
+    return { answers, toolLog: logs.join("") };
+  },
 };

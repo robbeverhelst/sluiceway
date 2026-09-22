@@ -4,7 +4,8 @@
 
 import { claim } from "./claim.ts";
 import { applyConfig, type Config, type ConfiguredStack, ignoreGlob } from "./config.ts";
-import { globMatcher } from "./glob.ts";
+import type { PreviewFailureReason } from "./failure-reason.ts";
+import { globMatcher, globOf } from "./glob.ts";
 import { type PhaseGroup, phaseGroups } from "./phases.ts";
 import { type Stack, stackId } from "./stack.ts";
 
@@ -39,7 +40,47 @@ export interface CheckReport {
   suggested: string[];
   // Every phase in order with its stacks (record 0067). Empty without phases.
   phases: PhaseGroup[];
+  // Files and directories that a stack's own files name as read, and that
+  // the stack does not claim (record 0074), by stack id and then path.
+  reads: StackRead[];
+  // The same, as `stacks` entries that add them as inputs. Offered, never
+  // applied: inputs add up over entries, so pasting one loses nothing.
+  inputs: InputsEntry[];
 }
+
+// A file or a directory of the repo that a stack's own files name as read by
+// its program or its tool (record 0074): relative to the repo root, forward
+// slashes, and there when the check looked. Only its name leaves the adapter,
+// never what it holds.
+export interface FileReference {
+  path: string;
+  kind: "file" | "directory";
+  // The file of the repo that names it, such as the program or sluiceway.yaml.
+  namedIn: string;
+}
+
+export interface StackRead extends FileReference {
+  stackId: string;
+  // A push that changes it does not preview this stack, because another
+  // stack claims it or scan.unrelated covers it. Otherwise such a push gives
+  // a full scan, which previews the stack anyway.
+  missed: boolean;
+}
+
+export interface InputsEntry {
+  path: string;
+  // Only when the stacks of the path do not all read the same.
+  name?: string;
+  globs: string[];
+}
+
+// What the backend said about one stack, for the check with backend: true
+// (record 0074). `unchecked` is a stack whose tool has no list to ask.
+export type BackendCheck = { stackId: string } & (
+  | { found: boolean }
+  | { found: "unknown"; reason: PreviewFailureReason }
+  | { found: "unchecked" }
+);
 
 // Files that look like docs and tooling, which programs seldom read. A fixed
 // list, so the suggestion is the same for everyone. A lockfile, a package
@@ -58,13 +99,22 @@ const SUGGESTIONS = [
 // Throws what a scan throws for the same repo: a ConfigError or a
 // DiscoveryError, with the same messages, because it is the same code.
 // `files` are the files of the repo, relative to its root, forward slashes.
-export function checkSetup(config: Config, found: Stack[], files: string[]): CheckReport {
+// `references` are what the adapter read from each stack's files, by stack
+// id (record 0074).
+export function checkSetup(
+  config: Config,
+  found: Stack[],
+  files: string[],
+  references: ReadonlyMap<string, FileReference[]> = new Map(),
+): CheckReport {
   const stacks = applyConfig(config, found);
-  const { unclaimed } = claim(
-    stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
-    files,
-    config.scan.unrelated,
-  );
+  const claimants = stacks.map(({ stack, inputs }) => ({
+    id: stackId(stack),
+    path: stack.path,
+    inputs,
+  }));
+  const { unclaimed } = claim(claimants, files, config.scan.unrelated);
+  const reads = readsOf(claimants, files, new Set(unclaimed), references);
   return {
     stacks,
     ignore: config.ignore.map((entry) => ignoreReport(ignoreGlob(entry), found)),
@@ -78,7 +128,61 @@ export function checkSetup(config: Config, found: Stack[], files: string[]): Che
         ),
       ),
     ),
+    reads,
+    inputs: inputsEntries(stacks, reads),
   };
+}
+
+// What each stack reads and does not claim itself.
+function readsOf(
+  claimants: { id: string; path: string; inputs: string[] }[],
+  files: string[],
+  unclaimed: Set<string>,
+  references: ReadonlyMap<string, FileReference[]>,
+): StackRead[] {
+  return claimants.flatMap(({ id, path, inputs }) => {
+    const matches = globMatcher(inputs);
+    const claims = (file: string) => path === "." || file.startsWith(`${path}/`) || matches(file);
+    const read = references.get(id) ?? [];
+    return [...read]
+      .sort((a, b) => byCodeUnit(a.path, b.path))
+      .flatMap((reference) => {
+        const under =
+          reference.kind === "file"
+            ? [reference.path]
+            : files.filter((file) => file.startsWith(`${reference.path}/`));
+        const left = under.filter((file) => !claims(file));
+        if (left.length === 0) return [];
+        const missed = left.some((file) => !unclaimed.has(file));
+        return [{ ...reference, stackId: id, missed }];
+      });
+  });
+}
+
+function globFor({ path, kind }: FileReference): string {
+  return kind === "file" ? globOf(path) : `${globOf(path)}/**`;
+}
+
+// One entry per path when all its stacks read the same, else one per stack.
+function inputsEntries(stacks: ConfiguredStack[], reads: StackRead[]): InputsEntry[] {
+  const byStack = Map.groupBy(reads, (read) => read.stackId);
+  const byPath = Map.groupBy(stacks, ({ stack }) => stack.path);
+  return [...byPath].flatMap(([path, inPath]) => {
+    const globs = inPath.map(({ stack }) =>
+      (byStack.get(stackId(stack)) ?? []).map(globFor).join("\n"),
+    );
+    if (globs.every((one) => one === "")) return [];
+    if (globs.every((one) => one === globs[0])) {
+      return [{ path, globs: (globs[0] ?? "").split("\n") }];
+    }
+    return inPath.flatMap(({ stack }, index) => {
+      const own = globs[index] ?? "";
+      if (own === "") return [];
+      return [
+        { path, ...(stack.name === undefined ? {} : { name: stack.name }), globs: own.split("\n") },
+      ];
+    });
+  });
 }
 
 // The globs of SUGGESTIONS that cover at least one of these unclaimed files,

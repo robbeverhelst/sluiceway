@@ -44,6 +44,13 @@ inputs:
       "rehearsed, nothing was deployed", and the job is green.
     required: false
     default: "false"
+  backend:
+    description: >-
+      check only. true also asks the backend which of the stacks it found the backend holds, with
+      the credentials the job loaded before this step, and gives a ready-to-paste ignore block for
+      the ones it does not. It runs the tool for that one question and nothing else.
+    required: false
+    default: "false"
   job-id:
     description: >-
       Leave it at the default. The id of the running job, which GitHub gives no step in any other

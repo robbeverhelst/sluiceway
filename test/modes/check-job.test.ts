@@ -2,22 +2,29 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
+import { backendContext } from "../../src/modes/check-backend.ts";
 import { runCheck } from "../../src/modes/check-job.ts";
 
 const SRC = resolve(import.meta.dir, "../../src");
 
 // Every file under src/ the check job can reach, and every package it
 // imports. Type-only imports are left out by the transpiler, so this is what
-// the job can run.
-function reach(entry: string): { files: string[]; packages: string[] } {
+// the job can run. A dynamic import is listed apart and not followed.
+function reach(entry: string): { files: string[]; packages: string[]; dynamic: string[] } {
   const transpiler = new Bun.Transpiler({ loader: "ts" });
   const files = new Set<string>();
   const packages = new Set<string>();
+  const dynamics = new Set<string>();
   const visit = (file: string): void => {
     if (files.has(file)) return;
     files.add(file);
-    for (const { path } of transpiler.scanImports(readFileSync(file, "utf8"))) {
-      if (path.startsWith(".")) visit(resolve(dirname(file), path));
+    for (const { path, kind } of transpiler.scanImports(readFileSync(file, "utf8"))) {
+      const target = path.startsWith(".") ? resolve(dirname(file), path) : path;
+      if (kind === "dynamic-import") {
+        dynamics.add(path.startsWith(".") ? relative(SRC, target) : path);
+        continue;
+      }
+      if (path.startsWith(".")) visit(target);
       else packages.add(path);
     }
   };
@@ -25,6 +32,7 @@ function reach(entry: string): { files: string[]; packages: string[] } {
   return {
     files: [...files].map((file) => relative(SRC, file)).sort(),
     packages: [...packages].sort(),
+    dynamic: [...dynamics].sort(),
   };
 }
 
@@ -36,7 +44,11 @@ describe("the check job never constructs the process runner or the GitHub port",
 
   test("it reaches neither the process runner nor anything that talks to GitHub", () => {
     expect(files).not.toContain("adapters/process.ts");
-    expect(files.filter((file) => file.startsWith("github/"))).toEqual(["github/job-log.ts"]);
+    // inputs.ts reads the backend input, as text, and imports nothing.
+    expect(files.filter((file) => file.startsWith("github/"))).toEqual([
+      "github/inputs.ts",
+      "github/job-log.ts",
+    ]);
     expect(files.filter((file) => file.startsWith("modes/"))).toEqual([
       "modes/check-job.ts",
       "modes/check.ts",
@@ -57,6 +69,21 @@ describe("the check job never constructs the process runner or the GitHub port",
       "yaml",
       "zod",
     ]);
+  });
+});
+
+// Record 0074: with backend: true, and only then, the check asks the backend.
+// The dispatcher hands the job what does that, so the job's own imports
+// still reach no process runner.
+describe("the backend part of the check", () => {
+  test("the check job imports nothing on demand", () => {
+    expect(reach("modes/check-job.ts").dynamic).toEqual([]);
+  });
+
+  test("the part the dispatcher hands in starts the tool and talks to no GitHub API", () => {
+    const { files } = reach("modes/check-backend.ts");
+    expect(files).toContain("adapters/process.ts");
+    expect(files.filter((file) => file.startsWith("github/"))).toEqual([]);
   });
 });
 
@@ -103,7 +130,10 @@ describe("runCheck, as a step runs it", () => {
     process.stdout.write = ((chunk: string) =>
       written.push(String(chunk)) > 0) as typeof process.stdout.write;
     try {
-      await runCheck();
+      // Without backend: true the part that asks the backend is never used.
+      await runCheck(() => {
+        throw new Error("The check asks no backend unless the input says so.");
+      });
     } finally {
       process.stdout.write = realWrite;
     }
@@ -111,6 +141,36 @@ describe("runCheck, as a step runs it", () => {
     expect(calls).toEqual([]);
     expect(written.join("")).toContain("Found 1 stack.");
     expect(written.join("")).toContain("The setup is valid.");
+  });
+
+  test("with backend: true it asks the tool, and a tool that is not there is a warning", async () => {
+    const root = mkdtempSync(join(tmpdir(), "sluiceway-check-job-"));
+    mkdirSync(join(root, "network"));
+    writeFileSync(join(root, "network/Pulumi.yaml"), "name: network\nruntime: yaml\n");
+    writeFileSync(join(root, "network/Pulumi.prod.yaml"), "");
+    // A PATH with no tool on it, so no process starts.
+    const empty = mkdtempSync(join(tmpdir(), "sluiceway-no-tool-"));
+    process.env = {
+      ...saved,
+      PATH: empty,
+      GITHUB_WORKSPACE: root,
+      GITHUB_STEP_SUMMARY: "",
+      INPUT_BACKEND: "true",
+    };
+    const written: string[] = [];
+    const realWrite = process.stdout.write;
+    process.stdout.write = ((chunk: string) =>
+      written.push(String(chunk)) > 0) as typeof process.stdout.write;
+    try {
+      await runCheck(backendContext);
+    } finally {
+      process.stdout.write = realWrite;
+    }
+    const out = written.join("");
+    expect(out).toContain(
+      "network:prod: could not ask the backend, the tool exited with an error.",
+    );
+    expect(out).toContain("The setup is valid.");
   });
 
   test("fails with a clear message outside a job", async () => {

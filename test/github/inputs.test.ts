@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   readApplyInputs,
+  readBackend,
   readJobId,
   readScanInputs,
   readToken,
@@ -93,6 +94,28 @@ describe("the inputs of apply", () => {
     expect(() =>
       refuseDeploymentId("scan", (name) => (name === "dry-run" ? "false" : "")),
     ).not.toThrow();
+  });
+
+  // Record 0074.
+  test("any mode but check refuses backend: true", () => {
+    expect(() => refuseDeploymentId("scan", (name) => (name === "backend" ? "true" : ""))).toThrow(
+      'The "backend" input is only for check mode, and this step runs scan mode. Take it out of this step.',
+    );
+    expect(() =>
+      refuseDeploymentId("check", (name) => (name === "backend" ? "true" : "")),
+    ).not.toThrow();
+    expect(() =>
+      refuseDeploymentId("apply", (name) => (name === "backend" ? "false" : "")),
+    ).not.toThrow();
+  });
+
+  test("backend is true or false", () => {
+    expect(readBackend(() => "")).toBe(false);
+    expect(readBackend(() => "false")).toBe(false);
+    expect(readBackend(() => " true ")).toBe(true);
+    expect(() => readBackend(() => "yes")).toThrow(
+      'The "backend" input is true or false, and it is "yes".',
+    );
   });
 
   test("a missing deployment-id says where it comes from", () => {

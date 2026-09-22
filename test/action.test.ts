@@ -80,6 +80,7 @@ describe("action.yml", () => {
   // Record 0035: the five inputs of v1, and `job-id` of record 0044.
   test("declares only the inputs the decision records fix", () => {
     expect(Object.keys(action.inputs).sort()).toEqual([
+      "backend",
       "concurrency",
       "deployment-id",
       "dry-run",
@@ -103,6 +104,13 @@ describe("action.yml", () => {
     expect(action.inputs["dry-run"]?.required).toBe(false);
     expect(action.inputs["dry-run"]?.default).toBe("false");
     expect(action.inputs["dry-run"]?.description).toContain("apply");
+  });
+
+  // Record 0074: the check asks the backend only when a workflow says so.
+  test("backend is false by default and belongs to check", () => {
+    expect(action.inputs.backend?.required).toBe(false);
+    expect(action.inputs.backend?.default).toBe("false");
+    expect(action.inputs.backend?.description).toContain("check");
   });
 
   // The Marketplace shows an action with its icon on its colour, and GitHub

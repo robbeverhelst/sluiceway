@@ -53,6 +53,8 @@ The check reads the workflow files as text. The repo's default token permissions
 ### What a check cannot tell
 
 A check reads files only, so it cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan.
+
+With backend: true the check also asks the backend which stacks it holds, with the credentials of its job.
 "
 `;
 
@@ -120,5 +122,7 @@ The check reads the workflow files as text. The repo's default token permissions
 ### What a check cannot tell
 
 A check reads files only, so it cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan.
+
+With backend: true the check also asks the backend which stacks it holds, with the credentials of its job.
 "
 `;

@@ -44,6 +44,12 @@ function isDriftCheck(command: Command): boolean {
   return command.argv[1] === "refresh" && command.argv.includes("--preview-only");
 }
 
+// The list of the stacks the backend holds, for the check with backend: true
+// (record 0074).
+function isStackList(command: Command): boolean {
+  return command.argv[1] === "stack" && command.argv[2] === "ls";
+}
+
 function stackOf(command: Command): Stack {
   const name = command.argv[command.argv.indexOf("--stack") + 1];
   return { path: command.cwd, options: {}, ...(name ? { name } : {}) };
@@ -77,7 +83,10 @@ for (const version of VERSIONS) {
       const previews = commands.filter(isPreview);
       const toolDiffs = commands.filter(isToolDiff);
       const driftChecks = commands.filter(isDriftCheck);
-      if (previews.length + toolDiffs.length + driftChecks.length === 0) continue;
+      const stackLists = commands.filter(isStackList);
+      if (previews.length + toolDiffs.length + driftChecks.length + stackLists.length === 0) {
+        continue;
+      }
 
       test(scenario, async () => {
         const runner = replay(version, scenario);
@@ -145,6 +154,16 @@ for (const version of VERSIONS) {
           const made = canonicalDiff(drift) + rows(drift) + annex(drift);
           expect(leaks(JSON.stringify(result) + made)).toEqual([]);
         }
+        // What the backend says about the stacks of the directory.
+        for (const command of stackLists) {
+          const stacks = ["dev", "prod"].map((name) => ({ path: command.cwd, name, options: {} }));
+          const result = await pulumi.findInBackend?.(stacks, {
+            root: ROOT,
+            env: {},
+            run: runner.run,
+          });
+          expect(leaks(JSON.stringify(result))).toEqual([]);
+        }
       });
     }
   });
@@ -154,7 +173,11 @@ test("every scenario but the version check is covered", () => {
   for (const version of VERSIONS) {
     const without = scenarioNames(version).filter((scenario) =>
       readRecording(version, scenario).commands.every(
-        (command) => !isPreview(command) && !isToolDiff(command) && !isDriftCheck(command),
+        (command) =>
+          !isPreview(command) &&
+          !isToolDiff(command) &&
+          !isDriftCheck(command) &&
+          !isStackList(command),
       ),
     );
     expect(without).toEqual(["version"]);

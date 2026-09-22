@@ -3,8 +3,17 @@
 // the repo's files. Nothing comes from the tool, and no value (records 0021,
 // 0022).
 
-import type { CheckReport, IgnoreReport, UnclaimedGroup } from "../core/check.ts";
-import type { ConfiguredStack } from "../core/config.ts";
+import type {
+  BackendCheck,
+  CheckReport,
+  IgnoreReport,
+  InputsEntry,
+  StackRead,
+  UnclaimedGroup,
+} from "../core/check.ts";
+import type { ConfiguredStack, IgnoreEntry } from "../core/config.ts";
+import { previewFailureText } from "../core/failure-reason.ts";
+import { globOf } from "../core/glob.ts";
 import { type PhaseGroup, waitsByPhase } from "../core/phases.ts";
 import { stackId } from "../core/stack.ts";
 import type {
@@ -21,10 +30,30 @@ export const NO_CONFIG_FILE = "No sluiceway.yaml, so every setting is its defaul
 // The one sentence record 0042 asks for.
 export const CANNOT_TELL =
   "A check reads files only, so it cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan.";
+// With backend: true the check answers the first part of CANNOT_TELL itself
+// (record 0074).
+export const CANNOT_TELL_WITH_BACKEND =
+  "A check cannot say that a preview will work: a missing credential for a provider or a registry the runner cannot reach shows only in a scan.";
+export const BACKEND_OFF =
+  "With backend: true the check also asks the backend which stacks it holds, with the credentials of its job.";
+export const BACKEND_TITLE = "Stacks in the backend";
+export const BACKEND_PASTE_TITLE = "Ready to paste into sluiceway.yaml, over ignore";
+export const NOT_IN_BACKEND_TITLE = "A stack is not in the backend";
+export const COULD_NOT_ASK_TITLE = "Could not ask the backend";
+export const ALL_IN_BACKEND = "Every stack the backend was asked about is in it.";
+export const BACKEND_PASTE_NOTE =
+  "The block below keeps what ignore has and adds the stacks the backend does not hold. Leave out any stack you are about to create.";
 export const WHERE_FILES_BELONG =
   "A file that some stacks read belongs under the inputs of those stacks in sluiceway.yaml. A file that no stack reads can be listed under scan.unrelated.";
 export const PASTE_NOTE =
   "The block below keeps what scan.unrelated has and adds globs for the files that look like docs and tooling. Sluiceway does not decide this for you: leave out any glob that covers a file one of your programs reads.";
+
+// What stacks read and do not claim (record 0074).
+export const READS_TITLE = "Files stacks read and do not claim";
+export const READS_PASTE_TITLE = "Ready to paste into sluiceway.yaml, under stacks";
+export const READ_WARNING_TITLE = "A stack reads a file it does not claim";
+export const READS_NOTE =
+  "The stack's own files name these as read. The entries below add them to the stacks' inputs, and inputs of several entries add up, so they can go under stacks next to the entries you have. Sluiceway reads only what the files name plainly: a path a program builds at run time does not show here.";
 
 // The workflow part (record 0061).
 export const WORKFLOW_WARNING_TITLE = "A workflow is missing something";
@@ -146,6 +175,108 @@ export function unrelatedBlock(existing: string[], suggested: string[]): string[
   return ["scan:", "  unrelated:", ...globs.map((glob) => `    - ${JSON.stringify(glob)}`)];
 }
 
+// One file a stack reads and does not claim. A directory ends in a slash.
+export function readText(read: StackRead): string {
+  const shown = read.kind === "directory" ? `${read.path}/` : read.path;
+  return `${read.stackId} reads ${shown}, named in ${read.namedIn}.`;
+}
+
+// Only for a read a push would miss.
+export function readWarningText(read: StackRead): string {
+  return `${readText(read)} A push that changes it does not preview ${read.stackId}. Add it to the inputs of the stack.`;
+}
+
+// Ready to paste under `stacks`. Every name is a JSON string, which YAML
+// reads as a double quoted string, as in unrelatedBlock.
+export function inputsBlock(entries: InputsEntry[]): string[] {
+  return [
+    "stacks:",
+    ...entries.flatMap(({ path, name, globs }) => [
+      `  - path: ${JSON.stringify(path)}`,
+      ...(name === undefined ? [] : [`    name: ${JSON.stringify(name)}`]),
+      "    inputs:",
+      ...globs.map((glob) => `      - ${JSON.stringify(glob)}`),
+    ]),
+  ];
+}
+
+// Why the backend could not be asked, in Sluiceway's words (record 0022).
+function askFailureText(reason: Extract<BackendCheck, { found: "unknown" }>["reason"]): string {
+  return reason.kind === "timed-out"
+    ? `the question timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}`
+    : previewFailureText(reason);
+}
+
+// One stack, for the job log.
+export function backendText(check: BackendCheck): string {
+  switch (check.found) {
+    case true:
+      return `${check.stackId} is in the backend.`;
+    case false:
+      return `${check.stackId} is not in the backend.`;
+    case "unknown":
+      return `${check.stackId}: could not ask the backend, ${askFailureText(check.reason)}.`;
+    case "unchecked":
+      return `${check.stackId}: not checked, its tool has no list of stacks to ask.`;
+  }
+}
+
+export function notInBackendText(stackId: string): string {
+  return `${stackId} has files in the repo and no stack in the backend, so a scan gives its row a preview failure. Create the stack, or leave it out with the ignore block of this check.`;
+}
+
+export function couldNotAskText(check: BackendCheck): string {
+  return `${backendText(check)} The tool's own words are in the job log.`;
+}
+
+// Ready to paste over the ignore block of sluiceway.yaml: what it has, and the
+// stacks the backend does not hold, each as a glob that matches only its id.
+export function ignoreBlock(existing: IgnoreEntry[], stackIds: string[]): string[] {
+  return [
+    "ignore:",
+    ...existing.flatMap((entry) =>
+      typeof entry === "string"
+        ? [`  - ${JSON.stringify(entry)}`]
+        : [
+            `  - glob: ${JSON.stringify(entry.glob)}`,
+            `    reason: ${JSON.stringify(entry.reason)}`,
+          ],
+    ),
+    ...stackIds.map((id) => `  - ${JSON.stringify(globOf(id))}`),
+  ];
+}
+
+function backendCell(check: BackendCheck): string {
+  switch (check.found) {
+    case true:
+      return "Yes";
+    case false:
+      return "No";
+    case "unknown":
+      return `Could not ask: ${askFailureText(check.reason)}`;
+    case "unchecked":
+      return "Not checked";
+  }
+}
+
+function backendParts(checks: BackendCheck[], ignore: IgnoreEntry[]): string[] {
+  const parts = [
+    "### The backend",
+    [
+      "| Stack | In the backend |",
+      "|---|---|",
+      ...checks.map((check) => row([check.stackId, backendCell(check)])),
+    ].join("\n"),
+  ];
+  const missing = checks.filter((check) => check.found === false).map((check) => check.stackId);
+  if (missing.length === 0) {
+    if (checks.some((check) => check.found === true)) parts.push(ALL_IN_BACKEND);
+  } else {
+    parts.push(BACKEND_PASTE_NOTE, ["```yaml", ...ignoreBlock(ignore, missing), "```"].join("\n"));
+  }
+  return parts;
+}
+
 function refText({ ref, refKind }: SluicewayJob): string {
   switch (refKind) {
     case "moving":
@@ -192,6 +323,24 @@ export function workflowWarningText(warning: WorkflowWarning): string {
       return `${path}, job ${warning.job}: there is no permissions block, so the token gets the repo's default, which a file does not show. ${warning.mode} needs ${warning.needs.join(", ")}.`;
     case "missing-permissions":
       return `${path}, job ${warning.job}: ${warning.mode} needs ${warning.missing.join(", ")}. A job's own permissions replace the workflow's.`;
+    case "no-concurrency":
+      return `${path}, job ${warning.job}: there is no concurrency group. ${NO_CONCURRENCY[warning.mode]}`;
+    case "apply-group-shared":
+      return `${path}, job ${warning.job}: the concurrency group does not name the stack, so a deploy waits for the deploy of every other stack. Use group: sluiceway-apply-\${{ matrix.stack }}.`;
+    case "apply-no-queue":
+      return `${path}, job ${warning.job}: the concurrency group has no queue: max, so a deploy that waits is cancelled when a newer one for the same stack arrives.`;
+    case "apply-cancels":
+      return `${path}, job ${warning.job}: cancel-in-progress stops a deploy half way when a newer one for the same stack arrives. Take it out of this job.`;
+    case "no-status-check":
+      return warning.mode === "apply"
+        ? `${path}, job ${warning.job}: the if: has no !cancelled(). Without a status check GitHub skips the deploys that resolve started whenever resolve itself ends red.`
+        : `${path}, job ${warning.job}: the if: has no always(). settle exists for deploys that were cancelled or failed, and without always() GitHub skips it exactly then.`;
+    case "settle-skips-apply":
+      return `${path}, job ${warning.job}: settle does not wait for the job ${warning.apply}. Add ${warning.apply} to its needs, so it ends the records of those deploys too.`;
+    case "no-merged-apply":
+      return `${path}: mergeAndDeploy is on, and no apply job takes the matrix of the scan. The scan after a merge hands the deploy on through its own matrix output, so a merged update would never deploy. Add a copy of the apply job that takes needs.scan.outputs.matrix.`;
+    case "scan-no-matrix-output":
+      return `${path}, job ${warning.job}: it takes the matrix of the job ${warning.scan}, which has no matrix output. Add outputs: matrix: \${{ steps.<id>.outputs.matrix }} to ${warning.scan}, with that id on its Sluiceway step.`;
   }
 }
 
@@ -207,6 +356,14 @@ const MISSING_TRIGGER: Record<
     `${path} has no workflow_dispatch trigger. The rescan box and settle start a scan through it.`,
   issues: (path) =>
     `${path} has a resolve job and does not listen to issue edits (issues, with the type edited). A tick would start nothing.`,
+};
+
+const NO_CONCURRENCY: Record<"scan" | "resolve" | "apply", string> = {
+  scan: "Scans would run side by side. Use concurrency: sluiceway-scan, so they run one at a time.",
+  resolve:
+    "Two runs could handle the same tick. Use concurrency: sluiceway-resolve, so ticks are handled one run at a time.",
+  apply:
+    "Two deploys of one stack could run at once. Use a group per stack, group: sluiceway-apply-${{ matrix.stack }}, with queue: max.",
 };
 
 export function workflowNoteText(note: WorkflowNote): string {
@@ -230,6 +387,9 @@ export interface CheckFacts {
   // The scan.unrelated globs the config has.
   unrelated: string[];
   hasConfigFile: boolean;
+  // Only with backend: true (record 0074), with the ignore entries the
+  // config has.
+  backend?: { checks: BackendCheck[]; ignore: IgnoreEntry[] } | undefined;
 }
 
 export function renderCheckSummary({
@@ -237,6 +397,7 @@ export function renderCheckSummary({
   workflows,
   unrelated,
   hasConfigFile,
+  backend,
 }: CheckFacts): string {
   const parts = ["## Sluiceway check", VALID];
   if (!hasConfigFile) parts.push(NO_CONFIG_FILE);
@@ -323,9 +484,25 @@ export function renderCheckSummary({
     }
   }
 
+  if (report.reads.length > 0) {
+    parts.push(
+      `### ${READS_TITLE}`,
+      report.reads
+        .map((read) => `- ${escapeText(read.missed ? readWarningText(read) : readText(read))}`)
+        .join("\n"),
+      READS_NOTE,
+      ["```yaml", ...inputsBlock(report.inputs), "```"].join("\n"),
+    );
+  }
+
   parts.push("### Workflows", ...workflowParts(workflows));
 
-  parts.push("### What a check cannot tell", CANNOT_TELL);
+  if (backend !== undefined) parts.push(...backendParts(backend.checks, backend.ignore));
+
+  parts.push(
+    "### What a check cannot tell",
+    ...(backend === undefined ? [CANNOT_TELL, BACKEND_OFF] : [CANNOT_TELL_WITH_BACKEND]),
+  );
   return `${parts.join("\n\n")}\n`;
 }
 

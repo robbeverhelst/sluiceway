@@ -1,7 +1,9 @@
 import type { Adapter } from "../adapter.ts";
 import { apply } from "./apply.ts";
+import { findInBackend } from "./backend.ts";
 import { discover } from "./discover.ts";
 import { detectDrift } from "./drift.ts";
+import { readsFiles } from "./file-references.ts";
 import { previewWithReferences } from "./preview.ts";
 import { readDependencies } from "./references.ts";
 import { toolDiff } from "./tool-diff.ts";
@@ -22,4 +24,13 @@ const preview: Adapter["preview"] = async (stack, options) => {
   return { ...result, dependencies };
 };
 
-export const pulumi: Adapter = { discover, checkVersion, preview, toolDiff, detectDrift, apply };
+export const pulumi: Adapter = {
+  discover,
+  checkVersion,
+  preview,
+  toolDiff,
+  detectDrift,
+  apply,
+  readsFiles,
+  findInBackend,
+};
