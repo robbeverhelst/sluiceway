@@ -7,6 +7,7 @@ import { BOT } from "../fake-github/fake-github.ts";
 import {
   change,
   dashboardBody,
+  drifted,
   failing,
   harness,
   inSync,
@@ -205,6 +206,29 @@ describe("the scan after a merge", () => {
     expect(rows(dashboardBody(github))["a:prod"]?.text.split("\n")[0]).toBe(
       `- **a:prod** · waiting to start · ticked by alice · [run](${RUN_URL}) <!-- sluiceway:row stack="a:prod" state="deploying" -->`,
     );
+  });
+
+  // Record 0055: the hash covers drift when this scan found some, so the
+  // record says so and `apply` checks drift again before it compares.
+  test("a record whose fresh diff holds drift says so", async () => {
+    const diff = pending("a:prod", change("release"));
+    const gone = change("notes", "delete");
+    const { context, github } = harness(
+      tableAdapter({ ...TABLE, "a:prod": diff }, {}, {}, { "a:prod": drifted("a:prod", gone) }),
+      { config: `${CONFIG}drift:\n  enabled: true\n`, event: "schedule" },
+    );
+    github.seedComparison(MERGED, SHA, { status: "ahead", files: [] });
+    const merge = seedMergeRecord(github);
+
+    await scan(context);
+
+    expect(github.deployment(merge.id + 1).payload).toEqual({
+      v: 1,
+      hash: diff.ok ? diffHash({ ...diff.diff, drift: [gone] }) : "",
+      ticker: "alice",
+      run: RUN_ID,
+      drift: true,
+    });
   });
 
   test("the matrix is set before the dashboard is written, and is [] on a scan with nothing to hand on", async () => {

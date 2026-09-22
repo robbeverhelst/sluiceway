@@ -1446,7 +1446,13 @@ async function handOffMerges(
           sha: context.sha,
           task: deploymentTask(id),
           environment: stack.environment,
-          payload: deploymentPayload({ hash, ticker: fact.ticker, run: context.runId }),
+          // The hash covers drift when this scan found some (record 0055).
+          payload: deploymentPayload({
+            hash,
+            ticker: fact.ticker,
+            run: context.runId,
+            ...((result.diff.drift ?? []).length > 0 ? { drift: true } : {}),
+          }),
         });
         handedOn.push({ stack: id, environment: stack.environment, deployment: record.id });
         await github.createDeploymentStatus(record.id, { state: "queued", logUrl });

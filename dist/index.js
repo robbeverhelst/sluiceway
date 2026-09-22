@@ -58432,7 +58432,12 @@ async function handOffMerges(context3, config2, stacks, previewed, waiting, hand
           sha: context3.sha,
           task: deploymentTask(id),
           environment: stack.environment,
-          payload: deploymentPayload({ hash: hash2, ticker: fact.ticker, run: context3.runId })
+          payload: deploymentPayload({
+            hash: hash2,
+            ticker: fact.ticker,
+            run: context3.runId,
+            ...(result.diff.drift ?? []).length > 0 ? { drift: true } : {}
+          })
         });
         handedOn.push({ stack: id, environment: stack.environment, deployment: record3.id });
         await github.createDeploymentStatus(record3.id, { state: "queued", logUrl });
