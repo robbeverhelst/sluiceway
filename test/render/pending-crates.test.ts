@@ -51,12 +51,11 @@ describe("the crates of record 0047", () => {
     expect(pendingCrates(pending(count))).toBe(crates);
   });
 
-  // The header state is not `pending` then, so no picture asks for crates.
-  test("0 pending rows has no crates", () => {
-    expect(pendingCrates([])).toBeUndefined();
-    expect(
-      pendingCrates([row("in-sync"), row("deploying"), row("preview-failed")]),
-    ).toBeUndefined();
+  // Record 0066: the failing and deploying pictures show the same count, and
+  // with nothing pending they show no crate at all.
+  test("0 pending rows is 0 crates", () => {
+    expect(pendingCrates([])).toBe(0);
+    expect(pendingCrates([row("in-sync"), row("deploying"), row("preview-failed")])).toBe(0);
   });
 
   test("only rows of state pending count", () => {
@@ -67,7 +66,7 @@ describe("the crates of record 0047", () => {
 
   test("rows of an unknown state do not count", () => {
     const later = Array.from({ length: 20 }, (_, index) => unknown(index));
-    expect(pendingCrates(later)).toBeUndefined();
+    expect(pendingCrates(later)).toBe(0);
     expect(pendingCrates([...pending(2), ...later])).toBe(2);
     expect(pendingCrates([...pending(12), ...later])).toBe(12);
   });

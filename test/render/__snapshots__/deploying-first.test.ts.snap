@@ -5,8 +5,8 @@ exports[`snapshots deploying and queued rows at the top, with the spinner 1`] = 
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/deploying-destroys-dark.svg">
-    <img alt="Sluiceway: deploying, some changes delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/deploying-destroys-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/deploying-1-destroys-dark.svg">
+    <img alt="Sluiceway: deploying, 1 stack is pending, some changes delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/deploying-1-destroys-light.svg">
   </picture>
 </p>
 

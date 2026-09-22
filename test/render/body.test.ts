@@ -277,19 +277,29 @@ function lineUnderPending(body: string): string {
 
 describe("the picture", () => {
   // The alt texts of record 0031 and the file names of record 0033. The
-  // pending alt text says the number of crates (record 0047), here for one.
+  // pending, failing and deploying pictures show one crate per pending stack,
+  // and their alt texts say the number (records 0047 and 0066). Each of the
+  // dashboards above has one pending row where its state allows one.
+  const FILE: Record<HeaderState, string> = {
+    "first-run": "first-run",
+    "in-sync": "in-sync",
+    pending: "pending-1",
+    deploying: "deploying-1",
+    failing: "failing-1",
+    drift: "drift",
+  };
   const ALT: Record<HeaderState, string> = {
     "first-run": "Sluiceway: no stacks yet",
     "in-sync": "Sluiceway: everything is in sync",
     pending: "Sluiceway: 1 stack is pending",
-    deploying: "Sluiceway: deploying",
-    failing: "Sluiceway: something failed",
+    deploying: "Sluiceway: deploying, 1 stack is pending",
+    failing: "Sluiceway: something failed, 1 stack is pending",
     drift: "Sluiceway: something changed outside the code",
   };
   // Record 0043: the state's alt text plus the fact.
   const SIGNED_ALT = {
     pending: "Sluiceway: 1 stack is pending, some delete or replace resources",
-    deploying: "Sluiceway: deploying, some changes delete or replace resources",
+    deploying: "Sluiceway: deploying, 1 stack is pending, some changes delete or replace resources",
   };
 
   // The markup of record 0040: centered, and as wide as the issue (0039).
@@ -303,11 +313,57 @@ describe("the picture", () => {
       "</p>",
     ].join("\n");
 
-  // Pending has one file pair per crate count up to 12 and one past it
-  // (record 0047). Every other header state is its own file name.
   test.each(HEADER_STATES.filter((state) => state !== "pending"))("%s", (state) => {
     const body = renderBody(input(DASHBOARDS[state]));
-    expect(paragraphs(body)[1]).toBe(centered(state, ALT[state]));
+    expect(paragraphs(body)[1]).toBe(centered(FILE[state], ALT[state]));
+  });
+
+  // Record 0066: failing and deploying have one file pair per crate count
+  // from 0 to 12 and one past it, like pending (record 0047), and say the
+  // number unless it is 0.
+  test.each<[number, string, string]>([
+    [0, "failing-0", "Sluiceway: something failed"],
+    [1, "failing-1", "Sluiceway: something failed, 1 stack is pending"],
+    [9, "failing-9", "Sluiceway: something failed, 9 stacks are pending"],
+    [12, "failing-12", "Sluiceway: something failed, 12 stacks are pending"],
+    [13, "failing-more", "Sluiceway: something failed, more than 12 stacks are pending"],
+    [58, "failing-more", "Sluiceway: something failed, more than 12 stacks are pending"],
+  ])("a failed preview and %i pending rows show %s", (count, file, alt) => {
+    const rows = Array.from({ length: count }, (_, index) => pending(`stack-${index}`));
+    const body = renderBody(input([...rows, previewFailed("broken"), inSync("calm")]));
+    expect(paragraphs(body)[1]).toBe(centered(file, alt));
+  });
+
+  test.each<[number, string, string]>([
+    [0, "deploying-0", "Sluiceway: deploying"],
+    [1, "deploying-1", "Sluiceway: deploying, 1 stack is pending"],
+    [4, "deploying-4", "Sluiceway: deploying, 4 stacks are pending"],
+    [12, "deploying-12", "Sluiceway: deploying, 12 stacks are pending"],
+    [13, "deploying-more", "Sluiceway: deploying, more than 12 stacks are pending"],
+  ])("a deploying row and %i pending rows show %s", (count, file, alt) => {
+    const rows = Array.from({ length: count }, (_, index) => pending(`stack-${index}`));
+    const body = renderBody(input([deploying("moving"), ...rows, inSync("calm")]));
+    expect(paragraphs(body)[1]).toBe(centered(file, alt));
+  });
+
+  // The count is the pending rows alone: a deploying, queued or failed row is
+  // not a crate waiting, and a failure line counts as failing, not pending.
+  test("only pending rows are crates under failing and deploying", () => {
+    const failing = renderBody(
+      input([deploying("a"), deploying("b"), previewFailed("c"), previewFailed("d"), pending("e")]),
+    );
+    expect(paragraphs(failing)[1]).toBe(
+      centered("failing-1", "Sluiceway: something failed, 1 stack is pending"),
+    );
+    const moving = renderBody(input([deploying("a"), deploying("b"), inSync("c")]));
+    expect(paragraphs(moving)[1]).toBe(centered("deploying-0", "Sluiceway: deploying"));
+  });
+
+  // Drift shows only when nothing is pending (record 0055), so its count is
+  // always 0 and it keeps its one picture.
+  test("drift is one picture", () => {
+    const body = renderBody(input([drifted("a"), drifted("b"), inSync("c")]));
+    expect(paragraphs(body)[1]).toBe(centered("drift", ALT.drift));
   });
 
   test.each<[number, string, string]>([
@@ -335,15 +391,15 @@ describe("the picture", () => {
     expect(paragraphs(body)[1]).toBe(centered("pending-2", "Sluiceway: 2 stacks are pending"));
   });
 
-  // When bad news wins, the crates are not shown.
-  test("ten pending rows under a header state that is not pending show no crates", () => {
+  // When bad news wins, the crates still say how many wait (record 0066).
+  test("ten pending rows under a header state that is not pending show ten crates", () => {
     const ten = Array.from({ length: 10 }, (_, index) => pending(`stack-${index}`));
-    const cases: [HeaderState, Row[]][] = [
-      ["deploying", [...ten, deploying("z")]],
-      ["failing", [...ten, previewFailed("z")]],
-    ];
-    for (const [state, rows] of cases)
-      expect(paragraphs(renderBody(input(rows)))[1]).toBe(centered(state, ALT[state]));
+    expect(paragraphs(renderBody(input([...ten, deploying("z")])))[1]).toBe(
+      centered("deploying-10", "Sluiceway: deploying, 10 stacks are pending"),
+    );
+    expect(paragraphs(renderBody(input([...ten, previewFailed("z")])))[1]).toBe(
+      centered("failing-10", "Sluiceway: something failed, 10 stacks are pending"),
+    );
   });
 
   // Record 0043: the sign is added to the picture of the real state, with the
@@ -363,25 +419,35 @@ describe("the picture", () => {
 
   test("a deploying header gets the sign from a deploying row", () => {
     const body = renderBody(input([deploying("a", 1), pending("b"), inSync("c")]));
-    expect(paragraphs(body)[1]).toBe(centered("deploying-destroys", SIGNED_ALT.deploying));
+    expect(paragraphs(body)[1]).toBe(centered("deploying-1-destroys", SIGNED_ALT.deploying));
   });
 
   test("a deploying header gets the sign from a pending row", () => {
     const body = renderBody(input([deploying("a"), pending("b", ["create", "delete"])]));
-    expect(paragraphs(body)[1]).toBe(centered("deploying-destroys", SIGNED_ALT.deploying));
+    expect(paragraphs(body)[1]).toBe(centered("deploying-1-destroys", SIGNED_ALT.deploying));
   });
 
-  // The jam already says a person is needed, and the counts line under it
-  // still carries the destroy warning.
-  test("a failing header with a destroy is failing, with its usual alt text", () => {
-    for (const rows of [
+  // Record 0066 amends 0043: the jam gets the sign too, from the same rule.
+  test.each<[string, Row[], string, string]>([
+    [
+      "a pending row",
       [pending("a", ["delete"]), previewFailed("b")],
+      "failing-1-destroys",
+      "Sluiceway: something failed, 1 stack is pending, some changes delete or replace resources",
+    ],
+    [
+      "a deploying row",
       [deploying("a", 1), { ...inSync("b"), failure: FAILURE }],
-    ]) {
-      const body = renderBody(input(rows));
-      expect(paragraphs(body)[1]).toBe(centered("failing", ALT.failing));
-      expect(body).not.toContain("-destroys-");
-    }
+      "failing-0-destroys",
+      "Sluiceway: something failed, some changes delete or replace resources",
+    ],
+  ])("a failing header gets the sign from %s", (_, rows, file, alt) => {
+    expect(paragraphs(renderBody(input(rows)))[1]).toBe(centered(file, alt));
+  });
+
+  test("a failing header without a destroy has no sign", () => {
+    const body = renderBody(input([pending("a"), previewFailed("b")]));
+    expect(body).not.toContain("-destroys-");
   });
 
   test("an in sync or preview failed row does not turn the sign on", () => {
@@ -423,8 +489,9 @@ describe("the picture", () => {
     const [, picture, , counts] = paragraphs(renderBody({ ...input([]), rows: blocks(true) }));
     const full = paragraphs(renderBody({ ...input([]), rows: blocks(false) }));
     expect([full[1], full[3]]).toEqual([picture ?? "", counts ?? ""]);
-    // The fixture has preview failures, so its header is failing, with dots.
-    expect(picture).toContain("/failing-light.svg");
+    // The fixture has preview failures and 11 pending stacks, one with a
+    // destroy, so its header is the jam with 11 crates and the sign, with dots.
+    expect(picture).toContain("/failing-11-destroys-light.svg");
     expect(counts).toStartWith("🟡&nbsp;**11 pending** · ");
   });
 });
@@ -1156,14 +1223,16 @@ describe("sizes", () => {
 
   // Slice 4.11: the destroy alert above the pending list (record 0062) names
   // the pending stacks with a destroy, so the frame grows by one short id per
-  // such stack. Without it the frame stays under 2,000.
-  test("everything outside the row blocks is under 2,000 characters, plus the destroy alert", () => {
+  // such stack. Without it the frame stays under 2,100: slice 4.15 put the
+  // count and the destroy fact in the failing picture's alt text (record
+  // 0066), about 100 characters more than the 2,000 it was.
+  test("everything outside the row blocks is under 2,100 characters, plus the destroy alert", () => {
     const rows = rows58().map((row) => rowBlock(row));
     const body = renderBody({ ...input([], { recentlyDeployed: RECENT }), rows });
     const inside = rows.reduce((sum, row) => sum + row.text.length + 1, 0);
     const alert = body.split("\n\n").find((paragraph) => paragraph.startsWith("> [!CAUTION]"));
     expect(alert).toBeDefined();
-    expect(body.length - inside - (alert?.length ?? 0)).toBeLessThan(2_000);
+    expect(body.length - inside - (alert?.length ?? 0)).toBeLessThan(2_100);
     expect(alert?.length).toBeLessThan(500);
   });
 });
@@ -1204,6 +1273,21 @@ describe("snapshots", () => {
       });
       expect(`${pictures.join("\n\n")}\n`).toMatchSnapshot();
     });
+
+  // Record 0066: failing and deploying have one picture per crate count from
+  // 0 to 12 and one past it, with and without the destroy sign, so the
+  // snapshots name every file of theirs too.
+  for (const state of ["failing", "deploying"] as const)
+    for (const sign of [false, true])
+      test(`the ${state} picture at 0 to 13 pending${sign ? ", with the destroy sign" : ""}`, () => {
+        const pictures = Array.from({ length: 14 }, (_, count) => {
+          const rows = Array.from({ length: count }, (_, row) => pending(`stack-${row}`));
+          const cause = state === "failing" ? previewFailed("broken") : deploying("moving");
+          const signed = sign ? [deploying("signed", 1)] : [];
+          return paragraphs(renderBody(input([cause, ...signed, ...rows])))[1];
+        });
+        expect(`${pictures.join("\n\n")}\n`).toMatchSnapshot();
+      });
 
   // Its deploying rows are rendered as a writer renders them under a header,
   // with the spinner (record 0063), so the snapshots name those files too.
@@ -1298,8 +1382,9 @@ describe("the image urls in the snapshots", () => {
       readFileSync(join(import.meta.dir, "__snapshots__/body.test.ts.snap"), "utf8"),
     );
     const files = readdirSync(MASCOT).filter((name) => name.endsWith(".svg"));
-    // The 64 header files and the row spinner in both themes (record 0063).
-    expect(files).toHaveLength(66);
+    // The 170 header files and the row spinner in both themes (records 0063
+    // and 0066).
+    expect(files).toHaveLength(172);
     expect([...new Set(own.map((url) => url.split("/").at(-1) ?? ""))].sort()).toEqual(
       files.sort(),
     );

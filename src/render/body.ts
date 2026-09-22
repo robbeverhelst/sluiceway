@@ -88,8 +88,9 @@ export const RECENTLY_DEPLOYED = 10;
 const ACTION_REPO = "sluiceway/sluiceway";
 const ACTION_URL = `https://github.com/${ACTION_REPO}`;
 
-// Plain and fixed per state. The pending picture shows how many stacks wait,
-// so its alt text says the same number in words (record 0047).
+// Plain and fixed per state. The pending, failing and deploying pictures show
+// how many stacks wait, so their alt texts say the same number in words
+// (records 0047 and 0066).
 const ALT: Record<Exclude<HeaderState, "pending">, string> = {
   failing: "Sluiceway: something failed",
   deploying: "Sluiceway: deploying",
@@ -98,17 +99,30 @@ const ALT: Record<Exclude<HeaderState, "pending">, string> = {
   "in-sync": "Sluiceway: everything is in sync",
 };
 
-function pendingAlt(crates: Crates): string {
-  if (crates === "more") return `Sluiceway: more than ${MAX_CRATES} stacks are pending`;
-  return crates === 1 ? "Sluiceway: 1 stack is pending" : `Sluiceway: ${crates} stacks are pending`;
+function pendingWords(crates: Crates): string {
+  if (crates === "more") return `more than ${MAX_CRATES} stacks are pending`;
+  return crates === 1 ? "1 stack is pending" : `${crates} stacks are pending`;
 }
 
-// The alt text plus the fact, for the two states whose picture can carry the
-// destroy sign (record 0043).
-const SIGNED_FACT = {
+// The three pictures that have one file per crate count, 0 to 12 and past it
+// (records 0047 and 0066). A pending header always has a pending row.
+const COUNTED = ["pending", "failing", "deploying"] as const;
+type Counted = (typeof COUNTED)[number];
+const isCounted = (state: HeaderState): state is Counted =>
+  (COUNTED as readonly string[]).includes(state);
+
+function countedAlt(state: Counted, crates: Crates): string {
+  if (state === "pending") return `Sluiceway: ${pendingWords(crates)}`;
+  return crates === 0 ? ALT[state] : `${ALT[state]}, ${pendingWords(crates)}`;
+}
+
+// The alt text plus the fact, for the three states whose picture can carry
+// the destroy sign (records 0043 and 0066).
+const SIGNED_FACT: Record<Counted, string> = {
   pending: ", some delete or replace resources",
+  failing: ", some changes delete or replace resources",
   deploying: ", some changes delete or replace resources",
-} as const;
+};
 
 type KnownRow = Extract<ParsedRow, { known: true }>;
 
@@ -135,21 +149,17 @@ export function rowBlock(row: Row, options: RowOptions = {}): ParsedRow {
 
 // One file per theme, because `<picture>` follows the reader's GitHub theme
 // and a media query inside an SVG follows the operating system (record 0033).
-// Pending has one picture per crate count up to the maximum, and one past it
-// (record 0047). The pending and deploying pictures exist once more with the
-// destroy sign, and no other picture does (record 0043). The picture is as
-// wide as the issue and centered in it (record 0040).
-function picture(
-  state: HeaderState,
-  crates: Crates | undefined,
-  sign: boolean,
-  actionRef: string,
-): string[] {
-  // A pending header always has a pending row, so it always has crates.
-  const base = state === "pending" ? `pending-${crates ?? 1}` : state;
-  const signed = sign && (state === "pending" || state === "deploying");
+// Pending, failing and deploying have one picture per crate count up to the
+// maximum, and one past it, and each exists once more with the destroy sign
+// (records 0043, 0047 and 0066). Drift, first run and in sync can hold no
+// pending row, so they are one picture each. The picture is as wide as the
+// issue and centered in it (record 0040).
+function picture(state: HeaderState, crates: Crates, sign: boolean, actionRef: string): string[] {
+  const counted = isCounted(state);
+  const base = counted ? `${state}-${crates}` : state;
+  const signed = sign && counted;
   const name = signed ? `${base}-destroys` : base;
-  const plainAlt = state === "pending" ? pendingAlt(crates ?? 1) : ALT[state];
+  const plainAlt = counted ? countedAlt(state, crates) : ALT[state];
   const alt = signed ? `${plainAlt}${SIGNED_FACT[state]}` : plainAlt;
   const file = (theme: string) => mascotUrl(actionRef, `${name}-${theme}.svg`);
   return [

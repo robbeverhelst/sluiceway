@@ -1,6 +1,7 @@
-// How many crates float upstream of Penny in the pending picture (record
-// 0047). A pure function of the row markers, like the header state, so every
-// writer can compute it for rows it only carries through.
+// How many crates float upstream of Penny (records 0047 and 0066): one per
+// pending stack, in the pending, failing and deploying pictures alike. A pure
+// function of the row markers, like the header state, so every writer can
+// compute it for rows it only carries through.
 
 import type { ParsedRow } from "./marker.ts";
 
@@ -11,8 +12,7 @@ export type Crates = number | "more";
 
 // A row of a state this version does not know does not count. With nothing
 // pending there are no crates, and the header state is not `pending` either.
-export function pendingCrates(rows: readonly ParsedRow[]): Crates | undefined {
+export function pendingCrates(rows: readonly ParsedRow[]): Crates {
   const pending = rows.filter((row) => row.known && row.state === "pending").length;
-  if (pending === 0) return undefined;
   return pending > MAX_CRATES ? "more" : pending;
 }

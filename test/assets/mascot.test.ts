@@ -4,25 +4,31 @@ import { join, resolve } from "node:path";
 import { HEADER_STATES } from "../../src/render/header-state.ts";
 import { MAX_CRATES } from "../../src/render/pending-crates.ts";
 
-// The file rules of records 0033, 0039, 0043, 0047 and 0055, checked in CI on every header
+// The file rules of records 0033, 0039, 0043, 0047, 0055 and 0066, checked in CI on every header
 // image, and of record 0063 on the row spinner. The cap forces clean,
 // hand-made SVG and keeps the header instant on a phone.
 
 const DIR = resolve(import.meta.dir, "../../assets/mascot");
 const MAX_BYTES = 10 * 1024;
 // Pending has one picture per crate count up to the maximum and one past it
-// (record 0047). Every other header state has one, drift too: water seeping
-// through the closed gate (record 0055). There is no plain picture any more
-// (record 0043).
+// (record 0047). Failing and deploying have the same, from 0 crates, because
+// they show the pending stacks too (record 0066). Every other header state
+// has one, drift too: it shows only when nothing is pending (record 0055).
+// There is no plain picture any more (record 0043).
 const CRATES = [...Array.from({ length: MAX_CRATES }, (_, index) => index + 1), "more"];
-const STATE_PICTURES = HEADER_STATES.flatMap((state) =>
-  state === "pending" ? CRATES.map((crates) => `pending-${crates}`) : [state],
+const COUNTS: Partial<Record<(typeof HEADER_STATES)[number], (number | string)[]>> = {
+  pending: CRATES,
+  failing: [0, ...CRATES],
+  deploying: [0, ...CRATES],
+};
+const STATE_PICTURES = HEADER_STATES.flatMap(
+  (state) => COUNTS[state]?.map((crates) => `${state}-${crates}`) ?? [state],
 );
-// The pictures of a state that can hold a pending or deploying row exist once
-// more with the destroy sign painted on the wall (record 0043).
-const SIGNED = STATE_PICTURES.filter(
-  (picture) => picture.startsWith("pending-") || picture === "deploying",
-).map((picture) => `${picture}-destroys`);
+// Every counted picture exists once more with the destroy sign on its pole
+// (records 0043, 0047 and 0066).
+const SIGNED = STATE_PICTURES.filter((picture) => /-(\d+|more)$/.test(picture)).map(
+  (picture) => `${picture}-destroys`,
+);
 const PICTURES = [...STATE_PICTURES, ...SIGNED];
 const FILES = PICTURES.flatMap((picture) => [`${picture}-light.svg`, `${picture}-dark.svg`]);
 // The small picture at the start of a deploying or queued row (record 0063):
@@ -115,10 +121,32 @@ describe("the check itself", () => {
 test("there is one light and one dark file for every picture and for the spinner, and no other image", () => {
   const images = readdirSync(DIR).filter((name) => !name.endsWith(".md"));
   expect(images.sort()).toEqual([...FILES, ...SPINNER_FILES].sort());
-  // 17 pictures of 0047, the 14 with the destroy sign, and drift: 32 pairs.
-  expect(FILES).toHaveLength(64);
-  expect(FILES).toContain("drift-light.svg");
-  expect(FILES).toContain("drift-dark.svg");
+  // 13 pending, 14 failing and 14 deploying pictures, each with the destroy
+  // sign too, and first run, in sync and drift: 85 pairs.
+  expect(FILES).toHaveLength(170);
+  for (const name of ["drift", "failing-0", "failing-more-destroys", "deploying-12-destroys"])
+    expect(FILES).toContain(`${name}-dark.svg`);
+  expect(FILES).not.toContain("failing-light.svg");
+  expect(FILES).not.toContain("drift-0-light.svg");
+});
+
+// The picture says the count, so its own label does too, in the words of the
+// dashboard's alt text (records 0047 and 0066).
+test.each<[string, string]>([
+  ["failing-0", "Sluiceway: something failed"],
+  ["failing-1", "Sluiceway: something failed, 1 stack is pending"],
+  [
+    "failing-more-destroys",
+    "Sluiceway: something failed, more than 12 stacks are pending, some changes delete or replace resources",
+  ],
+  ["deploying-0-destroys", "Sluiceway: deploying, some changes delete or replace resources"],
+  ["deploying-7", "Sluiceway: deploying, 7 stacks are pending"],
+  ["pending-7", "Sluiceway: 7 stacks are pending"],
+])("%s is labelled with its count", (picture, label) => {
+  for (const theme of ["light", "dark"])
+    expect(readFileSync(join(DIR, `${picture}-${theme}.svg`), "utf8")).toContain(
+      `aria-label="${label}"`,
+    );
 });
 
 test.each(FILES)("%s keeps the file rules", (name) => {

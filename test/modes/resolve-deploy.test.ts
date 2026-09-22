@@ -97,8 +97,12 @@ describe("a tick by a person who may tick", () => {
     // Deploying sits at the top while it has rows (record 0063).
     expect(body.indexOf("## Deploying")).toBeLessThan(body.indexOf("## Pending"));
     // A deploying row that destroys something shows the deploying picture
-    // with the destroy sign (0043).
-    expect(body).toContain('alt="Sluiceway: deploying, some changes delete or replace resources"');
+    // with the destroy sign (0043), and one crate for the stack still pending
+    // (0066).
+    expect(body).toContain(
+      'alt="Sluiceway: deploying, 1 stack is pending, some changes delete or replace resources"',
+    );
+    expect(body).toContain("/deploying-1-destroys-light.svg");
     // The scan facts on the root marker are the scan's, carried through.
     expect(body.split("\n")[0]).toBe(h.github.issue(h.number).body.split("\n")[0] as string);
     expect(body.split("\n")[0]).toContain('scan-run="4242"');
