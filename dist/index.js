@@ -57992,9 +57992,10 @@ function fitBody(input2, options = {}) {
   });
   const blockOf = (entry3) => !spinning && entry3.still || entry3.blocks[entry3.level] || [];
   let shortTrail = input2.shortTrail ?? false;
+  const drawn = () => [...input2.carried, ...entries.flatMap(blockOf)];
   const render = () => renderBody({
     ...input2,
-    rows: [...input2.carried, ...entries.flatMap(blockOf)],
+    rows: drawn(),
     merges,
     shortTrail
   });
@@ -58041,6 +58042,7 @@ function fitBody(input2, options = {}) {
     body,
     size: body.length,
     shortened,
+    rows: drawn(),
     fits: body.length <= limit,
     mergesLeftOut: allMerges.length - merges.length
   };
@@ -58800,223 +58802,6 @@ function attributionSource(github, input2, onFailure) {
   };
 }
 
-// src/core/dependencies.ts
-function byCodeUnit15(a, b) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-function planDeploys(input2) {
-  const ids2 = [...new Set(input2.allowed)].sort(byCodeUnit15);
-  const going = new Set(ids2);
-  const refused = new Map;
-  for (let changed = true;changed; ) {
-    changed = false;
-    for (const id of ids2) {
-      if (refused.has(id))
-        continue;
-      const waitingOn = (input2.dependsOn.get(id) ?? []).filter((dependency) => !input2.open.has(dependency) && !going.has(dependency) && (input2.pending.has(dependency) || refused.has(dependency)));
-      if (waitingOn.length === 0)
-        continue;
-      refused.set(id, [...waitingOn].sort(byCodeUnit15));
-      going.delete(id);
-      changed = true;
-    }
-  }
-  const start = [];
-  const queued = [];
-  for (const id of ids2) {
-    if (refused.has(id))
-      continue;
-    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit15);
-    if (behind.length === 0)
-      start.push(id);
-    else
-      queued.push({ stackId: id, behind });
-  }
-  return {
-    start,
-    queued,
-    refused: [...refused].map(([stackId2, waitingOn]) => ({ stackId: stackId2, waitingOn }))
-  };
-}
-function queueState(behind, records) {
-  const newest = new Map;
-  for (const record3 of [...records].sort(newestLast)) {
-    const id = taskStackId(record3.task);
-    if (id !== undefined && !isHandedOn(record3.status))
-      newest.set(id, record3);
-  }
-  let waiting = false;
-  for (const id of behind) {
-    const record3 = newest.get(id);
-    if (!record3)
-      return "dead";
-    if (isOpenStatus(record3.status))
-      waiting = true;
-    else if (record3.status?.state === "failure" || record3.status?.state === "error")
-      return "dead";
-  }
-  return waiting ? "waiting" : "ready";
-}
-function withReadDependencies(input2) {
-  const dependsOn = new Map([...input2.configured].map(([id, ids2]) => [id, [...ids2]]));
-  const reaches = (from, to) => {
-    const seen = new Set;
-    const walk3 = (at) => {
-      if (at === to)
-        return true;
-      if (seen.has(at))
-        return false;
-      seen.add(at);
-      return (dependsOn.get(at) ?? []).some(walk3);
-    };
-    return walk3(from);
-  };
-  const dropped = [];
-  for (const id of [...input2.auto].sort(byCodeUnit15)) {
-    const list = dependsOn.get(id);
-    if (list === undefined)
-      continue;
-    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit15)) {
-      if (dependency === id || !dependsOn.has(dependency) || list.includes(dependency))
-        continue;
-      if (reaches(dependency, id))
-        dropped.push({ stackId: id, dependency });
-      else
-        list.push(dependency);
-    }
-    list.sort(byCodeUnit15);
-  }
-  return { dependsOn, dropped };
-}
-
-// src/github/deployments.ts
-async function readDeploymentRecords(github, environments, fallBack) {
-  const records = [];
-  const more = new Set;
-  for (const environment of [...new Set(environments)]) {
-    const page = await github.listNewestDeployments(environment);
-    records.push(...page.records);
-    if (page.more)
-      more.add(environment);
-  }
-  if (more.size === 0)
-    return records;
-  const onAPage = new Set(records.map(({ task }) => task));
-  const stacks = typeof fallBack === "function" ? await fallBack() : fallBack;
-  for (const { stackId: stackId2, environment } of stacks) {
-    const task = deploymentTask(stackId2);
-    if (!more.has(environment) || onAPage.has(task))
-      continue;
-    const newest = await github.newestDeploymentOfTask(task);
-    if (!newest)
-      continue;
-    records.push({ ...newest, status: await github.latestDeploymentStatus(newest.id) });
-    onAPage.add(task);
-  }
-  return records;
-}
-async function settleEndedRuns(github, records, repoUrl) {
-  const settled = { records: [...records], stackIds: [] };
-  const end = async (stackId2, deployment, run, dead) => {
-    const status = await github.createDeploymentStatus(deployment, {
-      state: dead ? "failure" : "error",
-      description: deployFailureText({ kind: dead ? "dependency-failed" : "run-ended" }),
-      logUrl: `${repoUrl}/actions/runs/${run}`
-    });
-    settled.records = settled.records.map((record3) => record3.id === deployment && taskStackId(record3.task) === stackId2 ? { ...record3, status } : record3);
-    settled.stackIds.push(stackId2);
-  };
-  for (const [stackId2, fact] of deployFacts(records).byStack) {
-    if (fact.kind !== "open" || fact.behind || fact.merge !== undefined)
-      continue;
-    const run = await github.getWorkflowRun(fact.run);
-    if (run && !run.completed)
-      continue;
-    await end(stackId2, fact.deployment, fact.run, false);
-  }
-  for (let ended = true;ended; ) {
-    ended = false;
-    const queued = [...deployFacts(settled.records).byStack].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
-    for (const [stackId2, fact] of queued) {
-      if (fact.kind !== "open" || !fact.behind)
-        continue;
-      if (queueState(fact.behind, settled.records) !== "dead")
-        continue;
-      await end(stackId2, fact.deployment, fact.run, true);
-      ended = true;
-    }
-  }
-  return settled;
-}
-
-// src/render/changes.ts
-function orderChanges(diff2) {
-  const changes = [...diff2.changes].sort((a, b) => byCodeUnit(a.address, b.address));
-  return {
-    deletes: changes.filter((change3) => change3.op === "delete"),
-    replaces: changes.filter((change3) => change3.op === "replace"),
-    others: changes.filter((change3) => change3.op !== "delete" && change3.op !== "replace")
-  };
-}
-
-// src/render/apply-summary.ts
-var ALREADY_ENDED = "This deploy already ended. Tick the box on the dashboard to try again.";
-var IN_SYNC_LINE = "The fresh preview shows no change, so nothing was deployed. The stack is already as its code says, most likely from a deploy outside the dashboard.";
-var REHEARSED_LINE = "This was a rehearsal (`dry-run: true`). The fresh preview matched the tick, and nothing was deployed. The row is pending again, and a tick in a workflow without `dry-run` deploys it.";
-var NOT_DEPLOYED = "Nothing was deployed from this deployment record, and nothing will be. The job log of this run holds the tool's own words. A fresh tick on the dashboard tries again.";
-function diffParts(diff2, empty) {
-  const drift = sortedDrift(diff2);
-  const driftParts = drift.length === 0 ? [] : [`${driftCounts(drift)}:`, drift.map((change3) => `- ${driftLine(change3)}`).join(`
-`)];
-  if (diff2.changes.length === 0)
-    return driftParts.length > 0 ? driftParts : [empty];
-  return [...changeParts(diff2), ...driftParts];
-}
-function changeParts(diff2) {
-  const { deletes, replaces, others } = orderChanges(diff2);
-  const destroys = [...deletes, ...replaces];
-  const parts = [counts([...destroys, ...others])];
-  if (destroys.length > 0) {
-    parts.push(destroys.map((change3) => `- :warning: ${changeLine(change3)}`).join(`
-`));
-  }
-  if (others.length > 0) {
-    parts.push(`<details><summary>${plural2(others.length, destroys.length > 0 ? "other change" : "change")}</summary>`, others.map((change3) => `- ${changeLine(change3)}`).join(`
-`), "</details>");
-  }
-  return parts;
-}
-function previewParts(preview5, empty) {
-  return preview5.kind === "diff" ? diffParts(preview5.diff, empty) : [`The preview failed: ${escapeText(preview5.reason)}.`];
-}
-function renderApplySummary(input2) {
-  const { outcome } = input2;
-  const result = outcome.kind === "deployed" ? "deployed" : outcome.kind === "in-sync" ? IN_SYNC_DESCRIPTION : outcome.kind === "rehearsed" ? REHEARSED_DESCRIPTION : `not deployed: ${escapeText(outcome.reason)}`;
-  const parts = [
-    "## Sluiceway apply",
-    `**${escapeText(input2.stackId)}** · ${result} · ticked by ${escapeText(input2.ticker)} · [run](${input2.runUrl})`
-  ];
-  if (outcome.kind === "deployed") {
-    parts.push("### What went out", ...diffParts(outcome.diff, "No changes."));
-  } else if (outcome.kind === "in-sync") {
-    parts.push(IN_SYNC_LINE);
-  } else if (outcome.kind === "rehearsed") {
-    parts.push(REHEARSED_LINE, "### What a deploy would send", ...diffParts(outcome.diff, "No changes."));
-  } else {
-    parts.push(NOT_DEPLOYED);
-    if (outcome.checked) {
-      parts.push("### What the fresh preview showed", ...previewParts(outcome.checked, "No changes."));
-    }
-    if (outcome.after) {
-      parts.push("### What is pending now", ...previewParts(outcome.after, "Nothing. The stack is in sync."));
-    }
-  }
-  return `${parts.join(`
-
-`)}
-`;
-}
-
 // src/render/links.ts
 function runLinks(run) {
   const base = `${run.repoUrl}/actions/runs/${run.runId}`;
@@ -59031,120 +58816,14 @@ function dashboardSearchUrl(repoUrl, label) {
   return `${repoUrl}/issues?q=${encodeURIComponent(`is:issue is:open label:"${label}"`)}`;
 }
 
-// src/render/log-text.ts
-function oneLine(text6) {
-  return text6.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ");
-}
-function logGroupTitle(stackId2) {
-  return oneLine(stackId2);
-}
-function changeLogLine(change3) {
-  const word = [change3.op === "none" ? undefined : change3.op, change3.tracking].filter((part) => part !== undefined).join(" + ");
-  const forcingKeys = sortedKeys(change3.replaceKeys);
-  const withValue = (key) => oneLine(key) + valueSuffix(change3, key, oneLine);
-  const forcing = forcingKeys.map(withValue);
-  const others = sortedKeys(change3.changedKeys).filter((key) => !forcingKeys.includes(key)).map(withValue);
-  const parts = [
-    `${isDestroy(change3) ? word.toUpperCase() : word} ${oneLine(change3.type)} ${oneLine(change3.name)}`
-  ];
-  if (forcing.length > 0)
-    parts.push(`forced by ${forcing.join(", ")}`);
-  if (others.length > 0)
-    parts.push(`${forcing.length > 0 ? "also changes " : ""}${others.join(", ")}`);
-  return parts.join(" · ");
-}
-function diffLogLines(diff2) {
-  const { deletes, replaces, others } = orderChanges(diff2);
-  const changes = [...deletes, ...replaces, ...others];
-  const lines = changes.length === 0 ? ["no changes"] : [counts(changes).replaceAll("*", ""), ...changes.map(changeLogLine)];
-  const drift = sortedDrift(diff2);
-  if (drift.length === 0)
-    return lines;
-  return [...lines, driftCounts(drift), ...drift.map(driftLogLine)];
-}
-function driftLogLine(change3) {
-  const keys4 = sortedKeys(change3.changedKeys).map(oneLine);
-  const head = `${driftWord(change3)} ${oneLine(change3.type)} ${oneLine(change3.name)}`;
-  return keys4.length > 0 ? `${head} · ${keys4.join(", ")}` : head;
-}
-function toolDiffLogLines(toolDiff5) {
-  if (toolDiff5 === undefined)
-    return [];
-  if (toolDiff5.ok) {
-    return [
-      "The tool's own diff follows, values included, because scan.logDiff is on in sluiceway.yaml:"
-    ];
-  }
-  return [
-    `The tool's own diff could not be shown: ${previewFailureText(toolDiff5.reason)}. The row and the diff hash come from the preview above and do not depend on it.`
-  ];
-}
-var PUBLIC_LOG_DIFF = {
-  title: "Values in the job log of a public repo",
-  message: "scan.logDiff is on and this repository is public, so anyone can read the values in the tool's own diff in this job log. Turn it off in sluiceway.yaml unless that is what you want."
-};
-
-// src/render/moved-comment.ts
-var MOVED_COMMENT_TAIL = "The row on the dashboard shows the change as it is now. Tick it again to deploy that.";
-function movedComment({ login, stackId: stackId2 }) {
-  return `@${login} ticked **${escapeText(stackId2)}**, and the change moved since the tick, so nothing was deployed. ${MOVED_COMMENT_TAIL}`;
-}
-
-// src/render/preview-result.ts
-function previewRow(stackId2, result, links2, failure3, options = {}) {
-  if (!result.ok) {
-    return {
-      state: "preview-failed",
-      stackId: stackId2,
-      reason: previewFailureText(result.reason),
-      runUrl: links2.log,
-      failure: failure3
-    };
-  }
-  const drifted = (result.diff.drift ?? []).length > 0;
-  const read3 = result.dependencies?.stackIds ?? [];
-  const dependsOn = read3.length === 0 ? {} : { dependsOn: read3 };
-  if (result.diff.changes.length === 0) {
-    if (drifted) {
-      return {
-        state: "drift",
-        diff: result.diff,
-        hash: diffHash(result.diff),
-        runUrl: links2.summary,
-        previewUrl: options.pageUrl,
-        failure: failure3,
-        ...dependsOn
-      };
-    }
-    return { state: "in-sync", stackId: stackId2, failure: failure3, ...dependsOn };
-  }
+// src/render/changes.ts
+function orderChanges(diff2) {
+  const changes = [...diff2.changes].sort((a, b) => byCodeUnit(a.address, b.address));
   return {
-    state: "pending",
-    diff: result.diff,
-    hash: diffHash(result.diff),
-    runUrl: links2.summary,
-    previewUrl: options.pageUrl ?? (options.toolDiffInLog ? links2.log : undefined),
-    failure: failure3,
-    ...dependsOn
+    deletes: changes.filter((change3) => change3.op === "delete"),
+    replaces: changes.filter((change3) => change3.op === "replace"),
+    others: changes.filter((change3) => change3.op !== "delete" && change3.op !== "replace")
   };
-}
-function previewSummary(stackId2, result, merges) {
-  if (result.ok)
-    return { kind: "diff", diff: result.diff, merges };
-  return {
-    kind: "preview-failed",
-    stackId: stackId2,
-    reason: previewFailureText(result.reason),
-    ignore: result.reason.kind === "stack-not-found" ? globOf(stackId2) : undefined
-  };
-}
-function previewOutcome(result) {
-  if (!result.ok)
-    return `preview failed, ${previewFailureText(result.reason)}`;
-  const drifted = (result.diff.drift ?? []).length > 0;
-  if (result.diff.changes.length === 0)
-    return drifted ? "drift" : "in sync";
-  return drifted ? "pending, with drift" : "pending";
 }
 
 // src/render/result-file.ts
@@ -59345,6 +59024,468 @@ function applyResultFile(input2) {
     preview: applied?.kind === "deployed" || applied?.kind === "rehearsed" ? diffOf(applied.diff) : previewOf(applied?.kind === "not-deployed" ? applied.checked : undefined),
     after: previewOf(applied?.kind === "not-deployed" ? applied.after : undefined)
   }));
+}
+
+// src/github/dashboard-write.ts
+async function swapRows(writer, issue3, rows) {
+  let last;
+  const answer = await doesItFit(() => writeBody(writer.github, issue3, async (body) => {
+    const live = liveDashboard(body);
+    const root = live.current ? live.root : undefined;
+    if (root?.scanSha === undefined || root.scanRun === undefined || root.scanAt === undefined) {
+      writer.log.info("The live body is not one this version can write again. It is left alone.");
+      last = { rows: live.rows, shortened: 0, mergesLeftOut: 0 };
+      return body;
+    }
+    const kept = {
+      scanSha: root.scanSha,
+      scanRun: root.scanRun,
+      scanAt: root.scanAt,
+      fullScanAt: root.fullScanAt,
+      fullScanRun: root.fullScanRun
+    };
+    const mine = await rows(live, kept);
+    const drawn = fitted(fit(writer, {
+      root: kept,
+      ...swapped(live, mine),
+      facts: mine.facts,
+      shipped: mine.shipped,
+      merges: mine.merges ?? live.merges,
+      outside: mine.outside ?? live.outside
+    }, false));
+    last = drawn;
+    return drawn.body;
+  }));
+  if (!answer.fits)
+    return answer;
+  return { ...answer.written, ...counted(last), fits: true };
+}
+async function writeScan(writer, full, rows) {
+  let last;
+  const answer = await doesItFit(() => writeDashboard(writer.github, writer.dashboard, async (body) => {
+    const drawn = fitted(fitScan(writer, full, await rows(liveDashboard(body))));
+    last = drawn;
+    return drawn.body;
+  }));
+  if (!answer.fits)
+    return answer;
+  return { ...answer.written, ...counted(last), fits: true };
+}
+function fitScan(writer, full, mine) {
+  return fit(writer, {
+    root: mine.root,
+    rows: [...mine.rows.values()],
+    carried: [...mine.carried?.values() ?? []],
+    facts: mine.facts,
+    shipped: mine.shipped,
+    merges: mine.merges,
+    outside: mine.outside
+  }, full);
+}
+function liveDashboard(body) {
+  const parsed = parseDashboard(body);
+  const first = new Map;
+  for (const row of parsed.rows)
+    if (!first.has(row.stackId))
+      first.set(row.stackId, row);
+  return { ...parsed, body, current: parsed.root?.version === MARKER_VERSION, first };
+}
+function swapped(live, mine) {
+  const rows = [];
+  const carried = [];
+  for (const row of live.rows) {
+    const first = row.known && live.first.get(row.stackId) === row;
+    const own2 = first ? mine.rows.get(row.stackId) : undefined;
+    if (own2)
+      rows.push(own2);
+    else
+      carried.push(first && mine.carried?.get(row.stackId) || row);
+  }
+  for (const [id, row] of mine.rows)
+    if (!live.first.has(id))
+      rows.push(row);
+  return { rows, carried };
+}
+function fit(writer, body, aimAtTarget) {
+  const { dashboard, repoUrl } = writer;
+  return fitBody({
+    root: body.root,
+    rows: body.rows,
+    carried: body.carried,
+    redact: dashboard.redact,
+    recentlyDeployed: body.facts.trail.map((entry3) => ({
+      stackId: entry3.stackId,
+      result: entry3.result,
+      reason: entry3.reason,
+      ticker: entry3.ticker,
+      at: entry3.at,
+      runUrl: runUrl(repoUrl, entry3.run, entry3.attempt),
+      shipped: body.shipped?.get(entry3)
+    })),
+    repoUrl,
+    actionRef: writer.actionRef,
+    recentLength: dashboard.recentlyDeployed,
+    personality: dashboard.personality,
+    readOnly: dashboard.readOnly,
+    ignored: writer.ignored,
+    merges: body.merges,
+    outsideDeploys: body.outside
+  }, aimAtTarget ? writer.budget : { ...writer.budget, target: Number.POSITIVE_INFINITY });
+}
+function counted(last) {
+  const rows = last?.rows ?? [];
+  return {
+    shortened: last?.shortened ?? 0,
+    counts: dashboardCounts(rows),
+    header: dashboardFacts(rows).headerState,
+    mergesLeftOut: last?.mergesLeftOut ?? 0
+  };
+}
+function fitted(body) {
+  if (!body.fits)
+    throw new NotWritten(body.size);
+  return body;
+}
+
+class NotWritten extends Error {
+  size;
+  constructor(size) {
+    super("The dashboard body does not fit.");
+    this.size = size;
+    this.name = "NotWritten";
+  }
+}
+async function doesItFit(write) {
+  try {
+    return { fits: true, written: await write() };
+  } catch (error63) {
+    if (error63 instanceof NotWritten)
+      return { fits: false, size: error63.size };
+    throw error63;
+  }
+}
+
+// src/core/dependencies.ts
+function byCodeUnit15(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function planDeploys(input2) {
+  const ids2 = [...new Set(input2.allowed)].sort(byCodeUnit15);
+  const going = new Set(ids2);
+  const refused = new Map;
+  for (let changed = true;changed; ) {
+    changed = false;
+    for (const id of ids2) {
+      if (refused.has(id))
+        continue;
+      const waitingOn = (input2.dependsOn.get(id) ?? []).filter((dependency) => !input2.open.has(dependency) && !going.has(dependency) && (input2.pending.has(dependency) || refused.has(dependency)));
+      if (waitingOn.length === 0)
+        continue;
+      refused.set(id, [...waitingOn].sort(byCodeUnit15));
+      going.delete(id);
+      changed = true;
+    }
+  }
+  const start = [];
+  const queued = [];
+  for (const id of ids2) {
+    if (refused.has(id))
+      continue;
+    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit15);
+    if (behind.length === 0)
+      start.push(id);
+    else
+      queued.push({ stackId: id, behind });
+  }
+  return {
+    start,
+    queued,
+    refused: [...refused].map(([stackId2, waitingOn]) => ({ stackId: stackId2, waitingOn }))
+  };
+}
+function queueState(behind, records) {
+  const newest = new Map;
+  for (const record3 of [...records].sort(newestLast)) {
+    const id = taskStackId(record3.task);
+    if (id !== undefined && !isHandedOn(record3.status))
+      newest.set(id, record3);
+  }
+  let waiting = false;
+  for (const id of behind) {
+    const record3 = newest.get(id);
+    if (!record3)
+      return "dead";
+    if (isOpenStatus(record3.status))
+      waiting = true;
+    else if (record3.status?.state === "failure" || record3.status?.state === "error")
+      return "dead";
+  }
+  return waiting ? "waiting" : "ready";
+}
+function withReadDependencies(input2) {
+  const dependsOn = new Map([...input2.configured].map(([id, ids2]) => [id, [...ids2]]));
+  const reaches = (from, to) => {
+    const seen = new Set;
+    const walk3 = (at) => {
+      if (at === to)
+        return true;
+      if (seen.has(at))
+        return false;
+      seen.add(at);
+      return (dependsOn.get(at) ?? []).some(walk3);
+    };
+    return walk3(from);
+  };
+  const dropped = [];
+  for (const id of [...input2.auto].sort(byCodeUnit15)) {
+    const list = dependsOn.get(id);
+    if (list === undefined)
+      continue;
+    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit15)) {
+      if (dependency === id || !dependsOn.has(dependency) || list.includes(dependency))
+        continue;
+      if (reaches(dependency, id))
+        dropped.push({ stackId: id, dependency });
+      else
+        list.push(dependency);
+    }
+    list.sort(byCodeUnit15);
+  }
+  return { dependsOn, dropped };
+}
+
+// src/github/deployments.ts
+async function readDeploymentRecords(github, environments, fallBack) {
+  const records = [];
+  const more = new Set;
+  for (const environment of [...new Set(environments)]) {
+    const page = await github.listNewestDeployments(environment);
+    records.push(...page.records);
+    if (page.more)
+      more.add(environment);
+  }
+  if (more.size === 0)
+    return records;
+  const onAPage = new Set(records.map(({ task }) => task));
+  const stacks = typeof fallBack === "function" ? await fallBack() : fallBack;
+  for (const { stackId: stackId2, environment } of stacks) {
+    const task = deploymentTask(stackId2);
+    if (!more.has(environment) || onAPage.has(task))
+      continue;
+    const newest = await github.newestDeploymentOfTask(task);
+    if (!newest)
+      continue;
+    records.push({ ...newest, status: await github.latestDeploymentStatus(newest.id) });
+    onAPage.add(task);
+  }
+  return records;
+}
+async function settleEndedRuns(github, records, repoUrl) {
+  const settled = { records: [...records], stackIds: [] };
+  const end = async (stackId2, deployment, run, dead) => {
+    const status = await github.createDeploymentStatus(deployment, {
+      state: dead ? "failure" : "error",
+      description: deployFailureText({ kind: dead ? "dependency-failed" : "run-ended" }),
+      logUrl: `${repoUrl}/actions/runs/${run}`
+    });
+    settled.records = settled.records.map((record3) => record3.id === deployment && taskStackId(record3.task) === stackId2 ? { ...record3, status } : record3);
+    settled.stackIds.push(stackId2);
+  };
+  for (const [stackId2, fact] of deployFacts(records).byStack) {
+    if (fact.kind !== "open" || fact.behind || fact.merge !== undefined)
+      continue;
+    const run = await github.getWorkflowRun(fact.run);
+    if (run && !run.completed)
+      continue;
+    await end(stackId2, fact.deployment, fact.run, false);
+  }
+  for (let ended = true;ended; ) {
+    ended = false;
+    const queued = [...deployFacts(settled.records).byStack].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+    for (const [stackId2, fact] of queued) {
+      if (fact.kind !== "open" || !fact.behind)
+        continue;
+      if (queueState(fact.behind, settled.records) !== "dead")
+        continue;
+      await end(stackId2, fact.deployment, fact.run, true);
+      ended = true;
+    }
+  }
+  return settled;
+}
+
+// src/render/apply-summary.ts
+var ALREADY_ENDED = "This deploy already ended. Tick the box on the dashboard to try again.";
+var IN_SYNC_LINE = "The fresh preview shows no change, so nothing was deployed. The stack is already as its code says, most likely from a deploy outside the dashboard.";
+var REHEARSED_LINE = "This was a rehearsal (`dry-run: true`). The fresh preview matched the tick, and nothing was deployed. The row is pending again, and a tick in a workflow without `dry-run` deploys it.";
+var NOT_DEPLOYED = "Nothing was deployed from this deployment record, and nothing will be. The job log of this run holds the tool's own words. A fresh tick on the dashboard tries again.";
+function diffParts(diff2, empty) {
+  const drift = sortedDrift(diff2);
+  const driftParts = drift.length === 0 ? [] : [`${driftCounts(drift)}:`, drift.map((change3) => `- ${driftLine(change3)}`).join(`
+`)];
+  if (diff2.changes.length === 0)
+    return driftParts.length > 0 ? driftParts : [empty];
+  return [...changeParts(diff2), ...driftParts];
+}
+function changeParts(diff2) {
+  const { deletes, replaces, others } = orderChanges(diff2);
+  const destroys = [...deletes, ...replaces];
+  const parts = [counts([...destroys, ...others])];
+  if (destroys.length > 0) {
+    parts.push(destroys.map((change3) => `- :warning: ${changeLine(change3)}`).join(`
+`));
+  }
+  if (others.length > 0) {
+    parts.push(`<details><summary>${plural2(others.length, destroys.length > 0 ? "other change" : "change")}</summary>`, others.map((change3) => `- ${changeLine(change3)}`).join(`
+`), "</details>");
+  }
+  return parts;
+}
+function previewParts(preview5, empty) {
+  return preview5.kind === "diff" ? diffParts(preview5.diff, empty) : [`The preview failed: ${escapeText(preview5.reason)}.`];
+}
+function renderApplySummary(input2) {
+  const { outcome } = input2;
+  const result = outcome.kind === "deployed" ? "deployed" : outcome.kind === "in-sync" ? IN_SYNC_DESCRIPTION : outcome.kind === "rehearsed" ? REHEARSED_DESCRIPTION : `not deployed: ${escapeText(outcome.reason)}`;
+  const parts = [
+    "## Sluiceway apply",
+    `**${escapeText(input2.stackId)}** · ${result} · ticked by ${escapeText(input2.ticker)} · [run](${input2.runUrl})`
+  ];
+  if (outcome.kind === "deployed") {
+    parts.push("### What went out", ...diffParts(outcome.diff, "No changes."));
+  } else if (outcome.kind === "in-sync") {
+    parts.push(IN_SYNC_LINE);
+  } else if (outcome.kind === "rehearsed") {
+    parts.push(REHEARSED_LINE, "### What a deploy would send", ...diffParts(outcome.diff, "No changes."));
+  } else {
+    parts.push(NOT_DEPLOYED);
+    if (outcome.checked) {
+      parts.push("### What the fresh preview showed", ...previewParts(outcome.checked, "No changes."));
+    }
+    if (outcome.after) {
+      parts.push("### What is pending now", ...previewParts(outcome.after, "Nothing. The stack is in sync."));
+    }
+  }
+  return `${parts.join(`
+
+`)}
+`;
+}
+
+// src/render/log-text.ts
+function oneLine(text6) {
+  return text6.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ");
+}
+function logGroupTitle(stackId2) {
+  return oneLine(stackId2);
+}
+function changeLogLine(change3) {
+  const word = [change3.op === "none" ? undefined : change3.op, change3.tracking].filter((part) => part !== undefined).join(" + ");
+  const forcingKeys = sortedKeys(change3.replaceKeys);
+  const withValue = (key) => oneLine(key) + valueSuffix(change3, key, oneLine);
+  const forcing = forcingKeys.map(withValue);
+  const others = sortedKeys(change3.changedKeys).filter((key) => !forcingKeys.includes(key)).map(withValue);
+  const parts = [
+    `${isDestroy(change3) ? word.toUpperCase() : word} ${oneLine(change3.type)} ${oneLine(change3.name)}`
+  ];
+  if (forcing.length > 0)
+    parts.push(`forced by ${forcing.join(", ")}`);
+  if (others.length > 0)
+    parts.push(`${forcing.length > 0 ? "also changes " : ""}${others.join(", ")}`);
+  return parts.join(" · ");
+}
+function diffLogLines(diff2) {
+  const { deletes, replaces, others } = orderChanges(diff2);
+  const changes = [...deletes, ...replaces, ...others];
+  const lines = changes.length === 0 ? ["no changes"] : [counts(changes).replaceAll("*", ""), ...changes.map(changeLogLine)];
+  const drift = sortedDrift(diff2);
+  if (drift.length === 0)
+    return lines;
+  return [...lines, driftCounts(drift), ...drift.map(driftLogLine)];
+}
+function driftLogLine(change3) {
+  const keys4 = sortedKeys(change3.changedKeys).map(oneLine);
+  const head = `${driftWord(change3)} ${oneLine(change3.type)} ${oneLine(change3.name)}`;
+  return keys4.length > 0 ? `${head} · ${keys4.join(", ")}` : head;
+}
+function toolDiffLogLines(toolDiff5) {
+  if (toolDiff5 === undefined)
+    return [];
+  if (toolDiff5.ok) {
+    return [
+      "The tool's own diff follows, values included, because scan.logDiff is on in sluiceway.yaml:"
+    ];
+  }
+  return [
+    `The tool's own diff could not be shown: ${previewFailureText(toolDiff5.reason)}. The row and the diff hash come from the preview above and do not depend on it.`
+  ];
+}
+var PUBLIC_LOG_DIFF = {
+  title: "Values in the job log of a public repo",
+  message: "scan.logDiff is on and this repository is public, so anyone can read the values in the tool's own diff in this job log. Turn it off in sluiceway.yaml unless that is what you want."
+};
+
+// src/render/moved-comment.ts
+var MOVED_COMMENT_TAIL = "The row on the dashboard shows the change as it is now. Tick it again to deploy that.";
+function movedComment({ login, stackId: stackId2 }) {
+  return `@${login} ticked **${escapeText(stackId2)}**, and the change moved since the tick, so nothing was deployed. ${MOVED_COMMENT_TAIL}`;
+}
+
+// src/render/preview-result.ts
+function previewRow(stackId2, result, links2, failure3, options = {}) {
+  if (!result.ok) {
+    return {
+      state: "preview-failed",
+      stackId: stackId2,
+      reason: previewFailureText(result.reason),
+      runUrl: links2.log,
+      failure: failure3
+    };
+  }
+  const drifted = (result.diff.drift ?? []).length > 0;
+  const read3 = result.dependencies?.stackIds ?? [];
+  const dependsOn = read3.length === 0 ? {} : { dependsOn: read3 };
+  if (result.diff.changes.length === 0) {
+    if (drifted) {
+      return {
+        state: "drift",
+        diff: result.diff,
+        hash: diffHash(result.diff),
+        runUrl: links2.summary,
+        previewUrl: options.pageUrl,
+        failure: failure3,
+        ...dependsOn
+      };
+    }
+    return { state: "in-sync", stackId: stackId2, failure: failure3, ...dependsOn };
+  }
+  return {
+    state: "pending",
+    diff: result.diff,
+    hash: diffHash(result.diff),
+    runUrl: links2.summary,
+    previewUrl: options.pageUrl ?? (options.toolDiffInLog ? links2.log : undefined),
+    failure: failure3,
+    ...dependsOn
+  };
+}
+function previewSummary(stackId2, result, merges) {
+  if (result.ok)
+    return { kind: "diff", diff: result.diff, merges };
+  return {
+    kind: "preview-failed",
+    stackId: stackId2,
+    reason: previewFailureText(result.reason),
+    ignore: result.reason.kind === "stack-not-found" ? globOf(stackId2) : undefined
+  };
+}
+function previewOutcome(result) {
+  if (!result.ok)
+    return `preview failed, ${previewFailureText(result.reason)}`;
+  const drifted = (result.diff.drift ?? []).length > 0;
+  if (result.diff.changes.length === 0)
+    return drifted ? "drift" : "in sync";
+  return drifted ? "pending, with drift" : "pending";
 }
 
 // src/modes/prepare.ts
@@ -59853,64 +59994,24 @@ async function swapRow(context3, setup, id, make) {
     log.info("There is no open dashboard to write. The next scan makes one.");
     return;
   }
-  const result = await writeBody(github, dashboard.number, async (liveBody) => {
-    const live = parseDashboard(liveBody);
-    const root = live.root;
-    if (root?.version !== MARKER_VERSION || root.scanSha === undefined || root.scanRun === undefined || root.scanAt === undefined) {
-      log.info("The live body is not one this version can write again. It is left alone.");
-      return liveBody;
-    }
+  const result = await swapRows({
+    github,
+    log,
+    repoUrl: context3.repoUrl,
+    actionRef: context3.actionRef,
+    dashboard: setup.config.dashboard,
+    ignored: setup.ignored,
+    budget: context3.limits?.body
+  }, dashboard.number, async (live) => {
     const facts = deployFacts(await readDeploymentRecords(github, setup.stacks.map(({ environment }) => environment), [{ stackId: id, environment: setup.stack.environment }]));
     const attributed = await setup.attribution.attribute(new Map([[id, lastDeployedCommit(facts, id)]]));
     const mine = make(facts, attributed.get(id)?.lines, live.outside);
     const shipped = await setup.attribution.ship(facts.trail);
-    const rows = [];
-    const carried = [];
-    let placed = false;
-    for (const row of live.rows) {
-      if (!placed && row.known && row.stackId === id) {
-        rows.push(mine);
-        placed = true;
-      } else {
-        carried.push(row);
-      }
-    }
-    if (!placed)
-      rows.push(mine);
-    const fitted = fitBody({
-      root: {
-        scanSha: root.scanSha,
-        scanRun: root.scanRun,
-        scanAt: root.scanAt,
-        fullScanAt: root.fullScanAt,
-        fullScanRun: root.fullScanRun
-      },
-      rows,
-      carried,
-      redact: setup.config.dashboard.redact,
-      recentlyDeployed: facts.trail.map((entry3) => ({
-        stackId: entry3.stackId,
-        result: entry3.result,
-        reason: entry3.reason,
-        ticker: entry3.ticker,
-        at: entry3.at,
-        runUrl: runUrl(context3.repoUrl, entry3.run, entry3.attempt),
-        shipped: shipped.get(entry3)
-      })),
-      repoUrl: context3.repoUrl,
-      actionRef: context3.actionRef,
-      recentLength: setup.config.dashboard.recentlyDeployed,
-      personality: setup.config.dashboard.personality,
-      readOnly: setup.config.dashboard.readOnly,
-      ignored: setup.ignored,
-      merges: live.merges,
-      outsideDeploys: live.outside
-    }, { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
-    if (!fitted.fits) {
-      throw new Error(`With this row swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment record holds the result, and the next scan brings the row in line.`);
-    }
-    return fitted.body;
+    return { facts, shipped, rows: new Map([[id, mine]]) };
   });
+  if (!result.fits) {
+    throw new Error(`With this row swapped the dashboard body is ${result.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment record holds the result, and the next scan brings the row in line.`);
+  }
   log.info(result.written ? `Wrote the dashboard (#${dashboard.number}).` : `The dashboard (#${dashboard.number}) already says this. Nothing was written.`);
   return dashboard.number;
 }
@@ -61219,13 +61320,12 @@ async function resolveTicks(context3, handOn, report) {
   let written = true;
   if (started.length > 0 || dropped.length > 0 || clear.size > 0 || rescanHandled || clearMerges.size > 0 || merging.mergedPrs.size > 0) {
     try {
-      const attribution = new Map;
-      const result = await writeBody(github, issue3.number, (liveBody) => swapRows(context3, config2, [...stacks?.values() ?? []], ignored, liveBody, {
+      const result = await swapRows2(context3, config2, [...stacks?.values() ?? []], ignored, issue3.number, {
         started: [...started, ...merged],
         dropped,
         clear,
         merges: { merged: merging.mergedPrs, clear: clearMerges }
-      }, attribution));
+      });
       log.info(result.written ? `Wrote the dashboard (#${issue3.number}).` : `The dashboard (#${issue3.number}) already says all of this. Nothing was written.`);
     } catch (error63) {
       written = false;
@@ -61480,121 +61580,88 @@ async function openDeployments(context3, ticked) {
   }
   return open2;
 }
-async function swapRows(context3, config2, stacks, ignored, liveBody, swap, attribution) {
-  const live = parseDashboard(liveBody);
-  const root = live.root;
-  if (root?.version !== MARKER_VERSION || root.scanSha === undefined || root.scanRun === undefined || root.scanAt === undefined) {
-    context3.log.info("The live body is not one this version can write again. It is left alone.");
-    return liveBody;
-  }
-  const droppedStacks = stacks.filter(({ stack }) => swap.dropped.includes(stackId(stack)));
-  const facts = deployFacts(await readRecords(context3, stacks.map(({ environment }) => environment), droppedStacks));
-  const source = attribution.get(root.scanSha) ?? attributionSource(context3.github, {
-    stacks: stacks.map(({ stack, inputs }) => ({
-      id: stackId(stack),
-      path: stack.path,
-      inputs
-    })),
-    unrelated: config2.scan.unrelated,
-    repoUrl: context3.repoUrl,
-    scanSha: root.scanSha,
-    ...config2.attribution,
-    trailLength: config2.dashboard.recentlyDeployed
-  }, (why2) => context3.log.info(`Attribution was left off the rows: ${why2}. It only explains a row, so nothing else changes (record 0026).`));
-  attribution.set(root.scanSha, source);
-  const deployingIds = [
-    ...swap.started.map((one) => one.stackId),
-    ...swap.dropped.filter((id) => facts.byStack.get(id)?.kind === "open")
-  ];
-  const lines3 = await source.attribute(new Map(deployingIds.map((id) => [id, lastDeployedCommit(facts, id)])));
-  const shipped = await source.ship(facts.trail);
-  const startedBy2 = new Map(swap.started.map((one) => [one.stackId, one]));
-  const mine = (one, destroys, deletes) => ({
-    state: "deploying",
-    stackId: one.stackId,
-    ticker: one.ticker,
-    runUrl: runUrl2(context3),
-    waiting: true,
-    destroys,
-    deletes,
-    attribution: lines3.get(one.stackId)?.lines,
-    behind: one.behind
-  });
-  const rows = [];
-  const carried = [];
-  const seen = new Set;
-  for (const row of live.rows) {
-    const first = !seen.has(row.stackId);
-    seen.add(row.stackId);
-    const one = startedBy2.get(row.stackId);
-    const fact = facts.byStack.get(row.stackId);
-    const wanted = swap.clear.get(row.stackId);
-    const destroys = row.known ? row.destroys : 0;
-    const deletes = row.known ? row.deletes : undefined;
-    if (!first || !row.known) {
-      carried.push(row);
-    } else if (one) {
-      rows.push(mine(one, destroys, deletes));
-    } else if (swap.dropped.includes(row.stackId) && fact?.kind === "open" && row.state !== "deploying") {
-      rows.push({
-        state: "deploying",
-        stackId: row.stackId,
-        ticker: fact.ticker,
-        runUrl: runUrl(context3.repoUrl, fact.run, fact.attempt),
-        waiting: fact.waiting,
-        destroys,
-        deletes,
-        attribution: lines3.get(row.stackId)?.lines,
-        behind: fact.behind
-      });
-    } else if (wanted && row.ticked && row.hash === wanted.hash) {
-      carried.push(clearTick(row, { note: wanted.note }));
-    } else {
-      carried.push(row);
-    }
-  }
-  for (const one of swap.started)
-    if (!seen.has(one.stackId))
-      rows.push(mine(one, 0, undefined));
-  const merges = [];
-  for (const merge3 of live.merges) {
-    if (swap.merges?.merged.has(merge3.pr) || merges.some((one) => one.pr === merge3.pr))
-      continue;
-    merges.push(swap.merges?.clear.has(merge3.pr) ? clearMergeTick(merge3, { note: swap.merges.clear.get(merge3.pr) }) : merge3);
-  }
-  const fitted = fitBody({
-    root: {
-      scanSha: root.scanSha,
-      scanRun: root.scanRun,
-      scanAt: root.scanAt,
-      fullScanAt: root.fullScanAt,
-      fullScanRun: root.fullScanRun
-    },
-    rows,
-    carried,
-    redact: config2.dashboard.redact,
-    recentlyDeployed: facts.trail.map((entry3) => ({
-      stackId: entry3.stackId,
-      result: entry3.result,
-      reason: entry3.reason,
-      ticker: entry3.ticker,
-      at: entry3.at,
-      runUrl: runUrl(context3.repoUrl, entry3.run, entry3.attempt),
-      shipped: shipped.get(entry3)
-    })),
+async function swapRows2(context3, config2, stacks, ignored, issue3, swap) {
+  const attribution = new Map;
+  const result = await swapRows({
+    github: context3.github,
+    log: context3.log,
     repoUrl: context3.repoUrl,
     actionRef: context3.actionRef,
-    recentLength: config2.dashboard.recentlyDeployed,
-    personality: config2.dashboard.personality,
-    readOnly: config2.dashboard.readOnly,
+    dashboard: config2.dashboard,
     ignored,
-    merges,
-    outsideDeploys: live.outside
-  }, { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
-  if (!fitted.fits) {
-    throw new Error(`With these rows swapped the dashboard body is ${fitted.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment records hold what was started, and the next scan brings the rows in line.`);
+    budget: context3.limits?.body
+  }, issue3, async (live, root) => {
+    const droppedStacks = stacks.filter(({ stack }) => swap.dropped.includes(stackId(stack)));
+    const facts = deployFacts(await readRecords(context3, stacks.map(({ environment }) => environment), droppedStacks));
+    const source = attribution.get(root.scanSha) ?? attributionSource(context3.github, {
+      stacks: stacks.map(({ stack, inputs }) => ({
+        id: stackId(stack),
+        path: stack.path,
+        inputs
+      })),
+      unrelated: config2.scan.unrelated,
+      repoUrl: context3.repoUrl,
+      scanSha: root.scanSha,
+      ...config2.attribution,
+      trailLength: config2.dashboard.recentlyDeployed
+    }, (why2) => context3.log.info(`Attribution was left off the rows: ${why2}. It only explains a row, so nothing else changes (record 0026).`));
+    attribution.set(root.scanSha, source);
+    const deployingIds = [
+      ...swap.started.map((one) => one.stackId),
+      ...swap.dropped.filter((id) => facts.byStack.get(id)?.kind === "open")
+    ];
+    const lines3 = await source.attribute(new Map(deployingIds.map((id) => [id, lastDeployedCommit(facts, id)])));
+    const shipped = await source.ship(facts.trail);
+    const rows = new Map;
+    const carried = new Map;
+    for (const one of swap.started) {
+      const old = live.first.get(one.stackId);
+      rows.set(one.stackId, {
+        state: "deploying",
+        stackId: one.stackId,
+        ticker: one.ticker,
+        runUrl: runUrl2(context3),
+        waiting: true,
+        destroys: old?.known ? old.destroys : 0,
+        deletes: old?.known ? old.deletes : undefined,
+        attribution: lines3.get(one.stackId)?.lines,
+        behind: one.behind
+      });
+    }
+    for (const [id, row] of live.first) {
+      if (!row.known || rows.has(id))
+        continue;
+      const fact = facts.byStack.get(id);
+      const wanted = swap.clear.get(id);
+      if (swap.dropped.includes(id) && fact?.kind === "open" && row.state !== "deploying") {
+        rows.set(id, {
+          state: "deploying",
+          stackId: id,
+          ticker: fact.ticker,
+          runUrl: runUrl(context3.repoUrl, fact.run, fact.attempt),
+          waiting: fact.waiting,
+          destroys: row.destroys,
+          deletes: row.deletes,
+          attribution: lines3.get(id)?.lines,
+          behind: fact.behind
+        });
+      } else if (wanted && row.ticked && row.hash === wanted.hash) {
+        carried.set(id, clearTick(row, { note: wanted.note }));
+      }
+    }
+    const merges = [];
+    for (const merge3 of live.merges) {
+      if (swap.merges?.merged.has(merge3.pr) || merges.some((one) => one.pr === merge3.pr)) {
+        continue;
+      }
+      merges.push(swap.merges?.clear.has(merge3.pr) ? clearMergeTick(merge3, { note: swap.merges.clear.get(merge3.pr) }) : merge3);
+    }
+    return { facts, shipped, rows, carried, merges };
+  });
+  if (!result.fits) {
+    throw new Error(`With these rows swapped the dashboard body is ${result.size.toLocaleString("en-US")} characters, and GitHub drops a body over ${BODY_LIMIT.toLocaleString("en-US")} without an error. Nothing was written. The deployment records hold what was started, and the next scan brings the rows in line.`);
   }
-  return fitted.body;
+  return result;
 }
 function withRowDependencies(context3, stacks, rows) {
   const auto = new Set([...stacks.values()].flatMap((one) => one.dependsOnAuto ? [stackId(one.stack)] : []));
@@ -61685,7 +61752,11 @@ async function startQueued(context3, handOn) {
   const dashboard = started.length > 0 ? await findDashboard(github, config2.dashboard.label) : undefined;
   if (dashboard) {
     try {
-      const result = await writeBody(github, dashboard.number, (liveBody) => swapRows(context3, config2, all, ignored, liveBody, { started, dropped: [], clear: new Map }, new Map));
+      const result = await swapRows2(context3, config2, all, ignored, dashboard.number, {
+        started,
+        dropped: [],
+        clear: new Map
+      });
       log.info(result.written ? `Wrote the dashboard (#${dashboard.number}).` : `The dashboard (#${dashboard.number}) already says all of this. Nothing was written.`);
     } catch (error63) {
       failures.push(message2(error63));
@@ -62836,13 +62907,13 @@ function renderPreviewPage(diff2, links2, options = {}) {
   const { deletes, replaces, others } = orderChanges(diff2);
   const destroys = [...deletes, ...replaces];
   const drift = sortedDrift(diff2);
-  const counted = [
+  const counted2 = [
     ...diff2.changes.length > 0 ? [counts([...destroys, ...others])] : [],
     ...drift.length > 0 ? [driftCounts(drift)] : []
   ];
   const also = drift.length > 0 ? " The deploy also puts back what changed outside the code, listed last." : "";
   const summary3 = [
-    `**${id}** · ${counted.join(" · ")}`,
+    `**${id}** · ${counted2.join(" · ")}`,
     ...destroys.length > 0 ? [`:warning: **This deploy ${destroyWords(deletes.length, replaces.length)}.**`] : [],
     diff2.changes.length === 0 ? `Sluiceway's own list of what changed in real infrastructure outside the code, never what it changed to. The code has nothing to deploy, and a deploy puts these back as the code says. It is the drift the stack's row on the [dashboard](${links2.dashboard}) shows, with every property path whole.` : diff2.changes.some((change3) => (change3.values ?? []).length > 0) ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links2.dashboard}) shows, with every property path whole.${also}` : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links2.dashboard}) shows, with every property path whole.${also}`,
     `Every stack this scan previewed is in the [summary](${links2.summary}) of the scan, and the tool's own words are in the ${jobLog(links2)}, in the group <code>${id}</code>.`,
@@ -62878,7 +62949,7 @@ ${pointer(lines3.length, id, links2)}
 ${pointer(unlisted, id, links2)}
 ` : "");
   return {
-    title: `${diff2.stackId.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")}: ${counted.join(", ").replaceAll("**", "")}`,
+    title: `${diff2.stackId.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")}: ${counted2.join(", ").replaceAll("**", "")}`,
     summary: summary3,
     text: text7,
     unlisted
@@ -63116,7 +63187,7 @@ function renderSummary(stacks, options = {}) {
   const drifted = diffs.filter((stack) => stack.diff.changes.length === 0 && hasDrift(stack));
   const inSync = diffs.filter((stack) => stack.diff.changes.length === 0 && !hasDrift(stack));
   const failed = sorted.filter((stack) => stack.kind === "preview-failed");
-  const counted = stacks.length === 0 ? "No stacks previewed." : `${plural2(stacks.length, "stack")} previewed: ${[
+  const counted2 = stacks.length === 0 ? "No stacks previewed." : `${plural2(stacks.length, "stack")} previewed: ${[
     pending.length && `${pending.length} pending`,
     drifted.length && `${drifted.length} drifted`,
     failed.length && `${failed.length} preview failed`,
@@ -63150,7 +63221,7 @@ function renderSummary(stacks, options = {}) {
   const frame = (shortened2) => [
     "## Sluiceway scan",
     ...shortened2 > 0 ? [note(shortened2, pending.length, options)] : [],
-    counted,
+    counted2,
     ...options.toolDiffInLog && pending.length > 0 ? [toolDiffLine(options)] : [],
     ...index.length > 0 ? [index.join(`
 `)] : [],
@@ -63312,11 +63383,9 @@ class ScanFailedError extends Error {
 
 class PreviewFirst extends Error {
   stacks;
-  why;
-  constructor(stacks, why2) {
+  constructor(stacks) {
     super("More stacks have to be previewed before the dashboard can be written.");
     this.stacks = stacks;
-    this.why = why2;
     this.name = "PreviewFirst";
   }
 }
@@ -63369,7 +63438,7 @@ function reportOutputs2(context3, report) {
   if (!previewed || !startedAt)
     return;
   const text7 = scanResultFile({
-    run: runUrlOf(context3, context3.runId),
+    run: runUrl(context3.repoUrl, context3.runId, undefined),
     commit: context3.sha,
     milliseconds: context3.now().getTime() - startedAt.getTime(),
     dashboard,
@@ -63451,31 +63520,22 @@ async function scanning(context3, report) {
       label: config2.dashboard.label,
       logDiff
     });
-    const compose = (liveBody, deploys, waits, lines5, shipped = new Map) => {
-      const live = liveBody === undefined ? undefined : parseDashboard(liveBody);
-      const liveRows = new Map;
-      if (live?.root?.version === MARKER_VERSION) {
-        for (const row2 of live.rows)
-          if (!liveRows.has(row2.stackId))
-            liveRows.set(row2.stackId, row2);
-      }
+    const full = ids2.every((id) => previewed.has(id));
+    const place3 = (live, deploys, waits, lines5, shipped = new Map) => {
+      const liveRows = live.current ? live.first : new Map;
       const { dropped } = oneRowPerStack(ids2, new Set(previewed.keys()), [...liveRows.keys()]);
       const liveTicks = new Map;
-      const seen = new Set;
-      for (const row2 of config2.dashboard.readOnly ? [] : live?.rows ?? []) {
-        if (seen.has(row2.stackId))
-          continue;
-        seen.add(row2.stackId);
+      for (const [id, row2] of config2.dashboard.readOnly ? [] : live.first) {
         if (row2.known && row2.ticked)
-          liveTicks.set(row2.stackId, row2.hash);
+          liveTicks.set(id, row2.hash);
       }
-      const { merges, mergeTicks } = mergeRows(listing, branchPreviews, live?.root?.version === MARKER_VERSION ? live.merges : [], waits, config2.dashboard.redact);
+      const { merges, mergeTicks } = mergeRows(listing, branchPreviews, live.current ? live.merges : [], waits, config2.dashboard.redact);
       const outside = trailOutside(ids2, new Map([...histories ?? []].map(([id, history]) => [
         id,
         outsideDeploys(id, history, deploys.runs.get(id))
-      ])), live?.root?.version === MARKER_VERSION ? live.outside : []);
-      const rows = [];
-      const carried = [];
+      ])), live.current ? live.outside : []);
+      const rows = new Map;
+      const carried = new Map;
       const first = [];
       const deploying = [];
       const deferred = [];
@@ -63505,7 +63565,7 @@ async function scanning(context3, report) {
             pendingAgain: pendingAgain(fact, fresh.hash) ? { logUrl: logDiff ? links2.log : undefined } : undefined
           } : fresh;
           if (!ticked) {
-            rows.push(row2);
+            rows.set(id, row2);
             continue;
           }
           const box = row2.state === "pending" || row2.state === "drift";
@@ -63515,14 +63575,14 @@ async function scanning(context3, report) {
             resolveOnItsWay: waits
           }) === "carry";
           ticks.push({ id, tick: carry ? "carry" : "sweep", box });
-          rows.push(!box ? row2 : carry ? { ...row2, ticked: true } : { ...row2, orphanTick: true });
+          rows.set(id, !box ? row2 : carry ? { ...row2, ticked: true } : { ...row2, orphanTick: true });
         } else if (decided.row === "deploying" && decided.from === "record" && fact?.kind === "open") {
           deploying.push(id);
-          rows.push({
+          rows.set(id, {
             state: "deploying",
             stackId: id,
             ticker: fact.ticker,
-            runUrl: runUrlOf(context3, fact.run, fact.attempt),
+            runUrl: runUrl(context3.repoUrl, fact.run, fact.attempt),
             waiting: fact.waiting,
             destroys: destroysOf(mine, liveRow),
             deletes: deletesOf(mine, liveRow),
@@ -63546,70 +63606,63 @@ async function scanning(context3, report) {
             deploying.push(id);
           else if (mine)
             deferred.push(id);
-          carried.push(liveRow);
+          carried.set(id, liveRow);
         }
       }
       if (first.length > 0)
         throw new PreviewFirst(first);
-      const full = ids2.every((id) => previewed.has(id));
-      const fitted = fitBody({
-        root: {
-          scanSha: context3.sha,
-          scanRun: context3.runId,
-          scanAt: at,
-          fullScanAt: full ? at : live?.root?.fullScanAt,
-          fullScanRun: full ? context3.runId : live?.root?.fullScanRun
-        },
-        rows,
-        carried,
-        redact: config2.dashboard.redact,
-        recentlyDeployed: deploys.facts.trail.map((entry3) => ({
-          stackId: entry3.stackId,
-          result: entry3.result,
-          reason: entry3.reason,
-          ticker: entry3.ticker,
-          at: entry3.at,
-          runUrl: runUrlOf(context3, entry3.run, entry3.attempt),
-          shipped: shipped.get(entry3)
-        })),
-        repoUrl: context3.repoUrl,
-        actionRef: context3.actionRef,
-        recentLength: config2.dashboard.recentlyDeployed,
-        personality: config2.dashboard.personality,
-        readOnly: config2.dashboard.readOnly,
-        ignored,
-        merges,
-        outsideDeploys: outside
-      }, full ? context3.limits?.body : { ...context3.limits?.body, target: Number.POSITIVE_INFINITY });
-      if (!fitted.fits) {
-        if (full)
-          throw new ScanFailedError(bodyDoesNotFitMessage(fitted.size));
-        throw new PreviewFirst(ids2.filter((id) => !previewed.has(id)).map((id) => ({ id, why: "no-row" })), { kind: "does-not-fit", carried: carried.length });
-      }
       return {
-        body: fitted.body,
-        shortened: fitted.shortened,
-        full,
-        carried: carried.map((row2) => row2.stackId).filter((id) => !previewed.has(id)),
-        dropped,
-        deploying,
-        deferred,
-        ticks,
-        mergeTicks,
-        resolveWaits: waits,
-        unread: deploys.facts.unread,
-        mergesLeftOut: fitted.mergesLeftOut
+        rows: {
+          root: {
+            scanSha: context3.sha,
+            scanRun: context3.runId,
+            scanAt: at,
+            fullScanAt: full ? at : live.root?.fullScanAt,
+            fullScanRun: full ? context3.runId : live.root?.fullScanRun
+          },
+          facts: deploys.facts,
+          shipped,
+          rows,
+          carried,
+          merges,
+          outside
+        },
+        composed: {
+          carried: [...carried.keys()].filter((id) => !previewed.has(id)),
+          carriedBlocks: carried.size,
+          dropped,
+          deploying,
+          deferred,
+          ticks,
+          mergeTicks,
+          resolveWaits: waits,
+          unread: deploys.facts.unread
+        }
       };
+    };
+    const writer = {
+      github: context3.github,
+      log,
+      repoUrl: context3.repoUrl,
+      actionRef: context3.actionRef,
+      dashboard: config2.dashboard,
+      ignored,
+      budget: context3.limits?.body
     };
     if (histories === undefined && ids2.length > 0 && ids2.every((id) => previewed.has(id))) {
       histories = await readHistories(context3, stacks, config2.dashboard.recentlyDeployed);
     }
+    let answer;
     try {
-      if (previewed.size === ids2.length)
-        compose(undefined, NO_DEPLOYS, false, new Map);
-      written = await writeDashboard(context3.github, config2.dashboard, async (liveBody) => {
-        startedFrom ??= liveBody;
-        let deploys = await lateDeploys(context3, stacks, previewed, liveBody);
+      if (full) {
+        const alone = place3(liveDashboard(""), NO_DEPLOYS, false, new Map).rows;
+        const fitted2 = fitScan(writer, full, alone);
+        if (!fitted2.fits)
+          throw new ScanFailedError(bodyDoesNotFitMessage(fitted2.size));
+      }
+      answer = await writeScan(writer, full, async (live) => {
+        startedFrom ??= live.body;
+        let deploys = await lateDeploys(context3, stacks, previewed, live);
         const waiting = mergesWaiting(deploys.facts);
         const toPreview = waiting.filter(({ id }) => ids2.includes(id) && !previewed.has(id));
         if (toPreview.length > 0) {
@@ -63619,36 +63672,42 @@ async function scanning(context3, report) {
           const ended = await handOffMerges(context3, config2, stacks, previewed, waiting, handedOn);
           context3.outputs?.set("matrix", matrixOutput(handedOn));
           if (ended)
-            deploys = await lateDeploys(context3, stacks, previewed, liveBody);
+            deploys = await lateDeploys(context3, stacks, previewed, live);
         }
         attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
         const shipped = await attribution.ship(deploys.facts.trail);
-        composed = compose(liveBody, deploys, !config2.dashboard.readOnly && await resolveWaits(context3, liveBody, deploys), attributed, shipped);
-        return composed.body;
+        const placed = place3(live, deploys, !config2.dashboard.readOnly && await resolveWaits(context3, live, deploys), attributed, shipped);
+        composed = placed.composed;
+        return placed.rows;
       });
-      break;
     } catch (error63) {
       if (!(error63 instanceof PreviewFirst))
         throw error63;
       const late = new Set(error63.stacks.map(({ id }) => id));
       next = stacks.filter(({ stack }) => late.has(stackId(stack)));
-      if (error63.why) {
-        log.info(`This scan falls back to a full scan: ${fullScanReasonText(error63.why)}. Previewing the other ${plural2(next.length, "stack")} now.`);
-      } else {
-        for (const { id, why: why2 } of error63.stacks) {
-          if (why2 === "deploy-ended")
-            again.add(id);
-          log.info(`${logGroupTitle(id)} ${PREVIEW_FIRST[why2]}`);
-        }
+      for (const { id, why: why3 } of error63.stacks) {
+        if (why3 === "deploy-ended")
+          again.add(id);
+        log.info(`${logGroupTitle(id)} ${PREVIEW_FIRST[why3]}`);
       }
+      continue;
     }
+    if (answer.fits) {
+      written = answer;
+      break;
+    }
+    if (full)
+      throw new ScanFailedError(bodyDoesNotFitMessage(answer.size));
+    const why2 = { kind: "does-not-fit", carried: composed?.carriedBlocks ?? 0 };
+    next = stacks.filter(({ stack }) => !previewed.has(stackId(stack)));
+    log.info(`This scan falls back to a full scan: ${fullScanReasonText(why2)}. Previewing the other ${plural2(next.length, "stack")} now.`);
   }
   reportDashboard(context3, written, composed);
   report.attributed = attributed;
   report.dashboard = {
     url: dashboardUrl(context3.repoUrl, written.number),
     changed: written.written,
-    counts: dashboardCounts(parseDashboard(written.body).rows)
+    counts: written.counts
   };
   await context3.notifier?.send(scanNotifications(startedFrom ?? "", written.body, {
     repository: repositoryOf(context3.repoUrl),
@@ -63694,9 +63753,6 @@ function startingCommits(facts, previewed) {
       add(id);
   return from;
 }
-function runUrlOf(context3, run, attempt) {
-  return runUrl(context3.repoUrl, run, attempt);
-}
 function failureLine2(context3, id, deployFact, outside) {
   const fact = standingFailure(id, deployFact, outside);
   if (fact === undefined)
@@ -63705,7 +63761,7 @@ function failureLine2(context3, id, deployFact, outside) {
     reason: fact.reason,
     ticker: fact.ticker,
     at: fact.at,
-    runUrl: runUrlOf(context3, fact.run, fact.attempt)
+    runUrl: runUrl(context3.repoUrl, fact.run, fact.attempt)
   };
 }
 function destroysOf(mine, liveRow) {
@@ -63718,9 +63774,9 @@ function deletesOf(mine, liveRow) {
     return mine.result.diff.changes.filter((change3) => change3.op === "delete").length;
   return liveRow?.known ? liveRow.deletes : undefined;
 }
-async function lateDeploys(context3, stacks, previewed, liveBody) {
+async function lateDeploys(context3, stacks, previewed, live) {
   const { log, github } = context3;
-  const liveStates = new Map(parseDashboard(liveBody).rows.map((row2) => [row2.stackId, row2.state]));
+  const liveStates = new Map(live.rows.map((row2) => [row2.stackId, row2.state]));
   const fallBack = stacks.map(({ stack, environment }) => ({ stackId: stackId(stack), environment })).filter(({ stackId: id }) => {
     const result = previewed.get(id)?.result;
     return result?.ok === true && result.diff.changes.length > 0 || isDeployingState(liveStates.get(id) ?? "");
@@ -63742,8 +63798,7 @@ async function lateDeploys(context3, stacks, previewed, liveBody) {
     throw new Error(`The deployment records could not be read: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permissions \`deployments: write\` and \`actions: read\` next to \`contents: read\` and \`issues: write\` (record 0003).`);
   }
 }
-async function resolveWaits(context3, liveBody, deploys) {
-  const live = parseDashboard(liveBody);
+async function resolveWaits(context3, live, deploys) {
   const met = live.rows.some((row2) => row2.known && row2.ticked && deploys.facts.byStack.get(row2.stackId)?.kind !== "open") || live.merges.some((merge3) => merge3.ticked);
   if (!met)
     return false;
@@ -64072,15 +64127,15 @@ var FOUND = {
 };
 function reportDashboard(context3, written, composed) {
   const { log } = context3;
-  const shortened = composed?.shortened ?? 0;
+  const { shortened } = written;
   const size = `${written.body.length.toLocaleString("en-US")} of ${BODY_LIMIT.toLocaleString("en-US")} characters`;
-  const dot = HEADER_DOT[dashboardFacts(parseDashboard(written.body).rows).headerState];
+  const dot = HEADER_DOT[written.header];
   log.info(`${dot} ${FOUND[written.found]}: ${context3.repoUrl}/issues/${written.number} (${size}).`);
   if (written.tries > 1)
     log.info(`The write took ${written.tries} tries.`);
   if (shortened > 0)
     log.info(`${plural2(shortened, "row")} shortened to fit the size budget.`);
-  const left = composed?.mergesLeftOut ?? 0;
+  const left = written.mergesLeftOut;
   if (left > 0) {
     log.info(`${plural2(left, "more pull request")} ${left === 1 ? "qualifies" : "qualify"} and ${left === 1 ? "is" : "are"} not listed: the dashboard has no room for ${left === 1 ? "it" : "them"}. They are listed as the older ones merge.`);
   }
@@ -64187,7 +64242,7 @@ function mergesWaiting(facts) {
 }
 async function handOffMerges(context3, config2, stacks, previewed, waiting, handedOn) {
   const { github, log } = context3;
-  const logUrl = runUrlOf(context3, context3.runId, context3.runAttempt);
+  const logUrl = runUrl(context3.repoUrl, context3.runId, context3.runAttempt);
   let ended = false;
   for (const { id, fact } of waiting) {
     const name = logGroupTitle(id);
