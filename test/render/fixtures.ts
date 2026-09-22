@@ -367,5 +367,5 @@ export const rows58 = (): Row[] => build(0);
 export const rows100 = (): Row[] => build(42);
 
 export function stackIdOf(row: Row): string {
-  return row.state === "pending" ? row.diff.stackId : row.stackId;
+  return "diff" in row ? row.diff.stackId : row.stackId;
 }

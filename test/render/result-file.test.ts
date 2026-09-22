@@ -203,6 +203,64 @@ describe("the result file of a scan", () => {
   });
 });
 
+// Record 0055: a stack with drift says so, with the drift in the same shape
+// as its changes. The key is added, so the version stays 1.
+describe("drift in the result file of a scan", () => {
+  const gone = change("delete", "local:index/file:File", "notes");
+  const stacks: { stack: SummaryStack; milliseconds: number }[] = [
+    {
+      stack: { kind: "diff", diff: { stackId: "a:prod", changes: [], drift: [gone] } },
+      milliseconds: 1,
+    },
+    {
+      stack: {
+        kind: "diff",
+        diff: {
+          stackId: "b:prod",
+          changes: [change("create", "random:Pet", "pet")],
+          drift: [gone],
+        },
+      },
+      milliseconds: 1,
+    },
+  ];
+  const file = JSON.parse(scanResultFile({ run: RUN, commit: SHA, milliseconds: 1, stacks }));
+
+  test("a stack with drift only is in the state drift, with its drift listed", () => {
+    expect(file.stacks[0]).toMatchObject({
+      stack: "a:prod",
+      state: "drift",
+      changes: [],
+      drift: [
+        {
+          type: "local:index/file:File",
+          name: "notes",
+          op: "delete",
+          changedKeys: [],
+          replaceKeys: [],
+        },
+      ],
+    });
+  });
+
+  test("a pending stack with drift stays pending and lists its drift", () => {
+    expect(file.stacks[1]).toMatchObject({ state: "pending", drift: [{ name: "notes" }] });
+  });
+
+  test("it fits the schema, and a stack without drift has no drift key", () => {
+    expect(scanResultSchema.safeParse(file).success).toBe(true);
+    const quiet = JSON.parse(
+      scanResultFile({
+        run: RUN,
+        commit: SHA,
+        milliseconds: 1,
+        stacks: [{ stack: QUIET, milliseconds: 1 }],
+      }),
+    );
+    expect(quiet.stacks[0]).not.toHaveProperty("drift");
+  });
+});
+
 describe("the result file of an apply", () => {
   test("a stack that deployed: what went out", () => {
     const text = applyResultFile({

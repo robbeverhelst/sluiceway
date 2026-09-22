@@ -70,7 +70,9 @@ export function fitBody(input: BudgetInput, options: BudgetOptions = {}): Fitted
   const limit = options.limit ?? BODY_LIMIT;
   const target = Math.min(options.target ?? BODY_TARGET, limit);
   const entries = input.rows.map((row): Entry => {
-    const levels = row.state === "pending" ? LEVELS : LEVELS.slice(0, 1);
+    // A drifted row shortens too (record 0055). Its levels 1 and 3 look like
+    // 0 and 2, and the budget never picks a level that saves nothing.
+    const levels = row.state === "pending" || row.state === "drift" ? LEVELS : LEVELS.slice(0, 1);
     const blocks = levels.map((level) =>
       rowBlock(row, { level, redact: input.redact, readOnly: input.readOnly }),
     );

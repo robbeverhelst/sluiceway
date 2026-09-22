@@ -9,7 +9,15 @@ import type { ToolDiffResult } from "../adapters/adapter.ts";
 import type { Change, Diff } from "../core/diff.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
 import { orderChanges } from "./changes.ts";
-import { counts, isDestroy, sortedKeys, valueSuffix } from "./row.ts";
+import {
+  counts,
+  driftCounts,
+  driftWord,
+  isDestroy,
+  sortedDrift,
+  sortedKeys,
+  valueSuffix,
+} from "./row.ts";
 
 // A line of the job log that starts with `::` or `##[` is a command to the
 // runner. Text from outside is never trusted with a line of its own: a control
@@ -47,10 +55,22 @@ function changeLogLine(change: Change): string {
 export function diffLogLines(diff: Diff): string[] {
   const { deletes, replaces, others } = orderChanges(diff);
   const changes = [...deletes, ...replaces, ...others];
-  if (changes.length === 0) return ["no changes"];
   // The row's counts are Sluiceway's own words, so the only stars in them are
   // the bold of a replace or a delete, which a log cannot show.
-  return [counts(changes).replaceAll("*", ""), ...changes.map(changeLogLine)];
+  const lines =
+    changes.length === 0
+      ? ["no changes"]
+      : [counts(changes).replaceAll("*", ""), ...changes.map(changeLogLine)];
+  // Drift, when the drift check found some (record 0055).
+  const drift = sortedDrift(diff);
+  if (drift.length === 0) return lines;
+  return [...lines, driftCounts(drift), ...drift.map(driftLogLine)];
+}
+
+function driftLogLine(change: Change): string {
+  const keys = sortedKeys(change.changedKeys).map(oneLine);
+  const head = `${driftWord(change)} ${oneLine(change.type)} ${oneLine(change.name)}`;
+  return keys.length > 0 ? `${head} · ${keys.join(", ")}` : head;
 }
 
 // Sluiceway's own words about the tool's own diff of a stack (record 0048).

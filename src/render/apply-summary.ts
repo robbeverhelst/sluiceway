@@ -8,7 +8,7 @@ import { IN_SYNC_DESCRIPTION, REHEARSED_DESCRIPTION } from "../core/deployment.t
 import type { Diff } from "../core/diff.ts";
 import { orderChanges } from "./changes.ts";
 import { escapeText } from "./escape.ts";
-import { changeLine, counts, plural } from "./row.ts";
+import { changeLine, counts, driftCounts, driftLine, plural, sortedDrift } from "./row.ts";
 
 // What a preview of the stack gave: its diff, or the reason it gave none.
 export type AppliedPreview =
@@ -57,8 +57,18 @@ const NOT_DEPLOYED =
 
 // The changes as the summary of a scan lists them: counts, then every delete
 // and replace in the open, then the rest behind a fold.
+// Drift the deploy put back, or would have (record 0055), after the changes.
 function diffParts(diff: Diff, empty: string): string[] {
-  if (diff.changes.length === 0) return [empty];
+  const drift = sortedDrift(diff);
+  const driftParts =
+    drift.length === 0
+      ? []
+      : [`${driftCounts(drift)}:`, drift.map((change) => `- ${driftLine(change)}`).join("\n")];
+  if (diff.changes.length === 0) return driftParts.length > 0 ? driftParts : [empty];
+  return [...changeParts(diff), ...driftParts];
+}
+
+function changeParts(diff: Diff): string[] {
   const { deletes, replaces, others } = orderChanges(diff);
   const destroys = [...deletes, ...replaces];
   const parts = [counts([...destroys, ...others])];

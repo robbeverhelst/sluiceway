@@ -98,6 +98,7 @@ describe("every rendered block", () => {
           destroys: destroysOf(row),
           failed: "failure" in row && row.failure !== undefined,
           shortened: row.state === "pending" ? level : 0,
+          drift: false,
           ticked: false,
           text: block,
         },

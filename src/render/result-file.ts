@@ -11,7 +11,7 @@ import type { Change, Diff } from "../core/diff.ts";
 import type { AppliedPreview, ApplyOutcome } from "./apply-summary.ts";
 import { orderChanges } from "./changes.ts";
 import type { ParsedRow } from "./marker.ts";
-import { byCodeUnit, sortedKeys } from "./row.ts";
+import { byCodeUnit, sortedDrift, sortedKeys } from "./row.ts";
 import type { SummaryStack } from "./summary.ts";
 
 // The shape of the file. A reader checks it before anything else, and a
@@ -54,10 +54,15 @@ const changeSchema = z.strictObject({
 });
 
 const diffSchema = {
-  state: z.enum(["pending", "in-sync"]),
+  // `drift`: nothing to deploy from the code, and drift found (record 0055).
+  state: z.enum(["pending", "in-sync", "drift"]),
   counts: countsSchema,
   // Deletes, then replaces, then the rest (record 0024).
   changes: z.array(changeSchema),
+  // What changed outside the code, when the scan checked and found some
+  // (record 0055). `update` is a property that changed, `delete` an object
+  // that is gone. Sorted by address.
+  drift: z.array(changeSchema).optional(),
 };
 
 const failedSchema = {
@@ -205,9 +210,15 @@ function changeOf(change: Change): z.infer<typeof changeSchema> {
 
 function diffOf(diff: Diff) {
   const { deletes, replaces, others } = orderChanges(diff);
+  const drift = sortedDrift(diff);
   const of = (op: Change["op"]) => diff.changes.filter((change) => change.op === op).length;
   return {
-    state: diff.changes.length === 0 ? ("in-sync" as const) : ("pending" as const),
+    state:
+      diff.changes.length > 0
+        ? ("pending" as const)
+        : drift.length > 0
+          ? ("drift" as const)
+          : ("in-sync" as const),
     counts: {
       create: of("create"),
       update: of("update"),
@@ -216,6 +227,7 @@ function diffOf(diff: Diff) {
       trackingOnly: diff.changes.filter((change) => change.op === "none" && change.tracking).length,
     },
     changes: [...deletes, ...replaces, ...others].map(changeOf),
+    ...(drift.length === 0 ? {} : { drift: drift.map(changeOf) }),
   };
 }
 

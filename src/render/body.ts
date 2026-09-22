@@ -19,9 +19,11 @@ import { type Crates, MAX_CRATES, pendingCrates } from "./pending-crates.ts";
 import { type Row, type RowOptions, renderRow } from "./row.ts";
 import { utcMinute } from "./time.ts";
 import {
+  DRIFTED_LINE,
   DRY,
   INSTRUCTION_LINE,
   MERGE_LINE,
+  NOTHING_FROM_THE_CODE,
   NOTHING_TO_DEPLOY,
   PREVIEW_FAILED_LINE,
   READ_ONLY_LINE,
@@ -80,6 +82,7 @@ const ACTION_URL = `https://github.com/${ACTION_REPO}`;
 const ALT: Record<Exclude<HeaderState, "pending">, string> = {
   failing: "Sluiceway: something failed",
   deploying: "Sluiceway: deploying",
+  drift: "Sluiceway: something changed outside the code",
   "first-run": "Sluiceway: no stacks yet",
   "in-sync": "Sluiceway: everything is in sync",
 };
@@ -164,6 +167,7 @@ function picture(
 // dot, so a red dot always means there is something to look at.
 const DOT = {
   pending: "🟡",
+  drift: "🟠",
   deploying: "🔵",
   "preview-failed": "🔴",
   "in-sync": "🟢",
@@ -182,6 +186,9 @@ function countsLine(rows: KnownRow[], dots: boolean): string {
   const failed = rows.filter((row) => row.failed).length;
   const parts = [
     `${dot("pending", of("pending"))}**${of("pending")} pending**`,
+    // Only when there is drift (record 0055), so a repo that never checks for
+    // it keeps its counts line byte for byte.
+    ...(of("drift") > 0 ? [`${dot("drift", of("drift"))}${of("drift")} drifted`] : []),
     `${dot("deploying", of("deploying"))}${of("deploying")} deploying`,
     `${dot("preview-failed", of("preview-failed"))}${of("preview-failed")} preview failed`,
     `${dot("in-sync", of("in-sync"))}${of("in-sync")} in sync`,
@@ -217,6 +224,7 @@ function scanLine(root: RootFacts, repoUrl: string): string {
 // The one line under the Pending heading (records 0029, 0032 and 0034).
 function pendingLine(input: BodyInput, state: HeaderState, pending: number): string {
   if (pending > 0) return input.readOnly ? READ_ONLY_LINE : INSTRUCTION_LINE;
+  if (input.rows.some((row) => row.known && row.state === "drift")) return NOTHING_FROM_THE_CODE;
   const lines = input.personality ? WARM : DRY;
   if (state === "first-run") return lines.firstRun;
   // A row of a state this version does not know is not known to be calm.
@@ -294,6 +302,10 @@ export function renderBody(input: BodyInput): string {
   // Pending is always shown. The other sections are left out when empty.
   out.push("## Pending", pendingLine(input, state, pending.length));
   if (pending.length > 0) out.push(blocks(pending));
+
+  // Drift sits right under Pending: its rows have boxes too (record 0055).
+  const drifted = of("drift");
+  if (drifted.length > 0) out.push("## Drifted", DRIFTED_LINE, blocks(drifted));
 
   const deploying = [...of("deploying"), ...of("queued")].sort((a, b) =>
     byCodeUnit(a.stackId, b.stackId),

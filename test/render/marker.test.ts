@@ -127,6 +127,32 @@ describe("writing markers", () => {
     );
   });
 
+  // Record 0055: the key record 0009 reserved, last, so every older key keeps
+  // its place.
+  test("drift says the hash includes drift, after every other key, and is left out otherwise", () => {
+    expect(
+      rowMarker({
+        stackId: "site:prod",
+        state: "pending",
+        hash: "dd803ea1e69c7010",
+        destroys: 1,
+        failed: true,
+        shortened: 2,
+        drift: true,
+      }),
+    ).toBe(
+      '<!-- sluiceway:row stack="site:prod" state="pending" hash="dd803ea1e69c7010" destroys="1" failed="true" shortened="2" drift="true" -->',
+    );
+    expect(
+      rowMarker({ stackId: "site:prod", state: "drift", hash: "be148b80efa3bb8f", drift: true }),
+    ).toBe(
+      '<!-- sluiceway:row stack="site:prod" state="drift" hash="be148b80efa3bb8f" drift="true" -->',
+    );
+    expect(rowMarker({ stackId: "a", state: "pending", hash: "00", drift: false })).toBe(
+      '<!-- sluiceway:row stack="a" state="pending" hash="00" -->',
+    );
+  });
+
   test("a stack id is encoded on the marker", () => {
     expect(rowMarker({ stackId: 'my dir/"x":prod', state: "in-sync" })).toBe(
       '<!-- sluiceway:row stack="my%20dir/%22x%22:prod" state="in-sync" -->',

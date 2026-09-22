@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { type BodyInput, type RecentDeploy, renderBody, rowBlock } from "../../src/render/body.ts";
 import { HEADER_STATES, type HeaderState } from "../../src/render/header-state.ts";
 import { type ParsedRow, parseDashboard } from "../../src/render/marker.ts";
-import type { FailureLine, InSyncRow, PendingRow, Row } from "../../src/render/row.ts";
+import type { DriftRow, FailureLine, InSyncRow, PendingRow, Row } from "../../src/render/row.ts";
 import { rows58, rows100 } from "./fixtures.ts";
 
 const ROOT = {
@@ -42,6 +42,27 @@ function pending(
 
 const inSync = (stackId: string): InSyncRow => ({ state: "in-sync", stackId });
 
+// Record 0055: nothing to deploy from the code, one file gone outside it.
+const drifted = (stackId: string): DriftRow => ({
+  state: "drift",
+  diff: {
+    stackId,
+    changes: [],
+    drift: [
+      {
+        address: "address-notes",
+        type: "local:index/file:File",
+        name: "notes",
+        op: "delete",
+        changedKeys: [],
+        replaceKeys: [],
+      },
+    ],
+  },
+  hash: "4be1a0c93d7e5f20",
+  runUrl: RUN_URL,
+});
+
 function input(rows: Row[], overrides: Partial<BodyInput> = {}): BodyInput {
   return {
     root: ROOT,
@@ -55,6 +76,81 @@ function input(rows: Row[], overrides: Partial<BodyInput> = {}): BodyInput {
 }
 
 const IMAGES = "https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot";
+
+// Written out by hand from records 0029, 0040 and 0055, not from the code.
+describe("a body with drift (record 0055)", () => {
+  test("one drifted stack and one in sync: the drift picture, the count, and the Drifted section under Pending", () => {
+    expect(renderBody(input([inSync("apps/web:prod"), drifted("apps/api:prod")]))).toBe(
+      [
+        '<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->',
+        "",
+        '<p align="center">',
+        "  <picture>",
+        `    <source media="(prefers-color-scheme: dark)" srcset="${IMAGES}/drift-dark.svg">`,
+        `    <img alt="Sluiceway: something changed outside the code" width="880" src="${IMAGES}/drift-light.svg">`,
+        "  </picture>",
+        "</p>",
+        "",
+        '<div align="center">',
+        "",
+        "⚪&nbsp;**0 pending** · 🟠&nbsp;1 drifted · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync",
+        "",
+        `Scanned [\`8c41f0e\`](${REPO_URL}/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](${RUN_URL}) · <sub>last full scan 2026-09-21 06:00 UTC</sub>`,
+        "",
+        "</div>",
+        "",
+        "## Pending",
+        "",
+        "Nothing to deploy from the code.",
+        "",
+        "## Drifted",
+        "",
+        "Real infrastructure changed outside the code. Deploying a stack puts it back as its code says.",
+        "",
+        `- [ ] **apps/api:prod** · 1 gone outside the code · [summary](${RUN_URL}) <!-- sluiceway:row stack="apps/api:prod" state="drift" hash="4be1a0c93d7e5f20" drift="true" -->`,
+        "  <details><summary>1 change outside the code</summary>",
+        "  <kbd>gone</kbd> <code>local:index/file:File</code> <b>notes</b><br>",
+        "  </details>",
+        "  <!-- /sluiceway:row -->",
+        "",
+        "## In sync",
+        "",
+        "<details><summary>1 stack in sync</summary>",
+        "",
+        '- apps/web:prod <!-- sluiceway:row stack="apps/web:prod" state="in-sync" -->',
+        "  <!-- /sluiceway:row -->",
+        "",
+        "</details>",
+        "",
+        "---",
+        "",
+        "- [ ] Rescan all stacks <!-- sluiceway:rescan -->",
+        "",
+        "<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://github.com/sluiceway/sluiceway#readme)</sub>",
+      ].join("\n"),
+    );
+  });
+
+  test("the Drifted section sits under the pending rows, and a pending row wins the picture", () => {
+    const body = renderBody(input([drifted("b:drift"), pending("a:pending"), inSync("c:calm")]));
+    expect(headings(body)).toEqual(["## Pending", "## Drifted", "## In sync"]);
+    expect(body).toContain("pending-1-light.svg");
+    expect(body).toContain("🟡&nbsp;**1 pending** · 🟠&nbsp;1 drifted · ⚪&nbsp;0 deploying");
+  });
+
+  test("with no drifted row the counts line and the sections are what they always were", () => {
+    const body = renderBody(input([pending("a:pending"), inSync("c:calm")]));
+    expect(body).not.toContain("drifted");
+    expect(body).not.toContain("## Drifted");
+  });
+
+  test("personality off: no picture, no dot, the same count", () => {
+    const body = renderBody(input([drifted("b:drift")], { personality: false }));
+    expect(paragraphs(body)[1]).toBe(
+      "**0 pending** · 1 drifted · 0 deploying · 0 preview failed · 0 in sync",
+    );
+  });
+});
 
 // Written out by hand from records 0029, 0033, 0040 and 0047, not from the code.
 describe("the body of record 0029", () => {
@@ -141,6 +237,7 @@ const DASHBOARDS: Record<HeaderState, Row[]> = {
   ],
   deploying: [deploying("c:deploying"), pending("d:pending"), inSync("e:calm")],
   pending: [pending("d:pending"), inSync("e:calm")],
+  drift: [drifted("g:drift"), inSync("e:calm")],
   "first-run": [],
   "in-sync": [inSync("e:calm"), inSync("f:calm")],
 };
@@ -187,6 +284,7 @@ describe("the picture", () => {
     pending: "Sluiceway: 1 stack is pending",
     deploying: "Sluiceway: deploying",
     failing: "Sluiceway: something failed",
+    drift: "Sluiceway: something changed outside the code",
   };
   // Record 0043: the state's alt text plus the fact.
   const SIGNED_ALT = {
@@ -229,8 +327,8 @@ describe("the picture", () => {
     const later: ParsedRow[] = Array.from({ length: 12 }, (_, index) => ({
       known: false,
       stackId: `later-${index}`,
-      state: "drift",
-      text: `- later-${index} <!-- sluiceway:row stack="later-${index}" state="drift" -->\n  <!-- /sluiceway:row -->`,
+      state: "someday",
+      text: `- later-${index} <!-- sluiceway:row stack="later-${index}" state="someday" -->\n  <!-- /sluiceway:row -->`,
     }));
     const base = input([pending("a"), pending("b")]);
     const body = renderBody({ ...base, rows: [...base.rows, ...later] });
@@ -302,7 +400,7 @@ describe("the picture", () => {
 
   test("a row of an unknown state with destroys does not turn the sign on", () => {
     const later = parseDashboard(
-      '- later <!-- sluiceway:row stack="later" state="drift" destroys="3" -->\n  <!-- /sluiceway:row -->',
+      '- later <!-- sluiceway:row stack="later" state="someday" destroys="3" -->\n  <!-- /sluiceway:row -->',
     ).rows;
     const base = input([pending("a")]);
     const body = renderBody({ ...base, rows: [...base.rows, ...later] });
@@ -808,7 +906,9 @@ describe("dashboard.personality: false", () => {
 
   test("no picture, no centering and no dots", () => {
     for (const [, body] of ALL_BODIES().filter(([, body]) => !body.personality))
-      expect(renderBody(body)).not.toMatch(/<picture>|<img|align=|<div|<p |🟡|🔵|🔴|🟢|⚪|&nbsp;/u);
+      expect(renderBody(body)).not.toMatch(
+        /<picture>|<img|align=|<div|<p |🟡|🟠|🔵|🔴|🟢|⚪|&nbsp;/u,
+      );
   });
 
   // The header is the picture, the two tags of the centered block and the
@@ -824,7 +924,7 @@ describe("dashboard.personality: false", () => {
       const undotted = on
         .filter((_, index) => ![1, 2, 5, voiced].includes(index))
         .map((text, index) =>
-          index === 1 ? text.replace(/(?:🟡|🔵|🔴|🟢|⚪)&nbsp;/gu, "") : text,
+          index === 1 ? text.replace(/(?:🟡|🟠|🔵|🔴|🟢|⚪)&nbsp;/gu, "") : text,
         );
       expect(off.filter((_, index) => index !== voiced - 3)).toEqual(undotted);
     }
@@ -899,8 +999,8 @@ describe("a row of a state this version does not know", () => {
   const later: ParsedRow = {
     known: false,
     stackId: "apps/later:prod",
-    state: "drift",
-    text: '- [x] **apps/later:prod** · drifted <!-- sluiceway:row stack="apps/later:prod" state="drift" -->\n  anything at all\n  <!-- /sluiceway:row -->',
+    state: "someday",
+    text: '- [x] **apps/later:prod** · someday <!-- sluiceway:row stack="apps/later:prod" state="someday" -->\n  anything at all\n  <!-- /sluiceway:row -->',
   };
 
   test("is placed at the end of the body, byte for byte, and left out of the counts", () => {
@@ -1145,7 +1245,7 @@ describe("the image urls in the snapshots", () => {
       readFileSync(join(import.meta.dir, "__snapshots__/body.test.ts.snap"), "utf8"),
     );
     const files = readdirSync(MASCOT).filter((name) => name.endsWith(".svg"));
-    expect(files).toHaveLength(62);
+    expect(files).toHaveLength(64);
     expect([...new Set(own.map((url) => url.split("/").at(-1) ?? ""))].sort()).toEqual(
       files.sort(),
     );

@@ -34,6 +34,7 @@ describe("reading a body", () => {
           destroys: 0,
           failed: false,
           shortened: 0,
+          drift: false,
           ticked: false,
           text: [
             '- [ ] **apps/grafana:prod** · `+2 ~1 -0` · [preview](run-url) <!-- sluiceway:row stack="apps/grafana:prod" state="pending" hash="3fa9c1e2aabbccdd" -->',
@@ -49,6 +50,7 @@ describe("reading a body", () => {
           destroys: 0,
           failed: false,
           shortened: 0,
+          drift: false,
           ticked: false,
           text: [
             '- **apps/loki:prod** · deploying · [run](run-url) <!-- sluiceway:row stack="apps/loki:prod" state="deploying" -->',
@@ -127,12 +129,29 @@ describe("reading a body", () => {
 describe("what a writer does not know", () => {
   test("a row with an unknown state is carried byte for byte and has no tick to act on", () => {
     const text = [
-      '- [x] **a:prod** · drifted · whatever comes later <!-- sluiceway:row stack="a:prod" state="drift" hash="00" drift="true" -->',
+      '- [x] **a:prod** · whatever comes later <!-- sluiceway:row stack="a:prod" state="someday" hash="00" -->',
       "  :ocean: a line this version never wrote",
       "  <!-- /sluiceway:row -->",
     ].join("\n");
     const rows = parseDashboard(`intro\n${text}\noutro\n`).rows;
-    expect(rows).toEqual([{ known: false, stackId: "a:prod", state: "drift", text }]);
+    expect(rows).toEqual([{ known: false, stackId: "a:prod", state: "someday", text }]);
+  });
+
+  // Record 0055: drift was the first state that arrived after v1 (record
+  // 0009), and it is known now.
+  test("a drift row is known, ticked, and says that its hash includes drift", () => {
+    const body = [
+      '- [x] **a:prod** · drift <!-- sluiceway:row stack="a:prod" state="drift" hash="00" drift="true" -->',
+      "  <!-- /sluiceway:row -->",
+      '- [ ] **b:prod** · pending <!-- sluiceway:row stack="b:prod" state="pending" hash="01" drift="true" -->',
+      "  <!-- /sluiceway:row -->",
+      '- [ ] **c:prod** · pending <!-- sluiceway:row stack="c:prod" state="pending" hash="02" drift="yes" -->',
+      "  <!-- /sluiceway:row -->",
+    ].join("\n");
+    const rows = parseDashboard(body).rows;
+    expect(rows[0]).toMatchObject({ known: true, state: "drift", ticked: true, drift: true });
+    expect(rows[1]).toMatchObject({ known: true, state: "pending", drift: true });
+    expect(rows[2]).toMatchObject({ known: true, state: "pending", drift: false });
   });
 
   test("unknown keys are ignored, and the order of keys does not matter", () => {

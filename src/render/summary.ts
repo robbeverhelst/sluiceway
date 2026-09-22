@@ -7,7 +7,16 @@ import type { Diff } from "../core/diff.ts";
 import { orderChanges } from "./changes.ts";
 import { PASTE_NOTE, unrelatedBlock, WHERE_FILES_BELONG } from "./check.ts";
 import { escapeText } from "./escape.ts";
-import { byCodeUnit, changeLine, counts, destroyWords, plural } from "./row.ts";
+import {
+  byCodeUnit,
+  changeLine,
+  counts,
+  destroyWords,
+  driftCounts,
+  driftLine,
+  plural,
+  sortedDrift,
+} from "./row.ts";
 
 // A merged pull request or a direct push that a stack claims since its last
 // successful deploy (record 0026). The core works them out and the glue hands
@@ -163,6 +172,14 @@ function diffParts(stack: DiffStack, level: SummaryLevel, options: SummaryOption
       );
     }
   }
+  // The drift the row also shows, in full at every level (record 0055).
+  const drift = sortedDrift(stack.diff);
+  if (drift.length > 0) {
+    parts.push(
+      `${driftCounts(drift)}:`,
+      drift.map((change) => `- ${driftLine(change)}`).join("\n"),
+    );
+  }
   const merges = stack.merges ?? [];
   if (merges.length > 0) {
     if (level >= 1) parts.push(`From ${mergeCounts(merges)}, not listed here.`);
@@ -275,7 +292,9 @@ export function renderSummary(stacks: SummaryStack[], options: SummaryOptions = 
   const sorted = [...stacks].sort((a, b) => byCodeUnit(stackIdOf(a), stackIdOf(b)));
   const diffs = sorted.filter((stack) => stack.kind === "diff");
   const pending = diffs.filter((stack) => stack.diff.changes.length > 0);
-  const inSync = diffs.filter((stack) => stack.diff.changes.length === 0);
+  const hasDrift = (stack: DiffStack) => (stack.diff.drift ?? []).length > 0;
+  const drifted = diffs.filter((stack) => stack.diff.changes.length === 0 && hasDrift(stack));
+  const inSync = diffs.filter((stack) => stack.diff.changes.length === 0 && !hasDrift(stack));
   const failed = sorted.filter((stack) => stack.kind === "preview-failed");
 
   const counted =
@@ -283,12 +302,25 @@ export function renderSummary(stacks: SummaryStack[], options: SummaryOptions = 
       ? "No stacks previewed."
       : `${plural(stacks.length, "stack")} previewed: ${[
           pending.length && `${pending.length} pending`,
+          drifted.length && `${drifted.length} drifted`,
           failed.length && `${failed.length} preview failed`,
           inSync.length && `${inSync.length} in sync`,
         ]
           .filter(Boolean)
           .join(", ")}.`;
   const tail: string[] = [];
+  // Drifted stacks (record 0055), in full: their rows link here.
+  if (drifted.length > 0) {
+    tail.push("### Drifted");
+    for (const stack of drifted) {
+      const drift = sortedDrift(stack.diff);
+      tail.push(
+        `#### ${anchorTag(stack.diff.stackId)}${escapeText(stack.diff.stackId)}`,
+        driftCounts(drift),
+        drift.map((change) => `- ${driftLine(change)}`).join("\n"),
+      );
+    }
+  }
   if (failed.length > 0) {
     tail.push("### Preview failed", failed.map((stack) => failedLine(stack, options)).join("\n"));
   }
@@ -309,6 +341,8 @@ export function renderSummary(stacks: SummaryStack[], options: SummaryOptions = 
   const index = [
     pending.length > 0 &&
       `- Pending: ${pending.map((stack) => indexLink(stack.diff.stackId)).join(" · ")}`,
+    drifted.length > 0 &&
+      `- Drifted: ${drifted.map((stack) => indexLink(stack.diff.stackId)).join(" · ")}`,
     failed.length > 0 &&
       `- Preview failed: ${failed.map((stack) => indexLink(stack.stackId)).join(" · ")}`,
   ].filter((line) => line !== false);

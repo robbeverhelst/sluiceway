@@ -13,6 +13,7 @@ function row(state: Known["state"], index = 0): Known {
     destroys: 0,
     failed: false,
     shortened: 0,
+    drift: false,
     ticked: false,
     text: "",
   };

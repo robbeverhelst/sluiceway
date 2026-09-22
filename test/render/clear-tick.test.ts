@@ -81,7 +81,7 @@ describe("clearing a tick", () => {
     expect(clearTick(deploying, { note: true })).toEqual(deploying);
 
     const [unknown] = parseDashboard(
-      '- [x] **a:prod** <!-- sluiceway:row stack="a:prod" state="drift" -->\n  <!-- /sluiceway:row -->',
+      '- [x] **a:prod** <!-- sluiceway:row stack="a:prod" state="someday" -->\n  <!-- /sluiceway:row -->',
     ).rows;
     expect(clearTick(unknown as ParsedRow, { note: true })).toEqual(unknown as ParsedRow);
   });

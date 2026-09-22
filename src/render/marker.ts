@@ -30,11 +30,19 @@ export function decodeMarkerValue(value: string): string {
 // new key, state or kind.
 export const MARKER_VERSION = 1;
 
-// The v1 row states. A row whose state is not one of these is carried through
-// byte for byte and never acted on.
-// `queued` is a deploying row whose record waits behind the stacks it depends
-// on (records 0009 and 0056).
-export const ROW_STATES = ["pending", "deploying", "in-sync", "preview-failed", "queued"] as const;
+// The row states. A row whose state is not one of these is carried through
+// byte for byte and never acted on. `queued` is a deploying row whose record
+// waits behind the stacks it depends on (records 0009 and 0056). `drift`
+// arrived with record 0055: nothing to deploy from the code, and drift found
+// in real infrastructure.
+export const ROW_STATES = [
+  "pending",
+  "deploying",
+  "in-sync",
+  "preview-failed",
+  "queued",
+  "drift",
+] as const;
 export type RowState = (typeof ROW_STATES)[number];
 
 // A queued stack is taken like a deploying one (record 0003), so it is placed
@@ -69,6 +77,9 @@ export interface RowFacts {
   // note under the scan line counts these, and a writer that carries a row
   // through cannot read its text.
   shortened?: number | undefined;
+  // The diff hash covers drift (records 0009 and 0055), so `apply` checks
+  // drift again before it compares, and a deploy puts the drift back.
+  drift?: boolean | undefined;
 }
 
 // A pull request the dashboard offers to merge and deploy (record 0054). One
@@ -113,6 +124,7 @@ export function rowMarker(facts: RowFacts): string {
   if (facts.destroys) pairs.push(["destroys", String(facts.destroys)]);
   if (facts.failed) pairs.push(["failed", "true"]);
   if (facts.shortened) pairs.push(["shortened", String(facts.shortened)]);
+  if (facts.drift) pairs.push(["drift", "true"]);
   return marker("row", pairs);
 }
 
@@ -147,6 +159,8 @@ export type ParsedRow =
       failed: boolean;
       // The level of a shortened row, 0 for a row in full.
       shortened: number;
+      // The hash covers drift (record 0055).
+      drift: boolean;
       ticked: boolean;
       text: string;
     }
@@ -252,6 +266,7 @@ export function parseDashboard(body: string): ParsedDashboard {
       destroys: count("destroys"),
       failed: pairs.get("failed") === "true",
       shortened: count("shortened"),
+      drift: pairs.get("drift") === "true",
       ticked: match[1] === "x" || match[1] === "X",
       text,
     });

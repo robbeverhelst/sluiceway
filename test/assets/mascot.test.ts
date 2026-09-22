@@ -4,15 +4,16 @@ import { join, resolve } from "node:path";
 import { HEADER_STATES } from "../../src/render/header-state.ts";
 import { MAX_CRATES } from "../../src/render/pending-crates.ts";
 
-// The file rules of records 0033, 0039, 0043 and 0047, checked in CI on every header
+// The file rules of records 0033, 0039, 0043, 0047 and 0055, checked in CI on every header
 // image. The cap forces clean, hand-made SVG and keeps the header instant on a
 // phone.
 
 const DIR = resolve(import.meta.dir, "../../assets/mascot");
 const MAX_BYTES = 10 * 1024;
 // Pending has one picture per crate count up to the maximum and one past it
-// (record 0047). Every other header state has one. There is no plain picture
-// any more (record 0043).
+// (record 0047). Every other header state has one, drift too: water seeping
+// through the closed gate (record 0055). There is no plain picture any more
+// (record 0043).
 const CRATES = [...Array.from({ length: MAX_CRATES }, (_, index) => index + 1), "more"];
 const STATE_PICTURES = HEADER_STATES.flatMap((state) =>
   state === "pending" ? CRATES.map((crates) => `pending-${crates}`) : [state],
@@ -108,7 +109,10 @@ describe("the check itself", () => {
 test("there is one light and one dark file for every picture, and no other image", () => {
   const images = readdirSync(DIR).filter((name) => !name.endsWith(".md"));
   expect(images.sort()).toEqual([...FILES].sort());
-  expect(FILES).toHaveLength(62);
+  // 17 pictures of 0047, the 14 with the destroy sign, and drift: 32 pairs.
+  expect(FILES).toHaveLength(64);
+  expect(FILES).toContain("drift-light.svg");
+  expect(FILES).toContain("drift-dark.svg");
 });
 
 test.each(FILES)("%s keeps the file rules", (name) => {

@@ -51,6 +51,21 @@ export interface PendingRow {
   pendingAgain?: { logUrl?: string | undefined } | undefined;
 }
 
+// A stack with nothing to deploy from its code and drift in real
+// infrastructure (record 0055). It has a box: a tick deploys the code as it
+// is, which puts the drift back. Its diff has no changes and holds the drift.
+export interface DriftRow {
+  state: "drift";
+  diff: Diff;
+  // The diff hash of `diff`, which covers the drift.
+  hash: string;
+  // The attempt of the run whose summary lists the drift (record 0044).
+  runUrl: string;
+  failure?: FailureLine | undefined;
+  orphanTick?: boolean | undefined;
+  ticked?: boolean | undefined;
+}
+
 // Written by `resolve` without a diff (record 0014), so it has no box, no
 // counts and no hash.
 export interface DeployingRow {
@@ -86,7 +101,7 @@ export interface InSyncRow {
   failure?: FailureLine | undefined;
 }
 
-export type Row = PendingRow | DeployingRow | PreviewFailedRow | InSyncRow;
+export type Row = PendingRow | DriftRow | DeployingRow | PreviewFailedRow | InSyncRow;
 
 // How much of its diff a pending row shows (records 0024 and 0028). Which row
 // gets which level is the size budget's decision.
@@ -251,6 +266,80 @@ export function destroyWords(deletes: number, replaces: number): string {
     .join(", ");
 }
 
+// Drift in Sluiceway's own words (record 0055). The op says what happened to
+// the real object outside the code: a property changed, or it is gone.
+const DRIFT_WORDS: Partial<Record<Change["op"], string>> = { update: "changed", delete: "gone" };
+
+export function driftWord(change: Change): string {
+  return DRIFT_WORDS[change.op] ?? change.op;
+}
+
+// `1 changed, 1 gone outside the code`, in a fixed order.
+export function driftCounts(drift: Change[]): string {
+  const of = (op: Change["op"]) => drift.filter((change) => change.op === op).length;
+  const parts = [of("update") && `${of("update")} changed`, of("delete") && `${of("delete")} gone`];
+  return `${parts.filter(Boolean).join(", ")} outside the code`;
+}
+
+// One drift change as one line: what happened as a key cap, the type, the
+// name in bold, then the paths the tool names. Never a value (record 0055).
+export function driftLine(change: Change, options: { row?: boolean } = {}): string {
+  const keys = sortedKeys(change.changedKeys);
+  const listed = options.row === true ? keys.slice(0, ROW_PATHS_PER_CHANGE) : keys;
+  const hidden = keys.length - listed.length;
+  const parts = [
+    `<kbd>${driftWord(change)}</kbd> <code>${escapeText(change.type)}</code> <b>${escapeText(change.name)}</b>`,
+  ];
+  if (listed.length > 0) {
+    const more = hidden > 0 ? `, and ${hidden} more` : "";
+    parts.push(
+      `${listed.map((key) => code(options.row ? shortPath(key) : key)).join(", ")}${more}`,
+    );
+  }
+  return parts.join(" · ");
+}
+
+export function sortedDrift(diff: Diff): Change[] {
+  return [...(diff.drift ?? [])].sort((a, b) => byCodeUnit(a.address, b.address));
+}
+
+// The drift of a row under its changes: a fold of every drift line, or one
+// line that points at the summary when the row is redacted or shortened.
+function driftLines(drift: Change[], summary: string, options: RowOptions): string[] {
+  if (drift.length === 0) return [];
+  const inside = plural(drift.length, "change");
+  if (options.redact) return [`Changes outside the code are listed in the ${summary}`];
+  if ((options.level ?? 0) >= 2) {
+    return [`${inside} outside the code not listed here, see the ${summary}`];
+  }
+  return [
+    `<details><summary>${inside} outside the code</summary>`,
+    ...drift.map((change) => `${driftLine(change, { row: true })}<br>`),
+    "</details>",
+  ];
+}
+
+function driftRow(row: DriftRow, options: RowOptions): string[] {
+  const level = options.level ?? 0;
+  const drift = sortedDrift(row.diff);
+  const summary = `[summary](${row.runUrl})`;
+  const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
+  const lines = [
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${driftCounts(drift)} · ${summary} ${rowMarker({
+      stackId: row.diff.stackId,
+      state: "drift",
+      hash: row.hash,
+      failed: row.failure !== undefined,
+      shortened: level >= 2 ? level : 0,
+      drift: true,
+    })}`,
+  ];
+  if (row.failure) lines.push(failureLine(row.failure));
+  if (row.orphanTick && !options.readOnly) lines.push(ORPHAN_TICK_NOTE);
+  lines.push(...driftLines(drift, summary, options));
+  return lines;
+}
+
 function pendingRow(row: PendingRow, options: RowOptions): string[] {
   const level = options.level ?? 0;
   const changes = [...row.diff.changes].sort((a, b) => byCodeUnit(a.address, b.address));
@@ -260,9 +349,13 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
   const destroys = deletes.length + replaces.length;
   const summary = `[summary](${row.runUrl})`;
   const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
+  // Drift the row also shows (record 0055). A resource that is gone outside
+  // the code is no destroy: a deploy creates it again.
+  const drift = sortedDrift(row.diff);
+  const driftCount = drift.length > 0 ? ` · ${driftCounts(drift)}` : "";
 
   const lines = [
-    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker(
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)}${driftCount} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker(
       {
         stackId: row.diff.stackId,
         state: "pending",
@@ -270,6 +363,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
         destroys,
         failed: row.failure !== undefined,
         shortened: level,
+        drift: drift.length > 0,
       },
     )}`,
   ];
@@ -293,6 +387,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
         `Changes ${options.redact ? "are listed in the" : "not listed here, see the"} ${summary}`,
       );
     }
+    lines.push(...driftLines(drift, summary, options));
     return lines;
   }
 
@@ -308,6 +403,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
       lines.push("</details>");
     }
   }
+  lines.push(...driftLines(drift, summary, options));
   return lines;
 }
 
@@ -359,6 +455,8 @@ function rowLines(row: Row, options: RowOptions): string[] {
   switch (row.state) {
     case "pending":
       return pendingRow(row, options);
+    case "drift":
+      return driftRow(row, options);
     case "deploying":
       return deployingRow(row);
     case "preview-failed":

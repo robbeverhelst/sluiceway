@@ -29,6 +29,14 @@ export const DRY: VoicedLines = {
 // calm. The rows that are not calm speak for themselves.
 export const NOTHING_TO_DEPLOY = "Nothing to deploy.";
 
+// The same with drifted rows on the page (record 0055): nothing waits from
+// the code, and a drifted row can still be deployed.
+export const NOTHING_FROM_THE_CODE = "Nothing to deploy from the code.";
+
+// Under the Drifted heading (record 0055).
+export const DRIFTED_LINE =
+  "Real infrastructure changed outside the code. Deploying a stack puts it back as its code says.";
+
 export const INSTRUCTION_LINE = "Tick a box to deploy that stack exactly as its row shows it.";
 
 // Under the heading of the updates waiting to merge (record 0054). Plain.

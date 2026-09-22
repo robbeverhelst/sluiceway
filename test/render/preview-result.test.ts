@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PreviewResult } from "../../src/adapters/adapter.ts";
-import { previewRow } from "../../src/render/preview-result.ts";
+import { previewOutcome, previewRow } from "../../src/render/preview-result.ts";
 import { renderRow } from "../../src/render/row.ts";
 
 const LINKS = {
@@ -48,5 +48,49 @@ describe("the links on a fresh row (record 0044)", () => {
     expect(renderRow(previewRow("network:dev", failed, LINKS)).split("\n")[0]).toContain(
       `· [run](${LINKS.log})`,
     );
+  });
+});
+
+// Record 0055: nothing to deploy from the code and drift found is a drift
+// row, with a hash over the drift and a link to the summary, which lists it.
+describe("a preview with drift", () => {
+  const gone = {
+    address: "local:index/file:File::notes",
+    type: "local:index/file:File",
+    name: "notes",
+    op: "delete" as const,
+    changedKeys: [],
+    replaceKeys: [],
+  };
+  const DRIFTED: PreviewResult = {
+    ok: true,
+    diff: { stackId: "network:dev", changes: [], drift: [gone] },
+    toolLog: "",
+  };
+
+  test("with no change is a drift row that links to the summary", () => {
+    const row = previewRow("network:dev", DRIFTED, LINKS, undefined, { pageUrl: "https://page" });
+    expect(row.state).toBe("drift");
+    expect(renderRow(row).split("\n")[0]).toContain(`[summary](${LINKS.summary})`);
+    expect(previewOutcome(DRIFTED)).toBe("drift");
+  });
+
+  test("with changes is a pending row that also shows the drift", () => {
+    if (!PENDING.ok) throw new Error("the fixture is a diff");
+    const both: PreviewResult = { ...PENDING, diff: { ...PENDING.diff, drift: [gone] } };
+    const row = previewRow("network:dev", both, LINKS);
+    expect(row.state).toBe("pending");
+    expect(renderRow(row).split("\n")[0]).toContain('drift="true"');
+    expect(previewOutcome(both)).toBe("pending, with drift");
+  });
+
+  test("an empty drift list is no drift", () => {
+    const none: PreviewResult = {
+      ok: true,
+      diff: { stackId: "network:dev", changes: [], drift: [] },
+      toolLog: "",
+    };
+    expect(previewRow("network:dev", none, LINKS).state).toBe("in-sync");
+    expect(previewOutcome(none)).toBe("in sync");
   });
 });

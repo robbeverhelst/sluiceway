@@ -36,7 +36,22 @@ export function previewRow(
       failure,
     };
   }
-  if (result.diff.changes.length === 0) return { state: "in-sync", stackId, failure };
+  const drifted = (result.diff.drift ?? []).length > 0;
+  if (result.diff.changes.length === 0) {
+    // Nothing to deploy from the code, and drift found (record 0055). The
+    // row links to the summary, which lists the drift. A preview page shows a
+    // pending diff only.
+    if (drifted) {
+      return {
+        state: "drift",
+        diff: result.diff,
+        hash: diffHash(result.diff),
+        runUrl: links.summary,
+        failure,
+      };
+    }
+    return { state: "in-sync", stackId, failure };
+  }
   return {
     state: "pending",
     diff: result.diff,
@@ -69,5 +84,7 @@ export function previewSummary(
 // The row state a preview result leads to, in the words of the counts line.
 export function previewOutcome(result: PreviewResult): string {
   if (!result.ok) return `preview failed, ${previewFailureText(result.reason)}`;
-  return result.diff.changes.length === 0 ? "in sync" : "pending";
+  const drifted = (result.diff.drift ?? []).length > 0;
+  if (result.diff.changes.length === 0) return drifted ? "drift" : "in sync";
+  return drifted ? "pending, with drift" : "pending";
 }

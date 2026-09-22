@@ -8,7 +8,7 @@ import {
   fitBody,
 } from "../../src/render/budget.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
-import type { PendingRow, Row, RowLevel } from "../../src/render/row.ts";
+import type { DriftRow, PendingRow, Row, RowLevel } from "../../src/render/row.ts";
 
 const REPO_URL = "https://github.com/example-org/infra";
 const RUN_URL = `${REPO_URL}/actions/runs/17034455121`;
@@ -394,5 +394,38 @@ describe("many paths on one change", () => {
     const fitted = fitBody(input(rows));
     expect(fitted).toMatchObject({ fits: true, shortened: 0 });
     expect(fitted.body.length).toBeLessThanOrEqual(BODY_TARGET);
+  });
+});
+
+// Record 0055: a drifted row can be as long as a pending one, so the budget
+// shortens it the same way, down to one line that points at the summary.
+describe("a drifted row", () => {
+  const drifted = (stackId: string, count: number): DriftRow => ({
+    state: "drift",
+    diff: {
+      stackId,
+      changes: [],
+      drift: Array.from({ length: count }, (_, index) => ({
+        address: `gone-${String(index).padStart(4, "0")}`,
+        type: "local:index/file:File",
+        name: `file-${String(index).padStart(4, "0")}`,
+        op: "delete" as const,
+        changedKeys: [],
+        replaceKeys: [],
+      })),
+    },
+    hash: "4be1a0c93d7e5f20",
+    runUrl: RUN_URL,
+  });
+
+  test("is shortened when the body is over its target, and keeps its box and its marker", () => {
+    const fitted = fitBody(
+      { ...FRAME, rows: [drifted("a:drift", 400)], carried: [] },
+      { target: 20_000 },
+    );
+    expect(fitted).toMatchObject({ fits: true, shortened: 1 });
+    const [row] = parseDashboard(fitted.body).rows;
+    expect(row).toMatchObject({ state: "drift", shortened: 2, drift: true });
+    expect(fitted.body).toContain("400 changes outside the code not listed here");
   });
 });

@@ -15,16 +15,35 @@ function row(state: Known["state"], facts: { destroys?: number; failed?: boolean
     destroys: facts.destroys ?? 0,
     failed: facts.failed ?? false,
     shortened: 0,
+    drift: false,
     ticked: false,
     text: "",
   };
 }
 
-const unknown: ParsedRow = { known: false, stackId: "later", state: "drift", text: "" };
+const unknown: ParsedRow = { known: false, stackId: "later", state: "someday", text: "" };
 
-describe("the five header states of records 0031 and 0043", () => {
+describe("the six header states of records 0031, 0043 and 0055", () => {
   test("they are listed in the order in which they win, and plain is gone", () => {
-    expect(HEADER_STATES).toEqual(["failing", "deploying", "pending", "first-run", "in-sync"]);
+    expect(HEADER_STATES).toEqual([
+      "failing",
+      "deploying",
+      "pending",
+      "drift",
+      "first-run",
+      "in-sync",
+    ]);
+  });
+
+  // Record 0055: the gate is closed and water seeps through. Pending wins,
+  // because the picture of drift is a picture of nothing waiting.
+  test("a drift row is drift, and a pending row wins over it", () => {
+    expect(headerState([row("in-sync"), row("drift")])).toBe("drift");
+    expect(headerState([row("drift"), row("pending")])).toBe("pending");
+  });
+
+  test("a pending row that also shows drift is pending", () => {
+    expect(headerState([{ ...row("pending"), drift: true }])).toBe("pending");
   });
 
   test("no rows at all is the first run", () => {
@@ -91,6 +110,10 @@ describe("precedence: bad news wins", () => {
     ["deploying", [row("deploying", { destroys: 1 }), row("pending", { destroys: 1 })]],
     ["pending", [row("pending"), row("in-sync")]],
     ["pending", [row("pending", { destroys: 3 }), row("in-sync")]],
+    ["pending", [row("pending"), row("drift"), row("in-sync")]],
+    ["deploying", [row("deploying"), row("drift")]],
+    ["failing", [row("drift", { failed: true }), row("in-sync")]],
+    ["drift", [row("drift"), row("in-sync")]],
     ["in-sync", [row("in-sync")]],
   ];
 

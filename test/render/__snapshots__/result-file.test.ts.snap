@@ -96,7 +96,8 @@ exports[`the JSON schema of the result file 1`] = `
                     "type": "string",
                     "enum": [
                       "pending",
-                      "in-sync"
+                      "in-sync",
+                      "drift"
                     ]
                   },
                   "counts": {
@@ -138,6 +139,79 @@ exports[`the JSON schema of the result file 1`] = `
                     "additionalProperties": false
                   },
                   "changes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "op": {
+                          "type": "string",
+                          "enum": [
+                            "create",
+                            "update",
+                            "replace",
+                            "delete",
+                            "none"
+                          ]
+                        },
+                        "tracking": {
+                          "type": "string",
+                          "enum": [
+                            "import",
+                            "forget",
+                            "move"
+                          ]
+                        },
+                        "changedKeys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "replaceKeys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "values": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "path": {
+                                "type": "string"
+                              },
+                              "old": {
+                                "type": "string"
+                              },
+                              "new": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "path"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name",
+                        "op",
+                        "changedKeys",
+                        "replaceKeys"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "drift": {
                     "type": "array",
                     "items": {
                       "type": "object",
@@ -343,7 +417,8 @@ exports[`the JSON schema of the result file 1`] = `
                       "type": "string",
                       "enum": [
                         "pending",
-                        "in-sync"
+                        "in-sync",
+                        "drift"
                       ]
                     },
                     "counts": {
@@ -385,6 +460,79 @@ exports[`the JSON schema of the result file 1`] = `
                       "additionalProperties": false
                     },
                     "changes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "op": {
+                            "type": "string",
+                            "enum": [
+                              "create",
+                              "update",
+                              "replace",
+                              "delete",
+                              "none"
+                            ]
+                          },
+                          "tracking": {
+                            "type": "string",
+                            "enum": [
+                              "import",
+                              "forget",
+                              "move"
+                            ]
+                          },
+                          "changedKeys": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "replaceKeys": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "path": {
+                                  "type": "string"
+                                },
+                                "old": {
+                                  "type": "string"
+                                },
+                                "new": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "path"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "name",
+                          "op",
+                          "changedKeys",
+                          "replaceKeys"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "drift": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -500,7 +648,8 @@ exports[`the JSON schema of the result file 1`] = `
                       "type": "string",
                       "enum": [
                         "pending",
-                        "in-sync"
+                        "in-sync",
+                        "drift"
                       ]
                     },
                     "counts": {
@@ -542,6 +691,79 @@ exports[`the JSON schema of the result file 1`] = `
                       "additionalProperties": false
                     },
                     "changes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "op": {
+                            "type": "string",
+                            "enum": [
+                              "create",
+                              "update",
+                              "replace",
+                              "delete",
+                              "none"
+                            ]
+                          },
+                          "tracking": {
+                            "type": "string",
+                            "enum": [
+                              "import",
+                              "forget",
+                              "move"
+                            ]
+                          },
+                          "changedKeys": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "replaceKeys": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "path": {
+                                  "type": "string"
+                                },
+                                "old": {
+                                  "type": "string"
+                                },
+                                "new": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "path"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "name",
+                          "op",
+                          "changedKeys",
+                          "replaceKeys"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "drift": {
                       "type": "array",
                       "items": {
                         "type": "object",
