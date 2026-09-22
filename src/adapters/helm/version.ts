@@ -1,6 +1,6 @@
 import type { Stack } from "../../core/stack.ts";
 import { type ToolContext, ToolVersionError } from "../adapter.ts";
-import { stripAnsi } from "../pulumi/tool-log.ts";
+import { stripAnsi } from "../tool-run.ts";
 import { pluginVersionCommand, versionCommand } from "./commands.ts";
 import { helmEnvironment } from "./environment.ts";
 

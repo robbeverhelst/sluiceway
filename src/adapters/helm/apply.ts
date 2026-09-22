@@ -2,8 +2,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { type Stack, stackId } from "../../core/stack.ts";
 import type { ApplyOptions, ApplyResult, SavedPlan, ToolContext } from "../adapter.ts";
-import type { RunResult } from "../process.ts";
-import { stripAnsi } from "../pulumi/tool-log.ts";
+import { type DeployRun, runDeploy, stripAnsi } from "../tool-run.ts";
 import { deployCommand, metadataCommand, renderCommand, versionCommand } from "./commands.ts";
 import { helmEnvironment, optionsOf } from "./environment.ts";
 import { RenderedManifests } from "./rendered.ts";
@@ -36,52 +35,47 @@ export async function apply(
   }
   const helm = optionsOf(stack);
   const run = (argv: string[]) =>
-    context.run({
+    runDeploy(context.run, {
       argv,
       cwd: join(context.root, stack.path),
       env: helmEnvironment(context.env),
     });
-  const failed = (result: RunResult, toolLog: string): ApplyResult => ({
+  const failed = (result: DeployRun, toolLog: string): ApplyResult => ({
     ok: false,
-    reason: {
-      kind: "tool-error",
-      exitCode: result.status === "exited" ? result.exitCode : null,
-    },
+    // A run that ended well and still stops the deploy is a tool error with
+    // its exit code, 0.
+    reason: result.ok ? { kind: "tool-error", exitCode: 0 } : result.reason,
     toolLog,
   });
-  const done = (result: RunResult): result is Extract<RunResult, { status: "exited" }> =>
-    result.status === "exited" && result.exitCode === 0;
 
   const rendered = await run(renderCommand(helm));
-  if (rendered.status === "not-started") return failed(rendered, "");
   // Never stdout: it is every manifest, values and all.
   let toolLog = stripAnsi(rendered.stderr);
-  if (!done(rendered)) return failed(rendered, toolLog);
+  if (!rendered.ok) return failed(rendered, toolLog);
   if (!plan.matches(rendered.stdout)) {
     return { ok: false, reason: { kind: "moved" }, toolLog };
   }
 
   const version = await run(versionCommand());
-  if (version.status !== "not-started") toolLog += stripAnsi(version.stderr);
-  const major = done(version) ? readVersion(version.stdout)?.numbers[0] : undefined;
+  toolLog += stripAnsi(version.stderr);
+  const major = version.ok ? readVersion(version.stdout)?.numbers[0] : undefined;
   if (major === undefined) {
-    return failed(version, toolLog + (done(version) ? stripAnsi(version.stdout) : ""));
+    return failed(version, toolLog + (version.ok ? stripAnsi(version.stdout) : ""));
   }
 
   let forceConflicts = false;
   if (options?.repairDrift === true && major >= 4) {
     const metadata = await run(metadataCommand(helm));
-    if (metadata.status !== "not-started") toolLog += stripAnsi(metadata.stderr);
-    if (!done(metadata)) return failed(metadata, toolLog);
+    toolLog += stripAnsi(metadata.stderr);
+    if (!metadata.ok) return failed(metadata, toolLog);
     forceConflicts = appliedServerSide(metadata.stdout);
   }
 
   const deployed = await run(deployCommand(helm, { major, forceConflicts }));
-  if (deployed.status === "not-started") return failed(deployed, toolLog);
   // What `helm upgrade` prints is the release's name, namespace, status and
   // revision. The chart's notes are hidden, because they can print a value.
   toolLog += stripAnsi(deployed.stdout + deployed.stderr);
-  return done(deployed) ? { ok: true, toolLog } : failed(deployed, toolLog);
+  return deployed.ok ? { ok: true, toolLog } : failed(deployed, toolLog);
 }
 
 // Helm 4 writes "ssa" for a release it applies server-side, and "csa", or

@@ -1,10 +1,9 @@
 import { join } from "node:path";
 import type { Stack } from "../../core/stack.ts";
 import type { Preparation } from "../adapter.ts";
-import { stripAnsi } from "../pulumi/tool-log.ts";
+import { runTool, stripAnsi } from "../tool-run.ts";
 import { dependencyCommand } from "./commands.ts";
 import { helmEnvironment, optionsOf } from "./environment.ts";
-import { failureOf } from "./preview.ts";
 
 // A local chart with dependencies needs them in its charts/ directory before
 // helm can render it (helm docs, "helm dependency build"). The build writes
@@ -29,17 +28,15 @@ export function prepare(stacks: Stack[]): Preparation[] {
       title: chartDir,
       stacks: grouped,
       run: async (context) => {
-        const result = await context.run({
+        const result = await runTool(context.run, {
           argv: dependencyCommand(),
           cwd: join(context.root, chartDir),
           env: helmEnvironment(context.env),
-          timeoutMs: context.timeoutMinutes * 60_000,
+          timeoutMinutes: context.timeoutMinutes,
         });
         // What the build prints names charts and repositories, and no value.
-        const toolLog =
-          result.status === "not-started" ? "" : stripAnsi(result.stdout + result.stderr);
-        const reason = failureOf(result, context.timeoutMinutes);
-        return reason === undefined ? { ok: true, toolLog } : { ok: false, reason, toolLog };
+        const toolLog = stripAnsi(result.stdout + result.stderr);
+        return result.ok ? { ok: true, toolLog } : { ok: false, reason: result.reason, toolLog };
       },
     }));
 }

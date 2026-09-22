@@ -4,11 +4,10 @@ import type { PreviewFailureReason } from "../../core/failure-reason.ts";
 import type { Stack } from "../../core/stack.ts";
 import type { DriftResult, PreviewOptions } from "../adapter.ts";
 import type { Folded } from "../folded.ts";
-import { stripAnsi } from "../pulumi/tool-log.ts";
+import { runTool, stripAnsi } from "../tool-run.ts";
 import { diffCommand, threeWayDiffCommand } from "./commands.ts";
 import { helmEnvironment, optionsOf } from "./environment.ts";
 import { addressOf, foldEntries } from "./fold.ts";
-import { failureOf } from "./preview.ts";
 import { type Entry, parseEntries } from "./schema.ts";
 
 // The drift check of a Helm stack (record 0069). The preview's diff compares
@@ -34,11 +33,11 @@ import { type Entry, parseEntries } from "./schema.ts";
 export async function detectDrift(stack: Stack, options: PreviewOptions): Promise<DriftResult> {
   const helm = optionsOf(stack);
   const run = (argv: string[]) =>
-    options.run({
+    runTool(options.run, {
       argv,
       cwd: join(options.root, stack.path),
       env: helmEnvironment(options.env),
-      timeoutMs: options.timeoutMinutes * 60_000,
+      timeoutMinutes: options.timeoutMinutes,
     });
   const failed = (
     reason: PreviewFailureReason,
@@ -52,10 +51,8 @@ export async function detectDrift(stack: Stack, options: PreviewOptions): Promis
     const result = await run(argv);
     // Never stdout: it holds the old and new value of every changed field,
     // the live ones included (record 0021).
-    if (result.status !== "not-started") words += stripAnsi(result.stderr);
-    const failure = failureOf(result, options.timeoutMinutes);
-    if (failure !== undefined) return failed(failure, words);
-    if (result.status !== "exited") return failed({ kind: "tool-error", exitCode: null }, words);
+    words += stripAnsi(result.stderr);
+    if (!result.ok) return failed(result.reason, words);
     outputs.push(result.stdout);
   }
 
