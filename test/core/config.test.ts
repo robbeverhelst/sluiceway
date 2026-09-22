@@ -18,6 +18,7 @@ const DEFAULTS: Config = {
   ignore: [],
   scan: { unrelated: [], logDiff: false },
   drift: { enabled: false },
+  phases: [],
   stacks: [],
   mergeAndDeploy: { authors: [] },
 };
@@ -58,6 +59,7 @@ scan:
     - "**/*.md"
 drift:
   enabled: true
+phases: [infrastructure, applications]
 `);
     expect(config).toEqual({
       dashboard: {
@@ -75,6 +77,7 @@ drift:
       ignore: ["**/*:dev"],
       scan: { unrelated: ["**/*.md"], logDiff: false },
       drift: { enabled: true },
+      phases: ["infrastructure", "applications"],
       stacks: [],
       mergeAndDeploy: { authors: [] },
     });
@@ -95,7 +98,7 @@ function problems(text: string): string[] {
 describe("unknown keys", () => {
   test("a typo at the top level is an error that lists the known keys", () => {
     expect(problems("tickerz: admin\n")).toEqual([
-      'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, stacks, mergeAndDeploy.',
+      'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, phases, stacks, mergeAndDeploy.',
     ]);
   });
 });
@@ -311,8 +314,8 @@ stacks:
 
   test("the brief's old keys are unknown keys", () => {
     expect(problems("stacks:\n  - path: a\n    stack: prod\n    approvers: write\n")).toEqual([
-      'stacks[0]: unknown key "stack". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, dependsOn, drift, options.',
-      'stacks[0]: unknown key "approvers". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, dependsOn, drift, options.',
+      'stacks[0]: unknown key "stack". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, dependsOn, phase, drift, options.',
+      'stacks[0]: unknown key "approvers". Known keys here: path, name, tool, environment, tickers, inputs, previewTimeout, dependsOn, phase, drift, options.',
     ]);
   });
 
@@ -406,7 +409,7 @@ describe("a file that is not a mapping", () => {
 describe("the error", () => {
   test("names the file and lists every problem", () => {
     expect(() => parseConfig("tickerz: admin\ndashboard:\n  pin: 1\n")).toThrow(
-      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, stacks, mergeAndDeploy.\n- dashboard.pin: expected true or false, got 1.',
+      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, phases, stacks, mergeAndDeploy.\n- dashboard.pin: expected true or false, got 1.',
     );
   });
 });

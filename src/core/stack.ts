@@ -6,6 +6,10 @@ export interface Stack {
   path: string;
   name?: string;
   options: Record<string, unknown>;
+  // The text of each key of the tool's own file that a `phase: { from }`
+  // entry points at, when the file holds it as text (record 0067). Nothing
+  // else of the file leaves discovery.
+  phaseKeys?: Readonly<Record<string, string>>;
 }
 
 // The stack id is derived, never chosen. Nothing splits it back apart: the

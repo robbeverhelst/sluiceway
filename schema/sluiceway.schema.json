@@ -151,6 +151,16 @@
       },
       "additionalProperties": false
     },
+    "phases": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      },
+      "description": "Names of the phases stacks deploy in, in order. A stack in a phase depends on every stack in every earlier phase."
+    },
     "stacks": {
       "type": "array",
       "items": {
@@ -230,6 +240,30 @@
               }
             ],
             "description": "Stack ids of the stacks this stack depends on, or auto to read them from the program's stack references at each preview. A tick on this stack is refused while one of them has a change waiting, and when both are ticked they deploy in order."
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A key of the project file whose text is the phase, under config or at the top level."
+                  }
+                },
+                "required": [
+                  "from"
+                ],
+                "additionalProperties": false
+              }
+            ],
+            "description": "The phase of these stacks, one of phases, or from: a key of the project file that names it. A stack in a phase depends on every stack in every earlier phase."
           },
           "drift": {
             "type": "object",

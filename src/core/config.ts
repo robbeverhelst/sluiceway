@@ -2,6 +2,7 @@ import { LineCounter, parseDocument } from "yaml";
 import { z } from "zod";
 import { knownStacks } from "./discovery.ts";
 import { globMatcher } from "./glob.ts";
+import { PHASE_NAME, phaseDependencies, throughPhase } from "./phases.ts";
 import { showValuesEntryProblem } from "./show-values.ts";
 import { type Stack, stackId } from "./stack.ts";
 
@@ -43,6 +44,10 @@ const ignoreEntry = z.union([
     reason: text.describe("Why these stacks are left out. Shown on the dashboard under In sync."),
   }),
 ]);
+
+// A phase (record 0067). A plain word, so it reads the same wherever it is
+// named.
+const phaseName = text.regex(PHASE_NAME);
 
 // A person typed this path. It leaves here in the form a stack id uses (record
 // 0006): forward slashes, no leading "./", no trailing slash. The repo root
@@ -103,6 +108,21 @@ const stackEntry = z
         "Stack ids of the stacks this stack depends on, or auto to read them from the program's stack references at each preview. A tick on this stack is refused while one of them has a change waiting, and when both are ticked they deploy in order.",
       )
       .exactOptional(),
+    // The phase of these stacks (record 0067), or the key of the tool's own
+    // file that names it.
+    phase: z
+      .union([
+        phaseName,
+        z.strictObject({
+          from: text.describe(
+            "A key of the project file whose text is the phase, under config or at the top level.",
+          ),
+        }),
+      ])
+      .describe(
+        "The phase of these stacks, one of phases, or from: a key of the project file that names it. A stack in a phase depends on every stack in every earlier phase.",
+      )
+      .exactOptional(),
     // The drift check of these stacks, like the top level (record 0059).
     drift: z
       .strictObject({
@@ -154,117 +174,146 @@ const stackEntries = z.array(stackEntry).superRefine((entries, context) => {
 // (record 0062).
 export const RECENTLY_DEPLOYED_MAX = 50;
 
-export const configSchema = z.strictObject({
-  dashboard: z
-    .strictObject({
-      title: text.describe("Title of the dashboard issue.").default("Sluiceway dashboard"),
-      label: text.describe("Label the dashboard issue is found by.").default("sluiceway"),
-      pin: z.boolean().describe("Pin the dashboard issue, best effort.").default(true),
-      redact: z
-        .boolean()
-        .describe(
-          "Keep resource types, resource names and property names out of the issue. The summary stays full. Not access control.",
-        )
-        .default(false),
-      personality: z
-        .boolean()
-        .describe("Show the header image and use the voice. false removes both.")
-        .default(true),
-      // Slice 2.17: for a workflow with no `resolve` job, where a box would
-      // do nothing (onboarding log, hurdle 16).
-      readOnly: z
-        .boolean()
-        .describe(
-          "Draw no boxes: pending rows have none, there is no rescan box, and a line under the Pending heading says so. For a workflow that only scans.",
-        )
-        .default(false),
-      // Slice 2.19: the one list that lets a value reach the issue (record
-      // 0052). Empty by default.
-      showValues: z
-        .array(
-          text.superRefine((entry, context) => {
-            const problem = showValuesEntryProblem(entry);
-            if (problem !== undefined) context.addIssue({ code: "custom", message: problem });
-          }),
-        )
-        .describe(
-          'Property paths whose old and new value may appear on the dashboard, as "old → new". Exact paths, or "*" for part of one name. Never a value the tool marks secret, and none at all with redact on.',
-        )
-        .default([]),
-      // Slice 4.11 (record 0062). At most 50, so the list stays a small part
-      // of the size budget and inside the page of records a writer reads.
-      recentlyDeployed: z
-        .int()
-        .min(0)
-        .max(RECENTLY_DEPLOYED_MAX)
-        .describe(
-          "How many deploys the Recently deployed list shows, newest first, failed ones included. 0 leaves the list out.",
-        )
-        .default(10),
-    })
-    .prefault({}),
-  tickers: tickers
-    .describe(
-      "Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.",
-    )
-    .default("write"),
-  // One reviewed line that stops every deploy (record 0051).
-  deploys: z
-    .boolean()
-    .describe(
-      "false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.",
-    )
-    .default(true),
-  ignore: z
-    .array(ignoreEntry)
-    .describe(
-      "Globs matched against the stack id. An ignored stack has no row. An entry with a reason is listed with it under In sync.",
-    )
-    .default([]),
-  scan: z
-    .strictObject({
-      unrelated: globs
-        .describe("Globs for files that claim nothing and force nothing, such as **/*.md.")
-        .default([]),
-      // The one setting that lets a value reach the job log (record 0048).
-      logDiff: z
-        .boolean()
-        .describe(
-          "Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else. Anyone who can read the repo can read its job logs. Costs one more tool run per pending stack.",
-        )
-        .default(false),
-    })
-    .prefault({}),
-  // The drift check (record 0055). When it runs is the workflow's business:
-  // every scan that a schedule starts checks drift, and so does a dispatch
-  // that a person started.
-  drift: z
-    .strictObject({
-      enabled: z
-        .boolean()
-        .describe(
-          "Check every stack for drift in each scan that a schedule starts, or that a person starts with Run workflow: changes made to real infrastructure outside the code. A stack with drift gets a row with a box, and a tick deploys the code as it is, which puts it back. Costs one more tool run per stack in those scans.",
-        )
-        .default(false),
-    })
-    .prefault({}),
-  stacks: stackEntries
-    .describe("Settings for stacks that discovery found. An entry never creates a stack.")
-    .default([]),
-  // Slice 4.2 (record 0054): one tick merges a routine pull request and
-  // deploys its stack. Off while the list is empty.
-  mergeAndDeploy: z
-    .strictObject({
-      authors: z
-        .array(author)
-        .transform((logins) => [...new Set(logins)])
-        .describe(
-          "Logins whose open pull requests may be merged and deployed with one tick, such as renovate[bot]. Empty turns it off.",
-        )
-        .default([]),
-    })
-    .prefault({}),
-});
+export const configSchema = z
+  .strictObject({
+    dashboard: z
+      .strictObject({
+        title: text.describe("Title of the dashboard issue.").default("Sluiceway dashboard"),
+        label: text.describe("Label the dashboard issue is found by.").default("sluiceway"),
+        pin: z.boolean().describe("Pin the dashboard issue, best effort.").default(true),
+        redact: z
+          .boolean()
+          .describe(
+            "Keep resource types, resource names and property names out of the issue. The summary stays full. Not access control.",
+          )
+          .default(false),
+        personality: z
+          .boolean()
+          .describe("Show the header image and use the voice. false removes both.")
+          .default(true),
+        // Slice 2.17: for a workflow with no `resolve` job, where a box would
+        // do nothing (onboarding log, hurdle 16).
+        readOnly: z
+          .boolean()
+          .describe(
+            "Draw no boxes: pending rows have none, there is no rescan box, and a line under the Pending heading says so. For a workflow that only scans.",
+          )
+          .default(false),
+        // Slice 2.19: the one list that lets a value reach the issue (record
+        // 0052). Empty by default.
+        showValues: z
+          .array(
+            text.superRefine((entry, context) => {
+              const problem = showValuesEntryProblem(entry);
+              if (problem !== undefined) context.addIssue({ code: "custom", message: problem });
+            }),
+          )
+          .describe(
+            'Property paths whose old and new value may appear on the dashboard, as "old → new". Exact paths, or "*" for part of one name. Never a value the tool marks secret, and none at all with redact on.',
+          )
+          .default([]),
+        // Slice 4.11 (record 0062). At most 50, so the list stays a small part
+        // of the size budget and inside the page of records a writer reads.
+        recentlyDeployed: z
+          .int()
+          .min(0)
+          .max(RECENTLY_DEPLOYED_MAX)
+          .describe(
+            "How many deploys the Recently deployed list shows, newest first, failed ones included. 0 leaves the list out.",
+          )
+          .default(10),
+      })
+      .prefault({}),
+    tickers: tickers
+      .describe(
+        "Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.",
+      )
+      .default("write"),
+    // One reviewed line that stops every deploy (record 0051).
+    deploys: z
+      .boolean()
+      .describe(
+        "false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.",
+      )
+      .default(true),
+    ignore: z
+      .array(ignoreEntry)
+      .describe(
+        "Globs matched against the stack id. An ignored stack has no row. An entry with a reason is listed with it under In sync.",
+      )
+      .default([]),
+    scan: z
+      .strictObject({
+        unrelated: globs
+          .describe("Globs for files that claim nothing and force nothing, such as **/*.md.")
+          .default([]),
+        // The one setting that lets a value reach the job log (record 0048).
+        logDiff: z
+          .boolean()
+          .describe(
+            "Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else. Anyone who can read the repo can read its job logs. Costs one more tool run per pending stack.",
+          )
+          .default(false),
+      })
+      .prefault({}),
+    // The drift check (record 0055). When it runs is the workflow's business:
+    // every scan that a schedule starts checks drift, and so does a dispatch
+    // that a person started.
+    drift: z
+      .strictObject({
+        enabled: z
+          .boolean()
+          .describe(
+            "Check every stack for drift in each scan that a schedule starts, or that a person starts with Run workflow: changes made to real infrastructure outside the code. A stack with drift gets a row with a box, and a tick deploys the code as it is, which puts it back. Costs one more tool run per stack in those scans.",
+          )
+          .default(false),
+      })
+      .prefault({}),
+    // Slice 4.16 (record 0067): deploys in phases, in the order listed.
+    phases: z
+      .array(phaseName)
+      .describe(
+        "Names of the phases stacks deploy in, in order. A stack in a phase depends on every stack in every earlier phase.",
+      )
+      .default([]),
+    stacks: stackEntries
+      .describe("Settings for stacks that discovery found. An entry never creates a stack.")
+      .default([]),
+    // Slice 4.2 (record 0054): one tick merges a routine pull request and
+    // deploys its stack. Off while the list is empty.
+    mergeAndDeploy: z
+      .strictObject({
+        authors: z
+          .array(author)
+          .transform((logins) => [...new Set(logins)])
+          .describe(
+            "Logins whose open pull requests may be merged and deployed with one tick, such as renovate[bot]. Empty turns it off.",
+          )
+          .default([]),
+      })
+      .prefault({}),
+  })
+  .superRefine((config, context) => {
+    const refuse = (path: PropertyKey[], message: string) =>
+      context.addIssue({ code: "custom", path, message });
+    config.phases.forEach((phase, index) => {
+      const first = config.phases.indexOf(phase);
+      if (first !== index)
+        refuse(
+          ["phases", index],
+          `${show(phase)} is already phases[${first}]. Each phase is named once.`,
+        );
+    });
+    config.stacks.forEach((entry, index) => {
+      if (typeof entry.phase !== "string" || config.phases.includes(entry.phase)) return;
+      refuse(
+        ["stacks", index, "phase"],
+        config.phases.length === 0
+          ? `${show(entry.phase)} is not one of the phases, and sluiceway.yaml has no phases. List them in order at the top: phases: [first, second].`
+          : `${show(entry.phase)} is not one of the phases. The phases are: ${config.phases.join(", ")}.`,
+      );
+    });
+  });
 
 export type Config = z.output<typeof configSchema>;
 
@@ -379,6 +428,14 @@ function describe(issue: Issue, raw: unknown): Problem[] {
       describe({ ...inner, path: [...issue.path, ...inner.path] }, raw),
     );
   }
+  if (issue.code === "invalid_union" && key === "phase") {
+    if (!isMapping(value)) {
+      return problem(`expected a phase name, or a mapping with from, got ${show(value)}.`);
+    }
+    return (issue.errors[1] ?? []).flatMap((inner) =>
+      describe({ ...inner, path: [...issue.path, ...inner.path] }, raw),
+    );
+  }
   if (issue.code === "invalid_type" && key === "drift" && issue.path[0] === "stacks") {
     return problem(
       `expected a mapping, got ${show(value)}. Write it as the top level has it: drift: { enabled: ${typeof value === "boolean" ? value : true} }.`,
@@ -394,6 +451,9 @@ function describe(issue: Issue, raw: unknown): Problem[] {
     return (issue.errors[1] ?? []).flatMap((inner) =>
       describe({ ...inner, path: [...issue.path, ...inner.path] }, raw),
     );
+  }
+  if (issue.code === "invalid_format" && (issue.path[0] === "phases" || key === "phase")) {
+    return problem(`${show(value)} is not a phase name. Use letters, digits, ".", "_" and "-".`);
   }
   if (issue.code === "invalid_format" && issue.path[0] === "mergeAndDeploy") {
     return problem(
@@ -564,6 +624,11 @@ export interface ConfiguredStack {
   // `dependsOn: auto` (record 0059): the stacks its program's stack
   // references name are read at each preview, and ride on its row.
   dependsOnAuto?: true;
+  // Its phase (record 0067). Absent when it is in none. `dependsOn` then
+  // holds every stack of every earlier phase as well.
+  phase?: string;
+  // The key of the tool's own file the phase was read from, when it was.
+  phaseFrom?: string;
   // `drift.enabled` of its stack entries (record 0059). Absent when no entry
   // sets it, and the top level decides.
   drift?: boolean;
@@ -585,15 +650,19 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
     return [`stacks[${index}]: ${describeMiss(entry, inPath, ignored)}`];
   });
   if (problems.length > 0) throw new ConfigError(problems);
-  const dependencyProblems = checkDependsOn(config, found, stacks);
+  const phases = phasesOf(config, stacks);
+  if (phases.problems.length > 0) throw new ConfigError(phases.problems);
+  const dependencyProblems = checkDependsOn(config, found, stacks, phases.phaseOf);
   if (dependencyProblems.length > 0) throw new ConfigError(dependencyProblems);
+  const derived = phaseDependencies(config.phases, phases.phaseOf);
 
   return stacks.map((stack) => {
-    const entries = config.stacks
-      .filter((entry) => covers(entry, stack))
-      .sort((a, b) => Number(a.name !== undefined) - Number(b.name !== undefined));
+    const entries = entriesOf(config, stack);
+    const id = stackId(stack);
     const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
     const drift = entries.findLast((entry) => entry.drift)?.drift?.enabled;
+    const phase = phases.phaseOf.get(id);
+    const from = phases.from.get(id);
     return {
       stack,
       environment:
@@ -601,7 +670,9 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
       tickers: entries.findLast((entry) => entry.tickers)?.tickers ?? config.tickers,
       inputs: [...new Set(entries.flatMap((entry) => entry.inputs ?? []))],
       ...(previewTimeout === undefined ? {} : { previewTimeout }),
-      ...dependsOnOf(entries),
+      ...dependsOnOf(entries, derived.get(id)),
+      ...(phase === undefined ? {} : { phase }),
+      ...(from === undefined ? {} : { phaseFrom: from }),
       ...(entries.some((entry) => entry.dependsOn === DEPENDS_ON_AUTO)
         ? { dependsOnAuto: true as const }
         : {}),
@@ -610,10 +681,63 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
   });
 }
 
-// Like inputs, dependencies only ever add up.
-function dependsOnOf(entries: StackEntry[]): { dependsOn?: string[] } {
-  const ids = [...new Set(entries.flatMap((entry) => listed(entry.dependsOn)))].sort(byCodeUnit);
+// The entries that cover a stack, the ones without a name first, so the
+// last one that sets a key wins.
+function entriesOf(config: Config, stack: Stack): StackEntry[] {
+  return config.stacks
+    .filter((entry) => covers(entry, stack))
+    .sort((a, b) => Number(a.name !== undefined) - Number(b.name !== undefined));
+}
+
+// Like inputs, dependencies only ever add up, and a phase adds every stack of
+// every earlier phase (record 0067).
+function dependsOnOf(
+  entries: StackEntry[],
+  fromPhases: readonly string[] = [],
+): { dependsOn?: string[] } {
+  const ids = [
+    ...new Set([...entries.flatMap((entry) => listed(entry.dependsOn)), ...fromPhases]),
+  ].sort(byCodeUnit);
   return ids.length === 0 ? {} : { dependsOn: ids };
+}
+
+// The phase of every stack in one (record 0067): the entry with a name wins
+// over one without, as for environment. With `from`, the phase is the text
+// discovery read under that key of the stack's own file. Its value is not
+// quoted back when it names no phase: it is a value of the tool's file.
+function phasesOf(
+  config: Config,
+  stacks: Stack[],
+): { phaseOf: Map<string, string>; from: Map<string, string>; problems: string[] } {
+  const phaseOf = new Map<string, string>();
+  const from = new Map<string, string>();
+  const problems: string[] = [];
+  const known = config.phases.join(", ");
+  for (const stack of stacks) {
+    const entry = entriesOf(config, stack).findLast((one) => one.phase !== undefined);
+    if (entry?.phase === undefined) continue;
+    const id = stackId(stack);
+    if (typeof entry.phase === "string") {
+      phaseOf.set(id, entry.phase);
+      continue;
+    }
+    const at = `stacks[${config.stacks.indexOf(entry)}].phase`;
+    const key = entry.phase.from;
+    const read = stack.phaseKeys?.[key];
+    if (read === undefined) {
+      problems.push(
+        `${at}: ${id} has no text under ${key} in its project file, under config or at the top level. Add it there, or name the phase here.`,
+      );
+    } else if (!config.phases.includes(read)) {
+      problems.push(
+        `${at}: the text under ${key} in the project file of ${id} is not one of the phases. The phases are: ${known === "" ? "none, sluiceway.yaml has no phases" : known}.`,
+      );
+    } else {
+      phaseOf.set(id, read);
+      from.set(id, key);
+    }
+  }
+  return { phaseOf, from, problems: [...new Set(problems)] };
 }
 
 // The stack ids an entry names. `auto` names none in the file.
@@ -628,7 +752,12 @@ function byCodeUnit(a: string, b: string): number {
 // A dependency that could never hold anything back is an error, never a gate
 // that stays silent (record 0056): a stack that discovery did not find, one
 // that ignore leaves out, the stack itself, and a circle.
-function checkDependsOn(config: Config, found: Stack[], stacks: Stack[]): string[] {
+function checkDependsOn(
+  config: Config,
+  found: Stack[],
+  stacks: Stack[],
+  phaseOf: ReadonlyMap<string, string>,
+): string[] {
   const known = new Set(stacks.map(stackId));
   const all = new Set(found.map(stackId));
   const problems = config.stacks.flatMap((entry, index) =>
@@ -649,24 +778,55 @@ function checkDependsOn(config: Config, found: Stack[], stacks: Stack[]): string
       const self = stacks.find((stack) => stackId(stack) === id);
       if (self && covers(entry, self))
         return [`${where} is the stack itself. A stack cannot depend on itself.`];
+      // A stack of a later phase already waits on this one (record 0067).
+      const earlier = stacks
+        .filter((stack) => covers(entry, stack))
+        .map(stackId)
+        .sort(byCodeUnit)
+        .find((one) => throughPhase(config.phases, phaseOf, id, one));
+      if (earlier !== undefined)
+        return [
+          `${where} is in the ${phaseOf.get(id)} phase, which comes after the ${phaseOf.get(earlier)} phase of ${earlier}. ${id} already waits on every stack of the ${phaseOf.get(earlier)} phase, so take this out, or move one of them to another phase.`,
+        ];
       return [];
     }),
   );
   if (problems.length > 0) return problems;
 
+  // A phase is a node of its own, so a circle through one names the phase
+  // and not every stack in it (record 0067).
   const edges = new Map<string, string[]>();
   for (const stack of stacks) {
-    const entries = config.stacks.filter((entry) => covers(entry, stack));
-    edges.set(stackId(stack), dependsOnOf(entries).dependsOn ?? []);
+    const id = stackId(stack);
+    const at = config.phases.indexOf(phaseOf.get(id) ?? "");
+    const earlierPhases = at === -1 ? [] : config.phases.slice(0, at).map(phaseNode);
+    edges.set(id, [...(dependsOnOf(entriesOf(config, stack)).dependsOn ?? []), ...earlierPhases]);
+  }
+  for (const phase of config.phases) {
+    edges.set(
+      phaseNode(phase),
+      [...phaseOf].flatMap(([id, one]) => (one === phase ? [id] : [])),
+    );
   }
   return dependencyCircles(edges).map((circle) => {
     const [first = "", ...rest] = circle;
-    const links = rest.map(
-      (id, index) => `${index === 0 ? "depends on" : "which depends on"} ${id}`,
-    );
+    const links = rest.map((to, index) => {
+      const from = circle[index] ?? "";
+      if (isPhaseNode(to))
+        return `${index === 0 ? "" : "which "}waits on the ${phaseOfNode(to)} phase`;
+      if (isPhaseNode(from)) return `which holds ${to}`;
+      return `${index === 0 ? "depends on" : "which depends on"} ${to}`;
+    });
     return `dependsOn goes round in a circle: ${first} ${links.join(", ")}. Nothing in a circle could ever deploy first, so take one of these out.`;
   });
 }
+
+// A phase in the graph of the circle check. The prefix sorts after every
+// stack id, so a circle is never told from a phase.
+const PHASE_NODE = "\uffff";
+const phaseNode = (phase: string) => `${PHASE_NODE}${phase}`;
+const isPhaseNode = (node: string) => node.startsWith(PHASE_NODE);
+const phaseOfNode = (node: string) => node.slice(PHASE_NODE.length);
 
 // Every circle once, each starting at its smallest stack id, in stack id order.
 function dependencyCircles(edges: ReadonlyMap<string, readonly string[]>): string[][] {

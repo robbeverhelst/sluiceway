@@ -2,7 +2,9 @@ import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { LineCounter, parseDocument } from "yaml";
+import type { Config } from "../../core/config.ts";
 import { DiscoveryError } from "../../core/discovery.ts";
+import { phaseKeysOf } from "../../core/phases.ts";
 import type { Stack } from "../../core/stack.ts";
 
 const PROJECT_FILE = "Pulumi";
@@ -18,8 +20,11 @@ const SKIPPED = new Set([".git", "node_modules"]);
 // Finds stacks from the files under root alone. It never asks the backend and
 // never starts the tool, so it is safe in a job that holds no credentials
 // (record 0014). A stack that the backend knows and no stack file names does
-// not exist for Sluiceway.
-export async function discover(root: string): Promise<Stack[]> {
+// not exist for Sluiceway. For each key of the project file that a
+// `phase: { from }` entry points at (record 0067), the text under it is
+// handed on with the stack, and nothing else of the file.
+export async function discover(root: string, config?: Config): Promise<Stack[]> {
+  const phaseKeys = config === undefined ? [] : phaseKeysOf(config);
   const stacks: Stack[] = [];
   const problems: string[] = [];
 
@@ -29,10 +34,18 @@ export async function discover(root: string): Promise<Stack[]> {
     if (extension !== undefined) {
       const projectFile = join(dir, PROJECT_FILE + extension);
       try {
-        const stackDir = await stackConfigDir(root, projectFile);
+        const { stackDir, project } = await readProjectFile(root, projectFile);
         const files = stackDir === dir ? fileNames(entries) : await fileNamesIn(stackDir);
         const path = slashed(relative(root, dir)) || ".";
-        for (const name of stackNames(files, extension)) stacks.push({ path, name, options: {} });
+        const read = keysOf(project, phaseKeys);
+        for (const name of stackNames(files, extension)) {
+          stacks.push({
+            path,
+            name,
+            options: {},
+            ...(read === undefined ? {} : { phaseKeys: read }),
+          });
+        }
       } catch (error) {
         if (!(error instanceof ProjectFileProblem)) throw error;
         problems.push(`${slashed(relative(root, projectFile))}: ${error.message}`);
@@ -73,12 +86,41 @@ export async function projectName(root: string, path: string): Promise<string | 
   return typeof project.name === "string" ? project.name : undefined;
 }
 
+// The text under each key a phase points at (record 0067), where Pulumi
+// lets a project file hold one: under `config`, as text or as a mapping with
+// a text `value` or `default`, or at the top level. A value marked secret is
+// never read. Undefined when no key is found.
+function keysOf(project: unknown, keys: readonly string[]): Record<string, string> | undefined {
+  if (keys.length === 0 || !isMapping(project)) return undefined;
+  const config = isMapping(project.config) ? project.config : {};
+  const read: Record<string, string> = {};
+  for (const key of keys) {
+    const text = configText(config[key]) ?? project[key];
+    if (typeof text === "string") read[key] = text;
+  }
+  return Object.keys(read).length === 0 ? undefined : read;
+}
+
+function configText(entry: unknown): string | undefined {
+  if (typeof entry === "string") return entry;
+  if (!isMapping(entry) || entry.secret === true) return undefined;
+  const text = entry.value ?? entry.default;
+  return typeof text === "string" ? text : undefined;
+}
+
+function isMapping(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 // Where the project's stack files are: next to the project file, unless the
-// project file names another directory. This is the only thing discovery reads
-// from a project file. A file it can parse is taken as it stands, however
+// project file names another directory. Besides the keys a phase points at,
+// this is the only thing discovery reads from a project file. A file it can parse is taken as it stands, however
 // wrong it is otherwise: the tool refuses it, and that is a preview failure on
 // the stack's row. Discovery fails only when it cannot know where to look.
-async function stackConfigDir(root: string, projectFile: string): Promise<string> {
+async function readProjectFile(
+  root: string,
+  projectFile: string,
+): Promise<{ stackDir: string; project: unknown }> {
   const dir = join(projectFile, "..");
   const lineCounter = new LineCounter();
   // The YAML parser reads JSON too.
@@ -95,7 +137,8 @@ async function stackConfigDir(root: string, projectFile: string): Promise<string
     throw new ProjectFileProblem(`line ${line}, column ${col}: not valid YAML.`);
   }
   const project: unknown = document.toJS();
-  if (typeof project !== "object" || project === null || !("stackConfigDir" in project)) return dir;
+  if (typeof project !== "object" || project === null || !("stackConfigDir" in project))
+    return { stackDir: dir, project };
   const named = project.stackConfigDir;
   if (typeof named !== "string") {
     throw new ProjectFileProblem(
@@ -110,7 +153,7 @@ async function stackConfigDir(root: string, projectFile: string): Promise<string
       `stackConfigDir points outside the repo (${JSON.stringify(named)}). Sluiceway only reads files inside the repo.`,
     );
   }
-  return stackDir;
+  return { stackDir, project };
 }
 
 // The tool builds a stack file's name from the extension of the project file,

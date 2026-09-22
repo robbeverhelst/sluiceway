@@ -28,6 +28,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "ignore",
       "scan",
       "drift",
+      "phases",
       "stacks",
       "mergeAndDeploy",
     ]);
@@ -54,6 +55,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "inputs",
       "previewTimeout",
       "dependsOn",
+      "phase",
       "drift",
       "options",
     ]);
@@ -68,6 +70,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "root.properties.scan",
       "root.properties.drift",
       "root.properties.stacks.items",
+      "root.properties.stacks.items.properties.phase.anyOf.1",
       "root.properties.stacks.items.properties.drift",
       "root.properties.stacks.items.properties.options",
       "root.properties.mergeAndDeploy",

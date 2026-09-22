@@ -30,12 +30,20 @@ export async function discoverAll(root: string, config: Config): Promise<Stack[]
       ];
     }
     // Stack references are Pulumi's (record 0059). A stack of another tool
-    // with auto would wait on nothing and say nothing.
-    return entry.dependsOn === DEPENDS_ON_AUTO
-      ? [
-          `stacks[${index}].dependsOn: ${DEPENDS_ON_AUTO} reads the stack references of a Pulumi program, and an ${entry.tool} stack has none. Name the stack ids instead.`,
-        ]
-      : [];
+    // with auto would wait on nothing and say nothing. The same goes for a
+    // phase read from a project file (record 0067).
+    return [
+      ...(entry.dependsOn === DEPENDS_ON_AUTO
+        ? [
+            `stacks[${index}].dependsOn: ${DEPENDS_ON_AUTO} reads the stack references of a Pulumi program, and an ${entry.tool} stack has none. Name the stack ids instead.`,
+          ]
+        : []),
+      ...(typeof entry.phase === "object"
+        ? [
+            `stacks[${index}].phase: from reads a key of a Pulumi project file, and an ${entry.tool} stack has none. Name the phase instead.`,
+          ]
+        : []),
+    ];
   });
   // Every tool's option problems come before any tool's file problems, so a
   // config problem is always reported as one.
@@ -58,7 +66,7 @@ export async function discoverAll(root: string, config: Config): Promise<Stack[]
     );
   }
   const declared = [...tofu.stacks, ...charts.stacks, ...manifests.stacks];
-  const discovered = await discoverPulumi(root);
+  const discovered = await discoverPulumi(root, config);
   if (declared.length === 0) return discovered;
   return [...discovered, ...declared].sort(
     (a, b) => compare(a.path, b.path) || compare(a.name ?? "", b.name ?? ""),
