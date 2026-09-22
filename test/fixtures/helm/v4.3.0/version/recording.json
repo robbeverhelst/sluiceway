@@ -5,7 +5,11 @@
   "commands": [
     {
       "id": "version",
-      "argv": ["helm", "version", "--template={{.Version}}"],
+      "argv": [
+        "helm",
+        "version",
+        "--template={{.Version}}"
+      ],
       "cwd": ".",
       "exitCode": 0,
       "stdout": "version.stdout",
@@ -14,7 +18,11 @@
     },
     {
       "id": "plugin-version",
-      "argv": ["helm", "diff", "version"],
+      "argv": [
+        "helm",
+        "diff",
+        "version"
+      ],
       "cwd": ".",
       "exitCode": 0,
       "stdout": "plugin-version.stdout",

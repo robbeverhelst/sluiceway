@@ -5,7 +5,12 @@
   "commands": [
     {
       "id": "dependencies",
-      "argv": ["helm", "dependency", "build", "."],
+      "argv": [
+        "helm",
+        "dependency",
+        "build",
+        "."
+      ],
       "cwd": "charts/worker",
       "exitCode": 0,
       "stdout": "dependencies.stdout",
