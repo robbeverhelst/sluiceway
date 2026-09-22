@@ -79,3 +79,70 @@ describe("the recipes for the apply job", () => {
     });
   }
 });
+
+// Slice 4.5: a message starts with the dot of its result, the same dots as
+// the job log and the recently deployed list. The step's script runs in bash
+// with `curl` printing what it would send.
+describe("the message of a recipe", () => {
+  const steps = fences(page)
+    .filter(({ language }) => language === "yaml")
+    .flatMap(({ text }) => {
+      const parsed = Bun.YAML.parse(text) as Record<string, unknown>[] | undefined;
+      return Array.isArray(parsed) ? parsed : [];
+    });
+
+  function sent(name: string, env: Record<string, string>): string {
+    const step = steps.find((one) => one.name === name);
+    expect(typeof step?.run).toBe("string");
+    const run = Bun.spawnSync(["bash", "-euc", `curl() { cat; }\n${step?.run}`], {
+      env: { PATH: process.env.PATH ?? "", ...env },
+    });
+    expect(run.stderr.toString()).toBe("");
+    const message = JSON.parse(run.stdout.toString()) as { text: string };
+    return message.text;
+  }
+
+  const scan = {
+    SLACK_WEBHOOK_URL: "w",
+    DASHBOARD: "https://github.com/acme/infra/issues/1",
+    RUN: "run-url",
+  };
+
+  test("Slack: yellow when stacks are pending", () => {
+    expect(
+      sent("Tell Slack", { ...scan, STEP: "success", PENDING: "2", PREVIEW_FAILED: "0" }),
+    ).toBe("🟡 Sluiceway: 2 pending, 0 preview failed. https://github.com/acme/infra/issues/1");
+  });
+
+  test("Slack: red when a preview failed", () => {
+    expect(
+      sent("Tell Slack", { ...scan, STEP: "success", PENDING: "2", PREVIEW_FAILED: "1" }),
+    ).toStartWith("🔴 ");
+  });
+
+  test("Slack: red when the step failed", () => {
+    expect(sent("Tell Slack", { ...scan, STEP: "failure", PENDING: "", PREVIEW_FAILED: "" })).toBe(
+      "🔴 Sluiceway: 0 pending, 0 preview failed. https://github.com/acme/infra/issues/1",
+    );
+  });
+
+  const telegram = { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHAT_ID: "c", DASHBOARD: "d" };
+
+  test("Telegram: red for a failed deploy", () => {
+    expect(sent("Tell Telegram", { ...telegram, STACK: "a:prod", OUTCOME: "failed" })).toBe(
+      "🔴 Sluiceway: a:prod was not deployed (failed). d",
+    );
+  });
+
+  test("Telegram: yellow for a refused one", () => {
+    expect(sent("Tell Telegram", { ...telegram, STACK: "a:prod", OUTCOME: "refused" })).toBe(
+      "🟡 Sluiceway: a:prod was not deployed (refused). d",
+    );
+  });
+
+  test("Telegram: red for a step that failed before it set an outcome", () => {
+    expect(sent("Tell Telegram", { ...telegram, STACK: "", OUTCOME: "" })).toBe(
+      "🔴 Sluiceway: a stack was not deployed (failed). d",
+    );
+  });
+});

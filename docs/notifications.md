@@ -72,7 +72,7 @@ Every recipe is one more step in a job of the workflow in the [README](../README
           mode: scan
 ```
 
-Each step below runs only when there is something to say: a scan that changed the dashboard and left something pending or failed, a scan step that failed, or a deploy that needs a person, because its `outcome` is `failed` or `refused` (a change that moved since the tick is `refused`) or the step failed before it set one. An `apply` that ended as `in-sync` or `rehearsed` sent nothing out and is a green job, so the recipes stay quiet about it, as they do about `deployed`. The secret is in the `env` of that one step and nowhere else. The outputs reach the script through `env` as well, never pasted into the script with `${{ }}`, so nothing in them can be read as a command. `jq` and `curl` are on GitHub's hosted runners.
+Each step below runs only when there is something to say: a scan that changed the dashboard and left something pending or failed, a scan step that failed, or a deploy that needs a person, because its `outcome` is `failed` or `refused` (a change that moved since the tick is `refused`) or the step failed before it set one. An `apply` that ended as `in-sync` or `rehearsed` sent nothing out and is a green job, so the recipes stay quiet about it, as they do about `deployed`. A message starts with the dot of its result, the same dot the job log and the dashboard's recently deployed list use: 🔴 for a preview or a deploy that failed, and for a step that failed, 🟡 for stacks that are pending and for a deploy that was refused, because a refused stack is pending again. The secret is in the `env` of that one step and nowhere else. The outputs reach the script through `env` as well, never pasted into the script with `${{ }}`, so nothing in them can be read as a command. `jq` and `curl` are on GitHub's hosted runners.
 
 ### Slack
 
@@ -86,17 +86,20 @@ Create an incoming webhook for the channel and store its address as the secret `
           (steps.sluiceway.outputs.pending != '0' || steps.sluiceway.outputs['preview-failed'] != '0')))
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          STEP: ${{ steps.sluiceway.outcome }}
           PENDING: ${{ steps.sluiceway.outputs.pending }}
           PREVIEW_FAILED: ${{ steps.sluiceway.outputs['preview-failed'] }}
           DASHBOARD: ${{ steps.sluiceway.outputs['dashboard-url'] }}
           RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          text="Sluiceway: ${PENDING:-0} pending, ${PREVIEW_FAILED:-0} preview failed. ${DASHBOARD:-$RUN}"
+          dot="🟡"
+          if [ "$STEP" = failure ] || [ "${PREVIEW_FAILED:-0}" != 0 ]; then dot="🔴"; fi
+          text="$dot Sluiceway: ${PENDING:-0} pending, ${PREVIEW_FAILED:-0} preview failed. ${DASHBOARD:-$RUN}"
           jq -n --arg text "$text" '{text: $text}' |
             curl -fsS -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"
 ```
 
-In the `apply` job, the same step with `if: always() && (steps.sluiceway.outcome == 'failure' || steps.sluiceway.outputs.outcome == 'failed' || steps.sluiceway.outputs.outcome == 'refused')` and the text built from `steps.sluiceway.outputs.stack` and `steps.sluiceway.outputs.outcome` tells the channel about a deploy that failed or was refused. A failed step with an empty `outcome` stopped before it read the deployment record, which is a failure too. Slack's own `slackapi/slack-github-action` works as well, if you prefer an action over `curl`.
+In the `apply` job, the same step with `if: always() && (steps.sluiceway.outcome == 'failure' || steps.sluiceway.outputs.outcome == 'failed' || steps.sluiceway.outputs.outcome == 'refused')` and the text and its dot built as in the Telegram recipe below tells the channel about a deploy that failed or was refused. A failed step with an empty `outcome` stopped before it read the deployment record, which is a failure too. Slack's own `slackapi/slack-github-action` works as well, if you prefer an action over `curl`.
 
 ### Telegram
 
@@ -114,7 +117,9 @@ Create a bot with BotFather, store its token as `TELEGRAM_BOT_TOKEN` and the cha
           OUTCOME: ${{ steps.sluiceway.outputs.outcome }}
           DASHBOARD: ${{ steps.sluiceway.outputs['dashboard-url'] }}
         run: |
-          text="Sluiceway: ${STACK:-a stack} was not deployed (${OUTCOME:-failed}). ${DASHBOARD}"
+          dot="🔴"
+          if [ "$OUTCOME" = refused ]; then dot="🟡"; fi
+          text="$dot Sluiceway: ${STACK:-a stack} was not deployed (${OUTCOME:-failed}). ${DASHBOARD}"
           jq -n --arg chat "$TELEGRAM_CHAT_ID" --arg text "$text" '{chat_id: $chat, text: $text}' |
             curl -fsS -X POST -H 'Content-Type: application/json' --data @- \
               "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
