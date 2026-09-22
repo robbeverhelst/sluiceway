@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/sluiceway/sluiceway/compare/v0.11.0...v0.12.0) (2026-09-22)
+
+
+### Features
+
+* deploying sits at the top, and its rows start with a spinner (slice 4.12) ([d977c4a](https://github.com/sluiceway/sluiceway/commit/d977c4a723f7571f1de3a3892a3a5b966aa72def))
+
 ## [0.11.0](https://github.com/sluiceway/sluiceway/compare/v0.10.0...v0.11.0) (2026-09-22)
 
 
