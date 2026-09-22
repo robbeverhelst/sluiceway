@@ -169,7 +169,7 @@ GitHub lists an environment for every name a deployment record uses, so your rep
 
 ## Merge and deploy
 
-With `mergeAndDeploy.authors` in `sluiceway.yaml`, routine pull requests by those authors, such as Renovate's, get a row of their own under "Updates waiting to merge", and one tick merges the pull request and deploys its stack ([configuration](configuration.md#mergeanddeployauthors)). It is off by default, and it needs one change to the workflow above, and a second for a narrowed scan after the merge.
+With `mergeAndDeploy.authors` in `sluiceway.yaml`, routine pull requests by those authors, such as Renovate's, get a row of their own under "Updates waiting to merge", and one tick merges the pull request and deploys its stack ([configuration](configuration.md#mergeanddeployauthors)). One whose checks have not all finished gets a line there with no box, which says it waits on its checks, and gets its box once they are green. It is off by default, and it needs one change to the workflow above, and a second for a narrowed scan after the merge.
 
 The merge. Sluiceway merges with the workflow token, which needs `contents: write`. Change it in the permissions block:
 

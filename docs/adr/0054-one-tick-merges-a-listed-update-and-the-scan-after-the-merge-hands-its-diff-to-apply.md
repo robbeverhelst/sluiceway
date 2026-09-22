@@ -4,6 +4,8 @@
 
 > Amended by 0071: a pull request that several stacks claim qualifies, with one merge record and one deploy per stack and the tick rule of every stack, unless its stacks depend on each other. With `mergeAndDeploy.preview` the row shows the counts of a preview of the merge. Presets of other GitHub repos are read through the GitHub API.
 
+> Amended by 0081: a pull request that qualifies in every way but its checks, which have not all finished, gets a line with no box under the section, with a marker of its own kind. It counts toward none of the section's numbers.
+
 Issue 102. The daily routine of the first real user was: open Renovate's dashboard, merge a bump, wait for the scan, then tick the stack on Sluiceway. The owner decided on 2026-09-22 that one tick on Sluiceway should do both: merge the pull request and deploy its stack. Renovate keeps finding versions and opening pull requests. This record fixes the trust decision and the shape. It was built as slice 4.2.
 
 ## The trust decision

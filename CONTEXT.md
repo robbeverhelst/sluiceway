@@ -196,6 +196,10 @@ _Avoid_: Approver, second ticker
 An open pull request by an author `mergeAndDeploy.authors` lists, green, and claimed by one or more stacks that do not depend on each other, that the dashboard offers to merge. Its row shows the stacks, the title and the pull request, and a tick on it merges the pull request and deploys each stack as the scan after the merge previews it. It is not a row of a stack and has no diff, and with `mergeAndDeploy.preview` it shows a branch preview.
 _Avoid_: Renovate row, merge request, pending update, bump row
 
+**Update waiting on its checks**:
+An open pull request that would be an update waiting to merge, except that its checks have not all finished. The dashboard shows it as a line with no box under the updates waiting to merge, naming its stacks, its title and the pull request. It gets its box once its checks are green, and goes when a check fails or it stops qualifying.
+_Avoid_: Blocked update, pending merge, stuck pull request
+
 **Branch preview**:
 The preview of an update waiting to merge as it would be after the merge: a copy of the checkout with the files of the pull request's head commit in place. Its counts go on the update's row. It approves nothing and deploys nothing: the scan after the merge previews again.
 _Avoid_: PR preview, speculative plan, merge preview

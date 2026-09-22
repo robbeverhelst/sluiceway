@@ -15,3 +15,14 @@ describe("the job log table of a scan", () => {
     expect(table).toContain(`\`${line}`);
   });
 });
+
+// Slice 5.17 (issue 170): the only trace of a pull request held back by its
+// checks used to be one line of the job log, so the table names both lines.
+describe("the job log table on updates waiting to merge", () => {
+  test.each([
+    "#1137 is not listed to merge yet: its checks have not all finished.",
+    "#1137 is not listed to merge: its checks are not all green.",
+  ])("names the line %p", (line) => {
+    expect(table).toContain(`\`${line}`);
+  });
+});
