@@ -1,5 +1,7 @@
 # The scan after a merge narrows, and the merge method is read as Renovate reads it
 
+> Amended by 0071: every update that qualifies is listed, and past the oldest 30 the size budget drops the newest first. A preset of another GitHub repo, and one at a tag, is read through the GitHub API.
+
 Record 0054 built merge and deploy, part 1: a tick on an update waiting to merge merges the pull request, `resolve` dispatches a full scan, and that scan hands the fresh diff to `apply`. It left five things in `docs/later.md`: a narrowed scan after the merge, Renovate's JSON5 config and presets, a note on a merge row whose tick was cleared without a comment, more than 10 updates, and pull requests past the oldest 100. Build plan slice 4.13 brings them in, so a Renovate tick costs one narrowed scan, not a full one.
 
 ## Decision

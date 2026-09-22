@@ -2,6 +2,8 @@
 
 > Amended by 0064: the scan after a merge is narrowed when the workflow declares the dispatch input `sluiceway-merged`. Renovate's config is found and read as Renovate reads it on GitHub (JSONC and JSON5, the `.gitlab/` files skipped, presets in this repo followed), `fast-forward` falls back to the repo's method, and the repo's method is the first allowed of squash, a merge commit and rebase. A merge row may carry a note under its line. Up to 30 updates are listed, folded after 10, and the open pull requests are read past the oldest 100.
 
+> Amended by 0071: a pull request that several stacks claim qualifies, with one merge record and one deploy per stack and the tick rule of every stack, unless its stacks depend on each other. With `mergeAndDeploy.preview` the row shows the counts of a preview of the merge. Presets of other GitHub repos are read through the GitHub API.
+
 Issue 102. The daily routine of the first real user was: open Renovate's dashboard, merge a bump, wait for the scan, then tick the stack on Sluiceway. The owner decided on 2026-09-22 that one tick on Sluiceway should do both: merge the pull request and deploy its stack. Renovate keeps finding versions and opening pull requests. This record fixes the trust decision and the shape. It was built as slice 4.2.
 
 ## The trust decision

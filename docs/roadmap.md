@@ -49,11 +49,10 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - `init` as an npm package or a command of its own (`npx sluiceway init`)
 - The Terraform family beyond OpenTofu (Terragrunt, CDK for Terraform)
 - An AWS CDK and CloudFormation adapter (change sets as the preview)
-- A preview of a pull request's branch before its merge, on the row of an update waiting to merge
-- Merging a pull request that two stacks claim, with one deploy each
-- Reading Renovate presets that live outside this repo, and its `packageRules`, for the merge method
+- A branch preview of updates past the oldest 30, and a branch preview carried over by a scan that did not preview its stack
+- Reading Renovate presets from npm, a web address or another platform, presets with parameters, and `packageRules`, for the merge method
 - Waiting, in the scan after a merge, for a dependency that became pending after the merge
-- Listing more than 30 updates waiting to merge, or reading past the oldest 1,000 open pull requests
+- Reading past the oldest 1,000 open pull requests
 - A warning from the check when `mergeAndDeploy` is on and the workflow does not declare the `sluiceway-merged` input
 - Drift detection, part 3
 - Stack dependencies, part 3

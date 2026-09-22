@@ -109,7 +109,8 @@ The file is optional and sits at the repo root. Unknown keys are an error, becau
 | `stacks[].phase` | none | One of `phases`, or `{ from: <key> }`: the text under that key of the stack's Pulumi project file, under `config` or at the top level. The stack depends on every stack in every earlier phase, and `dependsOn` adds to that (slice 4.16) | 0067 |
 | `stacks[].drift.enabled` | the top level | The drift check on or off for the stacks of this entry, in the same scans as `drift.enabled` (slice 4.7) | 0059 |
 | `stacks[].options` | `{}` | Named adapter options, only with `tool`. OpenTofu: `workspace` and `varFiles`. Helm: `release`, `namespace`, `chart`, `version` (a chart reference only) and `valuesFiles`. kubectl: `context` and `namespace` | 0006, 0015, 0053, 0058, 0060 |
-| `mergeAndDeploy.authors` | `[]` | Logins whose green pull requests that one stack claims are listed to merge and deploy with one tick. Empty turns it off | 0054, 0064 |
+| `mergeAndDeploy.authors` | `[]` | Logins whose green pull requests are listed to merge and deploy with one tick, one deploy per stack that claims them. Empty turns it off | 0054, 0064, 0071 |
+| `mergeAndDeploy.preview` | `false` | Preview each listed update as it would be after the merge and show the counts on its row: one extra preview per stack of each of the oldest 30 updates, never for a fork | 0071 |
 
 Rules for config loading:
 

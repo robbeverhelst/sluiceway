@@ -648,11 +648,11 @@ A pull request by an author on the list is listed under "Updates waiting to merg
 - It is not a draft and merges into the default branch.
 - The combined checks of its head commit are green. A pull request with no checks at all is not listed.
 - It does not conflict with its base.
-- One stack, and only one, claims every file it changes, by the same rule a push uses (`inputs` included). Files `scan.unrelated` matches are left out. A pull request that two stacks claim is never listed, and neither is one that changes a file no stack claims, or more than 100 files, or renames a file.
+- A stack claims every file it changes, by the same rule a push uses (`inputs` included). Files `scan.unrelated` matches are left out. A pull request that two or more stacks claim is listed with every one of them, and one tick deploys each on its own record, unless one of those stacks depends on another (`dependsOn` or `phases`): one tick would then deploy them side by side. A pull request that changes a file no stack claims, or more than 100 files, or renames a file, is not listed.
 
-The oldest 30 are listed, and all after the first 10 sit in a fold. The job log counts the rest, which are listed as the older ones merge. The open pull requests are read 100 at a time, the oldest 1,000 at most. The row shows the stack, the title of the pull request (left out when `dashboard.redact` is on) and its number and author. Nothing is previewed before the merge.
+Every one that qualifies is listed, oldest first, and all after the first 10 sit in a fold. The oldest 30 are always there. Past those, the body lists as many as fit its size target before any row of a stack is shortened, and the job log counts the rest, which are listed as the older ones merge. The open pull requests are read 100 at a time, the oldest 1,000 at most. The row shows the stacks, the title of the pull request (left out when `dashboard.redact` is on) and its number and author, and with [`mergeAndDeploy.preview`](#mergeanddeploypreview) what the merge would change.
 
-A tick merges the pull request at the commit the row showed, with the merge method Renovate would use. Sluiceway reads Renovate's config as Renovate does on GitHub: the first of `renovate.json`, `renovate.jsonc`, `renovate.json5`, the same three under `.github/`, `.renovaterc`, `.renovaterc.json`, `.renovaterc.jsonc`, `.renovaterc.json5` and the `renovate` key of `package.json`, as JSON5, with the presets in `extends` that live in this same repo. Its `automergeStrategy` is used when the repo allows it: `squash`, `rebase` or `merge-commit`. Otherwise, and for `auto` and `fast-forward`, the method is the first the repo allows of squash, a merge commit and rebase, as Renovate picks it. A preset of another repo, and `packageRules`, are not read, and the job log of `resolve` names the presets it skipped. Branch protection and required reviews stay in force: when GitHub refuses the merge, the ticker gets a comment with GitHub's words. The merge starts the scan after a merge, which previews the stack on the merged code and hands exactly that diff to `apply`, which previews again and deploys only if nothing moved. That scan is narrowed to what changed since the last scan when the workflow declares the `sluiceway-merged` input, and full otherwise. The tick rule of the stack is the tick rule of its pull requests.
+A tick merges the pull request at the commit the row showed, with the merge method Renovate would use. Sluiceway reads Renovate's config as Renovate does on GitHub: the first of `renovate.json`, `renovate.jsonc`, `renovate.json5`, the same three under `.github/`, `.renovaterc`, `.renovaterc.json`, `.renovaterc.jsonc`, `.renovaterc.json5` and the `renovate` key of `package.json`, as JSON5, with the presets in `extends`. A preset in this repo is read from the checkout. A preset of another GitHub repo (`github>owner/repo`, `local>owner/repo` or `owner/repo`, with `:name`, `:file/preset` or `//path/name`), and one at a tag (`#v1`), is read through the GitHub API with the workflow token, so it has to be public or in this repo. Its `automergeStrategy` is used when the repo allows it: `squash`, `rebase` or `merge-commit`. Otherwise, and for `auto` and `fast-forward`, the method is the first the repo allows of squash, a merge commit and rebase, as Renovate picks it. A preset from npm or a web address, one with parameters, and `packageRules` are not read, and the job log of `resolve` names the presets it skipped. Branch protection and required reviews stay in force: when GitHub refuses the merge, the ticker gets a comment with GitHub's words. The merge starts the scan after a merge, which previews the stack on the merged code and hands exactly that diff to `apply`, which previews again and deploys only if nothing moved. That scan is narrowed to what changed since the last scan when the workflow declares the `sluiceway-merged` input, and full otherwise. The tick rule of the stack is the tick rule of its pull requests. A pull request of several stacks needs the tick rule of every one of them.
 
 Nothing is listed on a read-only dashboard or while `deploys` is `false`. The workflow needs more than the default: [Merge and deploy](workflow.md#merge-and-deploy) has what to add.
 
@@ -660,6 +660,23 @@ Nothing is listed on a read-only dashboard or while `deploys` is `false`. The wo
 mergeAndDeploy:
   authors:
     - renovate[bot]
+```
+
+### `mergeAndDeploy.preview`
+
+Default: `false`
+
+With `true`, every scan that lists updates waiting to merge also previews each of the oldest 30 as it would be after the merge, and the row says what that would change, in the counts a stack's row uses: `preview after the merge: 1 update, **1 replace**`, `no changes`, or that the preview failed. For a pull request of several stacks each stack gets its counts.
+
+The preview runs in a copy of the checkout, in the runner's temporary directory, with the files the pull request changes as they are at its head commit, read through the GitHub API. The copy is removed after. So it previews the pull request on top of the code the scan checked out, which is what the merge would give. It costs one extra preview per stack of each update on every such scan, and one request per changed file.
+
+The preview runs the pull request's code with the scan job's credentials, the way the scan after the merge would. That is why only the authors on the list are previewed, and a pull request whose branch lives in a fork never is. The preview is for reading: the tick still merges the commit the row showed, and what deploys is the diff the scan after the merge previews.
+
+```yaml
+mergeAndDeploy:
+  authors:
+    - renovate[bot]
+  preview: true
 ```
 
 ## What the file does not hold

@@ -173,8 +173,12 @@ A person who approves a waiting deploy in GitHub's own interface, where the repo
 _Avoid_: Approver, second ticker
 
 **Update waiting to merge**:
-An open pull request by an author `mergeAndDeploy.authors` lists, green, and claimed by exactly one stack, that the dashboard offers to merge. Its row shows the stack, the title and the pull request, and a tick on it merges the pull request and deploys the stack as the scan after the merge previews it. It is not a row of a stack and has no diff.
+An open pull request by an author `mergeAndDeploy.authors` lists, green, and claimed by one or more stacks that do not depend on each other, that the dashboard offers to merge. Its row shows the stacks, the title and the pull request, and a tick on it merges the pull request and deploys each stack as the scan after the merge previews it. It is not a row of a stack and has no diff, and with `mergeAndDeploy.preview` it shows a branch preview.
 _Avoid_: Renovate row, merge request, pending update, bump row
+
+**Branch preview**:
+The preview of an update waiting to merge as it would be after the merge: a copy of the checkout with the files of the pull request's head commit in place. Its counts go on the update's row. It approves nothing and deploys nothing: the scan after the merge previews again.
+_Avoid_: PR preview, speculative plan, merge preview
 
 **Merge record**:
 The deployment record `resolve` opens for a merge it made: on the merge commit, with the ticker and the pull request and no diff hash. It waits for a scan that holds the merge, which ends it and opens the record that deploys the fresh diff.
