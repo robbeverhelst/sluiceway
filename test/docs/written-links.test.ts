@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { exampleBody } from "../../scripts/example-dashboard.ts";
 import { DOCS } from "../../src/render/docs-site.ts";
 import { ROOT, read } from "./docs.ts";
-import { exampleDashboard } from "./example-dashboard.ts";
 
 // Slice 5.19: every link Sluiceway writes where a user sees it points at the
 // docs site, and only what has no page there points at the repo. The links
@@ -43,7 +43,7 @@ const SOURCES = [
 
 const found = [
   ...SOURCES.map((path) => ({ path, text: read(path) })),
-  { path: "the example dashboard", text: exampleDashboard() },
+  { path: "the example dashboard", text: exampleBody() },
 ].flatMap(({ path, text }) =>
   [...text.matchAll(OURS)].map((match) => ({ path, url: match[0].replace(/[.,:;]+$/, "") })),
 );
@@ -62,7 +62,7 @@ async function page(url: string): Promise<string> {
 
 describe("the links Sluiceway writes", () => {
   test("the dashboard footer's docs link goes to the site", () => {
-    expect(exampleDashboard()).toContain(`· [docs](${SITE}/)</sub>`);
+    expect(exampleBody()).toContain(`· [docs](${SITE}/)</sub>`);
     expect(found.some(({ url }) => url.endsWith("#readme"))).toBe(false);
   });
 

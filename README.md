@@ -12,74 +12,119 @@ Sluiceway keeps one GitHub issue that shows which infrastructure stacks have cha
 
 ## What it looks like
 
-The dashboard is Markdown, so here is one. It is an example, rendered by Sluiceway's own code from the made-up data its tests use. In a real dashboard issue the boxes can be ticked. Here they cannot.
+The dashboard is Markdown, so here is one. It is an example, rendered by Sluiceway's own code from made-up rows, with every section at once. In a real dashboard issue the boxes can be ticked. Here they cannot. The same body, as a dashboard issue holds it, is [`assets/example-dashboard.md`](assets/example-dashboard.md).
 
 <details>
-<summary><b>Open the example dashboard</b>: 13 stacks, 4 pending, one of them deleting resources</summary>
+<summary><b>Open the example dashboard</b>: 16 stacks, 2 deploying, 4 pending, 2 drifted</summary>
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.1/assets/mascot/pending-4-deletes-dark.svg">
-    <img alt="Sluiceway: 4 stacks are pending, some delete resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.1/assets/mascot/pending-4-deletes-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/deploying-4-deletes-replaces-dark.svg">
+    <img alt="Sluiceway: deploying, 4 stacks are pending, some changes delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/deploying-4-deletes-replaces-light.svg">
   </picture>
 </p>
 
 <div align="center">
 
-🟡&nbsp;**4 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;9 in sync · :warning: **1 pending stack destroys resources**
+🟡&nbsp;**4 pending** · 🟠&nbsp;2 drifted · 🔵&nbsp;2 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;8 in sync · :warning: **2 pending stacks destroy resources**
 
-Scanned [`8c41f0e`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
+Scanned [`34e410f`](https://github.com/example-org/infra/commit/34e410f2ce7bd7cfd94d9a2f1d5bc0b2dcc6aa91) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 
 </div>
+
+### Deploying
+
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-light.svg"></picture> **apps/api:prod** · deploying · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330)
+  from [#512](https://github.com/example-org/infra/pull/512) by alice · [compare](https://github.com/example-org/infra/compare/e27f50794430...34e410f2ce7b)
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-light.svg"></picture> **apps/worker:prod** · queued behind **apps/api:prod** · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330)
+  from [#509](https://github.com/example-org/infra/pull/509) by bob · [compare](https://github.com/example-org/infra/compare/ae93aa6a808a...34e410f2ce7b)
+
+### Updates waiting to merge
+
+Tick a box to merge that pull request. Its stack is then previewed again and deployed as that preview shows it.
+
+- [ ] **platform/ingress-nginx:prod** · Update Helm release ingress-nginx to v4.13 · [#519](https://github.com/example-org/infra/pull/519) by renovate&#91;bot&#93; · preview after the merge: 1 update
+
+These wait on their own checks. Each gets a box here once its checks are green.
+
+- **apps/web:prod** · Update dependency next to v15.5 · [#521](https://github.com/example-org/infra/pull/521) by renovate&#91;bot&#93; · waits on its checks
 
 ### Pending
 
 Tick a box to deploy that stack exactly as its row shows it.
 
 > [!CAUTION]
-> 1 pending stack deletes or replaces resources: **apps/legacy-worker:prod**
+> 2 pending stacks delete or replace resources: **apps/legacy-worker:prod**, **infra/network:prod**
+>
+> 1 drifted stack has resources gone outside the code: **platform/external-dns:prod**
 
-- [ ] **apps/api:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121)
-  from [#5](https://github.com/example-org/infra/pull/5) by alice, [#4](https://github.com/example-org/infra/pull/4) by renovate[bot] · [compare](https://github.com/example-org/infra/compare/4193607...8c41f0e)
-  <details><summary>1 change</summary>
-  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>api</b> · <code>spec.template.spec.containers&#91;0&#93;.image</code><br>
+- [ ] **apps/billing:prod** · 1 create, 1 update · [preview](https://github.com/example-org/infra/runs/48213301)
+  from [#514](https://github.com/example-org/infra/pull/514) by erin, [#511](https://github.com/example-org/infra/pull/511) by renovate&#91;bot&#93; · [compare](https://github.com/example-org/infra/compare/92a260fb62d8...34e410f2ce7b)
+  <details><summary>2 changes</summary>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>billing</b> · <code>spec.replicas</code> <code>2</code> → <code>3</code><br>
+  <kbd>create</kbd> <code>kubernetes:monitoring.coreos.com/v1:ServiceMonitor</code> <b>billing</b><br>
   </details>
-- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121)
-  from [#427](https://github.com/example-org/infra/pull/427) by dave · [compare](https://github.com/example-org/infra/compare/284fd2d...8c41f0e)
+- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/runs/48213302)
+  from [#498](https://github.com/example-org/infra/pull/498) by dave · [compare](https://github.com/example-org/infra/compare/461a661f5643...34e410f2ce7b)
   :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>legacy-jobs</b>
   :warning: <kbd>DELETE</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>legacy-worker</b>
   :warning: <kbd>DELETE</kbd> <code>kubernetes:core/v1:Service</code> <b>legacy-worker</b>
   <details><summary>1 other change</summary>
   <kbd>forget</kbd> <code>aws:iam/role:Role</code> <b>legacy-worker</b><br>
   </details>
-- [ ] **apps/web:prod** · 2 creates, 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121)
-  from [#418](https://github.com/example-org/infra/pull/418) by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1dfd7ad...8c41f0e)
+- [ ] **apps/web:staging** · 2 creates, 1 update · [preview](https://github.com/example-org/infra/runs/48213303)
+  from [#516](https://github.com/example-org/infra/pull/516) by carol, [#510](https://github.com/example-org/infra/pull/510) by bob, and 1 change outside this stack · [compare](https://github.com/example-org/infra/compare/aa6e427d334b...34e410f2ce7b)
   <details><summary>3 changes</summary>
-  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>web</b> · <code>metadata.labels&#91;&quot;app.kubernetes.io/version&quot;&#93;</code>, <code>spec.replicas</code><br>
+  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>web</b> · <code>metadata.labels&#91;&quot;app.kubernetes.io/version&quot;&#93;</code>, <code>spec.template.spec.containers&#91;0&#93;.image</code><br>
   <kbd>create</kbd> <code>kubernetes:autoscaling/v2:HorizontalPodAutoscaler</code> <b>web</b><br>
   <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>web-feature-flags</b><br>
   </details>
-- [ ] **platform/ingress-nginx:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121)
-  from [#437](https://github.com/example-org/infra/pull/437) by renovate[bot] · [compare](https://github.com/example-org/infra/compare/876b5b7...8c41f0e)
-  <details><summary>1 change</summary>
-  <kbd>update</kbd> <code>kubernetes:helm.sh/v3:Release</code> <b>ingress-nginx</b> · <code>values.controller.image.tag</code>, <code>values.controller.replicaCount</code><br>
+  <details><summary>changes outside this stack</summary>
+  <a href="https://github.com/example-org/infra/pull/497">#497</a> by frank<br>
+  </details>
+- [ ] **infra/network:prod** · 1 update, **1 replace** · [preview](https://github.com/example-org/infra/runs/48213304)
+  from [11fa403](https://github.com/example-org/infra/commit/11fa403908e7cf940afa4635f39fb7d8bf5f0eaa) by gina · [compare](https://github.com/example-org/infra/compare/55050087957c...34e410f2ce7b)
+  :warning: <kbd>REPLACE</kbd> <code>aws:ec2/subnet:Subnet</code> <b>private-b</b> · forced by <code>cidrBlock</code>
+  <details><summary>1 other change</summary>
+  <kbd>update</kbd> <code>aws:ec2/routeTable:RouteTable</code> <b>private</b> · <code>routes&#91;1&#93;.natGatewayId</code><br>
   </details>
 
 - [ ] Deploy all 4 pending stacks
 
+### Drifted
+
+Real infrastructure changed outside the code. Deploying a stack puts it back as its code says.
+
+- [ ] **monitoring/grafana:prod** · 1 changed outside the code · [preview](https://github.com/example-org/infra/runs/48213305)
+  <details><summary>1 change outside the code</summary>
+  <kbd>changed</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>grafana</b> · <code>spec.replicas</code><br>
+  </details>
+- [ ] **platform/external-dns:prod** · 1 gone outside the code · [preview](https://github.com/example-org/infra/runs/48213306)
+  <details><summary>1 change outside the code</summary>
+  <kbd>gone</kbd> <code>aws:route53/record:Record</code> <b>status-cname</b><br>
+  </details>
+
+- [ ] **Confirm:** repair all 2 drifted stacks: **monitoring/grafana:prod**, **platform/external-dns:prod** · asked by carol
+  Ticking this deploys each stack as its row shows it, in dependency order. A change to these rows first takes it back.
+
 ### In sync
 
-<details><summary>9 stacks in sync</summary>
+<details><summary>8 stacks in sync</summary>
 
 - apps/api:staging
 - apps/auth:prod
 - apps/auth:staging
-- apps/web:staging
+- apps/billing:staging
+- apps/web:prod
 - data/postgres:prod
 - data/postgres:staging
-- infra/network:prod
-- monitoring/grafana:prod
-- platform/external-dns:prod
+- platform/ingress-nginx:prod
+
+</details>
+
+<details><summary>1 stack left out by ignore</summary>
+
+- sandbox/playground:dev · a scratch stack, deployed by hand
 
 </details>
 
@@ -88,14 +133,19 @@ Tick a box to deploy that stack exactly as its row shows it.
 Times are in UTC.
 
 - 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+  shipped [#513](https://github.com/example-org/infra/pull/513) by alice · [compare](https://github.com/example-org/infra/compare/ae93aa6a808a...4a35e6dd48fe)
+- 🟢&nbsp;data/postgres:prod · deployed outside the dashboard, from [`35bf0b7`](https://github.com/example-org/infra/commit/35bf0b7251cdfd47085dc72ea2ba4c6aff3b7237) · 09-21 09:30
+- ⚪&nbsp;apps/auth:staging · no changes · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/ingress-nginx:prod · drift fixed · carol · 09-20 18:05 · [run](https://github.com/example-org/infra/actions/runs/17030044170)
+- 🟢&nbsp;apps/web:prod · bob · 09-20 16:52 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+  shipped [#510](https://github.com/example-org/infra/pull/510) by bob · [compare](https://github.com/example-org/infra/compare/ae93aa6a808a...92a260fb62d8)
+- 🔴&nbsp;apps/web:prod · failed · bob · 09-20 16:40 · [run](https://github.com/example-org/infra/actions/runs/17029855012)
 
 ---
 
 - [ ] Rescan all stacks
 
-<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.1 · [docs](https://docs.sluiceway.dev/)</sub>
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.27.0 · [docs](https://docs.sluiceway.dev/)</sub>
 
 </details>
 
