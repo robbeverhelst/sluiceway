@@ -127,6 +127,7 @@ function preview(stack: KubectlStack, expect: Expectation, suffix = ""): Step[] 
       stdout: "diff",
       expect,
       env: PREVIEW_ENV,
+      raced: racedWrite,
     },
   ];
 }
@@ -230,7 +231,7 @@ function recorded(
     argv,
     stdout: format,
     expect,
-    ...(format === "diff" ? { env: PREVIEW_ENV } : {}),
+    ...(format === "diff" ? { env: PREVIEW_ENV, raced: racedWrite } : {}),
   };
 }
 
@@ -588,6 +589,7 @@ spec:
         argv: KUBECTL.diff(WEB.target),
         stdout: "text",
         expect: { exit: "nonzero" },
+        raced: racedWrite,
       },
     ],
   },
@@ -615,4 +617,22 @@ export function kubectlOps(stdout: unknown): string[] {
   return [...stdout.matchAll(/^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/gm)].map((match) =>
     match[1] === "0" ? "create" : match[2] === "0" ? "delete" : "update",
   );
+}
+
+// Whether a kubectl diff raced a write (slice 5.26). kubectl reads each live
+// object and then asks the API server for the server-side dry run, and a
+// controller that writes the object in between, as the Deployment controller
+// writes a Deployment's status for a few seconds after a deploy, leaves two
+// versions of it on the two sides: the diff holds the status as a change, and
+// is not empty when nothing changed. A dry run keeps the version it read, so
+// an object whose live side and merged side name another resourceVersion is
+// one that was written while kubectl ran. The line is the same in the whole
+// objects of a preview and in the few lines around a change of the tool diff.
+export function racedWrite(stdout: string): boolean {
+  return stdout
+    .split(/^(?=diff )/m)
+    .some(
+      (object) =>
+        /^- {2}resourceVersion: /m.test(object) && /^\+ {2}resourceVersion: /m.test(object),
+    );
 }
