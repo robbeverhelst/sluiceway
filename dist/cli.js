@@ -28574,7 +28574,7 @@ var configSchema = exports_external.strictObject({
     names: exports_external.int().min(0).max(NAMES_MAX).describe("How many pull requests and direct pushes a row and a line of Recently deployed name, newest first. The rest is a count. 0 names none and always counts.").default(NAMED_ON_A_ROW)
   }).prefault({}),
   phases: exports_external.array(phaseName).describe("Names of the phases stacks deploy in, in order. A stack in a phase depends on every stack in every earlier phase.").default([]),
-  stacks: stackEntries.describe("Settings for stacks that discovery found. An entry never creates a stack.").default([]),
+  stacks: stackEntries.describe("Settings for stacks that discovery found. An entry never creates a stack, except an entry with tool, which declares one.").default([]),
   discovery: exports_external.record(exports_external.string(), exports_external.boolean()).describe("Switches for what discovery finds on its own. See the configuration reference for the keys.").default({}),
   mergeAndDeploy: exports_external.strictObject({
     authors: exports_external.array(author).transform((logins) => [...new Set(logins)]).describe("Logins whose open pull requests may be merged and deployed with one tick, such as renovate[bot]. Empty turns it off.").default([]),
