@@ -224,6 +224,9 @@ For a stack with `tool: kubectl` (record 0060), install `kubectl` v1.34.0 or new
 
 ## What your programs fetch, the runner has to fetch
 
+> [!WARNING]
+> A program that pulls from a private registry works on your laptop and fails on the runner. Log in to that registry in a step before Sluiceway.
+
 A preview runs your programs, and your programs fetch things: packages, provider plugins, container images, Helm charts, modules. On a laptop that works because the person is logged in. On a runner nothing is logged in until a step does it. When one stack fails in CI and works on your machine, look here first.
 
 The job has to be able to reach, and log in to:

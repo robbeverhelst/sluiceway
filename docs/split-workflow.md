@@ -117,7 +117,8 @@ What the parts are for:
 
 Self-hosted runners work the same way: change `runs-on` for `scan` and `apply`. They need runner version 2.328.0 or newer, and ARM32 is not supported ([requirements](reference.md#requirements)).
 
-`resolve` and `settle` hold no infrastructure secrets. Keep them on hosted runners even when `scan` and `apply` are self-hosted, so a tick shows on the dashboard in seconds instead of waiting for a busy runner.
+> [!TIP]
+> `resolve` and `settle` hold no infrastructure secrets. Keep them on hosted runners even when `scan` and `apply` are self-hosted, so a tick shows on the dashboard in seconds instead of waiting for a busy runner.
 
 ## With GitHub Environments
 

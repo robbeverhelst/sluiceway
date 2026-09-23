@@ -254,7 +254,10 @@ Default: `[]`
 
 Globs matched against the **stack id**, not the path. An ignored stack has no row, is never previewed, claims no files, and a `stacks` entry cannot give it settings.
 
-Because the id of a named stack is `<path>:<name>`, a bare directory matches none of its stacks. A stack without a name, such as a root module discovery found, has its path as its id, so its bare directory does match it. `apps/web` ignores nothing, and `apps/web:*` ignores every stack in `apps/web`. Globs that end in `*` already cross the colon: `apps/*` and `sandbox*` work as you would expect. `*` stops at a slash and `**` crosses slashes. The `check` mode warns about a glob that matches no stack, and names the glob that would work.
+> [!WARNING]
+> Write the full stack id. The id of a named stack is `<path>:<name>`, so a bare directory matches none of its stacks: `apps/web` ignores nothing, and `apps/web:*` ignores every stack in `apps/web`.
+
+A stack without a name, such as a root module discovery found, has its path as its id, so its bare directory does match it. Globs that end in `*` already cross the colon: `apps/*` and `sandbox*` work as you would expect. `*` stops at a slash and `**` crosses slashes. The `check` mode warns about a glob that matches no stack, and names the glob that would work.
 
 A stack config file with no stack in the backend is the usual reason to ignore one:
 

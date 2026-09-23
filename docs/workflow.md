@@ -233,7 +233,8 @@ The [releases](https://github.com/sluiceway/sluiceway/releases) page lists every
 
 ## What new users ran into
 
-What new users met first, so you do not have to:
+> [!WARNING]
+> A stack config file with no stack in the backend becomes a red row. Leave it out with `ignore` and its full stack id, `<path>:<name>`: `apps/web:dev`, never `apps/web`. The check warns about a glob that leaves out nothing.
 
-- A stack config file with no stack in the backend becomes a red row. Leave it out with `ignore`, and write its full id: `apps/web:dev`, never `apps/web`. The check warns about a glob that leaves out nothing.
-- A program that pulls from a private registry works on your laptop and fails on the runner. Log in to that registry in the workflow. [Credentials](credentials.md) has recipes.
+> [!WARNING]
+> A program that pulls from a private registry works on your laptop and fails on the runner. Log in to that registry in the workflow. [Credentials](credentials.md) has recipes.

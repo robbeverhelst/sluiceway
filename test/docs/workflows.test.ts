@@ -9,6 +9,7 @@ import {
   isSluiceway,
   modeOf,
   read,
+  section,
   USER_DOCS,
   workflows,
 } from "./docs.ts";
@@ -289,9 +290,14 @@ describe("the setup in docs/workflow.md", () => {
   const page = read("docs/workflow.md");
   const shown = all.filter(({ where }) => where.startsWith("docs/workflow.md"));
 
-  test("has no warning box", () => {
-    expect(page.includes("[!WARNING]")).toBe(false);
-    expect(read("README.md").includes("[!WARNING]")).toBe(false);
+  // The README once opened with a warning box that said Sluiceway was not
+  // released. Warning boxes now mark only what new users ran into first.
+  test("has warning boxes only for what new users ran into", () => {
+    const warnings = (text: string) => text.split("\n").filter((line) => line === "> [!WARNING]");
+    expect(warnings(read("README.md"))).toEqual([]);
+    expect(warnings(page).length).toBe(
+      warnings(section(page, "## What new users ran into")).length,
+    );
   });
 
   // Record 0042: the setup starts with the check.
