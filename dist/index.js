@@ -52022,8 +52022,9 @@ function outsideFold(attribution, level) {
   return level === 0 ? [...attribution?.outside ?? []] : [];
 }
 var SPINNER_WIDTH = 16;
-function spinner(actionRef2) {
-  const file2 = (theme) => mascotUrl(actionRef2, `spinner-${theme}.svg`);
+function spinner(actionRef2, queued) {
+  const name = queued ? "spinner-queued" : "spinner";
+  const file2 = (theme) => mascotUrl(actionRef2, `${name}-${theme}.svg`);
   return `<picture><source media="(prefers-color-scheme: dark)" srcset="${file2("dark")}"><img alt="" width="${SPINNER_WIDTH}" height="${SPINNER_WIDTH}" src="${file2("light")}"></picture> `;
 }
 function deployingRow(row, options) {
@@ -52031,7 +52032,7 @@ function deployingRow(row, options) {
   const word = behind.length > 0 ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}` : row.waiting ? "waiting to start" : "deploying";
   const state = behind.length > 0 ? "queued" : "deploying";
   const lines = [
-    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef)}**${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys, deletes: row.deletes })}`
+    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef, state === "queued")}**${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys, deletes: row.deletes })}`
   ];
   if (row.attribution)
     lines.push(row.attribution.full, ...outsideFold(row.attribution, 0));
@@ -58322,7 +58323,7 @@ function countsLine(counts2, dots) {
     `${dot("in-sync", inSync)}${inSync} in sync`
   ];
   if (destroying > 0) {
-    const words = destroying === 1 ? "stack destroys" : "stacks destroy";
+    const words = destroying === 1 ? "stack deletes or replaces" : "stacks delete or replace";
     parts.push(`:warning: **${destroying} pending ${words} resources**`);
   }
   if (failed2 > 0)
