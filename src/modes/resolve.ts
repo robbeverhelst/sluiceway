@@ -32,6 +32,7 @@ import { renovateMergeSetting } from "../core/renovate-config.ts";
 import { openRepo, type Repo, type RepoStacks } from "../core/repo.ts";
 import { capDeploys, type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import { stackId } from "../core/stack.ts";
+import { type Stopwatch, stopwatch } from "../core/stopwatch.ts";
 import {
   type AllowedMerge,
   type Clear,
@@ -87,6 +88,7 @@ import { clearMergeTick, type MergeNote } from "../render/merge-row.ts";
 import type { RefusedTick } from "../render/refused-ticks.ts";
 import { resolveSummary } from "../render/resolve-summary.ts";
 import { byCodeUnit, plural, type Row } from "../render/row.ts";
+import { type ResolvePart, resolveTimingLine } from "../render/timing.ts";
 
 export interface ResolveContext {
   // The directory of the checked-out repo.
@@ -116,7 +118,16 @@ export interface ResolveContext {
   notifier?: Notifier | undefined;
   // Only a test has a reason to set this.
   limits?: { body?: BudgetOptions } | undefined;
+  // The clock of the timing line (slice 5.23). Without it there is none: a
+  // test that does not look leaves it out.
+  now?: (() => Date) | undefined;
+  // Milliseconds from the start of the process to the start of `resolve`,
+  // for the timing line, when the step knows it.
+  startup?: number | undefined;
 }
+
+// Where `resolve`'s time goes, part by part.
+type Watch = Stopwatch<ResolvePart>;
 
 // `resolve` always sets `matrix`, to `[]` when it started nothing (record
 // 0035), also when it fails before it got that far.
@@ -129,6 +140,7 @@ export async function resolve(context: ResolveContext): Promise<void> {
   // What the job log says once the run acts on the dashboard, for the job
   // summary (slice 5.9). An edit of any other issue writes none.
   const report: RunReport = { acting: false, lines: [], scanStarted: false };
+  const watch: Watch = stopwatch(context.now ?? (() => new Date(0)));
   const recording: ResolveContext = {
     ...context,
     log: {
@@ -140,10 +152,21 @@ export async function resolve(context: ResolveContext): Promise<void> {
     },
   };
   try {
-    await resolveTicks(recording, handOn, report);
+    await resolveTicks(recording, handOn, report, watch);
   } finally {
     if (!handedOn) handOn([]);
     if (report.acting) await writeRunSummary(context, report);
+    // The job log only, not the summary: it is about Sluiceway, not the
+    // dashboard (slice 5.23).
+    if (report.acting && context.now) {
+      context.log.info(
+        resolveTimingLine({
+          total: watch.total(),
+          parts: watch.parts(),
+          startup: context.startup,
+        }),
+      );
+    }
   }
 }
 
@@ -207,10 +230,11 @@ async function resolveTicks(
   context: ResolveContext,
   handOn: (entries: readonly MatrixEntry[]) => void,
   report: RunReport,
+  watch: Watch,
 ): Promise<void> {
   const { log, github } = context;
   // Read once, whichever way the run goes.
-  const repo = openRepo(context.root, context.adapter);
+  const repo = timedRepo(openRepo(context.root, context.adapter), watch);
 
   // The cheap check (record 0017): the edited issue is judged from the payload
   // alone, green and without an API call, because `issues.edited` fires for
@@ -219,7 +243,7 @@ async function resolveTicks(
   const issue = editedIssue(context.event);
   if (!issue) {
     report.acting = true;
-    await startQueued(context, repo, handOn);
+    await startQueued(context, repo, handOn, watch);
     return;
   }
   const notTheDashboard = notTheDashboardText(issue, repo.config);
@@ -238,10 +262,12 @@ async function resolveTicks(
   let named: NamedTick[] = [];
   let liveRows: ParsedRow[] = [];
   for (let reads = 1; ; reads++) {
-    const first = await github.readEditHistory(issue.number, {
-      size: HISTORY_PAGE_SIZE,
-      after: undefined,
-    });
+    const first = await watch.time("dashboard", () =>
+      github.readEditHistory(issue.number, {
+        size: HISTORY_PAGE_SIZE,
+        after: undefined,
+      }),
+    );
     const { root, rows } = parseDashboard(first.body);
     liveRows = rows;
     if (!root) {
@@ -273,10 +299,12 @@ async function resolveTicks(
         `${tick.kind === "merge" ? `${tickName(tick)} is ticked, and discovery knows no stack ${stackIds.map(logGroupTitle).join(" or ")}` : `${tickName(tick)} is ticked, and discovery knows no such stack`}. Left alone.`,
       );
     }
-    const tickers = await nameTickers(known, (after) =>
-      after === undefined
-        ? Promise.resolve(first)
-        : github.readEditHistory(issue.number, { size: HISTORY_PAGE_SIZE, after }),
+    const tickers = await watch.time("ticks", () =>
+      nameTickers(known, (after) =>
+        after === undefined
+          ? Promise.resolve(first)
+          : github.readEditHistory(issue.number, { size: HISTORY_PAGE_SIZE, after }),
+      ),
     );
     named = known.flatMap((tick, index) => {
       const ticker = tickers[index];
@@ -306,7 +334,9 @@ async function resolveTicks(
   named = confirms.named;
 
   // A stack with an open deployment is taken (record 0003).
-  const open = await openDeployments(context, stacksToRead(named, stacks));
+  const open = await watch.time("records", () =>
+    openDeployments(context, stacksToRead(named, stacks)),
+  );
   const read: TicksRead = {
     named,
     stacks,
@@ -316,8 +346,8 @@ async function resolveTicks(
     phases: config.phases,
   };
   // The lookups are the one read the judgement asks for (record 0018).
-  const outcomes = await lookUpTickers(github, ticksToLookUp(read));
-  const judgement = judgeTicks(read, outcomes);
+  const outcomes = await watch.time("ticks", () => lookUpTickers(github, ticksToLookUp(read)));
+  const judgement = watch.time("ticks", () => judgeTicks(read, outcomes));
   for (const finding of judgement.findings) log.info(findingText(finding));
   const { dropped, clear, clearMerges } = judgement;
   const bulkActs = [...confirms.acts, ...judgement.bulk];
@@ -332,15 +362,17 @@ async function resolveTicks(
   const started: Started[] = [];
   for (const { stackId: id, environment, ticker, hash, drift, behind } of judgement.deploys) {
     try {
-      const record = await openRecord(context, {
-        stackId: id,
-        environment,
-        sha: context.sha,
-        ticker,
-        hash,
-        behind,
-        drift,
-      });
+      const record = await watch.time("opening", () =>
+        openRecord(context, {
+          stackId: id,
+          environment,
+          sha: context.sha,
+          ticker,
+          hash,
+          behind,
+          drift,
+        }),
+      );
       started.push({ stackId: id, environment, deployment: record.deployment, ticker, behind });
       if (record.unfinished !== undefined) throw record.unfinished;
       log.info(
@@ -418,13 +450,15 @@ async function resolveTicks(
     confirms.stale
   ) {
     try {
-      const result = await swapRows(context, config, [...stacks.values()], ignored, issue.number, {
-        started: [...started, ...merged],
-        dropped,
-        clear,
-        merges: { merged: merging.mergedPrs, clear: clearMerges },
-        bulk: bulkActs,
-      });
+      const result = await watch.time("body", () =>
+        swapRows(context, config, [...stacks.values()], ignored, issue.number, {
+          started: [...started, ...merged],
+          dropped,
+          clear,
+          merges: { merged: merging.mergedPrs, clear: clearMerges },
+          bulk: bulkActs,
+        }),
+      );
       log.info(
         result.written
           ? `Wrote the dashboard (#${issue.number}).`
@@ -826,6 +860,15 @@ interface Discovered {
   ignored: IgnoredStack[];
 }
 
+// The repo, with the time of reading its config and of discovery on the
+// timing line (slice 5.23). Both are read once, so the time is the first ask's.
+function timedRepo(repo: Repo, watch: Watch): Repo {
+  return {
+    config: () => watch.time("config", () => repo.config()),
+    stacks: () => watch.time("discovery", () => repo.stacks()),
+  };
+}
+
 function byId({ stacks, ignored }: RepoStacks): Discovered {
   return { stacks: new Map(stacks.map((stack) => [stackId(stack.stack), stack])), ignored };
 }
@@ -1112,6 +1155,7 @@ async function startQueued(
   context: ResolveContext,
   repo: Repo,
   handOn: (entries: readonly MatrixEntry[]) => void,
+  watch: Watch,
 ): Promise<void> {
   const { log, github } = context;
   const config = repo.config();
@@ -1135,14 +1179,16 @@ async function startQueued(
       dependsOn !== undefined ||
       all.some((other) => other.dependsOn?.includes(stackId(stack)) === true),
   );
-  const settled = await settleEndedRuns(
-    github,
-    await readRecords(
-      context,
-      all.map(({ environment }) => environment),
-      involved,
+  const settled = await watch.time("records", async () =>
+    settleEndedRuns(
+      github,
+      await readRecords(
+        context,
+        all.map(({ environment }) => environment),
+        involved,
+      ),
+      context.repoUrl,
     ),
-    context.repoUrl,
   );
   for (const { stackId: id } of settled.ended) {
     log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
@@ -1169,10 +1215,12 @@ async function startQueued(
     const queued = settled.records.find((record) => record.id === fact.deployment);
     if (!stack || !queued) continue;
     try {
-      const record = await startQueuedRecord(context, queued, {
-        sha: context.sha,
-        environment: stack.environment,
-      });
+      const record = await watch.time("opening", () =>
+        startQueuedRecord(context, queued, {
+          sha: context.sha,
+          environment: stack.environment,
+        }),
+      );
       if (!record) continue;
       started.push({
         stackId: id,
@@ -1200,14 +1248,18 @@ async function startQueued(
   );
 
   const dashboard =
-    started.length > 0 ? await findDashboard(github, config.dashboard.label) : undefined;
+    started.length > 0
+      ? await watch.time("dashboard", () => findDashboard(github, config.dashboard.label))
+      : undefined;
   if (dashboard) {
     try {
-      const result = await swapRows(context, config, all, ignored, dashboard.number, {
-        started,
-        dropped: [],
-        clear: new Map(),
-      });
+      const result = await watch.time("body", () =>
+        swapRows(context, config, all, ignored, dashboard.number, {
+          started,
+          dropped: [],
+          clear: new Map(),
+        }),
+      );
       log.info(
         result.written
           ? `Wrote the dashboard (#${dashboard.number}).`

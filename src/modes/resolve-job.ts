@@ -21,6 +21,8 @@ import { resolve } from "./resolve.ts";
 
 // Auto mode hands in the log and the outputs of its one step (record 0077).
 export async function runResolve(directory: string, step?: AutoStep): Promise<void> {
+  // For the timing line (slice 5.23): the process started this long ago.
+  const startup = process.uptime() * 1000;
   // The one read of the environment (build plan, section 5).
   const env = process.env;
   const read = (path: string) => readFileSync(path, "utf8");
@@ -43,5 +45,7 @@ export async function runResolve(directory: string, step?: AutoStep): Promise<vo
     setOutput: (name, value) =>
       step ? step.outputs.set(name as OutputName, value) : core.setOutput(name, value),
     notifier: stepNotifier(core.getInput, log, core.setSecret),
+    now: () => new Date(),
+    startup,
   });
 }
