@@ -27480,8 +27480,12 @@ function autoModesOn(triggers, config) {
 }
 
 // src/github/inputs.ts
-function wholeNumber(getInput2, name, hint = "") {
+var DEFAULT_CONCURRENCY = 4;
+var DEFAULT_PREVIEW_TIMEOUT_MINUTES = 10;
+function wholeNumber(getInput2, name, fallback, hint = "") {
   const text = getInput2(name).trim();
+  if (text === "")
+    return fallback;
   if (!/^[1-9]\d*$/.test(text)) {
     throw new Error(`The "${name}" input must be a whole number of 1 or more, and it is ${JSON.stringify(text)}.${hint}`);
   }
@@ -27489,14 +27493,15 @@ function wholeNumber(getInput2, name, hint = "") {
 }
 function readToken(getInput2) {
   const token = getInput2("github-token");
-  if (token === "") {
+  if (token.trim() === "") {
     throw new Error('The "github-token" input is empty. Leave it out of the workflow, so it takes the GITHUB_TOKEN of the run.');
   }
   return token;
 }
+var MINUTES = " It is a number of whole minutes.";
 function readScanInputs(getInput2) {
-  const concurrency = wholeNumber(getInput2, "concurrency");
-  const previewTimeoutMinutes = wholeNumber(getInput2, "preview-timeout", " It is a number of whole minutes.");
+  const concurrency = wholeNumber(getInput2, "concurrency", DEFAULT_CONCURRENCY);
+  const previewTimeoutMinutes = wholeNumber(getInput2, "preview-timeout", DEFAULT_PREVIEW_TIMEOUT_MINUTES, MINUTES);
   return {
     concurrency,
     previewTimeoutMinutes,
@@ -27521,13 +27526,13 @@ function readApplyInputs(getInput2) {
   if (!/^[1-9]\d*$/.test(text)) {
     throw new Error(`The "deployment-id" input must be the id of a deployment record, a whole number, and it is ${JSON.stringify(text)}.`);
   }
-  const previewTimeoutMinutes = wholeNumber(getInput2, "preview-timeout", " It is a number of whole minutes.");
+  const previewTimeoutMinutes = wholeNumber(getInput2, "preview-timeout", DEFAULT_PREVIEW_TIMEOUT_MINUTES, MINUTES);
   return {
     deploymentId: Number(text),
     previewTimeoutMinutes,
     token: readToken(getInput2),
     dryRun: readBoolean(getInput2, "dry-run"),
-    deployTimeoutMinutes: getInput2("deploy-timeout").trim() === "" ? undefined : wholeNumber(getInput2, "deploy-timeout", " It is a number of whole minutes.")
+    deployTimeoutMinutes: wholeNumber(getInput2, "deploy-timeout", undefined, MINUTES)
   };
 }
 function readBoolean(getInput2, name) {
@@ -57939,7 +57944,10 @@ function dashboardFacts(rows) {
       destroying: destroying.length,
       failedDeploys: failed2
     },
-    shortened: pending.filter((row) => row.shortened > 0).length,
+    shortened: {
+      pending: pending.filter((row) => row.shortened > 0).length,
+      drift: drift.filter((row) => row.shortened > 0).length
+    },
     headerState: headerStateOf(rows.length, known, sections, failed2),
     crates: pending.length > MAX_CRATES ? "more" : pending.length,
     signs: signsOf([...pending, ...deploying]),
@@ -58071,10 +58079,12 @@ var MERGE_LINE2 = "Tick a box to merge that pull request. Its stack is then prev
 var WAITING_ON_CHECKS_LINE = "These wait on their own checks. Each gets a box here once its checks are green.";
 var READ_ONLY_LINE = "This dashboard is read only, so rows have no boxes and nothing deploys from here. Rows get their boxes when `dashboard.readOnly` comes out of `sluiceway.yaml`.";
 var PREVIEW_FAILED_LINE = "These stacks could not be previewed, so they cannot be deployed from here until a scan succeeds.";
-function shortenedNote(shortened, pending) {
-  const rows = `${pending} pending row${pending === 1 ? "" : "s"}`;
+function shortenedNote(sections) {
+  const named2 = sections.filter((one2) => one2.shortened > 0);
+  const counts2 = named2.map(({ section, shortened, of }) => `${shortened} of ${of} ${section} row${of === 1 ? "" : "s"}`).join(" and ");
+  const one = named2.length === 1 && named2[0]?.shortened === 1;
   return `> [!NOTE]
-> This dashboard is too large for one issue, so ${shortened} of ${rows} ${shortened === 1 ? "is" : "are"} shortened. The summary that a shortened row links to shows every change. Deletes and replaces are the last thing to be cut.`;
+> This dashboard is too large for one issue, so ${counts2} ${one ? "is" : "are"} shortened. The summary that a shortened row links to shows every change. Deletes and replaces are the last thing to be cut.`;
 }
 
 // src/render/body.ts
@@ -58231,9 +58241,13 @@ function renderBody(input2) {
 `), '<div align="center">', counts2, scan, "</div>");
   else
     out.push(counts2, scan);
-  const { pending } = facts;
-  if (facts.shortened > 0)
-    out.push(shortenedNote(facts.shortened, pending.length));
+  const { pending, shortened } = facts;
+  if (shortened.pending + shortened.drift > 0) {
+    out.push(shortenedNote([
+      { section: "pending", shortened: shortened.pending, of: pending.length },
+      { section: "drifted", shortened: shortened.drift, of: facts.drift.length }
+    ]));
+  }
   const { deploying } = facts;
   if (deploying.length > 0)
     out.push("## Deploying", blocks(deploying));
