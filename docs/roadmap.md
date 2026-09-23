@@ -33,6 +33,9 @@ Every item, as `docs/later.md` lists it:
 
 No date and no order. Each waits for a user who asks, and none of them needs a breaking change. [docs/later.md](later.md#deferred-door-left-open) says why each one waited and where that was decided.
 
+- A result file field and an output that say a deploy went out on merge
+- Deploying on merge from a scan that no push started, such as the schedule finding a change whose push scan failed its preview
+- `tickers` judging whoever merged a stack set to on-merge
 - Saying on the dashboard whether the tick rule or an environment decides who may deploy, and the check reading whether an environment has required reviewers
 - `init` for the Terraform family: declaring Terraform root modules, Terragrunt units and the stacks of a CDK for Terraform app, and their setup steps (setup-terraform, terragrunt, cdktf)
 - `dependsOn: auto` from a Terragrunt unit's `dependency` blocks, and zero-config discovery of Terragrunt units from `terragrunt.hcl`
