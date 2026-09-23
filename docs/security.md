@@ -32,8 +32,8 @@ For a stack set to on-merge, the merge is the ask:
 - **Drift always waits for a tick.** A row that shows drift means the real infrastructure moved, not only the code, and a deploy would put back what someone changed by hand, perhaps on purpose during an incident. A person decides that.
 - **Dependencies still decide the order.** A stack that depends on one with a change waiting for a tick waits too, and says for which.
 - **`deploys: false` stops it**, and so does a read-only dashboard.
-- **The tick rule does not judge the merge.** `tickers` still decides who may tick the stack, for every change that waits. Who may merge is decided by GitHub: write access, and the branch protection and required reviews of the default branch. So setting a stack to on-merge makes the rules of the default branch its gate, which is why it is set in a reviewed file and never on the dashboard.
-- **An environment with required reviewers still gates it.** The deploy runs in the job that deploys a tick, so the environment on that job holds a deploy on merge until a reviewer approves, as it holds a tick. That is the honest answer to who may deploy such a stack: the reviewers, where there is an environment, and whoever may merge, where there is not.
+- **The tick rule does not judge the merge.** `tickers` still decides who may tick the stack, for every change that waits. Who may merge is decided by GitHub: write access, and the branch protection and required reviews of the default branch. So setting a stack to on-merge lets the rules of the default branch decide who may deploy it, which is why it is set in a reviewed file and never on the dashboard.
+- **An environment with required reviewers still holds it.** The deploy runs in the job that deploys a tick, so the environment on that job holds a deploy on merge until a reviewer approves, as it holds a tick. So who may deploy such a stack is the reviewers, where there is an environment, and whoever may merge, where there is not.
 
 Every deploy on merge is traceable like a tick: its deployment record names the commit and the person, the row says `merged by`, and so does Recently deployed.
 

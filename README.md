@@ -151,7 +151,7 @@ Times are in UTC.
 
 ## How it works
 
-A scan previews your stacks, and nothing deploys until someone ticks a box.
+A scan previews your stacks, and nothing deploys until someone ticks a box, unless your own `sluiceway.yaml` sets a stack to go out on merge.
 
 1. After a merge to the default branch, and once a day, a **scan** previews the stacks in the repo.
 2. The scan writes the dashboard issue: one row per stack, and a box on every stack that has changes waiting.

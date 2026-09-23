@@ -195,7 +195,7 @@ A merge never skips a check: branch protection and required reviews apply to the
 
 ## Deploy on merge
 
-A stack set to [`deploy: on-merge`](configuration.md#stacksdeploy) is handed on by the scan of a push to the default branch, through the scan's own `matrix`, as the scan after a merge from the dashboard hands one on. So it needs the scan's `outputs:`, the `apply-merged` job and the `settle` above, and nothing more. `resolve` does not run on a push, and `apply-merged` needs only the scan. The job that takes the deploy is a copy of `apply`, so it names the same environment, and the environment's required reviewers approve a deploy on merge as they approve a tick ([security](security.md#what-deploys-without-a-tick)). Without that job the check warns, and the stack never deploys on merge.
+A stack set to [`deploy: on-merge`](configuration.md#stacksdeploy) is handed on by the scan of a push to the default branch, through the scan's own `matrix`, as the scan after a merge from the dashboard hands one on. So it needs the scan's `outputs:`, the `apply-merged` job and the `settle` above, and nothing more. `resolve` does not run on a push, and `apply-merged` needs only the scan. The job that takes the deploy is a copy of `apply`, so it names the same environment, and a deploy on merge waits for the environment's required reviewers as a tick does ([security](security.md#what-deploys-without-a-tick)). Without that job the check warns, and the stack never deploys on merge.
 
 ## Stack dependencies
 
