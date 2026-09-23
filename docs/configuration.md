@@ -642,7 +642,7 @@ stacks:
 
 Default: `on-tick`
 
-When the stacks of this entry deploy. `on-tick`, the default, is the loop the rest of this page describes: a stack deploys when a person ticks its row. `on-merge` lets a stack go out by itself after a merge, with no tick, for a stack nobody needs to look at first, such as a dashboard, an exporter or a test namespace. A stack that deletes a database or changes a network stays on a tick ([record 0094](adr/0094-a-stack-may-deploy-on-merge-and-the-default-stays-a-tick.md)).
+When the stacks of this entry deploy. `on-tick`, the default, is the loop the rest of this page describes: a stack deploys when a person ticks its row. `on-merge` lets a stack go out by itself after a merge, with no tick, for a stack nobody needs to look at first, such as a dashboard, an exporter or a test namespace. A stack that deletes a database or changes a network stays on a tick ([record 0095](adr/0095-a-stack-may-deploy-on-merge-and-the-default-stays-a-tick.md)).
 
 ```yaml
 stacks:
@@ -660,6 +660,13 @@ stacks:
 - **In the [split workflow](split-workflow.md#merge-and-deploy)** the scan hands the deploy on through its own `matrix`, so it needs the second apply job that merge and deploy uses. The [check](workflow.md#check-your-setup) warns when it is missing.
 
 An entry with a name wins over one without. Any other value fails the config:
+
+```yaml
+# Not valid: a trigger Sluiceway does not have
+stacks:
+  - path: apps/grafana
+    deploy: on-push
+```
 
 ```text
 sluiceway.yaml is not valid:

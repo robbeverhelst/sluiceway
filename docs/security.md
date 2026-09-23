@@ -23,7 +23,7 @@ The diff hash is not a secret and not a signature. Someone who edits it by hand 
 
 ## What deploys without a tick
 
-Nothing deploys unless a person asks, or unless the repo's own `sluiceway.yaml` says a stack goes out on merge. [`deploy: on-merge`](configuration.md#stacksdeploy) is set per stack, and the default is a tick, so a repo that never writes it deploys only on a tick ([record 0094](adr/0094-a-stack-may-deploy-on-merge-and-the-default-stays-a-tick.md)).
+Nothing deploys unless a person asks, or unless the repo's own `sluiceway.yaml` says a stack goes out on merge. [`deploy: on-merge`](configuration.md#stacksdeploy) is set per stack, and the default is a tick, so a repo that never writes it deploys only on a tick ([record 0095](adr/0095-a-stack-may-deploy-on-merge-and-the-default-stays-a-tick.md)).
 
 For a stack set to on-merge, the merge is the ask:
 
