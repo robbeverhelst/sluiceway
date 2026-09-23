@@ -4,7 +4,7 @@
 
 The dashboard gets a mascot header (map, 0029). Three directions were drawn as rough animated SVGs and judged in a local page that mimics a GitHub issue and in real issues in the private lab repo, in light and dark: an otter who works the gate, the gate itself with a face, and a crowd of water drops queueing at a gate.
 
-The gate with a face won. It is one bold shape that reads at any size, so the same drawing is the mascot, the logo and the icon. It carries the wordmark next to it, so the header is also the brand line of the issue. Its moods are small changes to one shape, which keeps the files tiny and the set consistent. And the plain header (0031) is simply the same gate with its face off, where the other two directions had to remove their hero and leave an empty scene.
+The gate with a face won. It is one bold shape that reads at any size, so the same drawing is the mascot, the logo and the icon. It carries the wordmark next to it, so the header is also the brand line of the issue. Its moods are small changes to one shape, which keeps the files tiny and the set consistent. And the plain header (0031) is the same gate with its face off, where the other two directions had to remove their hero and leave an empty scene.
 
 The otter had the most charm but needs an illustrator to look good and is small inside a 440 wide header. The drops were funny as a crowd but have no single face to put on a logo.
 

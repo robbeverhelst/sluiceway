@@ -42,7 +42,7 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Helm, part 3: a `kubeContext` option, zero-config discovery from `Chart.yaml`, and `--take-ownership` for objects made outside the release
 - Pruning of a Kubernetes manifests stack through kubectl's own ApplySet, and drift in fields its manifests do not set
 - Zero-config discovery of kustomizations, and a hint in the check for a directory of manifests that no entry declares
-- `init`, part 2: a credential step for a secret manager other than 1Password's env file of references or for a cloud through OIDC, a setup action for languages other than Node, a check workflow next to the starter workflow, adding to a `sluiceway.yaml` that is there, and Kubernetes manifests stacks (slice 4.9 landed while this slice was built)
+- `init`, part 2: a credential step for a secret manager other than 1Password's env file of references or for a cloud through OIDC, a setup action for languages other than Node, a check workflow next to the starter workflow, adding to a `sluiceway.yaml` that is there, and Kubernetes manifests stacks
 - Credentials that only read in scans, and an environment per stack, without an `if:`: `resolve` dispatches a second workflow once per deploy, whose one job names the stack's environment, loads the credentials that write and deploys that record
 - One set of outputs and one result file per deploy when one step deploys several stacks, and deploys side by side in one step
 - A check in auto mode that knows a repo's issue edits are many and suggests the split workflow
@@ -148,7 +148,7 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A hosted GitHub App with an org-wide dashboard. A control plane only. Previews and deploys always run in the user's own runners. It reuses the open source core.
 - GitLab and Bitbucket. The UI is a GitHub issue, so this is a different product surface.
 - Interactive notifications (a tick from a button in Slack) and a metrics endpoint. A button needs an app that Slack can call back, and a GitHub Action is not running when someone clicks. The built-in messages go one way (0078), and metrics are pushed from the outputs. Both fit a hosted version.
-- A policy engine, cost estimation. Non-goals for v1 in the brief.
+- A policy engine, cost estimation. Out of scope for v1.
 
 ### Not planned
 

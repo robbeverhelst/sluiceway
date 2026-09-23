@@ -20,7 +20,7 @@ Amends 0056 and 0059.
 
 - **Deploying the earlier phase without a tick.** The slice says a tick on a later phase "deploys the earlier phase first". Read without the rule of 0056 it would deploy stacks nobody ticked, which breaks the one promise of the dashboard: a tick deploys exactly what the row showed. So the earlier phase goes first when it is ticked too, in the same edit or before, and a tick alone is refused with the note.
 - **Phase nodes in the deployment records.** `behind` stays a list of stack ids (0056). A queued record waits on the stacks that went out, and a phase is only a way to write the edges.
-- **Every stack must have a phase once `phases` is set.** A repo moving to phases does it one directory at a time, and a stack no phase names is simply outside the order.
+- **Every stack must have a phase once `phases` is set.** A repo moving to phases does it one directory at a time, and a stack no phase names is outside the order.
 - **Quoting the text of a `from` key in an error.** It is a value of the tool's file, and 0021 keeps those out of what Sluiceway writes. A text that is a phase is shown, because then it is a name from `sluiceway.yaml`.
 - **Reading a phase from files of other tools** (a label in `Chart.yaml`, a comment in OpenTofu). Nothing asks for it yet (later.md).
 

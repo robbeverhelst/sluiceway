@@ -54,22 +54,22 @@ The brief's milestone numbers change with that. M0 is merged. M1 is the scan, M2
 
 ## 3. Names fixed for v1
 
-Collected here so nobody has to search the records. The record in the last column is the authority.
+Every name, default and fixed value of v1 in one place. The record in the last column is the authority.
 
 ### Action inputs and outputs
 
 | Name | Kind | Modes | Default | Meaning | Record |
 |---|---|---|---|---|---|
-| `mode` | input | all | `auto` | `auto`, `scan`, `resolve`, `apply`, `settle`, `check` or `init`. `auto` runs the modes the event asks for in one step (slice 5.12) | 0003, 0042, 0065, 0077 |
-| `concurrency` | input | `scan` | one per core, 1 to 8 | Size of the preview pool. Without it the pool is the number of cores of the machine, at most 8, and the job log says which (slice 5.21) | 0012, 0085 |
+| `mode` | input | all | `auto` | `auto`, `scan`, `resolve`, `apply`, `settle`, `check` or `init`. `auto` runs the modes the event asks for in one step | 0003, 0042, 0065, 0077 |
+| `concurrency` | input | `scan` | one per core, 1 to 8 | Size of the preview pool. Without it the pool is the number of cores of the machine, at most 8, and the job log says which | 0012, 0085 |
 | `preview-timeout` | input | `scan`, `apply` | `10` | Time limit for one preview, whole minutes, from when the preview starts | 0012, 0035, 0085 |
-| `strict` | input | `scan`, `auto` | `false` | Any preview failure turns the job red, after the dashboard is written (slice 5.9) | 0012 |
+| `strict` | input | `scan`, `auto` | `false` | Any preview failure turns the job red, after the dashboard is written | 0012 |
 | `github-token` | input | all | the workflow token | Always the workflow's own `GITHUB_TOKEN` | 0017, 0035 |
 | `deployment-id` | input | `apply` | required there | The deployment record to deploy | 0035 |
 | `dry-run` | input | `apply`, `auto` | `false` | A rehearsal: everything up to the hash check, then no deploy. The record ends as `inactive`, "rehearsed, nothing was deployed" | 0051 |
 | `backend` | input | `check`, `auto` | `false` | Also ask the backend which of the discovered stacks it holds, with the credentials of the job, and give one `ignore` block for the ones it does not hold. Refused in every other mode but `auto` | 0074, 0077 |
-| `deploy-timeout` | input | `apply`, `auto` | none | A time limit on the deploy itself, whole minutes. The tool is interrupted and gets two minutes to stop (slice 5.9) | 0003 |
-| `slack-webhook-url` | input | `scan`, `resolve`, `apply`, `auto` | none | A Slack incoming webhook address, from a secret. A warning in any other mode (slice 5.13) | 0078, 0077 |
+| `deploy-timeout` | input | `apply`, `auto` | none | A time limit on the deploy itself, whole minutes. The tool is interrupted and gets two minutes to stop | 0003 |
+| `slack-webhook-url` | input | `scan`, `resolve`, `apply`, `auto` | none | A Slack incoming webhook address, from a secret. A warning in any other mode | 0078, 0077 |
 | `telegram-bot-token` | input | `scan`, `resolve`, `apply`, `auto` | none | A Telegram bot token, from a secret. Needs `telegram-chat-id` | 0078 |
 | `telegram-chat-id` | input | `scan`, `resolve`, `apply`, `auto` | none | The chat the bot posts to: an id or an `@` name | 0078 |
 | `webhook-url` | input | `scan`, `resolve`, `apply`, `auto` | none | An `http` or `https` address, from a secret, that gets `{ version, event, repository, stacks, dashboard, run, text }` | 0078 |
@@ -90,39 +90,39 @@ The file is optional and sits at the repo root. Since slice 5.9 `sluiceway.yml` 
 
 | Key | Default | Meaning | Record |
 |---|---|---|---|
-| `dashboard.title` | `Sluiceway dashboard` | Issue title, set again by every scan when it differs (slice 5.9) | brief |
+| `dashboard.title` | `Sluiceway dashboard` | Issue title, set again by every scan when it differs | brief |
 | `dashboard.label` | `sluiceway` | Label the dashboard is found by | 0009, 0017 |
-| `dashboard.pin` | `true` | Pin the issue on every scan when it is not pinned, best effort (slice 5.9) | Actions research |
+| `dashboard.pin` | `true` | Pin the issue on every scan when it is not pinned, best effort | — |
 | `dashboard.redact` | `false` | Keep names out of the issue | 0023 |
 | `dashboard.personality` | `true` | Header image and the voice | 0034 |
 | `dashboard.readOnly` | `false` | No boxes: pending rows have none, there is no rescan box, and the line under the Pending heading says so. For a workflow that only scans (onboarding log, hurdle 16) | 0045 |
 | `dashboard.showValues` | `[]` | Property paths whose old and new value may appear, as `old → new` after the path. Exact paths, `*` for part of one name. Never a value the tool marks secret, none with `redact` on. The hash covers a shown value (0008) | 0052 |
 | `dashboard.recentlyDeployed` | `10` | How many lines Recently deployed lists, newest first, failed deploys included. 0 to 50, and 0 leaves the list out | 0062 |
-| `dashboard.timeZone` | `UTC` | The IANA zone every time on the dashboard is shown in. A time that stands alone ends in its offset from UTC (`UTC+2`), the line under Recently deployed names the zone, and the markers keep UTC. A name that is not a zone fails the config (slice 5.25) | 0089 |
+| `dashboard.timeZone` | `UTC` | The IANA zone every time on the dashboard is shown in. A time that stands alone ends in its offset from UTC (`UTC+2`), the line under Recently deployed names the zone, and the markers keep UTC. A name that is not a zone fails the config | 0089 |
 | `tickers` | `write` | Default tick rule: `write`, `maintain`, `admin` or a list of usernames | 0018 |
 | `deploys` | `true` | `false` stops every deploy: `resolve` clears every ticked box with a note, `apply` ends before the tool runs | 0051 |
 | `ignore` | `[]` | Globs matched against the stack id. An entry is a glob, or `{ glob, reason }`, and a stack left out with a reason is listed with it under In sync | 0010, 0051 |
 | `scan.unrelated` | `[]` | Globs for files that claim nothing and force nothing | 0010 |
 | `scan.logDiff` | `false` | Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else | 0048 |
 | `drift.enabled` | `false` | Check every stack for drift in each scan that a schedule starts or a person starts with Run workflow, and in a push's scan only for the stacks whose row showed drift. There is no `drift.schedule`: the loader says the cron goes in the workflow | 0055 |
-| `phases` | `[]` | Names of phases in deploy order. A stack in a phase depends on every stack in every earlier phase (slice 4.16) | 0067 |
+| `phases` | `[]` | Names of phases in deploy order. A stack in a phase depends on every stack in every earlier phase | 0067 |
 | `stacks[].path` | required per entry | Directory of the stack, relative to the repo root | 0006 |
 | `stacks[].name` | none | Name of the stack. Without it the entry covers every stack in `path` | 0006 |
 | `stacks[].tool` | none | `opentofu`, `terraform`, `helm` or `kubectl`: the entry declares a stack of that tool at `path`, because files alone cannot name one | 0053, 0058, 0060, 0068 |
-| `stacks[].id` | the derived id | The id of the one stack the entry covers, in place of the one derived from its path and name, so a stack that moved keeps its row and its deploys. Unique among every stack id (slice 5.9) | 0006 |
+| `stacks[].id` | the derived id | The id of the one stack the entry covers, in place of the one derived from its path and name, so a stack that moved keeps its row and its deploys. Unique among every stack id | 0006 |
 | `stacks[].environment` | `sluiceway` | Label on the deployment record, and the GitHub Environment where one is used | 0003 |
 | `stacks[].tickers` | the top level value | Tick rule for this stack | 0018 |
 | `stacks[].inputs` | `[]` | Extra globs this stack claims | 0010 |
 | `stacks[].previewTimeout` | the input | Time limit for this stack, whole minutes | 0012, 0035 |
-| `stacks[].dependsOn` | none | Stack ids this stack depends on, or `auto`: the stacks its Pulumi program reads through stack references, read at each preview and carried on the row (slice 4.7). A tick waits while one of them is pending and not ticked, ticks in one chain deploy one layer per run (slice 4.4) | 0056, 0059 |
-| `stacks[].phase` | none | One of `phases`, or `{ from: <key> }`: the text under that key of the stack's Pulumi project file, under `config` or at the top level. The stack depends on every stack in every earlier phase, and `dependsOn` adds to that (slice 4.16) | 0067 |
-| `stacks[].drift.enabled` | the top level | The drift check on or off for the stacks of this entry, in the same scans as `drift.enabled` (slice 4.7) | 0059 |
-| `stacks[].options` | `{}` | Named adapter options, only with `tool`. OpenTofu and Terraform: `workspace`, `varFiles` and `wrapper` (`terragrunt` or `cdktf`). Helm: `release`, `namespace`, `chart`, `version` (a chart reference only), `valuesFiles` and `createNamespace` (slice 5.2). kubectl: `context`, `namespace`, `recursive`, `prune`, `forceConflicts` and `fieldManager` (slice 5.3) | 0006, 0015, 0053, 0058, 0060, 0068, 0069, 0070 |
-| `discovery.rootModules` | `true` | Find OpenTofu and Terraform root modules from their files: not a local module source of another directory, not under `modules/`, a backend or cloud block, one workspace, no var file that chooses, and a lock file or `.tofu` files that name the tool. Each is one stack in the default workspace with its path as its id. A directory a `stacks` entry with a tool names stays the entry's. `discovery` is a mapping of switches that the adapters name, and an unknown one fails the config (slice 5.29) | 0092 |
-| `attribution.lookback` | `100` | How many of the newest commits a job walks for attribution, 1 to 1,000, one GraphQL page per 100 (slice 5.5) | 0026, 0072 |
-| `attribution.names` | `5` | How many pull requests and direct pushes a row and a shipped line name before the rest is a count, 0 to 20 (slice 5.5) | 0026, 0072 |
+| `stacks[].dependsOn` | none | Stack ids this stack depends on, or `auto`: the stacks its Pulumi program reads through stack references, read at each preview and carried on the row. A tick waits while one of them is pending and not ticked, ticks in one chain deploy one layer per run | 0056, 0059 |
+| `stacks[].phase` | none | One of `phases`, or `{ from: <key> }`: the text under that key of the stack's Pulumi project file, under `config` or at the top level. The stack depends on every stack in every earlier phase, and `dependsOn` adds to that | 0067 |
+| `stacks[].drift.enabled` | the top level | The drift check on or off for the stacks of this entry, in the same scans as `drift.enabled` | 0059 |
+| `stacks[].options` | `{}` | Named adapter options, only with `tool`. OpenTofu and Terraform: `workspace`, `varFiles` and `wrapper` (`terragrunt` or `cdktf`). Helm: `release`, `namespace`, `chart`, `version` (a chart reference only), `valuesFiles` and `createNamespace`. kubectl: `context`, `namespace`, `recursive`, `prune`, `forceConflicts` and `fieldManager` | 0006, 0015, 0053, 0058, 0060, 0068, 0069, 0070 |
+| `discovery.rootModules` | `true` | Find OpenTofu and Terraform root modules from their files: not a local module source of another directory, not under `modules/`, a backend or cloud block, one workspace, no var file that chooses, and a lock file or `.tofu` files that name the tool. Each is one stack in the default workspace with its path as its id. A directory a `stacks` entry with a tool names stays the entry's. `discovery` is a mapping of switches that the adapters name, and an unknown one fails the config | 0092 |
+| `attribution.lookback` | `100` | How many of the newest commits a job walks for attribution, 1 to 1,000, one GraphQL page per 100 | 0026, 0072 |
+| `attribution.names` | `5` | How many pull requests and direct pushes a row and a shipped line name before the rest is a count, 0 to 20 | 0026, 0072 |
 | `mergeAndDeploy.authors` | `[]` | Logins whose green pull requests are listed to merge and deploy with one tick, one deploy per stack that claims them. Empty turns it off | 0054, 0064, 0071 |
-| `notify.events` | `[pending, drift, failed, refused]` | The events a notification is sent on, to each channel the step's inputs name: `pending` (stacks newly pending after a scan), `drift` (newly drifted), `deployed`, `failed`, `refused` (a tick that deployed nothing). A channel is never a key here (slice 5.13) | 0078 |
+| `notify.events` | `[pending, drift, failed, refused]` | The events a notification is sent on, to each channel the step's inputs name: `pending` (stacks newly pending after a scan), `drift` (newly drifted), `deployed`, `failed`, `refused` (a tick that deployed nothing). A channel is never a key here | 0078 |
 | `mergeAndDeploy.preview` | `false` | Preview each listed update as it would be after the merge and show the counts on its row: one extra preview per stack of each of the oldest 30 updates, never for a fork | 0071 |
 
 Rules for config loading:
@@ -155,7 +155,7 @@ Rules for config loading:
 | Minimum Terraform, Terragrunt and cdktf CLIs | terraform v1.14.0, terragrunt v1.0.0, cdktf v0.21.0 | 0068 |
 | Minimum Helm CLI and diff plugin | helm v3.18.0, helm-diff v3.15.11 | 0058 |
 | Minimum kubectl CLI | v1.34.0 | 0060 |
-| Minimum self-hosted runner | v2.328.0, no ARM32 | Actions research |
+| Minimum self-hosted runner | v2.328.0, no ARM32 | — |
 | API budget | 1,000 requests per hour per repo | 0017 |
 
 ### The action's own version and the image URLs
