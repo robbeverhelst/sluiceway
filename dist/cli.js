@@ -28159,6 +28159,8 @@ function problemWords(issue2) {
       return `expected a mapping, got ${show(issue2.value)}. Write it as the top level has it: drift: { enabled: ${typeof issue2.value === "boolean" ? issue2.value : true} }.`;
     case "not-a-tick-rule":
       return `expected "write", "maintain", "admin" or a list of usernames, got ${show(issue2.value)}.`;
+    case "not-a-deploy-trigger":
+      return `expected "on-tick" or "on-merge", got ${show(issue2.value)}.`;
     case "not-an-event":
       return `${show(issue2.value)} is not an event. The events are: ${issue2.events.join(", ")}.`;
     case "not-a-phase-name":
@@ -28500,6 +28502,7 @@ var stackEntry = exports_external.strictObject({
       from: text.describe("A key of the project file whose text is the phase, under config or at the top level.")
     })
   ]).describe("The phase of these stacks, one of phases, or from: a key of the project file that names it. A stack in a phase depends on every stack in every earlier phase.").exactOptional(),
+  deploy: exports_external.enum(["on-tick", "on-merge"]).describe("When these stacks deploy. on-tick: when a person ticks the row, the default. on-merge: by themselves after the scan of a merge that found them pending, through the same fresh preview and hash check as a tick, attributed to whoever merged. A change that deletes or replaces something, drift, and a stack it depends on that waits for a tick still wait for a tick.").exactOptional(),
   drift: exports_external.strictObject({
     enabled: exports_external.boolean().describe("Check these stacks for drift, or not, whatever drift.enabled at the top level says. The scans that check are the same.")
   }).describe("The drift check of these stacks. Default: the top level drift.").exactOptional(),
@@ -28698,6 +28701,9 @@ function classify(issue2, raw) {
   if (issue2.code === "invalid_union") {
     return Array.isArray(value) ? inner(1) : one({ kind: "not-a-tick-rule", value });
   }
+  if (key === "deploy" && path[0] === "stacks") {
+    return one({ kind: "not-a-deploy-trigger", value });
+  }
   if (issue2.code === "invalid_value" && path[0] === "notify") {
     return one({ kind: "not-an-event", value, events: NOTIFY_EVENTS });
   }
@@ -28857,6 +28863,7 @@ function applyConfig(config2, found) {
     const id = stackId(stack);
     const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
     const drift = entries.findLast((entry) => entry.drift)?.drift?.enabled;
+    const deploy = entries.findLast((entry) => entry.deploy)?.deploy;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     return {
@@ -28869,7 +28876,8 @@ function applyConfig(config2, found) {
       ...phase === undefined ? {} : { phase },
       ...from === undefined ? {} : { phaseFrom: from },
       ...entries.some((entry) => entry.dependsOn === DEPENDS_ON_AUTO) ? { dependsOnAuto: true } : {},
-      ...drift === undefined ? {} : { drift }
+      ...drift === undefined ? {} : { drift },
+      ...deploy === "on-merge" ? { deploy } : {}
     };
   });
 }
@@ -30923,6 +30931,11 @@ function checkJobs(path, workflow, found, config2, warnings) {
     if (fromScan.length === 0)
       warnings.push({ kind: "no-merged-apply", path });
   }
+  const onMerge = config2.stacks.some(({ deploy }) => deploy === "on-merge");
+  if (onMerge && !mergesAndDeploys && scans.length > 0 && applies.length > 0) {
+    if (fromScan.length === 0)
+      warnings.push({ kind: "no-on-merge-apply", path });
+  }
 }
 function listensToEdits(issues, present) {
   if (!present)
@@ -31015,7 +31028,8 @@ function settingsText(configured, phases = []) {
   const claims = inputs.length === 0 ? "no inputs" : `inputs ${inputs.join(", ")}`;
   const phase = configured.phase === undefined ? "" : `, phase ${phaseWords(configured, " (read from ", ")")}`;
   const waits = dependsOnWords(configured, phases);
-  return `environment ${environment}, tickers ${rule}, ${claims}${phase}${waits === undefined ? "" : `, depends on ${waits}`}`;
+  const onMerge = configured.deploy === "on-merge" ? ", deploys on merge" : "";
+  return `environment ${environment}, tickers ${rule}, ${claims}${phase}${waits === undefined ? "" : `, depends on ${waits}`}${onMerge}`;
 }
 function phaseWords({ phase, phaseFrom }, before, after) {
   return phaseFrom === undefined ? `${phase}` : `${phase}${before}${phaseFrom}${after}`;
@@ -31206,6 +31220,8 @@ function workflowWarningText(warning) {
       return `${path}, job ${warning.job}: settle does not wait for the job ${warning.apply}. Add ${warning.apply} to its needs, so it ends the records of those deploys too.`;
     case "no-merged-apply":
       return `${path}: mergeAndDeploy is on, and no apply job takes the matrix of the scan. The scan after a merge hands the deploy on through its own matrix output, so a merged update would never deploy. Add a copy of the apply job that takes needs.scan.outputs.matrix.`;
+    case "no-on-merge-apply":
+      return `${path}: a stack is set to deploy: on-merge, and no apply job takes the matrix of the scan. The scan of a merge hands that deploy on through its own matrix output, so it would never start. Add a copy of the apply job that takes needs.scan.outputs.matrix.`;
     case "scan-no-matrix-output":
       return `${path}, job ${warning.job}: it takes the matrix of the job ${warning.scan}, which has no matrix output. Add outputs: matrix: \${{ steps.<id>.outputs.matrix }} to ${warning.scan}, with that id on its Sluiceway step.`;
   }
@@ -31259,6 +31275,7 @@ function stacksPart({ stacks, phases }) {
     return { log: [{ info: found }], summary: ["### Stacks", found] };
   const waits = stacks.some((configured) => configured.dependsOn !== undefined || configured.dependsOnAuto);
   const phased = stacks.some((configured) => configured.phase !== undefined);
+  const onMerge = stacks.some((configured) => configured.deploy === "on-merge");
   return {
     log: [
       { info: found },
@@ -31271,8 +31288,8 @@ function stacksPart({ stacks, phases }) {
       "### Stacks",
       found,
       [
-        `| Stack | Environment | Tickers | Inputs |${phased ? " Phase |" : ""}${waits ? " Depends on |" : ""}`,
-        `|---|---|---|---|${phased ? "---|" : ""}${waits ? "---|" : ""}`,
+        `| Stack | Environment | Tickers | Inputs |${phased ? " Phase |" : ""}${waits ? " Depends on |" : ""}${onMerge ? " Deploys |" : ""}`,
+        `|---|---|---|---|${phased ? "---|" : ""}${waits ? "---|" : ""}${onMerge ? "---|" : ""}`,
         ...stacks.map((configured) => {
           const { environment, tickers: tickers2, inputs } = configured;
           return row([
@@ -31281,7 +31298,8 @@ function stacksPart({ stacks, phases }) {
             typeof tickers2 === "string" ? tickers2 : tickers2.join(", "),
             inputs.length === 0 ? "none" : inputs.join(", "),
             ...phased ? [configured.phase === undefined ? "none" : phaseWords(configured, ", from ", "")] : [],
-            ...waits ? [dependsOnCell(configured, phases)] : []
+            ...waits ? [dependsOnCell(configured, phases)] : [],
+            ...onMerge ? [configured.deploy === "on-merge" ? "on merge" : "on a tick"] : []
           ]);
         })
       ].join(`

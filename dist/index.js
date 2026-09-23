@@ -66433,7 +66433,7 @@ async function handOnMerged(context3, going, handedOn, opened) {
         throw record4.unfinished;
       log.info(one.behind === undefined ? `${name} deploys on merge: deployment record ${record4.deployment} is queued with diff hash ${one.hash}, merged by ${one.ticker}, and handed to apply.` : `${name} deploys on merge: deployment record ${record4.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, is queued behind ${one.behind.map(logGroupTitle).join(" and ")}, and a later run starts it.`);
     } catch (error63) {
-      throw new Error(`The deployment record that deploys ${name} on merge could not be written: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permission \`deployments: write\` (record 0094). Nothing more deploys on merge in this run: the row shows the stack as pending, and a tick deploys it.`);
+      throw new Error(`The deployment record that deploys ${name} on merge could not be written: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permission \`deployments: write\` (record 0095). Nothing more deploys on merge in this run: the row shows the stack as pending, and a tick deploys it.`);
     }
   }
 }
