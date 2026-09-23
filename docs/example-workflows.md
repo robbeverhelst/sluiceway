@@ -21,7 +21,7 @@ Copy the file to `.github/workflows/deploy-dashboard.yml` on your default branch
 
 ## The monorepo
 
-The dependencies are installed once, with one `npm ci` at the root, before the scan previews every stack. The plugin cache keeps the providers between runs: the first run fills it, which takes a while after a large first scan, and every later run gains from it. Your programs may need more than npm: a build step, a code generator, another language. Put it before the Sluiceway step, once.
+The dependencies are installed once, with one `npm ci` at the root, before the scan previews every stack. The plugin cache keeps the providers between runs: the first run fills it, which takes a while after a large first scan, and later runs reuse it. Your programs may need more than npm: a build step, a code generator, another language. Put it before the Sluiceway step, once.
 
 The credentials sit on the Sluiceway step only, so the install scripts of your dependencies never see them.
 

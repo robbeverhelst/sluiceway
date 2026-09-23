@@ -145,7 +145,7 @@ What the parts are for:
 
 ## What one job gives up
 
-One job is the simplest setup, and the right one for most repos. It gives up a few things that four jobs can do, and the [split workflow](split-workflow.md) keeps them for a repo that needs them:
+One job is the setup with the fewest parts. It gives up a few things that four jobs can do, and the [split workflow](split-workflow.md) keeps them for a repo that needs them:
 
 - **One set of credentials.** The job previews and deploys with the same credentials, so they must be able to change things. The split workflow gives the scan credentials that only read, and only the deploy job the ones that write.
 - **GitHub Environments per stack.** A job names one environment or none, so the stacks cannot each wait for a reviewer of their own ([with GitHub Environments](#with-github-environments)).
@@ -165,7 +165,7 @@ A run whose job no runner takes stays queued, and none of its work starts: no sc
 
 A tick decides who may ask for a deploy. An environment with required reviewers on the job that deploys decides who may deploy, and for a team whose deployers are fewer than its writers it is the answer, not an extra: leave `tickers` at its default and make the people who may deploy the environment's reviewers. That needs the [split workflow](split-workflow.md#with-github-environments), because in one job a reviewer would have to approve every run. [A tick asks, an environment decides](security.md#a-tick-asks-an-environment-decides) has the shape, what each one can and cannot do, and what happens while the deploy waits for a reviewer.
 
-The tick is always a gate. Where your plan has environments, they make it a stronger one even without reviewers: store the credentials that can change things as secrets of an environment that is limited to the default branch. Every run of this workflow runs on the default branch, so the one job can name that environment:
+Every deploy starts from a tick. Where your plan has environments, they also keep the credentials from other branches, even without reviewers: store the credentials that can change things as secrets of an environment that is limited to the default branch. Every run of this workflow runs on the default branch, so the one job can name that environment:
 
 ```yaml
     environment:

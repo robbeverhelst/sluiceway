@@ -151,7 +151,7 @@ Times are in UTC.
 
 ## How it works
 
-A sluiceway is a channel with a gate. Changes queue up behind the gate, and you decide what passes.
+A scan previews your stacks, and nothing deploys until someone ticks a box.
 
 1. After a merge to the default branch, and once a day, a **scan** previews the stacks in the repo.
 2. The scan writes the dashboard issue: one row per stack, and a box on every stack that has changes waiting.
@@ -226,9 +226,9 @@ jobs:
 ## What it does
 
 - **Pulumi**, with stacks found from their files alone ([configuration](https://docs.sluiceway.dev/guides/configuration/#stacks-and-stack-ids)).
-- **OpenTofu and Terraform**, with root modules found from their files when the files say so: a backend block, a lock file or `.tofu` files that name the tool, and no other directory using the directory as a module. Anything else, and Terragrunt or CDK for Terraform, is declared in `sluiceway.yaml`. A tick deploys the very plan file whose diff was approved ([configuration](https://docs.sluiceway.dev/guides/configuration/#stacks-and-stack-ids), [`stacks[].tool`](https://docs.sluiceway.dev/guides/configuration/#stackstool)).
+- **OpenTofu and Terraform**, with root modules found from their files when the files say so: a backend block, a lock file or `.tofu` files that name the tool, and no other directory using the directory as a module. Anything else, and Terragrunt or CDK for Terraform, is declared in `sluiceway.yaml`. A tick deploys the plan file whose diff the row showed ([configuration](https://docs.sluiceway.dev/guides/configuration/#stacks-and-stack-ids), [`stacks[].tool`](https://docs.sluiceway.dev/guides/configuration/#stackstool)).
 - **Helm**, with a release in a namespace declared in `sluiceway.yaml`. A tick deploys only what the chart rendered when the diff was checked ([`stacks[].tool`](https://docs.sluiceway.dev/guides/configuration/#stackstool)).
-- **Kubernetes manifests**, with a directory of manifests or a kustomization declared in `sluiceway.yaml`. A tick deploys the very set of manifests that was diffed ([`stacks[].tool`](https://docs.sluiceway.dev/guides/configuration/#stackstool)).
+- **Kubernetes manifests**, with a directory of manifests or a kustomization declared in `sluiceway.yaml`. A tick deploys the set of manifests that was diffed ([`stacks[].tool`](https://docs.sluiceway.dev/guides/configuration/#stackstool)).
 - **Tick to deploy.** One box per stack with changes waiting, checked against who may tick ([using the dashboard](https://docs.sluiceway.dev/using-the-dashboard/)).
 - **Merge and deploy**, for Renovate and other routine updates: one tick merges a green pull request and deploys its stack ([merge and deploy](https://docs.sluiceway.dev/guides/workflow/#merge-and-deploy)).
 - **Drift**, opt-in: a scheduled scan finds changes made outside the code, and a tick puts them back ([`drift.enabled`](https://docs.sluiceway.dev/guides/configuration/#driftenabled)).
@@ -236,7 +236,7 @@ jobs:
 - **A preview page per pending stack**, a check run with the stack's whole diff ([using the dashboard](https://docs.sluiceway.dev/using-the-dashboard/#rows-and-ticks)).
 - **The check mode**, which reads your files in a pull request and says what Sluiceway will find and what your workflow lacks ([check your setup](https://docs.sluiceway.dev/guides/workflow/#check-your-setup)).
 - **Values at the paths you list** with `showValues`, such as a chart's version, and the tool's own diff in the job log if you ask ([`dashboard.showValues`](https://docs.sluiceway.dev/guides/configuration/#dashboardshowvalues)).
-- **A kill switch and a rehearsal**: `deploys: false` stops every deploy, and `dry-run` rehearses a tick without deploying ([`deploys`](https://docs.sluiceway.dev/guides/configuration/#deploys), [`dry-run`](https://docs.sluiceway.dev/reference/action/#inputs)).
+- **Stop every deploy, or rehearse a tick**: `deploys: false` stops every deploy, and `dry-run` rehearses a tick without deploying ([`deploys`](https://docs.sluiceway.dev/guides/configuration/#deploys), [`dry-run`](https://docs.sluiceway.dev/reference/action/#inputs)).
 - **Notifications**, opt-in: a short message to Slack, Telegram or your own webhook when stacks are pending, drift is found, a deploy fails or a tick is refused, plus outputs and a result file for anything else ([notifications](https://docs.sluiceway.dev/guides/notifications/)).
 
 ## More

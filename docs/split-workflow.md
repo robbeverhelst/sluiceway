@@ -122,7 +122,7 @@ Self-hosted runners work the same way: change `runs-on` for `scan` and `apply`. 
 
 ## With GitHub Environments
 
-The tick is always a gate. Where your plan has environments, they make it a stronger one: store the credentials that can change things as secrets of an environment that is limited to the default branch, and add required reviewers where you have them. Give every stack an `environment` in `sluiceway.yaml`, and add this to the `apply` job:
+Every deploy starts from a tick. Where your plan has environments, they add to it: store the credentials that can change things as secrets of an environment that is limited to the default branch, and add required reviewers where you have them. Give every stack an `environment` in `sluiceway.yaml`, and add this to the `apply` job:
 
 ```yaml
     environment:

@@ -122,7 +122,7 @@ Left out of v1 on purpose, and v1 was shaped so these can be added without a bre
 
 ## Rejected on principle
 
-Not planned. Bringing one of these back means reopening the decision named here, not just scheduling work.
+Not planned. Bringing one of these back means reopening the decision named here first.
 
 | What | Why | Decided in |
 |---|---|---|

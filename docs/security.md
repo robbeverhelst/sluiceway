@@ -15,7 +15,7 @@ So a tick means "change these properties on these resources, at whatever value t
 - **For OpenTofu, the deploy is the plan that was checked.** `apply` saves the plan of its fresh preview, checks that plan's hash, and deploys that plan file and nothing else. Nothing can slip in between the check and the deploy, and the tool itself refuses the plan when the state changed since (record 0053). The gap above, between the tick and that fresh preview, stays.
 - **For Helm, the deploy is what the fresh preview rendered.** Helm saves no plan, so `apply` renders the chart in its fresh preview and once more right before `helm upgrade`, and deploys only when both are the same. The digest of the render stays in memory in the `apply` job and is never written anywhere (record 0058). A render that moved ends like any moved change: nothing goes out.
 - **For Kubernetes manifests, the deploy is the rendered set that was checked.** `apply` renders the stack once, diffs that set, checks its hash, and applies that same file, after checking that it still holds the bytes that were diffed (record 0060). The digest of the set stays inside the job. The gap between the tick and the fresh preview stays here too.
-- **Drift is approved as shown too.** On a row that shows drift, the hash covers the drift as well: which resources changed outside the code or are gone, and the property paths the tool names. `apply` checks the drift again before it compares, and deploys with the tool's refresh so the drift is put back. Drift that moved after the tick stops the deploy like a moved change ([record 0055](adr/0055-drift-is-checked-by-a-scheduled-scan-shown-on-the-stacks-row-and-repaired-by-a-tick.md)). On Helm 4 the repair of a release applied server-side forces conflicts, so the deploy takes back a field another field manager changed. Without drift on the approved row it never does ([record 0069](adr/0069-helm-drift-is-the-three-way-diff-beyond-the-plain-one-and-the-deploy-flags-follow-helm.md)).
+- **Drift is covered as shown too.** On a row that shows drift, the hash covers the drift as well: which resources changed outside the code or are gone, and the property paths the tool names. `apply` checks the drift again before it compares, and deploys with the tool's refresh so the drift is put back. Drift that moved after the tick stops the deploy like a moved change ([record 0055](adr/0055-drift-is-checked-by-a-scheduled-scan-shown-on-the-stacks-row-and-repaired-by-a-tick.md)). On Helm 4 the repair of a release applied server-side forces conflicts, so the deploy takes back a field another field manager changed. Without drift on the approved row it never does ([record 0069](adr/0069-helm-drift-is-the-three-way-diff-beyond-the-plain-one-and-the-deploy-flags-follow-helm.md)).
 
 Hashing values or their digests was rejected: a digest would sit in an issue that may be public, where a short value that nobody marked secret can be guessed offline. Hashing the commit was rejected too: on a busy repo every merge would void every tick.
 
@@ -34,7 +34,7 @@ The ticker is the person whose edit ticked the box, as the issue's edit history 
 
 A tick rule decides who may **ask** for a deploy. A GitHub Environment with required reviewers, on the job that deploys, decides who may **deploy**. Without such an environment, nothing stands between a tick and the deploy, so the tick rule decides both.
 
-A tick rule narrows within write access and never goes beyond it. So on its own, its ceiling is the people who may edit the dashboard issue. For a team with separation of duties that is usually the wrong set: the people who may deploy to production are fewer, decided somewhere other than a file in the repo, and audited. GitHub already has the gate for that, and Sluiceway is built to wait for it.
+A tick rule narrows within write access and never goes beyond it. So on its own, its ceiling is the people who may edit the dashboard issue. For a team with separation of duties that is usually the wrong set: the people who may deploy to production are fewer, decided somewhere other than a file in the repo, and audited. GitHub already decides that with an environment's required reviewers, and Sluiceway is built to wait for them.
 
 | | Tick rule | Environment with required reviewers |
 |---|---|---|
@@ -45,7 +45,7 @@ A tick rule narrows within write access and never goes beyond it. So on its own,
 | Where the decision is recorded | The ticker on the deployment record, the trail on the dashboard, and a comment for a refused tick | GitHub records who approved or rejected, and when, on the run. The deploy shows in the repo's deployment history under that environment |
 | What it cannot do | Go beyond write access, name a team, or stop someone who skips the dashboard and uses the credentials directly | Show the reviewer what the row showed: a reviewer approves a job, not a diff. Exist on every plan |
 
-The shape, with the tick rule left at its default. It needs the [split workflow](split-workflow.md), because the one-step workflow would make every scan wait for a reviewer too. In `sluiceway.yaml`, give the stacks that need the gate their environment, and leave `tickers` out:
+The shape, with the tick rule left at its default. It needs the [split workflow](split-workflow.md), because the one-step workflow would make every scan wait for a reviewer too. In `sluiceway.yaml`, give the stacks that need a reviewer their environment, and leave `tickers` out:
 
 ```yaml
 stacks:
@@ -72,13 +72,13 @@ The [check](workflow.md#check-your-setup) says, for each job in your workflows t
 
 ## The limit that no setting lifts
 
-Anyone with write access to a repo can push a branch with a workflow of their own, and that workflow can read the repo's secrets. So on its own, a tick rule protects against the wrong person ticking by mistake. It does not protect against a collaborator who means harm: they can skip the dashboard and use the credentials directly. That is true of every tool that deploys from GitHub Actions, and Sluiceway says it plainly rather than promise more.
+Anyone with write access to a repo can push a branch with a workflow of their own, and that workflow can read the repo's secrets. So on its own, a tick rule protects against the wrong person ticking by mistake. It does not protect against a collaborator who means harm: they can skip the dashboard and use the credentials directly. No setting of Sluiceway changes that.
 
 What closes that gap is where the credentials live. The three setups below go from what every repo has to what larger plans add. Which plan offers what changes over time, so they are described by the features they need. GitHub's page on [plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans) and its page on [environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments) say which plan has which.
 
-### 1. Every repo: the tick is the gate
+### 1. Every repo: the tick decides
 
-Needs nothing. GitHub limits who can edit the dashboard, Sluiceway checks the ticker's live permission, every deploy starts from a tick, and the hash check deploys only what the row showed. It is a real gate, exactly as strong as write access to the repo. Tick rules here are guard rails against mistakes.
+Needs nothing. GitHub limits who can edit the dashboard, Sluiceway checks the ticker's live permission, every deploy starts from a tick, and the hash check deploys only what the row showed. A tick is as strong a check as write access to the repo. Tick rules here are guard rails against mistakes.
 
 It fits a single owner, or a small team that trusts its members. The credentials that change things are ordinary repository secrets.
 

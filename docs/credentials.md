@@ -27,7 +27,7 @@ Sluiceway never holds credentials. That is five promises you can check against t
 4. **Only the modes that run the tool need credentials.** `scan` and `apply` run the tool. `resolve` and `settle` never do. `check` does only when its step sets `backend: true`, to ask the backend which stacks it holds, and then only with the credentials you loaded before that step.
 5. **A hosted version would keep all of this.** The tool always runs in your own runners.
 
-The credentials are in the same job as Sluiceway's own process, so the promise is not that Sluiceway cannot see them. It is that its code, which you pin and can read, never looks. The [security page](security.md) says what that protects against and what it does not.
+The credentials are in the same job as Sluiceway's own process, so that process could read them. Its code, which you pin and can read, never does. The [security page](security.md) says what that protects against and what it does not.
 
 ## Recipes
 
@@ -35,7 +35,7 @@ Each recipe is the loading part of a job. [example-workflows.md](example-workflo
 
 ### GitHub secrets
 
-The simplest source. Put the secrets on Sluiceway's step, not on the job, so that the other steps of the job, such as the install scripts of your package manager, never see them. GitHub masks the value of every secret it hands a step.
+Nothing to set up outside GitHub. Put the secrets on Sluiceway's step, not on the job, so that the other steps of the job, such as the install scripts of your package manager, never see them. GitHub masks the value of every secret it hands a step.
 
 ```yaml
       - uses: sluiceway/sluiceway@v0
@@ -265,9 +265,9 @@ A preview failure row links to the scan's run. The job log group of that stack h
 
 ## Next to your own tooling
 
-Most repos already run the tool in their own way: a script, a task runner, a laptop, another pipeline. Keep it. Sluiceway only previews and deploys the stacks it finds. Destroying a stack, a refresh and repairing state stay with your own tooling, and Sluiceway writes no lock, puts no marker in the tool's state and never claims to be the only way to deploy.
+Most repos already run the tool in their own way: a script, a task runner, a laptop, another pipeline. Keep it. Sluiceway only previews and deploys the stacks it finds. Destroying a stack, a refresh and repairing state stay with your own tooling, and Sluiceway writes no lock and puts no marker in the tool's state, so other ways to deploy keep working.
 
 - **Your wrapper script is not needed in CI.** What a wrapper does around each run of the tool (load an env file, pick a backend, pass fixed flags) becomes the loading step of the job. Sluiceway runs the tool itself, so it can check the tool's version, stop a preview at its time limit, and read its output.
-- **A deploy from somewhere else is legal.** It has no deployment record. For a Pulumi stack the next full scan finds it in `pulumi stack history`, which needs the same backend access as a preview and no passphrase, and lists it under recently deployed. A row it made stale stays pending until the next full scan. Tick the rescan box on the dashboard, or wait for the scheduled scan. A tick on a stale row deploys nothing: the fresh preview finds a different diff and the row is written again.
+- **An outside deploy is allowed.** It has no deployment record. For a Pulumi stack the next full scan finds it in `pulumi stack history`, which needs the same backend access as a preview and no passphrase, and lists it under recently deployed. A row it left behind stays pending until the next full scan. Tick the rescan box on the dashboard, or wait for the scheduled scan. A tick on that row deploys nothing: the fresh preview finds a different diff and the row is written again.
 - **Two deploys of one stack at the same moment** meet at the tool's own state lock. One of them fails cleanly, and if it was Sluiceway's, the row shows a failure line.
 - **To make the dashboard the only way in**, take the credentials that change things away from every other place. That is access control in your secret manager and your cloud, not a Sluiceway setting.

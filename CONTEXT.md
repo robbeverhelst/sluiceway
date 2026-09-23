@@ -77,7 +77,7 @@ The same loop as four jobs, `scan`, `resolve`, `apply` and `settle`, each naming
 _Avoid_: Advanced workflow, full workflow, four-job workflow
 
 **Check**:
-A pass over the repo's files and nothing else that says whether Sluiceway understands the setup: the config, the stacks discovery finds, what root module discovery found and left out and why, what `ignore` leaves out, which files no stack claims, which files a stack's own files name that it does not claim, and what the workflow files lack to run it. It holds no credentials and never starts the tool, so it can never say that a preview will work. The one exception is a workflow's own choice, `backend: true`: then it asks the backend which stacks it holds, with the credentials of its job, and nothing more.
+A pass over the repo's files and nothing else that says whether Sluiceway can read the setup: the config, the stacks discovery finds, what root module discovery found and left out and why, what `ignore` leaves out, which files no stack claims, which files a stack's own files name that it does not claim, and what the workflow files lack to run it. It holds no credentials and never starts the tool, so it can never say that a preview will work. The one exception is a workflow's own choice, `backend: true`: then it asks the backend which stacks it holds, with the credentials of its job, and nothing more.
 _Avoid_: Validate, lint, dry run, preflight
 
 **Init**:
@@ -157,7 +157,7 @@ _Avoid_: State change, state-only op, no-op
 ### Ticks
 
 **Tick**:
-A person checking the box on a stack's row: a request to deploy that stack exactly as the row shows it. A tick is a commit, not a toggle.
+A person checking the box on a stack's row: a request to deploy that stack exactly as the row shows it. Unticking after `resolve` has created the deployment record does not stop the deploy.
 _Avoid_: Approval, selection, click
 
 **Ticker**:
@@ -205,7 +205,7 @@ The box that takes the place of a ticked bulk box, naming the stacks of its sect
 _Avoid_: Are-you-sure box, confirmation dialog, second tick
 
 **Reviewer**:
-A person who approves a waiting deploy in GitHub's own interface, where the repo's plan offers that. A second gate after the tick, owned by GitHub. Sluiceway only waits for it. The reviewers of an environment decide who may deploy, where the tick rule only decides who may ask.
+A person who approves a waiting deploy in GitHub's own interface, where the repo's plan offers that. A second check after the tick, owned by GitHub. Sluiceway only waits for it. The reviewers of an environment decide who may deploy, where the tick rule only decides who may ask.
 _Avoid_: Approver, second ticker
 
 **Update waiting to merge**:

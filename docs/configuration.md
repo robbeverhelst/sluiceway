@@ -107,7 +107,7 @@ Default: `false`
 
 Keep resource types, resource names and property names out of the issue. A redacted row shows the stack id, the counts by op, the destroy warning, the failure line and a link to the run's summary, which stays full. It also turns [`dashboard.showValues`](#dashboardshowvalues) off, so no value is shown anywhere. In a repo with that list, turning redact on or off voids the ticks on rows that showed a value, once.
 
-Redact is about reach, not access. An issue body is emailed, sent to integrations and indexed on a public repo. A job summary sits behind a click. But anyone who can read the repo can open the run and read the code that names the resources. **It is not access control.** Turning it on or off never voids a tick, unless `dashboard.showValues` is set: the diff hash covers the whole diff either way.
+An issue body is emailed, sent to integrations and indexed on a public repo, while a job summary sits behind a click. Redact keeps names out of the issue, and anyone who can read the repo can still open the run and read the code that names the resources. Turning it on or off never voids a tick, unless `dashboard.showValues` is set: the diff hash covers the whole diff either way.
 
 ### `dashboard.personality`
 
@@ -148,7 +148,7 @@ Without this key Sluiceway shows which properties change and never what they cha
 - **Only single-line text, numbers and booleans are shown.** A whole object or list, a value of several lines, and a value that is known only once the deploy runs show nothing. A value longer than 40 characters keeps its start and its end.
 - **The same values appear in the summary, on the preview page, in the result file and in the job log.** The issue is emailed and kept in its edit history, so a value that reached it cannot be taken back.
 - **`dashboard.redact: true` turns the list off.** No value is even read.
-- **A tick approves the values it shows.** The diff hash covers them, so if a later merge moves `17.0.4` to `17.0.5` before the deploy, nothing deploys and the row comes back with `17.0.5`. A path that is not listed is approved at whatever value the code has, as before. See [what a tick promises](security.md#what-a-tick-promises).
+- **A tick covers the values it shows.** The diff hash covers them, so if a later merge moves `17.0.4` to `17.0.5` before the deploy, nothing deploys and the row comes back with `17.0.5`. A path that is not listed is approved at whatever value the code has, as before. See [what a tick promises](security.md#what-a-tick-promises).
 - **Changing the list voids ticks once.** Adding or removing a path, or turning `dashboard.redact` on or off, gives the rows that show a value a new hash, so a tick on a row written before is refused as moved and the row asks for a fresh one.
 
 A list to copy in, of paths that are nearly always safe to show:
@@ -257,7 +257,7 @@ Globs matched against the **stack id**, not the path. An ignored stack has no ro
 > [!WARNING]
 > Write the full stack id. The id of a named stack is `<path>:<name>`, so a bare directory matches none of its stacks: `apps/web` ignores nothing, and `apps/web:*` ignores every stack in `apps/web`.
 
-A stack without a name, such as a root module discovery found, has its path as its id, so its bare directory does match it. Globs that end in `*` already cross the colon: `apps/*` and `sandbox*` work as you would expect. `*` stops at a slash and `**` crosses slashes. The `check` mode warns about a glob that matches no stack, and names the glob that would work.
+A stack without a name, such as a root module discovery found, has its path as its id, so its bare directory does match it. Globs that end in `*` already cross the colon: `apps/*` matches `apps/web:prod`, and `sandbox*` matches every stack whose id starts with `sandbox`. `*` stops at a slash and `**` crosses slashes. The `check` mode warns about a glob that matches no stack, and names the glob that would work.
 
 A stack config file with no stack in the backend is the usual reason to ignore one:
 
@@ -452,7 +452,7 @@ Sluiceway runs `tofu init` for every directory of the stacks it is about to prev
 
 For Helm, Sluiceway runs `helm dependency build` for every local chart that has dependencies, one chart at a time, before the first preview. That includes the local charts a chart depends on through a `file://` repository, each built before the chart that depends on it: helm leaves out the objects of a subchart whose own dependencies were not built, and says nothing. `helm diff upgrade --install --reset-values --dry-run=server --output=structured`, from the [helm-diff](https://github.com/databus23/helm-diff) plugin, gives the preview: the objects the release would add, change and remove, and the path of every field that changes. A tick deploys with `helm upgrade --install --reset-values`, and `--rollback-on-failure` on Helm 4 or `--atomic` on Helm 3, whichever the installed helm knows. Helm saves no plan, so `apply` renders the chart with `helm template` in its fresh preview and once more right before the deploy, and deploys only when both renders are the same. A chart that renders differently every time, such as one with a random value, is refused as a moved change and never deploys. Install helm v3.18.0 or newer and the diff plugin v3.15.11 or newer in the workflow before Sluiceway ([credentials](credentials.md)). The release's namespace must exist, unless [`createNamespace`](#stacksoptionscreatenamespace) lets the deploy make it.
 
-For `kubectl`, Sluiceway renders the stack into one set of manifests: the files of the directory as they are (and of its subdirectories with [`recursive`](#stacksoptionsrecursive)), or what `kubectl kustomize` builds when the directory holds a `kustomization.yaml`. `kubectl diff --server-side` of that set is the preview: the API server runs the apply as a dry run, so a field that cannot change in place, a field another manager owns and an object the server refuses all fail the preview, before anyone ticks. A tick deploys, with `kubectl apply --server-side`, the very set `apply`'s own fresh preview diffed and hashed. Three things to know:
+For `kubectl`, Sluiceway renders the stack into one set of manifests: the files of the directory as they are (and of its subdirectories with [`recursive`](#stacksoptionsrecursive)), or what `kubectl kustomize` builds when the directory holds a `kustomization.yaml`. `kubectl diff --server-side` of that set is the preview: the API server runs the apply as a dry run, so a field that cannot change in place, a field another manager owns and an object the server refuses all fail the preview, before anyone ticks. A tick deploys, with `kubectl apply --server-side`, the same set `apply`'s own fresh preview diffed and hashed. Three things to know:
 
 - **Nothing is pruned unless you ask.** Without [`prune`](#stacksoptionsprune), an object taken out of the manifests stays in the cluster, and the row never shows a delete.
 - **The namespace must exist**, or the preview fails. Put a `Namespace` in a stack of its own and make the others [depend on it](#stacksdependson).
@@ -529,7 +529,7 @@ Default: none.
 
 The stack ids of the stacks this stack depends on, such as a network stack that an app stack reads outputs from. Write each id as its row shows it. Two things follow:
 
-- **A tick waits for a change upstream.** A tick on this stack is refused while a stack it depends on has a pending row that nobody ticked: the box is cleared, and a note on the row names that stack. The job stays green. Only a pending row holds a tick back, because only a change that has not gone out can change what this stack reads. A stack that is in sync, or whose preview failed, holds nothing back.
+- **A tick waits for the stacks it depends on.** A tick on this stack is refused while a stack it depends on has a pending row that nobody ticked: the box is cleared, and a note on the row names that stack. The job stays green. Only a pending row holds a tick back, because only a change that has not gone out can change what this stack reads. A stack that is in sync, or whose preview failed, holds nothing back.
 - **Ticks in one chain go out in order.** Tick both and the one it depends on deploys first. The other gets the row `queued behind <stack>` and a deployment record of its own, and deploys once that stack went out. If that deploy fails, the queued stack does not deploy and its row gets a failure line. The same happens when you tick this stack while a stack it depends on is deploying.
 
 Each layer of a chain runs in a workflow run of its own. Sluiceway starts the workflow again when a layer went out, and `resolve` in that run starts the next layer, so the workflow has to run on `workflow_dispatch` as well as on `issues`. [The workflow](workflow.md#stack-dependencies) does.
@@ -547,7 +547,7 @@ stacks:
       - app:prod
 ```
 
-Every id is checked against discovery, because a dependency that could never hold anything back would be a gate that never says so. A stack that was not found, one that `ignore` leaves out (with the reason of the `ignore` entry, when it has one), the stack itself and a circle are errors, such as:
+Every id is checked against discovery, because a dependency that could never hold anything back would hold nothing back and never say so. A stack that was not found, one that `ignore` leaves out (with the reason of the `ignore` entry, when it has one), the stack itself and a circle are errors, such as:
 
 - `stacks[0].dependsOn[0]: "network:staging" is not a stack that discovery found. Write the stack id as a row shows it, such as "network:dev".`
 - `dependsOn goes round in a circle: app:prod depends on network:prod, which depends on site:prod, which depends on app:prod. Nothing in a circle could ever deploy first, so take one of these out.`

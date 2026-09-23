@@ -1,6 +1,6 @@
 # Roadmap
 
-What comes before Sluiceway 1.0, and what comes after. Sluiceway is in beta and released as 0.x, and every example uses the moving tag `v0`. 1.0.0 is a tag cut on purpose, not the next number in line, and with it comes the moving tag `v1`.
+What comes before Sluiceway 1.0, and what comes after. Sluiceway is in beta and released as 0.x, and every example uses the moving tag `v0`. 1.0.0 comes after the launch items below, and with it the moving tag `v1`.
 
 The part after 1.0 is generated from [docs/later.md](later.md), which says for every item why it is not built yet and where that was decided. A test fails when this page and that file disagree: change `docs/later.md`, then run `bun run roadmap`.
 
@@ -24,7 +24,7 @@ The [build plan](build-plan.md) says how each of these was built and proven, and
 
 ## After 1.0
 
-In plain words, the larger themes: more tools (AWS CDK), a bot with its own name and picture, teams in the tick rule, a log of deploys made outside the dashboard, and a hosted version with a dashboard for a whole organization. The previews and the deploys always stay in the user's own runners.
+The larger themes: more tools (AWS CDK), a bot with its own name and picture, teams in the tick rule, a log of deploys made outside the dashboard, and a hosted version with a dashboard for a whole organization. The previews and the deploys always stay in the user's own runners.
 
 Every item, as `docs/later.md` lists it:
 
