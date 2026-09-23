@@ -5,8 +5,7 @@
 // the backend, and it is used only when the input says so.
 
 import * as core from "@actions/core";
-import { discoverAll } from "../adapters/discover-all.ts";
-import { readsFiles } from "../adapters/file-references.ts";
+import { filesOnly } from "../adapters/files-only.ts";
 import { readBackend } from "../github/inputs.ts";
 import { actionsLog, type JobLog } from "../github/job-log.ts";
 import { type CheckContext, check } from "./check.ts";
@@ -33,9 +32,9 @@ export async function runCheck(makeBackend?: BackendFactory, log?: JobLog): Prom
   await check({
     root,
     ...(backend === undefined ? {} : { backend }),
-    // Of every tool the check uses discovery and what its files name as read,
-    // and nothing that starts it (records 0042, 0053 and 0074).
-    adapter: { discover: discoverAll, readsFiles },
+    // Of every tool the check uses what reads files, and nothing that starts
+    // it (records 0042, 0053, 0074 and 0092).
+    adapter: filesOnly,
     log: log ?? actionsLog(),
   });
 }

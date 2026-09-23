@@ -173,6 +173,29 @@ describe("runCheck, as a step runs it", () => {
     expect(out).toContain("The setup is valid.");
   });
 
+  // Record 0092: the check lists what root module discovery found and left
+  // out. The job handed the check no way to ask, so a real run said nothing.
+  test("lists the root modules discovery found from their files", async () => {
+    const root = mkdtempSync(join(tmpdir(), "sluiceway-check-job-"));
+    mkdirSync(join(root, "infra"));
+    writeFileSync(join(root, "infra/main.tf"), 'terraform {\n  backend "s3" {}\n}\n');
+    writeFileSync(
+      join(root, "infra/.terraform.lock.hcl"),
+      'provider "registry.opentofu.org/hashicorp/null" {}\n',
+    );
+    process.env = { ...saved, GITHUB_WORKSPACE: root, GITHUB_STEP_SUMMARY: "" };
+    const written: string[] = [];
+    const realWrite = process.stdout.write;
+    process.stdout.write = ((chunk: string) =>
+      written.push(String(chunk)) > 0) as typeof process.stdout.write;
+    try {
+      await runCheck();
+    } finally {
+      process.stdout.write = realWrite;
+    }
+    expect(written.join("")).toContain("Root modules found from their files");
+  });
+
   test("fails with a clear message outside a job", async () => {
     process.env = { ...saved, GITHUB_WORKSPACE: "" };
     await expect(runCheck()).rejects.toThrow(
