@@ -211,7 +211,7 @@ export function harness(
     github,
     log,
     now: steppingClock(),
-    concurrency: 4,
+    pool: { size: 4, from: "input" },
     previewTimeoutMinutes: 10,
     repoUrl: REPO_URL,
     runId: RUN_ID,

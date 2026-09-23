@@ -38,7 +38,7 @@ import {
 import { repositoryOf, scanNotifications } from "../core/notify.ts";
 import { resolveOnItsWay, type TickAtLateRead } from "../core/orphan-tick.ts";
 import { ownRuns } from "../core/outside-deploy.ts";
-import { runPool } from "../core/pool.ts";
+import { type PoolSize, runPool } from "../core/pool.ts";
 import { openRepo } from "../core/repo.ts";
 import { type MatrixEntry, matrixOutput } from "../core/resolve.ts";
 import {
@@ -107,6 +107,7 @@ import {
   diffLogLines,
   logGroupTitle,
   PUBLIC_LOG_DIFF,
+  poolSizeLine,
   toolDiffLogLines,
 } from "../render/log-text.ts";
 import { isDeployingState, MARKER_VERSION, parseDashboard } from "../render/marker.ts";
@@ -133,8 +134,9 @@ export interface ScanContext {
   github: GitHubPort;
   log: JobLog;
   now: () => Date;
-  // The `concurrency` input: the size of the pool.
-  concurrency: number;
+  // The size of the pool, from the `concurrency` input or the cores of the
+  // machine, and which of them it came from (record 0085).
+  pool: PoolSize;
   // The `preview-timeout` input, in whole minutes.
   previewTimeoutMinutes: number;
   // The `strict` input: any preview failure turns the job red, after the
@@ -385,6 +387,11 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   const again = new Set<string>();
   // The tools' own histories, read once the scan is full (record 0073).
   let histories: Map<string, ToolDeploy[]> | undefined;
+  let poolSaid = false;
+  const sayPool = () => {
+    if (!poolSaid) context.log.info(poolSizeLine(context.pool));
+    poolSaid = true;
+  };
   for (;;) {
     if (next.length > 0 && !versionChecked) {
       // The tools of every stack of the repo, once per job, so a later round
@@ -401,6 +408,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       logDiff,
       shownValues(config.dashboard),
       prepared,
+      sayPool,
       checkDrift,
       stacks.map(({ stack }) => stack),
     );
@@ -895,6 +903,9 @@ async function previewAll(
   logDiff: boolean,
   showValues: readonly string[],
   prepared: Set<string>,
+  // Says the size of the pool and where it came from. It speaks once a job,
+  // however many rounds preview (record 0085).
+  sayPool: () => void,
   checkDrift: (id: string) => boolean,
   // Every stack of the repo, which a stack with `dependsOn: auto` may depend
   // on (record 0059).
@@ -926,11 +937,12 @@ async function previewAll(
   stacks = stacks.filter(({ stack }) => !failed.has(stackId(stack)));
   if (stacks.length === 0) return unpreparedFailures;
 
+  sayPool();
   log.info(
-    `Previewing ${plural(stacks.length, "stack")} with a pool of ${context.concurrency} and a time limit of ${minutes(context.previewTimeoutMinutes)} for each preview.`,
+    `Previewing ${plural(stacks.length, "stack")} with a pool of ${context.pool.size} and a time limit of ${minutes(context.previewTimeoutMinutes)} for each preview.`,
   );
   const poolStarted = now().getTime();
-  const previewed = await runPool(stacks, context.concurrency, async (configured) => {
+  const previewed = await runPool(stacks, context.pool.size, async (configured) => {
     const id = stackId(configured.stack);
     const startedAt = now();
     const started = startedAt.getTime();
@@ -1013,7 +1025,7 @@ async function previewAll(
   const addedUp = previewed.reduce((sum, { milliseconds }) => sum + milliseconds, 0);
   const slowest = previewed.reduce((a, b) => (b.milliseconds > a.milliseconds ? b : a));
   log.info(
-    `Previewed ${plural(previewed.length, "stack")} in ${seconds(total)} with a pool of ${context.concurrency}. Added up, the previews took ${seconds(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds(slowest.milliseconds)}.`,
+    `Previewed ${plural(previewed.length, "stack")} in ${seconds(total)} with a pool of ${context.pool.size}. Added up, the previews took ${seconds(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds(slowest.milliseconds)}.`,
   );
   return [...previewed, ...unpreparedFailures];
 }

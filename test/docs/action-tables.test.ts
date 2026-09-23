@@ -55,6 +55,8 @@ describe("the reference's table of inputs", () => {
       if (input.required) return cell !== "required";
       // Without a default: required in one mode, or none at all, as for
       // deploy-timeout (slice 5.9).
+      // `concurrency` has none so the pool can follow the cores (record 0085).
+      if (name === "concurrency") return cell !== "one per core, up to 8";
       if (input.default === undefined) return !cell.startsWith("required in ") && cell !== "none";
       // An expression such as `${{ github.token }}` is written out in words.
       if (input.default.startsWith("${{")) return codeIn(cell).length > 0;

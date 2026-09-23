@@ -88,12 +88,45 @@ describe("the pool (record 0012)", () => {
     // Discovery hands them over in another order than the pool has to use.
     const ids = ["e:prod", "b:prod", "d:prod", "a:prod", "c:prod"];
     const adapter = tableAdapter(Object.fromEntries(ids.map((id) => [id, slow(id)])));
-    const { context } = harness(adapter, { concurrency: 2 });
+    const { context } = harness(adapter, { pool: { size: 2, from: "input" } });
 
     await scan(context);
 
     expect(adapter.previewed).toEqual(["a:prod", "b:prod", "c:prod", "d:prod", "e:prod"]);
     expect(most).toBe(2);
+  });
+
+  // Slice 5.21 (record 0085): the scan previews with the size the glue worked
+  // out from the input or the cores, and says it once, before the previews.
+  test("previews with the size it was handed, and names it and its source once", async () => {
+    let running = 0;
+    let most = 0;
+    const slow = (id: string) => async () => {
+      most = Math.max(most, ++running);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      running--;
+      return inSync(id);
+    };
+    const ids = ["a:prod", "b:prod", "c:prod", "d:prod", "e:prod", "f:prod"];
+    const adapter = tableAdapter(Object.fromEntries(ids.map((id) => [id, slow(id)])));
+    const { context, log } = harness(adapter, { pool: { size: 3, from: "cores", cores: 3 } });
+
+    await scan(context);
+
+    expect(most).toBe(3);
+    const said = log.lines.filter((line) => line.startsWith("The pool is "));
+    expect(said).toEqual([
+      "The pool is 3 previews at once, one for each core of this machine, which has 3. The concurrency input sets another size.",
+    ]);
+    expect(log.lines.indexOf(said[0] as string)).toBe(
+      log.lines.findIndex((line) => line.startsWith("Previewing 6 stacks")) - 1,
+    );
+  });
+
+  test("a scan with nothing to preview says nothing about the pool", async () => {
+    const { context, log } = harness(tableAdapter({}));
+    await scan(context);
+    expect(log.lines.some((line) => line.startsWith("The pool is "))).toBe(false);
   });
 
   test("the version check comes once, before any preview", async () => {
@@ -407,11 +440,12 @@ describe("the job log", () => {
       "a:prod": pending("a:prod", change("logs")),
       "b:prod": failing(),
     });
-    const { context, log } = harness(adapter, { concurrency: 1 });
+    const { context, log } = harness(adapter, { pool: { size: 1, from: "cores", cores: 1 } });
     await scan(context);
-    expect(log.lines.slice(0, 3)).toEqual([
+    expect(log.lines.slice(0, 4)).toEqual([
       "Found 2 stacks.",
       "This is a full scan: the event is workflow_dispatch, and only a push, or the scan resolve starts after a merge, gives a narrowed scan.",
+      "The pool is 1 preview at once, one for each core of this machine, which has 1. The concurrency input sets another size.",
       "Previewing 2 stacks with a pool of 1 and a time limit of 10 minutes for each preview.",
     ]);
     expect(log.lines).toContain("Previewed a:prod in 0.5 s: pending");

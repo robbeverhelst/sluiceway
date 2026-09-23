@@ -212,8 +212,10 @@ describe("an empty optional input", () => {
       (name) => ({ "github-token": "t", "deployment-id": "12", ...values })[name] ?? "",
     );
 
-  test.each(["", "  ", "\n"])("concurrency %p is the default, 4", (value) => {
-    expect(scan({ concurrency: value }).concurrency).toBe(4);
+  // Slice 5.21 (record 0085): concurrency has no number of its own to fall
+  // back to. Empty, it leaves the pool to the cores of the machine.
+  test.each(["", "  ", "\n"])("concurrency %p is not set, so the machine decides", (value) => {
+    expect(scan({ concurrency: value }).concurrency).toBeUndefined();
   });
 
   test.each(["", " \t"])(

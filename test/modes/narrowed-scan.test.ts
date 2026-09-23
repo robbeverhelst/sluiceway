@@ -660,7 +660,7 @@ describe("the job of a narrowed scan", () => {
       TABLE,
       ahead("network/Pulumi.yaml", "network/index.ts", "network/x.ts"),
     );
-    await scan({ ...context, concurrency: 1 });
+    await scan({ ...context, pool: { size: 1, from: "input" } });
     const size = dashboardBody(github).length.toLocaleString("en-US");
     expect(log.lines).toEqual([
       "Found 4 stacks.",
@@ -668,6 +668,7 @@ describe("the job of a narrowed scan", () => {
       "This is a narrowed scan: it previews 2 of 4 stacks and keeps the rows of the other 2 as they are.",
       "network:dev is previewed: it claims network/Pulumi.yaml and 2 more changed files.",
       "network:prod is previewed: it claims network/Pulumi.yaml and 2 more changed files.",
+      "The pool is 1 preview at once, from the concurrency input.",
       "Previewing 2 stacks with a pool of 1 and a time limit of 10 minutes for each preview.",
       "Previewed network:dev in 0.5 s: pending",
       "Previewed network:prod in 0.5 s: in sync",

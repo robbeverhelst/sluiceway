@@ -7,7 +7,7 @@ import type { Adapter, ToolDeploy } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import type { ConfiguredStack } from "../core/config.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
-import { runPool } from "../core/pool.ts";
+import { type PoolSize, runPool } from "../core/pool.ts";
 import { stackId } from "../core/stack.ts";
 import type { JobLog } from "../github/job-log.ts";
 import { logGroupTitle } from "../render/log-text.ts";
@@ -18,7 +18,7 @@ export interface HistoryContext {
   run: ProcessRunner;
   adapter: Adapter;
   log: JobLog;
-  concurrency: number;
+  pool: PoolSize;
   previewTimeoutMinutes: number;
 }
 
@@ -40,7 +40,7 @@ export async function readHistories(
   if (limit === 0 || stacks.length === 0 || adapter.deployHistory === undefined) return read;
   const history = adapter.deployHistory.bind(adapter);
   const cannot: string[] = [];
-  await runPool(stacks, context.concurrency, async (configured) => {
+  await runPool(stacks, context.pool.size, async (configured) => {
     const id = stackId(configured.stack);
     const result = await history(configured.stack, {
       root: context.root,

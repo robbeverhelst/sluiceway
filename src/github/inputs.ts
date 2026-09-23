@@ -8,8 +8,10 @@ import type { NotifyTargets } from "../notify/send.ts";
 export type GetInput = (name: string) => string;
 
 export interface ScanInputs {
-  // The size of the preview pool (record 0012).
-  concurrency: number;
+  // The size of the preview pool (record 0012), or undefined when the
+  // workflow does not set it, and the pool follows the cores of the machine
+  // (record 0085).
+  concurrency: number | undefined;
   previewTimeoutMinutes: number;
   // The workflow's own token (record 0017).
   token: string;
@@ -22,8 +24,8 @@ export interface ScanInputs {
 // The defaults of action.yml, which GitHub applies only when a workflow leaves
 // an input out. A workflow that passes one through from its own inputs sends
 // "" instead, and that means the default too (record 0084). A test holds
-// these to action.yml.
-const DEFAULT_CONCURRENCY = 4;
+// these to action.yml. `concurrency` has none: without it the pool follows the
+// cores of the machine (record 0085).
 const DEFAULT_PREVIEW_TIMEOUT_MINUTES = 10;
 
 // An empty input, or one of white space only, is `fallback`. Anything else
@@ -60,7 +62,7 @@ export function readToken(getInput: GetInput): string {
 const MINUTES = " It is a number of whole minutes.";
 
 export function readScanInputs(getInput: GetInput): ScanInputs {
-  const concurrency = wholeNumber(getInput, "concurrency", DEFAULT_CONCURRENCY);
+  const concurrency = wholeNumber(getInput, "concurrency", undefined);
   const previewTimeoutMinutes = wholeNumber(
     getInput,
     "preview-timeout",

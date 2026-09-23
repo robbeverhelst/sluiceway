@@ -2,10 +2,12 @@
 // test is made here from the runner's environment, once.
 
 import { readFileSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import * as core from "@actions/core";
 import { getOctokit } from "@actions/github";
 import { runProcess } from "../adapters/process.ts";
 import { tools } from "../adapters/tools.ts";
+import { poolSize } from "../core/pool.ts";
 import { readActionRef } from "../github/action-ref.ts";
 import {
   mergedBeforeDispatch,
@@ -22,6 +24,17 @@ import { countRequests } from "../github/request-count.ts";
 import { stepNotifier } from "../notify/step.ts";
 import type { AutoStep } from "./auto.ts";
 import { scan } from "./scan.ts";
+
+// The cores this job may use. Node counts the ones the process may run on and
+// takes a container's CPU limit into account, and says 1 at the least. A
+// runtime that cannot say gives undefined, and the pool is 1 (record 0085).
+function machineCores(): number | undefined {
+  try {
+    return availableParallelism();
+  } catch {
+    return undefined;
+  }
+}
 
 // Auto mode hands in the log and the outputs of its one step (record 0077).
 export async function runScan(directory: string, step?: AutoStep): Promise<void> {
@@ -42,7 +55,7 @@ export async function runScan(directory: string, step?: AutoStep): Promise<void>
     requests: countRequests(octokit),
     log,
     now: () => new Date(),
-    concurrency: inputs.concurrency,
+    pool: poolSize(inputs.concurrency, machineCores()),
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
     strict: inputs.strict,
     repoUrl: job.repoUrl,

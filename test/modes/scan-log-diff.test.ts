@@ -94,7 +94,7 @@ describe("scan.logDiff on", () => {
         ids.map((id) => [id, () => busy({ ok: true, text: toolDiffText(id), toolLog: "" })]),
       ),
     );
-    const { context } = harness(adapter, { config: ON, concurrency: 2 });
+    const { context } = harness(adapter, { config: ON, pool: { size: 2, from: "input" } });
     await scan(context);
 
     expect(adapter.toolDiffs).toHaveLength(5);

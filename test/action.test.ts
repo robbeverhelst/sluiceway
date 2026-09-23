@@ -41,7 +41,7 @@ describe("action.yml", () => {
   test("the defaults of the scan inputs are the ones of the build plan, and the scan can read them", () => {
     const defaults = (name: string) => action.inputs[name]?.default ?? "";
     expect(readScanInputs((name) => (name === "github-token" ? "token" : defaults(name)))).toEqual({
-      concurrency: 4,
+      concurrency: undefined,
       previewTimeoutMinutes: 10,
       token: "token",
       strict: false,
@@ -62,6 +62,13 @@ describe("action.yml", () => {
     expect(readApplyInputs(apply(empty))).toEqual(
       readApplyInputs(apply((name) => token(name) || defaults(name))),
     );
+  });
+
+  // Slice 5.21 (record 0085): a default in action.yml would reach the step as
+  // if the workflow had set it, and the pool could never follow the machine.
+  test("concurrency has no default, so the pool follows the cores of the machine", () => {
+    expect(action.inputs.concurrency?.required).toBe(false);
+    expect(action.inputs.concurrency?.default).toBeUndefined();
   });
 
   // Record 0044: the id of the running job is in no variable of its

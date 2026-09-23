@@ -21,10 +21,10 @@ inputs:
     default: auto
   concurrency:
     description: >-
-      How many previews a scan runs at the same time. It belongs to the runner, not to the repo,
-      so it is an input and not a config key.
+      How many previews a scan runs at the same time. Leave it out and the scan runs one preview
+      for each core of the machine, up to 8, and says in the job log which number it used. It
+      belongs to the runner, not to the repo, so it is an input and not a config key.
     required: false
-    default: "4"
   preview-timeout:
     description: >-
       Time limit for one preview, in minutes. A preview that runs longer is stopped and its stack
