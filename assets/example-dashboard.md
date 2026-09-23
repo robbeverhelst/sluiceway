@@ -9,7 +9,7 @@
 
 <div align="center">
 
-🟡&nbsp;**4 pending** · 🟠&nbsp;2 drifted · 🔵&nbsp;2 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;8 in sync · :warning: **2 pending stacks destroy resources**
+🟡&nbsp;**4 pending** · 🟠&nbsp;2 drifted · 🔵&nbsp;2 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;8 in sync · :warning: **2 pending stacks delete or replace resources**
 
 Scanned [`34e410f`](https://github.com/example-org/infra/commit/34e410f2ce7bd7cfd94d9a2f1d5bc0b2dcc6aa91) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 
@@ -20,7 +20,7 @@ Scanned [`34e410f`](https://github.com/example-org/infra/commit/34e410f2ce7bd7cf
 - <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-light.svg"></picture> **apps/api:prod** · deploying · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330) <!-- sluiceway:row stack="apps/api:prod" state="deploying" -->
   from #512 by alice · [compare](https://github.com/example-org/infra/compare/e27f50794430...34e410f2ce7b)
   <!-- /sluiceway:row -->
-- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-light.svg"></picture> **apps/worker:prod** · queued behind **apps/api:prod** · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330) <!-- sluiceway:row stack="apps/worker:prod" state="queued" -->
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-queued-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-queued-light.svg"></picture> **apps/worker:prod** · queued behind **apps/api:prod** · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330) <!-- sluiceway:row stack="apps/worker:prod" state="queued" -->
   from #509 by bob · [compare](https://github.com/example-org/infra/compare/ae93aa6a808a...34e410f2ce7b)
   <!-- /sluiceway:row -->
 
