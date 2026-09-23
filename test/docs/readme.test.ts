@@ -63,16 +63,17 @@ describe("the README as the front door", () => {
     expect(steps.length).toBe(5);
   });
 
-  test("gets you started in four short paragraphs, each with a link to the docs site", () => {
+  test("gets you started in five short paragraphs, each with a link to the docs site", () => {
     const paragraphs = section(readme, "## Get started")
       .replace(/^```[\s\S]*?^```$/gm, "")
       .split("\n\n")
       .filter((block) => block.startsWith("**"));
     expect(paragraphs.map((block) => block.match(/^\*\*([^*]+)\*\*/)?.[1])).toEqual([
       "Check your setup.",
-      "Add the workflow.",
-      "Tell it about your stacks.",
+      "Before the first scan.",
+      "Decide who may deploy.",
       "Load your credentials.",
+      "Add the workflow.",
     ]);
     for (const block of paragraphs) expect(block).toMatch(SITE_LINK);
   });

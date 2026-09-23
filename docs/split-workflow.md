@@ -16,7 +16,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "0 6 * * *" # keep this: the daily full scan is part of the design
+    - cron: "0 6 * * *" # keep this: a push previews only some stacks, this scan all
   workflow_dispatch:
   issues:
     types: [edited]

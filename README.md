@@ -163,9 +163,15 @@ The issue is a view and never the source of truth. What is pending is always wor
 
 ## Get started
 
-**Check your setup.** In your clone, `npx sluiceway check` says which stacks Sluiceway finds and whether its settings are valid, and `npx sluiceway init` (or `bunx sluiceway init`) writes the workflow and a first `sluiceway.yaml` from them, and commits nothing ([start with init](https://docs.sluiceway.dev/guides/init/)). The same check runs on every pull request. It needs no credentials, no tool and no write access, so start with it before anything can deploy. [The check](https://docs.sluiceway.dev/guides/workflow/#check-your-setup) has the workflow file. To see your dashboard first with nothing that can deploy, [start read only](https://docs.sluiceway.dev/guides/read-only-trial/).
+**Check your setup.** In your clone, `npx sluiceway check` says which stacks Sluiceway finds and whether its settings are valid, and `npx sluiceway init` (or `bunx sluiceway init`) writes the workflow and a first `sluiceway.yaml` from them, and commits nothing ([start with init](https://docs.sluiceway.dev/guides/init/)). The same check runs on every pull request. It needs no credentials, no tool and no write access, so start with it before anything can deploy. Put [the check workflow](https://docs.sluiceway.dev/guides/workflow/#check-your-setup) in `.github/workflows/deploy-dashboard-check.yml` and open a pull request with it. The summary of its run lists every stack it found, with its tick rule. To see your dashboard first with nothing that can deploy, [start read only](https://docs.sluiceway.dev/guides/read-only-trial/).
 
-**Add the workflow.** This is the whole loop: one job with one Sluiceway step, and no `if:` anywhere. The step reads the event of the run and does what it asks for: a push or the schedule scans, a tick deploys, an edit of any other issue ends with a notice. It goes in `.github/workflows/deploy-dashboard.yml` on the default branch, and the comments mark where your own steps go. [The workflow](https://docs.sluiceway.dev/guides/workflow/) explains every part, and what merge and deploy, stack dependencies, self-hosted runners and GitHub Environments add. [Example workflows](https://docs.sluiceway.dev/guides/example-workflows/) has it complete for common setups, and [init](https://docs.sluiceway.dev/guides/init/) writes a first version from what it finds in your repo.
+**Before the first scan.** Two red rows are the ones new users met first. A Pulumi stack config file with no stack in the backend is still a stack, and its preview fails: leave it out with [`ignore`](https://docs.sluiceway.dev/guides/configuration/#ignore) and its full stack id, `<path>:<name>`, such as `apps/web:dev`, never `apps/web`. A program that pulls from a private registry works on your laptop and fails on the runner until a step of the workflow logs in to that registry.
+
+**Decide who may deploy.** A tick asks for a deploy of that stack, production included. Without `sluiceway.yaml`, anyone with write access to the repo can tick, and without a GitHub Environment with required reviewers on the job that deploys, a tick is enough to deploy. Decide this before the workflow reaches the default branch: make the people who may deploy the reviewers of that environment, which needs the [split workflow](https://docs.sluiceway.dev/guides/split-workflow/#with-github-environments), or narrow who may tick with a tick rule in `sluiceway.yaml` at the repo root, such as `tickers: maintain` ([who can tick](https://docs.sluiceway.dev/guides/security/#who-can-tick)). The same file leaves stacks out, names the files outside a stack's directory that it reads, and declares the stacks discovery does not find from files: Helm releases, Kubernetes manifests, and the OpenTofu and Terraform root modules that discovery leaves out. For Pulumi stacks and the root modules discovery finds, the file is optional. [Configuration](https://docs.sluiceway.dev/guides/configuration/) has every key.
+
+**Load your credentials.** The workflow gives the tool what it needs. For GitHub secrets, put them as `env:` on Sluiceway's own step, so no other step sees them. For a cloud with OIDC or a secret manager, add a loading step right before Sluiceway's, after every install step. Sluiceway passes that environment to the tool as it is and never reads a credential by name. [Credentials](https://docs.sluiceway.dev/guides/credentials/) has recipes for GitHub secrets, a cloud with OIDC, a secret manager and private registries.
+
+**Add the workflow.** This is the whole loop: one job with one Sluiceway step, and no `if:` anywhere. The step reads the event of the run and does what it asks for: a push or the schedule scans, a tick deploys, an edit of any other issue ends with a notice. GitHub starts the job for an edit of any issue in the repo, so that run also installs your tools and loads your credentials before it ends, and it runs only code from the default branch. The [split workflow](https://docs.sluiceway.dev/guides/split-workflow/) keeps credentials out of the job an issue edit starts. The file goes in `.github/workflows/deploy-dashboard.yml` on the default branch, and the comments mark where your own steps go. Merge it once the steps above are in place. The push of that merge starts the first scan. A scan only previews: it writes the dashboard issue with one row per stack, and nothing deploys until someone ticks a box. [The workflow](https://docs.sluiceway.dev/guides/workflow/) explains every part, and what merge and deploy, stack dependencies, self-hosted runners and GitHub Environments add. [Example workflows](https://docs.sluiceway.dev/guides/example-workflows/) has it complete for common setups, and [init](https://docs.sluiceway.dev/guides/init/) writes a first version from what it finds in your repo.
 
 ```yaml
 name: deploy-dashboard
@@ -174,19 +180,19 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "0 6 * * *" # keep this: the daily full scan is part of the design
+    - cron: "0 6 * * *" # keep this: a push previews only some stacks, this scan all
   workflow_dispatch:
   issues:
     types: [edited]
 
 # This block is everything Sluiceway can do in your repo.
 permissions:
-  contents: read
-  issues: write
-  deployments: write
-  actions: write
-  pull-requests: read
-  checks: write
+  contents: read # check out the code
+  issues: write # write the dashboard and its comments
+  deployments: write # record who deployed what, and when
+  actions: write # the rescan box and settle start this workflow again
+  pull-requests: read # name the pull requests behind a row
+  checks: write # a preview page per pending stack
 
 jobs:
   sluiceway:
@@ -198,6 +204,8 @@ jobs:
       queue: max
     steps:
       - uses: actions/checkout@v7
+      # This installs Pulumi. For OpenTofu, Terraform, Helm or kubectl, install
+      # that tool here instead (see Requirements).
       - uses: pulumi/actions@v7 # without a command this only installs the CLI
         with:
           pulumi-version: ^3.229.0
@@ -208,10 +216,6 @@ jobs:
       # looks inside. Whatever loads a secret must also mask it.
       - uses: sluiceway/sluiceway@v0
 ```
-
-**Tell it about your stacks.** Optional. Without `sluiceway.yaml` every stack that discovery finds gets a row, and anyone with write access can tick. A tick asks for a deploy: to decide who may deploy, put the deploy job in a GitHub Environment whose required reviewers are those people ([who can tick](https://docs.sluiceway.dev/guides/security/#who-can-tick)). The file at the repo root says who may tick which stack, which stacks to leave out and which files outside a stack's directory it reads. [Configuration](https://docs.sluiceway.dev/guides/configuration/) has every key.
-
-**Load your credentials.** The workflow puts what the tool needs into the job environment, in steps before Sluiceway. Sluiceway passes that environment to the tool as it is and never reads a credential by name. [Credentials](https://docs.sluiceway.dev/guides/credentials/) has recipes for GitHub secrets, a cloud with OIDC, a secret manager and private registries.
 
 ## What it promises
 

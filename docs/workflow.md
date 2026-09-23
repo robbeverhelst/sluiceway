@@ -83,19 +83,19 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "0 6 * * *" # keep this: the daily full scan is part of the design
+    - cron: "0 6 * * *" # keep this: a push previews only some stacks, this scan all
   workflow_dispatch:
   issues:
     types: [edited]
 
 # This block is everything Sluiceway can do in your repo.
 permissions:
-  contents: read
-  issues: write
-  deployments: write
-  actions: write
-  pull-requests: read
-  checks: write
+  contents: read # check out the code
+  issues: write # write the dashboard and its comments
+  deployments: write # record who deployed what, and when
+  actions: write # the rescan box and settle start this workflow again
+  pull-requests: read # name the pull requests behind a row
+  checks: write # a preview page per pending stack
 
 jobs:
   sluiceway:
@@ -107,6 +107,8 @@ jobs:
       queue: max
     steps:
       - uses: actions/checkout@v7
+      # This installs Pulumi. For OpenTofu, Terraform, Helm or kubectl, install
+      # that tool here instead (see Requirements).
       - uses: pulumi/actions@v7 # without a command this only installs the CLI
         with:
           pulumi-version: ^3.229.0
