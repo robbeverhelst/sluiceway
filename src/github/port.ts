@@ -14,6 +14,7 @@ import type { IssuesRun } from "../core/orphan-tick.ts";
 import type { RemoteFile } from "../core/renovate-config.ts";
 import type { Comparison, TreeEntry } from "../core/scan-plan.ts";
 import type { Permission } from "../core/tick-rule.ts";
+import type { RunOfTheWorkflow } from "../core/waiting-run.ts";
 import type {
   Deployment,
   DeploymentPage,
@@ -35,6 +36,7 @@ export type {
   MergeMethod,
   OpenPullRequest,
   Permission,
+  RunOfTheWorkflow,
 };
 
 // The open pull requests of the repo, and the branch they are judged against
@@ -199,6 +201,11 @@ export interface GitHubPort {
   // such as `sluiceway.yml`. Needs `actions: read`. Only a scan that meets a
   // tick makes this call.
   listIssuesRuns(workflow: string): Promise<IssuesRun[]>;
+
+  // The newest 100 runs of one workflow that are queued, whatever started
+  // them, newest first (record 0086). `workflow` is the file name, as for
+  // `listIssuesRuns`. Needs `actions: read`. Every scan makes this call once.
+  listQueuedRuns(workflow: string): Promise<RunOfTheWorkflow[]>;
 
   // The lookback (record 0026): one GraphQL query per 100 of the newest
   // `lookback` commits from `head` back (100 when not given, record 0072),

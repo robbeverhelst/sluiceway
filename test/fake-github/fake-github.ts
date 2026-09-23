@@ -26,6 +26,7 @@ import type {
   OpenPullRequest,
   OpenPullRequests,
   Permission,
+  RunOfTheWorkflow,
   WorkflowRun,
 } from "../../src/github/port.ts";
 import {
@@ -112,6 +113,10 @@ export class FakeGitHub implements GitHubPort {
   readonly #deployments = new FakeDeployments(() => this.#now());
   // The runs an issue edit started, by workflow file name, oldest first.
   readonly #issuesRuns = new Map<string, IssuesRun[]>();
+  // Runs of a workflow, whatever started them, by workflow file name, oldest
+  // first (record 0086).
+  readonly #workflowRuns = new Map<string, RunOfTheWorkflow[]>();
+  #queuedRunsFail: number | undefined;
   // The `issues.edited` events that were started and not delivered yet.
   readonly #events: { number: number; sender: IssueAuthor }[] = [];
   readonly #dispatches: { workflow: string; ref: string; inputs?: Record<string, string> }[] = [];
@@ -271,6 +276,22 @@ export class FakeGitHub implements GitHubPort {
     else runs.push({ ...run });
     this.#issuesRuns.set(workflow, runs);
     this.seedRun(run.id, { completed: run.completed });
+  }
+
+  // A run of a workflow, with its status and when it started waiting. A run
+  // seeded later is newer. Seeding a run again changes it in place, as when
+  // it starts or ends.
+  seedWorkflowRun(workflow: string, run: RunOfTheWorkflow): void {
+    const runs = this.#workflowRuns.get(workflow) ?? [];
+    const known = runs.findIndex(({ id }) => id === run.id);
+    if (known >= 0) runs[known] = { ...run };
+    else runs.push({ ...run });
+    this.#workflowRuns.set(workflow, runs);
+  }
+
+  // Every later read of the queued runs is refused with this status.
+  failQueuedRuns(status: number): void {
+    this.#queuedRunsFail = status;
   }
 
   deployment(id: number): DeploymentRecord {
@@ -543,6 +564,18 @@ export class FakeGitHub implements GitHubPort {
     this.#count("listIssuesRuns");
     const runs = this.#issuesRuns.get(workflow) ?? [];
     return runs
+      .slice(-PAGE_SIZE)
+      .reverse()
+      .map((run) => ({ ...run }));
+  }
+
+  async listQueuedRuns(workflow: string): Promise<RunOfTheWorkflow[]> {
+    this.#count("listQueuedRuns");
+    if (this.#queuedRunsFail !== undefined)
+      throw new FakeGitHubError(this.#queuedRunsFail, "Resource not accessible by integration");
+    const runs = this.#workflowRuns.get(workflow) ?? [];
+    return runs
+      .filter((run) => run.status === "queued")
       .slice(-PAGE_SIZE)
       .reverse()
       .map((run) => ({ ...run }));
