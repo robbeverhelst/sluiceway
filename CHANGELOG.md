@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.26.2](https://github.com/sluiceway/sluiceway/compare/v0.26.1...v0.26.2) (2026-09-23)
+
+
+### Bug Fixes
+
+* an empty optional input means the action's default ([d1b38fd](https://github.com/sluiceway/sluiceway/commit/d1b38fd87ee6b57d9ad4fb7ac05e1d87bfd0e2d2))
+* the shortened note counts drifted rows too ([b06d399](https://github.com/sluiceway/sluiceway/commit/b06d3991ad7b0460cdb9a8c58db88641b4aeee7b))
+
 ## [0.26.1](https://github.com/sluiceway/sluiceway/compare/v0.26.0...v0.26.1) (2026-09-22)
 
 
