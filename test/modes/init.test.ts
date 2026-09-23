@@ -368,6 +368,20 @@ describe("OpenTofu root modules", () => {
     expect(config).not.toContain("varFiles");
   });
 
+  // Record 0092: a root module discovery finds is a stack already, so init
+  // declares only the directories discovery leaves out.
+  test("a root module that discovery finds is not declared, and the rest still are", async () => {
+    const root = repo({
+      "live/main.tf": 'terraform {\n  backend "s3" {}\n}\n',
+      "live/.terraform.lock.hcl": 'provider "registry.opentofu.org/hashicorp/random" {}\n',
+      "net/main.tf": "",
+    });
+    const { config, workflow } = await run(root);
+    expect(config).not.toContain("path: live");
+    expect(config).toContain("  - path: net\n    tool: opentofu\n");
+    expect(workflow).toContain("opentofu/setup-opentofu");
+  });
+
   test("with one var file is one stack that passes it", async () => {
     const root = repo({ "infra/main.tofu": "", "infra/prod.tfvars": "" });
     const { config } = await run(root);
