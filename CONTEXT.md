@@ -81,8 +81,12 @@ A pass over the repo's files and nothing else that says whether Sluiceway unders
 _Avoid_: Validate, lint, dry run, preflight
 
 **Init**:
-A pass over the repo's files that writes a first workflow and, when there is none, a `sluiceway.yaml` into the checkout, and lists what it could not know. It declares the stacks files alone cannot name as its best reading, for a person to correct. It never commits, never overwrites a file and holds the promise of the check: no credential, no tool, no GitHub call.
+A pass over the repo's files that writes a first workflow and, when there is none, a `sluiceway.yaml` into the checkout, and lists what it could not know. It declares the stacks files alone cannot name as its best reading, for a person to correct. It never commits, never overwrites a file but the workflow it writes when a person asks with `--force`, and holds the promise of the check: no credential, no tool, no GitHub call.
 _Avoid_: Scaffold, generator, bootstrap, wizard, setup
+
+**Command line**:
+The `sluiceway` command a person runs on their own machine, from the npm package of the same name: `npx sluiceway init` and `npx sluiceway check`, and nothing else. It reads its arguments, never the environment, holds no token and reaches no GitHub API. Every other mode needs the run's identity and the workflow token, so the command line refuses it and points at the workflow. The package is released with the action, from the same tag and with the same version.
+_Avoid_: CLI tool, npx mode, local mode, runner (that is the machine a workflow runs on)
 
 ### Diffs
 
