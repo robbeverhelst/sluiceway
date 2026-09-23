@@ -58369,11 +58369,12 @@ var RESULT_WORDS = {
   "in-sync": "no changes",
   rehearsed: "rehearsed",
   "drift-repaired": "drift fixed",
+  "drift-gone": "drift gone",
   failed: "failed"
 };
 function recentLine(deploy, dots, year, timeZone, short) {
   const result = deploy.result ? ` · ${RESULT_WORDS[deploy.result]}` : "";
-  const outcome = deploy.result === undefined || deploy.result === "drift-repaired" ? "deployed" : deploy.result;
+  const outcome = deploy.result === undefined || deploy.result === "drift-repaired" ? "deployed" : deploy.result === "drift-gone" ? "in-sync" : deploy.result;
   const dot = dots ? `${RESULT_DOT[outcome]}&nbsp;` : "";
   const shipped = deploy.shipped ? `
 ${INDENT}${short ? deploy.shipped.counted : deploy.shipped.full}` : "";
@@ -59250,7 +59251,7 @@ function deployFacts(records) {
         run: fact.run,
         ...fact.attempt === undefined ? {} : { attempt: fact.attempt },
         at: fact.at,
-        ...fact.inSync ? { result: "in-sync" } : payload.drift ? { result: "drift-repaired" } : {}
+        ...fact.inSync ? { result: payload.drift ? "drift-gone" : "in-sync" } : payload.drift ? { result: "drift-repaired" } : {}
       };
       facts.succeeded.push({ ...succeeded, sha: record3.sha });
       facts.trail.push({
@@ -60003,7 +60004,8 @@ async function startQueuedRecord(writer, queued, at) {
     environment: at.environment,
     sha: at.sha,
     ticker: payload.ticker,
-    hash: payload.hash
+    hash: payload.hash,
+    drift: payload.drift
   });
   const started = { ...opened, ticker: payload.ticker };
   if (opened.unfinished !== undefined)
@@ -60677,7 +60679,7 @@ async function afterFreshPreview(context3, id, payload, runUrl3, progress, setup
         setup
       };
     case "in-sync":
-      log.info(`The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`);
+      log.info(payload.drift ? "The drift check and the fresh preview show no change: the drift the tick approved is not there any more, so there was nothing to repair. Nothing was deployed." : `The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`);
       return {
         end: gate.end,
         row: gate.checked,
