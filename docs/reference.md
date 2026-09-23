@@ -35,6 +35,8 @@ One action, seven modes, chosen with the `mode` input. Leave it out, and the ste
 | `webhook-url` | none | `scan`, `resolve`, `apply` and `auto`. An `http` or `https` address, from a secret, that gets a small JSON message on the same events. |
 | `job-id` | the id of the running job | Leave it at the default. GitHub gives a step its job's id in no other way, and it needs no permission. A row's link to a failed preview uses it to land on the job's log. |
 
+An input that is set to an empty string reads as its default, so a workflow can pass one through from its own inputs, as in `concurrency: ${{ inputs.concurrency }}`, and a trigger without that input still gets `4`. A value that is set and wrong still fails the step. `github-token`, and `deployment-id` in `apply`, have no default to fall back to, so an empty one fails.
+
 ## Outputs
 
 | Output | Set by | What it is |
