@@ -41,7 +41,7 @@ An input that is set to an empty string reads as its default, so a workflow can 
 
 | Output | Set by | What it is |
 |---|---|---|
-| `matrix` | `resolve`, `scan` | A JSON list with one `{ stack, environment, deployment }` entry per deploy that was started, or `[]`. A scan starts one only after a merge from the dashboard ([Merge and deploy](workflow.md#merge-and-deploy)). |
+| `matrix` | `resolve`, `scan` | A JSON list with one `{ stack, environment, deployment }` entry per deploy that was started, or `[]`. A scan starts one after a merge from the dashboard ([Merge and deploy](workflow.md#merge-and-deploy)), and one for each stack set to [`deploy: on-merge`](configuration.md#stacksdeploy) that the scan of a push to the default branch hands on. |
 
 `auto` sets what the modes it ran set. `scan` and `apply` also set outputs and write a result file, so a step after Sluiceway can chart numbers or send anything the built-in notifications do not. [Notifications](notifications.md) lists them, next to the built-in Slack, Telegram and webhook messages.
 
