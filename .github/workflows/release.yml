@@ -68,10 +68,14 @@ jobs:
       # was checked out: a newer push by release-please runs this again.
       - name: Commit the example dashboard
         if: steps.release.outputs.pr
+        # The pull request comes in as JSON and is read in the script: a step's env is evaluated
+        # even when its `if` skips it, and fromJSON of the empty output of a run that left the
+        # release pull request alone fails the job, and with it the npm job of a release.
         env:
           GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          PR: ${{ steps.release.outputs.pr }}
         run: |
+          BRANCH=$(jq -r .headBranchName <<<"$PR")
           if git diff --quiet -- assets/example-dashboard.md README.md; then
             echo "The example dashboard already names this release."
             exit 0
