@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.27.0](https://github.com/sluiceway/sluiceway/compare/v0.26.2...v0.27.0) (2026-09-23)
+
+
+### Features
+
+* **core:** the pool size follows the cores, from 1 to 8, unless the input sets it ([fdbafb4](https://github.com/sluiceway/sluiceway/commit/fdbafb4ed809005ae8c3ce41adb6fcf410e176e9))
+* **render:** a log line that names the pool size and where it came from ([683c3e8](https://github.com/sluiceway/sluiceway/commit/683c3e89a584cb84fe9171a65aad4240215c73a1))
+* **scan:** without concurrency the pool is the machine's cores, said once in the job log ([f12bc21](https://github.com/sluiceway/sluiceway/commit/f12bc21692bf9b25dc61bda9146afea223471668))
+
 ## [0.26.2](https://github.com/sluiceway/sluiceway/compare/v0.26.1...v0.26.2) (2026-09-23)
 
 
