@@ -12,6 +12,7 @@ const DEFAULTS: Config = {
     readOnly: false,
     showValues: [],
     recentlyDeployed: 10,
+    timeZone: "UTC",
   },
   tickers: "write",
   deploys: true,
@@ -73,6 +74,7 @@ phases: [infrastructure, applications]
         readOnly: true,
         showValues: [],
         recentlyDeployed: 10,
+        timeZone: "UTC",
       },
       tickers: "admin",
       deploys: true,
@@ -411,6 +413,7 @@ describe("wrong types", () => {
           "readOnly",
           "showValues",
           "recentlyDeployed",
+          "timeZone",
         ],
         path: ["dashboard"],
       },
@@ -465,6 +468,32 @@ describe("wrong types", () => {
         },
       ]);
     }
+  });
+
+  // Record 0089: the zone every time on the dashboard is shown in.
+  test("dashboard.timeZone is an IANA zone name, UTC when left out", () => {
+    expect(parseConfig(undefined).dashboard.timeZone).toBe("UTC");
+    expect(parseConfig("dashboard:\n  timeZone: Europe/Brussels\n").dashboard.timeZone).toBe(
+      "Europe/Brussels",
+    );
+    expect(parseConfig("dashboard:\n  timeZone: Asia/Kolkata\n").dashboard.timeZone).toBe(
+      "Asia/Kolkata",
+    );
+    expect(parseConfig("dashboard:\n  timeZone: UTC\n").dashboard.timeZone).toBe("UTC");
+    for (const value of ["Europe/Brusels", "Mars/Olympus_Mons", "+02:00", "UTC+2", " "]) {
+      expect(issues(`dashboard:\n  timeZone: "${value}"\n`)).toEqual([
+        { kind: "not-a-time-zone", value, path: ["dashboard", "timeZone"] },
+      ]);
+    }
+    expect(issues("dashboard:\n  timeZone: 2\n")).toEqual([
+      { kind: "wrong-type", expected: "string", value: 2, path: ["dashboard", "timeZone"] },
+    ]);
+  });
+
+  test("a name that is not a zone is refused with a valid example", () => {
+    expect(() => parseConfig("dashboard:\n  timeZone: Europe/Brusels\n")).toThrow(
+      'sluiceway.yaml is not valid:\n- dashboard.timeZone: "Europe/Brusels" is not a time zone. Write an IANA name, such as Europe/Brussels or America/New_York, or leave the key out for UTC.',
+    );
   });
 
   test("attribution.names is a whole number from 0 to 20", () => {

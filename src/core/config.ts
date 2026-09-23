@@ -178,6 +178,20 @@ const stackEntries = z.array(stackEntry).superRefine((entries, context) => {
 // The shape of sluiceway.yaml (build-plan.md, section 3). Unknown keys are an
 // error, because a typo in "tickers" would change who can deploy. The JSON
 // schema in schema/ is generated from this.
+// An IANA name the runtime knows (record 0089): `Europe/Brussels`, `UTC`.
+// An offset such as `+02:00` is no name, even where the runtime takes one: it
+// has no daylight saving, so it would be wrong half the year.
+export function isTimeZone(name: string): boolean {
+  if (!/^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/.test(name)) return false;
+  if (/^(UTC|GMT)[+-]/i.test(name)) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: name });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // The longest Recently deployed list `dashboard.recentlyDeployed` allows
 // (record 0062).
 export const RECENTLY_DEPLOYED_MAX = 50;
@@ -242,6 +256,18 @@ export const configSchema = z
             "How many deploys the Recently deployed list shows, newest first, failed ones included. 0 leaves the list out.",
           )
           .default(10),
+        // Slice 5.25 (record 0089). Checked against the zones the runtime
+        // knows, so a runtime without the zone refuses it here and never
+        // falls back to UTC in silence.
+        timeZone: z
+          .string()
+          .superRefine((value, context) => {
+            if (!isTimeZone(value)) refuse(context, { kind: "not-a-time-zone", value });
+          })
+          .describe(
+            "The IANA time zone every time on the dashboard is shown in, such as Europe/Brussels. A time that stands alone says its offset from UTC, and the line under Recently deployed names the zone. The markers keep UTC.",
+          )
+          .default("UTC"),
       })
       .prefault({}),
     tickers: tickers
@@ -403,6 +429,7 @@ export type WhatIsWrong =
   | { kind: "not-an-event"; value: unknown; events: readonly string[] }
   | { kind: "not-a-phase-name"; value: unknown }
   | { kind: "not-a-login"; value: unknown }
+  | { kind: "not-a-time-zone"; value: unknown }
   | { kind: "a-team"; value: unknown }
   | { kind: "not-a-username"; value: unknown }
   | { kind: "no-tickers" }

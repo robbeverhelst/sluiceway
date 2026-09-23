@@ -57,6 +57,8 @@ function problemWords(issue: ConfigIssue): string {
       return `${show(issue.value)} is not a phase name. Use letters, digits, ".", "_" and "-".`;
     case "not-a-login":
       return `${show(issue.value)} is not a GitHub login. Write the login alone, without "@". An app is written with [bot], such as renovate[bot].`;
+    case "not-a-time-zone":
+      return `${show(issue.value)} is not a time zone. Write an IANA name, such as Europe/Brussels or America/New_York, or leave the key out for UTC.`;
     case "a-team":
       return `${show(issue.value)} looks like a team. Teams are not supported yet. Use a level ("write", "maintain", "admin") or usernames.`;
     case "not-a-username":

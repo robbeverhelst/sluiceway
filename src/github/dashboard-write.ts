@@ -282,6 +282,7 @@ function fit(writer: DashboardWriter, body: Body, aimAtTarget: boolean): FittedB
       actionRef: writer.actionRef,
       recentLength: dashboard.recentlyDeployed,
       personality: dashboard.personality,
+      timeZone: dashboard.timeZone,
       readOnly: dashboard.readOnly,
       ignored: writer.ignored,
       merges: body.merges,

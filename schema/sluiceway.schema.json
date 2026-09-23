@@ -55,6 +55,11 @@
           "minimum": 0,
           "maximum": 50,
           "description": "How many deploys the Recently deployed list shows, newest first, failed ones included. 0 leaves the list out."
+        },
+        "timeZone": {
+          "default": "UTC",
+          "type": "string",
+          "description": "The IANA time zone every time on the dashboard is shown in, such as Europe/Brussels. A time that stands alone says its offset from UTC, and the line under Recently deployed names the zone. The markers keep UTC."
         }
       },
       "additionalProperties": false

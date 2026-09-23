@@ -43,6 +43,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "readOnly",
       "showValues",
       "recentlyDeployed",
+      "timeZone",
     ]);
     expect(Object.keys(schema.properties?.attribution?.properties ?? {})).toEqual([
       "lookback",
