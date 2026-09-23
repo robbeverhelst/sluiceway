@@ -142,9 +142,10 @@ export async function openRecord(writer: RecordWriter, opening: Opening): Promis
 // Starts a queued stack whose dependencies went out under a record of this
 // run, because `apply` deploys only a record of its own run (records 0035 and
 // 0056). The new record comes first, so a stack is never without an open
-// one, and carries the hash and the ticker of the queued one. Then the queued
-// record ends as handed on. Nothing when this version cannot read the queued
-// record's payload.
+// one, and carries what the tick approved: the hash, the ticker, and whether
+// the hash covers drift (record 0091). The run and its attempt are this run's,
+// and it waits behind nothing. Then the queued record ends as handed on.
+// Nothing when this version cannot read the queued record's payload.
 export async function startQueuedRecord(
   writer: RecordWriter,
   queued: DeploymentRecord,
@@ -160,6 +161,7 @@ export async function startQueuedRecord(
     sha: at.sha,
     ticker: payload.ticker,
     hash: payload.hash,
+    drift: payload.drift,
   });
   const started = { ...opened, ticker: payload.ticker };
   if (opened.unfinished !== undefined) return started;

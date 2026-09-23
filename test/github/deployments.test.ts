@@ -330,6 +330,38 @@ describe("starting a queued record in a later run (record 0056)", () => {
     expect(github.deployment(1).status?.description).toBe(HANDED_ON_DESCRIPTION);
   });
 
+  test("a queued drift repair starts as a drift repair (record 0091)", async () => {
+    const github = new FakeGitHub();
+    const queued = github.seedDeployment({
+      task: "sluiceway:app:prod",
+      payload: {
+        v: 1,
+        hash: "h1",
+        ticker: "bob",
+        run: "4242",
+        attempt: "3",
+        behind: ["network:prod"],
+        drift: true,
+      },
+      status: { state: "queued" },
+    });
+
+    await startQueuedRecord(writer(github), github.deployment(queued.id), {
+      sha: "def5678",
+      environment: "sluiceway",
+    });
+
+    // The attempt is this run's, not the queued record's.
+    expect(github.deployment(2).payload).toEqual({
+      v: 1,
+      hash: "h1",
+      ticker: "bob",
+      run: RUN,
+      attempt: "2",
+      drift: true,
+    });
+  });
+
   test("a queued record this version cannot read starts nothing and costs nothing", async () => {
     const github = new FakeGitHub();
     const queued = github.seedDeployment({ task: "sluiceway:app:prod", payload: { v: 2 } });
