@@ -28,6 +28,7 @@ bun install
 | `bun run build:schema` | Writes `schema/sluiceway.schema.json` from the Zod schema in `src/core/config.ts`. |
 | `bun run check:schema` | Generates, then fails if `schema/` differs from what is committed. |
 | `bun run record:fixtures` | Records `test/fixtures/pulumi/` with the `pulumi` CLI on your PATH. With `--tool opentofu` it records `test/fixtures/opentofu/` with `tofu`, and with `--tool helm` `test/fixtures/helm/` with `helm` and its diff plugin against the cluster `KUBECONFIG` names. See below before you commit its output. |
+| `bun run example` | Writes the example dashboard to `assets/example-dashboard.md` and into the README, from the made-up rows of `scripts/example-dashboard.ts`. |
 | `bun run build` | Bundles `src/main.ts` into `dist/index.js` for the Node runtime of GitHub Actions. |
 | `bun run check:dist` | Builds, then fails if `dist/` differs from what is committed. |
 | `bun run check` | All of the above, as CI runs them. |
@@ -53,6 +54,15 @@ git add schema
 ```
 
 Never edit `schema/sluiceway.schema.json` by hand.
+
+The example dashboard works the same way too (record 0088). `assets/example-dashboard.md` and the example in the README are what the renderer gives for the made-up rows of `scripts/example-dashboard.ts`, at the version in `package.json`, and a test fails when either one is not. Other sites fetch the file raw at a release tag. When a change to `src/render/` changes the body, or you add a feature a reader should see:
+
+```sh
+bun run example
+git add assets/example-dashboard.md README.md
+```
+
+The release workflow runs it on the release pull request, because that is where the version changes. Never edit either copy by hand.
 
 ## Recorded fixtures
 

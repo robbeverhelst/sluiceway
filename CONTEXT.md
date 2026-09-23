@@ -402,6 +402,10 @@ _Avoid_: Destructive change, dangerous change, removal
 The one caution block right above the pending list that names every pending stack with a destroy, and in a paragraph of its own every drifted stack with a resource gone outside the code. It is an index to the delete and replace lines, which stay open under each row. It is computed from the row markers and decides nothing, and it shows under redact and without personality too.
 _Avoid_: Destroy warning (that is the line on the row and on the counts line), destroy banner, danger box
 
+**Example dashboard**:
+A whole dashboard body that the renderer gives for made-up rows, with every section at once, at the version of the checkout. It is committed as `assets/example-dashboard.md`, which other sites fetch raw at a release tag, and the README shows it made fit for a README. `bun run example` writes both and a test holds both to the renderer. It is never a real repo's body.
+_Avoid_: Demo dashboard, sample dashboard, mock-up, live example (that is a real issue, which `docs/later.md` lists)
+
 ### Personality
 
 **Penny**:
