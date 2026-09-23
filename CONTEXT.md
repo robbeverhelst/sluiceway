@@ -45,7 +45,7 @@ A scan that previews only the stacks that claim a file changed since the last sc
 _Avoid_: Partial scan, incremental scan, affected scan, changed stacks
 
 **Pool**:
-The fixed number of previews a scan runs at the same time, in one job. It starts the next preview when one finishes, in stack id order, and never previews one stack twice at once. Its size is the `concurrency` input.
+The fixed number of previews a scan runs at the same time, in one job. It starts the next preview when one finishes, in stack id order, and never previews one stack twice at once. Its size is the `concurrency` input, or without it the number of cores of the machine, from 1 to 8. A preview's time limit counts from when it leaves the pool's queue and starts.
 _Avoid_: Workers, threads, matrix, batch
 
 **Claim**:

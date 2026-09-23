@@ -149,7 +149,9 @@ One job is the simplest setup, and the right one for most repos. It gives up a f
 
 ## Self-hosted runners
 
-Self-hosted runners work the same way: change `runs-on`. They need runner version 2.328.0 or newer, and ARM32 is not supported ([requirements](reference.md#requirements)). An edit of the dashboard then waits for a free runner of that pool too. To keep ticks on hosted runners while previews and deploys run on your own, use the [split workflow](split-workflow.md#self-hosted-runners).
+Self-hosted runners work the same way: change `runs-on`. They need runner version 2.328.0 or newer, and ARM32 is not supported ([requirements](reference.md#requirements)). An edit of the dashboard then waits for a free runner of that pool too.
+
+A scan previews as many stacks at once as the runner has cores, up to 8, and says in its job log which number it used. A runner in a container counts the CPU limit of its container, and one without a limit counts the cores of its host. A machine that runs other jobs at the same time has fewer cores to spare than it reports, so set the `concurrency` input on the Sluiceway step to the share it should use. To keep ticks on hosted runners while previews and deploys run on your own, use the [split workflow](split-workflow.md#self-hosted-runners).
 
 ## With GitHub Environments
 

@@ -21,8 +21,8 @@ One action, seven modes, chosen with the `mode` input. Leave it out, and the ste
 | Input | Default | What it is |
 |---|---|---|
 | `mode` | `auto` | One of `auto`, `scan`, `resolve`, `apply`, `settle`, `check`, `init`. Leave it out for auto. The [split workflow](split-workflow.md) names one per job. |
-| `concurrency` | `4` | How many previews a scan runs at the same time. |
-| `preview-timeout` | `10` | Time limit for one preview, in minutes. `apply` uses it for the preview it runs before the deploy. The deploy itself has no time limit of Sluiceway's unless `deploy-timeout` gives it one. |
+| `concurrency` | one per core, up to 8 | How many previews a scan runs at the same time. Leave it out and the scan runs one preview for each core of the machine, from 1 to 8, and the first line before the previews says the number and where it came from. Previewing is bound by the CPU, so more previews than cores make each one slower and the scan no faster. Set it to pin the pool, for example on a machine that other jobs share. |
+| `preview-timeout` | `10` | Time limit for one preview, in minutes. It counts from when the preview starts, never while it waits for a place in the pool. `apply` uses it for the preview it runs before the deploy. The deploy itself has no time limit of Sluiceway's unless `deploy-timeout` gives it one. |
 | `strict` | `false` | `scan` and `auto` only. `true` turns the job red when any preview failed, after the dashboard is written. Off by default, because a job that is red for one broken stack on every push teaches people to ignore red. |
 | `github-token` | the workflow token | Leave it at the default. Sluiceway always acts as the workflow's own `GITHUB_TOKEN`. A GitHub App token or a personal access token is not supported. `check` never uses it. |
 | `deployment-id` | required in `apply` | The deployment record to deploy. It comes from the `matrix` output of `resolve`. An error in every other mode, `auto` too, which deploys what `resolve` hands on in the same step. |
@@ -35,7 +35,7 @@ One action, seven modes, chosen with the `mode` input. Leave it out, and the ste
 | `webhook-url` | none | `scan`, `resolve`, `apply` and `auto`. An `http` or `https` address, from a secret, that gets a small JSON message on the same events. |
 | `job-id` | the id of the running job | Leave it at the default. GitHub gives a step its job's id in no other way, and it needs no permission. A row's link to a failed preview uses it to land on the job's log. |
 
-An input that is set to an empty string reads as its default, so a workflow can pass one through from its own inputs, as in `concurrency: ${{ inputs.concurrency }}`, and a trigger without that input still gets `4`. A value that is set and wrong still fails the step. `github-token`, and `deployment-id` in `apply`, have no default to fall back to, so an empty one fails.
+An input that is set to an empty string reads as its default, so a workflow can pass one through from its own inputs, as in `preview-timeout: ${{ inputs.preview-timeout }}`, and a trigger without that input still gets `10`. An empty `concurrency` leaves the pool to the cores of the machine, as if the input were left out. A value that is set and wrong still fails the step. `github-token`, and `deployment-id` in `apply`, have no default to fall back to, so an empty one fails.
 
 ## Outputs
 

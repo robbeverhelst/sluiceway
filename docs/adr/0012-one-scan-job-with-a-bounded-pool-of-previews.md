@@ -1,5 +1,7 @@
 # A scan is one job that previews through a bounded pool, not a matrix of jobs
 
+> Amended by 0085: without the `concurrency` input the pool is the number of cores of the machine, from 1 to 8, and the job log says which number it used and where it came from.
+
 A scan runs in a single job, and the action previews stacks through a pool of fixed size. A matrix with one job per stack or per chunk was rejected. Every job pays the setup again: a runner pod starting from zero, the checkout, one dependency install at the repo root, the provider plugins, loading secrets. Against previews of seconds to tens of seconds, that setup dominates. On the first user's pool of four runners a matrix of 58 jobs would run in about fifteen waves and starve the repo's own CI, which shares those runners. A matrix also forces three jobs (discover, scan, render) and an artifact hand-off into every consumer workflow, including the zero config user with three stacks.
 
 Parallel previews inside one job are safe: previews of different stacks share nothing, a preview takes no state lock, plugin installs are guarded by lock files, and the adapter always passes the stack and the directory and never selects a stack (0001 and its research).

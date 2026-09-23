@@ -2,6 +2,8 @@
 
 > Amends 0028 (what the note under the scan line counts and how it reads) and 0055 (its line that the note counts pending rows only). Built as slice 5.20.
 
+> Amended by 0085: `concurrency` has no default in `action.yml` any more, and an empty one leaves the pool to the cores of the machine.
+
 Two small fixes, each filed as an issue, that change what a user sees.
 
 ## The note about shortened rows

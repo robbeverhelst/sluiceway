@@ -482,7 +482,7 @@ stacks:
 
 Default: the `preview-timeout` input, `10` minutes.
 
-The time limit for one preview of this stack, in whole minutes. A preview that runs longer is stopped and the stack gets a preview failure row. `apply` uses it for the fresh preview before a deploy. The deploy itself has no time limit of Sluiceway's unless the `deploy-timeout` input gives it one: set `timeout-minutes` on the `apply` job.
+The time limit for one preview of this stack, in whole minutes. It counts from when the preview starts, not while the stack waits for a place in the pool. A preview that runs longer is stopped and the stack gets a preview failure row. `apply` uses it for the fresh preview before a deploy. The deploy itself has no time limit of Sluiceway's unless the `deploy-timeout` input gives it one: set `timeout-minutes` on the `apply` job.
 
 ```yaml
 # Not valid: minutes are whole numbers
@@ -821,7 +821,7 @@ notify:
 
 - **No credentials and no environment variables.** Your workflow puts them into the job environment before Sluiceway runs ([credentials](credentials.md)).
 - **No notification channels.** A Slack webhook address, a Telegram bot token and a webhook address are secrets, so they are inputs of the step, read from your repo's secrets. A channel written under `notify` is an error that says so.
-- **No `concurrency` or `preview-timeout`.** They belong to the runner, so they are inputs of the action.
+- **No `concurrency` or `preview-timeout`.** They belong to the runner, so they are inputs of the action. Without `concurrency` the scan runs one preview for each core of the runner, up to 8, so the same repo scans well on a small runner and a large one without a change here ([reference](reference.md#inputs)).
 - **No stack ids.** They are derived.
 - **No teams** in a tick rule. Not in this version.
 

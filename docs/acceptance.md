@@ -60,7 +60,7 @@ When: first after M1, read only, at a pinned commit SHA with only the `scan` job
 - [ ] Every preview failure row links to a run whose log explains it, and the failure reason on the row is one of the fixed ones.
 - [ ] The body is under 58,000 characters with every row in full, or the shortened rows note is there and its links work.
 - [ ] Read the timings from the job log and write them here. Total scan: `____`. Slowest preview: `____`. Median preview: `____`. Peak memory, if the runner reports it: `____`.
-- [ ] Set `concurrency` from those numbers. On a runner with 1 CPU the default of 4 may be too many. Try 2 and 4 and keep the faster. Set `preview-timeout` to at least three times the slowest preview. Write the chosen values here: `____`. If the defaults are wrong for an ordinary hosted runner too, that is a change to `action.yml` and record 0012.
+- [ ] The line `The pool is ...` in the job log names the number of cores the runner's CPU limit gives it, and says it came from this machine. Leave `concurrency` out unless the runner is shared with other jobs. Set `preview-timeout` to at least three times the slowest preview. Write the pool and the time limit here: `____`. If the pool that follows the cores is wrong for an ordinary hosted runner too, that is a change to record 0085.
 - [ ] Merge a change to one app's directory. The scan that follows previews that one stack (and `workspaces/pi` when the change is under a `dashboards` folder) and no other.
 - [ ] Merge a change to the shared components package. The scan that follows is a full scan.
 - [ ] The API budget holds: a full scan stays far below 1,000 requests. The last line of the scan's job log prints the count (`The scan made N requests to the GitHub API.`). Write it here: `____`.
