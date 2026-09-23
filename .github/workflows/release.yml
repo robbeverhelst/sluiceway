@@ -112,42 +112,21 @@ jobs:
       contents: read
       id-token: write # the OIDC token npm exchanges for a publish token
     steps:
-      # npm trusts this workflow once its trusted publisher is set up on
-      # npmjs.com. Until then the release stands without the package, and the
-      # run says so.
-      - id: trusted
-        name: Ask npm whether it trusts this workflow
-        run: |
-          id_token="$(curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" | jq -r .value)"
-          echo "::add-mask::$id_token"
-          status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
-            -H "Authorization: Bearer $id_token" \
-            https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/sluiceway)"
-          case "$status" in
-            2??) echo "trusted=true" >> "$GITHUB_OUTPUT" ;;
-            *) echo "::notice title=npm package not published::npm does not trust this workflow yet (HTTP $status), so sluiceway was not published. Add the trusted publisher on npmjs.com (record 0094)." ;;
-          esac
-
-      - if: steps.trusted.outputs.trusted == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
           persist-credentials: false
 
-      - if: steps.trusted.outputs.trusted == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
 
       # npm 11.5.1 is the first that publishes with OIDC.
-      - if: steps.trusted.outputs.trusted == 'true'
-        run: npm install --global npm@11.20.0
+      - run: npm install --global npm@11.20.0
 
-      # The bundle holds every package it runs, so the published package.json
-      # names none, and npx installs nothing but the bundle.
+      # npm trusts this workflow once its trusted publisher is set up on
+      # npmjs.com. Until then the release stands without the package: the
+      # script turns npm's refusal into a warning that says what to set, calls
+      # a version already on npm fine, and fails on anything else (slice 5.32).
       - name: Publish sluiceway
-        if: steps.trusted.outputs.trusted == 'true'
-        run: |
-          npm pkg delete dependencies devDependencies scripts
-          npm publish
+        run: scripts/ci/publish-npm.sh

@@ -122,7 +122,7 @@ describe("the committed bundle", () => {
 });
 
 // The publish step of the release workflow (record 0094): npm's trusted
-// publishing, with no secret, skipped until npm trusts the workflow.
+// publishing, with no secret, and a warning while npm does not trust it.
 describe("the npm job of the release workflow", () => {
   type Step = { id?: string; name?: string; uses?: string; if?: string; run?: string };
   const workflow = parse(readFileSync(join(ROOT, ".github/workflows/release.yml"), "utf8")) as {
@@ -165,19 +165,23 @@ describe("the npm job of the release workflow", () => {
     });
   });
 
-  test("asks npm whether it trusts this workflow, and publishes only then", () => {
+  // Slice 5.32: npm's exchange endpoint said yes in run 35884043091 and the
+  // publish was still refused, so no probe decides. The script reads npm's
+  // own answer to the publish (test/scripts/publish-npm.test.ts).
+  test("publishes through the script that tells a refusal from a failure, and nothing skips it", () => {
     const steps = job?.steps ?? [];
-    const probe = steps.findIndex((step) => step.id === "trusted");
-    expect(probe).toBeGreaterThan(-1);
-    expect(steps[probe]?.run).toContain("audience=npm:registry.npmjs.org");
-    expect(steps[probe]?.run).toContain("/-/npm/v1/oidc/token/exchange/package/sluiceway");
-    const after = steps.slice(probe + 1);
-    expect(after.length).toBeGreaterThan(0);
-    for (const step of after) expect(step.if).toBe("steps.trusted.outputs.trusted == 'true'");
-    const publish = after.find((step) => step.run?.includes("npm publish"));
-    expect(publish?.run).toContain("npm pkg delete dependencies devDependencies scripts");
+    expect(steps.some((step) => step.id === "trusted")).toBe(false);
+    expect(text).not.toContain("oidc/token/exchange");
+    expect(text).not.toContain("continue-on-error");
+    for (const step of steps) expect(step.if).toBeUndefined();
+    const publish = steps.findIndex((step) => step.run === "scripts/ci/publish-npm.sh");
+    expect(publish).toBe(steps.length - 1);
+    expect(steps.filter((step) => step.run?.includes("npm publish"))).toEqual([]);
+    const before = steps.slice(0, publish);
+    expect(before.some((step) => step.uses?.startsWith("actions/checkout@"))).toBe(true);
+    expect(before.some((step) => step.uses?.startsWith("actions/setup-node@"))).toBe(true);
     // npm 11.5.1 is the first that publishes with OIDC.
-    expect(after.some((step) => /npm@11\.\d+\.\d+/.test(step.run ?? ""))).toBe(true);
+    expect(before.some((step) => /npm@11\.\d+\.\d+/.test(step.run ?? ""))).toBe(true);
   });
 
   test("pins every action it uses by commit", () => {
