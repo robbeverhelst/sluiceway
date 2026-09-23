@@ -31,7 +31,7 @@ import {
 } from "./marker.ts";
 import { MERGE_FOLD_AFTER } from "./merge-row.ts";
 import { type AttributionLines, INDENT, type Row, type RowOptions, renderRow } from "./row.ts";
-import { trailMinute, utcMinute } from "./time.ts";
+import { minuteAt, trailMinute, yearIn, zoneLine } from "./time.ts";
 import {
   DRIFTED_LINE,
   DRY,
@@ -88,6 +88,9 @@ export interface BodyInput {
   actionRef: string;
   // `dashboard.personality` (record 0034).
   personality: boolean;
+  // `dashboard.timeZone` (record 0089): the zone every time is shown in. The
+  // markers keep UTC. UTC when absent.
+  timeZone?: string | undefined;
   // `dashboard.readOnly` (slice 2.17): no rescan box, and the line under the
   // Pending heading says why pending rows have no box. The rows themselves
   // are rendered without one by `rowBlock`.
@@ -114,10 +117,6 @@ export interface BodyInput {
 }
 
 export const RECENTLY_DEPLOYED = 10;
-
-// The one line under the Recently deployed heading (slice 5.10): the lines
-// leave `UTC` out, so it is said once here.
-const TRAIL_LINE = "Times are in UTC.";
 
 const ACTION_REPO = "sluiceway/sluiceway";
 const ACTION_URL = `https://github.com/${ACTION_REPO}`;
@@ -241,15 +240,15 @@ function countsLine(counts: CountsLineNumbers, dots: boolean): string {
 
 // A writer other than the scan takes these facts from the live body, which a
 // person can edit. A time that does not parse is left out, not thrown on.
-function time(iso: string | undefined): string | undefined {
+function time(iso: string | undefined, timeZone: string | undefined): string | undefined {
   const at = new Date(iso ?? "");
-  return Number.isNaN(at.getTime()) ? undefined : utcMinute(at);
+  return Number.isNaN(at.getTime()) ? undefined : minuteAt(at, timeZone);
 }
 
-function scanLine(root: RootFacts, repoUrl: string): string {
+function scanLine(root: RootFacts, repoUrl: string, timeZone: string | undefined): string {
   const sha = `[\`${escapeText(root.scanSha.slice(0, 7))}\`](${repoUrl}/commit/${urlPart(root.scanSha)})`;
-  const at = time(root.scanAt);
-  const fullAt = time(root.fullScanAt);
+  const at = time(root.scanAt, timeZone);
+  const fullAt = time(root.fullScanAt, timeZone);
   const parts = [
     `Scanned ${sha}${at ? ` on ${at}` : ""}`,
     `[run](${repoUrl}/actions/runs/${urlPart(root.scanRun)})`,
@@ -303,6 +302,7 @@ function recentLine(
   deploy: RecentDeploy,
   dots: boolean,
   year: number | undefined,
+  timeZone: string | undefined,
   short?: boolean,
 ): string {
   const result = deploy.result ? ` · ${RESULT_WORDS[deploy.result]}` : "";
@@ -316,6 +316,7 @@ function recentLine(
   return `- ${dot}${escapeText(deploy.stackId)}${result} · ${escapeText(deploy.ticker)} · ${trailMinute(
     deploy.at,
     year,
+    timeZone,
   )} · [run](${deploy.runUrl})${shipped}`;
 }
 
@@ -340,6 +341,7 @@ function outsideLine(
   repoUrl: string,
   dots: boolean,
   year: number | undefined,
+  timeZone: string | undefined,
 ): string {
   const dot = dots ? `${RESULT_DOT.deployed}&nbsp;` : "";
   const verb = deploy.kind === "destroy" ? "destroyed" : "deployed";
@@ -352,6 +354,7 @@ function outsideLine(
   return `- ${dot}${escapeText(deploy.stackId)} · ${verb} outside the dashboard${commit} · ${trailMinute(
     deploy.at,
     year,
+    timeZone,
   )} ${outsideMarker(deploy)}`;
 }
 
@@ -369,8 +372,8 @@ export function renderBody(input: BodyInput): string {
   // inside it keep both rendered as Markdown (record 0040). Without a header
   // they are what record 0029 made them.
   const counts = countsLine(facts.counts, input.personality);
-  const scan = scanLine(input.root, input.repoUrl);
-  const runWaits = waitingRunLine(input.root, input.repoUrl);
+  const scan = scanLine(input.root, input.repoUrl, input.timeZone);
+  const runWaits = waitingRunLine(input.root, input.repoUrl, input.timeZone);
   const scanLines = runWaits === undefined ? [scan] : [scan, runWaits];
   if (input.personality)
     out.push(
@@ -503,22 +506,27 @@ export function renderBody(input: BodyInput): string {
   // A time of the scan's year leaves its year out (slice 5.10). The scan
   // line shows the year, and one that does not parse leaves every year in.
   const scanAt = new Date(input.root.scanAt ?? "");
-  const year = Number.isNaN(scanAt.getTime()) ? undefined : scanAt.getUTCFullYear();
+  const { timeZone } = input;
+  const year = Number.isNaN(scanAt.getTime()) ? undefined : yearIn(scanAt, timeZone);
   const entries = [
     ...input.recentlyDeployed.map((deploy) => ({
       at: deploy.at,
       stackId: deploy.stackId,
-      line: () => recentLine(deploy, input.personality, year, input.shortTrail),
+      line: () => recentLine(deploy, input.personality, year, timeZone, input.shortTrail),
     })),
     ...outside.map((deploy) => ({
       at: deploy.at,
       stackId: deploy.stackId,
-      line: () => outsideLine(deploy, input.repoUrl, input.personality, year),
+      line: () => outsideLine(deploy, input.repoUrl, input.personality, year, timeZone),
     })),
   ];
   const recent = newestTrail(entries, input.recentLength);
   if (recent.length > 0)
-    out.push("## Recently deployed", TRAIL_LINE, recent.map((entry) => entry.line()).join("\n"));
+    out.push(
+      "## Recently deployed",
+      zoneLine(timeZone),
+      recent.map((entry) => entry.line()).join("\n"),
+    );
 
   // The rescan box needs a `resolve` job as much as a row's box does.
   out.push("---");

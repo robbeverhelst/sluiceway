@@ -6,7 +6,7 @@
 import { RUN_WAIT_MINUTES } from "../core/waiting-run.ts";
 import { urlPart } from "./images.ts";
 import type { RootFacts, WaitingRunFacts } from "./marker.ts";
-import { utcMinute } from "./time.ts";
+import { minuteAt } from "./time.ts";
 
 function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -35,8 +35,13 @@ function runUrl(facts: WaitingRunFacts, repoUrl: string): string {
 
 // The line under the scan line. How long is counted to the scan, whose time
 // the scan line shows, so a writer that carries the line says the same.
-// Facts edited by hand that give no time leave the line out.
-export function waitingRunLine(root: RootFacts, repoUrl: string): string | undefined {
+// Facts edited by hand that give no time leave the line out. The time stands
+// alone, so it says its offset in the repo's zone (record 0089).
+export function waitingRunLine(
+  root: RootFacts,
+  repoUrl: string,
+  timeZone?: string,
+): string | undefined {
   const facts = root.waitingRun;
   if (facts === undefined) return undefined;
   const since = new Date(facts.since);
@@ -44,7 +49,7 @@ export function waitingRunLine(root: RootFacts, repoUrl: string): string | undef
   const minutes = waited(facts, root.scanAt);
   const long = minutes === undefined ? "" : ` for ${duration(minutes)},`;
   const run = `[A run of this dashboard's workflow](${runUrl(facts, repoUrl)})`;
-  const line = `${run} has been waiting for a runner${long} since ${utcMinute(since)}.`;
+  const line = `${run} has been waiting for a runner${long} since ${minuteAt(since, timeZone)}.`;
   if (facts.more === 0) return line;
   const more =
     facts.more === 1 ? "1 more run has been waiting" : `${facts.more} more runs have been waiting`;

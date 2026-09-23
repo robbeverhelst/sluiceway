@@ -6,7 +6,7 @@ import type { PhaseGroup } from "../core/phases.ts";
 import { escapeText } from "./escape.ts";
 import { mascotUrl } from "./images.ts";
 import { ROW_CLOSE_MARKER, rowMarker } from "./marker.ts";
-import { utcMinute } from "./time.ts";
+import { minuteAt } from "./time.ts";
 
 // The attribution line (record 0026), rendered by the core and placed here as
 // it is. `counted` is the line with its named pull requests replaced by a
@@ -139,6 +139,9 @@ export interface RowOptions {
   // none. The row is written by one version and carried by the next as it
   // is, so it keeps the spinner of the version that wrote it.
   actionRef?: string | undefined;
+  // `dashboard.timeZone` (record 0089): the zone of the failure line's time,
+  // which says its offset. UTC when absent. The marker stays the same.
+  timeZone?: string | undefined;
 }
 
 export const INDENT = "  ";
@@ -311,10 +314,10 @@ function pendingAgainLine({ logUrl }: { logUrl?: string | undefined }): string {
     : `${PENDING_AGAIN_NOTE} Compare the tool's own diff in the [job log](${logUrl}).`;
 }
 
-function failureLine(failure: FailureLine): string {
+function failureLine(failure: FailureLine, timeZone: string | undefined): string {
   return `:x: last deploy failed: ${escapeText(failure.reason)} · ticked by ${escapeText(
     failure.ticker,
-  )} · ${utcMinute(failure.at)} · [run](${failure.runUrl})`;
+  )} · ${minuteAt(failure.at, timeZone)} · [run](${failure.runUrl})`;
 }
 
 // `deletes 1, replaces 1`, for the warning on a row that lists no destroys.
@@ -396,7 +399,7 @@ function driftRow(row: DriftRow, options: RowOptions): string[] {
       },
     )}`,
   ];
-  if (row.failure) lines.push(failureLine(row.failure));
+  if (row.failure) lines.push(failureLine(row.failure, options.timeZone));
   if (row.orphanTick && !options.readOnly) lines.push(ORPHAN_TICK_NOTE);
   lines.push(...driftLines(drift, summary, options));
   return lines;
@@ -432,7 +435,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
     )}`,
   ];
   if (row.attribution) lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
-  if (row.failure) lines.push(failureLine(row.failure));
+  if (row.failure) lines.push(failureLine(row.failure, options.timeZone));
   if (row.pendingAgain) lines.push(pendingAgainLine(row.pendingAgain));
   if (row.orphanTick && !options.readOnly) lines.push(ORPHAN_TICK_NOTE);
 
@@ -508,7 +511,7 @@ function deployingRow(row: DeployingRow, options: RowOptions): string[] {
   return lines;
 }
 
-function previewFailedRow(row: PreviewFailedRow): string[] {
+function previewFailedRow(row: PreviewFailedRow, options: RowOptions): string[] {
   const lines = [
     `- **${escapeText(row.stackId)}** · preview failed: ${escapeText(row.reason)} · [run](${
       row.runUrl
@@ -518,11 +521,11 @@ function previewFailedRow(row: PreviewFailedRow): string[] {
       failed: row.failure !== undefined,
     })}`,
   ];
-  if (row.failure) lines.push(failureLine(row.failure));
+  if (row.failure) lines.push(failureLine(row.failure, options.timeZone));
   return lines;
 }
 
-function inSyncRow(row: InSyncRow): string[] {
+function inSyncRow(row: InSyncRow, options: RowOptions): string[] {
   const lines = [
     `- ${escapeText(row.stackId)} ${rowMarker({
       stackId: row.stackId,
@@ -531,7 +534,7 @@ function inSyncRow(row: InSyncRow): string[] {
       dependsOn: row.dependsOn,
     })}`,
   ];
-  if (row.failure) lines.push(failureLine(row.failure));
+  if (row.failure) lines.push(failureLine(row.failure, options.timeZone));
   return lines;
 }
 
@@ -544,9 +547,9 @@ function rowLines(row: Row, options: RowOptions): string[] {
     case "deploying":
       return deployingRow(row, options);
     case "preview-failed":
-      return previewFailedRow(row);
+      return previewFailedRow(row, options);
     case "in-sync":
-      return inSyncRow(row);
+      return inSyncRow(row, options);
   }
 }
 
