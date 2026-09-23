@@ -41,6 +41,10 @@
 //  11. Merge and deploy: Renovate's pull request is listed, alice ticks it,
 //      resolve merges it on the fake, and the scan it starts hands the fresh
 //      diff of app:prod to apply, which deploys it with the real tool.
+//  12. Deploy on merge (record 0094): site:prod is set to on-merge, alice
+//      merges a change to it, and the scan of the push hands it to apply in
+//      the same step, which deploys it with the real tool. Nobody ticks, and
+//      the trail says merged by alice.
 //
 // The tool only runs in a copy inside the work directory, against a file
 // backend made there, with an environment built from nothing. `node` on PATH
@@ -1015,6 +1019,72 @@ good =
         })),
     ...checkSettle(handingOn, { ended: undefined, before: handingOn.records }),
     ...checkDeploys("app:prod", await deploysOf("app", "prod"), appDeploys + 1),
+  ]) && good;
+
+// 12. Deploy on merge (record 0094). The repo sets site:prod to on-merge,
+// and alice merges a change to its program. The push starts the one step,
+// whose scan finds site:prod pending and hands it to apply in the same step,
+// which deploys it with the real tool. Nobody ticks. The record, the trail
+// and the row say it went out on merge and who merged it.
+console.log("::group::Setting site:prod to deploy on merge, and alice merges a change to it");
+edit(
+  "sluiceway.yaml",
+  "  - path: site\n    dependsOn:\n      - network:dev\n",
+  "  - path: site\n    dependsOn:\n      - network:dev\n    deploy: on-merge\n",
+);
+edit("site/Pulumi.prod.yaml", "    - blog\n", "    - blog\n    - shop\n");
+console.log(readFileSync(configFile, "utf8"));
+console.log("::endgroup::");
+const ON_MERGE_SHA = "6666666666666666666666666666666666666666";
+const siteDeploys = await deploysOf("site", "prod");
+runNumber++;
+const pushRun = String(runNumber);
+// GitHub knows the run of the push while it runs.
+fake.seedRun(pushRun, { completed: false });
+const onMerge = await loopStep(undefined, {
+  runId: pushRun,
+  sha: ON_MERGE_SHA,
+  event: "push",
+  payload: {
+    ref: "refs/heads/main",
+    repository: { default_branch: "main" },
+    sender: { login: ALICE.login, type: "User" },
+  },
+  title: `Run ${pushRun}: the one step, after alice merged a change to site:prod`,
+});
+fake.seedRun(pushRun, { completed: true });
+const [onMergeEntry] = matrixEntries(onMerge.outputs.matrix ?? "");
+const onMergeRecord = onMerge.records.find(({ id }) => id === onMergeEntry?.deployment);
+good =
+  reportStep("Deploy on merge: the push", onMerge, [
+    ...(onMergeEntry?.stack === "site:prod"
+      ? []
+      : [`The push handed on ${JSON.stringify(onMergeEntry)}, expected site:prod.`]),
+    ...(onMergeRecord &&
+    (onMergeRecord.payload as { onMerge?: unknown; ticker?: unknown }).onMerge === true &&
+    (onMergeRecord.payload as { ticker?: unknown }).ticker === ALICE.login
+      ? []
+      : [
+          `The record of site:prod says ${JSON.stringify(onMergeRecord?.payload)}, expected onMerge and ticker ${ALICE.login}.`,
+        ]),
+    ...(onMergeEntry === undefined
+      ? []
+      : checkApply(onMerge, {
+          stack: "site:prod",
+          deployment: onMergeEntry.deployment,
+          outcome: "deployed",
+        })),
+    // The fake's records keep times of their own, older than the tool's own
+    // history, so the line is looked for rather than taken as the newest.
+    ...(new RegExp(`^- (\\S+&nbsp;)?site:prod · merged by ${ALICE.login} · `, "m").test(
+      onMerge.body,
+    )
+      ? []
+      : ["Recently deployed has no line of site:prod that says merged by alice."]),
+    ...checkDeploys("site:prod", await deploysOf("site", "prod"), siteDeploys + 1),
+    ...(onMerge.newComments.length === 0
+      ? []
+      : [`The push wrote comments: ${JSON.stringify(onMerge.newComments)}.`]),
   ]) && good;
 
 console.log("::group::The dashboard after the narrowed scan");
