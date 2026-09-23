@@ -436,6 +436,33 @@ export function checkQueued(
   });
 }
 
+// A drift repair (record 0055): the newest record of the stack says the hash
+// it carries covers drift, a queued one and the one a later run started for it
+// alike (record 0091).
+export function checkDriftRepair(step: LoopStep, stack: string): string[] {
+  const record = step.records.findLast(({ task }) => task === `sluiceway:${stack}`);
+  if (!record) return [`${stack} has no deployment record.`];
+  return payloadField(record.payload, "drift") === true
+    ? []
+    : [`Deployment record ${record.id} of ${stack} does not say its hash covers drift.`];
+}
+
+// The newest line of the stack in Recently deployed carries this result word
+// (records 0059 and 0062).
+export function checkTrail(body: string, stack: string, word: string): string[] {
+  const line = body
+    .split("\n")
+    .find((text) => new RegExp(`^- (\\S+&nbsp;)?${escaped(stack)} · `).test(text));
+  if (line === undefined) return [`Recently deployed has no line for ${stack}.`];
+  return line.includes(`${stack} · ${word} · `)
+    ? []
+    : [`The newest line of ${stack} in Recently deployed is "${line}", expected "${word}".`];
+}
+
+function escaped(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // Merge and deploy (record 0054). The rows of the updates waiting to merge,
 // read the plain way: the pull request and the stack of each marker.
 export function mergeRows(body: string): { pr: string; stack: string; ticked: boolean }[] {

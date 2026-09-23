@@ -30,11 +30,14 @@
 //      `uses: sluiceway/sluiceway@v0`: from a copy of the action in a
 //      directory of its own, with the moving tag as its ref and no
 //      GITHUB_ACTION_PATH. Its images come from the tag of package.json.
-//  10. Three stacks in a chain (record 0056): sluiceway.yaml says app:prod
-//      depends on network:dev and site:prod on app:prod, a push changes all
-//      three, and alice ticks them in one edit. Each run deploys one layer
-//      with the real tool, settle starts the workflow again, and the resolve
-//      of that run starts the next stack.
+//  10. Three stacks in a chain (record 0056): sluiceway.yaml says network:dev
+//      depends on app:prod and site:prod on network:dev, a push changes
+//      app:prod and site:prod, and the file network:dev manages is removed by
+//      hand, so a scheduled scan shows it drifted (record 0055). alice ticks
+//      the three in one edit. Each run deploys one layer with the real tool,
+//      settle starts the workflow again, and the resolve of that run starts
+//      the next stack. The drift repair waited behind app:prod, and still
+//      repairs: the trail says drift fixed, not no changes (record 0091).
 //  11. Merge and deploy: Renovate's pull request is listed, alice ticks it,
 //      resolve merges it on the fake, and the scan it starts hands the fresh
 //      diff of app:prod to apply, which deploys it with the real tool.
@@ -47,6 +50,7 @@ import { spawn } from "node:child_process";
 import {
   appendFileSync,
   cpSync,
+  existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -67,6 +71,7 @@ import {
 } from "./e2e/checks.ts";
 import {
   checkApply,
+  checkDriftRepair,
   checkHandOff,
   checkMergeTick,
   checkNothingLeaks,
@@ -78,6 +83,7 @@ import {
   checkRowFacts,
   checkSettle,
   checkStarted,
+  checkTrail,
   type LoopRecord,
   type LoopStep,
   type MatrixEntry,
@@ -748,18 +754,18 @@ good =
       : [`The footer does not name v${version}.`]),
   ]) && good;
 
-// 10. Three stacks in a chain (record 0056). The config and the three programs
-// change in one push, so all three are pending, and alice ticks them in one
-// edit.
+// 10. Three stacks in a chain (record 0056). The config and two programs
+// change in one push, so app:prod and site:prod are pending. The layer between
+// them, network:dev, is drifted instead: the file it manages is removed behind
+// the tool's back, and only its entry turns the drift check on. alice ticks
+// the three in one edit, so the drift repair waits behind app:prod and a later
+// run starts it (issue 209, record 0091).
 const THIRD_SHA = "3333333333333333333333333333333333333333";
-console.log("::group::Pushing a chain of dependencies and a change to three stacks");
+console.log("::group::Pushing a chain of dependencies, a change to two stacks, and drift");
 const configFile = join(workspace, "sluiceway.yaml");
 writeFileSync(
   configFile,
-  `${readFileSync(configFile, "utf8").replace(
-    "  - path: app\n    inputs:\n      - shared/**\n",
-    "  - path: app\n    inputs:\n      - shared/**\n    dependsOn:\n      - network:dev\n",
-  )}\n  - path: site\n    dependsOn:\n      - app:prod\n`,
+  `${readFileSync(configFile, "utf8")}\n  - path: network\n    name: dev\n    dependsOn:\n      - app:prod\n    drift:\n      enabled: true\n  - path: site\n    dependsOn:\n      - network:dev\n`,
 );
 const edit = (file: string, from: string, to: string) => {
   const path = join(workspace, file);
@@ -767,13 +773,15 @@ const edit = (file: string, from: string, to: string) => {
   if (!text.includes(from)) throw new Error(`${file} holds no "${from}".`);
   writeFileSync(path, text.replace(from, to));
 };
-edit("network/Pulumi.dev.yaml", "network:zone: dev-a", "network:zone: dev-b");
+// Both network stacks write this file, and only network:dev checks drift.
+const notesFile = join(workspace, "network", "out", "notes.txt");
+rmSync(notesFile);
 edit("app/Pulumi.prod.yml", "app:tier: standard", "app:tier: premium");
 edit("site/Pulumi.prod.yaml", "    - contact\n", "    - contact\n    - blog\n");
 console.log(readFileSync(configFile, "utf8"));
 console.log("::endgroup::");
 const chainScan = await scanStep(THIRD_SHA, "schedule");
-const chainRows = { "app:prod": "pending", "network:dev": "pending", "site:prod": "pending" };
+const chainRows = { "app:prod": "pending", "network:dev": "drift", "site:prod": "pending" };
 good =
   report(
     "The scan before the chain",
@@ -844,17 +852,18 @@ function deployLayer(layer: IssuesRun, stack: string, environment: string) {
 }
 
 const chainTick = await tickAll(["site:prod", "app:prod", "network:dev"]);
-const firstLayer = deployLayer(chainTick, "network:dev", "network");
+const firstLayer = deployLayer(chainTick, "app:prod", "sluiceway");
 good =
   reportStep("The chain: the first layer", chainTick.resolved, [
     ...firstLayer.problems,
     ...checkQueued(chainTick.resolved, [
-      { stack: "app:prod", behind: ["network:dev"] },
-      { stack: "site:prod", behind: ["app:prod"] },
+      { stack: "network:dev", behind: ["app:prod"] },
+      { stack: "site:prod", behind: ["network:dev"] },
     ]),
-    // app:prod and site:prod wait, and nothing of them went out yet.
-    ...checkDeploys("network:dev", await deploysOf("network", "dev"), 2),
-    ...checkDeploys("app:prod", await deploysOf("app", "prod"), 1),
+    ...checkDriftRepair(chainTick.resolved, "network:dev"),
+    // network:dev and site:prod wait, and nothing of them went out yet.
+    ...checkDeploys("app:prod", await deploysOf("app", "prod"), 2),
+    ...checkDeploys("network:dev", await deploysOf("network", "dev"), 1),
     ...checkDeploys("site:prod", await deploysOf("site", "prod"), 1),
     ...(firstLayer.settled?.newDispatches === 1
       ? []
@@ -862,12 +871,19 @@ good =
   ]) && good;
 
 const secondRun = await dispatchedRun();
-const secondLayer = deployLayer(secondRun, "app:prod", "sluiceway");
+const secondLayer = deployLayer(secondRun, "network:dev", "network");
 good =
   reportStep("The chain: the second layer", secondRun.resolved, [
     ...secondLayer.problems,
-    ...checkQueued(secondRun.resolved, [{ stack: "site:prod", behind: ["app:prod"] }]),
-    ...checkDeploys("app:prod", await deploysOf("app", "prod"), 2),
+    ...checkQueued(secondRun.resolved, [{ stack: "site:prod", behind: ["network:dev"] }]),
+    // The record this run started for the queued repair is still a drift
+    // repair, and the deploy put the file back (issue 209, record 0091).
+    ...checkDriftRepair(secondRun.resolved, "network:dev"),
+    ...checkTrail(secondRun.resolved.body, "network:dev", "drift fixed"),
+    ...(existsSync(notesFile)
+      ? []
+      : ["The drift repair of network:dev did not put its file back."]),
+    ...checkDeploys("network:dev", await deploysOf("network", "dev"), 2),
     ...checkDeploys("site:prod", await deploysOf("site", "prod"), 1),
     ...(secondLayer.settled?.newDispatches === 1
       ? []

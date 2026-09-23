@@ -92,7 +92,7 @@ function previewedTotal(count: number): string {
   return `Previewed ${count} ${count === 1 ? "stack" : "stacks"} in `;
 }
 
-// One preview page per pending stack this scan previewed, written by this
+// One preview page per pending or drifted stack this scan previewed, written by this
 // scan, never a second one of the same name, none for any other stack, and
 // the row's preview link lands on it (record 0050).
 function checkPages(
@@ -106,7 +106,7 @@ function checkPages(
     const name = `sluiceway / ${stack}`;
     const all = observed.pages.filter((page) => page.name === name);
     const written = all.filter((page) => page.written);
-    if (state !== "pending" || !previewed.includes(stack)) {
+    if ((state !== "pending" && state !== "drift") || !previewed.includes(stack)) {
       if (written.length > 0) problems.push(`The scan wrote a preview page for ${stack}.`);
       continue;
     }
