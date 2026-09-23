@@ -1,6 +1,8 @@
 # The split workflow
 
-[The workflow](workflow.md#the-workflow) is one job with one Sluiceway step that reads the event and does what it asks for. This page is the same loop as four jobs, one per mode, joined with `if:` and `needs:`. It is longer and has more to keep right, and the [check](workflow.md#check-your-setup) reads every part of it. Use it only for what one job cannot do ([what one job gives up](workflow.md#what-one-job-gives-up)):
+This page is the loop of [the workflow](workflow.md#the-workflow) as four jobs, one per mode, joined with `if:` and `needs:`.
+
+The workflow is one job with one Sluiceway step that reads the event and does what it asks for. The split workflow is longer and has more to keep right, and the [check](workflow.md#check-your-setup) reads every part of it. Use it only for what one job cannot do ([what one job gives up](workflow.md#what-one-job-gives-up)):
 
 - **Credentials that only read for the scan**, and the ones that write only in the deploy job.
 - **A GitHub Environment per stack**, with required reviewers who approve each deploy.

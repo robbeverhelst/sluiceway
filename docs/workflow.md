@@ -1,6 +1,8 @@
 # The workflow
 
-Sluiceway is one GitHub Action. It runs in two workflow files of your repo: a check on every pull request, and the workflow that scans, reacts to a tick and deploys. That second one is one job with one Sluiceway step. The step reads the event that started the run and does what it asks for, so the file needs no `if:` and no `needs:`. This page is both files, part by part, and what merge and deploy, stack dependencies, self-hosted runners and GitHub Environments ask for.
+Sluiceway runs in two workflow files of your repo: a check on every pull request, and the workflow that scans, reacts to a tick and deploys.
+
+Sluiceway is one GitHub Action, and that second file is one job with one Sluiceway step. The step reads the event that started the run and does what it asks for, so the file needs no `if:` and no `needs:`. This page is both files, part by part, and what merge and deploy, stack dependencies, self-hosted runners and GitHub Environments ask for.
 
 Go one step at a time. Each step shows you something before the next one can change anything.
 

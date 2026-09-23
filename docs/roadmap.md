@@ -18,11 +18,11 @@ The core loop: a scan previews every stack and writes the dashboard, a person ti
 
 The [build plan](build-plan.md) says how each of these was built and proven, and the [decision records](adr) hold the rules.
 
-## Before 1.0
+## Planned before 1.0
 
 - **The launch.** A listing on the GitHub Marketplace, a docs site, screenshots, a note on merge queues and the config schema in SchemaStore. Then the 1.0.0 tag and the `v1` moving tag.
 
-## After 1.0
+## Planned after 1.0
 
 The larger themes: more tools (AWS CDK), a bot with its own name and picture, teams in the tick rule, a log of deploys made outside the dashboard, and a hosted version with a dashboard for a whole organization. The previews and the deploys always stay in the user's own runners.
 

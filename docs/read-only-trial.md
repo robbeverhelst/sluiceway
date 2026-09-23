@@ -1,6 +1,8 @@
 # Start read only
 
-You can run the scan alone first, to see your dashboard with nothing that can deploy. It is [the workflow](workflow.md#the-workflow) with everything that can deploy taken out. Run the [check](workflow.md#check-your-setup) before it, in a pull request.
+You can run the scan alone first, to see your dashboard with nothing that can deploy.
+
+It is [the workflow](workflow.md#the-workflow) with everything that can deploy taken out. Run the [check](workflow.md#check-your-setup) before it, in a pull request.
 
 Put this in `.github/workflows/deploy-dashboard.yml` on the default branch. It uses the action at `@v0`. [Pin a commit](workflow.md#pin-a-commit) says how to pin a release by its commit SHA instead.
 

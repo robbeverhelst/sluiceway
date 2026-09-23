@@ -1,8 +1,8 @@
 # Notifications and metrics
 
-Sluiceway can tell a Slack channel, a Telegram chat or a webhook of your own when something needs a person: stacks are waiting for a tick, a scan found drift, a deploy failed, or a tick was refused. It is off until you name a channel, and each channel comes from a secret of your repo (record 0078).
+Sluiceway can tell a Slack channel, a Telegram chat or a webhook of your own when something needs a person: stacks are waiting for a tick, a scan found drift, a deploy failed, or a tick was refused.
 
-It also hands your workflow step outputs and a JSON result file, so a step of your own can chart numbers or send anything the built-in messages do not.
+It is off until you name a channel, and each channel comes from a secret of your repo (record 0078). It also hands your workflow step outputs and a JSON result file, so a step of your own can chart numbers or send anything the built-in messages do not.
 
 ## Built-in notifications
 
@@ -83,7 +83,7 @@ A notification never changes a job. A channel that answers with an error, or doe
 
 ### What it does not do
 
-- **No ticking from Slack.** A button in a message would need an app that Slack can call back, and a GitHub Action is not running when someone clicks. That belongs to a hosted version.
+- **No ticking from Slack.** A button in a message would need an app that Slack can call back, and a GitHub Action is not running when someone clicks. That needs a hosted version, which is planned: see the [roadmap](roadmap.md).
 - **Nothing for a scan that fails before it writes the dashboard**, such as on a broken `sluiceway.yaml`. The step goes red, and [a step of your own](#a-scan-that-failed) can say so.
 - **Nothing for a failed preview.** The dashboard shows it, and `strict: true` turns the scan red for it.
 

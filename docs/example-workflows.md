@@ -1,6 +1,8 @@
 # Example workflows
 
-Most of a Sluiceway workflow is not about Sluiceway: checking out, installing a language and your dependencies, installing the tool, loading credentials. These are complete workflows for common setups, ready to copy. Each one is [the workflow](workflow.md#the-workflow) with those steps filled in, and each one is checked in this repo's tests against the action's inputs and the wiring Sluiceway needs.
+These are complete workflows for common setups, ready to copy.
+
+Most of a Sluiceway workflow is not about Sluiceway: checking out, installing a language and your dependencies, installing the tool, loading credentials. Each one is [the workflow](workflow.md#the-workflow) with those steps filled in, and each one is checked in this repo's tests against the action's inputs and the wiring Sluiceway needs.
 
 | Setup | File | Credentials from |
 |---|---|---|

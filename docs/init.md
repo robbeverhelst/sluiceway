@@ -1,6 +1,8 @@
 # Start with init
 
-`init` writes a first version of the two files Sluiceway needs, from what it finds in your repo: the workflow `.github/workflows/deploy-dashboard.yml` and the settings file `sluiceway.yaml`. It writes them into your clone and commits nothing. You read them, change what it could not know, and commit them yourself.
+`init` writes a first version of the two files Sluiceway needs, from what it finds in your repo: the workflow `.github/workflows/deploy-dashboard.yml` and the settings file `sluiceway.yaml`.
+
+It writes them into your clone and commits nothing. You read them, change what it could not know, and commit them yourself.
 
 ## Run it
 
