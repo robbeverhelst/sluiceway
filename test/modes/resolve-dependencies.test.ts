@@ -279,3 +279,41 @@ describe("a stack with dependsOn: auto", () => {
     expect((matrix(h) as { stack: string }[]).map(({ stack }) => stack)).toEqual(["app:prod"]);
   });
 });
+
+// Record 0094: a stack set to on-merge that the scan of a merge queued behind
+// the stack before it starts in a later run as it would after a tick, and its
+// row still says on merge and who merged.
+describe("a stack queued on merge", () => {
+  test("starts on merge, with whoever merged, once what it waits behind went out", async () => {
+    const h = await scanned(TABLE, { config: CHAIN });
+    h.github.seedDeployment({
+      task: "sluiceway:network:prod",
+      payload: { v: 1, hash: HASH, ticker: "alice", run: "5050", onMerge: true },
+      status: { state: "success" },
+    });
+    h.github.seedDeployment({
+      task: "sluiceway:app:prod",
+      payload: {
+        v: 1,
+        hash: HASH,
+        ticker: "alice",
+        run: "5050",
+        behind: ["network:prod"],
+        onMerge: true,
+      },
+      status: { state: "queued" },
+    });
+    h.github.seedRun("5050", { completed: true });
+    h.github.seedRun(NEXT_RUN, { completed: false });
+    h.context.runId = NEXT_RUN;
+
+    await wake(h, { ref: "refs/heads/main", workflow: ".github/workflows/sluiceway.yml" });
+
+    const [entry] = records(h);
+    expect(entry?.stack).toBe("app:prod");
+    expect(entry?.record.payload).toMatchObject({ ticker: "alice", onMerge: true, run: NEXT_RUN });
+    expect(rowsOf(h)["app:prod"]?.split("\n")[0]).toContain(
+      "· waiting to start on merge · merged by alice ·",
+    );
+  });
+});

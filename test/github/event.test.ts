@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   editedIssue,
   mergedBeforeDispatch,
+  mergedBy,
   publicRepo,
   readEventPayload,
   startedByPerson,
@@ -137,5 +138,37 @@ describe("the pull requests resolve merged before it dispatched the scan (slice 
     expect(mergedBeforeDispatch({ inputs: { "sluiceway-merged": "" }, sender: BOT })).toEqual([]);
     expect(mergedBeforeDispatch({ sender: BOT })).toEqual([]);
     expect(mergedBeforeDispatch(undefined)).toEqual([]);
+  });
+});
+
+// Record 0094: the merge a stack set to on-merge deploys on is a push to the
+// default branch, and the deploy is attributed to whoever pushed it: the
+// person who pressed merge, or an app that merges, as GitHub names them.
+describe("mergedBy", () => {
+  const push = (over: Record<string, unknown> = {}) => ({
+    ref: "refs/heads/main",
+    repository: { default_branch: "main" },
+    sender: { login: "alice", type: "User" },
+    ...over,
+  });
+
+  test("names the sender of a push to the default branch", () => {
+    expect(mergedBy("push", push())).toBe("alice");
+  });
+
+  test("an app that merges is named as GitHub names it", () => {
+    expect(mergedBy("push", push({ sender: { login: "renovate[bot]", type: "Bot" } }))).toBe(
+      "renovate[bot]",
+    );
+  });
+
+  test("is nobody for a push to another branch, another event, or a payload that does not say", () => {
+    expect(mergedBy("push", push({ ref: "refs/heads/feature" }))).toBeUndefined();
+    expect(mergedBy("push", push({ ref: "refs/tags/v1.0.0" }))).toBeUndefined();
+    expect(mergedBy("schedule", push())).toBeUndefined();
+    expect(mergedBy("workflow_dispatch", push())).toBeUndefined();
+    expect(mergedBy("push", push({ repository: {} }))).toBeUndefined();
+    expect(mergedBy("push", push({ sender: { login: "" } }))).toBeUndefined();
+    expect(mergedBy("push", undefined)).toBeUndefined();
   });
 });

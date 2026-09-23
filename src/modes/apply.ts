@@ -287,7 +287,7 @@ async function applying(context: ApplyContext, repo: Repo, report: ApplyReport):
     );
   }
   log.info(
-    `Deployment record ${id}: ${name}, ticked by ${payload.ticker}, approved diff hash ${payload.hash}. It is in progress.`,
+    `Deployment record ${id}: ${name}, ${payload.onMerge ? "merged" : "ticked"} by ${payload.ticker}, approved diff hash ${payload.hash}. It is in progress.`,
   );
 
   // From here the record is this job's, and every way out gives it a result,
@@ -332,6 +332,7 @@ async function applying(context: ApplyContext, repo: Repo, report: ApplyReport):
         ticker: payload.ticker,
         runUrl,
         outcome: attempt.summary,
+        ...(payload.onMerge ? { onMerge: true } : {}),
       }),
     );
   }
@@ -353,6 +354,7 @@ async function applying(context: ApplyContext, repo: Repo, report: ApplyReport):
                 ticker: fact.ticker,
                 at: fact.at,
                 runUrl: runUrlOf(context.repoUrl, fact.run, fact.attempt),
+                ...(fact.onMerge ? { onMerge: true } : {}),
               }
             : undefined;
         const row = previewRow(id_, made, runLinks(context), failure, {
@@ -368,7 +370,14 @@ async function applying(context: ApplyContext, repo: Repo, report: ApplyReport):
     // that is true.
     if (written !== undefined && reason?.kind === "moved") {
       try {
-        await github.createComment(written, movedComment({ login: payload.ticker, stackId: id_ }));
+        await github.createComment(
+          written,
+          movedComment({
+            login: payload.ticker,
+            stackId: id_,
+            ...(payload.onMerge ? { onMerge: true } : {}),
+          }),
+        );
       } catch (error) {
         failures.push(
           `The comment to ${payload.ticker} about the moved change could not be written: ${message(error)}. The job needs the permission \`issues: write\`.`,
@@ -654,6 +663,7 @@ async function afterFreshPreview(
       destroys: fresh.diff.changes.filter(isDestroy).length,
       deletes: fresh.diff.changes.filter((change) => change.op === "delete").length,
       attribution,
+      ...(payload.onMerge ? { onMerge: true } : {}),
     }));
   } catch (error) {
     log.info(`The dashboard could not be written before the deploy: ${message(error)}`);

@@ -19,6 +19,7 @@ import { stripAnsi } from "../adapters/tool-run.ts";
 import type { Attribution } from "../core/attribution.ts";
 import { sharedFiles, suggestedUnrelated } from "../core/check.ts";
 import type { Config, ConfiguredStack } from "../core/config.ts";
+import { withReadDependencies } from "../core/dependencies.ts";
 import {
   type DeployFacts,
   deployFacts,
@@ -36,6 +37,7 @@ import {
   waitingUpdates,
 } from "../core/merge-and-deploy.ts";
 import { repositoryOf, scanNotifications } from "../core/notify.ts";
+import { type OnMergeWait, onMergeDeploys } from "../core/on-merge.ts";
 import { resolveOnItsWay, type TickAtLateRead } from "../core/orphan-tick.ts";
 import { ownRuns } from "../core/outside-deploy.ts";
 import { type PoolSize, runPool } from "../core/pool.ts";
@@ -72,6 +74,7 @@ import {
 import { everyPreviewFailed } from "../core/scan-result.ts";
 import { shownValues } from "../core/show-values.ts";
 import { type Stack, stackId } from "../core/stack.ts";
+import type { Deploy } from "../core/tick-judgement.ts";
 import { type RunOfTheWorkflow, waitingRun } from "../core/waiting-run.ts";
 import { attributionSource } from "../github/attribution.ts";
 import { type DashboardResult, findDashboard } from "../github/dashboard.ts";
@@ -114,6 +117,7 @@ import {
 import {
   isDeployingState,
   MARKER_VERSION,
+  type ParsedRow,
   parseDashboard,
   type WaitingRunFacts,
 } from "../render/marker.ts";
@@ -121,7 +125,7 @@ import type { BranchPreview } from "../render/merge-row.ts";
 import { renderPreviewPage } from "../render/preview-page.ts";
 import { previewOutcome, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, scanResultFile } from "../render/result-file.ts";
-import { byCodeUnit, driftCounts, plural } from "../render/row.ts";
+import { byCodeUnit, driftCounts, onMergeNote, plural } from "../render/row.ts";
 import { renderSummary, type UnclaimedFiles } from "../render/summary.ts";
 import { waitingRunLogLine } from "../render/waiting-run.ts";
 import { previewBranches } from "./branch-preview.ts";
@@ -181,6 +185,11 @@ export interface ScanContext {
   // Whether the repo is public, from the payload of the event. Absent when
   // the payload does not say (record 0048).
   publicRepo?: boolean | undefined;
+  // Who pushed to the default branch, as the push event names them, when a
+  // push to the default branch started this scan. It is the merge a stack
+  // set to on-merge deploys on, and who that deploy is attributed to (record
+  // 0094). Absent for every other scan.
+  mergedBy?: string | undefined;
   // Whether a person started the run, from the sender of the event. A
   // dispatch by the workflow token (`settle`, the rescan box) is not one
   // (record 0055).
@@ -360,6 +369,11 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   }
   // The records this scan opened for merged changes, handed to `apply`.
   const handedOn: MatrixEntry[] = [];
+  // The stacks set to on-merge this scan opened a record for, so a later try
+  // of the write loop never opens a second one (record 0094), and the ones
+  // whose change waits for a tick after all, with why.
+  const openedOnMerge = new Set<string>();
+  let waitsOnMerge = new Map<string, OnMergeWait>();
 
   // Attribution (record 0026): walked once per job, shared by every stack,
   // and it never blocks.
@@ -526,6 +540,19 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           context.outputs?.set("matrix", matrixOutput(handedOn));
           if (ended) deploys = await lateDeploys(context, stacks, previewed, live);
         }
+        // Stacks set to on-merge that this scan found pending go out now,
+        // through the path of a tick (record 0094). After the merges, so a
+        // stack a merge from the dashboard already handed on is open.
+        const onMerge = onMergeDeploys(
+          onMergeInput(context, config, stacks, previewed, live, deploys.facts),
+        );
+        waitsOnMerge = onMerge.waits;
+        const fresh = onMerge.deploys.filter(({ stackId: id }) => !openedOnMerge.has(id));
+        if (fresh.length > 0) {
+          await handOnMerged(context, fresh, handedOn, openedOnMerge);
+          context.outputs?.set("matrix", matrixOutput(handedOn));
+          deploys = await lateDeploys(context, stacks, previewed, live);
+        }
         attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
         const shipped = await attribution.ship(deploys.facts.trail);
         const late = placed(
@@ -536,6 +563,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
               !config.dashboard.readOnly && (await resolveWaits(context, live, deploys)),
             attributed,
             shipped,
+            waitsOnMerge,
           }),
         );
         lastPlaced = late.placed;
@@ -567,6 +595,9 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   }
 
   reportDashboard(context, written, lastPlaced);
+  for (const [id, wait] of [...waitsOnMerge].sort(([a], [b]) => byCodeUnit(a, b))) {
+    log.info(onMergeLogLine(id, wait));
+  }
   report.attributed = attributed;
   report.dashboard = {
     url: dashboardUrl(context.repoUrl, written.number),
@@ -1501,6 +1532,119 @@ async function handOffMerges(
     }
   }
   return ended;
+}
+
+// What the decision of record 0094 needs, from what the scan has at its late
+// read. A stack whose deploy ended after its preview started keeps its live
+// row (record 0004), so its preview decides nothing here either.
+function onMergeInput(
+  context: ScanContext,
+  config: Config,
+  stacks: ConfiguredStack[],
+  previewed: ReadonlyMap<string, Previewed>,
+  live: LiveDashboard,
+  facts: DeployFacts,
+): Parameters<typeof onMergeDeploys>[0] {
+  const liveRows = live.current ? live.first : new Map<string, ParsedRow>();
+  // `dependsOn: auto` (record 0059): what the preview read, else what the
+  // row says an earlier preview read, as `resolve` reads it.
+  const read = new Map<string, string[]>();
+  for (const [id, { result }] of previewed) {
+    if (result.ok && result.dependencies) read.set(id, result.dependencies.stackIds);
+  }
+  for (const [id, row] of liveRows) {
+    if (!read.has(id) && row.known && row.dependsOn) read.set(id, row.dependsOn);
+  }
+  const { dependsOn } = withReadDependencies({
+    configured: new Map(stacks.map((one) => [stackId(one.stack), one.dependsOn ?? []])),
+    auto: new Set(stacks.flatMap((one) => (one.dependsOnAuto ? [stackId(one.stack)] : []))),
+    read,
+  });
+  const open = new Set<string>();
+  const fresh = new Map<string, Previewed["result"]>();
+  for (const [id, one] of previewed) {
+    const fact = facts.byStack.get(id);
+    if (fact?.kind === "open") open.add(id);
+    else if (fact === undefined || fact.at <= one.startedAt) fresh.set(id, one.result);
+  }
+  for (const [id, fact] of facts.byStack) if (fact.kind === "open") open.add(id);
+  const livePending = new Set<string>();
+  for (const [id, row] of liveRows) {
+    if (!previewed.has(id) && row.known && row.state === "pending") livePending.add(id);
+  }
+  return {
+    mergedBy: context.mergedBy,
+    deploys: config.deploys,
+    readOnly: config.dashboard.readOnly,
+    stacks: stacks.map((one) => {
+      const id = stackId(one.stack);
+      return {
+        id,
+        environment: one.environment,
+        deploy: one.deploy ?? "on-tick",
+        dependsOn: dependsOn.get(id),
+        phase: one.phase,
+      };
+    }),
+    previewed: fresh,
+    livePending,
+    open,
+    phases: config.phases,
+  };
+}
+
+// The records of the stacks that deploy on merge (record 0094), opened as
+// `resolve` opens the records of a tick: the first layer handed to `apply`,
+// the rest queued behind it (record 0056). Stops at the first record that
+// cannot be written, as `resolve` does.
+async function handOnMerged(
+  context: ScanContext,
+  going: readonly Deploy[],
+  handedOn: MatrixEntry[],
+  opened: Set<string>,
+): Promise<void> {
+  const { log } = context;
+  for (const one of going) {
+    const name = logGroupTitle(one.stackId);
+    try {
+      const record = await openRecord(context, {
+        stackId: one.stackId,
+        environment: one.environment,
+        sha: context.sha,
+        ticker: one.ticker,
+        hash: one.hash,
+        behind: one.behind,
+        onMerge: true,
+      });
+      opened.add(one.stackId);
+      if (one.behind === undefined) {
+        handedOn.push({
+          stack: one.stackId,
+          environment: one.environment,
+          deployment: record.deployment,
+        });
+      }
+      if (record.unfinished !== undefined) throw record.unfinished;
+      log.info(
+        one.behind === undefined
+          ? `${name} deploys on merge: deployment record ${record.deployment} is queued with diff hash ${one.hash}, merged by ${one.ticker}, and handed to apply.`
+          : `${name} deploys on merge: deployment record ${record.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, is queued behind ${one.behind.map(logGroupTitle).join(" and ")}, and a later run starts it.`,
+      );
+    } catch (error) {
+      throw new Error(
+        `The deployment record that deploys ${name} on merge could not be written: ${error instanceof Error ? error.message : error}. The scan job needs the permission \`deployments: write\` (record 0094). Nothing more deploys on merge in this run: the row shows the stack as pending, and a tick deploys it.`,
+      );
+    }
+  }
+}
+
+// The job log's line for a stack set to on-merge whose change waits: the
+// row's note, as plain text.
+function onMergeLogLine(id: string, wait: OnMergeWait): string {
+  return onMergeNote(wait)
+    .replace(":information_source: this stack", logGroupTitle(id))
+    .replaceAll("**", "")
+    .replaceAll("`", "");
 }
 
 // Whether the commit this scan checked out holds the merge commit of the

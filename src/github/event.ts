@@ -80,3 +80,18 @@ export function mergedBeforeDispatch(payload: unknown): number[] {
   if (startedByPerson(payload)) return [];
   return readMergeScanInput(record(record(payload)?.inputs)?.[MERGE_SCAN_INPUT]);
 }
+
+// Who merged, for a stack set to on-merge (record 0094): the sender of a push
+// to the default branch, the person who pressed merge or an app that merges,
+// as GitHub names them. Nobody for any other event or branch, or a payload
+// that does not say, so only the scan of a merge deploys on merge.
+export function mergedBy(eventName: string, payload: unknown): string | undefined {
+  if (eventName !== "push") return undefined;
+  const body = record(payload);
+  const branch = record(body?.repository)?.default_branch;
+  if (typeof branch !== "string" || branch === "" || body?.ref !== `refs/heads/${branch}`) {
+    return undefined;
+  }
+  const login = record(body?.sender)?.login;
+  return typeof login === "string" && login !== "" ? login : undefined;
+}

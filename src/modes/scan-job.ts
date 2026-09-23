@@ -11,6 +11,7 @@ import { poolSize } from "../core/pool.ts";
 import { readActionRef } from "../github/action-ref.ts";
 import {
   mergedBeforeDispatch,
+  mergedBy,
   publicRepo,
   readEventPayload,
   startedByPerson,
@@ -74,5 +75,6 @@ export async function runScan(directory: string, step?: AutoStep): Promise<void>
     notifier: stepNotifier(core.getInput, log, core.setSecret),
     publicRepo: publicRepo(payload),
     startedByPerson: startedByPerson(payload),
+    mergedBy: mergedBy(job.event, payload),
   });
 }

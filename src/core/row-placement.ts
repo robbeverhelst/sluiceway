@@ -45,6 +45,7 @@ import {
   type TrailEntry,
 } from "./deployment.ts";
 import type { WaitingUpdate } from "./merge-and-deploy.ts";
+import type { OnMergeWait } from "./on-merge.ts";
 import { type TickAtLateRead, tickAtLateRead } from "./orphan-tick.ts";
 import { type OutsideDeploy, outsideDeploys, trailOutside } from "./outside-deploy.ts";
 import { oneRowPerStack } from "./scan-plan.ts";
@@ -128,6 +129,9 @@ export interface LateRead {
   attributed: ReadonlyMap<string, Pick<Attribution, "lines">>;
   // What each deploy of the trail shipped (record 0072).
   shipped?: ReadonlyMap<TrailEntry, AttributionLines> | undefined;
+  // The stacks set to on-merge whose change waits for a tick after all, and
+  // why (record 0094). Their pending rows say so.
+  waitsOnMerge?: ReadonlyMap<string, OnMergeWait> | undefined;
 }
 
 // Why a stack is previewed at the late read: for its deployment records
@@ -276,6 +280,7 @@ export function placeRows(so: ScanSoFar, late: LateRead): RowsAtLateRead {
               pendingAgain: pendingAgain(fact, fresh.hash)
                 ? { logUrl: logDiff ? links.log : undefined }
                 : undefined,
+              ...(late.waitsOnMerge?.has(id) ? { waitsOnMerge: late.waitsOnMerge.get(id) } : {}),
             }
           : fresh;
       if (!ticked) {
@@ -305,6 +310,7 @@ export function placeRows(so: ScanSoFar, late: LateRead): RowsAtLateRead {
         deletes: deletesOf(mine, liveRow),
         attribution: attributed.get(id)?.lines,
         behind: fact.behind,
+        ...(fact.onMerge ? { onMerge: true } : {}),
       });
     } else if (liveRow) {
       if (ticked && decided.row === "live") {
@@ -412,6 +418,7 @@ function failureLine(
     ticker: fact.ticker,
     at: fact.at,
     runUrl: runUrl(repoUrl, fact.run, fact.attempt),
+    ...(fact.onMerge ? { onMerge: true } : {}),
   };
 }
 

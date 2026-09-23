@@ -277,6 +277,7 @@ function fit(writer: DashboardWriter, body: Body, aimAtTarget: boolean): FittedB
         at: entry.at,
         runUrl: runUrl(repoUrl, entry.run, entry.attempt),
         shipped: body.shipped?.get(entry),
+        ...(entry.onMerge ? { onMerge: true } : {}),
       })),
       repoUrl,
       actionRef: writer.actionRef,

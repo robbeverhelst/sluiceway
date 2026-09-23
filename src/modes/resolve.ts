@@ -220,6 +220,8 @@ interface Started {
   deployment: number;
   ticker: string;
   behind?: string[] | undefined;
+  // Opened on merge, and `ticker` is whoever merged (record 0094).
+  onMerge?: boolean | undefined;
 }
 
 function message(error: unknown): string {
@@ -1055,6 +1057,7 @@ async function swapRows(
           deletes: old?.known ? old.deletes : undefined,
           attribution: lines.get(one.stackId)?.lines,
           behind: one.behind,
+          ...(one.onMerge ? { onMerge: true } : {}),
         });
       }
       for (const [id, row] of live.first) {
@@ -1074,6 +1077,7 @@ async function swapRows(
             deletes: row.deletes,
             attribution: lines.get(id)?.lines,
             behind: fact.behind,
+            ...(fact.onMerge ? { onMerge: true } : {}),
           });
         } else if (wanted && (row.ticked || wanted.unticked) && row.hash === wanted.hash) {
           carried.set(id, clearTick(row, { note: wanted.note, unticked: wanted.unticked }));
@@ -1227,6 +1231,7 @@ async function startQueued(
         environment: stack.environment,
         deployment: record.deployment,
         ticker: record.ticker,
+        ...(record.onMerge ? { onMerge: true } : {}),
       });
       if (record.unfinished !== undefined) throw record.unfinished;
       log.info(
