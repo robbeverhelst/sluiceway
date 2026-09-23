@@ -57,7 +57,7 @@ export interface RecentDeploy {
   // Absent for a deploy that went out (record 0051). A drift repair went out
   // too, and says so (record 0059). "failed" for a deploy that failed (record
   // 0062).
-  result?: "in-sync" | "rehearsed" | "drift-repaired" | "failed" | undefined;
+  result?: "in-sync" | "rehearsed" | "drift-repaired" | "drift-gone" | "failed" | undefined;
   // The failure reason of a failed deploy, as its failure line shows it. The
   // trail no longer shows it, to stay on one line (slice 5.10).
   reason?: string | undefined;
@@ -285,12 +285,14 @@ function blocks(rows: readonly ParsedRow[]): string {
 // 40 characters (slice 5.10). The stack id is written whole, so the rest is
 // short: one result word, none for a plain deploy, and the dot under a header
 // already says the rest. A drift repair (record 0059), an empty fresh preview
-// and a rehearsal (record 0051), and a failed deploy (record 0062), whose
-// reason stays on the row's failure line and in the run's log.
+// and a rehearsal (record 0051), a drift repair that found nothing to repair
+// (record 0091), and a failed deploy (record 0062), whose reason stays on the
+// row's failure line and in the run's log.
 const RESULT_WORDS = {
   "in-sync": "no changes",
   rehearsed: "rehearsed",
   "drift-repaired": "drift fixed",
+  "drift-gone": "drift gone",
   failed: "failed",
 } as const;
 
@@ -307,8 +309,13 @@ function recentLine(
 ): string {
   const result = deploy.result ? ` · ${RESULT_WORDS[deploy.result]}` : "";
   // A drift repair went out, so it is green like any deploy (record 0059).
+  // Drift gone deployed nothing, so it is white like no changes (record 0091).
   const outcome =
-    deploy.result === undefined || deploy.result === "drift-repaired" ? "deployed" : deploy.result;
+    deploy.result === undefined || deploy.result === "drift-repaired"
+      ? "deployed"
+      : deploy.result === "drift-gone"
+        ? "in-sync"
+        : deploy.result;
   const dot = dots ? `${RESULT_DOT[outcome]}&nbsp;` : "";
   const shipped = deploy.shipped
     ? `\n${INDENT}${short ? deploy.shipped.counted : deploy.shipped.full}`

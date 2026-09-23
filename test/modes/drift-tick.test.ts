@@ -86,6 +86,12 @@ describe("a tick on a drifted row", () => {
     expect(h.adapter.applied).toEqual([]);
     expect(states(h).at(-1)).toBe("success");
     expect(marker(rows(h)["network:dev"])).toMatchObject({ state: "in-sync" });
+    // Record 0091: a repair that repaired nothing says so, in the log and on
+    // the trail, and not only that the stack is in sync.
+    expect(h.log.lines).toContain(
+      "The drift check and the fresh preview show no change: the drift the tick approved is not there any more, so there was nothing to repair. Nothing was deployed.",
+    );
+    expect(h.github.issue(1).body).toContain("- ⚪&nbsp;network:dev · drift gone · alice · ");
   });
 
   test("a failed drift check stops the deploy, as a failed preview does", async () => {

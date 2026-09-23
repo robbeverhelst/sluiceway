@@ -595,9 +595,12 @@ async function afterFreshPreview(
       };
     case "in-sync":
       // Most likely a deploy outside the dashboard, which is legal (record
-      // 0016). The tool deploys nothing.
+      // 0016). The tool deploys nothing. A drift repair says it repaired
+      // nothing, not only that the stack is in sync (record 0091).
       log.info(
-        `The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`,
+        payload.drift
+          ? "The drift check and the fresh preview show no change: the drift the tick approved is not there any more, so there was nothing to repair. Nothing was deployed."
+          : `The fresh preview shows no change: nothing to deploy, ${name} is already in sync. Nothing was deployed.`,
       );
       return {
         end: gate.end,

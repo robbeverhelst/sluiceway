@@ -209,8 +209,10 @@ export interface SucceededDeploy {
   // Absent for a deploy that went out. "in-sync": the fresh preview had
   // nothing to deploy. "rehearsed": a rehearsal, nothing went out (record
   // 0051). "drift-repaired": it went out, and the approved hash covered
-  // drift, which it put back (record 0059).
-  result?: "in-sync" | "rehearsed" | "drift-repaired";
+  // drift, which it put back (record 0059). "drift-gone": the approved hash
+  // covered drift, and the drift check and the fresh preview found nothing to
+  // deploy, so nothing was repaired (record 0091).
+  result?: "in-sync" | "rehearsed" | "drift-repaired" | "drift-gone";
 }
 
 // One line of the recently deployed list (records 0029 and 0062): a deploy
@@ -222,10 +224,10 @@ export interface TrailEntry {
   // The attempt of the run, when the record says (slice 5.9).
   attempt?: string | undefined;
   at: Date;
-  // Absent for a deploy that went out. "in-sync", "rehearsed" and
-  // "drift-repaired" as on `SucceededDeploy`, "failed" for a record that
-  // ended as `failure` or `error` (record 0062).
-  result?: "in-sync" | "rehearsed" | "drift-repaired" | "failed";
+  // Absent for a deploy that went out. "in-sync", "rehearsed",
+  // "drift-repaired" and "drift-gone" as on `SucceededDeploy`, "failed" for a
+  // record that ended as `failure` or `error` (record 0062).
+  result?: "in-sync" | "rehearsed" | "drift-repaired" | "drift-gone" | "failed";
   // The failure reason of a failed deploy, as the failure line shows it.
   reason?: string;
   // For a deploy that went out: the commit of the stack's success before it
@@ -447,7 +449,7 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
         ...(fact.attempt === undefined ? {} : { attempt: fact.attempt }),
         at: fact.at,
         ...(fact.inSync
-          ? { result: "in-sync" as const }
+          ? { result: payload.drift ? ("drift-gone" as const) : ("in-sync" as const) }
           : payload.drift
             ? { result: "drift-repaired" as const }
             : {}),

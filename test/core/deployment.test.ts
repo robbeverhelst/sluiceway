@@ -269,14 +269,15 @@ describe("the deploy facts of a stack", () => {
 
   // Slice 4.7 (record 0059): the trail says a deploy repaired drift. The
   // payload says the approved hash covered drift, and a success that did not
-  // end as nothing to deploy went out with the drift put back.
-  test("a success whose payload covers drift is listed as a drift repair", () => {
+  // end as nothing to deploy went out with the drift put back. One that did
+  // found the drift gone (record 0091).
+  test("a success whose payload covers drift is listed as a drift repair, or as drift gone", () => {
     const payload = { v: 1, hash: "2b44350653e84a11", ticker: "alice", run: "4242", drift: true };
     const repaired = record({ id: 1, state: "success", payload });
     const nothing = record({ id: 2, createdAt: "2026-09-21T09:00:00Z", state: "success", payload });
     nothing.status = { ...nothing.status, description: IN_SYNC_DESCRIPTION } as never;
     const results = deployFacts([repaired, nothing]).succeeded.map(({ result }) => result);
-    expect(results).toEqual(["drift-repaired", "in-sync"]);
+    expect(results).toEqual(["drift-repaired", "drift-gone"]);
   });
 
   test("every success is handed over for recently deployed, older ones of a stack too", () => {

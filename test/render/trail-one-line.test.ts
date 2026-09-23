@@ -68,6 +68,12 @@ describe("a line of the trail", () => {
     );
   });
 
+  test("a drift repair with nothing left to deploy says drift gone, white like no changes", () => {
+    expect(line({ result: "drift-gone" })).toStartWith(
+      "- ⚪&nbsp;workspaces/proxmox/core:prod · drift gone · robbeverhelst · 09-22 14:16 · ",
+    );
+  });
+
   test("a rehearsal says rehearsed", () => {
     expect(line({ result: "rehearsed" })).toStartWith(
       "- 🟣&nbsp;workspaces/proxmox/core:prod · rehearsed · robbeverhelst · 09-22 14:16 · ",
@@ -156,6 +162,7 @@ describe("with a stack id of 40 characters", () => {
     ["a deploy", {}],
     ["a drift repair", { result: "drift-repaired" as const }],
     ["an empty fresh preview", { result: "in-sync" as const }],
+    ["a drift repair with the drift gone", { result: "drift-gone" as const }],
     ["a rehearsal", { result: "rehearsed" as const }],
     ["a failed deploy", { result: "failed" as const, reason: "the tool exited with an error" }],
   ])("%s fits on one line", (_, over) => {
