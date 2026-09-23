@@ -306,6 +306,10 @@ _Avoid_: Header line, stats, totals
 The line under the counts line that says which commit the last scan checked out, when, in which run, and when the last full scan was. Under a header it is centered with the counts line.
 _Avoid_: Status line, timestamp, last updated
 
+**Waiting run**:
+A run of the dashboard's own workflow that GitHub has kept queued for ten minutes or more before a scan started, because no runner took its job. The next scan that does get a runner says so in one line right under the scan line, naming how long it waited and linking it, and counts any others. It says that the run waits for a runner, never why, and decides nothing. The line goes as soon as that run starts, or with the next scan after it ends.
+_Avoid_: Stuck run, hung run, stalled scan, queued run (queued is a row state)
+
 **Row state**:
 Which group a stack's row belongs to: pending, drift, deploying, in sync, preview failed or queued. A queued row is placed and counted with the deploying ones. It is a label for placing and counting rows. Nothing about a deploy is ever decided from it, with one exception that only holds a deploy back and never starts one: `resolve` refuses a tick while a dependency's row is pending. A scan may read it for one thing only: to pick stacks worth previewing again.
 _Avoid_: Status, stack state, phase
