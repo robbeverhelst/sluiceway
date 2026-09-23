@@ -33,6 +33,7 @@ const H = (c: string) => c.repeat(16);
 function writerFor(github: FakeGitHub, deploys = true): DashboardWriter {
   return {
     github,
+    runId: "43",
     log: { info: () => {} },
     repoUrl: REPO,
     actionRef: "v1.0.0",

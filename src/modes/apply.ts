@@ -809,6 +809,7 @@ async function swapRow(
     {
       github,
       log,
+      runId: context.runId,
       repoUrl: context.repoUrl,
       actionRef: context.actionRef,
       dashboard: setup.config.dashboard,

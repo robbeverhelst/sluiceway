@@ -169,8 +169,8 @@ function worstCase(count: number) {
 // pushes, write, read back. A later try starts from that read back, and the
 // walk and the files are kept for the job, so it pays only for the records,
 // the write and the read back. After the loop, one read of the pinned issues
-// (slice 5.9).
-const FIRST_TRY = 2 + 1 + 2 * 99 + 1 + LOOKBACK + 2 + 1;
+// (slice 5.9). Before it, once a job, the queued runs (record 0086).
+const FIRST_TRY = 1 + 2 + 1 + 2 * 99 + 1 + LOOKBACK + 2 + 1;
 const EVERY_OTHER_TRY = 1 + 2 * 99 + 2;
 // The preview pages, once per scan and before the write loop (record 0050):
 // one list of the commit's check runs, which holds 100 here, and one update
@@ -217,6 +217,8 @@ describe("the requests of a scan, counted against the API budget (record 0017)",
     // the body runs once for the create and once for the check, and each run
     // reads the deployment records (record 0004).
     expect(firstOf100).toEqual([
+      // Record 0086: the queued runs of the workflow, once a job.
+      "listQueuedRuns",
       "listIssues",
       "listRecentlyClosedIssues",
       "listNewestDeployments",
@@ -228,6 +230,7 @@ describe("the requests of a scan, counted against the API budget (record 0017)",
     // Every scan after it: find, read, one page of records, write, read back,
     // and the read of the pinned issues (slice 5.9).
     expect(laterOf100).toEqual([
+      "listQueuedRuns",
       "listIssues",
       "getIssue",
       "listNewestDeployments",
@@ -288,7 +291,7 @@ describe("the requests of a scan, counted against the API budget (record 0017)",
       // The preview pages are written once, before the write loop.
       expect(github.requests.filter(isPageRequest)).toHaveLength(PAGES);
       expect(github.requests).toHaveLength(FIRST_TRY + PAGES + edits * EVERY_OTHER_TRY);
-      // 807 at three tries, the most one scan of these stacks can cost.
+      // 808 at three tries, the most one scan of these stacks can cost.
       expect(github.requests.length).toBeLessThan(1_000);
     });
   }

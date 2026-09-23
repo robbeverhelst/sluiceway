@@ -9,6 +9,7 @@ import type { BulkState } from "../core/bulk.ts";
 import type { Config, IgnoredStack } from "../core/config.ts";
 import type { DeployFacts, TrailEntry } from "../core/deployment.ts";
 import type { OutsideDeploy } from "../core/outside-deploy.ts";
+import { carriedWaitingRun } from "../core/waiting-run.ts";
 import { type BudgetOptions, type FittedBody, fitBody } from "../render/budget.ts";
 import { dashboardFacts, type HeaderState } from "../render/dashboard-facts.ts";
 import { runUrl } from "../render/links.ts";
@@ -31,6 +32,9 @@ import { type WriteResult, writeBody } from "./write-loop.ts";
 // What every write needs, the same on every try.
 export interface DashboardWriter {
   github: GitHubPort;
+  // The run this writer is part of. A swap drops the line about a run that
+  // waits for a runner when that run is this one (record 0086).
+  runId: string;
   log: Pick<JobLog, "info">;
   // `https://github.com/<owner>/<repo>`.
   repoUrl: string;
@@ -144,6 +148,7 @@ export async function swapRows(
         scanAt: root.scanAt,
         fullScanAt: root.fullScanAt,
         fullScanRun: root.fullScanRun,
+        waitingRun: carriedWaitingRun(root.waitingRun, writer.runId),
       };
       const mine = await rows(live, kept);
       const drawn = fitted(

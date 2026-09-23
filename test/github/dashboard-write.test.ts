@@ -27,9 +27,10 @@ const ROOT: RootFacts = {
 };
 const NO_TRAIL: Rows["facts"] = { trail: [] };
 
-function writerFor(github: FakeGitHub, lines: string[] = []): DashboardWriter {
+function writerFor(github: FakeGitHub, lines: string[] = [], runId = "43"): DashboardWriter {
   return {
     github,
+    runId,
     log: { info: (line) => lines.push(line) },
     repoUrl: REPO,
     actionRef: "v1.0.0",
@@ -81,6 +82,35 @@ function rows(
 }
 
 describe("a row swap", () => {
+  // Record 0086: only a scan lists the runs, so a swap carries the line, and
+  // drops it when the run it names is the swap's own, which has started.
+  describe("the line about a run that waits for a runner", () => {
+    const waitingRun = { run: "44", since: "2026-09-20T05:40:00.000Z", more: 1 };
+
+    test("is carried by a writer in another run", async () => {
+      const github = new FakeGitHub();
+      const number = seed(github, bodyOf([rowBlock(inSync("app"))], { ...ROOT, waitingRun }));
+
+      await swapRows(writerFor(github, [], "43"), number, rows([deploying("app")]));
+
+      const body = github.issue(number).body;
+      expect(parseDashboard(body).root?.waitingRun).toEqual(waitingRun);
+      expect(body).toContain("has been waiting for a runner for 20 minutes");
+    });
+
+    test("goes when the writer is the run it names", async () => {
+      const github = new FakeGitHub();
+      const number = seed(github, bodyOf([rowBlock(inSync("app"))], { ...ROOT, waitingRun }));
+
+      await swapRows(writerFor(github, [], "44"), number, rows([deploying("app")]));
+
+      const body = github.issue(number).body;
+      expect(parseDashboard(body).root?.waitingRun).toBeUndefined();
+      expect(body).not.toContain("waiting for a runner");
+      expect(parseDashboard(body).root).toMatchObject({ scanRun: "41", fullScanRun: "40" });
+    });
+  });
+
   test("the writer's row takes the place of its stack's block and every other block is carried byte for byte", async () => {
     const github = new FakeGitHub();
     const kept = rowBlock(inSync("app"));

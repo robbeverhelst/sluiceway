@@ -72,6 +72,7 @@ import {
 import { everyPreviewFailed } from "../core/scan-result.ts";
 import { shownValues } from "../core/show-values.ts";
 import { type Stack, stackId } from "../core/stack.ts";
+import { type RunOfTheWorkflow, waitingRun } from "../core/waiting-run.ts";
 import { attributionSource } from "../github/attribution.ts";
 import { type DashboardResult, findDashboard } from "../github/dashboard.ts";
 import {
@@ -110,13 +111,19 @@ import {
   poolSizeLine,
   toolDiffLogLines,
 } from "../render/log-text.ts";
-import { isDeployingState, MARKER_VERSION, parseDashboard } from "../render/marker.ts";
+import {
+  isDeployingState,
+  MARKER_VERSION,
+  parseDashboard,
+  type WaitingRunFacts,
+} from "../render/marker.ts";
 import type { BranchPreview } from "../render/merge-row.ts";
 import { renderPreviewPage } from "../render/preview-page.ts";
 import { previewOutcome, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, scanResultFile } from "../render/result-file.ts";
 import { byCodeUnit, driftCounts, plural } from "../render/row.ts";
 import { renderSummary, type UnclaimedFiles } from "../render/summary.ts";
+import { waitingRunLogLine } from "../render/waiting-run.ts";
 import { previewBranches } from "./branch-preview.ts";
 import { readHistories } from "./outside-deploys.ts";
 import { prepareStacks } from "./prepare.ts";
@@ -312,6 +319,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   report.startedAt = startedAt;
   const at = startedAt.toISOString();
   const links = runLinks(context);
+  let waitingRunFacts: { found: WaitingRunFacts | undefined } | undefined;
 
   // Config and discovery come first and cost no preview. An error in either
   // fails the job before the tool or GitHub is touched (record 0012). Every
@@ -437,8 +445,12 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
     // A full scan is a scan that previews every stack, whatever row each
     // stack then gets.
     const full = isFullScan({ ids, previewed });
+    // Once a job, after the previews, so a run that started meanwhile is not
+    // named (record 0086).
+    if (waitingRunFacts === undefined) waitingRunFacts = await findWaitingRun(context, at);
     const writer: DashboardWriter = {
       github: context.github,
+      runId: context.runId,
       log,
       repoUrl: context.repoUrl,
       actionRef: context.actionRef,
@@ -458,7 +470,12 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
     // from it and the late read, and never reads or writes itself.
     const soFar: ScanSoFar = {
       ids,
-      scan: { sha: context.sha, runId: context.runId, at },
+      scan: {
+        sha: context.sha,
+        runId: context.runId,
+        at,
+        waitingRun: waitingRunFacts.found,
+      },
       repoUrl: context.repoUrl,
       links,
       logDiff,
@@ -671,6 +688,28 @@ async function lateDeploys(
       `The deployment records could not be read: ${error instanceof Error ? error.message : error}. The scan job needs the permissions \`deployments: write\` and \`actions: read\` next to \`contents: read\` and \`issues: write\` (record 0003).`,
     );
   }
+}
+
+// A run of this workflow that has waited for a runner since ten minutes or
+// more before the scan started (record 0086). It is a line on the dashboard
+// and nothing else, so a read that fails leaves the line out and the scan
+// goes on: it never turns the job red and never holds anything back.
+async function findWaitingRun(
+  context: ScanContext,
+  at: string,
+): Promise<{ found: WaitingRunFacts | undefined }> {
+  let runs: RunOfTheWorkflow[];
+  try {
+    runs = await context.github.listQueuedRuns(context.workflow);
+  } catch (error) {
+    context.log.info(
+      `The queued runs of ${context.workflow} could not be read: ${error instanceof Error ? error.message : error}. The dashboard says nothing about a run that waits for a runner this time. The scan job needs the permission \`actions: read\` (record 0086).`,
+    );
+    return { found: undefined };
+  }
+  const found = waitingRun(runs, new Date(at), context.runId);
+  if (found) context.log.info(waitingRunLogLine(found, at, context.workflow, context.repoUrl));
+  return { found };
 }
 
 // The other half of the orphan tick rule (record 0025): whether a run that an

@@ -939,6 +939,7 @@ async function swapRows(
   const result = await swapInto(
     {
       github: context.github,
+      runId: context.runId,
       log: context.log,
       repoUrl: context.repoUrl,
       actionRef: context.actionRef,

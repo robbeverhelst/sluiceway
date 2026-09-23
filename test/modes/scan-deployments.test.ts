@@ -439,6 +439,8 @@ describe("the reads are bounded", () => {
       // The preview page of the pending stack, updated in place (record 0050).
       "listCheckRuns",
       "updateCheckRun",
+      // Record 0086: the queued runs of the workflow, once a job.
+      "listQueuedRuns",
       "listIssues",
       "getIssue",
       "listNewestDeployments",

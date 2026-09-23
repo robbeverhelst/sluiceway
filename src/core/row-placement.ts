@@ -16,6 +16,7 @@ import type {
   ParsedRow,
   ParsedWaiting,
   RootFacts,
+  WaitingRunFacts,
 } from "../render/marker.ts";
 import {
   type BranchPreview,
@@ -71,7 +72,9 @@ export interface ScanSoFar {
   // Every discovered stack, in discovery order.
   ids: readonly string[];
   // The root marker a scan writes, less the keys of a full scan.
-  scan: { sha: string; runId: string; at: string };
+  // `waitingRun`: a run of the workflow that waits for a runner, as the scan
+  // found it (record 0086).
+  scan: { sha: string; runId: string; at: string; waitingRun?: WaitingRunFacts | undefined };
   // `https://github.com/<owner>/<repo>`.
   repoUrl: string;
   links: RunLinks;
@@ -333,6 +336,8 @@ export function placeRows(so: ScanSoFar, late: LateRead): RowsAtLateRead {
         // Written by a full scan, carried through by every other writer.
         fullScanAt: full ? so.scan.at : live.root?.fullScanAt,
         fullScanRun: full ? so.scan.runId : live.root?.fullScanRun,
+        // Only the scan lists the runs, so it writes what it found, or no line.
+        waitingRun: so.scan.waitingRun,
       },
       facts: deploys.facts,
       shipped: late.shipped ?? new Map(),
