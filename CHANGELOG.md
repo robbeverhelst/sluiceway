@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.29.0](https://github.com/sluiceway/sluiceway/compare/v0.28.0...v0.29.0) (2026-09-23)
+
+
+### Features
+
+* a record opened on merge says so, and a queued one keeps it ([323da17](https://github.com/sluiceway/sluiceway/commit/323da17482816cf436814a935baed8559b766490))
+* decide which stacks set to on-merge deploy after a scan, and which wait for a tick ([f5edfad](https://github.com/sluiceway/sluiceway/commit/f5edfad80f8949a3f064852f5837c922831755da))
+* rows, the trail and apply say merged by for a deploy on merge ([5c11366](https://github.com/sluiceway/sluiceway/commit/5c11366e8a26028baf9f576e2fef3c7995886c08))
+* stacks[].deploy, on-tick by default or on-merge ([ccc08a2](https://github.com/sluiceway/sluiceway/commit/ccc08a2941e790904610356aee712e18cb0debbc))
+* the check lists stacks that deploy on merge and the apply job they need ([212ba7e](https://github.com/sluiceway/sluiceway/commit/212ba7e6e7b6e8f2e1b3dd8584340741a62cc9d6))
+* the scan of a merge hands stacks set to on-merge to apply ([5a69960](https://github.com/sluiceway/sluiceway/commit/5a6996041c92ab956a93d64d0c256e0e28602ae3))
+
 ## [0.28.0](https://github.com/sluiceway/sluiceway/compare/v0.27.0...v0.28.0) (2026-09-23)
 
 
