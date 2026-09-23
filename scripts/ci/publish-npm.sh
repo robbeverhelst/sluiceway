@@ -73,6 +73,14 @@ Publishing access, on the same Settings page, must allow a trusted publisher to
 publish. npm advises "Require two-factor authentication and disallow tokens"
 together with a trusted publisher: it refuses every token and still lets this
 workflow publish. No automation token or secret is needed.
+
+Or set it up from a terminal, logged in to npm as an owner of $name, with npm
+11.15 or newer:
+
+  npm trust github $name --repo $owner/$repo --file $workflow --allow-publish
+
+npm trust list $name shows what is set up now, and npm trust revoke removes a
+publisher that is wrong.
 EOF
     if [ "$code" = "E404" ]; then
       cat <<EOF

@@ -98,6 +98,11 @@ describe("a publish npm refuses because it does not trust the workflow", () => {
     expect(run.out).toContain("Environment name: leave it empty");
     expect(run.out).toContain("Allowed actions: npm publish");
     expect(run.out).toContain("Publishing access");
+    // The same setup from a terminal, with npm 11.15 or newer.
+    expect(run.out).toContain(
+      "npm trust github sluiceway --repo sluiceway/sluiceway --file release.yml --allow-publish",
+    );
+    expect(run.out).toContain("npm trust list sluiceway");
     // npm's own words stay in the log above ours.
     expect(run.out).toContain("OIDC permission denied for this action");
     expect(run.npm).toContain("npm publish");
@@ -150,6 +155,9 @@ describe("a publish npm refuses because it does not trust the workflow", () => {
     expect(out).toContain("Organization or user: acme");
     expect(out).toContain("Repository: tools");
     expect(out).toContain("Workflow filename: ship.yaml");
+    expect(out).toContain(
+      "npm trust github sluiceway --repo acme/tools --file ship.yaml --allow-publish",
+    );
   });
 });
 
