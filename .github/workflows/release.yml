@@ -17,6 +17,9 @@ jobs:
     permissions:
       contents: write # create the release and its tags
       pull-requests: write # open and update the release pull request
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
@@ -91,3 +94,56 @@ jobs:
                 ] }
               } }
             }' | gh api graphql --input -
+
+  # The command line, `npx sluiceway` (record 0094), from the release tag, so
+  # sluiceway@0.28.0 is the code of v0.28.0. npm's trusted publishing: no
+  # secret, a token that lives for one publish, and provenance. A job of its
+  # own, so the OIDC token is never in reach of a step that can write.
+  npm:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest # trusted publishing needs a runner GitHub hosts
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # the OIDC token npm exchanges for a publish token
+    steps:
+      # npm trusts this workflow once its trusted publisher is set up on
+      # npmjs.com. Until then the release stands without the package, and the
+      # run says so.
+      - id: trusted
+        name: Ask npm whether it trusts this workflow
+        run: |
+          id_token="$(curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" | jq -r .value)"
+          echo "::add-mask::$id_token"
+          status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $id_token" \
+            https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/sluiceway)"
+          case "$status" in
+            2??) echo "trusted=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::notice title=npm package not published::npm does not trust this workflow yet (HTTP $status), so sluiceway was not published. Add the trusted publisher on npmjs.com (record 0094)." ;;
+          esac
+
+      - if: steps.trusted.outputs.trusted == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      - if: steps.trusted.outputs.trusted == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      # npm 11.5.1 is the first that publishes with OIDC.
+      - if: steps.trusted.outputs.trusted == 'true'
+        run: npm install --global npm@11.20.0
+
+      # The bundle holds every package it runs, so the published package.json
+      # names none, and npx installs nothing but the bundle.
+      - name: Publish sluiceway
+        if: steps.trusted.outputs.trusted == 'true'
+        run: |
+          npm pkg delete dependencies devDependencies scripts
+          npm publish

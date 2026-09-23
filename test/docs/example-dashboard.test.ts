@@ -219,7 +219,8 @@ describe("the release workflow", () => {
       }
     >;
   };
-  const steps = Object.values(workflow.jobs).flatMap((job) => job.steps);
+  // The npm job after it publishes the command line (record 0094).
+  const steps = workflow.jobs["release-please"]?.steps ?? [];
   const release = steps.findIndex((step) => step.id === "release");
   const after = steps.slice(release + 1);
   const example = after.find((step) => step.run?.includes("bun run example"));

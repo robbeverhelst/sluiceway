@@ -2,19 +2,27 @@
   "name": "sluiceway",
   "version": "0.27.0",
   "description": "One GitHub issue that shows which infrastructure stacks have changes waiting, and deploys a stack when someone ticks its box.",
-  "private": true,
   "type": "module",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sluiceway/sluiceway.git"
   },
+  "bin": {
+    "sluiceway": "dist/cli.js"
+  },
+  "files": [
+    "dist/cli.js"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "build": "bun build src/main.ts --target=node --format=esm --outfile=dist/index.js",
+    "build": "bun build src/main.ts --target=node --format=esm --outfile=dist/index.js && bun build src/cli.ts --target=node --format=esm --outfile=dist/cli.js",
     "build:schema": "bun run scripts/generate-schema.ts",
     "record:fixtures": "bun run scripts/record-fixtures.ts",
     "e2e": "bun run scripts/e2e.ts",
