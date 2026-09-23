@@ -339,7 +339,10 @@ export function starterConfig({ declarable, unrelated, unclaimed }: ConfigOption
   return `${lines.join("\n")}\n`;
 }
 
-// What init says it did, and what is left for a person (record 0065).
+// What init says it did, and what is left for a person (record 0065). A
+// person runs init and the check through the command line (record 0094).
+const CLI = "npx sluiceway";
+
 export const NOT_A_REPO_ROOT =
   "This is not the root of a git repo. Run init in the top directory of your checkout.";
 
@@ -348,11 +351,21 @@ export function noStacksText(): string {
 }
 
 export function workflowExistsText(paths: string[]): string {
-  return `A workflow runs Sluiceway already: ${paths.join(", ")}. init never overwrites one, and wrote nothing. Run the check (mode: check) to see what it lacks.`;
+  // --force writes the one file init writes again, and no other (record
+  // 0094), so it is named only when that file is all that stopped init.
+  const force =
+    paths.length === 1 && paths[0] === WORKFLOW_FILE
+      ? `, or ${CLI} init --force to write ${WORKFLOW_FILE} again`
+      : "";
+  return `A workflow runs Sluiceway already: ${paths.join(", ")}. init never overwrites one, and wrote nothing. Run ${CLI} check to see what it lacks${force}.`;
 }
 
 export function wroteText(file: string): string {
   return `Wrote ${file}.`;
+}
+
+export function replacedText(file: string): string {
+  return `Replaced ${file}.`;
 }
 
 export const KEPT_CONFIG = "Kept sluiceway.yaml as it is, and set the workflow up from it.";
@@ -431,7 +444,7 @@ export function needsText({ findings, declarable, branchGuessed }: NeedsInput): 
   }
   needs.push(
     `The job runs on ${RUNS_ON} with timeout-minutes: 60. Raise it when a scan or a deploy of yours takes longer, since one run can hold both. For a self-hosted runner change runs-on, with runner 2.328.0 or newer.`,
-    "Review the files, run the check in a pull request, and commit them. init commits nothing.",
+    `Review the files, run ${CLI} check, and commit them. init commits nothing.`,
   );
   return needs;
 }

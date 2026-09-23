@@ -24,6 +24,7 @@ import {
   NOT_A_REPO_ROOT,
   needsText,
   noStacksText,
+  replacedText,
   starterConfig,
   starterWorkflow,
   WORKFLOW_FILE,
@@ -36,6 +37,9 @@ export interface InitContext {
   root: string;
   adapter: Pick<Adapter, "discover">;
   log: JobLog;
+  // Write the workflow file again when it is there (record 0094). Any other
+  // workflow that runs Sluiceway still stops init.
+  force?: boolean;
 }
 
 export async function init(context: InitContext): Promise<void> {
@@ -48,13 +52,18 @@ export async function init(context: InitContext): Promise<void> {
   const configKept = hasConfigFile(root);
   const existing = loadConfig(root);
 
-  // One workflow runs Sluiceway, and init never overwrites a file.
+  // One workflow runs Sluiceway, and init never overwrites a file but the
+  // one a person asks it to write again.
+  const replace = context.force === true && exists(root, WORKFLOW_FILE);
   const running = checkWorkflows(readWorkflowFiles(root), existing)
     .workflows.filter(({ jobs }) =>
       jobs.some(({ runs }) => runs.some((mode) => mode !== "check" && mode !== "init")),
     )
-    .map(({ path }) => path);
-  const taken = [...new Set([...running, ...(exists(root, WORKFLOW_FILE) ? [WORKFLOW_FILE] : [])])];
+    .map(({ path }) => path)
+    .filter((path) => !(replace && path === WORKFLOW_FILE));
+  const taken = [
+    ...new Set([...running, ...(exists(root, WORKFLOW_FILE) && !replace ? [WORKFLOW_FILE] : [])]),
+  ];
   if (taken.length > 0) throw new Error(workflowExistsText(taken.sort()));
 
   const files = await repoFiles(root);
@@ -139,7 +148,7 @@ export async function init(context: InitContext): Promise<void> {
     merges: config.mergeAndDeploy.authors.length > 0,
   });
 
-  write(root, WORKFLOW_FILE, workflow);
+  write(root, WORKFLOW_FILE, workflow, replace);
   if (configText !== undefined) write(root, CONFIG_FILE, configText);
   if (written.includes(EXPORT_ENV_FILE)) write(root, EXPORT_ENV_FILE, EXPORT_ENV);
 
@@ -148,7 +157,9 @@ export async function init(context: InitContext): Promise<void> {
     "Stacks",
     stacks.map((stack) => stackId(stack)),
   );
-  for (const file of written) log.info(wroteText(file));
+  for (const file of written) {
+    log.info(replace && file === WORKFLOW_FILE ? replacedText(file) : wroteText(file));
+  }
   if (configKept) log.info(KEPT_CONFIG);
   log.group(
     NEEDS_A_PERSON,
@@ -175,9 +186,9 @@ function exists(root: string, file: string): boolean {
   return existsSync(join(root, file));
 }
 
-function write(root: string, file: string, text: string): void {
+function write(root: string, file: string, text: string, replace = false): void {
   mkdirSync(dirname(join(root, file)), { recursive: true });
-  writeFileSync(join(root, file), text, { flag: "wx" });
+  writeFileSync(join(root, file), text, { flag: replace ? "w" : "wx" });
 }
 
 // The default branch as a clone records it, from the files of .git alone. A
