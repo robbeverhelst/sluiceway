@@ -297,15 +297,24 @@ const cases: [string, ParsedRow[], Expected][] = [
       alert: "> [!CAUTION]\n> 1 pending stack deletes or replaces resources: **a&#42;b&lt;c&gt;**",
     },
   ],
-  // Record 0028: the note under the scan line counts shortened pending rows.
+  // Record 0084 amends 0028 and 0055: the note under the scan line counts
+  // every shortened row, pending and drifted, each in its own section.
   [
-    "shortened counts pending rows only",
+    "shortened counts pending and drifted rows, each of its section",
     [
       row("pending", "a", { shortened: 2 }),
       row("pending", "b"),
       row("drift", "c", { shortened: 1 }),
+      row("drift", "d"),
+      row("drift", "e"),
+      row("deploying", "f", { shortened: 3 }),
     ],
-    { shortened: 1 },
+    { shortened: { pending: 1, drift: 1 } },
+  ],
+  [
+    "no shortened row counts none in either section",
+    [row("pending", "a"), row("drift", "b")],
+    { shortened: { pending: 0, drift: 0 } },
   ],
   // Record 0009: a row of a state this version does not know takes no part.
   [

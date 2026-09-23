@@ -11,6 +11,7 @@ import type {
   InSyncRow,
   PendingRow,
   Row,
+  RowLevel,
 } from "../../src/render/row.ts";
 import { rows58, rows100 } from "./fixtures.ts";
 
@@ -791,6 +792,55 @@ describe("the scan line", () => {
       input([], { rows: [rowBlock(pending("a"), { level: 2 }), rowBlock(pending("b"))] }),
     );
     expect(paragraphs(two)[6]).toContain("so 1 of 2 pending rows is shortened.");
+  });
+
+  // Record 0084 (issue 188): the budget shortens drifted rows too, so the
+  // note counts them. It names each section that has a shortened row, so it
+  // is true for any mix, and with only pending rows it reads as it always did.
+  describe("names each section that has a shortened row", () => {
+    // Each row with the level the budget left it at.
+    const note = (rows: [Row, RowLevel][]) =>
+      paragraphs(
+        renderBody(input([], { rows: rows.map(([row, level]) => rowBlock(row, { level })) })),
+      )[6];
+    const words = (count: string) =>
+      `> [!NOTE]\n> This dashboard is too large for one issue, so ${count} shortened. The summary that a shortened row links to shows every change. Deletes and replaces are the last thing to be cut.`;
+
+    test("only pending rows shortened", () => {
+      expect(
+        note([
+          [pending("a"), 2],
+          [pending("b"), 0],
+          [drifted("c"), 0],
+        ]),
+      ).toBe(words("1 of 2 pending rows is"));
+    });
+
+    test("only drifted rows shortened", () => {
+      expect(
+        note([
+          [pending("a"), 0],
+          [drifted("b"), 2],
+          [drifted("c"), 0],
+        ]),
+      ).toBe(words("1 of 2 drifted rows is"));
+      expect(
+        note([
+          [drifted("b"), 2],
+          [drifted("c"), 2],
+        ]),
+      ).toBe(words("2 of 2 drifted rows are"));
+    });
+
+    test("both pending and drifted rows shortened", () => {
+      expect(
+        note([
+          [pending("a"), 3],
+          [pending("b"), 1],
+          [drifted("c"), 2],
+        ]),
+      ).toBe(words("2 of 2 pending rows and 1 of 1 drifted row are"));
+    });
   });
 
   test("a body with every row in full has no note", () => {

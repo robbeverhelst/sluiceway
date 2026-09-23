@@ -382,8 +382,15 @@ export function renderBody(input: BodyInput): string {
   // The note about shortened rows (record 0028) is counted from the markers
   // like everything else up here, so it stays when a writer that is not the
   // scan regenerates the body.
-  const { pending } = facts;
-  if (facts.shortened > 0) out.push(shortenedNote(facts.shortened, pending.length));
+  const { pending, shortened } = facts;
+  if (shortened.pending + shortened.drift > 0) {
+    out.push(
+      shortenedNote([
+        { section: "pending", shortened: shortened.pending, of: pending.length },
+        { section: "drifted", shortened: shortened.drift, of: facts.drift.length },
+      ]),
+    );
+  }
 
   // Deploying comes first while it has rows: what is going out is what the
   // person is watching, and the section is gone when it is empty, so pending

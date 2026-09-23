@@ -69,9 +69,9 @@ export interface DashboardFacts {
   // order. They take no part in any other fact.
   unknown: readonly ParsedRow[];
   counts: CountsLineNumbers;
-  // The pending rows that are shortened (record 0028), for the note under
-  // the scan line.
-  shortened: number;
+  // The shortened rows of each section the size budget shortens (records
+  // 0028 and 0055), for the note under the scan line (record 0084).
+  shortened: { pending: number; drift: number };
   headerState: HeaderState;
   crates: Crates;
   signs: DestroySigns;
@@ -185,7 +185,10 @@ export function dashboardFacts(rows: readonly ParsedRow[]): DashboardFacts {
       destroying: destroying.length,
       failedDeploys: failed,
     },
-    shortened: pending.filter((row) => row.shortened > 0).length,
+    shortened: {
+      pending: pending.filter((row) => row.shortened > 0).length,
+      drift: drift.filter((row) => row.shortened > 0).length,
+    },
     headerState: headerStateOf(rows.length, known, sections, failed),
     // In the pending, failing, deploying and queued pictures alike (records
     // 0047, 0066 and 0075). With nothing pending there are no crates.
