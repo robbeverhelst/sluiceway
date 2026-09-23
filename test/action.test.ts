@@ -56,9 +56,7 @@ describe("action.yml", () => {
     const defaults = (name: string) => action.inputs[name]?.default ?? "";
     const token = (name: string) => (name === "github-token" ? "token" : "");
     const empty = (name: string) => token(name);
-    expect(readScanInputs(empty)).toEqual(
-      readScanInputs((name) => token(name) || defaults(name)),
-    );
+    expect(readScanInputs(empty)).toEqual(readScanInputs((name) => token(name) || defaults(name)));
     const apply = (read: (name: string) => string) => (name: string) =>
       name === "deployment-id" ? "12" : read(name);
     expect(readApplyInputs(apply(empty))).toEqual(

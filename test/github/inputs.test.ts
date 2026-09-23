@@ -208,16 +208,21 @@ describe("an empty optional input", () => {
   const scan = (values: Record<string, string>) =>
     readScanInputs((name) => ({ "github-token": "t", ...values })[name] ?? "");
   const apply = (values: Record<string, string>) =>
-    readApplyInputs((name) => ({ "github-token": "t", "deployment-id": "12", ...values })[name] ?? "");
+    readApplyInputs(
+      (name) => ({ "github-token": "t", "deployment-id": "12", ...values })[name] ?? "",
+    );
 
   test.each(["", "  ", "\n"])("concurrency %p is the default, 4", (value) => {
     expect(scan({ concurrency: value }).concurrency).toBe(4);
   });
 
-  test.each(["", " \t"])("preview-timeout %p is the default, 10 minutes, in scan and apply", (value) => {
-    expect(scan({ "preview-timeout": value }).previewTimeoutMinutes).toBe(10);
-    expect(apply({ "preview-timeout": value }).previewTimeoutMinutes).toBe(10);
-  });
+  test.each(["", " \t"])(
+    "preview-timeout %p is the default, 10 minutes, in scan and apply",
+    (value) => {
+      expect(scan({ "preview-timeout": value }).previewTimeoutMinutes).toBe(10);
+      expect(apply({ "preview-timeout": value }).previewTimeoutMinutes).toBe(10);
+    },
+  );
 
   test.each(["", "  "])("deploy-timeout %p is no limit", (value) => {
     expect(apply({ "deploy-timeout": value }).deployTimeoutMinutes).toBeUndefined();
@@ -255,9 +260,15 @@ describe("an empty optional input", () => {
     expect(() => apply({ "deploy-timeout": "soon" })).toThrow(
       'The "deploy-timeout" input must be a whole number of 1 or more, and it is "soon". It is a number of whole minutes.',
     );
-    expect(() => scan({ strict: "yes" })).toThrow('The "strict" input is true or false, and it is "yes".');
-    expect(() => apply({ "dry-run": "1" })).toThrow('The "dry-run" input is true or false, and it is "1".');
-    expect(() => readBackend(() => "on")).toThrow('The "backend" input is true or false, and it is "on".');
+    expect(() => scan({ strict: "yes" })).toThrow(
+      'The "strict" input is true or false, and it is "yes".',
+    );
+    expect(() => apply({ "dry-run": "1" })).toThrow(
+      'The "dry-run" input is true or false, and it is "1".',
+    );
+    expect(() => readBackend(() => "on")).toThrow(
+      'The "backend" input is true or false, and it is "on".',
+    );
   });
 
   // The two inputs that have no default to fall back to still fail when empty.
