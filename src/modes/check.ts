@@ -8,7 +8,7 @@ import type { ProcessRunner } from "../adapters/process.ts";
 import { type BackendCheck, checkSetup } from "../core/check.ts";
 import { ConfigError } from "../core/config.ts";
 import { hasConfigFile, loadConfig } from "../core/config-file.ts";
-import { DiscoveryError } from "../core/discovery.ts";
+import { DiscoveryError, type DiscoveryNote } from "../core/discovery.ts";
 import { repoFiles } from "../core/repo-files.ts";
 import { type Stack, stackId } from "../core/stack.ts";
 import { checkWorkflows, readWorkflowFiles } from "../core/workflow-check.ts";
@@ -25,7 +25,7 @@ import {
 export interface CheckContext {
   // The directory of the checked-out repo.
   root: string;
-  adapter: Pick<Adapter, "discover" | "readsFiles">;
+  adapter: Pick<Adapter, "discover" | "readsFiles" | "explainDiscovery">;
   log: JobLog;
   // Only with backend: true (record 0074): the one thing the check asks a
   // tool, with the environment of its job, which holds the credentials the
@@ -41,6 +41,7 @@ export async function check(context: CheckContext): Promise<void> {
   const { log, root } = context;
   let config: ReturnType<typeof loadConfig>;
   let report: ReturnType<typeof checkSetup>;
+  let discovery: DiscoveryNote[];
   try {
     // In the order a scan does it, so the first error is the one a scan
     // would stop at. Not through core/repo.ts: the check reads the files of
@@ -48,6 +49,9 @@ export async function check(context: CheckContext): Promise<void> {
     // laid over them, and reports on each `ignore` entry.
     config = loadConfig(root);
     const found = await context.adapter.discover(root, config);
+    // What discovery found without an entry, and what it left out (record
+    // 0092).
+    discovery = (await context.adapter.explainDiscovery?.(root, config)) ?? [];
     // What each stack's own files name as read (record 0074).
     const references = new Map<string, FileReference[]>();
     const readsFiles = context.adapter.readsFiles;
@@ -71,6 +75,7 @@ export async function check(context: CheckContext): Promise<void> {
   const workflows = checkWorkflows(readWorkflowFiles(root), config);
   const parts = checkParts({
     report,
+    discovery,
     workflows,
     unrelated: config.scan.unrelated,
     hasConfigFile: hasConfigFile(root),

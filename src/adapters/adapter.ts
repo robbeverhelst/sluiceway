@@ -1,6 +1,7 @@
 import type { FileReference } from "../core/check.ts";
 import type { Config } from "../core/config.ts";
 import type { Change, Diff } from "../core/diff.ts";
+import type { DiscoveryNote } from "../core/discovery.ts";
 import type { DeployFailureReason, PreviewFailureReason } from "../core/failure-reason.ts";
 import type { Stack } from "../core/stack.ts";
 import type { ProcessRunner } from "./process.ts";
@@ -208,6 +209,12 @@ export interface Adapter {
   // Config is for a tool whose stacks files cannot name, whose stacks come
   // from `stacks` entries that name the tool (record 0053).
   discover(root: string, config: Config): Promise<Stack[]>;
+
+  // What discovery made of each directory it looks at without a `stacks`
+  // entry, for the check to show (record 0092). Files only, like discover. An
+  // adapter that finds only what is certain, such as Pulumi stacks, leaves it
+  // out.
+  explainDiscovery?(root: string, config: Config): Promise<DiscoveryNote[]>;
 
   // The files and directories of the repo that the stack's own files name as
   // read (record 0074), for the check to suggest as inputs. It reads files

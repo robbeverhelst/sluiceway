@@ -8,6 +8,7 @@ import { kubectl } from "./kubectl/index.ts";
 import { isKubectlOptions } from "./kubectl/options.ts";
 import { opentofu } from "./opentofu/index.ts";
 import { isOpenTofuOptions } from "./opentofu/options.ts";
+import { explainRootModules } from "./opentofu/root-modules.ts";
 import { pulumi } from "./pulumi/index.ts";
 
 export { TOOLS } from "./discover-all.ts";
@@ -30,6 +31,9 @@ function adapterOf(stack: Stack): Adapter {
 
 export const tools: Adapter = {
   discover: discoverAll,
+  // Only root modules are found by a rule that can leave a directory out
+  // (record 0092).
+  explainDiscovery: async (root, config) => explainRootModules(root, config),
   readsFiles,
 
   // The tools of these stacks, each once, Pulumi first.

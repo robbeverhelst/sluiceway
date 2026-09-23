@@ -14,6 +14,7 @@ import type {
   UnclaimedGroup,
 } from "../core/check.ts";
 import type { ConfiguredStack, IgnoreEntry } from "../core/config.ts";
+import type { DiscoveryNote } from "../core/discovery.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
 import { globOf } from "../core/glob.ts";
 import { type PhaseGroup, waitsByPhase } from "../core/phases.ts";
@@ -431,6 +432,9 @@ export interface CheckPart {
 // What the files say, before the backend is asked.
 export interface CheckFacts {
   report: CheckReport;
+  // What discovery made of the directories it looks at without an entry
+  // (record 0092).
+  discovery?: DiscoveryNote[];
   // What the workflow files say (record 0061).
   workflows: WorkflowReport;
   // The scan.unrelated globs the config has.
@@ -445,6 +449,7 @@ export function checkParts(facts: CheckFacts): CheckPart[] {
   return [
     headerPart(facts.hasConfigFile),
     stacksPart(report),
+    discoveryPart(facts.discovery ?? []),
     phasesPart(report.phases),
     ignorePart(report.ignore),
     unclaimedPart(report, facts.unrelated),
@@ -501,6 +506,50 @@ function stacksPart({ stacks, phases }: CheckReport): CheckPart {
             ...(waits ? [dependsOnCell(configured, phases)] : []),
           ]);
         }),
+      ].join("\n"),
+    ],
+  };
+}
+
+const DISCOVERY_TITLE = "Root modules found from their files";
+const DISCOVERY_HINT =
+  "A stacks entry with tool declares a directory it left out, and ignore or discovery.rootModules: false leaves out one it found.";
+
+// Every directory of OpenTofu or Terraform files, with what root module
+// discovery made of it and why (record 0092). A repo without such files has
+// no part.
+function discoveryPart(notes: DiscoveryNote[]): CheckPart {
+  if (notes.length === 0) return { log: [], summary: [] };
+  const found = notes.filter((note) => note.outcome === "found").length;
+  const left = notes.filter((note) => note.outcome === "left-out").length;
+  const count = `Discovery found ${found === 0 ? "no root module" : plural(found, "root module")}${left === 0 ? "" : ` and left out ${left} ${left === 1 ? "directory" : "directories"}`}.`;
+  return {
+    log: [
+      { info: count },
+      {
+        group: DISCOVERY_TITLE,
+        lines: notes.map(({ path, outcome, because }) =>
+          line(
+            outcome === "declared"
+              ? `${path}: ${because}`
+              : `${path}: ${outcome === "found" ? "found" : "left out"}, ${because}`,
+          ),
+        ),
+      },
+    ],
+    summary: [
+      `### ${DISCOVERY_TITLE}`,
+      `${count} ${DISCOVERY_HINT}`,
+      [
+        "| Directory | Stack | Why |",
+        "|---|---|---|",
+        ...notes.map(({ path, outcome, stackId, because }) =>
+          row([
+            path,
+            outcome === "found" ? (stackId ?? path) : outcome === "declared" ? "declared" : "none",
+            because,
+          ]),
+        ),
       ].join("\n"),
     ],
   };
