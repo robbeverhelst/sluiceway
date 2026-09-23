@@ -1,5 +1,7 @@
 # The size budget shortens the biggest rows first, gives back what fits, and never lists half the destroys
 
+> Amended by 0084: the note counts shortened drifted rows too, and names each section that has one.
+
 An issue body that is too large is dropped without an error (rendering research), and record 0024 fixed what must survive when a row shrinks. This record fixes the numbers, the steps and which rows give way. It was judged on a rendered fixture of 92 stacks whose full body was 335,856 characters and whose shortened body was 54,711.
 
 The renderer aims at 58,000 characters, the headroom Renovate keeps under the same limit. A body over 65,536 characters or over 262,144 UTF-8 bytes is never written. Both are counted on the final body. The target leaves room for a late row swap by `resolve`, `apply` or `settle` to grow the body a little without going over.

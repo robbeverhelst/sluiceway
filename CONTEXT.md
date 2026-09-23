@@ -359,7 +359,7 @@ How large the dashboard body may get before rows are shortened. It exists becaus
 _Avoid_: Limit, cap, quota
 
 **Shortened row**:
-A pending row that shows less than its whole diff because of the size budget, and links to the summary for the rest. It keeps its checkbox, its counts and its warning. Its delete and replace lines are all listed or none are.
+A pending or drifted row that shows less than its whole diff because of the size budget, and links to the summary for the rest. The note under the scan line counts them, section by section. It keeps its checkbox, its counts and its warning. Its delete and replace lines are all listed or none are.
 _Avoid_: Truncated row, collapsed row, summary row
 
 **Attribution**:

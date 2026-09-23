@@ -7,6 +7,8 @@
 > Amended by 0069: Helm stacks are checked too, with the diff plugin's three-way diff, and a tick that repairs their drift forces conflicts where Helm 4 applies the release server-side.
 >
 > Amended by 0070: a Kubernetes manifests stack is checked with `prune` or `forceConflicts`, from its inventory and the managed fields, and its repair needs no flag of its own.
+>
+> Amended by 0084: the note about shortened rows counts shortened drifted rows too.
 
 Records 0009, 0008 and 0031 left room for drift: a row state, a marker key that says the hash covers drift, one hash over both diffs, and a header state still to be drawn. Record 0015 left open whether a deploy should also repair drift. The build plan's slice 4.3 asks for part 1: detect it, show it, and repair it by a tick. This record fixes how.
 
