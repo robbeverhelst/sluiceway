@@ -19,7 +19,10 @@ function reach(entry: string): { files: string[]; packages: string[]; dynamic: s
   const visit = (file: string): void => {
     if (files.has(file)) return;
     files.add(file);
-    for (const { path, kind } of transpiler.scanImports(readFileSync(file, "utf8"))) {
+    // The entry starts with the line that runs it with node, which the
+    // transpiler does not read.
+    const code = readFileSync(file, "utf8").replace(/^#!.*\n/, "");
+    for (const { path, kind } of transpiler.scanImports(code)) {
       if (path.endsWith(".sh")) continue;
       if (kind === "dynamic-import") dynamic.add(path);
       else if (path.startsWith(".")) visit(resolve(dirname(file), path));
