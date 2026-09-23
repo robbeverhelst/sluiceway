@@ -56,7 +56,7 @@ export interface SluicewayJob {
   // The GitHub Environment the job names, as written: a name or an
   // expression only a run evaluates. Not there when it names none. Its rules,
   // such as required reviewers, are a setting of the repo that no file shows
-  // (record 0092).
+  // (record 0093).
   environment?: string;
 }
 

@@ -314,7 +314,7 @@ function workflowJobText(path: string, job: SluicewayJob): string {
   return `${path}, job ${job.job}: ${mode}, ${refText(job)}.`;
 }
 
-// Who decides who may deploy, for one job that deploys (record 0092). Only
+// Who decides who may deploy, for one job that deploys (record 0093). Only
 // what the file shows: whether the job names an environment. Whether that
 // environment has required reviewers is a setting of the repo, and the check
 // makes no GitHub call, so the words say so rather than guess.

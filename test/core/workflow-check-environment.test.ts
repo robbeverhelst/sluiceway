@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parseConfig } from "../../src/core/config.ts";
 import { checkWorkflows, type WorkflowFile } from "../../src/core/workflow-check.ts";
 
-// Slice 5.28, record 0092: the check reads the environment a job that runs
+// Slice 5.28, record 0093: the check reads the environment a job that runs
 // Sluiceway names, as written, so it can say who decides who may deploy. It
 // cannot read the environment's rules: they are a setting of the repo.
 

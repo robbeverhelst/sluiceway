@@ -79,7 +79,7 @@ describe("the parts of the check", () => {
   });
 });
 
-// Slice 5.28, record 0092: for every job that deploys, one line says who
+// Slice 5.28, record 0093: for every job that deploys, one line says who
 // decides who may deploy, from what the file shows and nothing more.
 describe("who may deploy", () => {
   const PATH = ".github/workflows/deploy-dashboard.yml";

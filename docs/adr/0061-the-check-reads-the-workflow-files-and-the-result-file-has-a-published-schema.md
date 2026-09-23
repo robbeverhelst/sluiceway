@@ -4,7 +4,7 @@
 >
 > Amended by 0077: a step with no mode is auto mode, and the check reads what it runs from the triggers of its file.
 >
-> Amended by 0092: the check reads the environment a Sluiceway job names, and gives each job that deploys one line on who decides who may deploy: the tick rule alone without an environment, or the environment's required reviewers if it has them, which the check cannot read.
+> Amended by 0093: the check reads the environment a Sluiceway job names, and gives each job that deploys one line on who decides who may deploy: the tick rule alone without an environment, or the environment's required reviewers if it has them, which the check cannot read.
 
 Record 0042 made the check a pass over the repo's files that says whether Sluiceway understands the setup: the config, the stacks, `ignore` and the files no stack claims. It left the workflow out, because GitHub validates a workflow. What GitHub does not validate is whether a workflow is the one Sluiceway needs: a missing `workflow_dispatch`, `actions: read` where a mode dispatches, a `resolve` job in a second file or a branch as the ref all run without an error and fail later, on the first tick or the first rescan. The workflow is a file in the checkout, so the check can read it with the same promise: no credentials, no tool, no GitHub API.
 

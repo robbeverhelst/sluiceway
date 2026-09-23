@@ -1,6 +1,6 @@
 # The tick is always a gate, and GitHub Environments make it a stronger one
 
-> Amended by 0092: an environment with required reviewers on the job that deploys is what decides who may deploy, and the tick rule decides who may ask. The docs present setup 3 so, with the shape, what each gate can and cannot do, and the open record while the deploy waits for a reviewer.
+> Amended by 0093: an environment with required reviewers on the job that deploys is what decides who may deploy, and the tick rule decides who may ask. The docs present setup 3 so, with the shape, what each gate can and cannot do, and the open record while the deploy waits for a reviewer.
 
 The brief says GitHub Environments are the real approval gate and the checkbox is only the trigger. That is false for many users. Required reviewers exist on public repos and on private repos with an Enterprise plan. Private repos on smaller paid plans get environments and environment secrets without reviewers, and private repos on the Free plan get no environments at all. For all of those, the tick and its permission check are the whole gate, and a security story that points at a feature they do not have is worse than none. The line is replaced by: the tick is always a gate, and GitHub Environments make it a stronger one where your plan has them.
 
