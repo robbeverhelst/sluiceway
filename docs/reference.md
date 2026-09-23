@@ -45,6 +45,8 @@ An input that is set to an empty string reads as its default, so a workflow can 
 
 `auto` sets what the modes it ran set. `scan` and `apply` also set outputs and write a result file, so a step after Sluiceway can chart numbers or send anything the built-in notifications do not. [Notifications](notifications.md) lists them, next to the built-in Slack, Telegram and webhook messages.
 
+No output, result file or webhook message carries a time of day, only durations, so [`dashboard.timeZone`](configuration.md#dashboardtimezone) changes nothing here. It changes only what a person reads on the dashboard, and the markers in the issue keep UTC.
+
 ## Requirements
 
 - **A GitHub repo with issues turned on.** The dashboard is an issue.

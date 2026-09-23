@@ -1,5 +1,7 @@
 # A run that waits long for a runner gets a line under the scan line
 
+> Amended by 0089: the time the line says the run has waited since is in the repo's zone, `dashboard.timeZone`, and ends in its offset from UTC, such as `UTC+2`. Without the key it is `UTC` as written here.
+
 > Amends 0009 (three optional keys on the root marker), 0017 (one more request per scan) and 0029 (a line under the scan line). Built as slice 5.22.
 
 Issue 201, seen on a real repo: a scan started from the dashboard sat `queued` for 30 minutes because GitHub never handed its job to the repo's self-hosted runners. The job never started, so no Sluiceway code ran. From the dashboard that looked exactly like nothing happening: the issue still showed the previous scan, and nothing said a newer run was waiting. A deploy has a row that says `waiting to start`. A scan had nothing.

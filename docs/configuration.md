@@ -176,6 +176,27 @@ dashboard:
   recentlyDeployed: 25
 ```
 
+### `dashboard.timeZone`
+
+Default: `UTC`
+
+The time zone every time on the dashboard is shown in, as an IANA name such as `Europe/Brussels`, `America/New_York` or `Asia/Kolkata`. Without the key the dashboard stays in UTC, byte for byte as before.
+
+The zone belongs to the repo, not the reader: one issue is read by everyone, so it cannot follow a browser. Pick the zone the people who tick live in.
+
+- The line under the Recently deployed heading names the zone, `Times are in Europe/Brussels.`, and the times on the list leave it out.
+- A time that stands alone says its offset from UTC at that moment: the scan line (`on 2026-07-21 12:02 UTC+2`), the last full scan, the line about a run waiting for a runner, and the failure line on a row. A January time and a July time of one zone each say their own offset, because daylight saving changes it. A moment when the zone is at UTC, such as London in winter, says `UTC`.
+- The markers in the issue keep UTC. Changing the zone moves no row and no hash, and a body written under one zone reads the same under another. A row that the next scan does not draw again keeps its failure line in the zone it was written in, which is why that line says its offset.
+
+A name that is not a zone fails the config with an example of one. An offset such as `+02:00` or `UTC+2` is not a zone name, because it has no daylight saving. The zone is checked against the zone data of the runtime that runs the action. GitHub's runners and the `node24` runtime the action uses carry every zone. A runtime built without zone data knows `UTC` alone, and there any other name fails the config the same way rather than falling back to UTC in silence.
+
+The job summaries, the preview pages and the notifications write no time of their own; GitHub shows the time of a run and a check in each reader's own zone.
+
+```yaml
+dashboard:
+  timeZone: Europe/Brussels
+```
+
 ### `tickers`
 
 Default: `write`

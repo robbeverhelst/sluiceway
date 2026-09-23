@@ -1,5 +1,7 @@
 # The body puts pending first and folds away only what is calm
 
+> Amended by 0089: every time on the dashboard is in the repo's zone, `dashboard.timeZone`, UTC by default. A time that stands alone ends in its offset from UTC, the line under Recently deployed names the zone, and the markers keep UTC.
+>
 > Amended by 0086: a run of the workflow that has waited ten minutes or more for a runner gets one line right under the scan line, from the root marker.
 >
 > Amended by 0076: a failure line stays only while no deploy of its stack, from the dashboard or outside it, ended after the failure. An in sync row whose stack was deployed outside the dashboard after the failure, and whose tool keeps a history, has no failure line and sits in the fold.

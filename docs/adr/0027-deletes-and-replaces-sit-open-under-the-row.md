@@ -1,5 +1,7 @@
 # Deletes and replaces sit open under the row, everything else is folded
 
+> Amended by 0089: the failure line's time is in the repo's zone, `dashboard.timeZone`, and ends in its offset from UTC at that moment, such as `2026-07-21 12:02 UTC+2`. Without the key it is `UTC` as written here.
+>
 > Amended by 0044: a link that shows a stack's diff names the attempt of the run, and a preview failure's `run` links to the log of the job.
 >
 > Amended by 0062: one caution block above the pending list, the destroy alert, names the pending stacks with a delete or replace. The delete and replace lines stay open under the row.
