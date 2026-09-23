@@ -58543,6 +58543,8 @@ var DOCS = {
   credentials: `${DOCS_SITE}/guides/credentials/#recipes`,
   credentialsHelm: `${DOCS_SITE}/guides/credentials/#helm`,
   credentialsKubectl: `${DOCS_SITE}/guides/credentials/#kubernetes-manifests`,
+  init: `${DOCS_SITE}/guides/init/`,
+  workflow: `${DOCS_SITE}/guides/workflow/`,
   exampleWorkflows: `${DOCS_SITE}/guides/example-workflows/#what-to-change`,
   pinACommit: `${DOCS_SITE}/guides/workflow/#pin-a-commit`,
   splitWorkflow: `${DOCS_SITE}/guides/split-workflow/`
@@ -63579,6 +63581,13 @@ var backendContext = (env) => {
   return { adapter: tools, env, run: (run) => runProcess(run) };
 };
 
+// src/adapters/files-only.ts
+var filesOnly = {
+  discover: discoverAll,
+  explainDiscovery: async (root, config2) => explainRootModules(root, config2),
+  readsFiles: readsFiles3
+};
+
 // src/core/scan-plan.ts
 var COMPARE_FILE_CAP = 300;
 var COMMIT2 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -64485,7 +64494,7 @@ async function runCheck(makeBackend, log) {
   await check2({
     root,
     ...backend === undefined ? {} : { backend },
-    adapter: { discover: discoverAll, readsFiles: readsFiles3 },
+    adapter: filesOnly,
     log: log ?? actionsLog()
   });
 }
@@ -66341,6 +66350,26 @@ async function runAuto(directory) {
   });
 }
 
+// src/cli/terminal.ts
+function refuseOldNode(version3, who = "init") {
+  const major = Number(version3.split(".")[0]);
+  if (major < 22) {
+    throw new Error(`${who} needs Node 22 or newer, and this is Node ${version3}.`);
+  }
+}
+function terminalLog(write2 = console.log) {
+  return {
+    info: write2,
+    group(title, lines5) {
+      write2(title);
+      for (const line3 of lines5)
+        write2(`  ${line3}`);
+    },
+    warning: (message5, title) => write2(`${title}: ${message5}`),
+    writeSummary: async () => {}
+  };
+}
+
 // src/modes/init.ts
 import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync14, statSync as statSync4, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname as dirname3, join as join35 } from "node:path";
@@ -66793,15 +66822,20 @@ function starterConfig({ declarable, unrelated, unclaimed }) {
 `)}
 `;
 }
+var CLI = "npx sluiceway";
 var NOT_A_REPO_ROOT = "This is not the root of a git repo. Run init in the top directory of your checkout.";
 function noStacksText() {
   return "init found no stack to set up: no Pulumi project, no OpenTofu root module and no Helm chart. It wrote nothing.";
 }
 function workflowExistsText(paths2) {
-  return `A workflow runs Sluiceway already: ${paths2.join(", ")}. init never overwrites one, and wrote nothing. Run the check (mode: check) to see what it lacks.`;
+  const force = paths2.length === 1 && paths2[0] === WORKFLOW_FILE ? `, or ${CLI} init --force to write ${WORKFLOW_FILE} again` : "";
+  return `A workflow runs Sluiceway already: ${paths2.join(", ")}. init never overwrites one, and wrote nothing. Run ${CLI} check to see what it lacks${force}.`;
 }
 function wroteText(file2) {
   return `Wrote ${file2}.`;
+}
+function replacedText(file2) {
+  return `Replaced ${file2}.`;
 }
 var KEPT_CONFIG = "Kept sluiceway.yaml as it is, and set the workflow up from it.";
 var NEEDS_A_PERSON = "Still to do by a person:";
@@ -66848,7 +66882,7 @@ function needsText({ findings, declarable, branchGuessed }) {
   if (branchGuessed) {
     needs.push(`The workflow scans after a push to ${DEFAULT_BRANCH}: init could not read the default branch. Change it if yours is another.`);
   }
-  needs.push(`The job runs on ${RUNS_ON} with timeout-minutes: 60. Raise it when a scan or a deploy of yours takes longer, since one run can hold both. For a self-hosted runner change runs-on, with runner 2.328.0 or newer.`, "Review the files, run the check in a pull request, and commit them. init commits nothing.");
+  needs.push(`The job runs on ${RUNS_ON} with timeout-minutes: 60. Raise it when a scan or a deploy of yours takes longer, since one run can hold both. For a self-hosted runner change runs-on, with runner 2.328.0 or newer.`, `Review the files, run ${CLI} check, and commit them. init commits nothing.`);
   return needs;
 }
 function quoted(text7) {
@@ -66865,8 +66899,14 @@ async function init(context3) {
     throw new Error(NOT_A_REPO_ROOT);
   const configKept = hasConfigFile(root);
   const existing = loadConfig(root);
-  const running = checkWorkflows(readWorkflowFiles(root), existing).workflows.filter(({ jobs }) => jobs.some(({ runs }) => runs.some((mode) => mode !== "check" && mode !== "init"))).map(({ path }) => path);
-  const taken = [...new Set([...running, ...exists2(root, WORKFLOW_FILE) ? [WORKFLOW_FILE] : []])];
+  const replace = context3.force === true && exists2(root, WORKFLOW_FILE);
+  const running = checkWorkflows(readWorkflowFiles(root), existing).workflows.filter(({ jobs }) => jobs.some(({ runs }) => runs.some((mode) => mode !== "check" && mode !== "init"))).map(({ path }) => path).filter((path) => !(replace && path === WORKFLOW_FILE));
+  const taken = [
+    ...new Set([
+      ...running,
+      ...exists2(root, WORKFLOW_FILE) && !replace ? [WORKFLOW_FILE] : []
+    ])
+  ];
   if (taken.length > 0)
     throw new Error(workflowExistsText(taken.sort()));
   const files = await repoFiles(root);
@@ -66920,15 +66960,16 @@ async function init(context3) {
     branch,
     merges: config2.mergeAndDeploy.authors.length > 0
   });
-  write2(root, WORKFLOW_FILE, workflow);
+  write2(root, WORKFLOW_FILE, workflow, replace);
   if (configText2 !== undefined)
     write2(root, CONFIG_FILE, configText2);
   if (written.includes(EXPORT_ENV_FILE))
     write2(root, EXPORT_ENV_FILE, EXPORT_ENV);
   log.info(foundText(stacks2.length));
   log.group("Stacks", stacks2.map((stack) => stackId(stack)));
-  for (const file2 of written)
-    log.info(wroteText(file2));
+  for (const file2 of written) {
+    log.info(replace && file2 === WORKFLOW_FILE ? replacedText(file2) : wroteText(file2));
+  }
   if (configKept)
     log.info(KEPT_CONFIG);
   log.group(NEEDS_A_PERSON, needsText({ findings, declarable, branchGuessed: branch === undefined }).map((need) => `- ${need}`));
@@ -66947,9 +66988,9 @@ function nearest(directory, paths2) {
 function exists2(root, file2) {
   return existsSync4(join35(root, file2));
 }
-function write2(root, file2, text7) {
+function write2(root, file2, text7, replace = false) {
   mkdirSync(dirname3(join35(root, file2)), { recursive: true });
-  writeFileSync2(join35(root, file2), text7, { flag: "wx" });
+  writeFileSync2(join35(root, file2), text7, { flag: replace ? "w" : "wx" });
 }
 function defaultBranch(root) {
   const file2 = join35(root, ".git", "refs", "remotes", "origin", "HEAD");
@@ -66972,24 +67013,6 @@ async function runInit() {
     adapter: { discover: discoverAll },
     log: process.env.GITHUB_ACTIONS === "true" ? actionsLog() : terminalLog()
   });
-}
-function refuseOldNode(version3) {
-  const major = Number(version3.split(".")[0]);
-  if (major < 22) {
-    throw new Error(`init needs Node 22 or newer, and this is Node ${version3}.`);
-  }
-}
-function terminalLog(write3 = console.log) {
-  return {
-    info: write3,
-    group(title, lines5) {
-      write3(title);
-      for (const line3 of lines5)
-        write3(`  ${line3}`);
-    },
-    warning: (message5, title) => write3(`${title}: ${message5}`),
-    writeSummary: async () => {}
-  };
 }
 
 // src/mode.ts
