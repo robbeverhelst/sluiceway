@@ -32138,10 +32138,7 @@ async function init(context) {
   const replace = context.force === true && exists(root, WORKFLOW_FILE);
   const running = checkWorkflows(readWorkflowFiles(root), existing).workflows.filter(({ jobs }) => jobs.some(({ runs }) => runs.some((mode) => mode !== "check" && mode !== "init"))).map(({ path }) => path).filter((path) => !(replace && path === WORKFLOW_FILE));
   const taken = [
-    ...new Set([
-      ...running,
-      ...exists(root, WORKFLOW_FILE) && !replace ? [WORKFLOW_FILE] : []
-    ])
+    ...new Set([...running, ...exists(root, WORKFLOW_FILE) && !replace ? [WORKFLOW_FILE] : []])
   ];
   if (taken.length > 0)
     throw new Error(workflowExistsText(taken.sort()));
