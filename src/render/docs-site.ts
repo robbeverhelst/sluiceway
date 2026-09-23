@@ -10,6 +10,8 @@ export const DOCS = {
   credentials: `${DOCS_SITE}/guides/credentials/#recipes`,
   credentialsHelm: `${DOCS_SITE}/guides/credentials/#helm`,
   credentialsKubectl: `${DOCS_SITE}/guides/credentials/#kubernetes-manifests`,
+  init: `${DOCS_SITE}/guides/init/`,
+  workflow: `${DOCS_SITE}/guides/workflow/`,
   exampleWorkflows: `${DOCS_SITE}/guides/example-workflows/#what-to-change`,
   pinACommit: `${DOCS_SITE}/guides/workflow/#pin-a-commit`,
   splitWorkflow: `${DOCS_SITE}/guides/split-workflow/`,

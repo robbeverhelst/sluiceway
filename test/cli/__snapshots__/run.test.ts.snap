@@ -1,0 +1,20 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`help and version --help prints the commands and ends well 1`] = `
+"Usage:
+  sluiceway init [--force] [path]
+      Write .github/workflows/deploy-dashboard.yml and, when there is none,
+      a first sluiceway.yaml, from the stacks it finds in the repo. It never
+      overwrites a file. --force writes the workflow again.
+  sluiceway check [path]
+      Say which stacks it finds, and whether sluiceway.yaml and the
+      workflow are right.
+  sluiceway --version
+  sluiceway --help
+
+Both read the files at path, or where you stand, and nothing else: no
+credentials, no token, no tool, no network. scan, resolve, apply and settle
+run only in the workflow.
+
+https://docs.sluiceway.dev/guides/init/"
+`;

@@ -62,6 +62,8 @@
                       "**/github/**",
                       "**/modes/**",
                       "**/notify/**",
+                      "**/cli/**",
+                      "**/cli.ts",
                       "**/main.ts",
                       "**/main",
                       "**/mode.ts",

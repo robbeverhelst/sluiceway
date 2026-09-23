@@ -3,8 +3,11 @@
 // port, and a test proves this file cannot reach the code that builds either.
 
 import { discoverAll } from "../adapters/discover-all.ts";
-import { actionsLog, type JobLog } from "../github/job-log.ts";
+import { refuseOldNode, terminalLog } from "../cli/terminal.ts";
+import { actionsLog } from "../github/job-log.ts";
 import { init } from "./init.ts";
+
+export { refuseOldNode, terminalLog };
 
 export async function runInit(): Promise<void> {
   refuseOldNode(process.versions.node);
@@ -15,28 +18,4 @@ export async function runInit(): Promise<void> {
     adapter: { discover: discoverAll },
     log: process.env.GITHUB_ACTIONS === "true" ? actionsLog() : terminalLog(),
   });
-}
-
-// A runner starts the action on Node 24. A laptop can hold anything, and the
-// code uses what Node 22 brought, so an older one stops here with words
-// instead of a missing function.
-export function refuseOldNode(version: string): void {
-  const major = Number(version.split(".")[0]);
-  if (major < 22) {
-    throw new Error(`init needs Node 22 or newer, and this is Node ${version}.`);
-  }
-}
-
-// Plain lines for a terminal, where a workflow command would show as text.
-// init writes no summary, so there is none to write.
-export function terminalLog(write: (line: string) => void = console.log): JobLog {
-  return {
-    info: write,
-    group(title, lines) {
-      write(title);
-      for (const line of lines) write(`  ${line}`);
-    },
-    warning: (message, title) => write(`${title}: ${message}`),
-    writeSummary: async () => {},
-  };
 }

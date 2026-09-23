@@ -9,7 +9,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 const SRC = resolve(import.meta.dir, "../src");
 const PURE_DIRS = ["core", "adapters", "render"];
 const BANNED_PACKAGES = ["@actions/", "@octokit/"];
-const BANNED_PATHS = ["github", "modes", "notify", "main.ts", "mode.ts"];
+const BANNED_PATHS = ["github", "modes", "notify", "cli", "main.ts", "mode.ts", "cli.ts"];
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 
@@ -54,6 +54,12 @@ describe("the check itself", () => {
   test("flags the notify directory", () => {
     const code = 'import "../notify/send.ts";';
     expect(violations(file, code)).toEqual(["../notify/send.ts"]);
+  });
+
+  // The command line is a door, like the action's entry (record 0094).
+  test("flags the command line", () => {
+    const code = 'import "../cli/run.ts";\nimport "../cli.ts";';
+    expect(violations(file, code)).toEqual(["../cli/run.ts", "../cli.ts"]);
   });
 
   test("flags the modes directory", () => {
