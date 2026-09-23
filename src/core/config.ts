@@ -345,7 +345,9 @@ export const configSchema = z
       )
       .default([]),
     stacks: stackEntries
-      .describe("Settings for stacks that discovery found. An entry never creates a stack.")
+      .describe(
+        "Settings for stacks that discovery found. An entry never creates a stack, except an entry with tool, which declares one.",
+      )
       .default([]),
     // Record 0092: switches for what discovery finds from files without a
     // `stacks` entry. Which switches exist is for the adapters to say, as with

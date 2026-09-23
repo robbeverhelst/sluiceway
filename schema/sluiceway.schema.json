@@ -411,7 +411,7 @@
         ],
         "additionalProperties": false
       },
-      "description": "Settings for stacks that discovery found. An entry never creates a stack."
+      "description": "Settings for stacks that discovery found. An entry never creates a stack, except an entry with tool, which declares one."
     },
     "discovery": {
       "description": "Switches for what discovery finds on its own. Pulumi stacks are always found.",

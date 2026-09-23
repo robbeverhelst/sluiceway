@@ -36,8 +36,10 @@ jobs:
           pulumi-version: ^3.229.0
       # Install what your programs need, once, for example: npm ci
       # Load your credentials and your state backend settings into the job
-      # environment here. Credentials that can only read are enough. Whatever
-      # loads a secret must also mask it.
+      # environment here. For Pulumi, credentials that can only read are
+      # enough. A Helm or Kubernetes manifests preview is a server-side dry
+      # run, which needs what a deploy needs (see Credentials). Whatever loads
+      # a secret must also mask it.
       - uses: sluiceway/sluiceway@v0
 ```
 

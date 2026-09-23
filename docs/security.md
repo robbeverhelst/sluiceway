@@ -8,7 +8,7 @@ A tick is a request to deploy one stack exactly as its row shows it. Before anyt
 
 It does not cover **values**, except the ones a row shows. Without [`dashboard.showValues`](configuration.md#dashboardshowvalues) Sluiceway never shows a value, so it never hashes one either: a tick approves what a person could see. A value at a listed path is shown and hashed, so a tick approves it, and a merge that moves it after the tick stops the deploy. That leaves one gap, and it is deliberate. Someone ticks a row that says `web: update, image`. Before the deploy starts, another merge changes the image from `v2` to `v3`. The same resource changes the same property, the hash is the same, and `v3` goes out.
 
-So a tick means "change these properties on these resources, at whatever value the code has when the deploy runs", for every property whose value the row does not show. Two things bound it:
+So a tick means "change these properties on these resources, at whatever value the code has when the deploy runs", for every property whose value the row does not show. What bounds it:
 
 - **What went out is traceable.** The deployment record of every deploy names the commit that was deployed.
 - **Anything else that moved stops the deploy.** A new resource, a delete, a replace or a different property gives a different hash. The deploy stops, nothing changes, and the row comes back with the fresh diff and a line that says the change moved since the tick.

@@ -11,7 +11,6 @@ The file is read from the checkout of the job, so the rules in force are the one
 - **Unknown keys are an error.** A typo in `tickers` would change who can deploy, so nothing is ever ignored. The message names the keys that are allowed there.
 - **Every problem is listed at once**, top to bottom as the file has them, so you fix the file in one go.
 - **Every mode stops on a file that is not valid.** The job goes red with the messages, and the dashboard is not written.
-- **`drift` on a stack is not in this version.** It fails with a message that says so, and is never ignored. `drift` at the top level is valid.
 - **Editors can check the file as you type.** Put this line at the top and an editor with YAML support finds the schema: `# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json`.
 - **The `check` mode tells you in a pull request** whether the file is valid, which stacks it covers, which OpenTofu and Terraform directories discovery found or left out and why, and what `ignore` leaves out ([check your setup](workflow.md#check-your-setup)).
 
@@ -896,7 +895,7 @@ notify:
 - **No credentials and no environment variables.** Your workflow puts them into the job environment before Sluiceway runs ([credentials](credentials.md)).
 - **No notification channels.** A Slack webhook address, a Telegram bot token and a webhook address are secrets, so they are inputs of the step, read from your repo's secrets. A channel written under `notify` is an error that says so.
 - **No `concurrency` or `preview-timeout`.** They belong to the runner, so they are inputs of the action. Without `concurrency` the scan runs one preview for each core of the runner, up to 8, so the same repo scans well on a small runner and a large one without a change here ([reference](reference.md#inputs)).
-- **No stack ids.** They are derived.
+- **No list of stack ids.** Every id is derived from its path and name, unless a `stacks` entry gives one with [`id`](#stacksid).
 - **No teams** in a tick rule. Not in this version.
 
 A typo gets the list of keys that are allowed:

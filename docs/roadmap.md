@@ -8,19 +8,18 @@ The part after 1.0 is generated from [docs/later.md](later.md), which says for e
 
 The core loop: a scan previews every stack and writes the dashboard, a person ticks a box, exactly that stack deploys, and its row returns to in sync or says why it failed. Around it:
 
-- Pulumi stacks and OpenTofu and Terraform root modules, found from their files, and the root modules the files cannot speak for and Helm releases, declared in `sluiceway.yaml`.
+- Pulumi stacks and OpenTofu and Terraform root modules, found from their files, and the root modules the files cannot speak for (Terragrunt units and CDK for Terraform apps among them), Helm releases and Kubernetes manifests, declared in `sluiceway.yaml`.
 - Five modes: `scan`, `resolve`, `apply`, `settle`, and `check`, which validates a setup on a pull request with no credentials.
 - A push previews only the stacks it touches. Every row says which pull requests made it pending, and links to a page with that stack's diff.
 - Rows name the property paths that change, never a value. A repo can list paths whose values may show, and can print the tool's own diff in the job log.
 - A team can stop every deploy from the config, rehearse a tick, and leave a stack out with a written reason.
-- One tick can merge a routine update and deploy it, drift is shown and repaired by a tick, and a stack can wait for the stacks it depends on.
+- One tick can merge a routine update and deploy it. Drift is shown and repaired by a tick, and can be turned on per stack. A stack can wait for the stacks it depends on, named by hand or read from its Pulumi stack references, and the check lists them.
 - Opt-in messages to Slack, Telegram or a webhook of your own when stacks are pending, drift is found, a deploy fails or a tick is refused, and step outputs and a result file for anything else.
 
 The [build plan](build-plan.md) says how each of these was built and proven, and the [decision records](adr) hold the rules.
 
 ## Before 1.0
 
-- **Stack dependencies and drift, part 2.** The check lists what each stack depends on, dependencies can be read from Pulumi stack references on request, drift can be turned on per stack, and a drifted row lists what drifted the way a pending row lists its changes. Slice 4.7.
 - **The launch.** A listing on the GitHub Marketplace, a docs site, screenshots, a note on merge queues and the config schema in SchemaStore. Then the 1.0.0 tag and the `v1` moving tag.
 
 ## After 1.0
