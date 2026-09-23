@@ -51408,6 +51408,11 @@ function rootMarker(facts) {
     pairs.push(["full-scan-at", facts.fullScanAt]);
   if (facts.fullScanRun !== undefined)
     pairs.push(["full-scan-run", facts.fullScanRun]);
+  if (facts.waitingRun !== undefined) {
+    pairs.push(["run-waiting", facts.waitingRun.run], ["run-waiting-since", facts.waitingRun.since]);
+    if (facts.waitingRun.more > 0)
+      pairs.push(["run-waiting-more", String(facts.waitingRun.more)]);
+  }
   return marker("dashboard", pairs);
 }
 function rowMarker(facts) {
@@ -51504,8 +51509,17 @@ function readRoot(line) {
     scanRun: pairs.get("scan-run"),
     scanAt: pairs.get("scan-at"),
     fullScanAt: pairs.get("full-scan-at"),
-    fullScanRun: pairs.get("full-scan-run")
+    fullScanRun: pairs.get("full-scan-run"),
+    waitingRun: readWaitingRun(pairs)
   };
+}
+function readWaitingRun(pairs) {
+  const run = pairs.get("run-waiting");
+  const since = pairs.get("run-waiting-since");
+  if (run === undefined || since === undefined)
+    return;
+  const more = pairs.get("run-waiting-more") ?? "0";
+  return { run, since, more: /^\d+$/.test(more) ? Number(more) : 0 };
 }
 function isRowState(state) {
   return ROW_STATES.includes(state);
@@ -57389,6 +57403,19 @@ function runCalls(octokit, repo) {
         id: String(run.id),
         completed: run.status === "completed"
       }));
+    },
+    async listQueuedRuns(workflow) {
+      const { data } = await octokit.rest.actions.listWorkflowRuns({
+        ...repo,
+        workflow_id: workflow,
+        status: "queued",
+        per_page: 100
+      });
+      return data.workflow_runs.map((run) => ({
+        id: String(run.id),
+        status: run.status ?? "",
+        since: run.run_started_at ?? run.created_at
+      }));
     }
   };
 }
@@ -58086,6 +58113,60 @@ function shortenedNote(sections) {
 > This dashboard is too large for one issue, so ${counts2} ${one ? "is" : "are"} shortened. The summary that a shortened row links to shows every change. Deletes and replaces are the last thing to be cut.`;
 }
 
+// src/core/waiting-run.ts
+var RUN_WAIT_MINUTES = 10;
+function waitingRun(runs, now, ownRunId) {
+  const limit = now.getTime() - RUN_WAIT_MINUTES * 60000;
+  const long = runs.filter((run) => run.status === "queued" && run.id !== ownRunId).map((run) => ({ id: run.id, at: new Date(run.since) })).filter(({ at }) => !Number.isNaN(at.getTime()) && at.getTime() <= limit).sort((a, b) => a.at.getTime() - b.at.getTime() || a.id.length - b.id.length || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const [first] = long;
+  if (!first)
+    return;
+  return { run: first.id, since: first.at.toISOString(), more: long.length - 1 };
+}
+function carriedWaitingRun(facts, ownRunId) {
+  return facts?.run === ownRunId ? undefined : facts;
+}
+
+// src/render/waiting-run.ts
+function plural3(count, word) {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+function duration3(minutes) {
+  if (minutes < 60)
+    return plural3(minutes, "minute");
+  const hours = plural3(Math.floor(minutes / 60), "hour");
+  const rest = minutes % 60;
+  return rest === 0 ? hours : `${hours} and ${plural3(rest, "minute")}`;
+}
+function waited(facts, scanAt) {
+  const minutes = Math.floor((new Date(scanAt).getTime() - new Date(facts.since).getTime()) / 60000);
+  return Number.isNaN(minutes) || minutes < 0 ? undefined : minutes;
+}
+function runUrl(facts, repoUrl) {
+  return `${repoUrl}/actions/runs/${urlPart(facts.run)}`;
+}
+function waitingRunLine(root, repoUrl) {
+  const facts = root.waitingRun;
+  if (facts === undefined)
+    return;
+  const since = new Date(facts.since);
+  if (Number.isNaN(since.getTime()))
+    return;
+  const minutes = waited(facts, root.scanAt);
+  const long = minutes === undefined ? "" : ` for ${duration3(minutes)},`;
+  const run = `[A run of this dashboard's workflow](${runUrl(facts, repoUrl)})`;
+  const line = `${run} has been waiting for a runner${long} since ${utcMinute(since)}.`;
+  if (facts.more === 0)
+    return line;
+  const more = facts.more === 1 ? "1 more run has been waiting" : `${facts.more} more runs have been waiting`;
+  return `${line} ${more} for a runner for ${RUN_WAIT_MINUTES} minutes or more.`;
+}
+function waitingRunLogLine(facts, scanAt, workflow, repoUrl) {
+  const minutes = waited(facts, scanAt) ?? RUN_WAIT_MINUTES;
+  const more = facts.more === 0 ? "" : ` ${plural3(facts.more, "more run")} of it waited ${RUN_WAIT_MINUTES} minutes or more too.`;
+  return `Run ${facts.run} of ${workflow} has been waiting for a runner for ${duration3(minutes)}.${more} The dashboard says so under the scan line until it starts (record 0086): ${runUrl(facts, repoUrl)}`;
+}
+
 // src/render/body.ts
 var RECENTLY_DEPLOYED = 10;
 var TRAIL_LINE = "Times are in UTC.";
@@ -58120,7 +58201,7 @@ function signed(state, signs) {
 function byCodeUnit14(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
-function plural3(count, word) {
+function plural4(count, word) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 function rowBlock(row, options = {}) {
@@ -58165,7 +58246,7 @@ function countsLine(counts2, dots) {
     parts.push(`:warning: **${destroying} pending ${words} resources**`);
   }
   if (failed2 > 0)
-    parts.push(`${dot("failed", failed2)}${plural3(failed2, "failed deploy")}`);
+    parts.push(`${dot("failed", failed2)}${plural4(failed2, "failed deploy")}`);
   return parts.join(" · ");
 }
 function time3(iso) {
@@ -58235,11 +58316,13 @@ function renderBody(input2) {
   const out = [rootMarker(input2.root)];
   const counts2 = countsLine(facts.counts, input2.personality);
   const scan = scanLine(input2.root, input2.repoUrl);
+  const runWaits = waitingRunLine(input2.root, input2.repoUrl);
+  const scanLines = runWaits === undefined ? [scan] : [scan, runWaits];
   if (input2.personality)
     out.push(picture(facts.headerState, facts.crates, facts.signs, input2.actionRef).join(`
-`), '<div align="center">', counts2, scan, "</div>");
+`), '<div align="center">', counts2, ...scanLines, "</div>");
   else
-    out.push(counts2, scan);
+    out.push(counts2, ...scanLines);
   const { pending, shortened } = facts;
   if (shortened.pending + shortened.drift > 0) {
     out.push(shortenedNote([
@@ -58293,11 +58376,11 @@ function renderBody(input2) {
     if (loud.length > 0)
       out.push(blocks(loud));
     if (quiet.length > 0) {
-      const summary2 = loud.length > 0 ? `${quiet.length} more in sync` : `${plural3(quiet.length, "stack")} in sync`;
+      const summary2 = loud.length > 0 ? `${quiet.length} more in sync` : `${plural4(quiet.length, "stack")} in sync`;
       out.push(`<details><summary>${summary2}</summary>`, blocks(quiet), "</details>");
     }
     if (ignored.length > 0) {
-      out.push(`<details><summary>${plural3(ignored.length, "stack")} left out by ignore</summary>`, ignored.map(({ stackId: stackId2, reason }) => `- ${escapeText(stackId2)} · ${escapeText(reason)}`).join(`
+      out.push(`<details><summary>${plural4(ignored.length, "stack")} left out by ignore</summary>`, ignored.map(({ stackId: stackId2, reason }) => `- ${escapeText(stackId2)} · ${escapeText(reason)}`).join(`
 `), "</details>");
     }
   }
@@ -59303,7 +59386,7 @@ function runLinks(run) {
   const summary2 = `${base}/attempts/${run.runAttempt}`;
   return { summary: summary2, log: run.jobId === undefined ? summary2 : `${base}/job/${run.jobId}` };
 }
-function runUrl(repoUrl, run, attempt) {
+function runUrl2(repoUrl, run, attempt) {
   const base = `${repoUrl}/actions/runs/${run}`;
   return attempt === undefined ? base : `${base}/attempts/${attempt}`;
 }
@@ -59537,7 +59620,8 @@ async function swapRows(writer, issue3, rows) {
       scanRun: root.scanRun,
       scanAt: root.scanAt,
       fullScanAt: root.fullScanAt,
-      fullScanRun: root.fullScanRun
+      fullScanRun: root.fullScanRun,
+      waitingRun: carriedWaitingRun(root.waitingRun, writer.runId)
     };
     const mine = await rows(live, kept);
     const drawn = fitted(fit(writer, {
@@ -59618,7 +59702,7 @@ function fit(writer, body, aimAtTarget) {
       reason: entry3.reason,
       ticker: entry3.ticker,
       at: entry3.at,
-      runUrl: runUrl(repoUrl, entry3.run, entry3.attempt),
+      runUrl: runUrl2(repoUrl, entry3.run, entry3.attempt),
       shipped: body.shipped?.get(entry3)
     })),
     repoUrl,
@@ -59801,7 +59885,7 @@ async function readDeploymentRecords(github, environments, fallBack) {
   return records;
 }
 function linkOf(writer) {
-  return runUrl(writer.repoUrl, writer.runId, writer.runAttempt);
+  return runUrl2(writer.repoUrl, writer.runId, writer.runAttempt);
 }
 async function openRecord(writer, opening) {
   const { github } = writer;
@@ -60247,7 +60331,7 @@ async function notifyOutcome(context3, repo, report) {
   const notification = applyNotification(report.outcome ?? "failed", report.stack, {
     repository: repositoryOf(context3.repoUrl),
     dashboardUrl: eventDashboardUrl(context3.repoUrl, context3.event),
-    runUrl: runUrl(context3.repoUrl, context3.runId, context3.runAttempt)
+    runUrl: runUrl2(context3.repoUrl, context3.runId, context3.runAttempt)
   });
   if (!notification)
     return;
@@ -60319,7 +60403,7 @@ ${ALREADY_ENDED}
   const { payload } = claim3;
   report.ticker = payload.ticker;
   report.outcome = "failed";
-  const runUrl2 = runUrl(context3.repoUrl, context3.runId, context3.runAttempt);
+  const runUrl3 = runUrl2(context3.repoUrl, context3.runId, context3.runAttempt);
   if (claim3.kind === "unclaimed") {
     throw new ApplyFailedError(`Deployment record ${id} of ${name} could not be marked in progress: ${message(claim3.error)}. Nothing was deployed. ${RECORD_PERMISSIONS}`);
   }
@@ -60327,7 +60411,7 @@ ${ALREADY_ENDED}
   const progress = { deploying: false };
   let attempt;
   try {
-    attempt = await deploy(context3, repo, id_, payload, runUrl2, progress);
+    attempt = await deploy(context3, repo, id_, payload, runUrl3, progress);
   } catch (error63) {
     const end = unplannedEnd(progress.deploying);
     attempt = {
@@ -60355,7 +60439,7 @@ ${ALREADY_ENDED}
     await writeSummary(context3, renderApplySummary({
       stackId: id_,
       ticker: payload.ticker,
-      runUrl: runUrl2,
+      runUrl: runUrl3,
       outcome: attempt.summary
     }));
   }
@@ -60369,7 +60453,7 @@ ${ALREADY_ENDED}
           reason: fact.reason,
           ticker: fact.ticker,
           at: fact.at,
-          runUrl: runUrl(context3.repoUrl, fact.run, fact.attempt)
+          runUrl: runUrl2(context3.repoUrl, fact.run, fact.attempt)
         } : undefined;
         const row = previewRow(id_, made, runLinks(context3), failure2, {
           toolDiffInLog: attempt.toolDiffInLog
@@ -60399,7 +60483,7 @@ function reasonOf(attempt) {
 function applied(result) {
   return result.ok ? { kind: "diff", diff: result.diff } : { kind: "preview-failed", reason: previewFailureText(result.reason) };
 }
-async function deploy(context3, repo, id, payload, runUrl2, progress) {
+async function deploy(context3, repo, id, payload, runUrl3, progress) {
   const { log, adapter } = context3;
   const name = logGroupTitle(id);
   const notDeployed = (reason, why = "") => `${name} was not deployed: ${deployFailureText(reason)}.${why}`;
@@ -60464,13 +60548,13 @@ async function deploy(context3, repo, id, payload, runUrl2, progress) {
   };
   const fresh = unprepared ?? await adapter.preview(setup.stack.stack, { ...options, savePlan: true });
   try {
-    return await afterFreshPreview(context3, id, payload, runUrl2, progress, setup, fresh, options);
+    return await afterFreshPreview(context3, id, payload, runUrl3, progress, setup, fresh, options);
   } finally {
     if (fresh.ok)
       await fresh.plan?.dispose();
   }
 }
-async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup, previewed, options) {
+async function afterFreshPreview(context3, id, payload, runUrl3, progress, setup, previewed, options) {
   const { log, adapter } = context3;
   const name = logGroupTitle(id);
   const notDeployed = (reason, why = "") => `${name} was not deployed: ${deployFailureText(reason)}.${why}`;
@@ -60547,7 +60631,7 @@ async function afterFreshPreview(context3, id, payload, runUrl2, progress, setup
       state: "deploying",
       stackId: id,
       ticker: payload.ticker,
-      runUrl: runUrl2,
+      runUrl: runUrl3,
       waiting: false,
       destroys: fresh.diff.changes.filter(isDestroy).length,
       deletes: fresh.diff.changes.filter((change3) => change3.op === "delete").length,
@@ -60651,6 +60735,7 @@ async function swapRow(context3, setup, id, make) {
   const result = await swapRows({
     github,
     log,
+    runId: context3.runId,
     repoUrl: context3.repoUrl,
     actionRef: context3.actionRef,
     dashboard: setup.config.dashboard,
@@ -62505,8 +62590,8 @@ var NOBODY = {
   "end-of-history": "the tick is older than the edit history GitHub keeps",
   "not-in-newest-entry": "the body kept moving"
 };
-function runUrl2(context3) {
-  return runUrl(context3.repoUrl, context3.runId, context3.runAttempt);
+function runUrl3(context3) {
+  return runUrl2(context3.repoUrl, context3.runId, context3.runAttempt);
 }
 function unverifiedMessage(unverified) {
   const logins = [...new Set(unverified.map(({ tick }) => tick.editor.login))].join(", ");
@@ -62562,6 +62647,7 @@ async function swapRows2(context3, config2, stacks2, ignored, issue3, swap) {
   const attribution = new Map;
   const result = await swapRows({
     github: context3.github,
+    runId: context3.runId,
     log: context3.log,
     repoUrl: context3.repoUrl,
     actionRef: context3.actionRef,
@@ -62599,7 +62685,7 @@ async function swapRows2(context3, config2, stacks2, ignored, issue3, swap) {
         state: "deploying",
         stackId: one.stackId,
         ticker: one.ticker,
-        runUrl: runUrl2(context3),
+        runUrl: runUrl3(context3),
         waiting: true,
         destroys: old?.known ? old.destroys : 0,
         deletes: old?.known ? old.deletes : undefined,
@@ -62617,7 +62703,7 @@ async function swapRows2(context3, config2, stacks2, ignored, issue3, swap) {
           state: "deploying",
           stackId: id,
           ticker: fact.ticker,
-          runUrl: runUrl(context3.repoUrl, fact.run, fact.attempt),
+          runUrl: runUrl2(context3.repoUrl, fact.run, fact.attempt),
           waiting: fact.waiting,
           destroys: row.destroys,
           deletes: row.deletes,
@@ -63953,7 +64039,7 @@ function placeRows(so, late) {
         state: "deploying",
         stackId: id,
         ticker: fact.ticker,
-        runUrl: runUrl(so.repoUrl, fact.run, fact.attempt),
+        runUrl: runUrl2(so.repoUrl, fact.run, fact.attempt),
         waiting: fact.waiting,
         destroys: destroysOf(mine, liveRow),
         deletes: deletesOf(mine, liveRow),
@@ -63990,7 +64076,8 @@ function placeRows(so, late) {
         scanRun: so.scan.runId,
         scanAt: so.scan.at,
         fullScanAt: full ? so.scan.at : live.root?.fullScanAt,
-        fullScanRun: full ? so.scan.runId : live.root?.fullScanRun
+        fullScanRun: full ? so.scan.runId : live.root?.fullScanRun,
+        waitingRun: so.scan.waitingRun
       },
       facts: deploys.facts,
       shipped: late.shipped ?? new Map,
@@ -64040,7 +64127,7 @@ function failureLine2(repoUrl, id, deployFact, outside) {
     reason: fact.reason,
     ticker: fact.ticker,
     at: fact.at,
-    runUrl: runUrl(repoUrl, fact.run, fact.attempt)
+    runUrl: runUrl2(repoUrl, fact.run, fact.attempt)
   };
 }
 function destroysOf(mine, liveRow) {
@@ -64653,7 +64740,7 @@ function reportOutputs2(context3, report) {
   if (!previewed || !startedAt)
     return;
   const text7 = scanResultFile({
-    run: runUrl(context3.repoUrl, context3.runId, undefined),
+    run: runUrl2(context3.repoUrl, context3.runId, undefined),
     commit: context3.sha,
     milliseconds: context3.now().getTime() - startedAt.getTime(),
     dashboard,
@@ -64670,6 +64757,7 @@ async function scanning(context3, report) {
   report.startedAt = startedAt;
   const at = startedAt.toISOString();
   const links2 = runLinks(context3);
+  let waitingRunFacts;
   const repo = openRepo(context3.root, context3.adapter);
   const config2 = repo.config();
   const { stacks: stacks2, ignored } = await repo.stacks();
@@ -64741,8 +64829,11 @@ async function scanning(context3, report) {
       logDiff
     });
     const full = isFullScan({ ids: ids2, previewed });
+    if (waitingRunFacts === undefined)
+      waitingRunFacts = await findWaitingRun(context3, at);
     const writer = {
       github: context3.github,
+      runId: context3.runId,
       log,
       repoUrl: context3.repoUrl,
       actionRef: context3.actionRef,
@@ -64756,7 +64847,12 @@ async function scanning(context3, report) {
     }
     const soFar = {
       ids: ids2,
-      scan: { sha: context3.sha, runId: context3.runId, at },
+      scan: {
+        sha: context3.sha,
+        runId: context3.runId,
+        at,
+        waitingRun: waitingRunFacts.found
+      },
       repoUrl: context3.repoUrl,
       links: links2,
       logDiff,
@@ -64896,6 +64992,19 @@ async function lateDeploys(context3, stacks2, previewed, live) {
   } catch (error63) {
     throw new Error(`The deployment records could not be read: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permissions \`deployments: write\` and \`actions: read\` next to \`contents: read\` and \`issues: write\` (record 0003).`);
   }
+}
+async function findWaitingRun(context3, at) {
+  let runs;
+  try {
+    runs = await context3.github.listQueuedRuns(context3.workflow);
+  } catch (error63) {
+    context3.log.info(`The queued runs of ${context3.workflow} could not be read: ${error63 instanceof Error ? error63.message : error63}. The dashboard says nothing about a run that waits for a runner this time. The scan job needs the permission \`actions: read\` (record 0086).`);
+    return { found: undefined };
+  }
+  const found = waitingRun(runs, new Date(at), context3.runId);
+  if (found)
+    context3.log.info(waitingRunLogLine(found, at, context3.workflow, context3.repoUrl));
+  return { found };
 }
 async function resolveWaits(context3, live, deploys) {
   const met = live.rows.some((row2) => row2.known && row2.ticked && deploys.facts.byStack.get(row2.stackId)?.kind !== "open") || live.merges.some((merge3) => merge3.ticked) || live.bulk.some((line3) => line3.ticked);
