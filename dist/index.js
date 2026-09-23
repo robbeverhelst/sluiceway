@@ -51236,6 +51236,8 @@ function problemWords(issue3) {
       return `expected a mapping, got ${show(issue3.value)}. Write it as the top level has it: drift: { enabled: ${typeof issue3.value === "boolean" ? issue3.value : true} }.`;
     case "not-a-tick-rule":
       return `expected "write", "maintain", "admin" or a list of usernames, got ${show(issue3.value)}.`;
+    case "not-a-deploy-trigger":
+      return `expected "on-tick" or "on-merge", got ${show(issue3.value)}.`;
     case "not-an-event":
       return `${show(issue3.value)} is not an event. The events are: ${issue3.events.join(", ")}.`;
     case "not-a-phase-name":
@@ -51858,10 +51860,13 @@ function changeLine(change, options = {}) {
 var ORPHAN_TICK_NOTE = ":information_source: a tick on this row was not picked up. Tick again to deploy.";
 var DEPLOYS_OFF_NOTE = ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick started nothing.";
 function dependencyNote(ids, phases = []) {
+  return `:information_source: this tick started nothing: ${waitsOnWords(ids, phases)}`;
+}
+function waitsOnWords(ids, phases) {
   const names = ids.map((id) => `**${escapeText(id)}**`).join(" and ");
   const one = ids.length === 1;
   if (phases.length === 0) {
-    return `:information_source: this tick started nothing: it depends on ${names}, which ${one ? "has a change" : "have changes"} waiting. Tick ${one ? "both" : "them all"} to deploy them in order, or deploy ${names} first.`;
+    return `it depends on ${names}, which ${one ? "has a change" : "have changes"} waiting. Tick ${one ? "both" : "them all"} to deploy them in order, or deploy ${names} first.`;
   }
   const waiting = (count2) => count2 === 1 ? "has a change" : "have changes";
   const clauses = [
@@ -51873,7 +51878,23 @@ function dependencyNote(ids, phases = []) {
     ...ids.map((id) => `**${escapeText(id)}**`),
     ...phases.map(({ phase }) => `the **${escapeText(phase)}** phase`)
   ];
-  return `:information_source: this tick started nothing: ${clauses.join(", and ")}. Tick ${count === 1 ? "both" : "them all"} to deploy them in order, or deploy ${listWords(first)} first.`;
+  return `${clauses.join(", and ")}. Tick ${count === 1 ? "both" : "them all"} to deploy them in order, or deploy ${listWords(first)} first.`;
+}
+function onMergeNote(wait) {
+  const lead = ":information_source: this stack deploys on merge";
+  const waits = `${lead}, and this change waits for a tick:`;
+  switch (wait.kind) {
+    case "deploys-off":
+      return `${lead}, and deploys are turned off in \`sluiceway.yaml\`.`;
+    case "destroy":
+      return `${waits} it deletes or replaces a resource.`;
+    case "drift":
+      return `${waits} the stack drifted, and a deploy would also put back what changed outside the code.`;
+    case "not-merged":
+      return `${waits} the scan that found it did not follow a merge.`;
+    case "depends-on":
+      return `${waits} ${waitsOnWords(wait.named, wait.phases)}`;
+  }
 }
 var NAMES_PER_PHASE = 5;
 function shortList(ids) {
@@ -51889,7 +51910,7 @@ function pendingAgainLine({ logUrl }) {
   return logUrl === undefined ? PENDING_AGAIN_NOTE : `${PENDING_AGAIN_NOTE} Compare the tool's own diff in the [job log](${logUrl}).`;
 }
 function failureLine(failure2, timeZone) {
-  return `:x: last deploy failed: ${escapeText(failure2.reason)} · ticked by ${escapeText(failure2.ticker)} · ${minuteAt(failure2.at, timeZone)} · [run](${failure2.runUrl})`;
+  return `:x: last deploy failed: ${escapeText(failure2.reason)} · ${failure2.onMerge ? "merged" : "ticked"} by ${escapeText(failure2.ticker)} · ${minuteAt(failure2.at, timeZone)} · [run](${failure2.runUrl})`;
 }
 function destroyWords(deletes, replaces) {
   return [deletes && `deletes ${deletes}`, replaces && `replaces ${replaces}`].filter(Boolean).join(", ");
@@ -51986,6 +52007,8 @@ function pendingRow(row, options) {
     lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
   if (row.failure)
     lines.push(failureLine(row.failure, options.timeZone));
+  if (row.waitsOnMerge)
+    lines.push(onMergeNote(row.waitsOnMerge));
   if (row.pendingAgain)
     lines.push(pendingAgainLine(row.pendingAgain));
   if (row.orphanTick && !options.readOnly)
@@ -52029,10 +52052,11 @@ function spinner(actionRef2, queued) {
 }
 function deployingRow(row, options) {
   const behind = row.behind ?? [];
-  const word = behind.length > 0 ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}` : row.waiting ? "waiting to start" : "deploying";
+  const onMerge = row.onMerge ? " on merge" : "";
+  const word = behind.length > 0 ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}` : row.waiting ? `waiting to start${onMerge}` : `deploying${onMerge}`;
   const state = behind.length > 0 ? "queued" : "deploying";
   const lines = [
-    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef, state === "queued")}**${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys, deletes: row.deletes })}`
+    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef, state === "queued")}**${escapeText(row.stackId)}** · ${word} · ${row.onMerge ? "merged" : "ticked"} by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys, deletes: row.deletes })}`
   ];
   if (row.attribution)
     lines.push(row.attribution.full, ...outsideFold(row.attribution, 0));
@@ -52521,6 +52545,7 @@ var stackEntry = exports_external.strictObject({
       from: text.describe("A key of the project file whose text is the phase, under config or at the top level.")
     })
   ]).describe("The phase of these stacks, one of phases, or from: a key of the project file that names it. A stack in a phase depends on every stack in every earlier phase.").exactOptional(),
+  deploy: exports_external.enum(["on-tick", "on-merge"]).describe("When these stacks deploy. on-tick: when a person ticks the row, the default. on-merge: by themselves after the scan of a merge that found them pending, through the same fresh preview and hash check as a tick, attributed to whoever merged. A change that deletes or replaces something, drift, and a stack it depends on that waits for a tick still wait for a tick.").exactOptional(),
   drift: exports_external.strictObject({
     enabled: exports_external.boolean().describe("Check these stacks for drift, or not, whatever drift.enabled at the top level says. The scans that check are the same.")
   }).describe("The drift check of these stacks. Default: the top level drift.").exactOptional(),
@@ -52719,6 +52744,9 @@ function classify(issue3, raw) {
   if (issue3.code === "invalid_union") {
     return Array.isArray(value) ? inner(1) : one({ kind: "not-a-tick-rule", value });
   }
+  if (key === "deploy" && path[0] === "stacks") {
+    return one({ kind: "not-a-deploy-trigger", value });
+  }
   if (issue3.code === "invalid_value" && path[0] === "notify") {
     return one({ kind: "not-an-event", value, events: NOTIFY_EVENTS });
   }
@@ -52878,6 +52906,7 @@ function applyConfig(config2, found) {
     const id = stackId(stack);
     const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
     const drift = entries.findLast((entry) => entry.drift)?.drift?.enabled;
+    const deploy = entries.findLast((entry) => entry.deploy)?.deploy;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     return {
@@ -52890,7 +52919,8 @@ function applyConfig(config2, found) {
       ...phase === undefined ? {} : { phase },
       ...from === undefined ? {} : { phaseFrom: from },
       ...entries.some((entry) => entry.dependsOn === DEPENDS_ON_AUTO) ? { dependsOnAuto: true } : {},
-      ...drift === undefined ? {} : { drift }
+      ...drift === undefined ? {} : { drift },
+      ...deploy === "on-merge" ? { deploy } : {}
     };
   });
 }
@@ -57404,6 +57434,17 @@ function mergedBeforeDispatch(payload) {
     return [];
   return readMergeScanInput(record2(record2(payload)?.inputs)?.[MERGE_SCAN_INPUT]);
 }
+function mergedBy(eventName, payload) {
+  if (eventName !== "push")
+    return;
+  const body2 = record2(payload);
+  const branch = record2(body2?.repository)?.default_branch;
+  if (typeof branch !== "string" || branch === "" || body2?.ref !== `refs/heads/${branch}`) {
+    return;
+  }
+  const login = record2(body2?.sender)?.login;
+  return typeof login === "string" && login !== "" ? login : undefined;
+}
 
 // src/github/job.ts
 function readJob(env) {
@@ -58853,7 +58894,8 @@ function recentLine(deploy, dots, year, timeZone, short) {
   const dot = dots ? `${RESULT_DOT[outcome]}&nbsp;` : "";
   const shipped = deploy.shipped ? `
 ${INDENT}${short ? deploy.shipped.counted : deploy.shipped.full}` : "";
-  return `- ${dot}${escapeText(deploy.stackId)}${result} · ${escapeText(deploy.ticker)} · ${trailMinute(deploy.at, year, timeZone)} · [run](${deploy.runUrl})${shipped}`;
+  const who = `${deploy.onMerge ? "merged by " : ""}${escapeText(deploy.ticker)}`;
+  return `- ${dot}${escapeText(deploy.stackId)}${result} · ${who} · ${trailMinute(deploy.at, year, timeZone)} · [run](${deploy.runUrl})${shipped}`;
 }
 function newestTrail(deploys, length) {
   return [...deploys].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit15(a.stackId, b.stackId)).slice(0, length ?? RECENTLY_DEPLOYED);
@@ -59569,7 +59611,8 @@ function deploymentPayload(payload) {
     run: payload.run,
     ...payload.attempt === undefined ? {} : { attempt: payload.attempt },
     ...payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {},
-    ...payload.drift ? { drift: true } : {}
+    ...payload.drift ? { drift: true } : {},
+    ...payload.onMerge ? { onMerge: true } : {}
   };
 }
 function mergePayload(payload) {
@@ -59585,7 +59628,7 @@ var RUN_ID2 = /^[1-9]\d*$/;
 function readDeploymentPayload(payload) {
   if (typeof payload !== "object" || payload === null)
     return;
-  const { v, hash: hash2, ticker, run, behind, merge: merge3, drift, attempt } = payload;
+  const { v, hash: hash2, ticker, run, behind, merge: merge3, drift, attempt, onMerge } = payload;
   if (v !== PAYLOAD_VERSION)
     return;
   const attempted = typeof attempt === "string" && RUN_ID2.test(attempt) ? { attempt } : {};
@@ -59602,6 +59645,8 @@ function readDeploymentPayload(payload) {
   const read3 = { hash: hash2, ticker, run, ...attempted };
   if (drift === true)
     read3.drift = true;
+  if (onMerge === true)
+    read3.onMerge = true;
   if (behind === undefined)
     return read3;
   const ids2 = Array.isArray(behind) ? behind : [];
@@ -59658,6 +59703,7 @@ function factOf(record3, payload) {
   const run = payload.attempt === undefined ? { run: payload.run } : { run: payload.run, attempt: payload.attempt };
   const state = record3.status?.state ?? "";
   const at = new Date(record3.status?.createdAt ?? record3.createdAt);
+  const onMerge = payload.onMerge ? { onMerge: true } : {};
   if (SUCCEEDED.has(state)) {
     const ended = state === "inactive" && record3.status?.succeededAt ? new Date(record3.status.succeededAt) : at;
     const inSync = state === "success" && record3.status?.description === IN_SYNC_DESCRIPTION;
@@ -59667,7 +59713,8 @@ function factOf(record3, payload) {
       ...run,
       at: Number.isNaN(ended.getTime()) ? at : ended,
       hash: payload.hash,
-      ...inSync ? { inSync } : {}
+      ...inSync ? { inSync } : {},
+      ...onMerge
     };
   }
   if (FAILED.has(state)) {
@@ -59676,7 +59723,8 @@ function factOf(record3, payload) {
       reason: record3.status?.description || NO_REASON_RECORDED,
       ticker,
       ...run,
-      at
+      at,
+      ...onMerge
     };
   }
   return {
@@ -59686,7 +59734,8 @@ function factOf(record3, payload) {
     ticker,
     ...run,
     ...payload.behind ? { behind: payload.behind } : {},
-    ...payload.merge === undefined ? {} : { merge: payload.merge }
+    ...payload.merge === undefined ? {} : { merge: payload.merge },
+    ...onMerge
   };
 }
 function deployFacts(records) {
@@ -59726,6 +59775,7 @@ function deployFacts(records) {
         run: fact.run,
         ...fact.attempt === undefined ? {} : { attempt: fact.attempt },
         at: fact.at,
+        ...fact.onMerge ? { onMerge: true } : {},
         ...fact.inSync ? { result: payload.drift ? "drift-gone" : "in-sync" } : payload.drift ? { result: "drift-repaired" } : {}
       };
       facts.succeeded.push({ ...succeeded, sha: record3.sha });
@@ -59742,7 +59792,8 @@ function deployFacts(records) {
         ...fact.attempt === undefined ? {} : { attempt: fact.attempt },
         at: fact.at,
         result: "failed",
-        reason: fact.reason
+        reason: fact.reason,
+        ...fact.onMerge ? { onMerge: true } : {}
       });
     }
   }
@@ -60260,7 +60311,8 @@ function fit(writer, body2, aimAtTarget) {
       ticker: entry3.ticker,
       at: entry3.at,
       runUrl: runUrl2(repoUrl, entry3.run, entry3.attempt),
-      shipped: body2.shipped?.get(entry3)
+      shipped: body2.shipped?.get(entry3),
+      ...entry3.onMerge ? { onMerge: true } : {}
     })),
     repoUrl,
     actionRef: writer.actionRef,
@@ -60456,7 +60508,8 @@ async function openRecord(writer, opening) {
       hash: opening.hash,
       ...run,
       behind: opening.behind,
-      ...opening.drift ? { drift: true } : {}
+      ...opening.drift ? { drift: true } : {},
+      ...opening.onMerge ? { onMerge: true } : {}
     })
   });
   try {
@@ -60480,9 +60533,14 @@ async function startQueuedRecord(writer, queued, at) {
     sha: at.sha,
     ticker: payload.ticker,
     hash: payload.hash,
-    drift: payload.drift
+    drift: payload.drift,
+    onMerge: payload.onMerge
   });
-  const started = { ...opened, ticker: payload.ticker };
+  const started = {
+    ...opened,
+    ticker: payload.ticker,
+    ...payload.onMerge ? { onMerge: true } : {}
+  };
   if (opened.unfinished !== undefined)
     return started;
   try {
@@ -60661,7 +60719,7 @@ function renderApplySummary(input2) {
   const result = outcome.kind === "deployed" ? "deployed" : outcome.kind === "in-sync" ? IN_SYNC_DESCRIPTION : outcome.kind === "rehearsed" ? REHEARSED_DESCRIPTION : `not deployed: ${escapeText(outcome.reason)}`;
   const parts = [
     "## Sluiceway apply",
-    `**${escapeText(input2.stackId)}** · ${result} · ticked by ${escapeText(input2.ticker)} · [run](${input2.runUrl})`
+    `**${escapeText(input2.stackId)}** · ${result} · ${input2.onMerge ? "merged" : "ticked"} by ${escapeText(input2.ticker)} · [run](${input2.runUrl})`
   ];
   if (outcome.kind === "deployed") {
     parts.push("### What went out", ...diffParts(outcome.diff, "No changes."));
@@ -60751,7 +60809,10 @@ var PUBLIC_LOG_DIFF = {
 
 // src/render/moved-comment.ts
 var MOVED_COMMENT_TAIL = "The row on the dashboard shows the change as it is now. Tick it again to deploy that.";
-function movedComment({ login, stackId: stackId2 }) {
+function movedComment({ login, stackId: stackId2, onMerge }) {
+  if (onMerge) {
+    return `@${login} merged a change that **${escapeText(stackId2)}** deploys on merge, and the change moved before the deploy, so nothing was deployed. The row on the dashboard shows the change as it is now. Tick it to deploy that.`;
+  }
   return `@${login} ticked **${escapeText(stackId2)}**, and the change moved since the tick, so nothing was deployed. ${MOVED_COMMENT_TAIL}`;
 }
 
@@ -60966,7 +61027,7 @@ ${ALREADY_ENDED}
   if (claim3.kind === "unclaimed") {
     throw new ApplyFailedError(`Deployment record ${id} of ${name} could not be marked in progress: ${message(claim3.error)}. Nothing was deployed. ${RECORD_PERMISSIONS}`);
   }
-  log.info(`Deployment record ${id}: ${name}, ticked by ${payload.ticker}, approved diff hash ${payload.hash}. It is in progress.`);
+  log.info(`Deployment record ${id}: ${name}, ${payload.onMerge ? "merged" : "ticked"} by ${payload.ticker}, approved diff hash ${payload.hash}. It is in progress.`);
   const progress = { deploying: false };
   let attempt;
   try {
@@ -60999,7 +61060,8 @@ ${ALREADY_ENDED}
       stackId: id_,
       ticker: payload.ticker,
       runUrl: runUrl3,
-      outcome: attempt.summary
+      outcome: attempt.summary,
+      ...payload.onMerge ? { onMerge: true } : {}
     }));
   }
   if (ended && attempt.row && attempt.setup) {
@@ -61012,7 +61074,8 @@ ${ALREADY_ENDED}
           reason: fact.reason,
           ticker: fact.ticker,
           at: fact.at,
-          runUrl: runUrl2(context3.repoUrl, fact.run, fact.attempt)
+          runUrl: runUrl2(context3.repoUrl, fact.run, fact.attempt),
+          ...fact.onMerge ? { onMerge: true } : {}
         } : undefined;
         const row = previewRow(id_, made, runLinks(context3), failure2, {
           toolDiffInLog: attempt.toolDiffInLog
@@ -61024,7 +61087,11 @@ ${ALREADY_ENDED}
     }
     if (written !== undefined && reason?.kind === "moved") {
       try {
-        await github.createComment(written, movedComment({ login: payload.ticker, stackId: id_ }));
+        await github.createComment(written, movedComment({
+          login: payload.ticker,
+          stackId: id_,
+          ...payload.onMerge ? { onMerge: true } : {}
+        }));
       } catch (error63) {
         failures.push(`The comment to ${payload.ticker} about the moved change could not be written: ${message(error63)}. The job needs the permission \`issues: write\`.`);
       }
@@ -61194,7 +61261,8 @@ async function afterFreshPreview(context3, id, payload, runUrl3, progress, setup
       waiting: false,
       destroys: fresh.diff.changes.filter(isDestroy).length,
       deletes: fresh.diff.changes.filter((change3) => change3.op === "delete").length,
-      attribution
+      attribution,
+      ...payload.onMerge ? { onMerge: true } : {}
     }));
   } catch (error63) {
     log.info(`The dashboard could not be written before the deploy: ${message(error63)}`);
@@ -62526,6 +62594,11 @@ function checkJobs(path, workflow, found, config2, warnings) {
     if (fromScan.length === 0)
       warnings.push({ kind: "no-merged-apply", path });
   }
+  const onMerge = config2.stacks.some(({ deploy: deploy2 }) => deploy2 === "on-merge");
+  if (onMerge && !mergesAndDeploys && scans.length > 0 && applies.length > 0) {
+    if (fromScan.length === 0)
+      warnings.push({ kind: "no-on-merge-apply", path });
+  }
 }
 function listensToEdits(issues, present3) {
   if (!present3)
@@ -63341,7 +63414,8 @@ async function swapRows2(context3, config2, stacks2, ignored, issue3, swap) {
         destroys: old?.known ? old.destroys : 0,
         deletes: old?.known ? old.deletes : undefined,
         attribution: lines3.get(one.stackId)?.lines,
-        behind: one.behind
+        behind: one.behind,
+        ...one.onMerge ? { onMerge: true } : {}
       });
     }
     for (const [id, row] of live.first) {
@@ -63359,7 +63433,8 @@ async function swapRows2(context3, config2, stacks2, ignored, issue3, swap) {
           destroys: row.destroys,
           deletes: row.deletes,
           attribution: lines3.get(id)?.lines,
-          behind: fact.behind
+          behind: fact.behind,
+          ...fact.onMerge ? { onMerge: true } : {}
         });
       } else if (wanted && (row.ticked || wanted.unticked) && row.hash === wanted.hash) {
         carried.set(id, clearTick(row, { note: wanted.note, unticked: wanted.unticked }));
@@ -63441,7 +63516,8 @@ async function startQueued(context3, repo, handOn, watch) {
         stackId: id,
         environment: stack.environment,
         deployment: record3.deployment,
-        ticker: record3.ticker
+        ticker: record3.ticker,
+        ...record3.onMerge ? { onMerge: true } : {}
       });
       if (record3.unfinished !== undefined)
         throw record3.unfinished;
@@ -63907,7 +63983,8 @@ function settingsText(configured, phases = []) {
   const claims = inputs.length === 0 ? "no inputs" : `inputs ${inputs.join(", ")}`;
   const phase = configured.phase === undefined ? "" : `, phase ${phaseWords(configured, " (read from ", ")")}`;
   const waits = dependsOnWords(configured, phases);
-  return `environment ${environment}, tickers ${rule}, ${claims}${phase}${waits === undefined ? "" : `, depends on ${waits}`}`;
+  const onMerge = configured.deploy === "on-merge" ? ", deploys on merge" : "";
+  return `environment ${environment}, tickers ${rule}, ${claims}${phase}${waits === undefined ? "" : `, depends on ${waits}`}${onMerge}`;
 }
 function phaseWords({ phase, phaseFrom }, before, after) {
   return phaseFrom === undefined ? `${phase}` : `${phase}${before}${phaseFrom}${after}`;
@@ -64098,6 +64175,8 @@ function workflowWarningText(warning2) {
       return `${path}, job ${warning2.job}: settle does not wait for the job ${warning2.apply}. Add ${warning2.apply} to its needs, so it ends the records of those deploys too.`;
     case "no-merged-apply":
       return `${path}: mergeAndDeploy is on, and no apply job takes the matrix of the scan. The scan after a merge hands the deploy on through its own matrix output, so a merged update would never deploy. Add a copy of the apply job that takes needs.scan.outputs.matrix.`;
+    case "no-on-merge-apply":
+      return `${path}: a stack is set to deploy: on-merge, and no apply job takes the matrix of the scan. The scan of a merge hands that deploy on through its own matrix output, so it would never start. Add a copy of the apply job that takes needs.scan.outputs.matrix.`;
     case "scan-no-matrix-output":
       return `${path}, job ${warning2.job}: it takes the matrix of the job ${warning2.scan}, which has no matrix output. Add outputs: matrix: \${{ steps.<id>.outputs.matrix }} to ${warning2.scan}, with that id on its Sluiceway step.`;
   }
@@ -64151,6 +64230,7 @@ function stacksPart({ stacks: stacks2, phases }) {
     return { log: [{ info: found }], summary: ["### Stacks", found] };
   const waits = stacks2.some((configured) => configured.dependsOn !== undefined || configured.dependsOnAuto);
   const phased = stacks2.some((configured) => configured.phase !== undefined);
+  const onMerge = stacks2.some((configured) => configured.deploy === "on-merge");
   return {
     log: [
       { info: found },
@@ -64163,8 +64243,8 @@ function stacksPart({ stacks: stacks2, phases }) {
       "### Stacks",
       found,
       [
-        `| Stack | Environment | Tickers | Inputs |${phased ? " Phase |" : ""}${waits ? " Depends on |" : ""}`,
-        `|---|---|---|---|${phased ? "---|" : ""}${waits ? "---|" : ""}`,
+        `| Stack | Environment | Tickers | Inputs |${phased ? " Phase |" : ""}${waits ? " Depends on |" : ""}${onMerge ? " Deploys |" : ""}`,
+        `|---|---|---|---|${phased ? "---|" : ""}${waits ? "---|" : ""}${onMerge ? "---|" : ""}`,
         ...stacks2.map((configured) => {
           const { environment, tickers: tickers2, inputs } = configured;
           return row([
@@ -64173,7 +64253,8 @@ function stacksPart({ stacks: stacks2, phases }) {
             typeof tickers2 === "string" ? tickers2 : tickers2.join(", "),
             inputs.length === 0 ? "none" : inputs.join(", "),
             ...phased ? [configured.phase === undefined ? "none" : phaseWords(configured, ", from ", "")] : [],
-            ...waits ? [dependsOnCell(configured, phases)] : []
+            ...waits ? [dependsOnCell(configured, phases)] : [],
+            ...onMerge ? [configured.deploy === "on-merge" ? "on merge" : "on a tick"] : []
           ]);
         })
       ].join(`
@@ -64608,6 +64689,69 @@ function countRequests(octokit) {
   return () => count3;
 }
 
+// src/core/on-merge.ts
+function onMergeDeploys(input2) {
+  const waits = new Map;
+  if (input2.readOnly)
+    return { deploys: [], waits };
+  const hashes = new Map;
+  for (const stack of input2.stacks) {
+    if (stack.deploy !== "on-merge" || input2.open.has(stack.id))
+      continue;
+    const result = input2.previewed.get(stack.id);
+    if (!result?.ok || result.diff.changes.length === 0)
+      continue;
+    const wait = waitOf(input2, result.diff);
+    if (wait)
+      waits.set(stack.id, wait);
+    else
+      hashes.set(stack.id, diffHash(result.diff));
+  }
+  const pending = new Set(input2.livePending);
+  for (const [id, result] of input2.previewed) {
+    if (result.ok && result.diff.changes.length > 0)
+      pending.add(id);
+  }
+  const plan = planDeploys({
+    allowed: [...hashes.keys()],
+    dependsOn: new Map(input2.stacks.map(({ id, dependsOn }) => [id, dependsOn ?? []])),
+    pending,
+    open: input2.open
+  });
+  const phaseOf = new Map(input2.stacks.flatMap(({ id, phase }) => phase === undefined ? [] : [[id, phase]]));
+  for (const { stackId: stackId2, waitingOn } of plan.refused) {
+    waits.set(stackId2, {
+      kind: "depends-on",
+      ...waitsByPhase({ phases: input2.phases, phaseOf, stackId: stackId2, waitingOn })
+    });
+  }
+  const environments = new Map(input2.stacks.map(({ id, environment }) => [id, environment]));
+  const ticker = input2.mergedBy ?? "";
+  const deploys = [
+    ...plan.start.map((stackId2) => ({ stackId: stackId2, behind: undefined })),
+    ...plan.queued
+  ].map(({ stackId: stackId2, behind }) => ({
+    stackId: stackId2,
+    environment: environments.get(stackId2) ?? "",
+    ticker,
+    hash: hashes.get(stackId2) ?? "",
+    drift: false,
+    behind
+  }));
+  return { deploys, waits };
+}
+function waitOf(input2, diff2) {
+  if (!input2.deploys)
+    return { kind: "deploys-off" };
+  if (diff2.changes.some(isDestroy))
+    return { kind: "destroy" };
+  if ((diff2.drift ?? []).length > 0)
+    return { kind: "drift" };
+  if (input2.mergedBy === undefined)
+    return { kind: "not-merged" };
+  return;
+}
+
 // src/core/orphan-tick.ts
 function resolveOnItsWay(runs, ownRunId) {
   return runs.some((run) => !run.completed && run.id !== ownRunId);
@@ -64726,7 +64870,8 @@ function placeRows(so, late) {
       const row2 = fresh.state === "pending" ? {
         ...fresh,
         attribution: attributed.get(id)?.lines,
-        pendingAgain: pendingAgain(fact, fresh.hash) ? { logUrl: logDiff ? links2.log : undefined } : undefined
+        pendingAgain: pendingAgain(fact, fresh.hash) ? { logUrl: logDiff ? links2.log : undefined } : undefined,
+        ...late.waitsOnMerge?.has(id) ? { waitsOnMerge: late.waitsOnMerge.get(id) } : {}
       } : fresh;
       if (!ticked) {
         rows.set(id, row2);
@@ -64751,7 +64896,8 @@ function placeRows(so, late) {
         destroys: destroysOf(mine, liveRow),
         deletes: deletesOf(mine, liveRow),
         attribution: attributed.get(id)?.lines,
-        behind: fact.behind
+        behind: fact.behind,
+        ...fact.onMerge ? { onMerge: true } : {}
       });
     } else if (liveRow) {
       if (ticked && decided.row === "live") {
@@ -64834,7 +64980,8 @@ function failureLine2(repoUrl, id, deployFact, outside) {
     reason: fact.reason,
     ticker: fact.ticker,
     at: fact.at,
-    runUrl: runUrl2(repoUrl, fact.run, fact.attempt)
+    runUrl: runUrl2(repoUrl, fact.run, fact.attempt),
+    ...fact.onMerge ? { onMerge: true } : {}
   };
 }
 function destroysOf(mine, liveRow) {
@@ -65490,6 +65637,8 @@ async function scanning(context3, report) {
     branchPreviews = await previewBranches(context3, stacks2, listing.updates);
   }
   const handedOn = [];
+  const openedOnMerge = new Set;
+  let waitsOnMerge = new Map;
   const attribution = attributionSource(context3.github, {
     stacks: stacks2.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
     unrelated: config2.scan.unrelated,
@@ -65598,6 +65747,14 @@ async function scanning(context3, report) {
           if (ended)
             deploys = await lateDeploys(context3, stacks2, previewed, live);
         }
+        const onMerge = onMergeDeploys(onMergeInput(context3, config2, stacks2, previewed, live, deploys.facts));
+        waitsOnMerge = onMerge.waits;
+        const fresh = onMerge.deploys.filter(({ stackId: id }) => !openedOnMerge.has(id));
+        if (fresh.length > 0) {
+          await handOnMerged(context3, fresh, handedOn, openedOnMerge);
+          context3.outputs?.set("matrix", matrixOutput(handedOn));
+          deploys = await lateDeploys(context3, stacks2, previewed, live);
+        }
         attributed = await attribution.attribute(startingCommits(deploys.facts, previewed));
         const shipped = await attribution.ship(deploys.facts.trail);
         const late = placed(placeRows(soFar, {
@@ -65605,7 +65762,8 @@ async function scanning(context3, report) {
           deploys,
           resolveWaits: !config2.dashboard.readOnly && await resolveWaits(context3, live, deploys),
           attributed,
-          shipped
+          shipped,
+          waitsOnMerge
         }));
         lastPlaced = late.placed;
         return late.rows;
@@ -65633,6 +65791,9 @@ async function scanning(context3, report) {
     log.info(`This scan falls back to a full scan: ${fullScanReasonText(why2)}. Previewing the other ${plural2(next.length, "stack")} now.`);
   }
   reportDashboard(context3, written, lastPlaced);
+  for (const [id, wait] of [...waitsOnMerge].sort(([a], [b]) => byCodeUnit(a, b))) {
+    log.info(onMergeLogLine(id, wait));
+  }
   report.attributed = attributed;
   report.dashboard = {
     url: dashboardUrl(context3.repoUrl, written.number),
@@ -66193,6 +66354,92 @@ async function handOffMerges(context3, config2, stacks2, previewed, waiting, han
   }
   return ended;
 }
+function onMergeInput(context3, config2, stacks2, previewed, live, facts) {
+  const liveRows = live.current ? live.first : new Map;
+  const read4 = new Map;
+  for (const [id, { result }] of previewed) {
+    if (result.ok && result.dependencies)
+      read4.set(id, result.dependencies.stackIds);
+  }
+  for (const [id, row2] of liveRows) {
+    if (!read4.has(id) && row2.known && row2.dependsOn)
+      read4.set(id, row2.dependsOn);
+  }
+  const { dependsOn } = withReadDependencies({
+    configured: new Map(stacks2.map((one) => [stackId(one.stack), one.dependsOn ?? []])),
+    auto: new Set(stacks2.flatMap((one) => one.dependsOnAuto ? [stackId(one.stack)] : [])),
+    read: read4
+  });
+  const open2 = new Set;
+  const fresh = new Map;
+  for (const [id, one] of previewed) {
+    const fact = facts.byStack.get(id);
+    if (fact?.kind === "open")
+      open2.add(id);
+    else if (fact === undefined || fact.at <= one.startedAt)
+      fresh.set(id, one.result);
+  }
+  for (const [id, fact] of facts.byStack)
+    if (fact.kind === "open")
+      open2.add(id);
+  const livePending = new Set;
+  for (const [id, row2] of liveRows) {
+    if (!previewed.has(id) && row2.known && row2.state === "pending")
+      livePending.add(id);
+  }
+  return {
+    mergedBy: context3.mergedBy,
+    deploys: config2.deploys,
+    readOnly: config2.dashboard.readOnly,
+    stacks: stacks2.map((one) => {
+      const id = stackId(one.stack);
+      return {
+        id,
+        environment: one.environment,
+        deploy: one.deploy ?? "on-tick",
+        dependsOn: dependsOn.get(id),
+        phase: one.phase
+      };
+    }),
+    previewed: fresh,
+    livePending,
+    open: open2,
+    phases: config2.phases
+  };
+}
+async function handOnMerged(context3, going, handedOn, opened) {
+  const { log } = context3;
+  for (const one of going) {
+    const name = logGroupTitle(one.stackId);
+    try {
+      const record4 = await openRecord(context3, {
+        stackId: one.stackId,
+        environment: one.environment,
+        sha: context3.sha,
+        ticker: one.ticker,
+        hash: one.hash,
+        behind: one.behind,
+        onMerge: true
+      });
+      opened.add(one.stackId);
+      if (one.behind === undefined) {
+        handedOn.push({
+          stack: one.stackId,
+          environment: one.environment,
+          deployment: record4.deployment
+        });
+      }
+      if (record4.unfinished !== undefined)
+        throw record4.unfinished;
+      log.info(one.behind === undefined ? `${name} deploys on merge: deployment record ${record4.deployment} is queued with diff hash ${one.hash}, merged by ${one.ticker}, and handed to apply.` : `${name} deploys on merge: deployment record ${record4.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, is queued behind ${one.behind.map(logGroupTitle).join(" and ")}, and a later run starts it.`);
+    } catch (error63) {
+      throw new Error(`The deployment record that deploys ${name} on merge could not be written: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permission \`deployments: write\` (record 0094). Nothing more deploys on merge in this run: the row shows the stack as pending, and a tick deploys it.`);
+    }
+  }
+}
+function onMergeLogLine(id, wait) {
+  return onMergeNote(wait).replace(":information_source: this stack", logGroupTitle(id)).replaceAll("**", "").replaceAll("`", "");
+}
 async function holdsMerge(context3, deployment) {
   const { github, log } = context3;
   let sha;
@@ -66252,7 +66499,8 @@ async function runScan(directory, step3) {
     outputs: step3?.outputs ?? actionsOutputs(env.RUNNER_TEMP),
     notifier: stepNotifier(getInput, log, setSecret),
     publicRepo: publicRepo(payload),
-    startedByPerson: startedByPerson(payload)
+    startedByPerson: startedByPerson(payload),
+    mergedBy: mergedBy(job.event, payload)
   });
 }
 
