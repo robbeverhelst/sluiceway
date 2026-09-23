@@ -69,6 +69,12 @@ export type Step =
       env?: Record<string, string>;
       // What it printed also becomes the plan file.
       stdoutToPlan?: boolean;
+      // Whether what it printed shows that the run raced a change made
+      // elsewhere while it ran, such as a controller writing the status of an
+      // object in the middle of a kubectl diff. Such a run is taken again, at
+      // most RUNS_WHILE_RACED times, and the recording is the first run that
+      // did not race (slice 5.26).
+      raced?: (stdout: string) => boolean;
     };
 
 // Stands for the path of the plan file in an argument, so that a recording
@@ -130,6 +136,12 @@ export interface RecordOptions {
 }
 
 export const RECORDING_FILE = "recording.json";
+
+// How many times a command whose runs race is run before the scenario stops.
+// A run takes as long as the tool does, so there is no pause in between: a
+// controller writes an object's status a few times in the seconds after a
+// deploy, and a run only races when one of those writes lands inside it.
+export const RUNS_WHILE_RACED = 10;
 
 export async function recordScenario(
   scenario: Scenario,
@@ -195,11 +207,21 @@ export async function recordScenario(
       }
       if (step.stdoutToPlan) writeFileSync(planFile, result.stdout);
     } else {
-      const result = await options.runner({
-        argv: argvOf(step.argv),
-        cwd: join(project, step.cwd),
-        env: { ...env, ...step.env },
-      });
+      const run = () =>
+        options.runner({
+          argv: argvOf(step.argv),
+          cwd: join(project, step.cwd),
+          env: { ...env, ...step.env },
+        });
+      let result = await run();
+      for (let runs = 1; step.raced?.(result.stdout); runs++) {
+        if (runs === RUNS_WHILE_RACED) {
+          throw new Error(
+            `Scenario "${scenario.name}": every one of ${RUNS_WHILE_RACED} runs of "${step.id}" raced a change elsewhere, so none of them shows what the scenario is for. The cluster never held still.`,
+          );
+        }
+        result = await run();
+      }
       const command: RecordedCommand = {
         id: step.id,
         argv: step.argv,

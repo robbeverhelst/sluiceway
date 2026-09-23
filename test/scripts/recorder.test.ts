@@ -271,6 +271,58 @@ describe("changing things behind the tool's back (slice 4.3)", () => {
   });
 });
 
+describe("a command that raced a change elsewhere (slice 5.26)", () => {
+  // Answers one command from a list, in turn, so the same command can print
+  // something else the second time.
+  function inTurn(answers: Partial<RunResult>[]): { runs: Run[]; runner: typeof run } {
+    const runs: Run[] = [];
+    async function run(next: Run): Promise<RunResult> {
+      const answer = answers[Math.min(runs.length, answers.length - 1)] ?? {};
+      runs.push(next);
+      return { stdout: "", stderr: "", exitCode: 0, ...answer };
+    }
+    return { runs, runner: run };
+  }
+
+  const raced = (stdout: string) => stdout.includes("raced");
+  const scenario: Scenario = {
+    name: "no-changes",
+    description: "",
+    steps: [{ kind: "record", id: "diff", cwd: "network", argv: PREVIEW, stdout: "text", raced }],
+  };
+
+  test("is run again, and the recording is the first run that did not race", async () => {
+    const { runs, runner } = inTurn([
+      { stdout: "raced once", exitCode: 1 },
+      { stdout: "raced twice", exitCode: 1 },
+      { stdout: "", exitCode: 0 },
+    ]);
+    await record(scenario, runner);
+
+    expect(runs).toHaveLength(3);
+    const dir = join(out, "no-changes");
+    expect(readFileSync(join(dir, "diff.stdout"), "utf8")).toBe("");
+    const recording = JSON.parse(readFileSync(join(dir, "recording.json"), "utf8"));
+    expect(recording.commands).toHaveLength(1);
+    expect(recording.commands[0].exitCode).toBe(0);
+  });
+
+  test("a run that did not race is recorded at once", async () => {
+    const { runs, runner } = inTurn([{ stdout: "", exitCode: 0 }]);
+    await record(scenario, runner);
+    expect(runs).toHaveLength(1);
+  });
+
+  test("a command that races every time stops the scenario, and nothing raced is saved", async () => {
+    const { runs, runner } = inTurn([{ stdout: "raced", exitCode: 1 }]);
+    await expect(record(scenario, runner)).rejects.toThrow(
+      'Scenario "no-changes": every one of 10 runs of "diff" raced a change elsewhere, so none of them shows what the scenario is for. The cluster never held still.',
+    );
+    expect(runs).toHaveLength(10);
+    expect(existsSync(join(out, "no-changes", "diff.stdout"))).toBe(false);
+  });
+});
+
 describe("checking a recording of JSON lines", () => {
   const scenario: Scenario = {
     name: "drift",
