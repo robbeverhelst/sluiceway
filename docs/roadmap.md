@@ -142,6 +142,8 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A link from the preview page to the dashboard's own number
 - `checks: write` on the scan job alone
 - A built-in notification for a failed preview, for a scan that failed before it wrote the dashboard, and for a deploy that `settle` ended
+- `resolve` without a checkout, from the GitHub API: one recursive tree call for discovery's paths and GraphQL reads of the files it opens, for the `resolve` job of a split workflow on a very large repo
+- A faster body write in `resolve`: the largest part of its own time after a tick, 1.2 to 2.8 s of 2.8 to 4.9 s on the test bed
 
 ### After 1.0, each its own plan
 
