@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-Sluiceway keeps one GitHub issue that shows which infrastructure stacks have changes waiting, and deploys a stack when you tick its box.
+Sluiceway keeps one GitHub issue that shows which Pulumi, OpenTofu, Terraform, Helm or Kubernetes stacks have changes waiting, and deploys a stack when you tick its box.
 
 > [!IMPORTANT]
 > **Sluiceway is in beta.** It is released as [0.x](https://github.com/sluiceway/sluiceway/releases), and the [roadmap](https://docs.sluiceway.dev/roadmap/) says what comes before 1.0. Use `sluiceway/sluiceway@v0` or [pin a commit](https://docs.sluiceway.dev/guides/workflow/#pin-a-commit), and report rough edges as [issues](https://github.com/sluiceway/sluiceway/issues/new).

@@ -1,6 +1,6 @@
 # Using the dashboard
 
-What a row means, what a tick does, what the job log of a scan says, and the limits to know about. The dashboard itself is shown in the [README](../README.md#what-it-looks-like).
+What a row means, what a tick does, what the job log of a scan says, and the limits to know about. The dashboard itself is shown in [What it looks like](../README.md#what-it-looks-like). A tick on a row with deletes deploys those deletes too, as the row shows them.
 
 ## Rows and ticks
 

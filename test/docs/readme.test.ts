@@ -44,7 +44,7 @@ describe("the README as the front door", () => {
     expect(top).toContain('<p align="center">');
     expect(top).toContain("assets/mascot/in-sync-light.svg");
     expect(top).toContain(
-      "Sluiceway keeps one GitHub issue that shows which infrastructure stacks have changes waiting, and deploys a stack when you tick its box.",
+      "Sluiceway keeps one GitHub issue that shows which Pulumi, OpenTofu, Terraform, Helm or Kubernetes stacks have changes waiting, and deploys a stack when you tick its box.",
     );
     expect(top.indexOf("<picture>")).toBeLessThan(top.indexOf("> [!IMPORTANT]"));
   });
