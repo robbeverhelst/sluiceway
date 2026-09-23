@@ -61337,6 +61337,34 @@ async function renovateMergeSetting(readFile3, repo, readRemote) {
   return { strategy: await strategyOf(config2, 0), file: file2, unread };
 }
 
+// src/core/stopwatch.ts
+function stopwatch(now) {
+  const started = now().getTime();
+  const parts = {};
+  const add = (part, from) => {
+    parts[part] = (parts[part] ?? 0) + (now().getTime() - from);
+  };
+  return {
+    time(part, work) {
+      const from = now().getTime();
+      let result;
+      try {
+        result = work();
+      } catch (error63) {
+        add(part, from);
+        throw error63;
+      }
+      if (result instanceof Promise) {
+        return result.finally(() => add(part, from));
+      }
+      add(part, from);
+      return result;
+    },
+    total: () => now().getTime() - started,
+    parts: () => ({ ...parts })
+  };
+}
+
 // src/core/tick-judgement.ts
 function knownTicks(ticks, stacks2) {
   const known = [];
@@ -62198,6 +62226,43 @@ function resolveSummary({ lines: lines3, scanUrl, scanStarted }) {
 `;
 }
 
+// src/render/timing.ts
+var RESOLVE_PARTS = [
+  "dashboard",
+  "config",
+  "discovery",
+  "records",
+  "ticks",
+  "opening",
+  "body"
+];
+var NAMES2 = {
+  dashboard: "reading the dashboard",
+  config: "reading the config",
+  discovery: "discovery",
+  records: "reading deployment records",
+  ticks: "judging ticks",
+  opening: "opening records",
+  body: "writing the body"
+};
+function resolveTimingLine(timing) {
+  const measured = RESOLVE_PARTS.flatMap((part) => {
+    const milliseconds = timing.parts[part];
+    return milliseconds === undefined ? [] : [{ name: NAMES2[part], milliseconds }];
+  });
+  const rest = timing.total - measured.reduce((sum, { milliseconds }) => sum + milliseconds, 0);
+  const named2 = [
+    ...measured,
+    ...measured.length === 0 || seconds2(rest) === "0.0" || rest < 0 ? [] : [{ name: "the rest", milliseconds: rest }]
+  ];
+  const parts = named2.length === 0 ? "" : `: ${named2.map(({ name, milliseconds }) => `${name} ${seconds2(milliseconds)} s`).join(", ")}`;
+  const startup = timing.startup === undefined ? "" : ` Starting the action took ${seconds2(timing.startup)} s before that.`;
+  return `Resolve took ${seconds2(timing.total)} s${parts}.${startup}`;
+}
+function seconds2(milliseconds) {
+  return (Math.round(milliseconds / 100) / 10).toFixed(1);
+}
+
 // src/modes/resolve.ts
 async function resolve(context3) {
   let handedOn = false;
@@ -62206,6 +62271,7 @@ async function resolve(context3) {
     handedOn = true;
   };
   const report = { acting: false, lines: [], scanStarted: false };
+  const watch = stopwatch(context3.now ?? (() => new Date(0)));
   const recording = {
     ...context3,
     log: {
@@ -62218,12 +62284,19 @@ async function resolve(context3) {
     }
   };
   try {
-    await resolveTicks(recording, handOn, report);
+    await resolveTicks(recording, handOn, report, watch);
   } finally {
     if (!handedOn)
       handOn([]);
     if (report.acting)
       await writeRunSummary(context3, report);
+    if (report.acting && context3.now) {
+      context3.log.info(resolveTimingLine({
+        total: watch.total(),
+        parts: watch.parts(),
+        startup: context3.startup
+      }));
+    }
   }
 }
 function notTheDashboardText(issue3, config2) {
@@ -62247,13 +62320,13 @@ var MAX_READS = 3;
 function message2(error63) {
   return error63 instanceof Error ? error63.message : String(error63);
 }
-async function resolveTicks(context3, handOn, report) {
+async function resolveTicks(context3, handOn, report, watch) {
   const { log, github } = context3;
-  const repo = openRepo(context3.root, context3.adapter);
+  const repo = timedRepo(openRepo(context3.root, context3.adapter), watch);
   const issue3 = editedIssue(context3.event);
   if (!issue3) {
     report.acting = true;
-    await startQueued(context3, repo, handOn);
+    await startQueued(context3, repo, handOn, watch);
     return;
   }
   const notTheDashboard = notTheDashboardText(issue3, repo.config);
@@ -62268,10 +62341,10 @@ async function resolveTicks(context3, handOn, report) {
   let named2 = [];
   let liveRows = [];
   for (let reads = 1;; reads++) {
-    const first = await github.readEditHistory(issue3.number, {
+    const first = await watch.time("dashboard", () => github.readEditHistory(issue3.number, {
       size: HISTORY_PAGE_SIZE,
       after: undefined
-    });
+    }));
     const { root, rows } = parseDashboard(first.body);
     liveRows = rows;
     if (!root) {
@@ -62297,7 +62370,7 @@ async function resolveTicks(context3, handOn, report) {
     for (const { tick, stackIds } of unknown2) {
       log.info(`${tick.kind === "merge" ? `${tickName(tick)} is ticked, and discovery knows no stack ${stackIds.map(logGroupTitle).join(" or ")}` : `${tickName(tick)} is ticked, and discovery knows no such stack`}. Left alone.`);
     }
-    const tickers2 = await nameTickers(known, (after) => after === undefined ? Promise.resolve(first) : github.readEditHistory(issue3.number, { size: HISTORY_PAGE_SIZE, after }));
+    const tickers2 = await watch.time("ticks", () => nameTickers(known, (after) => after === undefined ? Promise.resolve(first) : github.readEditHistory(issue3.number, { size: HISTORY_PAGE_SIZE, after })));
     named2 = known.flatMap((tick, index) => {
       const ticker = tickers2[index];
       return ticker ? [{ tick, ticker }] : [];
@@ -62319,7 +62392,7 @@ async function resolveTicks(context3, handOn, report) {
   for (const finding of confirms.findings)
     log.info(findingText(finding));
   named2 = confirms.named;
-  const open2 = await openDeployments(context3, stacksToRead(named2, stacks2));
+  const open2 = await watch.time("records", () => openDeployments(context3, stacksToRead(named2, stacks2)));
   const read3 = {
     named: named2,
     stacks: stacks2,
@@ -62328,8 +62401,8 @@ async function resolveTicks(context3, handOn, report) {
     deploys: config2.deploys,
     phases: config2.phases
   };
-  const outcomes = await judgeTicks2(github, ticksToLookUp(read3));
-  const judgement = judgeTicks(read3, outcomes);
+  const outcomes = await watch.time("ticks", () => judgeTicks2(github, ticksToLookUp(read3)));
+  const judgement = watch.time("ticks", () => judgeTicks(read3, outcomes));
   for (const finding of judgement.findings)
     log.info(findingText(finding));
   const { dropped, clear, clearMerges } = judgement;
@@ -62338,7 +62411,7 @@ async function resolveTicks(context3, handOn, report) {
   const started = [];
   for (const { stackId: id, environment, ticker, hash: hash2, drift, behind } of judgement.deploys) {
     try {
-      const record3 = await openRecord(context3, {
+      const record3 = await watch.time("opening", () => openRecord(context3, {
         stackId: id,
         environment,
         sha: context3.sha,
@@ -62346,7 +62419,7 @@ async function resolveTicks(context3, handOn, report) {
         hash: hash2,
         behind,
         drift
-      });
+      }));
       started.push({ stackId: id, environment, deployment: record3.deployment, ticker, behind });
       if (record3.unfinished !== undefined)
         throw record3.unfinished;
@@ -62383,13 +62456,13 @@ async function resolveTicks(context3, handOn, report) {
   let written = true;
   if (started.length > 0 || dropped.length > 0 || clear.size > 0 || judgement.rescanHandled || clearMerges.size > 0 || merging.mergedPrs.size > 0 || bulkActs.length > 0 || confirms.stale) {
     try {
-      const result = await swapRows2(context3, config2, [...stacks2.values()], ignored, issue3.number, {
+      const result = await watch.time("body", () => swapRows2(context3, config2, [...stacks2.values()], ignored, issue3.number, {
         started: [...started, ...merged],
         dropped,
         clear,
         merges: { merged: merging.mergedPrs, clear: clearMerges },
         bulk: bulkActs
-      });
+      }));
       log.info(result.written ? `Wrote the dashboard (#${issue3.number}).` : `The dashboard (#${issue3.number}) already says all of this. Nothing was written.`);
     } catch (error63) {
       written = false;
@@ -62679,6 +62752,12 @@ function unverifiedMessage(unverified) {
   const logins = [...new Set(unverified.map(({ tick }) => tick.editor.login))].join(", ");
   return `GitHub gave no answer about the access of ${logins}, so ${plural2(unverified.length, "tick")} could not be verified. Nothing was deployed for ${unverified.length === 1 ? "it" : "them"}, and the comment on the dashboard asks for a fresh tick (record 0018).`;
 }
+function timedRepo(repo, watch) {
+  return {
+    config: () => watch.time("config", () => repo.config()),
+    stacks: () => watch.time("discovery", () => repo.stacks())
+  };
+}
 function byId({ stacks: stacks2, ignored }) {
   return { stacks: new Map(stacks2.map((stack) => [stackId(stack.stack), stack])), ignored };
 }
@@ -62834,7 +62913,7 @@ function withRowDependencies(context3, stacks2, rows) {
     return [id, ids2.length === 0 ? rest : { ...rest, dependsOn: ids2 }];
   }));
 }
-async function startQueued(context3, repo, handOn) {
+async function startQueued(context3, repo, handOn, watch) {
   const { log, github } = context3;
   const config2 = repo.config();
   if (!config2.stacks.some(({ dependsOn, phase }) => dependsOn !== undefined || phase !== undefined)) {
@@ -62845,7 +62924,7 @@ async function startQueued(context3, repo, handOn) {
   const all = [...stacks2.values()];
   const anyAuto = all.some(({ dependsOnAuto }) => dependsOnAuto);
   const involved = all.filter(({ stack, dependsOn }) => anyAuto || dependsOn !== undefined || all.some((other) => other.dependsOn?.includes(stackId(stack)) === true));
-  const settled = await settleEndedRuns(github, await readRecords(context3, all.map(({ environment }) => environment), involved), context3.repoUrl);
+  const settled = await watch.time("records", async () => settleEndedRuns(github, await readRecords(context3, all.map(({ environment }) => environment), involved), context3.repoUrl));
   for (const { stackId: id } of settled.ended) {
     log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
   }
@@ -62862,10 +62941,10 @@ async function startQueued(context3, repo, handOn) {
     if (!stack || !queued)
       continue;
     try {
-      const record3 = await startQueuedRecord(context3, queued, {
+      const record3 = await watch.time("opening", () => startQueuedRecord(context3, queued, {
         sha: context3.sha,
         environment: stack.environment
-      });
+      }));
       if (!record3)
         continue;
       started.push({
@@ -62887,14 +62966,14 @@ async function startQueued(context3, repo, handOn) {
     environment,
     deployment
   })));
-  const dashboard = started.length > 0 ? await findDashboard(github, config2.dashboard.label) : undefined;
+  const dashboard = started.length > 0 ? await watch.time("dashboard", () => findDashboard(github, config2.dashboard.label)) : undefined;
   if (dashboard) {
     try {
-      const result = await swapRows2(context3, config2, all, ignored, dashboard.number, {
+      const result = await watch.time("body", () => swapRows2(context3, config2, all, ignored, dashboard.number, {
         started,
         dropped: [],
         clear: new Map
-      });
+      }));
       log.info(result.written ? `Wrote the dashboard (#${dashboard.number}).` : `The dashboard (#${dashboard.number}) already says all of this. Nothing was written.`);
     } catch (error63) {
       failures.push(message2(error63));
@@ -63916,6 +63995,7 @@ function readWorkflowRef(env) {
 
 // src/modes/resolve-job.ts
 async function runResolve(directory, step3) {
+  const startup = process.uptime() * 1000;
   const env = process.env;
   const read3 = (path) => readFileSync9(path, "utf8");
   const token = readToken(getInput);
@@ -63934,7 +64014,9 @@ async function runResolve(directory, step3) {
     event: readEventPayload(env, read3),
     workflow: readWorkflowRef(env),
     setOutput: (name, value) => step3 ? step3.outputs.set(name, value) : setOutput(name, value),
-    notifier: stepNotifier(getInput, log, setSecret)
+    notifier: stepNotifier(getInput, log, setSecret),
+    now: () => new Date,
+    startup
   });
 }
 
@@ -64686,8 +64768,8 @@ async function previewOne(context3, number4, head, files, stacks2) {
         timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
         showValues: []
       });
-      const seconds2 = ((now().getTime() - started) / 1000).toFixed(1);
-      log.info(`Previewed ${logGroupTitle(id)} after the merge of #${number4} in ${seconds2} s: ${previewOutcome(result)}`);
+      const seconds3 = ((now().getTime() - started) / 1000).toFixed(1);
+      log.info(`Previewed ${logGroupTitle(id)} after the merge of #${number4} in ${seconds3} s: ${previewOutcome(result)}`);
       if (!result.ok && result.toolLog !== "") {
         log.group(`${logGroupTitle(id)} after the merge of #${number4}`, [
           "The tool's own words:",
@@ -64773,7 +64855,7 @@ function placed(answer) {
     throw new PreviewFirstError(answer);
   return answer;
 }
-function seconds2(milliseconds) {
+function seconds3(milliseconds) {
   return `${(milliseconds / 1000).toFixed(1)} s`;
 }
 function minutes(count3) {
@@ -65265,11 +65347,11 @@ async function previewAll(context3, stacks2, logDiff, showValues, prepared, sayP
         detail,
         toolLog: ""
       };
-      log.info(`Previewed ${logGroupTitle(id)} in ${seconds2(milliseconds2)}: ${previewOutcome(result2)}`);
+      log.info(`Previewed ${logGroupTitle(id)} in ${seconds3(milliseconds2)}: ${previewOutcome(result2)}`);
       return { id, result: result2, startedAt, milliseconds: milliseconds2 };
     }
     let milliseconds = now().getTime() - started;
-    log.info(`Previewed ${logGroupTitle(id)} in ${seconds2(milliseconds)}: ${previewOutcome(previewedOnly)}`);
+    log.info(`Previewed ${logGroupTitle(id)} in ${seconds3(milliseconds)}: ${previewOutcome(previewedOnly)}`);
     if (previewedOnly.ok && previewedOnly.dependencies) {
       log.info(readDependenciesText(id, previewedOnly.dependencies));
     }
@@ -65278,7 +65360,7 @@ async function previewAll(context3, stacks2, logDiff, showValues, prepared, sayP
     if (previewedOnly.ok && checkDrift(id) && adapter.detectDrift) {
       const driftStarted = now().getTime();
       drift = await adapter.detectDrift(configured.stack, options);
-      const took = seconds2(now().getTime() - driftStarted);
+      const took = seconds3(now().getTime() - driftStarted);
       if (drift === undefined) {
         log.info(`${logGroupTitle(id)} was not checked for drift: its tool has no drift check.`);
       } else if (!drift.ok) {
@@ -65296,13 +65378,13 @@ async function previewAll(context3, stacks2, logDiff, showValues, prepared, sayP
     }
     const toolDiffStarted = now().getTime();
     const toolDiff5 = await adapter.toolDiff(configured.stack, options);
-    log.info(`Ran the tool's own diff of ${logGroupTitle(id)} in ${seconds2(now().getTime() - toolDiffStarted)}${toolDiff5.ok ? "" : `: ${previewFailureText(toolDiff5.reason)}`}.`);
+    log.info(`Ran the tool's own diff of ${logGroupTitle(id)} in ${seconds3(now().getTime() - toolDiffStarted)}${toolDiff5.ok ? "" : `: ${previewFailureText(toolDiff5.reason)}`}.`);
     return { id, result, startedAt, milliseconds, toolDiff: toolDiff5, drift };
   });
   const total = now().getTime() - poolStarted;
   const addedUp = previewed.reduce((sum, { milliseconds }) => sum + milliseconds, 0);
   const slowest = previewed.reduce((a, b) => b.milliseconds > a.milliseconds ? b : a);
-  log.info(`Previewed ${plural2(previewed.length, "stack")} in ${seconds2(total)} with a pool of ${context3.pool.size}. Added up, the previews took ${seconds2(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds2(slowest.milliseconds)}.`);
+  log.info(`Previewed ${plural2(previewed.length, "stack")} in ${seconds3(total)} with a pool of ${context3.pool.size}. Added up, the previews took ${seconds3(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds3(slowest.milliseconds)}.`);
   return [...previewed, ...unpreparedFailures];
 }
 function liveRun(run, id, log) {
