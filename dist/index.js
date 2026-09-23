@@ -26903,11 +26903,11 @@ var require_picomatch = __commonJS((exports, module) => {
       return { isMatch: false, output: "" };
     }
     const opts = options || {};
-    const format = opts.format || (posix ? utils.toPosixSlashes : null);
+    const format2 = opts.format || (posix ? utils.toPosixSlashes : null);
     let match = input2 === glob;
-    let output2 = match && format ? format(input2) : input2;
+    let output2 = match && format2 ? format2(input2) : input2;
     if (match === false) {
-      output2 = format ? format(input2) : input2;
+      output2 = format2 ? format2(input2) : input2;
       match = output2 === glob;
     }
     if (match === false || opts.capture === true) {
@@ -51242,6 +51242,8 @@ function problemWords(issue3) {
       return `${show(issue3.value)} is not a phase name. Use letters, digits, ".", "_" and "-".`;
     case "not-a-login":
       return `${show(issue3.value)} is not a GitHub login. Write the login alone, without "@". An app is written with [bot], such as renovate[bot].`;
+    case "not-a-time-zone":
+      return `${show(issue3.value)} is not a time zone. Write an IANA name, such as Europe/Brussels or America/New_York, or leave the key out for UTC.`;
     case "a-team":
       return `${show(issue3.value)} looks like a team. Teams are not supported yet. Use a level ("write", "maintain", "admin") or usernames.`;
     case "not-a-username":
@@ -51710,14 +51712,77 @@ function readOutside(line) {
 }
 
 // src/render/time.ts
-function utcMinute(at) {
-  const iso = at.toISOString();
-  return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
+var formats = new Map;
+function format(timeZone) {
+  let found = formats.get(timeZone);
+  if (found === undefined) {
+    found = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+    formats.set(timeZone, found);
+  }
+  return found;
 }
-function trailMinute(at, year) {
-  const iso = at.toISOString();
-  const day = at.getUTCFullYear() === year ? iso.slice(5, 10) : iso.slice(0, 10);
-  return `${day} ${iso.slice(11, 16)}`;
+function isUtc(timeZone) {
+  return timeZone === undefined || timeZone === "UTC";
+}
+function wall(at, timeZone) {
+  if (isUtc(timeZone)) {
+    const iso = at.toISOString();
+    return {
+      year: at.getUTCFullYear(),
+      day: iso.slice(5, 10),
+      minute: iso.slice(11, 16),
+      offset: 0
+    };
+  }
+  const parts = {};
+  for (const part of format(timeZone).formatToParts(at)) {
+    if (part.type !== "literal")
+      parts[part.type] = Number(part.value);
+  }
+  const { year = 0, month = 1, day = 1, hour = 0, minute = 0, second = 0 } = parts;
+  const shown = Date.UTC(year, month - 1, day, hour, minute, second);
+  const offset = Math.round((shown - Math.floor(at.getTime() / 1000) * 1000) / 60000);
+  const two = (value) => String(value).padStart(2, "0");
+  return {
+    year,
+    day: `${two(month)}-${two(day)}`,
+    minute: `${two(hour)}:${two(minute)}`,
+    offset
+  };
+}
+function fullDay(time3) {
+  return `${String(time3.year).padStart(4, "0")}-${time3.day}`;
+}
+function offsetName(offset) {
+  if (offset === 0)
+    return "UTC";
+  const sign = offset > 0 ? "+" : "-";
+  const hours = Math.floor(Math.abs(offset) / 60);
+  const minutes = Math.abs(offset) % 60;
+  return `UTC${sign}${hours}${minutes === 0 ? "" : `:${String(minutes).padStart(2, "0")}`}`;
+}
+function minuteAt(at, timeZone) {
+  const time3 = wall(at, timeZone);
+  return `${fullDay(time3)} ${time3.minute} ${offsetName(time3.offset)}`;
+}
+function yearIn(at, timeZone) {
+  return wall(at, timeZone).year;
+}
+function trailMinute(at, year, timeZone) {
+  const time3 = wall(at, timeZone);
+  return `${time3.year === year ? time3.day : fullDay(time3)} ${time3.minute}`;
+}
+function zoneLine(timeZone) {
+  return `Times are in ${timeZone ?? "UTC"}.`;
 }
 
 // src/render/row.ts
@@ -51823,8 +51888,8 @@ var PENDING_AGAIN_NOTE = ":information_source: pending again right after a deplo
 function pendingAgainLine({ logUrl }) {
   return logUrl === undefined ? PENDING_AGAIN_NOTE : `${PENDING_AGAIN_NOTE} Compare the tool's own diff in the [job log](${logUrl}).`;
 }
-function failureLine(failure2) {
-  return `:x: last deploy failed: ${escapeText(failure2.reason)} · ticked by ${escapeText(failure2.ticker)} · ${utcMinute(failure2.at)} · [run](${failure2.runUrl})`;
+function failureLine(failure2, timeZone) {
+  return `:x: last deploy failed: ${escapeText(failure2.reason)} · ticked by ${escapeText(failure2.ticker)} · ${minuteAt(failure2.at, timeZone)} · [run](${failure2.runUrl})`;
 }
 function destroyWords(deletes, replaces) {
   return [deletes && `deletes ${deletes}`, replaces && `replaces ${replaces}`].filter(Boolean).join(", ");
@@ -51887,7 +51952,7 @@ function driftRow(row, options) {
     })}`
   ];
   if (row.failure)
-    lines.push(failureLine(row.failure));
+    lines.push(failureLine(row.failure, options.timeZone));
   if (row.orphanTick && !options.readOnly)
     lines.push(ORPHAN_TICK_NOTE);
   lines.push(...driftLines(drift, summary2, options));
@@ -51920,7 +51985,7 @@ function pendingRow(row, options) {
   if (row.attribution)
     lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
   if (row.failure)
-    lines.push(failureLine(row.failure));
+    lines.push(failureLine(row.failure, options.timeZone));
   if (row.pendingAgain)
     lines.push(pendingAgainLine(row.pendingAgain));
   if (row.orphanTick && !options.readOnly)
@@ -51972,7 +52037,7 @@ function deployingRow(row, options) {
     lines.push(row.attribution.full, ...outsideFold(row.attribution, 0));
   return lines;
 }
-function previewFailedRow(row) {
+function previewFailedRow(row, options) {
   const lines = [
     `- **${escapeText(row.stackId)}** · preview failed: ${escapeText(row.reason)} · [run](${row.runUrl}) ${rowMarker({
       stackId: row.stackId,
@@ -51981,10 +52046,10 @@ function previewFailedRow(row) {
     })}`
   ];
   if (row.failure)
-    lines.push(failureLine(row.failure));
+    lines.push(failureLine(row.failure, options.timeZone));
   return lines;
 }
-function inSyncRow(row) {
+function inSyncRow(row, options) {
   const lines = [
     `- ${escapeText(row.stackId)} ${rowMarker({
       stackId: row.stackId,
@@ -51994,7 +52059,7 @@ function inSyncRow(row) {
     })}`
   ];
   if (row.failure)
-    lines.push(failureLine(row.failure));
+    lines.push(failureLine(row.failure, options.timeZone));
   return lines;
 }
 function rowLines(row, options) {
@@ -52006,9 +52071,9 @@ function rowLines(row, options) {
     case "deploying":
       return deployingRow(row, options);
     case "preview-failed":
-      return previewFailedRow(row);
+      return previewFailedRow(row, options);
     case "in-sync":
-      return inSyncRow(row);
+      return inSyncRow(row, options);
   }
 }
 function renderRow(row, options = {}) {
@@ -52480,6 +52545,18 @@ var stackEntries = exports_external.array(stackEntry).superRefine((entries, cont
       refuse(context3, { kind: "same-entry", first, stackId: id }, [index]);
   });
 });
+function isTimeZone(name) {
+  if (!/^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/.test(name))
+    return false;
+  if (/^(UTC|GMT)[+-]/i.test(name))
+    return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: name });
+    return true;
+  } catch {
+    return false;
+  }
+}
 var RECENTLY_DEPLOYED_MAX = 50;
 var LOOKBACK_MAX = 1000;
 var NAMES_MAX = 20;
@@ -52496,7 +52573,11 @@ var configSchema = exports_external.strictObject({
       if (problem !== undefined)
         refuse(context3, { kind: "worded", text: problem });
     })).describe('Property paths whose old and new value may appear on the dashboard, as "old → new". Exact paths, or "*" for part of one name. Never a value the tool marks secret, and none at all with redact on.').default([]),
-    recentlyDeployed: exports_external.int().min(0).max(RECENTLY_DEPLOYED_MAX).describe("How many deploys the Recently deployed list shows, newest first, failed ones included. 0 leaves the list out.").default(10)
+    recentlyDeployed: exports_external.int().min(0).max(RECENTLY_DEPLOYED_MAX).describe("How many deploys the Recently deployed list shows, newest first, failed ones included. 0 leaves the list out.").default(10),
+    timeZone: exports_external.string().superRefine((value, context3) => {
+      if (!isTimeZone(value))
+        refuse(context3, { kind: "not-a-time-zone", value });
+    }).describe("The IANA time zone every time on the dashboard is shown in, such as Europe/Brussels. A time that stands alone says its offset from UTC, and the line under Recently deployed names the zone. The markers keep UTC.").default("UTC")
   }).prefault({}),
   tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
   deploys: exports_external.boolean().describe("false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.").default(true),
@@ -58145,7 +58226,7 @@ function waited(facts, scanAt) {
 function runUrl(facts, repoUrl) {
   return `${repoUrl}/actions/runs/${urlPart(facts.run)}`;
 }
-function waitingRunLine(root, repoUrl) {
+function waitingRunLine(root, repoUrl, timeZone) {
   const facts = root.waitingRun;
   if (facts === undefined)
     return;
@@ -58155,7 +58236,7 @@ function waitingRunLine(root, repoUrl) {
   const minutes = waited(facts, root.scanAt);
   const long = minutes === undefined ? "" : ` for ${duration3(minutes)},`;
   const run = `[A run of this dashboard's workflow](${runUrl(facts, repoUrl)})`;
-  const line = `${run} has been waiting for a runner${long} since ${utcMinute(since)}.`;
+  const line = `${run} has been waiting for a runner${long} since ${minuteAt(since, timeZone)}.`;
   if (facts.more === 0)
     return line;
   const more = facts.more === 1 ? "1 more run has been waiting" : `${facts.more} more runs have been waiting`;
@@ -58169,7 +58250,6 @@ function waitingRunLogLine(facts, scanAt, workflow, repoUrl) {
 
 // src/render/body.ts
 var RECENTLY_DEPLOYED = 10;
-var TRAIL_LINE = "Times are in UTC.";
 var ACTION_REPO2 = "sluiceway/sluiceway";
 var ACTION_URL = `https://github.com/${ACTION_REPO2}`;
 var ALT = {
@@ -58249,14 +58329,14 @@ function countsLine(counts2, dots) {
     parts.push(`${dot("failed", failed2)}${plural4(failed2, "failed deploy")}`);
   return parts.join(" · ");
 }
-function time3(iso) {
+function time3(iso, timeZone) {
   const at = new Date(iso ?? "");
-  return Number.isNaN(at.getTime()) ? undefined : utcMinute(at);
+  return Number.isNaN(at.getTime()) ? undefined : minuteAt(at, timeZone);
 }
-function scanLine(root, repoUrl) {
+function scanLine(root, repoUrl, timeZone) {
   const sha = `[\`${escapeText(root.scanSha.slice(0, 7))}\`](${repoUrl}/commit/${urlPart(root.scanSha)})`;
-  const at = time3(root.scanAt);
-  const fullAt = time3(root.fullScanAt);
+  const at = time3(root.scanAt, timeZone);
+  const fullAt = time3(root.fullScanAt, timeZone);
   const parts = [
     `Scanned ${sha}${at ? ` on ${at}` : ""}`,
     `[run](${repoUrl}/actions/runs/${urlPart(root.scanRun)})`
@@ -58291,22 +58371,22 @@ var RESULT_WORDS = {
   "drift-repaired": "drift fixed",
   failed: "failed"
 };
-function recentLine(deploy, dots, year, short) {
+function recentLine(deploy, dots, year, timeZone, short) {
   const result = deploy.result ? ` · ${RESULT_WORDS[deploy.result]}` : "";
   const outcome = deploy.result === undefined || deploy.result === "drift-repaired" ? "deployed" : deploy.result;
   const dot = dots ? `${RESULT_DOT[outcome]}&nbsp;` : "";
   const shipped = deploy.shipped ? `
 ${INDENT}${short ? deploy.shipped.counted : deploy.shipped.full}` : "";
-  return `- ${dot}${escapeText(deploy.stackId)}${result} · ${escapeText(deploy.ticker)} · ${trailMinute(deploy.at, year)} · [run](${deploy.runUrl})${shipped}`;
+  return `- ${dot}${escapeText(deploy.stackId)}${result} · ${escapeText(deploy.ticker)} · ${trailMinute(deploy.at, year, timeZone)} · [run](${deploy.runUrl})${shipped}`;
 }
 function newestTrail(deploys, length) {
   return [...deploys].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit14(a.stackId, b.stackId)).slice(0, length ?? RECENTLY_DEPLOYED);
 }
-function outsideLine(deploy, repoUrl, dots, year) {
+function outsideLine(deploy, repoUrl, dots, year, timeZone) {
   const dot = dots ? `${RESULT_DOT.deployed}&nbsp;` : "";
   const verb = deploy.kind === "destroy" ? "destroyed" : "deployed";
   const commit = deploy.commit === undefined ? "" : `, from [\`${deploy.commit.slice(0, 7)}\`](${repoUrl}/commit/${urlPart(deploy.commit)})${deploy.dirty ? " with uncommitted changes" : ""}`;
-  return `- ${dot}${escapeText(deploy.stackId)} · ${verb} outside the dashboard${commit} · ${trailMinute(deploy.at, year)} ${outsideMarker(deploy)}`;
+  return `- ${dot}${escapeText(deploy.stackId)} · ${verb} outside the dashboard${commit} · ${trailMinute(deploy.at, year, timeZone)} ${outsideMarker(deploy)}`;
 }
 function version2(actionRef2) {
   return /^[0-9a-f]{40,}$/.test(actionRef2) ? `\`${actionRef2.slice(0, 7)}\`` : escapeText(actionRef2);
@@ -58315,8 +58395,8 @@ function renderBody(input2) {
   const facts = dashboardFacts(input2.rows);
   const out = [rootMarker(input2.root)];
   const counts2 = countsLine(facts.counts, input2.personality);
-  const scan = scanLine(input2.root, input2.repoUrl);
-  const runWaits = waitingRunLine(input2.root, input2.repoUrl);
+  const scan = scanLine(input2.root, input2.repoUrl, input2.timeZone);
+  const runWaits = waitingRunLine(input2.root, input2.repoUrl, input2.timeZone);
   const scanLines = runWaits === undefined ? [scan] : [scan, runWaits];
   if (input2.personality)
     out.push(picture(facts.headerState, facts.crates, facts.signs, input2.actionRef).join(`
@@ -58386,22 +58466,23 @@ function renderBody(input2) {
   }
   const outside = (input2.outsideDeploys ?? []).filter((deploy, index, all) => all.findIndex((one) => one.stackId === deploy.stackId && one.kind === deploy.kind && one.at.getTime() === deploy.at.getTime()) === index);
   const scanAt = new Date(input2.root.scanAt ?? "");
-  const year = Number.isNaN(scanAt.getTime()) ? undefined : scanAt.getUTCFullYear();
+  const { timeZone } = input2;
+  const year = Number.isNaN(scanAt.getTime()) ? undefined : yearIn(scanAt, timeZone);
   const entries = [
     ...input2.recentlyDeployed.map((deploy) => ({
       at: deploy.at,
       stackId: deploy.stackId,
-      line: () => recentLine(deploy, input2.personality, year, input2.shortTrail)
+      line: () => recentLine(deploy, input2.personality, year, timeZone, input2.shortTrail)
     })),
     ...outside.map((deploy) => ({
       at: deploy.at,
       stackId: deploy.stackId,
-      line: () => outsideLine(deploy, input2.repoUrl, input2.personality, year)
+      line: () => outsideLine(deploy, input2.repoUrl, input2.personality, year, timeZone)
     }))
   ];
   const recent = newestTrail(entries, input2.recentLength);
   if (recent.length > 0)
-    out.push("## Recently deployed", TRAIL_LINE, recent.map((entry3) => entry3.line()).join(`
+    out.push("## Recently deployed", zoneLine(timeZone), recent.map((entry3) => entry3.line()).join(`
 `));
   out.push("---");
   if (!input2.readOnly)
@@ -58434,7 +58515,7 @@ function fitBody(input2, options = {}) {
   let spinning = input2.personality;
   const entries = input2.rows.map((row) => {
     const levels = row.state === "pending" || row.state === "drift" ? LEVELS : LEVELS.slice(0, 1);
-    const plain = { redact: input2.redact, readOnly: input2.readOnly };
+    const plain = { redact: input2.redact, readOnly: input2.readOnly, timeZone: input2.timeZone };
     const blocks2 = levels.map((level) => rowBlock(row, { ...plain, level, actionRef: spinning ? input2.actionRef : undefined }));
     const still = row.state === "deploying" && spinning ? rowBlock(row, plain) : undefined;
     return { stackId: blocks2[0]?.stackId ?? "", blocks: blocks2, still, level: 0 };
@@ -59709,6 +59790,7 @@ function fit(writer, body, aimAtTarget) {
     actionRef: writer.actionRef,
     recentLength: dashboard.recentlyDeployed,
     personality: dashboard.personality,
+    timeZone: dashboard.timeZone,
     readOnly: dashboard.readOnly,
     ignored: writer.ignored,
     merges: body.merges,
