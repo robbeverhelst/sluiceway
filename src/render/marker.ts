@@ -65,6 +65,17 @@ export interface RootFacts {
   // writer carries them through.
   fullScanAt?: string | undefined;
   fullScanRun?: string | undefined;
+  // A run of the workflow that has waited long for a runner (record 0086).
+  // Only a scan finds one, and every other writer carries it.
+  waitingRun?: WaitingRunFacts | undefined;
+}
+
+// The run that waited longest, when it started waiting (ISO 8601, UTC), and
+// how many more runs waited as long.
+export interface WaitingRunFacts {
+  run: string;
+  since: string;
+  more: number;
 }
 
 export interface RowFacts {
@@ -183,6 +194,13 @@ export function rootMarker(facts: RootFacts): string {
   ];
   if (facts.fullScanAt !== undefined) pairs.push(["full-scan-at", facts.fullScanAt]);
   if (facts.fullScanRun !== undefined) pairs.push(["full-scan-run", facts.fullScanRun]);
+  if (facts.waitingRun !== undefined) {
+    pairs.push(
+      ["run-waiting", facts.waitingRun.run],
+      ["run-waiting-since", facts.waitingRun.since],
+    );
+    if (facts.waitingRun.more > 0) pairs.push(["run-waiting-more", String(facts.waitingRun.more)]);
+  }
   return marker("dashboard", pairs);
 }
 
@@ -268,6 +286,7 @@ export interface ParsedRoot {
   scanAt: string | undefined;
   fullScanAt?: string | undefined;
   fullScanRun?: string | undefined;
+  waitingRun?: WaitingRunFacts | undefined;
 }
 
 // A row block: every line from the one that ends in the open marker through
@@ -363,7 +382,18 @@ function readRoot(line: string): ParsedRoot | undefined {
     scanAt: pairs.get("scan-at"),
     fullScanAt: pairs.get("full-scan-at"),
     fullScanRun: pairs.get("full-scan-run"),
+    waitingRun: readWaitingRun(pairs),
   };
+}
+
+// Both the run and the time, or no waiting run. A count that is not a whole
+// number reads as no more runs.
+function readWaitingRun(pairs: Map<string, string>): WaitingRunFacts | undefined {
+  const run = pairs.get("run-waiting");
+  const since = pairs.get("run-waiting-since");
+  if (run === undefined || since === undefined) return undefined;
+  const more = pairs.get("run-waiting-more") ?? "0";
+  return { run, since, more: /^\d+$/.test(more) ? Number(more) : 0 };
 }
 
 function isRowState(state: string): state is RowState {

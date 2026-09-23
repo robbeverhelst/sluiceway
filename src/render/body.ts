@@ -45,6 +45,7 @@ import {
   WAITING_ON_CHECKS_LINE,
   WARM,
 } from "./voice.ts";
+import { waitingRunLine } from "./waiting-run.ts";
 
 // One successful deploy from the dashboard, from its deployment record
 // (record 0003).
@@ -369,15 +370,17 @@ export function renderBody(input: BodyInput): string {
   // they are what record 0029 made them.
   const counts = countsLine(facts.counts, input.personality);
   const scan = scanLine(input.root, input.repoUrl);
+  const runWaits = waitingRunLine(input.root, input.repoUrl);
+  const scanLines = runWaits === undefined ? [scan] : [scan, runWaits];
   if (input.personality)
     out.push(
       picture(facts.headerState, facts.crates, facts.signs, input.actionRef).join("\n"),
       '<div align="center">',
       counts,
-      scan,
+      ...scanLines,
       "</div>",
     );
-  else out.push(counts, scan);
+  else out.push(counts, ...scanLines);
 
   // The note about shortened rows (record 0028) is counted from the markers
   // like everything else up here, so it stays when a writer that is not the
