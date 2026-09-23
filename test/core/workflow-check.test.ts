@@ -519,3 +519,28 @@ describe("the permissions of each mode", () => {
     expect(tokenNeeds("resolve", MERGES).contents).toBe("write");
   });
 });
+
+// Record 0094: the scan of a merge hands a stack set to on-merge to `apply`
+// through its own matrix, as the scan after a merge from the dashboard does.
+// In the split workflow that takes the second apply job.
+describe("a stack set to on-merge in the split workflow", () => {
+  const ON_MERGE = parseConfig("stacks:\n  - path: app\n    deploy: on-merge\n");
+
+  test("without an apply job that takes the scan's matrix, the deploy on merge never starts", () => {
+    expect(checkWorkflows([file(WHOLE)], ON_MERGE).warnings).toEqual([
+      { kind: "no-on-merge-apply", path: PATH },
+    ]);
+  });
+
+  test("with the second apply job nothing is missing", () => {
+    expect(checkWorkflows([file(MERGED)], ON_MERGE).warnings).toEqual([]);
+  });
+
+  test("with merge and deploy on too, the one warning is merge and deploy's", () => {
+    const both = parseConfig(
+      'mergeAndDeploy:\n  authors: ["renovate[bot]"]\nstacks:\n  - path: app\n    deploy: on-merge\n',
+    );
+    const kinds = checkWorkflows([file(WHOLE)], both).warnings.map(({ kind }) => kind);
+    expect(kinds.filter((kind) => kind.endsWith("-apply"))).toEqual(["no-merged-apply"]);
+  });
+});

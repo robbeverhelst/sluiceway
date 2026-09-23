@@ -129,3 +129,38 @@ describe("who may deploy", () => {
     expect(part?.summary.join("\n")).not.toContain("Who may deploy");
   });
 });
+
+// Record 0094: the check says which stacks deploy on merge, in the log line
+// of each stack and in a column of the summary's table that is there only
+// when one does, so a setup without it keeps its table.
+describe("a stack set to on-merge in the check", () => {
+  const configured = (id: string, deploy?: "on-merge") => ({
+    stack: { path: id, options: {} },
+    environment: "sluiceway",
+    tickers: "write" as const,
+    inputs: [],
+    ...(deploy ? { deploy } : {}),
+  });
+  const parts = (report: CheckReport) =>
+    checkParts({ report, workflows: NO_WORKFLOWS, unrelated: [], hasConfigFile: true });
+
+  test("its line and the table say it deploys on merge", () => {
+    const all = parts({ ...EMPTY, stacks: [configured("app", "on-merge"), configured("db")] });
+    const lines = all
+      .flatMap((part) => part.log)
+      .flatMap((entry) => ("group" in entry ? entry.lines : []));
+    expect(lines).toContain(
+      "app: environment sluiceway, tickers write, no inputs, deploys on merge",
+    );
+    expect(lines).toContain("db: environment sluiceway, tickers write, no inputs");
+    const summary = renderCheckSummary(all);
+    expect(summary).toContain("| Stack | Environment | Tickers | Inputs | Deploys |");
+    expect(summary).toContain("| app | sluiceway | write | none | on merge |");
+    expect(summary).toContain("| db | sluiceway | write | none | on a tick |");
+  });
+
+  test("without one, the table has no such column", () => {
+    const summary = renderCheckSummary(parts({ ...EMPTY, stacks: [configured("db")] }));
+    expect(summary).toContain("| Stack | Environment | Tickers | Inputs |\n");
+  });
+});

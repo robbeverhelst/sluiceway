@@ -121,6 +121,9 @@ export type WorkflowWarning =
   // Merge and deploy (records 0054, 0064): the scan after a merge hands its
   // deploy to a second apply job through its own matrix output.
   | { kind: "no-merged-apply"; path: string }
+  // A stack is set to on-merge, and no apply job takes the scan's matrix
+  // (record 0094).
+  | { kind: "no-on-merge-apply"; path: string }
   | { kind: "scan-no-matrix-output"; path: string; job: string; scan: string };
 
 // Something worth knowing that is not a mistake.
@@ -518,6 +521,12 @@ function checkJobs(
   const mergesAndDeploys = config.mergeAndDeploy.authors.length > 0;
   if (mergesAndDeploys && scans.length > 0 && withMode("resolve").length > 0) {
     if (fromScan.length === 0) warnings.push({ kind: "no-merged-apply", path });
+  }
+  // The scan of a merge hands a stack set to on-merge on the same way (record
+  // 0094). One warning says it for both.
+  const onMerge = config.stacks.some(({ deploy }) => deploy === "on-merge");
+  if (onMerge && !mergesAndDeploys && scans.length > 0 && applies.length > 0) {
+    if (fromScan.length === 0) warnings.push({ kind: "no-on-merge-apply", path });
   }
 }
 

@@ -112,7 +112,8 @@ function settingsText(configured: ConfiguredStack, phases: readonly PhaseGroup[]
   const phase =
     configured.phase === undefined ? "" : `, phase ${phaseWords(configured, " (read from ", ")")}`;
   const waits = dependsOnWords(configured, phases);
-  return `environment ${environment}, tickers ${rule}, ${claims}${phase}${waits === undefined ? "" : `, depends on ${waits}`}`;
+  const onMerge = configured.deploy === "on-merge" ? ", deploys on merge" : "";
+  return `environment ${environment}, tickers ${rule}, ${claims}${phase}${waits === undefined ? "" : `, depends on ${waits}`}${onMerge}`;
 }
 
 function phaseWords({ phase, phaseFrom }: ConfiguredStack, before: string, after: string): string {
@@ -381,6 +382,8 @@ function workflowWarningText(warning: WorkflowWarning): string {
       return `${path}, job ${warning.job}: settle does not wait for the job ${warning.apply}. Add ${warning.apply} to its needs, so it ends the records of those deploys too.`;
     case "no-merged-apply":
       return `${path}: mergeAndDeploy is on, and no apply job takes the matrix of the scan. The scan after a merge hands the deploy on through its own matrix output, so a merged update would never deploy. Add a copy of the apply job that takes needs.scan.outputs.matrix.`;
+    case "no-on-merge-apply":
+      return `${path}: a stack is set to deploy: on-merge, and no apply job takes the matrix of the scan. The scan of a merge hands that deploy on through its own matrix output, so it would never start. Add a copy of the apply job that takes needs.scan.outputs.matrix.`;
     case "scan-no-matrix-output":
       return `${path}, job ${warning.job}: it takes the matrix of the job ${warning.scan}, which has no matrix output. Add outputs: matrix: \${{ steps.<id>.outputs.matrix }} to ${warning.scan}, with that id on its Sluiceway step.`;
   }
@@ -489,6 +492,8 @@ function stacksPart({ stacks, phases }: CheckReport): CheckPart {
   );
   // The same for the phase (record 0067).
   const phased = stacks.some((configured) => configured.phase !== undefined);
+  // And for a stack that deploys on merge (record 0094).
+  const onMerge = stacks.some((configured) => configured.deploy === "on-merge");
   return {
     log: [
       { info: found },
@@ -503,8 +508,8 @@ function stacksPart({ stacks, phases }: CheckReport): CheckPart {
       "### Stacks",
       found,
       [
-        `| Stack | Environment | Tickers | Inputs |${phased ? " Phase |" : ""}${waits ? " Depends on |" : ""}`,
-        `|---|---|---|---|${phased ? "---|" : ""}${waits ? "---|" : ""}`,
+        `| Stack | Environment | Tickers | Inputs |${phased ? " Phase |" : ""}${waits ? " Depends on |" : ""}${onMerge ? " Deploys |" : ""}`,
+        `|---|---|---|---|${phased ? "---|" : ""}${waits ? "---|" : ""}${onMerge ? "---|" : ""}`,
         ...stacks.map((configured) => {
           const { environment, tickers, inputs } = configured;
           return row([
@@ -516,6 +521,7 @@ function stacksPart({ stacks, phases }: CheckReport): CheckPart {
               ? [configured.phase === undefined ? "none" : phaseWords(configured, ", from ", "")]
               : []),
             ...(waits ? [dependsOnCell(configured, phases)] : []),
+            ...(onMerge ? [configured.deploy === "on-merge" ? "on merge" : "on a tick"] : []),
           ]);
         }),
       ].join("\n"),
