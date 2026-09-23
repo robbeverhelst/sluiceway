@@ -78,3 +78,54 @@ describe("the parts of the check", () => {
     expect(part.summary.join("\n")).not.toContain("said this");
   });
 });
+
+// Slice 5.28, record 0092: for every job that deploys, one line says who
+// decides who may deploy, from what the file shows and nothing more.
+describe("who may deploy", () => {
+  const PATH = ".github/workflows/deploy-dashboard.yml";
+  const job = (mode: "auto" | "scan" | "apply", environment?: string) => ({
+    job: mode === "auto" ? "sluiceway" : mode,
+    mode,
+    runs: mode === "auto" ? (["scan", "resolve", "apply", "settle"] as const) : ([mode] as const),
+    ref: "v0",
+    refKind: "moving" as const,
+    ...(environment === undefined ? {} : { environment }),
+  });
+  const partOf = (jobs: ReturnType<typeof job>[]) =>
+    checkParts({
+      report: EMPTY,
+      workflows: {
+        workflows: [{ path: PATH, jobs: jobs.map((one) => ({ ...one, runs: [...one.runs] })) }],
+        warnings: [],
+        notes: [],
+      },
+      unrelated: [],
+      hasConfigFile: true,
+    }).at(-1);
+
+  test("a deploying job with no environment: the tick rule alone", () => {
+    const part = partOf([job("auto")]);
+    const text =
+      "Who may deploy: .github/workflows/deploy-dashboard.yml, job sluiceway names no GitHub Environment, so the tick rule alone decides who may deploy.";
+    expect(texts(part?.log ?? [])).toContain(text);
+    expect(part?.summary).toContain(`- ${text}`);
+  });
+
+  test("a deploying job with an environment: its reviewers, if it has them", () => {
+    const part = partOf([job("scan"), job("apply", "production")]);
+    const text =
+      "Who may deploy: .github/workflows/deploy-dashboard.yml, job apply deploys in the GitHub Environment production. The tick rule decides who may ask. If production has required reviewers, they decide who may deploy. Whether it has them is a setting of the repo, which the check cannot read.";
+    expect(texts(part?.log ?? [])).toContain(text);
+    expect(part?.summary).toContain(`- ${text}`);
+    // The scan job deploys nothing, so it gets no line.
+    expect(texts(part?.log ?? []).filter((line) => line.startsWith("Who may deploy"))).toEqual([
+      text,
+    ]);
+  });
+
+  test("no job deploys: no line", () => {
+    const part = partOf([job("scan", "production")]);
+    expect(texts(part?.log ?? []).some((line) => line.startsWith("Who may deploy"))).toBe(false);
+    expect(part?.summary.join("\n")).not.toContain("Who may deploy");
+  });
+});
