@@ -136,6 +136,14 @@ const stackEntry = z
         "The phase of these stacks, one of phases, or from: a key of the project file that names it. A stack in a phase depends on every stack in every earlier phase.",
       )
       .exactOptional(),
+    // When these stacks deploy (record 0094). A tick unless the repo says
+    // on-merge, for these stacks and no other.
+    deploy: z
+      .enum(["on-tick", "on-merge"])
+      .describe(
+        "When these stacks deploy. on-tick: when a person ticks the row, the default. on-merge: by themselves after the scan of a merge that found them pending, through the same fresh preview and hash check as a tick, attributed to whoever merged. A change that deletes or replaces something, drift, and a stack it depends on that waits for a tick still wait for a tick.",
+      )
+      .exactOptional(),
     // The drift check of these stacks, like the top level (record 0059).
     drift: z
       .strictObject({
@@ -438,6 +446,7 @@ export type WhatIsWrong =
   | { kind: "stack-drift-not-a-mapping"; value: unknown }
   | { kind: "not-a-tick-rule"; value: unknown }
   | { kind: "not-an-event"; value: unknown; events: readonly string[] }
+  | { kind: "not-a-deploy-trigger"; value: unknown }
   | { kind: "not-a-phase-name"; value: unknown }
   | { kind: "not-a-login"; value: unknown }
   | { kind: "not-a-time-zone"; value: unknown }
@@ -617,6 +626,9 @@ function classify(issue: Issue, raw: unknown): Found[] {
   // The other union in the schema is the tick rule.
   if (issue.code === "invalid_union") {
     return Array.isArray(value) ? inner(1) : one({ kind: "not-a-tick-rule", value });
+  }
+  if (key === "deploy" && path[0] === "stacks") {
+    return one({ kind: "not-a-deploy-trigger", value });
   }
   if (issue.code === "invalid_value" && path[0] === "notify") {
     return one({ kind: "not-an-event", value, events: NOTIFY_EVENTS });
@@ -826,6 +838,10 @@ export interface ConfiguredStack {
   // `drift.enabled` of its stack entries (record 0059). Absent when no entry
   // sets it, and the top level decides.
   drift?: boolean;
+  // `deploy: on-merge` of its stack entries (record 0094). Absent for a stack
+  // that deploys on a tick, the default, so nothing changes for a repo that
+  // does not use it.
+  deploy?: "on-merge";
 }
 
 const DEFAULT_ENVIRONMENT = "sluiceway";
@@ -855,6 +871,7 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
     const id = stackId(stack);
     const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
     const drift = entries.findLast((entry) => entry.drift)?.drift?.enabled;
+    const deploy = entries.findLast((entry) => entry.deploy)?.deploy;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     return {
@@ -871,6 +888,7 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
         ? { dependsOnAuto: true as const }
         : {}),
       ...(drift === undefined ? {} : { drift }),
+      ...(deploy === "on-merge" ? { deploy } : {}),
     };
   });
 }

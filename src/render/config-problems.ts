@@ -51,6 +51,8 @@ function problemWords(issue: ConfigIssue): string {
       return `expected a mapping, got ${show(issue.value)}. Write it as the top level has it: drift: { enabled: ${typeof issue.value === "boolean" ? issue.value : true} }.`;
     case "not-a-tick-rule":
       return `expected "write", "maintain", "admin" or a list of usernames, got ${show(issue.value)}.`;
+    case "not-a-deploy-trigger":
+      return `expected "on-tick" or "on-merge", got ${show(issue.value)}.`;
     case "not-an-event":
       return `${show(issue.value)} is not an event. The events are: ${issue.events.join(", ")}.`;
     case "not-a-phase-name":

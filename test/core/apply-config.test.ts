@@ -258,3 +258,48 @@ stacks:
     expect(configured.map((one) => one.drift)).toEqual([false, true, undefined]);
   });
 });
+
+// Deploy on merge (record 0094): a stack entry may say that its stacks go out
+// on merge. The default stays a tick, and a stack no entry sets carries no
+// key at all, so a repo that does not use it is what it was.
+describe("deploy on a stack", () => {
+  test("is absent when no entry sets it: a person ticks", () => {
+    expect(applyConfig(parseConfig(undefined), FOUND).map((one) => one.deploy)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  test("on-tick written out is the default, and leaves no key either", () => {
+    const configured = applyConfig(
+      parseConfig("stacks:\n  - path: envs/prod\n    deploy: on-tick\n"),
+      FOUND,
+    );
+    expect(configured.map((one) => "deploy" in one)).toEqual([false, false, false]);
+  });
+
+  test("an entry sets its stacks, and the entry with a name wins", () => {
+    const configured = applyConfig(
+      parseConfig(`
+stacks:
+  - path: apps/grafana
+    deploy: on-merge
+  - path: apps/grafana
+    name: prod
+    deploy: on-tick
+`),
+      FOUND,
+    );
+    expect(configured.map((one) => one.deploy)).toEqual(["on-merge", undefined, undefined]);
+  });
+
+  test("any other value fails the config, because a typo would change what deploys without a person", () => {
+    expect(() => parseConfig("stacks:\n  - path: envs/prod\n    deploy: on-push\n")).toThrow(
+      'stacks[0].deploy: expected "on-tick" or "on-merge", got "on-push".',
+    );
+    expect(() => parseConfig("stacks:\n  - path: envs/prod\n    deploy: true\n")).toThrow(
+      'stacks[0].deploy: expected "on-tick" or "on-merge", got true.',
+    );
+  });
+});

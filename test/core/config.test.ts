@@ -352,6 +352,7 @@ stacks:
       "previewTimeout",
       "dependsOn",
       "phase",
+      "deploy",
       "drift",
       "options",
     ];

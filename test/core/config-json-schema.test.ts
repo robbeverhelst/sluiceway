@@ -67,6 +67,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "previewTimeout",
       "dependsOn",
       "phase",
+      "deploy",
       "drift",
       "options",
     ]);

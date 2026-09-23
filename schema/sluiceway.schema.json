@@ -298,6 +298,14 @@
             ],
             "description": "The phase of these stacks, one of phases, or from: a key of the project file that names it. A stack in a phase depends on every stack in every earlier phase."
           },
+          "deploy": {
+            "type": "string",
+            "enum": [
+              "on-tick",
+              "on-merge"
+            ],
+            "description": "When these stacks deploy. on-tick: when a person ticks the row, the default. on-merge: by themselves after the scan of a merge that found them pending, through the same fresh preview and hash check as a tick, attributed to whoever merged. A change that deletes or replaces something, drift, and a stack it depends on that waits for a tick still wait for a tick."
+          },
           "drift": {
             "type": "object",
             "properties": {
