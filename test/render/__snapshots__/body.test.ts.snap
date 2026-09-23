@@ -452,7 +452,7 @@ exports[`snapshots 3 pending with the destroy sign 1`] = `
 
 <div align="center">
 
-🟡&nbsp;**3 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack destroys resources**
+🟡&nbsp;**3 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack deletes or replaces resources**
 
 Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 
@@ -611,7 +611,7 @@ exports[`snapshots 12 pending with the destroy sign 1`] = `
 
 <div align="center">
 
-🟡&nbsp;**12 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack destroys resources**
+🟡&nbsp;**12 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack deletes or replaces resources**
 
 Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 
@@ -855,7 +855,7 @@ exports[`snapshots 20 pending with the destroy sign 1`] = `
 
 <div align="center">
 
-🟡&nbsp;**20 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack destroys resources**
+🟡&nbsp;**20 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack deletes or replaces resources**
 
 Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 
@@ -1144,7 +1144,7 @@ exports[`snapshots 21 pending with the destroy sign 1`] = `
 
 <div align="center">
 
-🟡&nbsp;**21 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack destroys resources**
+🟡&nbsp;**21 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack deletes or replaces resources**
 
 Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 
@@ -4065,7 +4065,7 @@ exports[`snapshots the 58 stack body 1`] = `
 
 <div align="center">
 
-🟡&nbsp;**11 pending** · 🔵&nbsp;2 deploying · 🔴&nbsp;2 preview failed · 🟢&nbsp;43 in sync · :warning: **4 pending stacks destroy resources** · 🔴&nbsp;2 failed deploys
+🟡&nbsp;**11 pending** · 🔵&nbsp;2 deploying · 🔴&nbsp;2 preview failed · 🟢&nbsp;43 in sync · :warning: **4 pending stacks delete or replace resources** · 🔴&nbsp;2 failed deploys
 
 Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 
@@ -4475,7 +4475,7 @@ exports[`snapshots the 58 stack body, redacted 1`] = `
 
 <div align="center">
 
-🟡&nbsp;**11 pending** · 🔵&nbsp;2 deploying · 🔴&nbsp;2 preview failed · 🟢&nbsp;43 in sync · :warning: **4 pending stacks destroy resources** · 🔴&nbsp;2 failed deploys
+🟡&nbsp;**11 pending** · 🔵&nbsp;2 deploying · 🔴&nbsp;2 preview failed · 🟢&nbsp;43 in sync · :warning: **4 pending stacks delete or replace resources** · 🔴&nbsp;2 failed deploys
 
 Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 
@@ -4644,6 +4644,64 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 - storage/buckets:staging <!-- sluiceway:row stack="storage/buckets:staging" state="in-sync" -->
   <!-- /sluiceway:row -->
 - storage/cdn:prod <!-- sluiceway:row stack="storage/cdn:prod" state="in-sync" -->
+  <!-- /sluiceway:row -->
+
+</details>
+
+## Recently deployed
+
+Times are in UTC.
+
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+
+---
+
+- [ ] Rescan all stacks <!-- sluiceway:rescan -->
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://docs.sluiceway.dev/)</sub>
+"
+`;
+
+exports[`snapshots queued, with the still crate 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/queued-1-dark.svg">
+    <img alt="Sluiceway: queued behind dependencies, 1 stack is pending" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/queued-1-light.svg">
+  </picture>
+</p>
+
+<div align="center">
+
+🟡&nbsp;**1 pending** · 🔵&nbsp;1 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync
+
+Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
+
+</div>
+
+## Deploying
+
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/spinner-queued-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/spinner-queued-light.svg"></picture> **q:queued** · queued behind **n:network** · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="q:queued" state="queued" -->
+  <!-- /sluiceway:row -->
+
+## Pending
+
+Tick a box to deploy that stack exactly as its row shows it.
+
+- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+
+## In sync
+
+<details><summary>1 stack in sync</summary>
+
+- e:calm <!-- sluiceway:row stack="e:calm" state="in-sync" -->
   <!-- /sluiceway:row -->
 
 </details>

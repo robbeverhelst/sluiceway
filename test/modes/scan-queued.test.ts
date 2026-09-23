@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type ScanContext, scan } from "../../src/modes/scan.ts";
-import { change, harness, pending, REPO_URL, SPINNER } from "./harness.ts";
+import { change, harness, pending, QUEUED_SPINNER, REPO_URL } from "./harness.ts";
 import {
   ALICE,
   matrix,
@@ -61,7 +61,7 @@ describe("a scan while a chain is under way", () => {
     await scan(scanContext(h));
 
     expect(firstLine(rowsOf(h)["app:prod"])).toBe(
-      `- ${SPINNER}**app:prod** · queued behind **network:prod** · ticked by alice · [run](${REPO_URL}/actions/runs/${RESOLVE_RUN}) <!-- sluiceway:row stack="app:prod" state="queued" -->`,
+      `- ${QUEUED_SPINNER}**app:prod** · queued behind **network:prod** · ticked by alice · [run](${REPO_URL}/actions/runs/${RESOLVE_RUN}) <!-- sluiceway:row stack="app:prod" state="queued" -->`,
     );
   });
 

@@ -12,7 +12,7 @@ exports[`the 100 stack fixture the body 1`] = `
 
 <div align="center">
 
-🟡&nbsp;**53 pending** · 🔵&nbsp;2 deploying · 🔴&nbsp;2 preview failed · 🟢&nbsp;43 in sync · :warning: **13 pending stacks destroy resources** · 🔴&nbsp;2 failed deploys
+🟡&nbsp;**53 pending** · 🔵&nbsp;2 deploying · 🔴&nbsp;2 preview failed · 🟢&nbsp;43 in sync · :warning: **13 pending stacks delete or replace resources** · 🔴&nbsp;2 failed deploys
 
 Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 10:02 UTC</sub>
 

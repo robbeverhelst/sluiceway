@@ -31,6 +31,8 @@ export const ACTION_REF = "v0.1.0";
 // What a deploying or queued row starts with under a header (record 0063).
 const SPINNERS = `https://raw.githubusercontent.com/sluiceway/sluiceway/${ACTION_REF}/assets/mascot`;
 export const SPINNER = `<picture><source media="(prefers-color-scheme: dark)" srcset="${SPINNERS}/spinner-dark.svg"><img alt="" width="16" height="16" src="${SPINNERS}/spinner-light.svg"></picture> `;
+// A queued row's crate stands still (record 0093).
+export const QUEUED_SPINNER = `<picture><source media="(prefers-color-scheme: dark)" srcset="${SPINNERS}/spinner-queued-dark.svg"><img alt="" width="16" height="16" src="${SPINNERS}/spinner-queued-light.svg"></picture> `;
 
 // A repo root on disk, because config is a file. Discovery is the adapter's,
 // so no stack needs a file here.

@@ -32,8 +32,11 @@ const SIGNED = STATE_PICTURES.filter((picture) => /-(\d+|more)$/.test(picture)).
 const PICTURES = [...STATE_PICTURES, ...SIGNED];
 const FILES = PICTURES.flatMap((picture) => [`${picture}-light.svg`, `${picture}-dark.svg`]);
 // The small picture at the start of a deploying or queued row (record 0063):
-// square, and under 1 KB, because a dashboard can show several at once.
-const SPINNER_FILES = ["spinner-light.svg", "spinner-dark.svg"];
+// square, and under 1 KB, because a dashboard can show several at once. The
+// queued row's crate stands still (record 0093).
+const MOVING_SPINNER_FILES = ["spinner-light.svg", "spinner-dark.svg"];
+const STILL_SPINNER_FILES = ["spinner-queued-light.svg", "spinner-queued-dark.svg"];
+const SPINNER_FILES = [...MOVING_SPINNER_FILES, ...STILL_SPINNER_FILES];
 const HEADER = { maxBytes: MAX_BYTES, viewBox: "0 0 880 160", cap: "10 KB" };
 const SPINNER = { maxBytes: 1024, viewBox: "0 0 24 24", cap: "1 KB" };
 
@@ -184,7 +187,11 @@ describe("the spinner", () => {
     expect(violations(readFileSync(join(DIR, name), "utf8"), SPINNER)).toEqual([]);
   });
 
-  test.each(SPINNER_FILES)("%s moves, and stands still under reduced motion", (name) => {
+  test.each(STILL_SPINNER_FILES)("%s never moves", (name) => {
+    expect(readFileSync(join(DIR, name), "utf8")).not.toMatch(/animation|<animate|<set\s/);
+  });
+
+  test.each(MOVING_SPINNER_FILES)("%s moves, and stands still under reduced motion", (name) => {
     const svg = readFileSync(join(DIR, name), "utf8");
     expect(svg).toMatch(/animation:/);
     expect(svg).toMatch(

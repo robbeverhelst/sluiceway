@@ -401,8 +401,9 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 
 // The body made fit for the README: the hidden markers go, every heading
 // goes one level down under "What it looks like", and `#N` links to the
-// example repo instead of this repo's own pull requests. It sits in a closed
-// <details>, with a line that says what is in it.
+// example repo instead of this repo's own pull requests. The header picture
+// and the counts line stay open, so a reader who never clicks still sees the
+// crates and the signs; the rows sit in a closed <details> (record 0092).
 export function readmeExample(actionRef = exampleActionRef()): string {
   const readme = exampleBody(actionRef)
     .replace(/^<!-- sluiceway:dashboard [^\n]*-->\n\n/, "")
@@ -410,31 +411,54 @@ export function readmeExample(actionRef = exampleActionRef()): string {
     .replace(/ <!-- sluiceway:[^\n]*?-->/g, "")
     .replace(/^## /gm, "### ")
     .replace(/#(\d+) by /g, `[#$1](${REPO_URL}/pull/$1) by `);
-  const summary = [
-    plural(ROWS.length, "stack"),
-    `${DEPLOYING.length} deploying`,
-    `${PENDING.length} pending`,
-    `${DRIFTED.length} drifted`,
-  ].join(", ");
+  const fold = readme.indexOf("\n### ");
+  if (fold === -1) throw new Error("The example has no section under its counts line.");
   return [
-    "<details>",
-    `<summary><b>Open the example dashboard</b>: ${summary}</summary>`,
+    readme.slice(0, fold).trimEnd(),
     "",
-    readme,
+    "<details>",
+    `<summary><b>Open the example dashboard</b>: all ${plural(ROWS.length, "stack")} and every section</summary>`,
+    "",
+    withHardBreaks(readme.slice(fold + 1)),
     "",
     "</details>",
   ].join("\n");
 }
 
-const README_START = "<details>\n<summary><b>Open the example dashboard</b>";
-const README_END = "\n</details>\n\n## How it works";
+// An issue body renders every line break as a break, and a README does not
+// (record 0092). So a line of a row that goes on in an indented line ends in
+// `<br>`, as the issue shows it: the `from` line under a row, and each
+// `:warning:` line on its own. A line that already ends in `<br>`, and the
+// fold of a row's changes, need none.
+export function withHardBreaks(markdown: string): string {
+  const lines = markdown.split("\n");
+  const block = (line: string) => /^\s*<\/?details[\s>]/.test(line);
+  return lines
+    .map((line, index) => {
+      const next = lines[index + 1] ?? "";
+      const goesOn = /^ {2}\S/.test(next) && !block(next);
+      return goesOn && line.trim() !== "" && !line.endsWith("<br>") && !block(line)
+        ? `${line}<br>`
+        : line;
+    })
+    .join("\n");
+}
+
+// Where the example sits in the README: from the first centred paragraph
+// under "What it looks like", the example's header picture, to the end of
+// its <details>. Undefined when the README has none.
+export function readmeExampleSpan(readme: string): { start: number; end: number } | undefined {
+  const section = readme.indexOf("\n## What it looks like\n");
+  const start = section === -1 ? -1 : readme.indexOf('\n<p align="center">', section) + 1;
+  const end = start <= 0 ? -1 : readme.indexOf("\n</details>\n\n## How it works", start);
+  return start <= 0 || end === -1 ? undefined : { start, end: end + "\n</details>".length };
+}
 
 // The README with its example replaced, and nothing else changed.
 export function withReadmeExample(readme: string, example: string): string {
-  const start = readme.indexOf(README_START);
-  const end = readme.indexOf(README_END, start);
-  if (start === -1 || end === -1) throw new Error("README.md has no example dashboard.");
-  return `${readme.slice(0, start)}${example}${readme.slice(end + "\n</details>".length)}`;
+  const span = readmeExampleSpan(readme);
+  if (span === undefined) throw new Error("README.md has no example dashboard.");
+  return `${readme.slice(0, span.start)}${example}${readme.slice(span.end)}`;
 }
 
 if (import.meta.main) {

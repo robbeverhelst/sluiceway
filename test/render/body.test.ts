@@ -639,7 +639,7 @@ describe("the counts line", () => {
   test("the 58 stack fixture", () => {
     const body = renderBody({ ...input([], OFF), rows: rows58().map((row) => rowBlock(row)) });
     expect(paragraphs(body)[1]).toBe(
-      "**11 pending** · 2 deploying · 2 preview failed · 43 in sync · :warning: **4 pending stacks destroy resources** · 2 failed deploys",
+      "**11 pending** · 2 deploying · 2 preview failed · 43 in sync · :warning: **4 pending stacks delete or replace resources** · 2 failed deploys",
     );
   });
 
@@ -651,7 +651,7 @@ describe("the counts line", () => {
 
   test("one of each", () => {
     expect(paragraphs(renderBody(input(ONE_OF_EACH, OFF)))[1]).toBe(
-      "**1 pending** · 1 deploying · 1 preview failed · 1 in sync · :warning: **1 pending stack destroys resources** · 1 failed deploy",
+      "**1 pending** · 1 deploying · 1 preview failed · 1 in sync · :warning: **1 pending stack deletes or replaces resources** · 1 failed deploy",
     );
   });
 
@@ -660,7 +660,7 @@ describe("the counts line", () => {
   test("the 58 stack fixture under a header has dots, and none on the destroy warning", () => {
     const big = renderBody({ ...input([]), rows: rows58().map((row) => rowBlock(row)) });
     expect(paragraphs(big)[3]).toBe(
-      "🟡&nbsp;**11 pending** · 🔵&nbsp;2 deploying · 🔴&nbsp;2 preview failed · 🟢&nbsp;43 in sync · :warning: **4 pending stacks destroy resources** · 🔴&nbsp;2 failed deploys",
+      "🟡&nbsp;**11 pending** · 🔵&nbsp;2 deploying · 🔴&nbsp;2 preview failed · 🟢&nbsp;43 in sync · :warning: **4 pending stacks delete or replace resources** · 🔴&nbsp;2 failed deploys",
     );
   });
 });
@@ -705,7 +705,7 @@ describe("the count dots", () => {
   // picture carries the destroy sign. The warning keeps its `:warning:`.
   test("the body with the sign has dots, the white dot at 0, and no dot on the warning", () => {
     expect(paragraphs(renderBody(input(SIGNED.pending)))[3]).toBe(
-      "🟡&nbsp;**2 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack destroys resources**",
+      "🟡&nbsp;**2 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync · :warning: **1 pending stack deletes or replaces resources**",
     );
     expect(paragraphs(renderBody(input(SIGNED.deploying)))[3]).toBe(
       "🟡&nbsp;**1 pending** · 🔵&nbsp;1 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync",
@@ -715,7 +715,7 @@ describe("the count dots", () => {
   test("the destroy warning gets no dot", () => {
     for (const personality of [true, false]) {
       const body = renderBody(input(SIGNED.pending, { personality }));
-      expect(body).toContain(" · :warning: **1 pending stack destroys resources**");
+      expect(body).toContain(" · :warning: **1 pending stack deletes or replaces resources**");
       expect(body).not.toMatch(/&nbsp;:warning:/);
     }
   });
@@ -1496,6 +1496,16 @@ describe("snapshots", () => {
     ).toMatchSnapshot();
   });
 
+  // A queued row starts with the crate standing still (record 0093).
+  test("queued, with the still crate", () => {
+    expect(
+      `${renderBody({
+        ...input([], { recentlyDeployed: RECENT }),
+        rows: DASHBOARDS.queued.map((row) => rowBlock(row, { actionRef: "v0.1.0" })),
+      })}\n`,
+    ).toMatchSnapshot();
+  });
+
   // Slice 2.17: pending rows without boxes, the line that says so, and no
   // rescan box.
   test("read only, failing with rows pending", () => {
@@ -1582,9 +1592,9 @@ describe("the image urls in the snapshots", () => {
       readFileSync(join(import.meta.dir, "__snapshots__/body.test.ts.snap"), "utf8"),
     );
     const files = readdirSync(MASCOT).filter((name) => name.endsWith(".svg"));
-    // The 702 header files and the row spinner in both themes (records 0063,
-    // 0066 and 0075).
-    expect(files).toHaveLength(704);
+    // The 702 header files, and the row spinner and the queued row's still
+    // crate in both themes (records 0063, 0066, 0075 and 0093).
+    expect(files).toHaveLength(706);
     expect([...new Set(own.map((url) => url.split("/").at(-1) ?? ""))].sort()).toEqual(
       files.sort(),
     );

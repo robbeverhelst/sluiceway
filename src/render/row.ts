@@ -481,15 +481,18 @@ function outsideFold(attribution: AttributionLines | undefined, level: RowLevel)
   return level === 0 ? [...(attribution?.outside ?? [])] : [];
 }
 
-// A small animated picture at the start of a deploying or queued row (record
-// 0063): the thing a person just ticked is visibly moving. A light and a dark
-// file through `<picture>`, which follows the reader's GitHub theme, as the
-// header does (record 0033). The alt text is empty because the words right
-// after it say deploying.
+// A small animated picture at the start of a deploying row (record 0063): the
+// thing a person just ticked is visibly moving. A queued row gets the same
+// crate standing still (record 0093), as the queued header ties it up at the
+// gate, so motion on a row always means that stack is deploying now. A light
+// and a dark file through `<picture>`, which follows the reader's GitHub
+// theme, as the header does (record 0033). The alt text is empty because the
+// words right after it say deploying or queued.
 export const SPINNER_WIDTH = 16;
 
-function spinner(actionRef: string): string {
-  const file = (theme: string) => mascotUrl(actionRef, `spinner-${theme}.svg`);
+function spinner(actionRef: string, queued: boolean): string {
+  const name = queued ? "spinner-queued" : "spinner";
+  const file = (theme: string) => mascotUrl(actionRef, `${name}-${theme}.svg`);
   return `<picture><source media="(prefers-color-scheme: dark)" srcset="${file("dark")}"><img alt="" width="${SPINNER_WIDTH}" height="${SPINNER_WIDTH}" src="${file("light")}"></picture> `;
 }
 
@@ -503,7 +506,7 @@ function deployingRow(row: DeployingRow, options: RowOptions): string[] {
         : "deploying";
   const state = behind.length > 0 ? "queued" : "deploying";
   const lines = [
-    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef)}**${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${
+    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef, state === "queued")}**${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${
       row.runUrl
     }) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys, deletes: row.deletes })}`,
   ];

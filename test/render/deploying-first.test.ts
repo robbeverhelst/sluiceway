@@ -19,6 +19,8 @@ const REPO_URL = "https://github.com/example-org/infra";
 const RUN_URL = `${REPO_URL}/actions/runs/17034455121`;
 const SPINNER = "https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot";
 const PICTURE = `<picture><source media="(prefers-color-scheme: dark)" srcset="${SPINNER}/spinner-dark.svg"><img alt="" width="16" height="16" src="${SPINNER}/spinner-light.svg"></picture>`;
+// A queued row's crate stands still (record 0093).
+const STILL_PICTURE = `<picture><source media="(prefers-color-scheme: dark)" srcset="${SPINNER}/spinner-queued-dark.svg"><img alt="" width="16" height="16" src="${SPINNER}/spinner-queued-light.svg"></picture>`;
 
 function pending(stackId: string, ops: ("update" | "delete")[] = ["update"]): PendingRow {
   return {
@@ -192,12 +194,17 @@ describe("the spinner", () => {
     );
   });
 
-  test("a row waiting to start and a queued row start with it too", () => {
+  test("a row waiting to start starts with it too", () => {
     expect(firstLine(deploying("a", { waiting: true }), "v0.11.0")).toStartWith(
       `- ${PICTURE} **a** · waiting to start`,
     );
+  });
+
+  // Record 0093: a queued crate is tied up and still, as in the queued header,
+  // so motion on a row always means that stack is deploying now.
+  test("a queued row starts with the crate standing still", () => {
     expect(firstLine(deploying("b", { behind: ["a"] }), "v0.11.0")).toStartWith(
-      `- ${PICTURE} **b** · queued behind **a**`,
+      `- ${STILL_PICTURE} **b** · queued behind **a**`,
     );
   });
 
@@ -245,9 +252,10 @@ describe("the writers draw it through the size budget", () => {
 
   test("with personality every deploying and queued row has it, and nothing else", () => {
     const body = budget(true);
-    expect(body.split("spinner-light.svg")).toHaveLength(3);
+    expect(body.split("spinner-light.svg")).toHaveLength(2);
+    expect(body.split("spinner-queued-light.svg")).toHaveLength(2);
     expect(body).toContain(`- ${PICTURE} **network:prod** · deploying`);
-    expect(body).toContain(`- ${PICTURE} **site:prod** · queued behind`);
+    expect(body).toContain(`- ${STILL_PICTURE} **site:prod** · queued behind`);
   });
 
   test("without personality there is none, as there is no header", () => {

@@ -44,10 +44,12 @@ The files are generated. `polish.mjs` on the `prototype/header-polish` branch of
 
 ## The row spinner
 
-`spinner-light.svg` and `spinner-dark.svg` are not a header. A deploying or queued row starts with one, through the same `<picture>` trick and from the same release tag, so the stack a person just ticked is visibly moving (record 0063). It is one of the header's crates, bobbing in the water on its way through the gate. Only with a header: `dashboard.personality: false` has no spinner.
+`spinner-light.svg` and `spinner-dark.svg` are not a header. A deploying row starts with one, through the same `<picture>` trick and from the same release tag, so the stack a person just ticked is visibly moving (record 0063). It is one of the header's crates, bobbing in the water on its way through the gate. Only with a header: `dashboard.personality: false` has no spinner.
+
+A queued row starts with `spinner-queued-light.svg` or `spinner-queued-dark.svg` instead: the same crate, level and still, in still water (record 0093). The queued header ties the ticked crate up at the closed gate and nothing moves but the water, so the row's crate does not move either, and motion on a row always means that stack is deploying now.
 
 - `viewBox="0 0 24 24"`, shown at width 16
 - the file rules above, and at most 1 KB per file
-- the bob and the water turn off under `prefers-reduced-motion`
+- the bob and the water turn off under `prefers-reduced-motion`; the queued crate has no animation at all
 
-Its generator is `spinner.mjs` on the `prototype/row-spinner` branch of the private lab repo, which draws a second take too, a teal ring.
+Its generator is `spinner.mjs` on the `prototype/row-spinner` branch of the private lab repo, which draws a second take too, a teal ring. The queued crate is its `moored` take.

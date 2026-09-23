@@ -8,14 +8,11 @@
 Sluiceway keeps one GitHub issue that shows which infrastructure stacks have changes waiting, and deploys a stack when you tick its box.
 
 > [!IMPORTANT]
-> **Sluiceway is in beta.** It works end to end and is released as [0.x](https://github.com/sluiceway/sluiceway/releases), and the [roadmap](https://docs.sluiceway.dev/roadmap/) says what comes before 1.0. Use `sluiceway/sluiceway@v0`, or [pin a commit](https://docs.sluiceway.dev/guides/workflow/#pin-a-commit) if you want to review every update. Please report every rough edge as an [issue](https://github.com/sluiceway/sluiceway/issues/new). The [onboarding log](https://docs.sluiceway.dev/onboarding-log/) lists the ones found so far.
+> **Sluiceway is in beta.** It is released as [0.x](https://github.com/sluiceway/sluiceway/releases), and the [roadmap](https://docs.sluiceway.dev/roadmap/) says what comes before 1.0. Use `sluiceway/sluiceway@v0` or [pin a commit](https://docs.sluiceway.dev/guides/workflow/#pin-a-commit), and report rough edges as [issues](https://github.com/sluiceway/sluiceway/issues/new).
 
 ## What it looks like
 
-The dashboard is Markdown, so here is one. It is an example, rendered by Sluiceway's own code from made-up rows, with every section at once. In a real dashboard issue the boxes can be ticked. Here they cannot. The same body, as a dashboard issue holds it, is [`assets/example-dashboard.md`](assets/example-dashboard.md).
-
-<details>
-<summary><b>Open the example dashboard</b>: 16 stacks, 2 deploying, 4 pending, 2 drifted</summary>
+The dashboard is Markdown, so here is one: an example from made-up rows, rendered by Sluiceway's own code, with every section at once. In a real dashboard issue you tick its boxes; here they are disabled. The same body, as a dashboard issue holds it, is [`assets/example-dashboard.md`](assets/example-dashboard.md).
 
 <p align="center">
   <picture>
@@ -26,17 +23,20 @@ The dashboard is Markdown, so here is one. It is an example, rendered by Sluicew
 
 <div align="center">
 
-🟡&nbsp;**4 pending** · 🟠&nbsp;2 drifted · 🔵&nbsp;2 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;8 in sync · :warning: **2 pending stacks destroy resources**
+🟡&nbsp;**4 pending** · 🟠&nbsp;2 drifted · 🔵&nbsp;2 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;8 in sync · :warning: **2 pending stacks delete or replace resources**
 
 Scanned [`34e410f`](https://github.com/example-org/infra/commit/34e410f2ce7bd7cfd94d9a2f1d5bc0b2dcc6aa91) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
 
 </div>
 
+<details>
+<summary><b>Open the example dashboard</b>: all 16 stacks and every section</summary>
+
 ### Deploying
 
-- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-light.svg"></picture> **apps/api:prod** · deploying · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330)
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-light.svg"></picture> **apps/api:prod** · deploying · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330)<br>
   from [#512](https://github.com/example-org/infra/pull/512) by alice · [compare](https://github.com/example-org/infra/compare/e27f50794430...34e410f2ce7b)
-- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-light.svg"></picture> **apps/worker:prod** · queued behind **apps/api:prod** · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330)
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-queued-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.27.0/assets/mascot/spinner-queued-light.svg"></picture> **apps/worker:prod** · queued behind **apps/api:prod** · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330)<br>
   from [#509](https://github.com/example-org/infra/pull/509) by bob · [compare](https://github.com/example-org/infra/compare/ae93aa6a808a...34e410f2ce7b)
 
 ### Updates waiting to merge
@@ -58,21 +58,21 @@ Tick a box to deploy that stack exactly as its row shows it.
 >
 > 1 drifted stack has resources gone outside the code: **platform/external-dns:prod**
 
-- [ ] **apps/billing:prod** · 1 create, 1 update · [preview](https://github.com/example-org/infra/runs/48213301)
+- [ ] **apps/billing:prod** · 1 create, 1 update · [preview](https://github.com/example-org/infra/runs/48213301)<br>
   from [#514](https://github.com/example-org/infra/pull/514) by erin, [#511](https://github.com/example-org/infra/pull/511) by renovate&#91;bot&#93; · [compare](https://github.com/example-org/infra/compare/92a260fb62d8...34e410f2ce7b)
   <details><summary>2 changes</summary>
   <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>billing</b> · <code>spec.replicas</code> <code>2</code> → <code>3</code><br>
   <kbd>create</kbd> <code>kubernetes:monitoring.coreos.com/v1:ServiceMonitor</code> <b>billing</b><br>
   </details>
-- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/runs/48213302)
-  from [#498](https://github.com/example-org/infra/pull/498) by dave · [compare](https://github.com/example-org/infra/compare/461a661f5643...34e410f2ce7b)
-  :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>legacy-jobs</b>
-  :warning: <kbd>DELETE</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>legacy-worker</b>
+- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/runs/48213302)<br>
+  from [#498](https://github.com/example-org/infra/pull/498) by dave · [compare](https://github.com/example-org/infra/compare/461a661f5643...34e410f2ce7b)<br>
+  :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>legacy-jobs</b><br>
+  :warning: <kbd>DELETE</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>legacy-worker</b><br>
   :warning: <kbd>DELETE</kbd> <code>kubernetes:core/v1:Service</code> <b>legacy-worker</b>
   <details><summary>1 other change</summary>
   <kbd>forget</kbd> <code>aws:iam/role:Role</code> <b>legacy-worker</b><br>
   </details>
-- [ ] **apps/web:staging** · 2 creates, 1 update · [preview](https://github.com/example-org/infra/runs/48213303)
+- [ ] **apps/web:staging** · 2 creates, 1 update · [preview](https://github.com/example-org/infra/runs/48213303)<br>
   from [#516](https://github.com/example-org/infra/pull/516) by carol, [#510](https://github.com/example-org/infra/pull/510) by bob, and 1 change outside this stack · [compare](https://github.com/example-org/infra/compare/aa6e427d334b...34e410f2ce7b)
   <details><summary>3 changes</summary>
   <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>web</b> · <code>metadata.labels&#91;&quot;app.kubernetes.io/version&quot;&#93;</code>, <code>spec.template.spec.containers&#91;0&#93;.image</code><br>
@@ -82,8 +82,8 @@ Tick a box to deploy that stack exactly as its row shows it.
   <details><summary>changes outside this stack</summary>
   <a href="https://github.com/example-org/infra/pull/497">#497</a> by frank<br>
   </details>
-- [ ] **infra/network:prod** · 1 update, **1 replace** · [preview](https://github.com/example-org/infra/runs/48213304)
-  from [11fa403](https://github.com/example-org/infra/commit/11fa403908e7cf940afa4635f39fb7d8bf5f0eaa) by gina · [compare](https://github.com/example-org/infra/compare/55050087957c...34e410f2ce7b)
+- [ ] **infra/network:prod** · 1 update, **1 replace** · [preview](https://github.com/example-org/infra/runs/48213304)<br>
+  from [11fa403](https://github.com/example-org/infra/commit/11fa403908e7cf940afa4635f39fb7d8bf5f0eaa) by gina · [compare](https://github.com/example-org/infra/compare/55050087957c...34e410f2ce7b)<br>
   :warning: <kbd>REPLACE</kbd> <code>aws:ec2/subnet:Subnet</code> <b>private-b</b> · forced by <code>cidrBlock</code>
   <details><summary>1 other change</summary>
   <kbd>update</kbd> <code>aws:ec2/routeTable:RouteTable</code> <b>private</b> · <code>routes&#91;1&#93;.natGatewayId</code><br>
@@ -104,7 +104,7 @@ Real infrastructure changed outside the code. Deploying a stack puts it back as 
   <kbd>gone</kbd> <code>aws:route53/record:Record</code> <b>status-cname</b><br>
   </details>
 
-- [ ] **Confirm:** repair all 2 drifted stacks: **monitoring/grafana:prod**, **platform/external-dns:prod** · asked by carol
+- [ ] **Confirm:** repair all 2 drifted stacks: **monitoring/grafana:prod**, **platform/external-dns:prod** · asked by carol<br>
   Ticking this deploys each stack as its row shows it, in dependency order. A change to these rows first takes it back.
 
 ### In sync
@@ -132,12 +132,12 @@ Real infrastructure changed outside the code. Deploying a stack puts it back as 
 
 Times are in UTC.
 
-- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)<br>
   shipped [#513](https://github.com/example-org/infra/pull/513) by alice · [compare](https://github.com/example-org/infra/compare/ae93aa6a808a...4a35e6dd48fe)
 - 🟢&nbsp;data/postgres:prod · deployed outside the dashboard, from [`35bf0b7`](https://github.com/example-org/infra/commit/35bf0b7251cdfd47085dc72ea2ba4c6aff3b7237) · 09-21 09:30
 - ⚪&nbsp;apps/auth:staging · no changes · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
 - 🟢&nbsp;platform/ingress-nginx:prod · drift fixed · carol · 09-20 18:05 · [run](https://github.com/example-org/infra/actions/runs/17030044170)
-- 🟢&nbsp;apps/web:prod · bob · 09-20 16:52 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+- 🟢&nbsp;apps/web:prod · bob · 09-20 16:52 · [run](https://github.com/example-org/infra/actions/runs/17029910331)<br>
   shipped [#510](https://github.com/example-org/infra/pull/510) by bob · [compare](https://github.com/example-org/infra/compare/ae93aa6a808a...92a260fb62d8)
 - 🔴&nbsp;apps/web:prod · failed · bob · 09-20 16:40 · [run](https://github.com/example-org/infra/actions/runs/17029855012)
 
@@ -237,7 +237,7 @@ jobs:
 
 ## More
 
-- [The documentation](https://docs.sluiceway.dev/): [the workflow](https://docs.sluiceway.dev/guides/workflow/), [using the dashboard](https://docs.sluiceway.dev/using-the-dashboard/), [configuration](https://docs.sluiceway.dev/guides/configuration/), [credentials](https://docs.sluiceway.dev/guides/credentials/), [security](https://docs.sluiceway.dev/guides/security/), [reference](https://docs.sluiceway.dev/reference/action/), [the roadmap](https://docs.sluiceway.dev/roadmap/) and [the glossary](https://docs.sluiceway.dev/reference/glossary/).
+- [The documentation](https://docs.sluiceway.dev/): [the workflow](https://docs.sluiceway.dev/guides/workflow/), [using the dashboard](https://docs.sluiceway.dev/using-the-dashboard/), [configuration](https://docs.sluiceway.dev/guides/configuration/), [credentials](https://docs.sluiceway.dev/guides/credentials/), [security](https://docs.sluiceway.dev/guides/security/), [reference](https://docs.sluiceway.dev/reference/action/), [the roadmap](https://docs.sluiceway.dev/roadmap/), [the onboarding log](https://docs.sluiceway.dev/onboarding-log/) of rough edges found so far, and [the glossary](https://docs.sluiceway.dev/reference/glossary/).
 - [sluiceway/examples](https://github.com/sluiceway/examples): a repo with Sluiceway installed and a live dashboard.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release.
 - [CONTRIBUTING.md](CONTRIBUTING.md): how to build and test it. To report a vulnerability, see [SECURITY.md](SECURITY.md).

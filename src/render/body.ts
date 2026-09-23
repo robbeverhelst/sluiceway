@@ -229,9 +229,10 @@ function countsLine(counts: CountsLineNumbers, dots: boolean): string {
     `${dot("preview-failed", previewFailed)}${previewFailed} preview failed`,
     `${dot("in-sync", inSync)}${inSync} in sync`,
   ];
-  // The warning keeps its `:warning:` and gets no dot.
+  // The warning keeps its `:warning:` and gets no dot. It says "delete or
+  // replace", as the alert under Pending and the rows' own lines do.
   if (destroying > 0) {
-    const words = destroying === 1 ? "stack destroys" : "stacks destroy";
+    const words = destroying === 1 ? "stack deletes or replaces" : "stacks delete or replace";
     parts.push(`:warning: **${destroying} pending ${words} resources**`);
   }
   if (failed > 0) parts.push(`${dot("failed", failed)}${plural(failed, "failed deploy")}`);

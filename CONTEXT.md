@@ -465,7 +465,7 @@ A count dot's colour in front of a result, so a person sees it at a glance: on a
 _Avoid_: Status emoji, icon, badge
 
 **Spinner**:
-The small animated crate, bobbing in the water, at the start of a deploying or queued row, so the stack a person ticked is visibly moving. A light and a dark file, served from the action ref like the header, and only shown when there is a header. It is the first thing the size budget drops.
+The small animated crate, bobbing in the water, at the start of a deploying row, so the stack a person ticked is visibly moving. A queued row gets the same crate standing still, so motion on a row always means deploying now. A light and a dark file each, served from the action ref like the header, and only shown when there is a header. It is the first thing the size budget drops.
 _Avoid_: Loader, loading icon, progress indicator, throbber
 
 **Voice**:

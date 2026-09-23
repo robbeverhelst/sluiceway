@@ -7,6 +7,8 @@ import {
   exampleActionRef,
   exampleBody,
   readmeExample,
+  readmeExampleSpan,
+  withHardBreaks,
   withReadmeExample,
 } from "../../scripts/example-dashboard.ts";
 import { ROOT, read } from "./docs.ts";
@@ -56,7 +58,8 @@ describe("what the example shows", () => {
     expect(missing).toEqual([]);
   });
 
-  // Record 0063: deploying sits at the top, each row with the spinner.
+  // Record 0063: deploying sits at the top, each row with the spinner. The
+  // queued row's crate stands still (record 0093).
   test("lists the deploying rows first, each with the spinner", () => {
     expect(headings(body)).toEqual([
       "Deploying",
@@ -69,9 +72,11 @@ describe("what the example shows", () => {
     const deploying = body.slice(body.indexOf("## Deploying"), body.indexOf("## Updates"));
     const rows = deploying.split("\n").filter((line) => line.startsWith("- "));
     expect(rows.length).toBe(2);
-    for (const row of rows) expect(row).toContain(`${IMAGES}/spinner-light.svg`);
-    expect(deploying).toContain("· deploying ·");
-    expect(deploying).toContain("· queued behind **");
+    const [running, queued] = rows;
+    expect(running).toContain(`${IMAGES}/spinner-light.svg`);
+    expect(running).toContain("· deploying ·");
+    expect(queued).toContain(`${IMAGES}/spinner-queued-light.svg`);
+    expect(queued).toContain("· queued behind **");
   });
 
   // Records 0047, 0066 and 0075: one crate per pending stack, and both signs
@@ -131,19 +136,41 @@ describe("what the example shows", () => {
 
 describe("the example dashboard in the README", () => {
   const readme = read("README.md");
-  const start = readme.indexOf("<details>\n<summary><b>Open the example dashboard</b>");
-  const end = readme.indexOf("\n</details>\n\n## How it works", start);
-  const shown = start === -1 || end === -1 ? "" : readme.slice(start, end + "\n</details>".length);
+  const span = readmeExampleSpan(readme);
+  const shown = span === undefined ? "" : readme.slice(span.start, span.end);
+  const folded = shown.slice(shown.indexOf("<details>"));
 
   test("is the published example made fit for the README", () => {
     expect(shown).not.toBe("");
     expect(shown).toBe(readmeExample());
   });
 
+  // Record 0092: a reader who never opens the fold still sees the crates, the
+  // signs and the counts.
+  test("keeps the header picture and the counts line open, above the fold", () => {
+    const open = shown.slice(0, shown.indexOf("<details>"));
+    expect(open).toContain("deploying-4-deletes-replaces-light.svg");
+    expect(open).toContain("**4 pending**");
+    expect(open).not.toContain("### ");
+    expect(folded.startsWith("<details>\n<summary><b>Open the example dashboard</b>")).toBe(true);
+  });
+
   test("says what it holds in its summary line", () => {
     expect(shown).toContain(
-      "<summary><b>Open the example dashboard</b>: 16 stacks, 2 deploying, 4 pending, 2 drifted</summary>",
+      "<summary><b>Open the example dashboard</b>: all 16 stacks and every section</summary>",
     );
+  });
+
+  // Record 0092: an issue breaks every line and a README does not, so a row's
+  // lines would run into one paragraph without the `<br>`.
+  test("breaks a row's lines as the issue does", () => {
+    const lines = folded.split("\n");
+    const warnings = lines.filter((line) => line.trimStart().startsWith(":warning: <kbd>"));
+    expect(warnings.length).toBeGreaterThanOrEqual(4);
+    for (const [index, line] of lines.entries()) {
+      if (/^ {2}(from |shipped |:warning: |Ticking )/.test(line))
+        expect(lines[index - 1]?.endsWith("<br>")).toBe(true);
+    }
   });
 
   test("carries no hidden marker and no pull request number of this repo", () => {
@@ -154,9 +181,20 @@ describe("the example dashboard in the README", () => {
 
   test("bun run example changes the example and nothing else of the README", () => {
     const other =
-      "<details>\n<summary><b>Open the example dashboard</b>: old</summary>\n\nold\n\n</details>";
+      '<p align="center">old</p>\n\n<details>\n<summary><b>Open the example dashboard</b>: old</summary>\n\nold\n\n</details>';
     const before = readme.replace(shown, other);
     expect(withReadmeExample(before, readmeExample())).toBe(readme);
+  });
+});
+
+describe("the hard breaks of the README example", () => {
+  test("end a line that goes on in an indented line", () => {
+    expect(withHardBreaks("- a\n  b\n  c\n- d")).toBe("- a<br>\n  b<br>\n  c\n- d");
+  });
+
+  test("leave a fold, a line with its own break and a blank line alone", () => {
+    const fold = "- a\n  <details><summary>1</summary>\n  x<br>\n  y<br>\n  </details>\n\n  z";
+    expect(withHardBreaks(fold)).toBe(fold);
   });
 });
 

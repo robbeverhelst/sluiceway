@@ -573,7 +573,7 @@ describe("what a narrowed scan carries through (records 0009 and 0011)", () => {
     }
     expect(after).toContain("- [x] **network:dev**");
     expect(after).toContain(
-      "🟡&nbsp;**2 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;2 in sync · :warning: **2 pending stacks destroy resources** · 🔴&nbsp;1 failed deploy",
+      "🟡&nbsp;**2 pending** · ⚪&nbsp;0 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;2 in sync · :warning: **2 pending stacks delete or replace resources** · 🔴&nbsp;1 failed deploy",
     );
     expect(after).toContain("so 1 of 2 pending rows is shortened");
   });
