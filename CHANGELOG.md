@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.28.0](https://github.com/sluiceway/sluiceway/compare/v0.27.0...v0.28.0) (2026-09-23)
+
+
+### Features
+
+* a run that waits long for a runner gets a line under the scan line ([bf12184](https://github.com/sluiceway/sluiceway/commit/bf12184d6de238f781052826f03637063390a5b0))
+* **apply:** a drift repair that found nothing to repair says drift gone ([3d6ac0a](https://github.com/sluiceway/sluiceway/commit/3d6ac0aaeac99c98090dbcba5269ad29909fdc43))
+* dashboard.timeZone in sluiceway.yaml, checked against the runtime's zones ([362f28a](https://github.com/sluiceway/sluiceway/commit/362f28a110b933719959f992e7de267d68bfda7c))
+* every scan looks for a run of its workflow that waits for a runner ([c4a9021](https://github.com/sluiceway/sluiceway/commit/c4a90216a8cd9b7fca12331db505fe39447fcfab))
+* find OpenTofu and Terraform root modules from the repo's own files ([de4b22c](https://github.com/sluiceway/sluiceway/commit/de4b22cf725a0e3a94a75de0bef3a3621bbf16b8))
+* init --force writes the workflow again, and init names npx sluiceway check ([583bf22](https://github.com/sluiceway/sluiceway/commit/583bf22cb8508a75a72bebe7754318b5bc58cacb))
+* render a time in a named zone, with its offset when it stands alone ([46c3b5e](https://github.com/sluiceway/sluiceway/commit/46c3b5ecfa0f976e39ceb4c79bfcea868d2b5f5f))
+* **resolve:** one line in the job log says where resolve's time went ([f34b01a](https://github.com/sluiceway/sluiceway/commit/f34b01aca0803430e4a035770f50d15461e07e47))
+* the body and its rows take the dashboard's zone ([110b171](https://github.com/sluiceway/sluiceway/commit/110b171a0ac11585539a42dc7b4843dabad59784))
+* the check lists what root module discovery found and left out, and why ([8a1b75a](https://github.com/sluiceway/sluiceway/commit/8a1b75a111d5d75cde3ad04df50b6b1c101df632))
+* the check reads the environment a Sluiceway job names ([2a6406d](https://github.com/sluiceway/sluiceway/commit/2a6406d4213327b1d55a531957e6302f18cf8fbe))
+* the check says who decides who may deploy, for each job that deploys ([0f5fd30](https://github.com/sluiceway/sluiceway/commit/0f5fd309b2bf7695368e4187e2c49ea9e97972ff))
+* the command line, sluiceway init and sluiceway check ([d6aed35](https://github.com/sluiceway/sluiceway/commit/d6aed35195d4b47ea3c8ecfa7dc27c69c4591c52))
+* the port lists the queued runs of a workflow ([548dfd0](https://github.com/sluiceway/sluiceway/commit/548dfd0f2a7632ffd6279b3789280d5ddf432211))
+
+
+### Bug Fixes
+
+* README example breaks its lines, header signs get room, queued rows stand still ([#217](https://github.com/sluiceway/sluiceway/issues/217)) ([1093c22](https://github.com/sluiceway/sluiceway/commit/1093c223648ee2abcbd9c33d259cb56eade61eec))
+* **resolve:** a queued drift repair is started as a drift repair ([23666c3](https://github.com/sluiceway/sluiceway/commit/23666c3f80132a984360bb32276984731f24e2d2))
+* the check job lists the root modules discovery found and left out ([e7929e2](https://github.com/sluiceway/sluiceway/commit/e7929e2a0331e566fb0fe6229ce010dac76a72cc))
+
 ## [0.27.0](https://github.com/sluiceway/sluiceway/compare/v0.26.2...v0.27.0) (2026-09-23)
 
 
