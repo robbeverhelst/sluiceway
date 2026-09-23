@@ -84,6 +84,11 @@ export interface DeploymentPayload {
   // version stays 1. A reader that does not know it compares without drift,
   // which ends as a moved change: the safe direction.
   drift?: boolean | undefined;
+  // The record was opened after the scan of a merge, for a stack set to
+  // on-merge, and `ticker` is whoever merged (record 0094). An added key, so
+  // the version stays 1. A reader that does not know it reads the record as
+  // a tick by that person, which deploys the same.
+  onMerge?: boolean | undefined;
 }
 
 export function deploymentPayload(payload: DeploymentPayload): Record<string, unknown> {
@@ -95,6 +100,7 @@ export function deploymentPayload(payload: DeploymentPayload): Record<string, un
     ...(payload.attempt === undefined ? {} : { attempt: payload.attempt }),
     ...(payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {}),
     ...(payload.drift ? { drift: true } : {}),
+    ...(payload.onMerge ? { onMerge: true } : {}),
   };
 }
 
@@ -122,7 +128,7 @@ const RUN_ID = /^[1-9]\d*$/;
 // built from text that came from outside.
 export function readDeploymentPayload(payload: unknown): DeploymentPayload | undefined {
   if (typeof payload !== "object" || payload === null) return undefined;
-  const { v, hash, ticker, run, behind, merge, drift, attempt } = payload as Record<
+  const { v, hash, ticker, run, behind, merge, drift, attempt, onMerge } = payload as Record<
     string,
     unknown
   >;
@@ -147,6 +153,7 @@ export function readDeploymentPayload(payload: unknown): DeploymentPayload | und
   if (!RUN_ID.test(run)) return undefined;
   const read: DeploymentPayload = { hash, ticker, run, ...attempted };
   if (drift === true) read.drift = true;
+  if (onMerge === true) read.onMerge = true;
   if (behind === undefined) return read;
   const ids = Array.isArray(behind) ? behind : [];
   if (ids.length === 0 || !ids.every((id) => typeof id === "string" && id !== "")) {
@@ -174,6 +181,8 @@ export type DeployFact =
       // The pull request a merge tick merged: the record waits for the scan
       // after the merge, not for its run (record 0054).
       merge?: number;
+      // Opened on merge, and `ticker` is whoever merged (record 0094).
+      onMerge?: true;
     }
   | {
       kind: "succeeded";
@@ -186,6 +195,7 @@ export type DeployFact =
       // The fresh preview had nothing to deploy, so nothing went out (record
       // 0051).
       inSync?: boolean;
+      onMerge?: true;
     }
   | {
       kind: "failed";
@@ -195,6 +205,7 @@ export type DeployFact =
       run: string;
       attempt?: string | undefined;
       at: Date;
+      onMerge?: true;
     };
 
 // One deploy that went out, for the recently deployed list (record 0029).
@@ -213,6 +224,8 @@ export interface SucceededDeploy {
   // covered drift, and the drift check and the fresh preview found nothing to
   // deploy, so nothing was repaired (record 0091).
   result?: "in-sync" | "rehearsed" | "drift-repaired" | "drift-gone";
+  // It went out on merge (record 0094).
+  onMerge?: true;
 }
 
 // One line of the recently deployed list (records 0029 and 0062): a deploy
@@ -228,6 +241,8 @@ export interface TrailEntry {
   // "drift-repaired" and "drift-gone" as on `SucceededDeploy`, "failed" for a
   // record that ended as `failure` or `error` (record 0062).
   result?: "in-sync" | "rehearsed" | "drift-repaired" | "drift-gone" | "failed";
+  // It went out on merge, and `ticker` is whoever merged (record 0094).
+  onMerge?: true;
   // The failure reason of a failed deploy, as the failure line shows it.
   reason?: string;
   // For a deploy that went out: the commit of the stack's success before it
@@ -374,6 +389,7 @@ function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFac
       : { run: payload.run, attempt: payload.attempt };
   const state = record.status?.state ?? "";
   const at = new Date(record.status?.createdAt ?? record.createdAt);
+  const onMerge = payload.onMerge ? { onMerge: true as const } : {};
   if (SUCCEEDED.has(state)) {
     // GitHub's `inactive` status is written when the deploy was superseded,
     // so its time is not when the deploy ended. The success before it is,
@@ -388,6 +404,7 @@ function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFac
       at: Number.isNaN(ended.getTime()) ? at : ended,
       hash: payload.hash,
       ...(inSync ? { inSync } : {}),
+      ...onMerge,
     };
   }
   if (FAILED.has(state)) {
@@ -397,6 +414,7 @@ function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFac
       ticker,
       ...run,
       at,
+      ...onMerge,
     };
   }
   return {
@@ -407,6 +425,7 @@ function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFac
     ...run,
     ...(payload.behind ? { behind: payload.behind } : {}),
     ...(payload.merge === undefined ? {} : { merge: payload.merge }),
+    ...onMerge,
   };
 }
 
@@ -448,6 +467,7 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
         run: fact.run,
         ...(fact.attempt === undefined ? {} : { attempt: fact.attempt }),
         at: fact.at,
+        ...(fact.onMerge ? { onMerge: true as const } : {}),
         ...(fact.inSync
           ? { result: payload.drift ? ("drift-gone" as const) : ("in-sync" as const) }
           : payload.drift
@@ -471,6 +491,7 @@ export function deployFacts(records: readonly DeploymentRecord[]): DeployFacts {
         at: fact.at,
         result: "failed",
         reason: fact.reason,
+        ...(fact.onMerge ? { onMerge: true as const } : {}),
       });
     }
   }

@@ -537,3 +537,43 @@ describe("a record that deploys after a merge", () => {
     expect(facts.succeeded).toEqual([]);
   });
 });
+
+// Record 0094: a record a stack set to on-merge opened after the scan of a
+// merge says so, so its deploying row, its failure line and its line on the
+// trail say "merged by" and never read as a tick.
+describe("a record opened on merge", () => {
+  const facts = { hash: "2b44350653e84a11", ticker: "alice", run: "4242" };
+
+  test("carries onMerge, an added key, so the version stays 1", () => {
+    expect(deploymentPayload({ ...facts, onMerge: true })).toEqual({
+      v: 1,
+      ...facts,
+      onMerge: true,
+    });
+    expect(readDeploymentPayload({ v: 1, ...facts, onMerge: true })).toEqual({
+      ...facts,
+      onMerge: true,
+    });
+  });
+
+  test("a record of a tick has no such key, byte for byte as before", () => {
+    expect(deploymentPayload(facts)).toEqual({ v: 1, ...facts });
+    expect(readDeploymentPayload({ v: 1, ...facts, onMerge: "yes" })).toEqual(facts);
+  });
+
+  test("an open, a failed and a succeeded record each say it, and so does the trail", () => {
+    const payload = { v: 1, ...facts, onMerge: true };
+    const open = deployFacts([record({ id: 1, task: "sluiceway:a", state: "queued", payload })]);
+    expect(open.byStack.get("a")).toMatchObject({ kind: "open", onMerge: true });
+    const failed = deployFacts([record({ id: 2, task: "sluiceway:b", state: "failure", payload })]);
+    expect(failed.byStack.get("b")).toMatchObject({ kind: "failed", onMerge: true });
+    expect(failed.trail[0]).toMatchObject({ result: "failed", onMerge: true });
+    const went = deployFacts([record({ id: 3, task: "sluiceway:c", state: "success", payload })]);
+    expect(went.byStack.get("c")).toMatchObject({ kind: "succeeded", onMerge: true });
+    expect(went.trail[0]?.onMerge).toBe(true);
+    const ticked = deployFacts([
+      record({ id: 4, task: "sluiceway:d", state: "success", payload: { v: 1, ...facts } }),
+    ]);
+    expect("onMerge" in (ticked.trail[0] ?? {})).toBe(false);
+  });
+});

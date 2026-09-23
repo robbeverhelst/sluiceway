@@ -362,6 +362,49 @@ describe("starting a queued record in a later run (record 0056)", () => {
     });
   });
 
+  test("a stack queued on merge starts on merge, with whoever merged (record 0094)", async () => {
+    const github = new FakeGitHub();
+    const queued = github.seedDeployment({
+      task: "sluiceway:app:prod",
+      payload: {
+        v: 1,
+        hash: "h1",
+        ticker: "alice",
+        run: "4242",
+        behind: ["network:prod"],
+        onMerge: true,
+      },
+      status: { state: "queued" },
+    });
+
+    await startQueuedRecord(writer(github), github.deployment(queued.id), {
+      sha: "def5678",
+      environment: "sluiceway",
+    });
+
+    expect(github.deployment(2).payload).toEqual({
+      v: 1,
+      hash: "h1",
+      ticker: "alice",
+      run: RUN,
+      attempt: "2",
+      onMerge: true,
+    });
+  });
+
+  test("a record the scan of a merge opens says onMerge", async () => {
+    const github = new FakeGitHub();
+    await openRecord(writer(github), {
+      stackId: "app:prod",
+      environment: "sluiceway",
+      sha: "abc1234",
+      ticker: "alice",
+      hash: "h",
+      onMerge: true,
+    });
+    expect(github.deployment(1).payload).toMatchObject({ ticker: "alice", onMerge: true });
+  });
+
   test("a queued record this version cannot read starts nothing and costs nothing", async () => {
     const github = new FakeGitHub();
     const queued = github.seedDeployment({ task: "sluiceway:app:prod", payload: { v: 2 } });
