@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Change } from "../../src/core/diff.ts";
-import { diffLogLines, logGroupTitle } from "../../src/render/log-text.ts";
+import { diffLogLines, logGroupTitle, poolSizeLine } from "../../src/render/log-text.ts";
 
 function change(op: Change["op"], type: string, name: string, rest: Partial<Change> = {}): Change {
   return { address: `${type}::${name}`, type, name, op, changedKeys: [], replaceKeys: [], ...rest };
@@ -96,5 +96,36 @@ describe("property paths in the log text", () => {
       changes: [change("update", "t", "n", { changedKeys: paths })],
     });
     expect(line).toBe(`update t n · ${[...paths].sort().join(", ")}`);
+  });
+});
+
+// Slice 5.21: the scan says which pool it used and where the number came
+// from, so a reader of the job log can tell (record 0085).
+describe("the log line of the pool size", () => {
+  test("names the input when the input set it", () => {
+    expect(poolSizeLine({ size: 3, from: "input" })).toBe(
+      "The pool is 3 previews at once, from the concurrency input.",
+    );
+  });
+
+  test("names the cores of the machine when they set it", () => {
+    expect(poolSizeLine({ size: 1, from: "cores", cores: 1 })).toBe(
+      "The pool is 1 preview at once, one for each core of this machine, which has 1. The concurrency input sets another size.",
+    );
+    expect(poolSizeLine({ size: 2, from: "cores", cores: 2 })).toBe(
+      "The pool is 2 previews at once, one for each core of this machine, which has 2. The concurrency input sets another size.",
+    );
+  });
+
+  test("says when the cores were more than the pool follows", () => {
+    expect(poolSizeLine({ size: 8, from: "cores", cores: 64 })).toBe(
+      "The pool is 8 previews at once: this machine has 64 cores, and the pool follows them up to 8. The concurrency input sets another size.",
+    );
+  });
+
+  test("says when the machine gave no count of its cores", () => {
+    expect(poolSizeLine({ size: 1, from: "unknown" })).toBe(
+      "The pool is 1 preview at once: this machine did not say how many cores it has. The concurrency input sets another size.",
+    );
   });
 });

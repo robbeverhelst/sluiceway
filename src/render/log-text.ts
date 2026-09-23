@@ -8,6 +8,7 @@
 import type { ToolDiffResult } from "../adapters/adapter.ts";
 import type { Change, Diff } from "../core/diff.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
+import type { PoolSize } from "../core/pool.ts";
 import { orderChanges } from "./changes.ts";
 import {
   counts,
@@ -31,6 +32,24 @@ function oneLine(text: string): string {
 // The summary names it as the place where nothing is cut.
 export function logGroupTitle(stackId: string): string {
   return oneLine(stackId);
+}
+
+const OTHER_SIZE = "The concurrency input sets another size.";
+
+// Which pool size a scan used and where the number came from (record 0085),
+// so a reader of the job log can tell whether the input or the machine chose.
+export function poolSizeLine(pool: PoolSize): string {
+  const size = `The pool is ${pool.size} ${pool.size === 1 ? "preview" : "previews"} at once`;
+  switch (pool.from) {
+    case "input":
+      return `${size}, from the concurrency input.`;
+    case "unknown":
+      return `${size}: this machine did not say how many cores it has. ${OTHER_SIZE}`;
+    case "cores":
+      return pool.size === pool.cores
+        ? `${size}, one for each core of this machine, which has ${pool.cores}. ${OTHER_SIZE}`
+        : `${size}: this machine has ${pool.cores} cores, and the pool follows them up to ${pool.size}. ${OTHER_SIZE}`;
+  }
 }
 
 function changeLogLine(change: Change): string {
