@@ -27480,7 +27480,6 @@ function autoModesOn(triggers, config) {
 }
 
 // src/github/inputs.ts
-var DEFAULT_CONCURRENCY = 4;
 var DEFAULT_PREVIEW_TIMEOUT_MINUTES = 10;
 function wholeNumber(getInput2, name, fallback, hint = "") {
   const text = getInput2(name).trim();
@@ -27500,7 +27499,7 @@ function readToken(getInput2) {
 }
 var MINUTES = " It is a number of whole minutes.";
 function readScanInputs(getInput2) {
-  const concurrency = wholeNumber(getInput2, "concurrency", DEFAULT_CONCURRENCY);
+  const concurrency = wholeNumber(getInput2, "concurrency", undefined);
   const previewTimeoutMinutes = wholeNumber(getInput2, "preview-timeout", DEFAULT_PREVIEW_TIMEOUT_MINUTES, MINUTES);
   return {
     concurrency,
@@ -60049,6 +60048,18 @@ function oneLine(text6) {
 function logGroupTitle(stackId2) {
   return oneLine(stackId2);
 }
+var OTHER_SIZE = "The concurrency input sets another size.";
+function poolSizeLine(pool) {
+  const size = `The pool is ${pool.size} ${pool.size === 1 ? "preview" : "previews"} at once`;
+  switch (pool.from) {
+    case "input":
+      return `${size}, from the concurrency input.`;
+    case "unknown":
+      return `${size}: this machine did not say how many cores it has. ${OTHER_SIZE}`;
+    case "cores":
+      return pool.size === pool.cores ? `${size}, one for each core of this machine, which has ${pool.cores}. ${OTHER_SIZE}` : `${size}: this machine has ${pool.cores} cores, and the pool follows them up to ${pool.size}. ${OTHER_SIZE}`;
+  }
+}
 function changeLogLine(change3) {
   const word = [change3.op === "none" ? undefined : change3.op, change3.tracking].filter((part) => part !== undefined).join(" + ");
   const forcingKeys = sortedKeys(change3.replaceKeys);
@@ -63761,6 +63772,39 @@ async function runResolve(directory, step3) {
 
 // src/modes/scan-job.ts
 import { readFileSync as readFileSync10 } from "node:fs";
+import { availableParallelism } from "node:os";
+
+// src/core/pool.ts
+var MAX_POOL_FROM_CORES = 8;
+function poolSize(input2, cores) {
+  if (input2 !== undefined)
+    return { size: input2, from: "input" };
+  if (cores === undefined || !Number.isInteger(cores) || cores < 1) {
+    return { size: 1, from: "unknown" };
+  }
+  return { size: Math.min(cores, MAX_POOL_FROM_CORES), from: "cores", cores };
+}
+async function runPool(items, size, work) {
+  if (!Number.isInteger(size) || size < 1) {
+    throw new Error("The size of the pool must be a whole number of 1 or more.");
+  }
+  const results = new Array(items.length);
+  let next = 0;
+  let failed3 = false;
+  const slot = async () => {
+    while (!failed3 && next < items.length) {
+      const index = next++;
+      try {
+        results[index] = await work(items[index]);
+      } catch (error63) {
+        failed3 = true;
+        throw error63;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, slot));
+  return results;
+}
 
 // src/github/request-count.ts
 function countRequests(octokit) {
@@ -63815,29 +63859,6 @@ function trailOutside(stackIds, read3, live) {
     ...live.filter((deploy2) => stacks2.has(deploy2.stackId) && !read3.has(deploy2.stackId)),
     ...[...read3.entries()].filter(([id]) => stacks2.has(id)).flatMap(([, deploys]) => deploys)
   ].sort((a, b) => b.at.getTime() - a.at.getTime() || (a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0));
-}
-
-// src/core/pool.ts
-async function runPool(items, size, work) {
-  if (!Number.isInteger(size) || size < 1) {
-    throw new Error("The size of the pool must be a whole number of 1 or more.");
-  }
-  const results = new Array(items.length);
-  let next = 0;
-  let failed3 = false;
-  const slot = async () => {
-    while (!failed3 && next < items.length) {
-      const index = next++;
-      try {
-        results[index] = await work(items[index]);
-      } catch (error63) {
-        failed3 = true;
-        throw error63;
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(size, items.length) }, slot));
-  return results;
 }
 
 // src/render/waiting-line.ts
@@ -64526,7 +64547,7 @@ async function readHistories(context3, stacks2, limit) {
     return read3;
   const history = adapter.deployHistory.bind(adapter);
   const cannot = [];
-  await runPool(stacks2, context3.concurrency, async (configured) => {
+  await runPool(stacks2, context3.pool.size, async (configured) => {
     const id = stackId(configured.stack);
     const result = await history(configured.stack, {
       root: context3.root,
@@ -64693,12 +64714,18 @@ async function scanning(context3, report) {
   let startedFrom;
   const again = new Set;
   let histories;
+  let poolSaid = false;
+  const sayPool = () => {
+    if (!poolSaid)
+      context3.log.info(poolSizeLine(context3.pool));
+    poolSaid = true;
+  };
   for (;; ) {
     if (next.length > 0 && !versionChecked) {
       await checkVersion5(context3, stacks2.map(({ stack }) => stack));
       versionChecked = true;
     }
-    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), prepared, checkDrift, stacks2.map(({ stack }) => stack));
+    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), prepared, sayPool, checkDrift, stacks2.map(({ stack }) => stack));
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
@@ -65001,7 +65028,7 @@ function driftCheckRule(config2, context3, knownDrift, stacks2) {
   const every = context3.event === "schedule" || context3.event === "workflow_dispatch" && context3.startedByPerson === true;
   return (id) => enabled.has(id) && (every || knownDrift.has(id));
 }
-async function previewAll(context3, stacks2, logDiff, showValues, prepared, checkDrift, repoStacks) {
+async function previewAll(context3, stacks2, logDiff, showValues, prepared, sayPool, checkDrift, repoStacks) {
   const { log, now, adapter } = context3;
   if (stacks2.length === 0)
     return [];
@@ -65019,9 +65046,10 @@ async function previewAll(context3, stacks2, logDiff, showValues, prepared, chec
   stacks2 = stacks2.filter(({ stack }) => !failed3.has(stackId(stack)));
   if (stacks2.length === 0)
     return unpreparedFailures;
-  log.info(`Previewing ${plural2(stacks2.length, "stack")} with a pool of ${context3.concurrency} and a time limit of ${minutes(context3.previewTimeoutMinutes)} for each preview.`);
+  sayPool();
+  log.info(`Previewing ${plural2(stacks2.length, "stack")} with a pool of ${context3.pool.size} and a time limit of ${minutes(context3.previewTimeoutMinutes)} for each preview.`);
   const poolStarted = now().getTime();
-  const previewed = await runPool(stacks2, context3.concurrency, async (configured) => {
+  const previewed = await runPool(stacks2, context3.pool.size, async (configured) => {
     const id = stackId(configured.stack);
     const startedAt = now();
     const started = startedAt.getTime();
@@ -65083,7 +65111,7 @@ async function previewAll(context3, stacks2, logDiff, showValues, prepared, chec
   const total = now().getTime() - poolStarted;
   const addedUp = previewed.reduce((sum, { milliseconds }) => sum + milliseconds, 0);
   const slowest = previewed.reduce((a, b) => b.milliseconds > a.milliseconds ? b : a);
-  log.info(`Previewed ${plural2(previewed.length, "stack")} in ${seconds2(total)} with a pool of ${context3.concurrency}. Added up, the previews took ${seconds2(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds2(slowest.milliseconds)}.`);
+  log.info(`Previewed ${plural2(previewed.length, "stack")} in ${seconds2(total)} with a pool of ${context3.pool.size}. Added up, the previews took ${seconds2(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds2(slowest.milliseconds)}.`);
   return [...previewed, ...unpreparedFailures];
 }
 function liveRun(run, id, log) {
@@ -65370,6 +65398,13 @@ async function holdsMerge(context3, deployment) {
 }
 
 // src/modes/scan-job.ts
+function machineCores() {
+  try {
+    return availableParallelism();
+  } catch {
+    return;
+  }
+}
 async function runScan(directory, step3) {
   const env = process.env;
   const inputs = readScanInputs(getInput);
@@ -65386,7 +65421,7 @@ async function runScan(directory, step3) {
     requests: countRequests(octokit),
     log,
     now: () => new Date,
-    concurrency: inputs.concurrency,
+    pool: poolSize(inputs.concurrency, machineCores()),
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
     strict: inputs.strict,
     repoUrl: job.repoUrl,
