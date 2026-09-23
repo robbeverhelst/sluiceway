@@ -4,6 +4,8 @@
 
 > Amended by 0067: a stack in a phase depends on every stack of every earlier phase, those edges follow every rule here, and the note on a refused tick names the phase.
 
+> Amended by 0091: the record that starts a queued stack also carries `drift`, so a queued drift repair is still checked for drift and repaired. The record names every payload key and whether it is carried.
+
 Record 0009 reserved the row state `queued` and said the fact behind it is a deployment record with status `queued` and the blocking stack ids in its payload. The brief's rule for dependencies was: refuse a tick whose upstream has pending changes that are not ticked, and when both are ticked, deploy the first layer and re-trigger `resolve` after it. Build plan slice 4.4 adds the lesson of the earlier internal dashboard that inspired Sluiceway (onboarding log, hurdle 23): only refuse on things that can hold state, and a gate that never applies must not stay green and silent. This record fixes part 1.
 
 ## Decision

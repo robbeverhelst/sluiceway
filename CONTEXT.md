@@ -255,7 +255,7 @@ Pulumi's way for a program to read the outputs of another stack, by a name such 
 _Avoid_: Remote state (OpenTofu's word for something else), cross-stack link
 
 **Queued stack**:
-A ticked stack whose deployment record waits behind its dependencies, because they were ticked in the same run or are deploying. Its row says "queued behind" them, has no box and counts as deploying. It deploys in a later run once they went out, and never deploys when one of them did not.
+A ticked stack whose deployment record waits behind its dependencies, because they were ticked in the same run or are deploying. Its row says "queued behind" them, has no box and counts as deploying. It deploys in a later run once they went out, under a record that carries what the tick approved, drift included, and never deploys when one of them did not.
 _Avoid_: Blocked stack, waiting stack, pending stack (pending is a row state)
 
 **Layer**:
@@ -327,7 +327,7 @@ The note on a stack's row saying its last deploy failed. It rides on the row whe
 _Avoid_: Failed row, failed state, error row
 
 **Trail**:
-The Recently deployed list at the bottom of the dashboard: every deploy from the dashboard that ended, newest first, with who ticked it and when it went out, and the outside deploys a full scan found in the tool's history. A deploy that found nothing to deploy, a rehearsal and a failed deploy say so on their line. Its length is `dashboard.recentlyDeployed`. A deploy from the dashboard that went out has a shipped line. It is built from the deployment records and the tool's history, and decides nothing.
+The Recently deployed list at the bottom of the dashboard: every deploy from the dashboard that ended, newest first, with who ticked it and when it went out, and the outside deploys a full scan found in the tool's history. A deploy that found nothing to deploy, a drift repair that found the drift already gone, a rehearsal and a failed deploy say so on their line. Its length is `dashboard.recentlyDeployed`. A deploy from the dashboard that went out has a shipped line. It is built from the deployment records and the tool's history, and decides nothing.
 _Avoid_: History, audit log, deploy log, changelog
 
 **Pending-again line**:
