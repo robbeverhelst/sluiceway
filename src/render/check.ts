@@ -314,6 +314,18 @@ function workflowJobText(path: string, job: SluicewayJob): string {
   return `${path}, job ${job.job}: ${mode}, ${refText(job)}.`;
 }
 
+// Who decides who may deploy, for one job that deploys (record 0093). Only
+// what the file shows: whether the job names an environment. Whether that
+// environment has required reviewers is a setting of the repo, and the check
+// makes no GitHub call, so the words say so rather than guess.
+function whoMayDeployText(path: string, job: SluicewayJob): string {
+  const { environment } = job;
+  if (environment === undefined) {
+    return `Who may deploy: ${path}, job ${job.job} names no GitHub Environment, so the tick rule alone decides who may deploy.`;
+  }
+  return `Who may deploy: ${path}, job ${job.job} deploys in the GitHub Environment ${environment}. The tick rule decides who may ask. If ${environment} has required reviewers, they decide who may deploy. Whether it has them is a setting of the repo, which the check cannot read.`;
+}
+
 // Auto runs several modes, and needs what all of them need (record 0077).
 function needsWho(mode: string): string {
   return mode === "auto" ? "the modes it runs need" : `${mode} needs`;
@@ -669,6 +681,9 @@ function workflowsPart(workflows: WorkflowReport): CheckPart {
   const warnings = workflows.warnings.map(workflowWarningText);
   const notes = workflows.notes.map(workflowNoteText);
   const nothingMissing = listed && warnings.length === 0 ? [NOTHING_MISSING] : [];
+  const deployers = workflows.workflows.flatMap(({ path, jobs }) =>
+    jobs.filter((job) => job.runs.includes("apply")).map((job) => whoMayDeployText(path, job)),
+  );
   const bullets = (texts: string[]) =>
     texts.length === 0 ? [] : [texts.map((text) => `- ${escapeText(text)}`).join("\n")];
   return {
@@ -683,6 +698,7 @@ function workflowsPart(workflows: WorkflowReport): CheckPart {
             },
           ]
         : []),
+      ...deployers.map((text) => ({ info: line(text) })),
       ...noScan.map((text) => ({ info: text })),
       ...warnings.map((text) => ({ warning: line(text), title: WORKFLOW_WARNING_TITLE })),
       ...notes.map((text) => ({ info: line(text) })),
@@ -701,6 +717,7 @@ function workflowsPart(workflows: WorkflowReport): CheckPart {
             ].join("\n"),
           ]
         : []),
+      ...bullets(deployers),
       ...noScan,
       ...bullets(warnings),
       ...bullets(notes),

@@ -133,7 +133,7 @@ GitHub lists an environment for every name a deployment record uses, so your rep
 
 Without `deployment: false` GitHub records every deploy a second time. Custom deployment protection rules do not work with `deployment: false`. If you use them, leave it out and accept the second record. Sluiceway ignores it.
 
-[Security](security.md) has the three setups, from what every repo has to required reviewers, and what each one protects against.
+With required reviewers on the environment, the tick decides who may ask and the reviewers decide who may deploy, so a team whose deployers are fewer than its writers can leave `tickers` at its default ([a tick asks, an environment decides](security.md#a-tick-asks-an-environment-decides)). [Security](security.md) has the three setups, from what every repo has to required reviewers, and what each one protects against.
 
 ## Merge and deploy
 

@@ -62276,6 +62276,13 @@ function triggersOf(value) {
     return Object.fromEntries(value.map((event) => [String(event), null]));
   return isRecord2(value) ? value : {};
 }
+function environmentOf(value) {
+  if (typeof value === "string" || typeof value === "number")
+    return String(value);
+  if (!isRecord2(value) || value.name === undefined || value.name === null)
+    return;
+  return String(value.name);
+}
 function concurrencyOf(value) {
   if (typeof value === "string" || typeof value === "number") {
     return { group: String(value), queue: "", cancels: false };
@@ -62309,7 +62316,8 @@ function parseWorkflow(text6) {
       condition: job.if === undefined || job.if === null ? "" : String(job.if),
       needs: typeof job.needs === "string" ? [job.needs] : Array.isArray(job.needs) ? job.needs.map(String) : [],
       outputs: isRecord2(job.outputs) ? Object.keys(job.outputs) : [],
-      strategy: job.strategy === undefined ? "" : JSON.stringify(job.strategy)
+      strategy: job.strategy === undefined ? "" : JSON.stringify(job.strategy),
+      environment: environmentOf(job.environment)
     };
   }
   return { on: triggersOf(document.on), permissions: permissionsOf(document.permissions), jobs };
@@ -62376,19 +62384,24 @@ function checkOne2(path, workflow, config2, report) {
   const auto = autoRuns(workflow.on, config2);
   const found = Object.entries(workflow.jobs).flatMap(([name, job]) => {
     const step3 = sluicewayJob(name, job.steps, auto);
-    return step3 ? [{ step: step3, permissions: job.permissions ?? workflow.permissions }] : [];
+    if (step3 === undefined)
+      return [];
+    if (job.environment !== undefined)
+      step3.environment = job.environment;
+    return [{ step: step3, permissions: job.permissions ?? workflow.permissions }];
   });
   if (found.length === 0)
     return;
   const { warnings, notes } = report;
   report.workflows.push({
     path,
-    jobs: found.map(({ step: { job, mode, runs: runs2, ref, refKind: refKind2 } }) => ({
+    jobs: found.map(({ step: { job, mode, runs: runs2, ref, refKind: refKind2, environment } }) => ({
       job,
       mode,
       runs: runs2,
       ref,
-      refKind: refKind2
+      refKind: refKind2,
+      ...environment === undefined ? {} : { environment }
     }))
   });
   for (const { step: step3 } of found) {
@@ -64030,6 +64043,13 @@ function workflowJobText(path, job) {
   const mode = job.mode === undefined ? "no known mode" : job.mode === "auto" ? `mode auto, which runs ${job.runs.length === 0 ? "nothing on these triggers" : job.runs.join(", ")}` : `mode ${job.mode}`;
   return `${path}, job ${job.job}: ${mode}, ${refText(job)}.`;
 }
+function whoMayDeployText(path, job) {
+  const { environment } = job;
+  if (environment === undefined) {
+    return `Who may deploy: ${path}, job ${job.job} names no GitHub Environment, so the tick rule alone decides who may deploy.`;
+  }
+  return `Who may deploy: ${path}, job ${job.job} deploys in the GitHub Environment ${environment}. The tick rule decides who may ask. If ${environment} has required reviewers, they decide who may deploy. Whether it has them is a setting of the repo, which the check cannot read.`;
+}
 function needsWho(mode) {
   return mode === "auto" ? "the modes it runs need" : `${mode} needs`;
 }
@@ -64293,6 +64313,7 @@ function workflowsPart(workflows) {
   const warnings = workflows.warnings.map(workflowWarningText);
   const notes = workflows.notes.map(workflowNoteText);
   const nothingMissing = listed7 && warnings.length === 0 ? [NOTHING_MISSING] : [];
+  const deployers = workflows.workflows.flatMap(({ path, jobs }) => jobs.filter((job) => job.runs.includes("apply")).map((job) => whoMayDeployText(path, job)));
   const bullets = (texts) => texts.length === 0 ? [] : [texts.map((text7) => `- ${escapeText(text7)}`).join(`
 `)];
   return {
@@ -64303,6 +64324,7 @@ function workflowsPart(workflows) {
           lines: workflows.workflows.flatMap(({ path, jobs }) => jobs.map((job) => line2(workflowJobText(path, job))))
         }
       ] : [],
+      ...deployers.map((text7) => ({ info: line2(text7) })),
       ...noScan.map((text7) => ({ info: text7 })),
       ...warnings.map((text7) => ({ warning: line2(text7), title: WORKFLOW_WARNING_TITLE })),
       ...notes.map((text7) => ({ info: line2(text7) })),
@@ -64318,6 +64340,7 @@ function workflowsPart(workflows) {
         ].join(`
 `)
       ] : [],
+      ...bullets(deployers),
       ...noScan,
       ...bullets(warnings),
       ...bullets(notes),

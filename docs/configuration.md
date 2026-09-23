@@ -225,6 +225,8 @@ sluiceway.yaml is not valid:
 
 The rule is checked against GitHub's live answer at every tick. Nothing is cached, so a person whose access was removed is refused at their next tick. A refused tick deploys nothing, clears the box and gets one comment on the dashboard that says why. When GitHub gives no answer about a person, nothing deploys, the comment asks for a fresh tick and the job goes red.
 
+A tick rule decides who may **ask** for a deploy. Who may **deploy** is decided by a GitHub Environment with required reviewers on the job that deploys, where you have one: the tick asks, and a reviewer lets the job go on or not. Without one, the tick rule decides both, and its ceiling is everyone who may edit the dashboard issue, because it narrows within write access and never goes beyond it. For a team whose deployers are fewer than its writers, leave `tickers` at its default and put the deploy job in an environment whose reviewers are the people who may deploy. The rule lives in this file and is Sluiceway's own; the environment is GitHub's, lives in the repo's settings and records each approval. [Security](security.md#a-tick-asks-an-environment-decides) has the shape, what each one can and cannot do, and what happens between the tick and the approval. The [check](workflow.md#check-your-setup) says, for each job that deploys, which of the two decides.
+
 The rescan box has no rule of its own. Anyone with write access can tick it, and it only starts a full scan.
 
 The box that deploys every pending stack, and the one that repairs every drifted stack, have no rule of their own either: a tick on them deploys nothing and only asks for a confirmation. A tick on the confirm box is judged as a tick on each row it names, by each stack's own rule, so a stack whose rule refuses you is left out with a line in the comment and the others deploy.
@@ -477,7 +479,7 @@ Default: `sluiceway`
 
 The environment name on the stack's deployment records, and the GitHub Environment the `apply` job of the [split workflow](split-workflow.md#with-github-environments) names when you use the feature. On its own it is only a label. The records work on every plan, and GitHub lists an environment for every name the records use, so your repo settings show one named `sluiceway` even when you never use the feature.
 
-Give stacks their own environment when the credentials that change things should be locked into a GitHub Environment ([security](security.md)). Stacks can share an environment.
+Give stacks their own environment when the credentials that change things should be locked into a GitHub Environment ([security](security.md)), or when that environment's required reviewers should decide who may deploy them ([a tick asks, an environment decides](security.md#a-tick-asks-an-environment-decides)). Stacks can share an environment.
 
 ### `stacks[].tickers`
 

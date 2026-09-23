@@ -209,7 +209,7 @@ jobs:
       - uses: sluiceway/sluiceway@v0
 ```
 
-**Tell it about your stacks.** Optional. Without `sluiceway.yaml` every stack that discovery finds gets a row, and anyone with write access can tick. The file at the repo root says who may tick which stack, which stacks to leave out and which files outside a stack's directory it reads. [Configuration](https://docs.sluiceway.dev/guides/configuration/) has every key.
+**Tell it about your stacks.** Optional. Without `sluiceway.yaml` every stack that discovery finds gets a row, and anyone with write access can tick. A tick asks for a deploy: to decide who may deploy, put the deploy job in a GitHub Environment whose required reviewers are those people ([who can tick](https://docs.sluiceway.dev/guides/security/#who-can-tick)). The file at the repo root says who may tick which stack, which stacks to leave out and which files outside a stack's directory it reads. [Configuration](https://docs.sluiceway.dev/guides/configuration/) has every key.
 
 **Load your credentials.** The workflow puts what the tool needs into the job environment, in steps before Sluiceway. Sluiceway passes that environment to the tool as it is and never reads a credential by name. [Credentials](https://docs.sluiceway.dev/guides/credentials/) has recipes for GitHub secrets, a cloud with OIDC, a secret manager and private registries.
 

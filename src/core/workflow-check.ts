@@ -53,6 +53,11 @@ export interface SluicewayJob {
   runs: Mode[];
   ref: string;
   refKind: RefKind;
+  // The GitHub Environment the job names, as written: a name or an
+  // expression only a run evaluates. Not there when it names none. Its rules,
+  // such as required reviewers, are a setting of the repo that no file shows
+  // (record 0093).
+  environment?: string;
 }
 
 // A workflow file that runs Sluiceway in at least one job.
@@ -202,6 +207,7 @@ interface ParsedJob {
   outputs: string[];
   // The strategy block as text, where a matrix names the job it comes from.
   strategy: string;
+  environment: string | undefined;
 }
 
 interface Parsed {
@@ -225,6 +231,14 @@ function triggersOf(value: unknown): Record<string, unknown> {
   if (typeof value === "string") return { [value]: null };
   if (Array.isArray(value)) return Object.fromEntries(value.map((event) => [String(event), null]));
   return isRecord(value) ? value : {};
+}
+
+// `environment` as a name or as a map with a name, always as the name. A map
+// without one is a workflow GitHub would not run.
+function environmentOf(value: unknown): string | undefined {
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (!isRecord(value) || value.name === undefined || value.name === null) return undefined;
+  return String(value.name);
 }
 
 // `concurrency` as a group name or as a map, always as the map.
@@ -266,6 +280,7 @@ function parseWorkflow(text: string): Parsed | "unreadable" | undefined {
             : [],
       outputs: isRecord(job.outputs) ? Object.keys(job.outputs) : [],
       strategy: job.strategy === undefined ? "" : JSON.stringify(job.strategy),
+      environment: environmentOf(job.environment),
     };
   }
   return { on: triggersOf(document.on), permissions: permissionsOf(document.permissions), jobs };
@@ -349,18 +364,21 @@ function checkOne(path: string, workflow: Parsed, config: Config, report: Workfl
   const auto = autoRuns(workflow.on, config);
   const found = Object.entries(workflow.jobs).flatMap(([name, job]) => {
     const step = sluicewayJob(name, job.steps, auto);
-    return step ? [{ step, permissions: job.permissions ?? workflow.permissions }] : [];
+    if (step === undefined) return [];
+    if (job.environment !== undefined) step.environment = job.environment;
+    return [{ step, permissions: job.permissions ?? workflow.permissions }];
   });
   if (found.length === 0) return;
   const { warnings, notes } = report;
   report.workflows.push({
     path,
-    jobs: found.map(({ step: { job, mode, runs, ref, refKind } }) => ({
+    jobs: found.map(({ step: { job, mode, runs, ref, refKind, environment } }) => ({
       job,
       mode,
       runs,
       ref,
       refKind,
+      ...(environment === undefined ? {} : { environment }),
     })),
   });
 
