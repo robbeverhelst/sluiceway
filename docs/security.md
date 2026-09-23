@@ -30,6 +30,46 @@ Two checks, against GitHub's live answer, at every tick:
 
 The ticker is the person whose edit ticked the box, as the issue's edit history names them. Only a person can tick: a tick by a bot, an app or a deleted account deploys nothing and the next scan clears it. When the history cannot name the person, for example because an entry was deleted, nothing deploys and the box is cleared. When GitHub gives no answer about a person's access, nothing deploys and the job goes red. Nothing is cached: a person whose access was removed is refused at their next tick.
 
+### A tick asks, an environment decides
+
+A tick rule decides who may **ask** for a deploy. A GitHub Environment with required reviewers, on the job that deploys, decides who may **deploy**. Without such an environment, nothing stands between a tick and the deploy, so the tick rule decides both.
+
+A tick rule narrows within write access and never goes beyond it. So on its own, its ceiling is the people who may edit the dashboard issue. For a team with separation of duties that is usually the wrong set: the people who may deploy to production are fewer, decided somewhere other than a file in the repo, and audited. GitHub already has the gate for that, and Sluiceway is built to wait for it.
+
+| | Tick rule | Environment with required reviewers |
+|---|---|---|
+| Whose | Sluiceway's | GitHub's |
+| Where it lives | `tickers` in `sluiceway.yaml`, a file in the repo. A change to it is a commit | The repo's settings, changed by a repo admin |
+| What it decides | Who may ask for a deploy of a stack | Whether the job that deploys may start at all |
+| Whom it can name | People with write access: a level, or a list of logins | People, and teams, which a tick rule cannot name |
+| Where the decision is recorded | The ticker on the deployment record, the trail on the dashboard, and a comment for a refused tick | GitHub records who approved or rejected, and when, on the run. The deploy shows in the repo's deployment history under that environment |
+| What it cannot do | Go beyond write access, name a team, or stop someone who skips the dashboard and uses the credentials directly | Show the reviewer what the row showed: a reviewer approves a job, not a diff. Exist on every plan |
+
+The shape, with the tick rule left at its default. It needs the [split workflow](split-workflow.md), because the one-step workflow would make every scan wait for a reviewer too. In `sluiceway.yaml`, give the stacks that need the gate their environment, and leave `tickers` out:
+
+```yaml
+stacks:
+  - path: infra/prod
+    environment: production
+```
+
+In the split workflow, the `apply` job names the environment of the stack it deploys:
+
+```yaml
+  apply:
+    environment:
+      name: ${{ matrix.environment }}
+      deployment: false # Sluiceway already records the deploy
+```
+
+And in the repo's settings, the environment `production` has the people who may deploy as its required reviewers, only the default branch as its deployment branch, and the credentials that change production as its secrets ([setup 2](#2-where-environments-exist-lock-the-credentials-in) says why they belong there). Anyone with write access may now tick a production stack, and only a reviewer can let it go out.
+
+GitHub can also stop a person from approving a run they started themselves. That is not the same as stopping a ticker from approving their own tick: the run that deploys is started by whoever edited the dashboard last, or by Sluiceway itself after a deploy that others wait for, and that is not always the ticker. Where it matters, keep the tick rule and the reviewers apart by who is on each.
+
+What happens in between. A tick is judged by the tick rule first. Once it passes, `resolve` creates the deployment record, with the ticker and the diff hash, and the row says deploying. Only then does the `apply` job wait for a reviewer. So for as long as the approval takes, a deployment record is already open for a deploy that has not happened, and the repo's deployment history shows it. When a reviewer rejects the job, or nobody approves it before GitHub gives up waiting, `settle` ends the record and the row gets a failure line. Nothing went out. When a reviewer approves, `apply` previews the stack again and deploys only when the fresh preview gives the same diff hash as the ticked row. So what goes out is still only what the ticked row showed, however long the approval took, and a change that moved while the job waited stops the deploy like any other. A reviewer who wants to see what they approve reads the row or its preview page: GitHub's approval screen shows the job, not the diff.
+
+The [check](workflow.md#check-your-setup) says, for each job in your workflows that deploys, which of the two decides: the tick rule alone when the job names no environment, or the environment's reviewers if it has them. It reads files only, so whether an environment has required reviewers is a setting of the repo it cannot see, and it says that too.
+
 ## The limit that no setting lifts
 
 Anyone with write access to a repo can push a branch with a workflow of their own, and that workflow can read the repo's secrets. So on its own, a tick rule protects against the wrong person ticking by mistake. It does not protect against a collaborator who means harm: they can skip the dashboard and use the credentials directly. That is true of every tool that deploys from GitHub Actions, and Sluiceway says it plainly rather than promise more.
@@ -57,7 +97,7 @@ A workflow on a side branch can no longer reach the credentials that change thin
 
 Needs required reviewers on the environment, and the [split workflow](split-workflow.md): in one job, every run would wait for a reviewer, a scan and an edit of any issue too.
 
-Add required reviewers to the environment of setup 2. The ticker asks, and a reviewer approves the waiting `apply` job in GitHub's own interface. Sluiceway adds nothing and waits: the row says deploying and the deployment record stays open for as long as the approval takes. A rejected job is ended by `settle`, and the row gets a failure line.
+Add required reviewers to the environment of setup 2. The ticker asks, and a reviewer approves the waiting `apply` job in GitHub's own interface. This is the answer to "who may deploy" for a team with separation of duties, and the tick rule can stay at its default ([a tick asks, an environment decides](#a-tick-asks-an-environment-decides) has the shape). Sluiceway adds nothing and waits: the row says deploying and the deployment record stays open for as long as the approval takes. A rejected job is ended by `settle`, and the row gets a failure line.
 
 Sluiceway has no second approval of its own, a second person who also ticks, for plans without reviewers. By the limit above it would not be real protection on exactly those repos, because the credentials would still be within reach of anyone with write access.
 

@@ -169,7 +169,7 @@ The unbroken run of edit history entries, from the newest one back, in which a r
 _Avoid_: Streak, window, range
 
 **Tick rule**:
-What a person needs in order to tick a stack: a level of access to the repo, or a place on a list of named people who also have write access. It can narrow who may tick, never widen it.
+What a person needs in order to tick a stack: a level of access to the repo, or a place on a list of named people who also have write access. It can narrow who may tick, never widen it. It decides who may ask for a deploy. Where the job that deploys runs in a GitHub Environment with required reviewers, the reviewers decide who may deploy; without one, the tick rule decides both.
 _Avoid_: Approvers, reviewers, allowlist, access list
 
 **Refused tick**:
@@ -201,7 +201,7 @@ The box that takes the place of a ticked bulk box, naming the stacks of its sect
 _Avoid_: Are-you-sure box, confirmation dialog, second tick
 
 **Reviewer**:
-A person who approves a waiting deploy in GitHub's own interface, where the repo's plan offers that. A second gate after the tick, owned by GitHub. Sluiceway only waits for it.
+A person who approves a waiting deploy in GitHub's own interface, where the repo's plan offers that. A second gate after the tick, owned by GitHub. Sluiceway only waits for it. The reviewers of an environment decide who may deploy, where the tick rule only decides who may ask.
 _Avoid_: Approver, second ticker
 
 **Update waiting to merge**:
