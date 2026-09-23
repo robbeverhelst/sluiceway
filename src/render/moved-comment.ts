@@ -11,7 +11,7 @@ export interface MovedTick {
   login: string;
   stackId: string;
   // The record was opened on merge, and `login` is whoever merged (record
-  // 0094). Nobody ticked, so the words say what happened instead.
+  // 0095). Nobody ticked, so the words say what happened instead.
   onMerge?: boolean | undefined;
 }
 

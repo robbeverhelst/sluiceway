@@ -280,7 +280,7 @@ describe("a stack with dependsOn: auto", () => {
   });
 });
 
-// Record 0094: a stack set to on-merge that the scan of a merge queued behind
+// Record 0095: a stack set to on-merge that the scan of a merge queued behind
 // the stack before it starts in a later run as it would after a tick, and its
 // row still says on merge and who merged.
 describe("a stack queued on merge", () => {

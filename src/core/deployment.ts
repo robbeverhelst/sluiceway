@@ -85,7 +85,7 @@ export interface DeploymentPayload {
   // which ends as a moved change: the safe direction.
   drift?: boolean | undefined;
   // The record was opened after the scan of a merge, for a stack set to
-  // on-merge, and `ticker` is whoever merged (record 0094). An added key, so
+  // on-merge, and `ticker` is whoever merged (record 0095). An added key, so
   // the version stays 1. A reader that does not know it reads the record as
   // a tick by that person, which deploys the same.
   onMerge?: boolean | undefined;
@@ -181,7 +181,7 @@ export type DeployFact =
       // The pull request a merge tick merged: the record waits for the scan
       // after the merge, not for its run (record 0054).
       merge?: number;
-      // Opened on merge, and `ticker` is whoever merged (record 0094).
+      // Opened on merge, and `ticker` is whoever merged (record 0095).
       onMerge?: true;
     }
   | {
@@ -224,7 +224,7 @@ export interface SucceededDeploy {
   // covered drift, and the drift check and the fresh preview found nothing to
   // deploy, so nothing was repaired (record 0091).
   result?: "in-sync" | "rehearsed" | "drift-repaired" | "drift-gone";
-  // It went out on merge (record 0094).
+  // It went out on merge (record 0095).
   onMerge?: true;
 }
 
@@ -241,7 +241,7 @@ export interface TrailEntry {
   // "drift-repaired" and "drift-gone" as on `SucceededDeploy`, "failed" for a
   // record that ended as `failure` or `error` (record 0062).
   result?: "in-sync" | "rehearsed" | "drift-repaired" | "drift-gone" | "failed";
-  // It went out on merge, and `ticker` is whoever merged (record 0094).
+  // It went out on merge, and `ticker` is whoever merged (record 0095).
   onMerge?: true;
   // The failure reason of a failed deploy, as the failure line shows it.
   reason?: string;

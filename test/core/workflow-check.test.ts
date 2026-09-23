@@ -520,7 +520,7 @@ describe("the permissions of each mode", () => {
   });
 });
 
-// Record 0094: the scan of a merge hands a stack set to on-merge to `apply`
+// Record 0095: the scan of a merge hands a stack set to on-merge to `apply`
 // through its own matrix, as the scan after a merge from the dashboard does.
 // In the split workflow that takes the second apply job.
 describe("a stack set to on-merge in the split workflow", () => {

@@ -14,7 +14,7 @@ import {
 } from "./harness.ts";
 import { rememberingOutputs } from "./outputs-harness.ts";
 
-// Slice 5.31 (record 0094): a stack set to on-merge whose row would be pending
+// Slice 5.31 (record 0095): a stack set to on-merge whose row would be pending
 // after the scan of a merge is handed to `apply` by that scan, under a record
 // of its own, as the scan after a merge from the dashboard hands one on
 // (record 0054). Every other stack, and every stack whose change waits for a

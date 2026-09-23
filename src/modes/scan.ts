@@ -188,7 +188,7 @@ export interface ScanContext {
   // Who pushed to the default branch, as the push event names them, when a
   // push to the default branch started this scan. It is the merge a stack
   // set to on-merge deploys on, and who that deploy is attributed to (record
-  // 0094). Absent for every other scan.
+  // 0095). Absent for every other scan.
   mergedBy?: string | undefined;
   // Whether a person started the run, from the sender of the event. A
   // dispatch by the workflow token (`settle`, the rescan box) is not one
@@ -370,7 +370,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   // The records this scan opened for merged changes, handed to `apply`.
   const handedOn: MatrixEntry[] = [];
   // The stacks set to on-merge this scan opened a record for, so a later try
-  // of the write loop never opens a second one (record 0094), and the ones
+  // of the write loop never opens a second one (record 0095), and the ones
   // whose change waits for a tick after all, with why.
   const openedOnMerge = new Set<string>();
   let waitsOnMerge = new Map<string, OnMergeWait>();
@@ -541,7 +541,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
           if (ended) deploys = await lateDeploys(context, stacks, previewed, live);
         }
         // Stacks set to on-merge that this scan found pending go out now,
-        // through the path of a tick (record 0094). After the merges, so a
+        // through the path of a tick (record 0095). After the merges, so a
         // stack a merge from the dashboard already handed on is open.
         const onMerge = onMergeDeploys(
           onMergeInput(context, config, stacks, previewed, live, deploys.facts),
@@ -1534,7 +1534,7 @@ async function handOffMerges(
   return ended;
 }
 
-// What the decision of record 0094 needs, from what the scan has at its late
+// What the decision of record 0095 needs, from what the scan has at its late
 // read. A stack whose deploy ended after its preview started keeps its live
 // row (record 0004), so its preview decides nothing here either.
 function onMergeInput(
@@ -1593,7 +1593,7 @@ function onMergeInput(
   };
 }
 
-// The records of the stacks that deploy on merge (record 0094), opened as
+// The records of the stacks that deploy on merge (record 0095), opened as
 // `resolve` opens the records of a tick: the first layer handed to `apply`,
 // the rest queued behind it (record 0056). Stops at the first record that
 // cannot be written, as `resolve` does.
@@ -1632,7 +1632,7 @@ async function handOnMerged(
       );
     } catch (error) {
       throw new Error(
-        `The deployment record that deploys ${name} on merge could not be written: ${error instanceof Error ? error.message : error}. The scan job needs the permission \`deployments: write\` (record 0094). Nothing more deploys on merge in this run: the row shows the stack as pending, and a tick deploys it.`,
+        `The deployment record that deploys ${name} on merge could not be written: ${error instanceof Error ? error.message : error}. The scan job needs the permission \`deployments: write\` (record 0095). Nothing more deploys on merge in this run: the row shows the stack as pending, and a tick deploys it.`,
       );
     }
   }

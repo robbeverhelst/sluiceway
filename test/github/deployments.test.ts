@@ -362,7 +362,7 @@ describe("starting a queued record in a later run (record 0056)", () => {
     });
   });
 
-  test("a stack queued on merge starts on merge, with whoever merged (record 0094)", async () => {
+  test("a stack queued on merge starts on merge, with whoever merged (record 0095)", async () => {
     const github = new FakeGitHub();
     const queued = github.seedDeployment({
       task: "sluiceway:app:prod",

@@ -136,7 +136,7 @@ const stackEntry = z
         "The phase of these stacks, one of phases, or from: a key of the project file that names it. A stack in a phase depends on every stack in every earlier phase.",
       )
       .exactOptional(),
-    // When these stacks deploy (record 0094). A tick unless the repo says
+    // When these stacks deploy (record 0095). A tick unless the repo says
     // on-merge, for these stacks and no other.
     deploy: z
       .enum(["on-tick", "on-merge"])
@@ -838,7 +838,7 @@ export interface ConfiguredStack {
   // `drift.enabled` of its stack entries (record 0059). Absent when no entry
   // sets it, and the top level decides.
   drift?: boolean;
-  // `deploy: on-merge` of its stack entries (record 0094). Absent for a stack
+  // `deploy: on-merge` of its stack entries (record 0095). Absent for a stack
   // that deploys on a tick, the default, so nothing changes for a repo that
   // does not use it.
   deploy?: "on-merge";

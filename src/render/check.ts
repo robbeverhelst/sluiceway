@@ -492,7 +492,7 @@ function stacksPart({ stacks, phases }: CheckReport): CheckPart {
   );
   // The same for the phase (record 0067).
   const phased = stacks.some((configured) => configured.phase !== undefined);
-  // And for a stack that deploys on merge (record 0094).
+  // And for a stack that deploys on merge (record 0095).
   const onMerge = stacks.some((configured) => configured.deploy === "on-merge");
   return {
     log: [

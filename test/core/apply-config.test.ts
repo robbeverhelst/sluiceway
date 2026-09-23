@@ -259,7 +259,7 @@ stacks:
   });
 });
 
-// Deploy on merge (record 0094): a stack entry may say that its stacks go out
+// Deploy on merge (record 0095): a stack entry may say that its stacks go out
 // on merge. The default stays a tick, and a stack no entry sets carries no
 // key at all, so a repo that does not use it is what it was.
 describe("deploy on a stack", () => {

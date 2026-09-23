@@ -39,7 +39,7 @@ export interface ApplySummaryInput {
   runUrl: string;
   outcome: ApplyOutcome;
   // The record was opened on merge, and `ticker` is whoever merged (record
-  // 0094).
+  // 0095).
   onMerge?: boolean | undefined;
 }
 

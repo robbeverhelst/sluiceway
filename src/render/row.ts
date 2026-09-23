@@ -29,7 +29,7 @@ export interface FailureLine {
   at: Date;
   runUrl: string;
   // The deploy went out on merge, and `ticker` is whoever merged (record
-  // 0094).
+  // 0095).
   onMerge?: boolean | undefined;
 }
 
@@ -62,7 +62,7 @@ export interface PendingRow {
   // 0059). They go on the marker and nowhere else.
   dependsOn?: readonly string[] | undefined;
   // The stack is set to on-merge, and this change waits for a tick after all
-  // (record 0094). The row says why.
+  // (record 0095). The row says why.
   waitsOnMerge?: OnMergeWait | undefined;
 }
 
@@ -104,7 +104,7 @@ export interface DeployingRow {
   // so, and its marker state is `queued`.
   behind?: readonly string[] | undefined;
   // The record was opened on merge, and `ticker` is whoever merged (record
-  // 0094). The row says so, so it never reads as a tick.
+  // 0095). The row says so, so it never reads as a tick.
   onMerge?: boolean | undefined;
 }
 
@@ -302,7 +302,7 @@ function waitsOnWords(ids: readonly string[], phases: readonly PhaseGroup[]): st
 }
 
 // The note on a pending row of a stack set to on-merge whose change waits for
-// a tick after all (record 0094). Fixed words of Sluiceway's own, so a person
+// a tick after all (record 0095). Fixed words of Sluiceway's own, so a person
 // never has to guess why a stack that deploys on merge did not.
 export function onMergeNote(wait: OnMergeWait): string {
   const lead = ":information_source: this stack deploys on merge";

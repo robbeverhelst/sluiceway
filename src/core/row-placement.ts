@@ -130,7 +130,7 @@ export interface LateRead {
   // What each deploy of the trail shipped (record 0072).
   shipped?: ReadonlyMap<TrailEntry, AttributionLines> | undefined;
   // The stacks set to on-merge whose change waits for a tick after all, and
-  // why (record 0094). Their pending rows say so.
+  // why (record 0095). Their pending rows say so.
   waitsOnMerge?: ReadonlyMap<string, OnMergeWait> | undefined;
 }
 

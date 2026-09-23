@@ -95,7 +95,7 @@ export type Opening = {
       behind?: string[] | undefined;
       // The hash covers drift (record 0055).
       drift?: boolean | undefined;
-      // Opened on merge, and `ticker` is whoever merged (record 0094).
+      // Opened on merge, and `ticker` is whoever merged (record 0095).
       onMerge?: boolean | undefined;
     }
   // The pull request a tick merged. No hash: nothing was previewed yet
@@ -147,7 +147,7 @@ export async function openRecord(writer: RecordWriter, opening: Opening): Promis
 // 0056). The new record comes first, so a stack is never without an open
 // one, and carries what the tick approved: the hash, the ticker, whether
 // the hash covers drift (record 0091), and whether it goes out on merge
-// (record 0094). The run and its attempt are this run's,
+// (record 0095). The run and its attempt are this run's,
 // and it waits behind nothing. Then the queued record ends as handed on.
 // Nothing when this version cannot read the queued record's payload.
 export async function startQueuedRecord(

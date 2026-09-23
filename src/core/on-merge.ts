@@ -1,4 +1,4 @@
-// Deploy on merge (record 0094): a stack whose config says `deploy: on-merge`
+// Deploy on merge (record 0095): a stack whose config says `deploy: on-merge`
 // goes out after the scan of a merge found it pending, through the path a
 // tick takes. This decides which stacks go and which wait for a tick, and
 // why. It reads nothing and opens nothing: the scan hands it what it has at
@@ -46,7 +46,7 @@ export interface OnMergeInput {
 // A destroy deserves a look (record 0024), and drift is reality that moved,
 // which only a person should put back (record 0055).
 // `deploys: false` stops every deploy, and a scan that no merge started
-// found the change, so there is no merge to deploy on (record 0094).
+// found the change, so there is no merge to deploy on (record 0095).
 export type OnMergeWait =
   | { kind: "deploys-off" }
   | { kind: "destroy" }

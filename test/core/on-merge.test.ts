@@ -4,7 +4,7 @@ import type { Change, Diff } from "../../src/core/diff.ts";
 import { diffHash } from "../../src/core/diff-hash.ts";
 import { type OnMergeInput, type OnMergeWait, onMergeDeploys } from "../../src/core/on-merge.ts";
 
-// Record 0094: a stack with `deploy: on-merge` whose row would be pending
+// Record 0095: a stack with `deploy: on-merge` whose row would be pending
 // after the scan of a merge deploys through the path a tick takes. What goes
 // and what waits for a tick, and why, is decided here and nowhere else.
 

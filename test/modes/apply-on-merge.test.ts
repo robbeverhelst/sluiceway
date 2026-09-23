@@ -16,7 +16,7 @@ import {
 } from "./harness.ts";
 import { rememberingOutputs } from "./outputs-harness.ts";
 
-// Slice 5.31 (record 0094): the record the scan of a merge opens for a stack
+// Slice 5.31 (record 0095): the record the scan of a merge opens for a stack
 // set to on-merge is deployed by `apply` exactly as a tick's record is: the
 // same fresh preview, the same hash check, the same refusal when the change
 // moved. Only the words differ: whoever merged, never a ticker.

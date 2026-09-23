@@ -64,7 +64,7 @@ export interface RecentDeploy {
   // What a deploy that went out shipped (record 0072), worked out by the
   // core as a row's attribution is. Absent when there is nothing to say.
   shipped?: AttributionLines | undefined;
-  // It went out on merge, and `ticker` is whoever merged (record 0094). The
+  // It went out on merge, and `ticker` is whoever merged (record 0095). The
   // line says merged by, where a ticked deploy names the ticker alone.
   onMerge?: boolean | undefined;
 }

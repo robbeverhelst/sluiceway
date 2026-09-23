@@ -141,7 +141,7 @@ describe("the pull requests resolve merged before it dispatched the scan (slice 
   });
 });
 
-// Record 0094: the merge a stack set to on-merge deploys on is a push to the
+// Record 0095: the merge a stack set to on-merge deploys on is a push to the
 // default branch, and the deploy is attributed to whoever pushed it: the
 // person who pressed merge, or an app that merges, as GitHub names them.
 describe("mergedBy", () => {

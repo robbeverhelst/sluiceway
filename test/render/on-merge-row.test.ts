@@ -5,7 +5,7 @@ import { type BodyInput, type RecentDeploy, renderBody, rowBlock } from "../../s
 import { movedComment } from "../../src/render/moved-comment.ts";
 import { type DeployingRow, type PendingRow, renderRow } from "../../src/render/row.ts";
 
-// Record 0094: a stack set to on-merge must never look like a stack nobody
+// Record 0095: a stack set to on-merge must never look like a stack nobody
 // ticked. While it goes out its row says on merge and who merged, a pending
 // row that waits for a tick after all says why, and the trail says merged by
 // where a ticked deploy names the ticker alone. Written out by hand from the

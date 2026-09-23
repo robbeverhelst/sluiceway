@@ -220,7 +220,7 @@ interface Started {
   deployment: number;
   ticker: string;
   behind?: string[] | undefined;
-  // Opened on merge, and `ticker` is whoever merged (record 0094).
+  // Opened on merge, and `ticker` is whoever merged (record 0095).
   onMerge?: boolean | undefined;
 }
 

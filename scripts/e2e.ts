@@ -41,7 +41,7 @@
 //  11. Merge and deploy: Renovate's pull request is listed, alice ticks it,
 //      resolve merges it on the fake, and the scan it starts hands the fresh
 //      diff of app:prod to apply, which deploys it with the real tool.
-//  12. Deploy on merge (record 0094): site:prod is set to on-merge, alice
+//  12. Deploy on merge (record 0095): site:prod is set to on-merge, alice
 //      merges a change to it, and the scan of the push hands it to apply in
 //      the same step, which deploys it with the real tool. Nobody ticks, and
 //      the trail says merged by alice.
@@ -1021,7 +1021,7 @@ good =
     ...checkDeploys("app:prod", await deploysOf("app", "prod"), appDeploys + 1),
   ]) && good;
 
-// 12. Deploy on merge (record 0094). The repo sets site:prod to on-merge,
+// 12. Deploy on merge (record 0095). The repo sets site:prod to on-merge,
 // and alice merges a change to its program. The push starts the one step,
 // whose scan finds site:prod pending and hands it to apply in the same step,
 // which deploys it with the real tool. Nobody ticks. The record, the trail

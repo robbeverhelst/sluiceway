@@ -130,7 +130,7 @@ describe("who may deploy", () => {
   });
 });
 
-// Record 0094: the check says which stacks deploy on merge, in the log line
+// Record 0095: the check says which stacks deploy on merge, in the log line
 // of each stack and in a column of the summary's table that is there only
 // when one does, so a setup without it keeps its table.
 describe("a stack set to on-merge in the check", () => {

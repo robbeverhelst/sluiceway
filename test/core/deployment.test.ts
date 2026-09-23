@@ -538,7 +538,7 @@ describe("a record that deploys after a merge", () => {
   });
 });
 
-// Record 0094: a record a stack set to on-merge opened after the scan of a
+// Record 0095: a record a stack set to on-merge opened after the scan of a
 // merge says so, so its deploying row, its failure line and its line on the
 // trail say "merged by" and never read as a tick.
 describe("a record opened on merge", () => {

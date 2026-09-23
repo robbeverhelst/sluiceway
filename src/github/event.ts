@@ -81,7 +81,7 @@ export function mergedBeforeDispatch(payload: unknown): number[] {
   return readMergeScanInput(record(record(payload)?.inputs)?.[MERGE_SCAN_INPUT]);
 }
 
-// Who merged, for a stack set to on-merge (record 0094): the sender of a push
+// Who merged, for a stack set to on-merge (record 0095): the sender of a push
 // to the default branch, the person who pressed merge or an app that merges,
 // as GitHub names them. Nobody for any other event or branch, or a payload
 // that does not say, so only the scan of a merge deploys on merge.
