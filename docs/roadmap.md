@@ -8,7 +8,7 @@ The part after 1.0 is generated from [docs/later.md](later.md), which says for e
 
 The core loop: a scan previews every stack and writes the dashboard, a person ticks a box, exactly that stack deploys, and its row returns to in sync or says why it failed. Around it:
 
-- Pulumi stacks, found from their files, and OpenTofu root modules and Helm releases, declared in `sluiceway.yaml`.
+- Pulumi stacks and OpenTofu and Terraform root modules, found from their files, and the root modules the files cannot speak for and Helm releases, declared in `sluiceway.yaml`.
 - Five modes: `scan`, `resolve`, `apply`, `settle`, and `check`, which validates a setup on a pull request with no credentials.
 - A push previews only the stacks it touches. Every row says which pull requests made it pending, and links to a page with that stack's diff.
 - Rows name the property paths that change, never a value. A repo can list paths whose values may show, and can print the tool's own diff in the job log.
@@ -37,9 +37,8 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - `init` for the Terraform family: declaring Terraform root modules, Terragrunt units and the stacks of a CDK for Terraform app, and their setup steps (setup-terraform, terragrunt, cdktf)
 - `dependsOn: auto` from a Terragrunt unit's `dependency` blocks, and zero-config discovery of Terragrunt units from `terragrunt.hcl`
 - `varFiles` on a Terragrunt unit or a CDK for Terraform stack
-- Zero-config discovery for OpenTofu (a directory with a backend block or a lock file as a stack)
+- Root module discovery, part 2: a root module that reads `terraform.workspace`, has var files of its own or a `cloud` block with `tags`, found once per workspace or var file; root modules in a repo with Terragrunt files; a module source that is a Git address of the same repo
 - A `backendConfig` option for OpenTofu (`tofu init -backend-config`)
-- A hint in the check for a directory of `.tf` files that no entry declares
 - Helm, part 3: a `kubeContext` option, zero-config discovery from `Chart.yaml`, and `--take-ownership` for objects made outside the release
 - Pruning of a Kubernetes manifests stack through kubectl's own ApplySet, and drift in fields its manifests do not set
 - Zero-config discovery of kustomizations, and a hint in the check for a directory of manifests that no entry declares

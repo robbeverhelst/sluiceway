@@ -18,8 +18,12 @@ _Avoid_: Stack name, slug, key
 Finding the stacks of a repo from its files alone. It never asks a backend and never starts the tool, so it can run in a job that holds no credentials. A stack that no file names does not exist for Sluiceway.
 _Avoid_: Detection, lookup, stack listing
 
+**Root module discovery**:
+Discovery of OpenTofu and Terraform root modules from the repo's own files. A directory of their files is a stack only when no other directory uses it as a local module source, it is not under a `modules` directory, a `terraform` block gives it a backend or a `cloud` block, its code names one workspace and no var file chooses anything, and its lock file or `.tofu` files say which of the two tools runs it. Such a stack is the default workspace and its stack id is its path. When the files do not say all of it, the directory is left out, and the check says why. A directory a `stacks` entry declares is the entry's, and `discovery.rootModules: false` turns it off.
+_Avoid_: Auto-detection, autodiscovery, heuristic, guess
+
 **Declared stack**:
-A stack that a `stacks` entry names with `tool`, because files alone cannot say what it is: an OpenTofu or Terraform root module, with the workspace and var files the entry gives, or with a wrapper in front of the tool a Terragrunt unit or the stack of a CDK for Terraform app the entry names, a Helm release in a namespace, with its chart and values files, or a directory of Kubernetes manifests or a kustomization, with the context and namespace the entry gives. Discovery still checks from the files that it can exist, and never starts the tool.
+A stack that a `stacks` entry names with `tool`, because files alone cannot say what it is, or because the repo wants it exactly as the entry says: an OpenTofu or Terraform root module that root module discovery leaves out or that runs in another workspace, with the workspace and var files the entry gives, or with a wrapper in front of the tool a Terragrunt unit or the stack of a CDK for Terraform app the entry names, a Helm release in a namespace, with its chart and values files, or a directory of Kubernetes manifests or a kustomization, with the context and namespace the entry gives. Discovery still checks from the files that it can exist, and never starts the tool.
 _Avoid_: Configured stack, manual stack, custom stack
 
 **Wrapper**:
@@ -73,7 +77,7 @@ The same loop as four jobs, `scan`, `resolve`, `apply` and `settle`, each naming
 _Avoid_: Advanced workflow, full workflow, four-job workflow
 
 **Check**:
-A pass over the repo's files and nothing else that says whether Sluiceway understands the setup: the config, the stacks discovery finds, what `ignore` leaves out, which files no stack claims, which files a stack's own files name that it does not claim, and what the workflow files lack to run it. It holds no credentials and never starts the tool, so it can never say that a preview will work. The one exception is a workflow's own choice, `backend: true`: then it asks the backend which stacks it holds, with the credentials of its job, and nothing more.
+A pass over the repo's files and nothing else that says whether Sluiceway understands the setup: the config, the stacks discovery finds, what root module discovery found and left out and why, what `ignore` leaves out, which files no stack claims, which files a stack's own files name that it does not claim, and what the workflow files lack to run it. It holds no credentials and never starts the tool, so it can never say that a preview will work. The one exception is a workflow's own choice, `backend: true`: then it asks the backend which stacks it holds, with the credentials of its job, and nothing more.
 _Avoid_: Validate, lint, dry run, preflight
 
 **Init**:

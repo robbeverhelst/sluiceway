@@ -2,6 +2,8 @@
 
 > Amended by 0058: a deploy may end as `moved` when the adapter finds, before its tool deploys, that what would go out is not what the fresh preview saw. Helm does, and its preparation is one dependency build per chart.
 
+> Amended by 0092: a root module is also found without an entry, when the repo's own files say it is one: no other directory uses it as a local module source, it is not under `modules/`, it has a backend or cloud block, it names one workspace and no var file, and its lock file or `.tofu` files name the tool. It is one stack in the default workspace with its path as its stack id, planned and deployed as this record says. A directory an entry declares stays the entry's, and `discovery.rootModules: false` turns it off.
+
 > Amended by 0068: `tool: terraform` runs the same commands with `terraform`, v1.14.0 or newer, and a Terraform plan must be complete. The named option `wrapper` puts Terragrunt or CDK for Terraform in front of the tool. The name of a CDK for Terraform entry picks the stack it deploys.
 
 The build plan's slice 4.1 adds a second adapter, so that Sluiceway is an IaC dashboard and not a Pulumi dashboard. The adapter research (`docs/research/opentofu-adapter-fit.md`) showed the interface survives OpenTofu, and records 0006, 0007, 0015 and 0021 were already written with it in mind. This record settles what the research left open and what the build found with the real tool, v1.11.0 and v1.12.6, on 2026-09-22.
