@@ -38,6 +38,9 @@ export interface ApplySummaryInput {
   ticker: string;
   runUrl: string;
   outcome: ApplyOutcome;
+  // The record was opened on merge, and `ticker` is whoever merged (record
+  // 0094).
+  onMerge?: boolean | undefined;
 }
 
 // Record 0019: a re-run of a deploy that already has a result deploys nothing
@@ -103,7 +106,7 @@ export function renderApplySummary(input: ApplySummaryInput): string {
           : `not deployed: ${escapeText(outcome.reason)}`;
   const parts = [
     "## Sluiceway apply",
-    `**${escapeText(input.stackId)}** · ${result} · ticked by ${escapeText(input.ticker)} · [run](${input.runUrl})`,
+    `**${escapeText(input.stackId)}** · ${result} · ${input.onMerge ? "merged" : "ticked"} by ${escapeText(input.ticker)} · [run](${input.runUrl})`,
   ];
   if (outcome.kind === "deployed") {
     parts.push("### What went out", ...diffParts(outcome.diff, "No changes."));

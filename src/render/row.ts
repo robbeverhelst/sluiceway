@@ -2,6 +2,7 @@
 // is a pure function of plain data: no clock, no environment, no GitHub.
 
 import type { Change, Diff } from "../core/diff.ts";
+import type { OnMergeWait } from "../core/on-merge.ts";
 import type { PhaseGroup } from "../core/phases.ts";
 import { escapeText } from "./escape.ts";
 import { mascotUrl } from "./images.ts";
@@ -27,6 +28,9 @@ export interface FailureLine {
   ticker: string;
   at: Date;
   runUrl: string;
+  // The deploy went out on merge, and `ticker` is whoever merged (record
+  // 0094).
+  onMerge?: boolean | undefined;
 }
 
 export interface PendingRow {
@@ -57,6 +61,9 @@ export interface PendingRow {
   // The stacks its preview read from the program's stack references (record
   // 0059). They go on the marker and nowhere else.
   dependsOn?: readonly string[] | undefined;
+  // The stack is set to on-merge, and this change waits for a tick after all
+  // (record 0094). The row says why.
+  waitsOnMerge?: OnMergeWait | undefined;
 }
 
 // A stack with nothing to deploy from its code and drift in real
@@ -96,6 +103,9 @@ export interface DeployingRow {
   // The record is queued behind these stacks (record 0056). The row then says
   // so, and its marker state is `queued`.
   behind?: readonly string[] | undefined;
+  // The record was opened on merge, and `ticker` is whoever merged (record
+  // 0094). The row says so, so it never reads as a tick.
+  onMerge?: boolean | undefined;
 }
 
 export interface PreviewFailedRow {
@@ -260,10 +270,16 @@ export const DEPLOYS_OFF_NOTE =
 // stacks in it that have a change waiting, at most five of them, not every
 // stack of the phase.
 export function dependencyNote(ids: readonly string[], phases: readonly PhaseGroup[] = []): string {
+  return `:information_source: this tick started nothing: ${waitsOnWords(ids, phases)}`;
+}
+
+// The stacks and phases a stack waits on, and what a person can do about it:
+// the words a refused tick and a stack set to on-merge that waits share.
+function waitsOnWords(ids: readonly string[], phases: readonly PhaseGroup[]): string {
   const names = ids.map((id) => `**${escapeText(id)}**`).join(" and ");
   const one = ids.length === 1;
   if (phases.length === 0) {
-    return `:information_source: this tick started nothing: it depends on ${names}, which ${
+    return `it depends on ${names}, which ${
       one ? "has a change" : "have changes"
     } waiting. Tick ${one ? "both" : "them all"} to deploy them in order, or deploy ${names} first.`;
   }
@@ -280,9 +296,29 @@ export function dependencyNote(ids: readonly string[], phases: readonly PhaseGro
     ...ids.map((id) => `**${escapeText(id)}**`),
     ...phases.map(({ phase }) => `the **${escapeText(phase)}** phase`),
   ];
-  return `:information_source: this tick started nothing: ${clauses.join(", and ")}. Tick ${
+  return `${clauses.join(", and ")}. Tick ${
     count === 1 ? "both" : "them all"
   } to deploy them in order, or deploy ${listWords(first)} first.`;
+}
+
+// The note on a pending row of a stack set to on-merge whose change waits for
+// a tick after all (record 0094). Fixed words of Sluiceway's own, so a person
+// never has to guess why a stack that deploys on merge did not.
+export function onMergeNote(wait: OnMergeWait): string {
+  const lead = ":information_source: this stack deploys on merge";
+  const waits = `${lead}, and this change waits for a tick:`;
+  switch (wait.kind) {
+    case "deploys-off":
+      return `${lead}, and deploys are turned off in \`sluiceway.yaml\`.`;
+    case "destroy":
+      return `${waits} it deletes or replaces a resource.`;
+    case "drift":
+      return `${waits} the stack drifted, and a deploy would also put back what changed outside the code.`;
+    case "not-merged":
+      return `${waits} the scan that found it did not follow a merge.`;
+    case "depends-on":
+      return `${waits} ${waitsOnWords(wait.named, wait.phases)}`;
+  }
 }
 
 // A phase is named by its stacks up to this many, and the rest are counted,
@@ -315,7 +351,7 @@ function pendingAgainLine({ logUrl }: { logUrl?: string | undefined }): string {
 }
 
 function failureLine(failure: FailureLine, timeZone: string | undefined): string {
-  return `:x: last deploy failed: ${escapeText(failure.reason)} · ticked by ${escapeText(
+  return `:x: last deploy failed: ${escapeText(failure.reason)} · ${failure.onMerge ? "merged" : "ticked"} by ${escapeText(
     failure.ticker,
   )} · ${minuteAt(failure.at, timeZone)} · [run](${failure.runUrl})`;
 }
@@ -436,6 +472,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
   ];
   if (row.attribution) lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
   if (row.failure) lines.push(failureLine(row.failure, options.timeZone));
+  if (row.waitsOnMerge) lines.push(onMergeNote(row.waitsOnMerge));
   if (row.pendingAgain) lines.push(pendingAgainLine(row.pendingAgain));
   if (row.orphanTick && !options.readOnly) lines.push(ORPHAN_TICK_NOTE);
 
@@ -498,15 +535,16 @@ function spinner(actionRef: string, queued: boolean): string {
 
 function deployingRow(row: DeployingRow, options: RowOptions): string[] {
   const behind = row.behind ?? [];
+  const onMerge = row.onMerge ? " on merge" : "";
   const word =
     behind.length > 0
       ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}`
       : row.waiting
-        ? "waiting to start"
-        : "deploying";
+        ? `waiting to start${onMerge}`
+        : `deploying${onMerge}`;
   const state = behind.length > 0 ? "queued" : "deploying";
   const lines = [
-    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef, state === "queued")}**${escapeText(row.stackId)}** · ${word} · ticked by ${escapeText(row.ticker)} · [run](${
+    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef, state === "queued")}**${escapeText(row.stackId)}** · ${word} · ${row.onMerge ? "merged" : "ticked"} by ${escapeText(row.ticker)} · [run](${
       row.runUrl
     }) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys, deletes: row.deletes })}`,
   ];

@@ -10,11 +10,17 @@ export interface MovedTick {
   // As GitHub writes it. It is mentioned, so the person hears about it.
   login: string;
   stackId: string;
+  // The record was opened on merge, and `login` is whoever merged (record
+  // 0094). Nobody ticked, so the words say what happened instead.
+  onMerge?: boolean | undefined;
 }
 
 export const MOVED_COMMENT_TAIL =
   "The row on the dashboard shows the change as it is now. Tick it again to deploy that.";
 
-export function movedComment({ login, stackId }: MovedTick): string {
+export function movedComment({ login, stackId, onMerge }: MovedTick): string {
+  if (onMerge) {
+    return `@${login} merged a change that **${escapeText(stackId)}** deploys on merge, and the change moved before the deploy, so nothing was deployed. The row on the dashboard shows the change as it is now. Tick it to deploy that.`;
+  }
   return `@${login} ticked **${escapeText(stackId)}**, and the change moved since the tick, so nothing was deployed. ${MOVED_COMMENT_TAIL}`;
 }

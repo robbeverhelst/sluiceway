@@ -64,6 +64,9 @@ export interface RecentDeploy {
   // What a deploy that went out shipped (record 0072), worked out by the
   // core as a row's attribution is. Absent when there is nothing to say.
   shipped?: AttributionLines | undefined;
+  // It went out on merge, and `ticker` is whoever merged (record 0094). The
+  // line says merged by, where a ticked deploy names the ticker alone.
+  onMerge?: boolean | undefined;
 }
 
 export interface BodyInput {
@@ -321,7 +324,8 @@ function recentLine(
   const shipped = deploy.shipped
     ? `\n${INDENT}${short ? deploy.shipped.counted : deploy.shipped.full}`
     : "";
-  return `- ${dot}${escapeText(deploy.stackId)}${result} · ${escapeText(deploy.ticker)} · ${trailMinute(
+  const who = `${deploy.onMerge ? "merged by " : ""}${escapeText(deploy.ticker)}`;
+  return `- ${dot}${escapeText(deploy.stackId)}${result} · ${who} · ${trailMinute(
     deploy.at,
     year,
     timeZone,
