@@ -29,7 +29,7 @@ bun install
 | `bun run check:schema` | Generates, then fails if `schema/` differs from what is committed. |
 | `bun run record:fixtures` | Records `test/fixtures/pulumi/` with the `pulumi` CLI on your PATH. With `--tool opentofu` it records `test/fixtures/opentofu/` with `tofu`, and with `--tool helm` `test/fixtures/helm/` with `helm` and its diff plugin against the cluster `KUBECONFIG` names. See below before you commit its output. |
 | `bun run example` | Writes the example dashboard to `assets/example-dashboard.md` and into the README, from the made-up rows of `scripts/example-dashboard.ts`. |
-| `bun run build` | Bundles `src/main.ts` into `dist/index.js` for the Node runtime of GitHub Actions. |
+| `bun run build` | Bundles `src/main.ts` into `dist/index.js` for the Node runtime of GitHub Actions, and `src/cli.ts` into `dist/cli.js`, the command line the npm package `sluiceway` runs (record 0094). |
 | `bun run check:dist` | Builds, then fails if `dist/` differs from what is committed. |
 | `bun run check` | All of the above, as CI runs them. |
 | `bun run e2e` | Scans a copy of `examples/pulumi-basic` with the committed bundle, the `pulumi` CLI on your PATH and the fake GitHub server: a full scan and a narrowed one, then the whole loop of ticks, `resolve`, `apply` with the real tool and `settle`, with a refused tick, a cancelled deploy, a moved change and a re-run. `node` on your PATH has to be Node 24, because it stands in for the runner's own. The `e2e` workflow runs it on every pull request. |

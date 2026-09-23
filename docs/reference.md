@@ -14,7 +14,7 @@ One action, seven modes, chosen with the `mode` input. Leave it out, and the ste
 | `apply` | Previews the stack again and deploys it if nothing moved since the tick. | Yes |
 | `settle` | Gives a deploy a result when its workflow run ended without reporting one. | No |
 | `check` | Reads the repo's files and says whether the setup is valid. It needs no credentials, no tool and no GitHub API, so it is safe on any pull request. With `backend: true` it also asks the backend which stacks it holds, with the credentials of its job. | No |
-| `init` | Writes a starter workflow and `sluiceway.yaml` into your clone from what it finds there, and says what is left for you. You run it once on your own machine, and it commits nothing ([init](init.md)). | No |
+| `init` | Writes a starter workflow and `sluiceway.yaml` into your clone from what it finds there, and says what is left for you. You run it once on your own machine, as `npx sluiceway init`, and it commits nothing ([init](init.md)). | No |
 
 ## Inputs
 
@@ -56,4 +56,5 @@ No output, result file or webhook message carries a time of day, only durations,
 - **Terraform 1.14.0 or newer**, for Terraform stacks, installed without a wrapper, **Terragrunt 1.0.0 or newer** for Terragrunt units, and **cdktf 0.21.0** for the stacks of a CDK for Terraform app ([credentials](credentials.md#terraform-terragrunt-and-cdk-for-terraform)). A repo without them never needs them.
 - **Helm 3.18.0 or newer and the helm-diff plugin 3.15.11 or newer**, for Helm releases, with a kubeconfig for the cluster ([credentials](credentials.md#helm)). A repo without Helm releases never needs them.
 - **kubectl 1.34.0 or newer** and a kubeconfig, for Kubernetes manifests stacks ([credentials](credentials.md#kubernetes-manifests)). A repo without them never needs it.
+- **Node 22 or newer on your own machine**, only for `npx sluiceway init` and `npx sluiceway check` ([init](init.md#run-it)). The workflow needs none: the runner starts the action.
 - **Your programs' own needs:** a language runtime, dependencies, credentials. The workflow installs and loads them, the same way your own CI or laptop does.

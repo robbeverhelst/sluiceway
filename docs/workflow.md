@@ -57,6 +57,8 @@ The job log and the summary of the run say:
 
 The job is red only when the config is not valid or discovery fails. What a workflow lacks is a warning, because GitHub validates and runs the workflow, and the repo's default token permissions and an environment's rules are settings a file does not show. A check cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan. The check reads the files of the checkout, so run it right after `actions/checkout`, before anything writes files into the workspace.
 
+The same check runs on your own machine before any workflow exists: `npx sluiceway check` in your clone, with Node 22 or newer, prints the same lines and fails only where the job would be red. It asks no backend. [init](init.md#run-it) says more about the command line.
+
 To learn before the first scan which stacks have files in the repo and no stack in the backend, which is the usual first red row, set `backend: true` on the check step and load the credentials of your state backend before it. The check then asks the tool for the list of stacks of each Pulumi project, changes nothing, and gives one ready-to-paste `ignore` block for the stacks the backend does not hold. It needs those credentials, so do not run it on pull requests from forks: a separate workflow on `workflow_dispatch` is the usual place. That workflow names the mode, because on a dispatch a step without one would scan. OpenTofu, Helm and Kubernetes manifests stacks are listed as not checked.
 
 ```yaml

@@ -4,22 +4,26 @@
 
 ## Run it
 
-In the top directory of your clone, with Node 22 or newer and git:
+In the top directory of your clone, with Node 22 or newer:
 
 ```sh
-dir="$(mktemp -d)" && git clone --quiet --depth 1 --branch v0 https://github.com/sluiceway/sluiceway "$dir" && INPUT_MODE=init node "$dir/dist/index.js"
+npx sluiceway init
 ```
 
-That downloads the newest 0.x release of the action to a temporary directory and runs it in `init` mode where you stand. It is the same bundle your workflow runs. To run a release you reviewed, use its tag in place of `v0` ([Pin a commit](workflow.md#pin-a-commit)).
+Or `bunx sluiceway init` with Bun. It runs `init` where you stand. To run it on another clone, give its directory: `npx sluiceway init ../infra`. The npm package `sluiceway` is released with the action, from the same tag and with the same version. To run the `init` of a release you reviewed, name its version: `npx sluiceway@<version> init`.
 
-Like the [check](workflow.md#check-your-setup), `init` reads the files of your clone and nothing else: no credentials, no infrastructure tool, no GitHub API, no network. It reads untracked files too, so run it on a clean clone.
+Like the [check](workflow.md#check-your-setup), `init` reads the files of your clone and nothing else: no credentials, no token, no infrastructure tool, no GitHub API, no network. It reads untracked files too, so run it on a clean clone.
+
+When the files are written, `npx sluiceway check` says the same thing the check says in a pull request: which stacks it found, and whether `sluiceway.yaml` and the workflow are right. It needs no credentials either.
+
+The package runs `init` and the check and nothing else. `npx sluiceway scan`, `resolve`, `apply` and `settle` stop with a sentence: they need the run's identity and the workflow token, so they run only in the workflow. `npx sluiceway --help` lists the commands.
 
 ## What it looks at
 
 - **The stacks.** Pulumi projects, found the way a scan finds them. OpenTofu root modules: the ones [discovery](configuration.md#discoveryrootmodules) finds are stacks already, and of the rest, directories of `.tf` or `.tofu` files that no other directory calls as a module and that are not under a `modules` directory. Helm charts: every `Chart.yaml` that is not a library chart or a subchart. Kubernetes manifests stacks only when a `sluiceway.yaml` that is there declares them: a directory of YAML says nothing about its cluster ([configuration](configuration.md#stacks-and-stack-ids)).
 - **The programs' language and lockfile.** For Pulumi programs in JavaScript or TypeScript, the nearest `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock` or `bun.lock`, and `.nvmrc` or `.node-version`. Programs in another language get their packages with `pulumi install`.
 - **An env file of secret references.** A file named `.env`, `.env.<something>` or `<something>.env` with at least one 1Password reference (`op://`), loaded the way [the secret manager example](example-workflows.md#the-secret-manager) does it.
-- **The workflows that are there.** A workflow that already runs Sluiceway's scan, resolve, apply or settle, a step with no mode among them, or a file at `.github/workflows/deploy-dashboard.yml`, stops `init` before it writes anything. A check workflow does not, with or without its mode.
+- **The workflows that are there.** A workflow that already runs Sluiceway's scan, resolve, apply or settle, a step with no mode among them, or a file at `.github/workflows/deploy-dashboard.yml`, stops `init` before it writes anything. A check workflow does not, with or without its mode. `npx sluiceway init --force` writes `.github/workflows/deploy-dashboard.yml` again, and still stops at any other workflow that runs Sluiceway.
 - **A `sluiceway.yaml` that is there.** It is loaded as a scan loads it, kept as it is, and the workflow is built from it. With `mergeAndDeploy.authors`, that is the workflow of [merge and deploy](workflow.md#merge-and-deploy).
 
 ## What it writes
@@ -28,7 +32,7 @@ Like the [check](workflow.md#check-your-setup), `init` reads the files of your c
 - **`sluiceway.yaml`**, only when there is none. It declares every OpenTofu root module that discovery leaves out and every Helm chart it found, because files alone cannot name those stacks ([configuration](configuration.md#stacks-and-stack-ids)). It lists under `scan.unrelated` the globs of the check's fixed list that cover a file of your repo, and names in a comment the directories whose files no stack claims, with how to give them to a stack as `inputs`.
 - **`.github/scripts/export-env.sh`**, only when it loads an env file of secret references and that file is not there yet. It is the script [credentials](credentials.md#an-env-file-of-secret-references) explains.
 
-It never overwrites a file.
+It never overwrites a file, except `.github/workflows/deploy-dashboard.yml` with `--force`.
 
 ## What it leaves to you
 
@@ -40,4 +44,4 @@ It never overwrites a file.
 - **Helm releases.** Each chart becomes a release named after it, in a namespace of the same name, with no values files. Set all three to where the release runs. The namespace must exist, so a wrong guess fails its preview and deploys nothing.
 - **OpenTofu workspaces.** A root module with more than one var file becomes one stack per var file, each in a workspace named after the file, so that no two stacks share a state. Rename the workspaces where yours differ.
 
-Then run the check in a pull request, and merge the two files when it finds nothing missing.
+Then run `npx sluiceway check`, open a pull request with the files, and merge them when the check finds nothing missing.
