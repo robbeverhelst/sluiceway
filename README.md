@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-Sluiceway keeps one GitHub issue that shows which Pulumi, OpenTofu, Terraform, Helm or Kubernetes stacks have changes waiting, and deploys a stack when you tick its box.
+Sluiceway keeps one GitHub issue that shows which Pulumi, OpenTofu, Terraform, Helm or Kubernetes stacks have changes waiting, and deploys a stack when you tick its box. Nothing deploys unless a person asks, or unless your own `sluiceway.yaml` says a stack goes out on merge.
 
 > [!IMPORTANT]
 > **Sluiceway is in beta.** It is released as [0.x](https://github.com/sluiceway/sluiceway/releases), and the [roadmap](https://docs.sluiceway.dev/roadmap/) says what comes before 1.0. Use `sluiceway/sluiceway@v0` or [pin a commit](https://docs.sluiceway.dev/guides/workflow/#pin-a-commit), and report rough edges as [issues](https://github.com/sluiceway/sluiceway/issues/new).
@@ -230,6 +230,7 @@ jobs:
 - **Helm**, with a release in a namespace declared in `sluiceway.yaml`. A tick deploys only what the chart rendered when the diff was checked ([`stacks[].tool`](https://docs.sluiceway.dev/guides/configuration/#stackstool)).
 - **Kubernetes manifests**, with a directory of manifests or a kustomization declared in `sluiceway.yaml`. A tick deploys the set of manifests that was diffed ([`stacks[].tool`](https://docs.sluiceway.dev/guides/configuration/#stackstool)).
 - **Tick to deploy.** One box per stack with changes waiting, checked against who may tick ([using the dashboard](https://docs.sluiceway.dev/using-the-dashboard/)).
+- **Deploy on merge, per stack**, opt-in: a stack you set to `deploy: on-merge` goes out after the merge that changed it, through the same fresh preview as a tick, attributed to whoever merged. A delete, a replace or drift still waits for a tick, and every other stack keeps its box ([configuration](https://docs.sluiceway.dev/guides/configuration/)).
 - **Merge and deploy**, for Renovate and other routine updates: one tick merges a green pull request and deploys its stack ([merge and deploy](https://docs.sluiceway.dev/guides/workflow/#merge-and-deploy)).
 - **Drift**, opt-in: a scheduled scan finds changes made outside the code, and a tick puts them back ([`drift.enabled`](https://docs.sluiceway.dev/guides/configuration/#driftenabled)).
 - **Stack dependencies** with `dependsOn` or `phases`: a stack waits for the stacks it depends on, or for every stack of the phases before its own, and a chain deploys one layer per run ([`dependsOn`](https://docs.sluiceway.dev/guides/configuration/#stacksdependson), [`phases`](https://docs.sluiceway.dev/guides/configuration/#phases)).

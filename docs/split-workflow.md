@@ -193,6 +193,10 @@ on:
 
 A merge never skips a check: branch protection and required reviews apply to the merge as to any other, and the deploy after it goes through the fresh preview and the hash check like every tick. When the change moved between the scan after the merge and the deploy, nothing is deployed, the row shows the fresh diff and the ticker gets a comment.
 
+## Deploy on merge
+
+A stack set to [`deploy: on-merge`](configuration.md#stacksdeploy) is handed on by the scan of a push to the default branch, through the scan's own `matrix`, as the scan after a merge from the dashboard hands one on. So it needs the scan's `outputs:`, the `apply-merged` job and the `settle` above, and nothing more. `resolve` does not run on a push, and `apply-merged` needs only the scan. The job that takes the deploy is a copy of `apply`, so it names the same environment, and the environment's required reviewers approve a deploy on merge as they approve a tick ([security](security.md#what-deploys-without-a-tick)). Without that job the check warns, and the stack never deploys on merge.
+
 ## Stack dependencies
 
 With [`dependsOn`](configuration.md#stacksdependson) or [`phases`](configuration.md#phases) in `sluiceway.yaml`, a stack waits for the stacks it depends on, and ticks in one chain deploy one layer per run. The workflow above already has what that needs, so keep these two parts when you change it:

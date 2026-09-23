@@ -21,6 +21,22 @@ Hashing values or their digests was rejected: a digest would sit in an issue tha
 
 The diff hash is not a secret and not a signature. Someone who edits it by hand can only approve what a fresh preview shows anyway.
 
+## What deploys without a tick
+
+Nothing deploys unless a person asks, or unless the repo's own `sluiceway.yaml` says a stack goes out on merge. [`deploy: on-merge`](configuration.md#stacksdeploy) is set per stack, and the default is a tick, so a repo that never writes it deploys only on a tick ([record 0094](adr/0094-a-stack-may-deploy-on-merge-and-the-default-stays-a-tick.md)).
+
+For a stack set to on-merge, the merge is the ask:
+
+- **Only the scan of a push to the default branch deploys it**, and only a change that scan found. It opens a deployment record with the diff hash it previewed, attributed to whoever pushed, and the deploy then takes exactly the path of a tick: `apply` previews again and deploys only on the same hash, so what goes out is what the scan of the merge showed, and a change that moved since stops it. A scheduled scan, "Run workflow" and the rescan box never deploy on merge.
+- **A destroy always waits for a tick.** A change that deletes or replaces a resource is never deployed by a merge, whatever the setting says: a replace takes the old object away too, with its data, its address or its identity. The row says why it waits, and the destroy alert names it as for any pending stack.
+- **Drift always waits for a tick.** A row that shows drift means the real infrastructure moved, not only the code, and a deploy would put back what someone changed by hand, perhaps on purpose during an incident. A person decides that.
+- **Dependencies still decide the order.** A stack that depends on one with a change waiting for a tick waits too, and says for which.
+- **`deploys: false` stops it**, and so does a read-only dashboard.
+- **The tick rule does not judge the merge.** `tickers` still decides who may tick the stack, for every change that waits. Who may merge is decided by GitHub: write access, and the branch protection and required reviews of the default branch. So setting a stack to on-merge makes the rules of the default branch its gate, which is why it is set in a reviewed file and never on the dashboard.
+- **An environment with required reviewers still gates it.** The deploy runs in the job that deploys a tick, so the environment on that job holds a deploy on merge until a reviewer approves, as it holds a tick. That is the honest answer to who may deploy such a stack: the reviewers, where there is an environment, and whoever may merge, where there is not.
+
+Every deploy on merge is traceable like a tick: its deployment record names the commit and the person, the row says `merged by`, and so does Recently deployed.
+
 ## Who can tick
 
 Two checks, against GitHub's live answer, at every tick:
@@ -78,7 +94,7 @@ What closes that gap is where the credentials live. The three setups below go fr
 
 ### 1. Every repo: the tick decides
 
-Needs nothing. GitHub limits who can edit the dashboard, Sluiceway checks the ticker's live permission, every deploy starts from a tick, and the hash check deploys only what the row showed. A tick is as strong a check as write access to the repo. Tick rules here are guard rails against mistakes.
+Needs nothing. GitHub limits who can edit the dashboard, Sluiceway checks the ticker's live permission, every deploy starts from a tick, or from a merge for a stack you [set to deploy on merge](#what-deploys-without-a-tick), and the hash check deploys only what the row or the scan of the merge showed. A tick is as strong a check as write access to the repo. Tick rules here are guard rails against mistakes.
 
 It fits a single owner, or a small team that trusts its members. The credentials that change things are ordinary repository secrets.
 

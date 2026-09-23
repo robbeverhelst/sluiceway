@@ -244,7 +244,7 @@ deploys: false
 ```
 
 - The boxes that deploy every pending or every drifted stack at once are not drawn, and a confirm box that was already there goes ([record 0083](adr/0083-deploy-all-is-a-bulk-box-and-a-confirm-box-and-the-confirm-box-is-a-tick-on-each-row.md)).
-- `resolve` clears every ticked box, puts a note on the row that says deploys are turned off, and starts nothing. No deployment record is made, nobody's access is looked up and no comment is written, because nothing could go out whoever ticked. The rescan box still works: a scan deploys nothing.
+- `resolve` clears every ticked box, puts a note on the row that says deploys are turned off, and starts nothing. No deployment record is made, nobody's access is looked up and no comment is written, because nothing could go out whoever ticked. The rescan box still works, and its scan deploys nothing. A stack set to [on-merge](#stacksdeploy) does not go out either, and its row says deploys are turned off.
 - A deploy that was ticked before the switch was merged and that starts after it ends before the tool runs. Its deployment record ends as `failure` with the reason "deploys are turned off in sluiceway.yaml", which the row shows as its failure line, the `outcome` output is `refused` and the job is red.
 - Scans go on as before, so the dashboard keeps showing what is pending.
 
@@ -637,6 +637,34 @@ stacks:
 - **Only the text under that key leaves discovery.** Nothing else of the project file is read for it.
 - **A stack whose project file has no such key, or whose text is not one of the phases, is an error.** The error names the key and the stack, and does not quote the text.
 - **Only Pulumi.** An entry with `tool` that says `from` is an error: name the phase instead.
+
+### `stacks[].deploy`
+
+Default: `on-tick`
+
+When the stacks of this entry deploy. `on-tick`, the default, is the loop the rest of this page describes: a stack deploys when a person ticks its row. `on-merge` lets a stack go out by itself after a merge, with no tick, for a stack nobody needs to look at first, such as a dashboard, an exporter or a test namespace. A stack that deletes a database or changes a network stays on a tick ([record 0094](adr/0094-a-stack-may-deploy-on-merge-and-the-default-stays-a-tick.md)).
+
+```yaml
+stacks:
+  # Grafana's dashboards go out when their pull request merges.
+  - path: apps/grafana
+    deploy: on-merge
+```
+
+- **Only the scan of a merge deploys it.** When a push to the default branch starts the scan and that scan finds the stack pending, the same run deploys it through exactly the path of a tick: a deployment record of its own, the fresh preview, the check that its diff hash is the one the scan found, and the same job and concurrency group. A change that moved in between is refused like a moved tick. A scheduled scan, "Run workflow" and the rescan box deploy nothing on merge: a change they find waits for a tick.
+- **It is attributed to whoever merged**, the person who pressed merge, or an app that merges, as GitHub names the sender of the push. The row says `deploying on merge · merged by alice`, and Recently deployed says `merged by alice` where a ticked deploy names the ticker alone, so a deploy on merge never reads as a tick.
+- **Some changes still wait for a tick**, and the row says which, in a line under its first line. A change that deletes or replaces a resource. A row that also shows drift, because a deploy would put back what someone changed by hand. A stack it depends on through [`dependsOn`](#stacksdependson) or a [phase](#stacksphase) that has a change waiting for a tick. A tick deploys any of them as it deploys any stack.
+- **Order follows the dependencies.** Two stacks set to on-merge in one chain go out one layer per run, as two ticked stacks do: the first now, the next queued behind it and started by the run after it.
+- **[`deploys: false`](#deploys) stops it**, and the row says deploys are turned off. A [read-only dashboard](#dashboardreadonly) deploys nothing on merge either.
+- **[`tickers`](#stackstickers) still decides who may tick the stack**, for every change that waits. It does not judge the merge: the merge is the ask, and who may merge is decided by the rules of the default branch. For a stack only named people may deploy, keep it on a tick, or put the job that deploys in an environment with required reviewers. That environment still gates the deploy on merge, as it gates a tick ([security](security.md#what-deploys-without-a-tick)).
+- **In the [split workflow](split-workflow.md#merge-and-deploy)** the scan hands the deploy on through its own `matrix`, so it needs the second apply job that merge and deploy uses. The [check](workflow.md#check-your-setup) warns when it is missing.
+
+An entry with a name wins over one without. Any other value fails the config:
+
+```text
+sluiceway.yaml is not valid:
+- stacks[0].deploy: expected "on-tick" or "on-merge", got "on-push".
+```
 
 ### `stacks[].drift.enabled`
 

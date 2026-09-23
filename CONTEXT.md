@@ -1,6 +1,6 @@
 # Sluiceway
 
-Sluiceway keeps one GitHub issue, the dashboard, that shows which infrastructure stacks have changes waiting, and deploys a stack when someone ticks its box. This glossary fixes the words used for that.
+Sluiceway keeps one GitHub issue, the dashboard, that shows which infrastructure stacks have changes waiting, and deploys a stack when someone ticks its box, or on merge for a stack the repo's config sets that way. This glossary fixes the words used for that.
 
 ## Language
 
@@ -161,7 +161,7 @@ A person checking the box on a stack's row: a request to deploy that stack exact
 _Avoid_: Approval, selection, click
 
 **Ticker**:
-The person whose edit made a tick, as the issue's edit history names them. The only identity a deploy is authorized against and attributed to. Always a person, never a bot. A tick whose ticker cannot be named deploys nothing.
+The person whose edit made a tick, as the issue's edit history names them. The only identity a deploy from a tick is authorized against and attributed to. Always a person, never a bot. A tick whose ticker cannot be named deploys nothing. A deploy on merge has no ticker: it is attributed to whoever merged.
 _Avoid_: Approver, actor, sender, deployer
 
 **Edit history**:
@@ -191,6 +191,10 @@ _Avoid_: Stale tick, missed tick, lost tick
 **Dropped tick**:
 A tick on a stack that already has an open deployment. Nothing new starts for it, nobody is checked or told, and the row is brought back to deploying.
 _Avoid_: Duplicate tick, ignored tick, second deploy
+
+**Deploy on merge**:
+A stack's own setting, `deploy: on-merge` in `sluiceway.yaml`, that lets it go out without a tick: the scan of a push to the default branch that finds it pending opens its deployment record, attributed to whoever pushed, and the same run deploys it through the fresh preview and the hash check of a tick. A delete or a replace, drift, a dependency that waits for a tick, any other scan, `deploys: false` and a read-only dashboard keep it waiting for a tick, and its row says why. The default is a tick. Its row says `deploying on merge · merged by`, and so does the trail, so it never reads as a tick.
+_Avoid_: Auto-deploy, continuous deployment, apply on merge, autopilot
 
 **Rescan box**:
 The one checkbox on the dashboard that belongs to no stack. Ticked by a person with write access, it starts a full scan and deploys nothing. A read-only dashboard has none.
@@ -263,7 +267,7 @@ Pulumi's way for a program to read the outputs of another stack, by a name such 
 _Avoid_: Remote state (OpenTofu's word for something else), cross-stack link
 
 **Queued stack**:
-A ticked stack whose deployment record waits behind its dependencies, because they were ticked in the same run or are deploying. Its row says "queued behind" them, has no box and counts as deploying. It deploys in a later run once they went out, under a record that carries what the tick approved, drift included, and never deploys when one of them did not.
+A ticked stack, or one that deploys on merge, whose deployment record waits behind its dependencies, because they were ticked in the same run or are deploying. Its row says "queued behind" them, has no box and counts as deploying. It deploys in a later run once they went out, under a record that carries what the tick approved, drift included, and never deploys when one of them did not.
 _Avoid_: Blocked stack, waiting stack, pending stack (pending is a row state)
 
 **Layer**:
@@ -335,7 +339,7 @@ The note on a stack's row saying its last deploy failed. It rides on the row whe
 _Avoid_: Failed row, failed state, error row
 
 **Trail**:
-The Recently deployed list at the bottom of the dashboard: every deploy from the dashboard that ended, newest first, with who ticked it and when it went out, and the outside deploys a full scan found in the tool's history. A deploy that found nothing to deploy, a drift repair that found the drift already gone, a rehearsal and a failed deploy say so on their line. Its length is `dashboard.recentlyDeployed`. A deploy from the dashboard that went out has a shipped line. It is built from the deployment records and the tool's history, and decides nothing.
+The Recently deployed list at the bottom of the dashboard: every deploy from the dashboard that ended, newest first, with who ticked it, or who merged for a deploy on merge, and when it went out, and the outside deploys a full scan found in the tool's history. A deploy that found nothing to deploy, a drift repair that found the drift already gone, a rehearsal and a failed deploy say so on their line. Its length is `dashboard.recentlyDeployed`. A deploy from the dashboard that went out has a shipped line. It is built from the deployment records and the tool's history, and decides nothing.
 _Avoid_: History, audit log, deploy log, changelog
 
 **Pending-again line**:
