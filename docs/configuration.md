@@ -13,7 +13,7 @@ The file is read from the checkout of the job, so the rules in force are the one
 - **Every mode stops on a file that is not valid.** The job goes red with the messages, and the dashboard is not written.
 - **`drift` on a stack is not in this version.** It fails with a message that says so, and is never ignored. `drift` at the top level is valid.
 - **Editors can check the file as you type.** Put this line at the top and an editor with YAML support finds the schema: `# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json`.
-- **The `check` mode tells you in a pull request** whether the file is valid, which stacks it covers and what `ignore` leaves out ([check your setup](workflow.md#check-your-setup)).
+- **The `check` mode tells you in a pull request** whether the file is valid, which stacks it covers, which OpenTofu and Terraform directories discovery found or left out and why, and what `ignore` leaves out ([check your setup](workflow.md#check-your-setup)).
 
 ## Stacks and stack ids
 
@@ -21,7 +21,9 @@ Discovery finds the stacks from files alone. For Pulumi, a directory with `Pulum
 
 Every stack has a **stack id**, derived from where it lives and what it is called: `<path>:<name>`, where the path is the directory relative to the repo root, with forward slashes. A stack `prod` in `apps/web` is `apps/web:prod`. A stack at the repo root is `.:prod`. The id is never chosen, so moving a directory or renaming a stack makes a new stack with no deploy history.
 
-For OpenTofu there is no zero config. A root module and a child module look the same on disk, and a workspace lives in the backend, so files alone cannot say what a stack is. A `stacks` entry with `tool: opentofu` declares one: the root module in `path`, with an optional `name`, workspace and var files. Its stack id is `path`, or `path:name` when the entry gives a name, so one directory in two workspaces is two stacks, such as `infra/network:dev` and `infra/network:prod`. Discovery checks from the files that the directory holds OpenTofu files and that every var file is there, and still never starts the tool.
+OpenTofu and Terraform root modules are found from their files too, and a `stacks` entry declares any the files cannot speak for. A root module and a shared module look the same on disk, so discovery asks for more than `.tf` files: a directory is a stack only when the repo's own files say it is a root module. No other directory uses it as a local module source, it does not sit under a `modules` directory, a `terraform` block gives it a `backend` or a `cloud` block, and its lock file or its `.tofu` files say whether OpenTofu or Terraform runs it. A found root module is one stack in the default workspace, and its stack id is its path, such as `infra/dns`. [`discovery.rootModules`](#discoveryrootmodules) has the whole rule, what it leaves out and why, and how to overrule it. When in doubt it finds nothing, and the `check` mode lists every directory of OpenTofu or Terraform files with what discovery made of it, on the pull request, before a row appears.
+
+A `stacks` entry with `tool: opentofu` declares a root module the rule leaves out, or one in a workspace other than the default: the root module in `path`, with an optional `name`, workspace and var files. Its stack id is `path`, or `path:name` when the entry gives a name, so one directory in two workspaces is two stacks, such as `infra/network:dev` and `infra/network:prod`. A directory that an entry declares is the entry's, whatever discovery would find there, so a declared stack works exactly as it did before discovery existed. Discovery checks from the files that the directory holds OpenTofu files and that every var file is there, and still never starts the tool.
 
 The Terraform family runs through the same adapter and reads the same plan JSON. `tool: terraform` declares a root module that `terraform` plans and deploys, exactly as `tool: opentofu` does with `tofu`. A Terragrunt unit is declared with the tool that Terragrunt runs and `wrapper: terragrunt`: the stack is the unit's directory, its stack id is `path`, and Sluiceway runs the tool there through `terragrunt run`, one unit at a time, never `run --all`. A stack of a CDK for Terraform app is declared with `wrapper: cdktf` at the app's directory, with the name the app gives the stack: `cdktf synth` writes every stack of the app, and the entry's name picks the one it deploys, so its stack id is always `path:name`. Discovery checks from the files that the directory holds `.tf` files for Terraform, a `terragrunt.hcl` for a unit, or a `cdktf.json` for an app.
 
@@ -251,7 +253,7 @@ Default: `[]`
 
 Globs matched against the **stack id**, not the path. An ignored stack has no row, is never previewed, claims no files, and a `stacks` entry cannot give it settings.
 
-Because the id is `<path>:<name>`, a bare directory matches nothing. `apps/web` ignores nothing, and `apps/web:*` ignores every stack in `apps/web`. Globs that end in `*` already cross the colon: `apps/*` and `sandbox*` work as you would expect. `*` stops at a slash and `**` crosses slashes. The `check` mode warns about a glob that matches no stack, and names the glob that would work.
+Because the id of a named stack is `<path>:<name>`, a bare directory matches none of its stacks. A stack without a name, such as a root module discovery found, has its path as its id, so its bare directory does match it. `apps/web` ignores nothing, and `apps/web:*` ignores every stack in `apps/web`. Globs that end in `*` already cross the colon: `apps/*` and `sandbox*` work as you would expect. `*` stops at a slash and `**` crosses slashes. The `check` mode warns about a glob that matches no stack, and names the glob that would work.
 
 A stack config file with no stack in the backend is the usual reason to ignore one:
 
@@ -394,7 +396,7 @@ The name of the stack, the part of the stack id after the colon. Without it the 
 
 Default: none, the entry adds settings to stacks that discovery found.
 
-The tool of a stack that discovery cannot find from files alone. The entry then declares the stack at `path`, and `options` holds that tool's options. Four tools take it in this version: `opentofu`, for an OpenTofu root module, `terraform`, for a Terraform root module, `helm`, for a Helm release in a namespace, and `kubectl`, for a directory of Kubernetes manifests or a kustomization. With [`wrapper`](#stacksoptionswrapper), an `opentofu` or `terraform` entry declares a Terragrunt unit or a stack of a CDK for Terraform app instead. Pulumi stacks are found from their files and need no `tool`.
+The tool of a stack that discovery cannot find from files alone, or that you want exactly as the entry says. The entry then declares the stack at `path`, and `options` holds that tool's options. A root module that [discovery](#discoveryrootmodules) finds needs no entry, and an entry with a tool at its path takes it over. Four tools take it in this version: `opentofu`, for an OpenTofu root module, `terraform`, for a Terraform root module, `helm`, for a Helm release in a namespace, and `kubectl`, for a directory of Kubernetes manifests or a kustomization. With [`wrapper`](#stacksoptionswrapper), an `opentofu` or `terraform` entry declares a Terragrunt unit or a stack of a CDK for Terraform app instead. Pulumi stacks are found from their files and need no `tool`.
 
 ```yaml
 stacks:
@@ -775,6 +777,55 @@ Default: kubectl's own, `kubectl`.
 
 Only with `tool: kubectl`. The field manager of the preview and the deploy, passed with `--field-manager`: letters, digits, `.`, `_` and `-`, at most 128 characters. A name of the stack's own, such as `sluiceway-web`, keeps a `kubectl apply --server-side` run by hand from counting as the stack's own change, and tells pruning and the drift check which objects and fields are the stack's. On a stack that was deployed with another field manager, the old one keeps holding every field it set, so a later change of such a field fails the preview with a conflict until `forceConflicts` takes it over.
 
+### `discovery.rootModules`
+
+Default: `true`
+
+Find OpenTofu and Terraform root modules from their files, the way Pulumi stacks are found. `false` turns it off for the repo, and every OpenTofu and Terraform stack is then one a `stacks` entry declares, as before this key existed.
+
+Discovery reads every directory of `*.tf`, `*.tofu`, `*.tf.json` and `*.tofu.json` files, and never starts the tool or asks a backend. It skips directories whose name starts with a dot, such as `.terraform` and `.terragrunt-cache`, and `node_modules` and `cdktf.out`. A directory is found as a stack when all of this holds, and the first thing that does not hold is the reason the `check` gives for leaving it out:
+
+1. **No `stacks` entry with a tool names it.** Such a directory is the entry's.
+2. **No other directory uses it as a local module source**, `source = "../network"` or `source = "./modules/vpc"` in a `module` block. This is the signal trusted most: it is the repo saying the directory is a module.
+3. **It does not sit under a directory named `modules`.** That only leaves directories out. A directory next to a `modules` directory is not a root module for that.
+4. **A `terraform` block has a `backend` or a `cloud` block.** Only a root module chooses where its state lives, and a root module that keeps its state on the runner would lose it after the deploy. An empty `backend "s3" {}` counts: the rest can come from the environment.
+5. **It is built for one workspace.** Code that reads `terraform.workspace`, or a `cloud` block that picks its workspaces by `tags`, means the root module runs in workspaces its files do not name.
+6. **No var file or backend file chooses anything.** A `*.tfvars` file other than `terraform.tfvars` and `*.auto.tfvars`, or a `*.tfbackend` file, in the directory or in a subdirectory that holds only such files (the `env/dev.tfvars` layout), is loaded only when a command names it, and which one a stack takes is yours to say.
+7. **Its files say which tool runs it.** A `.terraform.lock.hcl` whose providers come from `registry.opentofu.org` means OpenTofu, from `registry.terraform.io` Terraform. `.tofu` files mean OpenTofu, which is the only one that reads them. Files that say both, or neither, are no stack: running the wrong one can upgrade the state past what the other reads.
+
+A repo with a `terragrunt.hcl`, `terragrunt.hcl.json` or `terragrunt.stack.hcl` anywhere finds no root module at all: its stacks are its units, [declared](#stacksoptionswrapper) with `wrapper: terragrunt`, and the modules they run often carry an empty backend block. A CDK for Terraform app is declared too, because its stacks exist only in its program.
+
+A found root module is one stack in the default workspace: no name, its path as its stack id, no var files and no `TF_WORKSPACE`. It is planned once and deployed from the saved plan, exactly like a declared one. To run it in another workspace or with var files, declare it: the entry takes the directory over.
+
+Everything else in this file works on a found stack as on any stack: a `stacks` entry without `tool` gives it settings, and `ignore` leaves it out by its stack id.
+
+```yaml
+# Leave one found directory out, and say why on the dashboard.
+ignore:
+  - glob: bootstrap
+    reason: Applied once by hand when the account was made
+# Declare one discovery left out, in two workspaces.
+stacks:
+  - path: envs/app
+    name: dev
+    tool: opentofu
+    options:
+      workspace: dev
+  - path: envs/app
+    name: prod
+    tool: opentofu
+    options:
+      workspace: prod
+```
+
+```yaml
+# Only what stacks declares, as before.
+discovery:
+  rootModules: false
+```
+
+The rule can be wrong in one direction it cannot see: a shared module that another repo uses by a Git address, with a backend block and a lock file of its own, and nothing in this repo that calls it. The `check` shows it as found. Leave it out with `ignore`, or move it under `modules/`.
+
 ### `mergeAndDeploy.authors`
 
 Default: `[]`
@@ -855,5 +906,5 @@ ticker: admin
 
 ```text
 sluiceway.yaml is not valid:
-- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, attribution, phases, stacks, mergeAndDeploy, notify.
+- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, attribution, phases, stacks, discovery, mergeAndDeploy, notify.
 ```

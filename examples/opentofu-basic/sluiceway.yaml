@@ -1,8 +1,10 @@
 # yaml-language-server: $schema=../../schema/sluiceway.schema.json
 #
-# OpenTofu has no zero config: files alone cannot say which directory is a
-# root module or which workspaces it has. Each entry with tool: opentofu
-# declares one stack.
+# Discovery finds an OpenTofu root module only when its files say so: a
+# backend block, and a lock file or .tofu files. These two keep their state
+# on the local backend, as an example needs no cloud, so each entry with
+# tool: opentofu declares one stack, and network runs in two workspaces,
+# which files alone never name.
 
 stacks:
   # One root module in two workspaces, each with its own var file. Their

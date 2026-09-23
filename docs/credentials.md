@@ -159,6 +159,8 @@ The same pattern holds for OpenTofu (record 0053). Install `tofu` v1.11.0 or new
 
 Then load the backend's and the providers' credentials into the environment as for any tool. Every `TF_*` variable of the job reaches `tofu`: `TF_VAR_*` for variables, `TF_CLI_CONFIG_FILE` or a credentials file for a private registry, `TF_ENCRYPTION` for state and plan encryption, `TF_PLUGIN_CACHE_DIR` to download providers once per job. Sluiceway sets `TF_IN_AUTOMATION`, and `TF_WORKSPACE` for a stack whose options name a workspace, and nothing else.
 
+- **A root module that discovery found runs the tool its lock file names**: providers from `registry.terraform.io` mean `terraform`, from `registry.opentofu.org` `tofu`. Install that one ([`discovery.rootModules`](configuration.md#discoveryrootmodules)).
+- **Do not set `TF_WORKSPACE`** for the job. A found root module is the default workspace, and a stack that needs another names it in its options.
 - **Do not set `TF_DATA_DIR`** for the job. Sluiceway runs `tofu init` in every directory of the stacks it previews, one after the other, and one shared data directory would make those inits overwrite each other.
 - **`TF_CLI_ARGS` reaches the tool too.** Whatever it adds to a plan is in the plan file, and a tick deploys exactly that file, so the deploy never differs from the row. Prefer the named options.
 - **The plan file holds every value in plain text.** Sluiceway keeps it in a temporary directory of its own and removes it when the preview or the deploy ends. It is never uploaded.

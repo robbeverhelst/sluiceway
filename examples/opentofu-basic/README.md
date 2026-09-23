@@ -9,7 +9,7 @@ It keeps its state in the local backend and uses providers that need no credenti
 | `network/` | `network:dev`, `network:prod` | One root module in two workspaces, each with its own var file, as named options in `sluiceway.yaml`. |
 | `dns/` | `dns` | A root module written in `.tofu` files, in the default workspace, with no name. |
 
-OpenTofu has no zero config: `sluiceway.yaml` declares every stack with `tool: opentofu`.
+Neither root module has a backend block, because the example keeps its state locally, so discovery finds neither (the `check` says so) and `sluiceway.yaml` declares every stack with `tool: opentofu`. A root module with a backend block and a lock file or `.tofu` files needs no entry ([`discovery.rootModules`](../../docs/configuration.md#discoveryrootmodules)).
 
 ## Two strings that must never show up
 
