@@ -18,6 +18,20 @@ export class DiscoveryError extends Error {
   }
 }
 
+// What discovery made of one directory that it looks at without being told
+// to (record 0092): found as a stack, left out, or left to the `stacks` entry
+// that declares it, and why, in the adapter's words. Only the check shows
+// them, so a person sees on a pull request what discovery will find before
+// any of it reaches a dashboard.
+export interface DiscoveryNote {
+  // The directory, relative to the repo root, as a stack path is written.
+  path: string;
+  outcome: "found" | "left-out" | "declared";
+  // The stack id of what was found.
+  stackId?: string;
+  because: string;
+}
+
 // The stacks that exist for Sluiceway, out of the ones an adapter found. An
 // ignored stack has no row, is never previewed and claims nothing (record
 // 0010), so it is dropped here, before anything else sees it.

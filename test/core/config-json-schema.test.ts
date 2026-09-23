@@ -31,9 +31,12 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "attribution",
       "phases",
       "stacks",
+      "discovery",
       "mergeAndDeploy",
       "notify",
     ]);
+    // The switches come from the adapters (record 0092).
+    expect(Object.keys(schema.properties?.discovery?.properties ?? {})).toEqual(["rootModules"]);
     expect(Object.keys(schema.properties?.dashboard?.properties ?? {})).toEqual([
       "title",
       "label",
@@ -82,6 +85,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "root.properties.stacks.items.properties.phase.anyOf.1",
       "root.properties.stacks.items.properties.drift",
       "root.properties.stacks.items.properties.options",
+      "root.properties.discovery",
       "root.properties.mergeAndDeploy",
       "root.properties.notify",
     ]);

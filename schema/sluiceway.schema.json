@@ -413,6 +413,18 @@
       },
       "description": "Settings for stacks that discovery found. An entry never creates a stack."
     },
+    "discovery": {
+      "description": "Switches for what discovery finds on its own. Pulumi stacks are always found.",
+      "type": "object",
+      "properties": {
+        "rootModules": {
+          "type": "boolean",
+          "default": true,
+          "description": "Find OpenTofu and Terraform root modules from their files: a directory with a backend or cloud block, a lock file or .tofu files that say which tool runs it, and no other directory using it as a module source. Each is one stack in the default workspace. A directory a stacks entry declares keeps its entry. Default: true."
+        }
+      },
+      "additionalProperties": false
+    },
     "mergeAndDeploy": {
       "default": {},
       "type": "object",

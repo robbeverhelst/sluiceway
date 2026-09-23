@@ -4,6 +4,7 @@ import { TOOLS } from "./discover-all.ts";
 import { helmOptionsSchema } from "./helm/options.ts";
 import { kubectlOptionsSchema } from "./kubectl/options.ts";
 import { openTofuOptionsSchema } from "./opentofu/options.ts";
+import { ROOT_MODULES } from "./opentofu/root-modules.ts";
 
 // The JSON schema of sluiceway.yaml with what the adapters know: the tools a
 // `stacks` entry may name and their options (records 0053, 0058, 0060 and
@@ -42,6 +43,19 @@ export function sluicewayJsonSchema(): Record<string, unknown> {
         propertiesOf(helmOptionsSchema, "helm"),
         propertiesOf(kubectlOptionsSchema, "kubectl"),
       ]),
+      additionalProperties: false,
+    },
+    discovery: {
+      description: "Switches for what discovery finds on its own. Pulumi stacks are always found.",
+      type: "object",
+      properties: {
+        [ROOT_MODULES]: {
+          type: "boolean",
+          default: true,
+          description:
+            "Find OpenTofu and Terraform root modules from their files: a directory with a backend or cloud block, a lock file or .tofu files that say which tool runs it, and no other directory using it as a module source. Each is one stack in the default workspace. A directory a stacks entry declares keeps its entry. Default: true.",
+        },
+      },
       additionalProperties: false,
     },
   });

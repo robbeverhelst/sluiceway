@@ -347,6 +347,15 @@ export const configSchema = z
     stacks: stackEntries
       .describe("Settings for stacks that discovery found. An entry never creates a stack.")
       .default([]),
+    // Record 0092: switches for what discovery finds from files without a
+    // `stacks` entry. Which switches exist is for the adapters to say, as with
+    // a tool and its options, so no tool word is written here (record 0006).
+    discovery: z
+      .record(z.string(), z.boolean())
+      .describe(
+        "Switches for what discovery finds on its own. See the configuration reference for the keys.",
+      )
+      .default({}),
     // Slice 4.2 (record 0054): one tick merges a routine pull request and
     // deploys its stack. Off while the list is empty.
     mergeAndDeploy: z

@@ -8,19 +8,25 @@ import { discoverKubectl } from "./kubectl/discover.ts";
 import { KUBECTL } from "./kubectl/options.ts";
 import { discoverOpenTofu } from "./opentofu/discover.ts";
 import { OPENTOFU, TERRAFORM } from "./opentofu/options.ts";
+import { findRootModules, ROOT_MODULES } from "./opentofu/root-modules.ts";
 import { discover as discoverPulumi } from "./pulumi/discover.ts";
 
 // Discovery of every tool, on its own so that the check job reaches files and
 // nothing that starts a tool (record 0042). Pulumi stacks are found from their
 // files, as before. OpenTofu stacks come from `stacks` entries with
 // `tool: opentofu` (record 0053), Terraform stacks from `tool: terraform`
-// (record 0068), Helm releases from entries with
+// (record 0068), and both from the root modules the repo's files show, in
+// every directory no entry declares (record 0092). Helm releases from entries with
 // `tool: helm` (record 0058), and Kubernetes manifests from entries with
 // `tool: kubectl` (record 0060). A repo with only Pulumi stacks gets exactly
 // what the Pulumi adapter finds.
 
 // The tools a `stacks` entry may name.
 export const TOOLS = [OPENTOFU, TERRAFORM, HELM, KUBECTL] as const;
+
+// The switches of `discovery` (record 0092): what discovery finds from files
+// without a `stacks` entry, beyond Pulumi stacks, which it always finds.
+export const DISCOVERY_SWITCHES = [ROOT_MODULES] as const;
 
 export async function discoverAll(root: string, config: Config): Promise<Stack[]> {
   const toolProblems = config.stacks.flatMap((entry, index) => {
@@ -46,12 +52,16 @@ export async function discoverAll(root: string, config: Config): Promise<Stack[]
         : []),
     ];
   });
+  const switchProblems = Object.keys(config.discovery)
+    .filter((name) => !(DISCOVERY_SWITCHES as readonly string[]).includes(name))
+    .map((name) => `discovery.${name}: unknown key. Known keys: ${DISCOVERY_SWITCHES.join(", ")}.`);
   // Every tool's option problems come before any tool's file problems, so a
   // config problem is always reported as one.
   const tofu = tryDiscover(() => discoverOpenTofu(root, config));
   const charts = tryDiscover(() => discoverHelm(root, config));
   const manifests = tryDiscover(() => discoverKubectl(root, config));
   const problems = [
+    ...switchProblems,
     ...toolProblems,
     ...tofu.optionProblems,
     ...charts.optionProblems,
@@ -66,7 +76,12 @@ export async function discoverAll(root: string, config: Config): Promise<Stack[]
       errors.flatMap((error) => (error as DiscoveryError).problems).sort(byEntry),
     );
   }
-  const declared = [...tofu.stacks, ...charts.stacks, ...manifests.stacks];
+  const declared = [
+    ...tofu.stacks,
+    ...findRootModules(root, config),
+    ...charts.stacks,
+    ...manifests.stacks,
+  ];
   const discovered = await discoverPulumi(root, config);
   // The id an entry gives a stack is its id from here on (slice 5.9).
   if (declared.length === 0) return withIds(config, discovered);

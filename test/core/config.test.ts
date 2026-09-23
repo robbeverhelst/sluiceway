@@ -22,6 +22,7 @@ const DEFAULTS: Config = {
   attribution: { lookback: 100, names: 5 },
   phases: [],
   stacks: [],
+  discovery: {},
   mergeAndDeploy: { authors: [], preview: false },
   notify: { events: ["pending", "drift", "failed", "refused"] },
 };
@@ -84,6 +85,7 @@ phases: [infrastructure, applications]
       attribution: { lookback: 100, names: 5 },
       phases: ["infrastructure", "applications"],
       stacks: [],
+      discovery: {},
       mergeAndDeploy: { authors: [], preview: false },
       notify: { events: ["pending", "drift", "failed", "refused"] },
     });
@@ -112,6 +114,7 @@ const TOP_KEYS = [
   "attribution",
   "phases",
   "stacks",
+  "discovery",
   "mergeAndDeploy",
   "notify",
 ];
@@ -563,7 +566,7 @@ describe("a file that is not a mapping", () => {
 describe("the error", () => {
   test("names the file and lists every problem in words, top to bottom", () => {
     expect(() => parseConfig("tickerz: admin\ndashboard:\n  pin: 1\n")).toThrow(
-      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, attribution, phases, stacks, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
+      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, attribution, phases, stacks, discovery, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
     );
   });
 
