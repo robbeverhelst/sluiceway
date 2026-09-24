@@ -27615,9 +27615,28 @@ function unusedNotifyInputs(mode, getInput2) {
     return [];
   return NOTIFY_INPUTS.filter((name) => getInput2(name).trim() !== "");
 }
+function readEnvFileInput(getInput2) {
+  const text = getInput2("env-file").trim();
+  if (text === "")
+    return;
+  if (/[\r\n]/.test(text)) {
+    throw new Error('The "env-file" input names one file, and it holds more than one line. To load several files, join them in a step before Sluiceway.');
+  }
+  return text;
+}
+function unusedEnvFileInput(mode, getInput2) {
+  if (getInput2("env-file").trim() === "")
+    return;
+  if (mode === "auto" || mode === "scan" || mode === "apply")
+    return;
+  if (mode === "check" && getInput2("backend").trim() === "true")
+    return;
+  const where = mode === "check" ? "check mode without backend: true" : `${mode} mode`;
+  return `"env-file" is set on a step in ${where}, which never runs the tool, so the file is not read. Only scan, apply and the check with backend: true do. Take it out of this step.`;
+}
 
 // src/modes/apply-job.ts
-import { readFileSync as readFileSync10 } from "node:fs";
+import { readFileSync as readFileSync11 } from "node:fs";
 
 // node_modules/@actions/github/lib/context.js
 import { readFileSync, existsSync as existsSync2 } from "fs";
@@ -58124,6 +58143,181 @@ var tools = {
   }
 };
 
+// src/github/env-file.ts
+import { readFileSync as readFileSync10 } from "node:fs";
+import { isAbsolute as isAbsolute5, resolve } from "node:path";
+
+// src/core/env-file.ts
+var SECRET_REFERENCE = "op://";
+var NAME = /^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=(.*)$/;
+function notALine(line) {
+  return { ok: false, problem: `Line ${line} is not a NAME=value line, a comment or blank.` };
+}
+function parseEnvFile(text7) {
+  const lines = text7.replace(/^﻿/, "").replaceAll(`\r
+`, `
+`).split(`
+`);
+  const values2 = {};
+  const setAt = new Map;
+  let at = 0;
+  while (at < lines.length) {
+    const line = lines[at] ?? "";
+    const number4 = ++at;
+    if (/^\s*(#|$)/.test(line))
+      continue;
+    const match = NAME.exec(line);
+    if (match === null)
+      return notALine(number4);
+    const [, name = "", rest = ""] = match;
+    const first = setAt.get(name);
+    if (first !== undefined) {
+      return {
+        ok: false,
+        problem: `Line ${number4} sets ${name}, which line ${first} already set.`
+      };
+    }
+    if (name.startsWith("INPUT_")) {
+      return {
+        ok: false,
+        problem: `Line ${number4} sets ${name}. A name that starts with INPUT_ never reaches the tool, so it is refused.`
+      };
+    }
+    let value;
+    const raw = rest.trim();
+    const quote = raw[0];
+    if (quote === '"' || quote === "'") {
+      const read5 = readQuoted(quote, [raw.slice(1), ...lines.slice(at)]);
+      if (read5.kind === "open") {
+        return { ok: false, problem: `Line ${number4} opens a quote that is never closed.` };
+      }
+      if (read5.kind === "trailing") {
+        return {
+          ok: false,
+          problem: `Line ${number4} has text after its closing quote. A comment goes on a line of its own.`
+        };
+      }
+      if (read5.kind === "escape") {
+        return {
+          ok: false,
+          problem: `Line ${number4} holds an escape that is not \\n, \\" or \\\\ inside double quotes.`
+        };
+      }
+      value = read5.value;
+      at += read5.linesUsed;
+    } else {
+      value = raw;
+    }
+    if (value.includes(SECRET_REFERENCE)) {
+      return {
+        ok: false,
+        problem: `Line ${number4} holds a secret reference (${SECRET_REFERENCE}). Sluiceway resolves none: let your secret manager resolve the file first, or load its references the way the credentials page shows.`
+      };
+    }
+    values2[name] = value;
+    setAt.set(name, number4);
+  }
+  return { ok: true, values: values2 };
+}
+function readQuoted(quote, lines) {
+  let value = "";
+  for (let index = 0;index < lines.length; index++) {
+    const line = lines[index] ?? "";
+    let column = 0;
+    while (column < line.length) {
+      const char = line[column] ?? "";
+      if (char === quote) {
+        if (line.slice(column + 1).trim() !== "")
+          return { kind: "trailing" };
+        return { kind: "closed", value, linesUsed: index };
+      }
+      if (quote === '"' && char === "\\") {
+        const next = line[column + 1];
+        if (next === "n")
+          value += `
+`;
+        else if (next === '"' || next === "\\")
+          value += next;
+        else
+          return { kind: "escape" };
+        column += 2;
+        continue;
+      }
+      value += char;
+      column++;
+    }
+    value += `
+`;
+  }
+  return { kind: "open" };
+}
+var MASK_LENGTH = 8;
+function unmaskedReason(value) {
+  if (value === "")
+    return "empty";
+  if (value === "true" || value === "false")
+    return "true or false";
+  if (value.length < MASK_LENGTH)
+    return `shorter than ${MASK_LENGTH} characters`;
+  return;
+}
+function masks(value) {
+  if (unmaskedReason(value) !== undefined)
+    return [];
+  const lines = value.split(`
+`);
+  if (lines.length === 1)
+    return [value];
+  return [value, ...lines.filter((line) => unmaskedReason(line) === undefined)];
+}
+
+// src/render/env-file.ts
+function envFileGroupTitle(path) {
+  return `Loaded the env file ${path}`;
+}
+var ENV_FILE_EMPTY = "No value: the file has no NAME=value line.";
+function envFileLines(values2, replaced) {
+  const names = Object.keys(values2);
+  if (names.length === 0)
+    return [ENV_FILE_EMPTY];
+  const masked = names.filter((name) => unmaskedReason(values2[name] ?? "") === undefined);
+  const unmasked = names.filter((name) => !masked.includes(name)).map((name) => `${name} (${unmaskedReason(values2[name] ?? "")})`);
+  return [
+    `${names.length} ${names.length === 1 ? "value" : "values"} for the tool: ${names.join(", ")}.`,
+    ...masked.length > 0 ? [`Masked: ${masked.join(", ")}.`] : [],
+    ...unmasked.length > 0 ? [`Not masked: ${unmasked.join(", ")}.`] : [],
+    ...replaced.length > 0 ? [`The file wins over the job environment for: ${replaced.join(", ")}.`] : []
+  ];
+}
+
+// src/github/env-file.ts
+function loadEnvFile(load) {
+  const { input: input2, root, env } = load;
+  if (input2 === undefined)
+    return env;
+  const path = isAbsolute5(input2) ? input2 : resolve(root, input2);
+  let text7;
+  try {
+    text7 = readFileSync10(path, "utf8");
+  } catch (error63) {
+    const code2 = error63.code;
+    if (code2 === "ENOENT") {
+      throw new Error(`The "env-file" input names ${input2}, and there is no such file${isAbsolute5(input2) ? "" : " in the checkout"}.`);
+    }
+    throw new Error(`The "env-file" input names ${input2}, and it could not be read as a file (${typeof code2 === "string" ? code2 : "unknown error"}).`);
+  }
+  const parsed = parseEnvFile(text7);
+  if (!parsed.ok)
+    throw new Error(`The env file ${input2} cannot be loaded. ${parsed.problem}`);
+  const { values: values2 } = parsed;
+  for (const value of Object.values(values2))
+    for (const mask of masks(value))
+      load.mask(mask);
+  const replaced = Object.keys(values2).filter((name) => env[name] !== undefined);
+  load.log.group(envFileGroupTitle(input2), envFileLines(values2, replaced));
+  return { ...env, ...values2 };
+}
+
 // src/core/merge-scan.ts
 var MERGE_SCAN_INPUT = "sluiceway-merged";
 function mergeScanInputs(pullRequests) {
@@ -62154,7 +62348,13 @@ async function runApply(directory, handed) {
   const log = handed?.step.log ?? actionsLog();
   await apply5({
     root: job.root,
-    env,
+    env: loadEnvFile({
+      input: readEnvFileInput(getInput),
+      root: job.root,
+      env,
+      mask: (value) => setSecret(value),
+      log
+    }),
     adapter: tools,
     run: runProcess,
     github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),
@@ -62167,17 +62367,17 @@ async function runApply(directory, handed) {
     runAttempt: job.runAttempt,
     jobId: readJobId(getInput),
     sha: job.sha,
-    actionRef: readActionRef(env, directory, (path) => readFileSync10(path, "utf8")),
+    actionRef: readActionRef(env, directory, (path) => readFileSync11(path, "utf8")),
     deploymentId: inputs.deploymentId,
     dryRun: inputs.dryRun,
-    event: readEventPayload(env, (path) => readFileSync10(path, "utf8")),
+    event: readEventPayload(env, (path) => readFileSync11(path, "utf8")),
     outputs: handed?.step.outputs ?? actionsOutputs(env.RUNNER_TEMP),
     notifier: stepNotifier(getInput, log, setSecret)
   });
 }
 
 // src/modes/auto-job.ts
-import { readFileSync as readFileSync16 } from "node:fs";
+import { readFileSync as readFileSync17 } from "node:fs";
 
 // src/core/resolve.ts
 function matrixOutput(entries) {
@@ -62206,7 +62406,7 @@ function parseMatrixOutput(text8) {
 }
 
 // src/modes/resolve.ts
-import { readFileSync as readFileSync12 } from "node:fs";
+import { readFileSync as readFileSync13 } from "node:fs";
 import { join as join35 } from "node:path";
 
 // src/core/edit-history.ts
@@ -63012,7 +63212,7 @@ function scanAfter(input2) {
 }
 
 // src/core/workflow-check.ts
-import { readdirSync as readdirSync6, readFileSync as readFileSync11 } from "node:fs";
+import { readdirSync as readdirSync6, readFileSync as readFileSync12 } from "node:fs";
 import { join as join34 } from "node:path";
 var WORKFLOW_DIRECTORY = ".github/workflows";
 function readWorkflowFiles(root) {
@@ -63024,7 +63224,7 @@ function readWorkflowFiles(root) {
   }
   return names2.sort(byCodeUnit20).map((name) => ({
     path: `${WORKFLOW_DIRECTORY}/${name}`,
-    text: readFileSync11(join34(root, WORKFLOW_DIRECTORY, name), "utf8")
+    text: readFileSync12(join34(root, WORKFLOW_DIRECTORY, name), "utf8")
   }));
 }
 function tokenNeeds(mode, config2) {
@@ -63488,7 +63688,7 @@ async function lookUp(github, login, pauseMs) {
   try {
     return { permission: await github.getPermission(login) };
   } catch {
-    await new Promise((resolve) => setTimeout(resolve, pauseMs));
+    await new Promise((resolve2) => setTimeout(resolve2, pauseMs));
     return github.getPermission(login).then((permission) => ({ permission }), (error63) => ({ error: error63 }));
   }
 }
@@ -63615,7 +63815,7 @@ function seconds2(milliseconds) {
 }
 
 // src/modes/resolve.ts
-async function resolve(context3) {
+async function resolve2(context3) {
   let handedOn = false;
   const handOn = (entries) => {
     context3.setOutput("matrix", matrixOutput(entries));
@@ -63950,7 +64150,7 @@ async function renovateStrategyOf(context3) {
   const [owner = "", repo = ""] = new URL(context3.repoUrl).pathname.split("/").filter(Boolean);
   const setting = await renovateMergeSetting((path) => {
     try {
-      return readFileSync12(join35(context3.root, path), "utf8");
+      return readFileSync13(join35(context3.root, path), "utf8");
     } catch {
       return;
     }
@@ -64116,7 +64316,7 @@ function workflowText(context3) {
   if (!context3.workflow)
     return "";
   try {
-    return readFileSync12(join35(context3.root, WORKFLOW_DIRECTORY, context3.workflow.file), "utf8");
+    return readFileSync13(join35(context3.root, WORKFLOW_DIRECTORY, context3.workflow.file), "utf8");
   } catch {
     return "";
   }
@@ -65463,17 +65663,24 @@ async function runCheck(makeBackend, log) {
   if (asked && makeBackend === undefined) {
     throw new Error("backend: true needs a runner for the tool, and this check has none.");
   }
-  const backend = asked ? makeBackend?.({ ...process.env }) : undefined;
+  const jobLog = log ?? actionsLog();
+  const backend = asked ? makeBackend?.(loadEnvFile({
+    input: readEnvFileInput(getInput),
+    root,
+    env: { ...process.env },
+    mask: (value) => setSecret(value),
+    log: jobLog
+  })) : undefined;
   await check2({
     root,
     ...backend === undefined ? {} : { backend },
     adapter: filesOnly,
-    log: log ?? actionsLog()
+    log: jobLog
   });
 }
 
 // src/modes/resolve-job.ts
-import { readFileSync as readFileSync13 } from "node:fs";
+import { readFileSync as readFileSync14 } from "node:fs";
 
 // src/github/workflow-ref.ts
 function readWorkflowRef(env) {
@@ -65490,11 +65697,11 @@ function readWorkflowRef(env) {
 async function runResolve(directory, step3) {
   const startup = process.uptime() * 1000;
   const env = process.env;
-  const read5 = (path) => readFileSync13(path, "utf8");
+  const read5 = (path) => readFileSync14(path, "utf8");
   const token = readToken(getInput);
   const job = readJob(env);
   const log = step3?.log ?? actionsLog();
-  await resolve({
+  await resolve2({
     root: job.root,
     adapter: tools,
     github: createOctokitPort(getOctokit(token), { owner: job.owner, repo: job.repo }),
@@ -65514,7 +65721,7 @@ async function runResolve(directory, step3) {
 }
 
 // src/modes/scan-job.ts
-import { readFileSync as readFileSync14 } from "node:fs";
+import { readFileSync as readFileSync15 } from "node:fs";
 import { availableParallelism } from "node:os";
 
 // src/core/pool.ts
@@ -66269,7 +66476,7 @@ function renderSummary(stacks2, options = {}) {
 // src/modes/branch-preview.ts
 import { cp, mkdir as mkdir2, mkdtemp as mkdtemp3, realpath, rm as rm4, writeFile as writeFile4 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
-import { basename as basename2, dirname as dirname2, join as join37, resolve as resolve2, sep as sep7 } from "node:path";
+import { basename as basename2, dirname as dirname2, join as join37, resolve as resolve3, sep as sep7 } from "node:path";
 async function previewBranches(context3, stacks2, updates) {
   const { log } = context3;
   const previews = new Map;
@@ -66299,7 +66506,7 @@ async function previewOne(context3, number4, head, files, stacks2) {
     const [owner = "", repo = ""] = new URL(context3.repoUrl).pathname.split("/").filter(Boolean);
     const inside2 = await realpath(copy);
     for (const path of files) {
-      const target2 = resolve2(copy, path);
+      const target2 = resolve3(copy, path);
       let text9;
       try {
         text9 = await context3.github.readRepositoryFile({ owner, repo, path, ref: head });
@@ -67343,10 +67550,16 @@ async function runScan(directory, step3) {
   const job = readJob(env);
   const log = step3?.log ?? actionsLog();
   const octokit = getOctokit(inputs.token);
-  const payload = readEventPayload(env, (path) => readFileSync14(path, "utf8"));
+  const payload = readEventPayload(env, (path) => readFileSync15(path, "utf8"));
   await scan({
     root: job.root,
-    env,
+    env: loadEnvFile({
+      input: readEnvFileInput(getInput),
+      root: job.root,
+      env,
+      mask: (value) => setSecret(value),
+      log
+    }),
     adapter: tools,
     run: runProcess,
     github: createOctokitPort(octokit, { owner: job.owner, repo: job.repo }),
@@ -67364,7 +67577,7 @@ async function runScan(directory, step3) {
     event: job.event,
     afterMerge: mergedBeforeDispatch(payload),
     workflow: job.workflow,
-    actionRef: readActionRef(env, directory, (path) => readFileSync14(path, "utf8")),
+    actionRef: readActionRef(env, directory, (path) => readFileSync15(path, "utf8")),
     outputs: step3?.outputs ?? actionsOutputs(env.RUNNER_TEMP),
     notifier: stepNotifier(getInput, log, setSecret),
     publicRepo: publicRepo(payload),
@@ -67374,7 +67587,7 @@ async function runScan(directory, step3) {
 }
 
 // src/modes/settle-job.ts
-import { readFileSync as readFileSync15 } from "node:fs";
+import { readFileSync as readFileSync16 } from "node:fs";
 
 // src/modes/settle.ts
 function message4(error63) {
@@ -67459,7 +67672,7 @@ async function runSettle(step3) {
     log: step3?.log ?? actionsLog(),
     repoUrl: job.repoUrl,
     runId: job.runId,
-    event: readEventPayload(env, (path) => readFileSync15(path, "utf8")),
+    event: readEventPayload(env, (path) => readFileSync16(path, "utf8")),
     workflow: readWorkflowRef(env),
     outputs: step3?.outputs ?? actionsOutputs(env.RUNNER_TEMP)
   });
@@ -67474,7 +67687,7 @@ async function runAuto(directory) {
   await auto({
     root: job.root,
     eventName: job.event,
-    event: readEventPayload(env, (path) => readFileSync16(path, "utf8")),
+    event: readEventPayload(env, (path) => readFileSync17(path, "utf8")),
     log: actionsLog(),
     notice: (line3) => notice(line3),
     outputs: actionsOutputs(env.RUNNER_TEMP),
@@ -67511,7 +67724,7 @@ function terminalLog(write2 = console.log) {
 }
 
 // src/modes/init.ts
-import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync17, statSync as statSync5, writeFileSync as writeFileSync2 } from "node:fs";
+import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync18, statSync as statSync5, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname as dirname3, join as join38 } from "node:path";
 
 // src/adapters/init-findings.ts
@@ -67576,7 +67789,6 @@ var LOCKFILES = [
   ["bun.lock", "bun"],
   ["bun.lockb", "bun"]
 ];
-var SECRET_REFERENCE = "op://";
 function findForWorkflow(stacks2, files, read5) {
   const tool = (stack) => stack.options.tool;
   const pulumiPaths = [
@@ -67904,7 +68116,9 @@ function credentialSteps(envFiles2) {
     return [
       "      # Load your credentials and your state backend settings into the job",
       "      # environment here. Sluiceway passes the environment to the tool and",
-      "      # never looks inside. Whatever loads a secret must also mask it."
+      "      # never looks inside. Whatever loads a secret must also mask it. Or",
+      "      # name a file of NAME=value lines with the env-file input on the step",
+      "      # below, and Sluiceway loads it for the tool and masks every value."
     ];
   }
   const file2 = envFiles2.deploy;
@@ -68049,7 +68263,7 @@ async function init(context3) {
   const files = await repoFiles(root);
   const read5 = (file2) => {
     try {
-      return readFileSync17(join38(root, file2), "utf8");
+      return readFileSync18(join38(root, file2), "utf8");
     } catch {
       return;
     }
@@ -68134,7 +68348,7 @@ function defaultBranch(root) {
   try {
     if (!statSync5(join38(root, ".git")).isDirectory())
       return;
-    const match = /^ref: refs\/remotes\/origin\/(\S+)\s*$/.exec(readFileSync17(file2, "utf8"));
+    const match = /^ref: refs\/remotes\/origin\/(\S+)\s*$/.exec(readFileSync18(file2, "utf8"));
     return match?.[1];
   } catch {
     return;
@@ -68176,6 +68390,9 @@ async function run2(mode, directory, getInput2 = getInput, warn = (message5, tit
   if (unused.length > 0) {
     warn(`${unused.map((name) => `"${name}"`).join(", ")} ${unused.length === 1 ? "is" : "are"} set on a step in ${mode} mode, which sends no notification. Only scan, resolve and apply do. Take ${unused.length === 1 ? "it" : "them"} out of this step.`, "Notification input not used");
   }
+  const envFile = unusedEnvFileInput(mode, getInput2);
+  if (envFile !== undefined)
+    warn(envFile, "Env file input not used");
   return handlers[mode](directory);
 }
 async function post(mode, getState2, settle4) {

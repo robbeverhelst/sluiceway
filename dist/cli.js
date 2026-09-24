@@ -32482,6 +32482,11 @@ import { dirname, join as join15 } from "node:path";
 
 // src/adapters/init-findings.ts
 import { posix as posix4 } from "node:path";
+
+// src/core/env-file.ts
+var SECRET_REFERENCE = "op://";
+
+// src/adapters/init-findings.ts
 var SKIPPED4 = /(^|\/)(\.terraform|node_modules|\.git)(\/|$)/;
 function findDeclarable(files, read5, taken) {
   const used = new Set(taken);
@@ -32542,7 +32547,6 @@ var LOCKFILES = [
   ["bun.lock", "bun"],
   ["bun.lockb", "bun"]
 ];
-var SECRET_REFERENCE = "op://";
 function findForWorkflow(stacks, files, read5) {
   const tool = (stack) => stack.options.tool;
   const pulumiPaths = [
@@ -32888,7 +32892,9 @@ function credentialSteps(envFiles2) {
     return [
       "      # Load your credentials and your state backend settings into the job",
       "      # environment here. Sluiceway passes the environment to the tool and",
-      "      # never looks inside. Whatever loads a secret must also mask it."
+      "      # never looks inside. Whatever loads a secret must also mask it. Or",
+      "      # name a file of NAME=value lines with the env-file input on the step",
+      "      # below, and Sluiceway loads it for the tool and masks every value."
     ];
   }
   const file2 = envFiles2.deploy;
