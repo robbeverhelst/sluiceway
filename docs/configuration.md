@@ -445,6 +445,23 @@ valueFingerprint: false
 - **Turning it on or off voids ticks once.** Every pending row of the stacks it changes gets a fingerprint or loses it, so a tick on a row written before is refused and the row asks for a fresh one, as for a change of `dashboard.showValues`.
 - **Its cost, and why it is on.** The fingerprint sits in an issue that may be public, where a value that is neither shown nor marked secret can be guessed against it. [What a tick promises](security.md#what-a-tick-promises) states the cost and what bounds it. It is on by default because the safe reading is the one people assume: a person who ticks `web: update, image` believes they approved the image they read the code for. `dashboard.redact` does not turn it off.
 
+### `policies`
+
+Default: `[]`
+
+Directories or files of Rego policies, relative to the repo root, that every pending stack's preview is tested against with [Conftest](https://www.conftest.dev), right after the preview and in the same job ([record 0106](adr/0106-policies-run-against-the-preview-and-a-hard-failure-takes-the-box-off-the-row.md)). The workflow installs `conftest`, the way it installs the tool, and Sluiceway runs it and never wraps it. A policy reads the tool's own preview document of the stack: Pulumi's preview JSON, the plan JSON of OpenTofu and Terraform, the manifests a Helm chart or a directory of Kubernetes manifests renders. Every namespace of every file in the paths runs.
+
+```yaml
+policies:
+  - policies
+```
+
+- **A policy that fails takes the box off the row** until the change or the policy changes, names the policy on the row in its own words, escaped as untrusted text, and stops a deploy on merge outright. The preview page and the summary list every failure whole.
+- **A policy that could not run is a warning line**, not a failed policy: conftest missing or too old, a policy that does not parse, a path that is not in the repo. The row keeps its box, and the run carries a warning that says why.
+- **A `warn` rule is listed** on the preview page and in the summary, and changes nothing on the row.
+- **An entry adds its own** for its stacks with [`stacks[].policies`](#stackspolicies).
+- **How to write one** is on the [policies page](policies.md): the input each tool gives, the syntax both supported versions of conftest read, and the words a message should hold and not hold.
+
 ### `attribution.lookback`
 
 Default: `100`
@@ -876,6 +893,21 @@ stacks:
 The file follows every rule of the input: relative to the checkout or absolute, the strict format, every value masked before anything else happens, and the job log names what was loaded and never a value. A file two entries name is read once per job. The stack's file wins over the step's file, which wins over the job environment. A file that is missing or refused is a preview failure of its stacks, with the path and the line number in the job log, and the scan goes on with the other stacks. An entry with a name wins over one without, and an entry names one file.
 
 Choose a [GitHub Environment](#stacksenvironment) instead, or as well, when the credentials that change things should be held by GitHub behind required reviewers: an env file scopes what each stack's tool sees inside one job, an environment decides who may deploy and where the secrets live. A tool version or a runner per stack is not what this key does.
+
+### `stacks[].policies`
+
+Default: `[]`
+
+Policy paths for the stacks of this entry, on top of the top level [`policies`](#policies). They add up, the way `inputs` do: a stack tested by the repo's policies and by its own ([record 0106](adr/0106-policies-run-against-the-preview-and-a-hard-failure-takes-the-box-off-the-row.md)).
+
+```yaml
+policies:
+  - policies
+stacks:
+  - path: apps/payments
+    policies:
+      - policies/payments
+```
 
 ### `stacks[].options.workspace`
 

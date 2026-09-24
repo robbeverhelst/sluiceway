@@ -49,12 +49,16 @@ import type { WaitingUpdate } from "./merge-and-deploy.ts";
 import type { OnMergeWait } from "./on-merge.ts";
 import { type TickAtLateRead, tickAtLateRead } from "./orphan-tick.ts";
 import { type OutsideDeploy, outsideDeploys, trailOutside } from "./outside-deploy.ts";
+import type { PolicyOutcome } from "./policy.ts";
 import { oneRowPerStack } from "./scan-plan.ts";
 import { differsEveryRun, valueFingerprint } from "./value-fingerprint.ts";
 
 // One stack this scan previewed.
 export interface PreviewedStack {
   result: PreviewResult;
+  // What the policies made of the change (record 0106), when the scan ran
+  // them.
+  policies?: PolicyOutcome | undefined;
   // When the preview started. A deploy that ended after it is fresher than
   // the preview (record 0004).
   startedAt: Date;
@@ -302,6 +306,7 @@ export function placeRows(so: ScanSoFar, late: LateRead): RowsAtLateRead {
                 : undefined,
               ...(everyRun ? { valueEveryRun: true } : {}),
               ...(late.waitsOnMerge?.has(id) ? { waitsOnMerge: late.waitsOnMerge.get(id) } : {}),
+              ...(mine.policies === undefined ? {} : { policies: mine.policies }),
             }
           : fresh.state === "drift" && everyRun
             ? { ...fresh, valueEveryRun: true }
@@ -311,8 +316,9 @@ export function placeRows(so: ScanSoFar, late: LateRead): RowsAtLateRead {
         continue;
       }
       // Only a pending or a drifted row has a box, for a tick or for the note
-      // (record 0055).
-      const box = row.state === "pending" || row.state === "drift";
+      // (record 0055), and not one a policy stopped (record 0106).
+      const box =
+        (row.state === "pending" && row.policies?.kind !== "failed") || row.state === "drift";
       const carry =
         tickAtLateRead({
           liveHash: liveTicks.get(id),

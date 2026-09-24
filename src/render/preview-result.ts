@@ -5,6 +5,7 @@ import type { PreviewResult } from "../adapters/adapter.ts";
 import { diffHash } from "../core/diff-hash.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
 import { globOf } from "../core/glob.ts";
+import type { PolicyOutcome } from "../core/policy.ts";
 import { valueFingerprint } from "../core/value-fingerprint.ts";
 import type { RunLinks } from "./links.ts";
 import type { FailureLine, Row } from "./row.ts";
@@ -77,8 +78,10 @@ export function previewSummary(
   stackId: string,
   result: PreviewResult,
   merges?: SummaryMerge[] | undefined,
+  // What the policies made of the change (record 0106).
+  policies?: PolicyOutcome | undefined,
 ): SummaryStack {
-  if (result.ok) return { kind: "diff", diff: result.diff, merges };
+  if (result.ok) return { kind: "diff", diff: result.diff, merges, policies };
   return {
     kind: "preview-failed",
     stackId,

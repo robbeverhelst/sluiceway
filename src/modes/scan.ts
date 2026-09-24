@@ -41,6 +41,11 @@ import { repositoryOf, scanNotifications } from "../core/notify.ts";
 import { type OnMergeWait, onMergeDeploys } from "../core/on-merge.ts";
 import { resolveOnItsWay, type TickAtLateRead } from "../core/orphan-tick.ts";
 import { ownRuns } from "../core/outside-deploy.ts";
+import {
+  CONFTEST_MINIMUM_VERSION,
+  type PolicyOutcome,
+  policyRunFailureText,
+} from "../core/policy.ts";
 import { type PoolSize, runPool } from "../core/pool.ts";
 import { openRepo } from "../core/repo.ts";
 import { type MatrixEntry, matrixOutput } from "../core/resolve.ts";
@@ -105,6 +110,7 @@ import {
   previewPages,
 } from "../github/preview-pages.ts";
 import type { Notifier } from "../notify/send.ts";
+import { type ConftestCheck, checkConftest, runPolicies } from "../policy/conftest.ts";
 import { BODY_LIMIT, type BudgetOptions, bodyDoesNotFitMessage } from "../render/budget.ts";
 import { bulkSweepText } from "../render/bulk-box.ts";
 import { whereFilesBelong } from "../render/check.ts";
@@ -223,6 +229,19 @@ interface Previewed extends PreviewedStack {
   // The drift check of the stack, when this scan ran one (record 0055). What
   // it found is in `result` already. A failed one is only for the job log.
   drift?: DriftResult | undefined;
+  // What the policies made of the change (record 0106), when the stack has
+  // policies and its preview is pending, and conftest's own words for the
+  // job log.
+  policies?: PolicyOutcome | undefined;
+  policyLog?: string | undefined;
+}
+
+// The policies of a scan (record 0106): whether any stack has some, and
+// conftest as it was checked once per job. Nothing else is decided here.
+interface Policies {
+  // The paths every stack names, each once, for the job log.
+  paths: string[];
+  check?: ConftestCheck | undefined;
 }
 
 // Row placement answers "preview these first" as a value (see
@@ -351,6 +370,12 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   // The env file of each stack that names one (record 0103), read once per
   // job when the stack is first previewed, prepared or read, masked first.
   const envFiles = stackEnvFiles({ root: context.root, env: context.env, mask: context.mask, log });
+  // The policies (record 0106): conftest is checked once, before the first
+  // preview that needs it, and a conftest that is missing or too old is one
+  // warning and never a red job.
+  const policies: Policies = {
+    paths: [...new Set(stacks.flatMap((one) => one.policies ?? []))],
+  };
 
   // The stacks whose row showed drift at the first read (record 0055).
   const knownDrift = new Set<string>();
@@ -433,6 +458,9 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       );
       versionChecked = true;
     }
+    if (policies.paths.length > 0 && policies.check === undefined && next.length > 0) {
+      policies.check = await checkPolicies(context, policies.paths);
+    }
     const round = await previewAll(
       context,
       next,
@@ -444,6 +472,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       checkDrift,
       stacks.map(({ stack }) => stack),
       envFiles,
+      policies,
     );
     for (const one of round) previewed.set(one.id, one);
     logResults(context, round);
@@ -630,6 +659,17 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   reportDashboard(context, written, lastPlaced);
   for (const [id, wait] of [...waitsOnMerge].sort(([a], [b]) => byCodeUnit(a, b))) {
     log.info(onMergeLogLine(id, wait));
+  }
+  // A stack set to on-merge whose change a policy stopped (record 0106): it
+  // was never handed to the on-merge decision, and its row says why.
+  for (const one of stacks) {
+    const id = stackId(one.stack);
+    const outcome = previewed.get(id)?.policies;
+    if (one.deploy === "on-merge" && outcome?.kind === "failed") {
+      log.info(
+        `${logGroupTitle(id)} deploys on merge, and this change does not: ${policyCountWords(outcome.report.failures.length)} failed.`,
+      );
+    }
   }
   report.attributed = attributed;
   report.dashboard = {
@@ -1017,6 +1057,8 @@ async function previewAll(
   repoStacks: readonly Stack[],
   // The env file of each stack (record 0103).
   envFiles: ReturnType<typeof stackEnvFiles>,
+  // The policies of the scan, with conftest as checked (record 0106).
+  policies: Policies,
 ): Promise<Previewed[]> {
   const { log, now, adapter } = context;
   // Nothing to preview, so a repo without stacks needs no tool, and neither
@@ -1076,6 +1118,9 @@ async function previewAll(
       previewedOnly = await adapter.preview(configured.stack, {
         ...options,
         ...(configured.dependsOnAuto ? { dependencies: repoStacks } : {}),
+        // The document for the policies (record 0106), only for a stack
+        // that has some.
+        ...(configured.policies === undefined ? {} : { keepDocument: true }),
       });
     } catch (error) {
       // The adapter turns everything the tool can do wrong into a preview
@@ -1127,17 +1172,44 @@ async function previewAll(
       }
       milliseconds = now().getTime() - started;
     }
+    // The policies take the same slot of the pool and the same time limit,
+    // right after the preview, and only a pending stack with policies is
+    // tested (record 0106). The document goes with the run: it holds values
+    // and nothing else may take it (record 0021).
+    let tested: Pick<Previewed, "policies" | "policyLog"> = {};
+    if (configured.policies !== undefined && result.ok && result.diff.changes.length > 0) {
+      const policyStarted = now().getTime();
+      const ran = policies.check?.ok
+        ? await runPolicies({
+            ...options,
+            policies: configured.policies,
+            document: result.document,
+          })
+        : {
+            outcome: {
+              kind: "not-run" as const,
+              reason: policies.check?.reason ?? { kind: "tool-missing" as const },
+            },
+            toolLog: "",
+          };
+      log.info(
+        `Ran the policies of ${logGroupTitle(id)} in ${seconds(now().getTime() - policyStarted)}: ${policyOutcomeText(ran.outcome)}`,
+      );
+      tested = { policies: ran.outcome, policyLog: ran.toolLog };
+      milliseconds = now().getTime() - started;
+    }
+    result = withoutDocument(result);
     // The second run of the tool takes the same slot of the pool and the same
     // time limit, and only a pending stack gets one (record 0048).
     if (!logDiff || !result.ok || result.diff.changes.length === 0) {
-      return { id, result, startedAt, milliseconds, drift };
+      return { id, result, startedAt, milliseconds, drift, ...tested };
     }
     const toolDiffStarted = now().getTime();
     const toolDiff = await adapter.toolDiff(configured.stack, options);
     log.info(
       `Ran the tool's own diff of ${logGroupTitle(id)} in ${seconds(now().getTime() - toolDiffStarted)}${toolDiff.ok ? "" : `: ${previewFailureText(toolDiff.reason)}`}.`,
     );
-    return { id, result, startedAt, milliseconds, toolDiff, drift };
+    return { id, result, startedAt, milliseconds, toolDiff, drift, ...tested };
   });
   const total = now().getTime() - poolStarted;
 
@@ -1147,6 +1219,73 @@ async function previewAll(
     `Previewed ${plural(previewed.length, "stack")} in ${seconds(total)} with a pool of ${context.pool.size}. Added up, the previews took ${seconds(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds(slowest.milliseconds)}.`,
   );
   return [...previewed, ...unpreparedFailures];
+}
+
+// The document leaves with the policy run (record 0106): it holds the values
+// the tool printed, and nothing that reads a preview later may take it.
+function withoutDocument(result: PreviewResult): PreviewResult {
+  if (!result.ok || result.document === undefined) return result;
+  const { document: _, ...rest } = result;
+  return rest;
+}
+
+function policyCountWords(count: number): string {
+  return `${count} ${count === 1 ? "policy" : "policies"}`;
+}
+
+// The headline of a policy run, for the job log.
+function policyOutcomeText(outcome: PolicyOutcome): string {
+  switch (outcome.kind) {
+    case "failed":
+      return `${policyCountWords(outcome.report.failures.length)} failed, so its row has no box.`;
+    case "passed":
+      return "every policy passed.";
+    case "not-run":
+      return `they did not run: ${policyRunFailureText(outcome.reason)}.`;
+  }
+}
+
+// conftest, checked once per job before the first policy runs (record
+// 0106). Missing or too old, the policies of every stack did not run, which
+// is one warning with what to install, and never a red job: a policy that
+// fails to run is not a policy that failed.
+async function checkPolicies(context: ScanContext, paths: string[]): Promise<ConftestCheck> {
+  const { log } = context;
+  const check = await checkConftest({ root: context.root, env: context.env, run: context.run });
+  if (check.ok) {
+    log.info(`conftest ${check.version} runs the policies: ${paths.join(", ")}.`);
+  } else {
+    log.warning(
+      `The policies did not run: ${policyRunFailureText(check.reason)}. Nothing was checked, and every pending row keeps its box. Install conftest ${CONFTEST_MINIMUM_VERSION} or newer in a step before Sluiceway, or take policies out of sluiceway.yaml.`,
+      "Policies did not run",
+    );
+  }
+  return check;
+}
+
+// The lines of a stack's group about its policies: what came of them, and
+// each failure and warning in the policy's own words. The job log is where
+// the tool's words go (record 0022), and a policy's words are the repo's.
+function policyLogLines(outcome: PolicyOutcome | undefined): string[] {
+  if (outcome === undefined) return [];
+  if (outcome.kind === "not-run") {
+    return [`policies did not run: ${policyRunFailureText(outcome.reason)}`];
+  }
+  const { failures, warnings, passed } = outcome.report;
+  const one = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+  const headline =
+    outcome.kind === "failed"
+      ? `policies: ${failures.length} failed, ${one(warnings.length, "warning")}, ${passed} passed`
+      : `policies: every policy passed (${one(passed, "rule")}${warnings.length > 0 ? `, ${one(warnings.length, "warning")}` : ""})`;
+  return [
+    headline,
+    ...failures.map(
+      ({ namespace, message }) => `  failed: ${namespace}: ${lines(message).join(" ")}`,
+    ),
+    ...warnings.map(
+      ({ namespace, message }) => `  warning: ${namespace}: ${lines(message).join(" ")}`,
+    ),
+  ];
 }
 
 // The runner of one stack's previews, which puts each line the tool writes to
@@ -1176,8 +1315,10 @@ function readDependenciesText(id: string, read: ReadDependencies): string {
 // on the run as well (record 0012).
 function logResults(context: ScanContext, previewed: Previewed[]): void {
   const { log } = context;
-  for (const { id, result, toolDiff, drift } of previewed) {
-    const words = lines(result.toolLog + (toolDiff?.toolLog ?? "") + (drift?.toolLog ?? ""));
+  for (const { id, result, toolDiff, drift, policies, policyLog } of previewed) {
+    const words = lines(
+      result.toolLog + (toolDiff?.toolLog ?? "") + (drift?.toolLog ?? "") + (policyLog ?? ""),
+    );
     const own = [
       ...(result.ok
         ? diffLogLines(result.diff)
@@ -1186,6 +1327,7 @@ function logResults(context: ScanContext, previewed: Previewed[]): void {
       ...(drift !== undefined && !drift.ok
         ? [`drift check failed: ${previewFailureText(drift.reason)}`, ...drift.detail]
         : []),
+      ...policyLogLines(policies),
       ...toolDiffLogLines(toolDiff),
       ...(words.length > 0 ? ["The tool's own words:", ...words] : []),
     ];
@@ -1208,6 +1350,23 @@ function logResults(context: ScanContext, previewed: Previewed[]): void {
       );
     }
   }
+  // A policy run that failed for a reason of its own (record 0106). A
+  // conftest that is missing or too old was one warning at the check.
+  for (const { id, policies } of previewed) {
+    if (policies?.kind !== "not-run") continue;
+    const { reason } = policies;
+    if (
+      reason.kind === "tool-missing" ||
+      reason.kind === "too-old" ||
+      reason.kind === "no-version"
+    ) {
+      continue;
+    }
+    log.warning(
+      `The policies of ${logGroupTitle(id)} did not run: ${policyRunFailureText(reason)}. Nothing was checked, and its row keeps its box. The tool's own words are in the group of the stack.`,
+      "Policies did not run",
+    );
+  }
 }
 
 // The preview page of every pending stack of a round: a check run on the
@@ -1224,7 +1383,7 @@ async function writePages(
   const { log } = context;
   const { links, logDiff } = options;
   const toWrite: PreviewPageToWrite[] = [];
-  for (const { id, result } of round) {
+  for (const { id, result, policies } of round) {
     // A stack previewed again takes the page of its newest preview or none.
     urls.delete(id);
     // A pending stack, and a drifted one, whose drift the page lists like a
@@ -1238,7 +1397,7 @@ async function writePages(
         summary: links.summary,
         log: context.jobId === undefined ? undefined : links.log,
       },
-      { toolDiffInLog: logDiff },
+      { toolDiffInLog: logDiff, policies },
     );
     const { title, summary, text } = page;
     toWrite.push({ stackId: id, output: { title, summary, text } });
@@ -1280,7 +1439,9 @@ async function writeSummary(
 ): Promise<void> {
   const { log } = context;
   const summary = renderSummary(
-    previewed.map(({ id, result }) => previewSummary(id, result, attributed.get(id)?.merges)),
+    previewed.map(({ id, result, policies }) =>
+      previewSummary(id, result, attributed.get(id)?.merges, policies),
+    ),
     {
       budget: context.limits?.summaryBudget,
       jobLogUrl: context.jobId === undefined ? undefined : runLinks(context).log,
@@ -1627,13 +1788,17 @@ function onMergeInput(
   });
   const open = new Set<string>();
   const fresh = new Map<string, Previewed["result"]>();
+  const livePending = new Set<string>();
   for (const [id, one] of previewed) {
     const fact = facts.byStack.get(id);
     if (fact?.kind === "open") open.add(id);
+    // A change a policy stopped never deploys on merge (record 0106): it is
+    // handed on as a change nobody ticked, so a stack that depends on it
+    // waits.
+    else if (one.policies?.kind === "failed") livePending.add(id);
     else if (fact === undefined || fact.at <= one.startedAt) fresh.set(id, one.result);
   }
   for (const [id, fact] of facts.byStack) if (fact.kind === "open") open.add(id);
-  const livePending = new Set<string>();
   for (const [id, row] of liveRows) {
     if (!previewed.has(id) && row.known && row.state === "pending") livePending.add(id);
   }

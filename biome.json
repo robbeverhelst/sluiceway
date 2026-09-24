@@ -17,7 +17,9 @@
       "!test/fixtures/terragrunt",
       "!test/fixtures/cdktf",
       "!test/fixtures/helm",
-      "!test/fixtures/kubectl"
+      "!test/fixtures/kubectl",
+      "!test/fixtures/conftest",
+      "!scripts/fixtures/conftest"
     ]
   },
   "formatter": {
