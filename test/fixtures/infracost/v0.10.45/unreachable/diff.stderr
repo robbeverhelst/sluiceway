@@ -1,0 +1,20 @@
+ERROR request failed error Post "http://127.0.0.1:9/graphql": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/graphql library=retryablehttp
+ERROR request failed error Post "http://127.0.0.1:9/graphql": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/graphql library=retryablehttp
+ERROR request failed error Post "http://127.0.0.1:9/graphql": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/graphql library=retryablehttp
+ERROR request failed error Post "http://127.0.0.1:9/graphql": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/graphql library=retryablehttp
+ERROR request failed error Post "http://127.0.0.1:9/graphql": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/graphql library=retryablehttp
+INFO Autodetected 1 Terraform plan JSON file project across 1 root module
+INFO Found Terraform plan JSON file project plan.json at directory plan.json
+ERROR request failed error Post "http://127.0.0.1:9/graphql": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/graphql library=retryablehttp
+ERROR request failed error Post "http://127.0.0.1:9/graphql": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/graphql library=retryablehttp
+ERROR request failed error Post "http://127.0.0.1:9/graphql": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/graphql library=retryablehttp
+ERROR request failed error Post "http://127.0.0.1:9/graphql": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/graphql library=retryablehttp
+ERROR request failed error Post "http://127.0.0.1:9/graphql": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/graphql library=retryablehttp
+
+ERROR request failed error Post "http://127.0.0.1:9/event": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/event library=retryablehttp
+ERROR request failed error Post "http://127.0.0.1:9/event": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/event library=retryablehttp
+ERROR request failed error Post "http://127.0.0.1:9/event": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/event library=retryablehttp
+ERROR request failed error Post "http://127.0.0.1:9/event": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/event library=retryablehttp
+ERROR request failed error Post "http://127.0.0.1:9/event": dial tcp 127.0.0.1:9: connect: connection refused method POST url http://127.0.0.1:9/event library=retryablehttp
+ERROR Error reporting event: Error sending API request: Post "http://127.0.0.1:9/event": POST http://127.0.0.1:9/event giving up after 5 attempt(s): Post "http://127.0.0.1:9/event": dial tcp 127.0.0.1:9: connect: connection refused
+

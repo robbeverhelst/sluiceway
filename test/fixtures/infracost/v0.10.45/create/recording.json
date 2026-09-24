@@ -1,0 +1,56 @@
+{
+  "scenario": "create",
+  "description": "A new aws_instance with a root volume of 20 GB: the change costs an instance's hours and the volume a month.",
+  "cliVersion": "v0.10.45",
+  "commands": [
+    {
+      "id": "plan",
+      "argv": [
+        "tofu",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-json",
+        "-out={plan}"
+      ],
+      "cwd": "compute",
+      "exitCode": 0,
+      "stdout": "plan.stdout",
+      "stderr": "plan.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "show",
+      "argv": [
+        "tofu",
+        "show",
+        "-json",
+        "-no-color",
+        "{plan}"
+      ],
+      "cwd": "compute",
+      "exitCode": 0,
+      "stdout": "show.stdout",
+      "stderr": "show.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "diff",
+      "argv": [
+        "infracost",
+        "diff",
+        "--path",
+        "plan.json",
+        "--format",
+        "json",
+        "--no-color"
+      ],
+      "cwd": "{plan-dir}",
+      "exitCode": 0,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "json"
+    }
+  ]
+}

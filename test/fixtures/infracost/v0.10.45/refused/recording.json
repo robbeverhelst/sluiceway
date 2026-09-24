@@ -1,0 +1,59 @@
+{
+  "scenario": "refused",
+  "description": "The pricing API refuses the key: the CLI exits with 1 and prints why to stderr.",
+  "cliVersion": "v0.10.45",
+  "commands": [
+    {
+      "id": "plan",
+      "argv": [
+        "tofu",
+        "plan",
+        "-input=false",
+        "-no-color",
+        "-refresh=false",
+        "-json",
+        "-out={plan}"
+      ],
+      "cwd": "compute",
+      "exitCode": 0,
+      "stdout": "plan.stdout",
+      "stderr": "plan.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "show",
+      "argv": [
+        "tofu",
+        "show",
+        "-json",
+        "-no-color",
+        "{plan}"
+      ],
+      "cwd": "compute",
+      "exitCode": 0,
+      "stdout": "show.stdout",
+      "stderr": "show.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "diff",
+      "argv": [
+        "infracost",
+        "diff",
+        "--path",
+        "plan.json",
+        "--format",
+        "json",
+        "--no-color"
+      ],
+      "cwd": "{plan-dir}",
+      "exitCode": 1,
+      "stdout": "diff.stdout",
+      "stderr": "diff.stderr",
+      "stdoutFormat": "text",
+      "env": {
+        "INFRACOST_PRICING_API_ENDPOINT": "http://127.0.0.1:47831/refusing"
+      }
+    }
+  ]
+}
