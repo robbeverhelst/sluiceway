@@ -296,7 +296,7 @@ describe("opening a record", () => {
       environment: "sluiceway",
       sha: "abc1234",
       ticker: "alice",
-      hash: "h",
+      hash: "2b44350653e84a11",
     });
     // A record with no status is an open deployment (record 0035, slice 2.4).
     expect(opened).toEqual({ deployment: 1, unfinished: refused });
@@ -309,7 +309,13 @@ describe("starting a queued record in a later run (record 0056)", () => {
     const github = new FakeGitHub();
     const queued = github.seedDeployment({
       task: "sluiceway:app:prod",
-      payload: { v: 1, hash: "h1", ticker: "bob", run: "4242", behind: ["network:prod"] },
+      payload: {
+        v: 1,
+        hash: "1111111111111111",
+        ticker: "bob",
+        run: "4242",
+        behind: ["network:prod"],
+      },
       status: { state: "queued" },
     });
 
@@ -321,7 +327,7 @@ describe("starting a queued record in a later run (record 0056)", () => {
     expect(started).toEqual({ deployment: 2, ticker: "bob" });
     expect(github.deployment(2)).toMatchObject({
       sha: "def5678",
-      payload: { v: 1, hash: "h1", ticker: "bob", run: RUN, attempt: "2" },
+      payload: { v: 1, hash: "1111111111111111", ticker: "bob", run: RUN, attempt: "2" },
     });
     // The handed-on record is no deploy fact: the new one is the stack's.
     const facts = deployFacts([github.deployment(1), github.deployment(2)]);
@@ -336,7 +342,7 @@ describe("starting a queued record in a later run (record 0056)", () => {
       task: "sluiceway:app:prod",
       payload: {
         v: 1,
-        hash: "h1",
+        hash: "1111111111111111",
         ticker: "bob",
         run: "4242",
         attempt: "3",
@@ -354,7 +360,7 @@ describe("starting a queued record in a later run (record 0056)", () => {
     // The attempt is this run's, not the queued record's.
     expect(github.deployment(2).payload).toEqual({
       v: 1,
-      hash: "h1",
+      hash: "1111111111111111",
       ticker: "bob",
       run: RUN,
       attempt: "2",
@@ -368,7 +374,7 @@ describe("starting a queued record in a later run (record 0056)", () => {
       task: "sluiceway:app:prod",
       payload: {
         v: 1,
-        hash: "h1",
+        hash: "1111111111111111",
         ticker: "alice",
         run: "4242",
         behind: ["network:prod"],
@@ -384,7 +390,7 @@ describe("starting a queued record in a later run (record 0056)", () => {
 
     expect(github.deployment(2).payload).toEqual({
       v: 1,
-      hash: "h1",
+      hash: "1111111111111111",
       ticker: "alice",
       run: RUN,
       attempt: "2",
@@ -399,7 +405,7 @@ describe("starting a queued record in a later run (record 0056)", () => {
       environment: "sluiceway",
       sha: "abc1234",
       ticker: "alice",
-      hash: "h",
+      hash: "2b44350653e84a11",
       onMerge: true,
     });
     expect(github.deployment(1).payload).toMatchObject({ ticker: "alice", onMerge: true });
@@ -422,7 +428,7 @@ describe("claiming a record (records 0019, 0035 and 0056)", () => {
   function seed(github: FakeGitHub, payload: unknown, state?: string, task = "sluiceway:app:prod") {
     return github.seedDeployment({ task, payload, ...(state ? { status: { state } } : {}) }).id;
   }
-  const mine = { v: 1, hash: "h", ticker: "alice", run: RUN };
+  const mine = { v: 1, hash: "2b44350653e84a11", ticker: "alice", run: RUN };
 
   test("an open record of this run becomes `in_progress`, and is the job's", async () => {
     const github = new FakeGitHub();
@@ -432,7 +438,7 @@ describe("claiming a record (records 0019, 0035 and 0056)", () => {
     expect(await claimRecord(writer(github), id)).toEqual({
       kind: "claimed",
       stackId: "app:prod",
-      payload: { hash: "h", ticker: "alice", run: RUN },
+      payload: { hash: "2b44350653e84a11", ticker: "alice", run: RUN },
     });
     expect(written).toEqual([
       {
@@ -508,7 +514,7 @@ describe("ending a record", () => {
     const github = new FakeGitHub();
     const id = github.seedDeployment({
       task: "sluiceway:app:prod",
-      payload: { v: 1, hash: "h", ticker: "alice", run: RUN },
+      payload: { v: 1, hash: "2b44350653e84a11", ticker: "alice", run: RUN },
     }).id;
     await endRecord(writer(github), id, end);
     if (fact === undefined) expect(factOf(github, id)).toBeUndefined();
@@ -537,7 +543,7 @@ describe("settling the open records of its own run (record 0035)", () => {
   }
   const of = (run: string, extra: object = {}) => ({
     v: 1,
-    hash: "h",
+    hash: "2b44350653e84a11",
     ticker: "alice",
     run,
     ...extra,

@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Sluiceway deployment record payload",
+  "description": "The payload of a GitHub deployment record whose task is sluiceway:<stack id>. It holds no property value, no secret and none of the tool's own words.",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "number",
+          "const": 1,
+          "description": "The version of the payload. A reader checks it first."
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$",
+          "description": "The diff hash the tick approved: the first 16 hex characters of a SHA-256. The deploy goes out only when a fresh preview gives the same hash."
+        },
+        "ticker": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The login of the person whose tick started the deploy, plain, without @. On a deploy on merge, whoever merged."
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^[1-9]\\d*$",
+          "description": "The id of the workflow run that deploys. The record is open as long as that run is."
+        },
+        "attempt": {
+          "description": "The attempt of that run which created the record. Absent on older records.",
+          "type": "string",
+          "pattern": "^[1-9]\\d*$"
+        },
+        "behind": {
+          "description": "A queued record: the stack ids it waits behind, which have to go out first. Absent otherwise.",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "drift": {
+          "description": "The hash covers drift, and the deploy puts it back. Absent otherwise.",
+          "type": "boolean",
+          "const": true
+        },
+        "onMerge": {
+          "description": "The record was opened after the scan of a merge, for a stack set to deploy on merge. Absent otherwise.",
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "v",
+        "hash",
+        "ticker",
+        "run"
+      ],
+      "additionalProperties": false,
+      "description": "The record of a tick, a queued stack, a drift repair or a deploy on merge."
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "number",
+          "const": 1,
+          "description": "The version of the payload. A reader checks it first."
+        },
+        "ticker": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The login of the person whose tick started the deploy, plain, without @. On a deploy on merge, whoever merged."
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^[1-9]\\d*$",
+          "description": "The id of the workflow run that deploys. The record is open as long as that run is."
+        },
+        "attempt": {
+          "description": "The attempt of that run which created the record. Absent on older records.",
+          "type": "string",
+          "pattern": "^[1-9]\\d*$"
+        },
+        "merge": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "description": "The pull request a tick merged. The record carries no hash, never deploys, and ends when the scan after the merge opens the record that does."
+        }
+      },
+      "required": [
+        "v",
+        "ticker",
+        "run",
+        "merge"
+      ],
+      "additionalProperties": false,
+      "description": "The record of a tick that merged a pull request."
+    }
+  ]
+}

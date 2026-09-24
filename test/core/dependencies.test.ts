@@ -133,9 +133,9 @@ describe("the payload of a queued record", () => {
   });
 
   test("a payload without it is the payload of every other record", () => {
-    expect(deploymentPayload({ hash: "h", ticker: "alice", run: "7" })).toEqual({
+    expect(deploymentPayload({ hash: "2b44350653e84a11", ticker: "alice", run: "7" })).toEqual({
       v: 1,
-      hash: "h",
+      hash: "2b44350653e84a11",
       ticker: "alice",
       run: "7",
     });
@@ -143,7 +143,13 @@ describe("the payload of a queued record", () => {
 
   test("a behind that is not a list of stack ids is not read", () => {
     expect(
-      readDeploymentPayload({ v: 1, hash: "h", ticker: "alice", run: "7", behind: "x" }),
+      readDeploymentPayload({
+        v: 1,
+        hash: "2b44350653e84a11",
+        ticker: "alice",
+        run: "7",
+        behind: "x",
+      }),
     ).toBeUndefined();
   });
 

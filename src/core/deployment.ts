@@ -5,6 +5,7 @@
 // import `github/`. `github/deployments.ts` writes and reads the records
 // through the port in these words.
 
+import { z } from "zod";
 import { type DeployFailureReason, deployFailureText } from "./failure-reason.ts";
 import type { OutsideDeploy } from "./outside-deploy.ts";
 
@@ -91,8 +92,94 @@ export interface DeploymentPayload {
   onMerge?: boolean | undefined;
 }
 
-export function deploymentPayload(payload: DeploymentPayload): Record<string, unknown> {
+// The payload as a schema (record 0096): what every writer writes, checked
+// before it is sent, and published as schema/deployment-payload.schema.json
+// for anyone who reads the records. Strict, so a key that is not named here
+// cannot ride along, and none of its fields can hold a property value or a
+// secret: a hash, a login, run ids, stack ids, a pull request number and
+// flags.
+const runId = () => z.string().regex(/^[1-9]\d*$/);
+const v = z
+  .literal(PAYLOAD_VERSION)
+  .describe("The version of the payload. A reader checks it first.");
+const ticker = z
+  .string()
+  .min(1)
+  .describe(
+    "The login of the person whose tick started the deploy, plain, without @. On a deploy on merge, whoever merged.",
+  );
+const run = runId().describe(
+  "The id of the workflow run that deploys. The record is open as long as that run is.",
+);
+const attempt = runId()
+  .optional()
+  .describe("The attempt of that run which created the record. Absent on older records.");
+
+// In the order the payload has always been written.
+const tickPayloadSchema = z
+  .strictObject({
+    v,
+    hash: z
+      .string()
+      .regex(/^[0-9a-f]{16}$/)
+      .describe(
+        "The diff hash the tick approved: the first 16 hex characters of a SHA-256. The deploy goes out only when a fresh preview gives the same hash.",
+      ),
+    ticker,
+    run,
+    attempt,
+    behind: z
+      .array(z.string().min(1))
+      .min(1)
+      .optional()
+      .describe(
+        "A queued record: the stack ids it waits behind, which have to go out first. Absent otherwise.",
+      ),
+    drift: z
+      .literal(true)
+      .optional()
+      .describe("The hash covers drift, and the deploy puts it back. Absent otherwise."),
+    onMerge: z
+      .literal(true)
+      .optional()
+      .describe(
+        "The record was opened after the scan of a merge, for a stack set to deploy on merge. Absent otherwise.",
+      ),
+  })
+  .describe("The record of a tick, a queued stack, a drift repair or a deploy on merge.");
+
+const mergeRecordSchema = z
+  .strictObject({
+    v,
+    ticker,
+    run,
+    attempt,
+    merge: z
+      .int()
+      .positive()
+      .describe(
+        "The pull request a tick merged. The record carries no hash, never deploys, and ends when the scan after the merge opens the record that does.",
+      ),
+  })
+  .describe("The record of a tick that merged a pull request.");
+
+export const deploymentPayloadSchema = z.union([tickPayloadSchema, mergeRecordSchema]);
+
+// The JSON schema of the payload, for a reader that wants to check one. Only
+// scripts/generate-schema.ts calls this, never the action.
+export function deploymentPayloadJsonSchema(): Record<string, unknown> {
+  const { $schema, ...rest } = z.toJSONSchema(deploymentPayloadSchema, { target: "draft-7" });
   return {
+    $schema,
+    title: "Sluiceway deployment record payload",
+    description:
+      "The payload of a GitHub deployment record whose task is sluiceway:<stack id>. It holds no property value, no secret and none of the tool's own words.",
+    ...rest,
+  };
+}
+
+export function deploymentPayload(payload: DeploymentPayload): Record<string, unknown> {
+  return tickPayloadSchema.parse({
     v: PAYLOAD_VERSION,
     hash: payload.hash,
     ticker: payload.ticker,
@@ -101,7 +188,7 @@ export function deploymentPayload(payload: DeploymentPayload): Record<string, un
     ...(payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {}),
     ...(payload.drift ? { drift: true } : {}),
     ...(payload.onMerge ? { onMerge: true } : {}),
-  };
+  });
 }
 
 // The payload of the record a merge tick opens (record 0054). No hash at all,
@@ -112,13 +199,13 @@ export function mergePayload(payload: {
   attempt?: string | undefined;
   merge: number;
 }): Record<string, unknown> {
-  return {
+  return mergeRecordSchema.parse({
     v: PAYLOAD_VERSION,
     ticker: payload.ticker,
     run: payload.run,
     ...(payload.attempt === undefined ? {} : { attempt: payload.attempt }),
     merge: payload.merge,
-  };
+  });
 }
 
 const RUN_ID = /^[1-9]\d*$/;
