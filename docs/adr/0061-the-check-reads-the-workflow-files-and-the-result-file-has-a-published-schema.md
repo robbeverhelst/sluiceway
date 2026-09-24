@@ -1,5 +1,7 @@
 # The check reads the workflow files, and the result file has a published schema
 
+> Amended by 0096: the schema's description says the file holds no secret, and the `values` of a change says it is the one field that may hold a property value. The payload of a deployment record gets a schema of its own next to it.
+>
 > Amended by 0074: the check also reads the concurrency groups, the status checks in the `if:` of `apply` and `settle`, the `needs` of `settle` and the second apply job of merge and deploy, each only where the text plainly lacks it. Still a warning, never a red job.
 >
 > Amended by 0077: a step with no mode is auto mode, and the check reads what it runs from the triggers of its file.

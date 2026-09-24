@@ -1,5 +1,7 @@
 # Deploy facts live in GitHub's Deployments API
 
+> Amended by 0096: the payload has a published schema, `schema/deployment-payload.schema.json`, and every writer checks its payload against it. The payload and the record are documented for readers outside Sluiceway in `docs/what-sluiceway-writes.md`.
+>
 > Named in 0035: the matrix that `resolve` emits is the `matrix` output with `{ stack, environment, deployment }` entries, `apply` takes the record as `deployment-id`, and `settle` finds the open records of its own run.
 >
 > Amended by 0051: an `inactive` status with the words "rehearsed, nothing was deployed" ends a rehearsal. It is no deploy fact of the stack and is listed in recently deployed as rehearsed. A `success` with the words "nothing to deploy, already in sync" is listed with them.

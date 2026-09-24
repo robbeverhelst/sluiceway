@@ -1,5 +1,7 @@
 # Three marker kinds, a trailing row marker, and a body that is regenerated around its row blocks
 
+> Amended by 0096: the markers are documented for readers outside Sluiceway in `docs/what-sluiceway-writes.md`, with the version rule said for them. Every key is documented except `shortened` on a row, the `run-waiting` keys on the root marker, and the notes and confirm keys of a bulk box, which may change without a new version.
+>
 > Amended by 0086: the root marker gains the optional keys `run-waiting`, `run-waiting-since` and `run-waiting-more`, after the full scan keys, for a run of the workflow that waits for a runner. A scan writes them and every other writer carries them.
 >
 > Amended by 0083: a marker of the kind `sluiceway:bulk` sits on its own line outside the row blocks, under the pending or the drifted rows: the bulk box of that section, or its confirm box with the stacks and hashes it names.
