@@ -1,5 +1,7 @@
 # The workflow prepares the environment, and Sluiceway never wraps or hooks the tool
 
+> Amended by 0100: the tool's environment is the job's with the values of the file the `env-file` input names on top, when a step names one, and Sluiceway masks every value of that file. The job environment itself still goes to the tool unchanged, minus `INPUT_*`, and Sluiceway still masks nothing in it.
+>
 > Amended by 0099: the consequence below that no secret manager, cluster or cloud is named in Sluiceway's code no longer holds as written. One fixed table in the core names them, so the check can say which credentials each stack needs and which the workflow does not give it. Sluiceway still sets, defaults and reads none of them.
 
 Many repos never run their IaC tool directly. A script or task runner of their own resolves secrets from a secret manager, sets the state backend and then calls the tool. Sluiceway calls the tool itself (0001), so it has to fit next to that tooling without learning what it does. The rule: everything the tool needs is put into the job's environment by workflow steps that run before Sluiceway, and Sluiceway passes that environment on. There is no configurable command wrapper and there are no hooks before or after a stack, in v1.

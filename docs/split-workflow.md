@@ -45,7 +45,9 @@ jobs:
       # Install what your programs need, once, for example: npm ci
       # Load your credentials and your state backend settings into the job
       # environment here. Sluiceway passes the environment to the tool and
-      # never looks inside. Whatever loads a secret must also mask it.
+      # never looks inside. Whatever loads a secret must also mask it. Or
+      # name a file of NAME=value lines with the env-file input, and
+      # Sluiceway loads it for the tool and masks every value itself.
       - uses: sluiceway/sluiceway@v0
         with:
           mode: scan

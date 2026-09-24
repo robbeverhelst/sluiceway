@@ -28,7 +28,7 @@ These are the promises Sluiceway makes. A way to break one of them is a vulnerab
 - A deploy changes only what the ticked row, or that scan, showed. If a fresh preview differs, nothing is deployed.
 - Re-running a workflow job never deploys anything again.
 - No property value leaves the tool's adapter. Values never reach the issue, comments, deployment records, job summaries or logs written by Sluiceway.
-- Sluiceway never reads a credential by name, and never stores or sends anything from the environment.
+- Sluiceway reads no credential of the job environment by name, reads of the runner's files only the one the `env-file` input names and masks every value of it first, and never stores or sends anything from either.
 - The infrastructure tool and the stack programs it runs never receive the GitHub token that Sluiceway was given.
 - This repository's own release process: the committed `dist/` matches the source, and workflows pin third-party actions by commit SHA.
 

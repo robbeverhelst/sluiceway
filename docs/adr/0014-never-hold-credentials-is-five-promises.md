@@ -1,5 +1,7 @@
 # "Never hold credentials" is five promises that can be checked
 
+> Amended by 0100: promise 2 now reads that no Sluiceway code reads a credential variable of the job environment, and that the one file Sluiceway reads is the one the `env-file` input names, every line of it the same way, for the tool, with every value masked first. Promise 1 gains that the input carries a path and never a value, promise 3 covers the file's values, and promise 4 gains that `resolve` and `settle` never open the file.
+>
 > Amended by 0078: promise 1 allows the opt-in notification channels (a Slack webhook address, a Telegram bot token and chat id, a webhook address) as inputs, from the repo's own secrets. They are credentials of the user's messaging, never of their infrastructure. Promise 3 gains the calls to those channels.
 >
 > Amended by 0077: in the one-step workflow one job previews and deploys, so the job an issue edit starts loads the credentials. Promise 4 still holds of the modes, and the gain named below holds of the split workflow only.

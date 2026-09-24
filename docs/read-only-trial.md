@@ -41,7 +41,8 @@ jobs:
       # environment here. For Pulumi, credentials that can only read are
       # enough. A Helm or Kubernetes manifests preview is a server-side dry
       # run, which needs what a deploy needs (see Credentials). Whatever loads
-      # a secret must also mask it.
+      # a secret must also mask it, or name a file of NAME=value lines with
+      # the env-file input and Sluiceway masks every value itself.
       - uses: sluiceway/sluiceway@v0
 ```
 

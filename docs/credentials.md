@@ -1,12 +1,12 @@
 # Credentials and your own tooling
 
-Sluiceway runs your infrastructure tool, but it never loads a credential. Your workflow puts everything the tool needs into the job environment, in steps that run before Sluiceway, and Sluiceway passes that environment to the tool as it is. This page is the pattern, then recipes for the usual places credentials come from, then what to do when your programs fetch things or you deploy from somewhere else too.
+Sluiceway runs your infrastructure tool, and your workflow gives the tool what it needs: steps that run before Sluiceway put it into the job environment, which Sluiceway passes to the tool as it is, or the [`env-file` input](#an-env-file) names a file of `NAME=value` lines that Sluiceway reads for the tool and masks itself. It fetches no credential from anywhere and resolves no secret reference. This page is the pattern, then recipes for the usual places credentials come from, then what to do when your programs fetch things or you deploy from somewhere else too.
 
 ## The pattern
 
 1. **Authenticate** to wherever the credentials live: a GitHub secret, your cloud through OIDC, a secret manager.
 2. **Load everything into the job environment in one step**, once per job. The tool's backend, the passphrase of its secrets, the cloud credentials, anything your programs read.
-3. **That step masks every secret it loads.** Sluiceway never sees a secret as a secret, so it cannot mask one by its value. The step that knows it is a secret has to.
+3. **That step masks every secret it loads**, or it writes a file that the `env-file` input names, and Sluiceway masks every value of that file. Sluiceway masks nothing else: in the job environment it cannot tell a secret from a setting, so the step that put a secret there has to.
 
 Then:
 
@@ -25,15 +25,15 @@ For each job that runs the tool, the check then reads what the workflow hands th
 
 ## What Sluiceway promises about them
 
-Sluiceway never holds credentials. That is five promises you can check against the code:
+Sluiceway fetches no credential and keeps none. That is five promises you can check against the code ([record 0014](adr/0014-never-hold-credentials-is-five-promises.md), amended by [record 0100](adr/0100-the-env-file-input-loads-the-file-a-step-names-and-masks-every-value.md)):
 
-1. **No credential inputs.** No input and no config key ever carries a cloud, backend or secret manager credential. The action takes the GitHub token, and, only when you want notifications, the addresses and the bot token of your notification channels, from your secrets ([notifications](notifications.md)).
-2. **Never read by name.** No Sluiceway code reads a credential variable. The environment goes to the tool as one opaque block.
-3. **Never stored, never sent.** Nothing from the environment reaches the issue, deployment records, job summaries, artifacts or caches. The only network calls are to the GitHub API, whatever the tool itself makes, and the notification channels a step names.
-4. **Only the modes that run the tool need credentials.** `scan` and `apply` run the tool. `resolve` and `settle` never do. `check` does only when its step sets `backend: true`, to ask the backend which stacks it holds, and then only with the credentials you loaded before that step.
+1. **No credential inputs.** No input and no config key ever carries a cloud, backend or secret manager credential. The action takes the GitHub token, and, only when you want notifications, the addresses and the bot token of your notification channels, from your secrets ([notifications](notifications.md)). The `env-file` input carries a path, never a value.
+2. **Nothing read by name, and one file read by yours.** No Sluiceway code reads a credential variable of the job environment: the environment goes to the tool as one opaque block. The one file it reads is the one the `env-file` input names, in the checkout you pinned it to or where a step of yours wrote it, and it reads every line of that file the same way, for the tool. It masks every value first, and the job log says which names it loaded and never a value.
+3. **Never stored, never sent.** Nothing from the environment or the env file reaches the issue, deployment records, job summaries, artifacts or caches. The only network calls are to the GitHub API, whatever the tool itself makes, and the notification channels a step names.
+4. **Only the modes that run the tool need credentials.** `scan` and `apply` run the tool. `resolve` and `settle` never do, and never open the env file. `check` does only when its step sets `backend: true`, to ask the backend which stacks it holds, and then only with the credentials you loaded before that step, or the env file the step names.
 5. **A hosted version would keep all of this.** The tool always runs in your own runners.
 
-The credentials are in the same job as Sluiceway's own process, so that process could read them. Its code, which you pin and can read, never does. The [security page](security.md) says what that protects against and what it does not.
+The credentials are in the same job as Sluiceway's own process, so that process could read them, and with `env-file` it reads the ones you name. Its code, which you pin and can read, does nothing else with them. The [security page](security.md) says what that protects against and what it does not.
 
 ## Recipes
 
@@ -50,6 +50,26 @@ Nothing to set up outside GitHub. Put the secrets on Sluiceway's step, not on th
 ```
 
 For the credentials that change things, use a secret of a GitHub Environment where your plan has them, and name the environment on the job ([with GitHub Environments](workflow.md#with-github-environments)). Only a job that names the environment, on a branch the environment allows, can read its secrets. The [security page](security.md) has the setups.
+
+### An env file
+
+The `env-file` input names one file of `NAME=value` lines that Sluiceway reads once per job for the tool's process. It is for a file of plain values that lives next to the code, and for a file a step before Sluiceway resolved from your secret manager, so that no repo has to carry a script that masks and exports:
+
+```yaml
+      - uses: sluiceway/sluiceway@v0
+        with:
+          env-file: ci/deploy.env
+```
+
+What Sluiceway does with it:
+
+- **Every value is masked before anything else happens**, so the tool's own words in the job log cannot show one, and each line of a value that spans lines is masked on its own, because the runner matches the log line by line. Not masked: an empty value, `true` and `false`, and a value shorter than 8 characters, because a mask that short turns every `dev` or `8080` in the log into stars. The job log says which names it loaded, which got no mask and why, and never a value.
+- **The file wins.** A name the job environment already has takes the file's value, and the job log names each one it replaced. What Sluiceway reads for itself, the repo, the run and its inputs, comes from the runner and never from the file.
+- **The format is strict.** A comment line starts with `#`, blank lines are skipped, and every other line is `NAME=value`, with `export ` allowed in front and spaces around the `=`. An unquoted value runs to the end of its line, without the white space around it, and a `#` in it is part of it. A value in double quotes may span lines and knows `\n`, `\"` and `\\`. A value in single quotes is taken as it is, across lines too. Refused, by line number and never by quoting the line: any other line, a name set twice, a quote never closed, anything after a closing quote, another escape in double quotes, a name that starts with `INPUT_` (the tool never gets those, record 0013) and a secret reference (`op://`), because Sluiceway resolves none.
+- **A file that is not there fails the step before the tool runs**, in the modes that run the tool: `scan`, `apply`, `auto`, and `check` with `backend: true`. A path is relative to the checkout, or absolute for a file a step wrote elsewhere, such as under `${{ runner.temp }}`. On a step that never runs the tool the input is a warning, and the file is never opened.
+- **One file per step.** Two files would raise which wins on a name both set, which the format refuses inside one file too. Join them in a step before Sluiceway.
+
+For a file of secret references, resolve it first. With 1Password, `op inject -i ci/deploy.env -o "$RUNNER_TEMP/deploy.env"` writes the resolved file for the life of the job, and `env-file: ${{ runner.temp }}/deploy.env` loads it. The script under [An env file of secret references](#an-env-file-of-secret-references) does the same without a file on disk.
 
 ### A cloud through OIDC
 
@@ -82,7 +102,7 @@ Prefer one bulk call per job over one call per secret. A secret manager counts r
 
 #### An env file of secret references
 
-Many repos keep one env file of secret references next to the code, which the team's own tooling resolves before it runs the tool. The same file can load a CI job. Run your secret manager's `run` command once, which resolves every reference in one go, and let a small script inside it mask the secrets and write every value to `$GITHUB_ENV`. With 1Password:
+Many repos keep one env file of secret references next to the code, which the team's own tooling resolves before it runs the tool. The same file can load a CI job, and this is the one place a script is still needed: your secret manager's `run` command resolves every reference in one go into the environment of the process it starts, and something has to hand the values on to the job. A file a step already resolved, or a file of plain values, needs none of this: the [`env-file` input](#an-env-file) loads it. Run the `run` command once, and let a small script inside it mask the secrets and write every value to `$GITHUB_ENV`. With 1Password:
 
 ```yaml
       - uses: 1password/install-cli-action@v4
