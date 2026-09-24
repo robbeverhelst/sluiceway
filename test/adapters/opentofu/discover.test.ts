@@ -152,6 +152,13 @@ describe("what discovery refuses", () => {
       "stacks[0].dependsOn: auto reads the stack references of a Pulumi program, and an opentofu stack has none. Name the stack ids instead.",
     ]);
   });
+
+  test("createInBackend, because only a Pulumi stack has a stack to create (record 0107)", async () => {
+    const config = "stacks:\n  - path: infra/network\n    tool: opentofu\n    createInBackend: true\n";
+    expect(await problems(MODULE, config)).toEqual([
+      "stacks[0].createInBackend: the scan creates a Pulumi stack the backend lacks, and an opentofu stack has no such stack: its first scan makes what it needs. Leave the key out.",
+    ]);
+  });
 });
 
 describe("a repo with Pulumi and OpenTofu stacks", () => {

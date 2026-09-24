@@ -435,6 +435,10 @@
               "minLength": 1
             }
           },
+          "createInBackend": {
+            "type": "boolean",
+            "description": "true: a scan creates each Pulumi stack of the entry that the backend lacks, with pulumi stack init right before its first preview, and previews it as all creates. A deploy never creates a stack. Default: false."
+          },
           "options": {
             "description": "Named adapter options of the tool. Only an entry with tool takes them.",
             "type": "object",

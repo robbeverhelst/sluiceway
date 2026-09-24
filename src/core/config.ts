@@ -221,6 +221,16 @@ const stackEntry = z
         "Directories or files of Rego policies these stacks are tested against, relative to the repo root, on top of the top level policies.",
       )
       .exactOptional(),
+    // A scan creates the stacks of the entry that the backend lacks (record
+    // 0107). Off unless an entry says so: a typo in a stack file must never
+    // create junk in a backend. Only a Pulumi stack has a stack to create, so
+    // discovery refuses the key on an entry with a tool.
+    createInBackend: z
+      .boolean()
+      .describe(
+        "true: a scan creates each Pulumi stack of the entry that the backend lacks, with pulumi stack init right before its first preview, and previews it as all creates. A deploy never creates a stack. Default: false.",
+      )
+      .exactOptional(),
     // Named adapter options (records 0006, 0015). Only an entry with a tool
     // takes them, and its adapter checks their names and values (record 0053).
     options: z
@@ -963,6 +973,10 @@ export interface ConfiguredStack {
   // what its entries add, each once. Absent when the repo names none, so
   // nothing changes for a repo without policies.
   policies?: string[];
+  // `createInBackend: true` of its stack entries (record 0107): a scan
+  // creates the stack in the backend when it lacks it. Absent for a stack
+  // that no entry asks for, so nothing is created that nobody asked for.
+  createInBackend?: true;
 }
 
 const DEFAULT_ENVIRONMENT = "sluiceway";
@@ -1000,6 +1014,9 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
     const windows =
       entries.findLast((entry) => entry.deployWindows !== undefined)?.deployWindows ??
       config.deployWindows;
+    const createInBackend = entries.findLast(
+      (entry) => entry.createInBackend !== undefined,
+    )?.createInBackend;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     const policies = [
@@ -1024,6 +1041,7 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
       ...(envFile === undefined ? {} : { envFile }),
       ...(windows.length === 0 ? {} : { deployWindows: windows }),
       ...(policies.length === 0 ? {} : { policies }),
+      ...(createInBackend === true ? { createInBackend } : {}),
     };
   });
 }

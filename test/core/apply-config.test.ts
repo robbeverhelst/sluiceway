@@ -478,3 +478,36 @@ stacks:
     expect(() => parseConfig("policies: policies\n")).toThrow("policies: expected a list");
   });
 });
+
+// Slice 5.42 (record 0107): a stack entry may ask the scan to create its
+// stacks in the backend when it lacks them. Off unless an entry says so.
+describe("creating a stack in the backend", () => {
+  test("is absent when no entry asks, so nothing is ever created", () => {
+    expect(applyConfig(parseConfig(undefined), FOUND).map((one) => one.createInBackend)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  test("an entry asks for its stacks, and the entry with a name wins", () => {
+    const configured = applyConfig(
+      parseConfig(`
+stacks:
+  - path: apps/grafana
+    name: prod
+    createInBackend: false
+  - path: apps/grafana
+    createInBackend: true
+`),
+      FOUND,
+    );
+    expect(configured.map((one) => one.createInBackend)).toEqual([true, undefined, undefined]);
+  });
+
+  test("the key is true or false", () => {
+    expect(() => parseConfig("stacks:\n  - path: envs/prod\n    createInBackend: yes\n")).toThrow(
+      "stacks[0].createInBackend: expected true or false",
+    );
+  });
+});

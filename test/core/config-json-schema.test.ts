@@ -76,6 +76,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "valueFingerprint",
       "envFile",
       "policies",
+      "createInBackend",
       "options",
     ]);
   });

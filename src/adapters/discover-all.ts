@@ -50,6 +50,14 @@ export async function discoverAll(root: string, config: Config): Promise<Stack[]
             `stacks[${index}].phase: from reads a key of a Pulumi project file, and an ${entry.tool} stack has none. Name the phase instead.`,
           ]
         : []),
+      // A stack to create in the backend is Pulumi's too (record 0107): an
+      // OpenTofu workspace is made by the scan's init, a Helm release by its
+      // first deploy, and a manifests stack has nothing to make.
+      ...(entry.createInBackend !== undefined
+        ? [
+            `stacks[${index}].createInBackend: the scan creates a Pulumi stack the backend lacks, and an ${entry.tool} stack has no such stack: its first scan makes what it needs. Leave the key out.`,
+          ]
+        : []),
     ];
   });
   const switchProblems = Object.keys(config.discovery)

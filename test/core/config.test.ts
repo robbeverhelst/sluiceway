@@ -383,6 +383,7 @@ stacks:
       "valueFingerprint",
       "envFile",
       "policies",
+      "createInBackend",
       "options",
     ];
     expect(issues("stacks:\n  - path: a\n    stack: prod\n    approvers: write\n")).toEqual([
