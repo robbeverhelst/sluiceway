@@ -1,5 +1,7 @@
 # A check mode validates a setup with no credentials and no tool
 
+> Amended by 0099: the check also says which credentials each stack's files ask for, as names with alternatives, and which of them nothing in the workflow appears to provide. Never a value, and never a warning.
+>
 > Amended by 0074: with the input `backend: true`, and only then, the check asks the backend which stacks it holds, with the credentials of its job, and gives one `ignore` block for the ones it does not hold. It also suggests `inputs` from the files a stack's own files name. Without `backend` the promise below is unchanged.
 >
 > Amended by 0065: a sixth mode, `init`, holds the same promise. It reads the same files and writes a starter workflow and `sluiceway.yaml` into the checkout, and the check treats a step that runs it like its own.

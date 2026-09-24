@@ -13,7 +13,7 @@ One action, seven modes, chosen with the `mode` input. Leave it out, and the ste
 | `resolve` | Reacts to a tick: checks who ticked, records the deploy and hands the stack to `apply`. | No |
 | `apply` | Previews the stack again and deploys it if nothing moved since the tick. | Yes |
 | `settle` | Gives a deploy a result when its workflow run ended without reporting one. | No |
-| `check` | Reads the repo's files and says whether the setup is valid. It needs no credentials, no tool and no GitHub API, so it is safe on any pull request. With `backend: true` it also asks the backend which stacks it holds, with the credentials of its job. | No |
+| `check` | Reads the repo's files and says whether the setup is valid, and which credentials each stack needs, as names, and which of them nothing in the workflow provides ([credentials](credentials.md#what-the-check-says-about-them)). It needs no credentials, no tool and no GitHub API, so it is safe on any pull request. With `backend: true` it also asks the backend which stacks it holds, with the credentials of its job. | No |
 | `init` | Writes a starter workflow and `sluiceway.yaml` into your clone from what it finds there, and says what is left for you. You run it once on your own machine, as `npx sluiceway init`, and it commits nothing ([init](init.md)). | No |
 
 ## Inputs

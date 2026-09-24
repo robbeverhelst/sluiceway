@@ -17,6 +17,12 @@ Then:
 
 The job environment is the whole interface. There is no allowlist and no environment per stack: a program may read any variable, so Sluiceway cannot know the names. A stack that needs a value of its own gets it through its own variable name or its stack config.
 
+## What the check says about them
+
+[The check](workflow.md#check-your-setup) reads the same files and says, per stack, what its tool will want from the job environment: the names, with the alternatives, and the file that names each. A Pulumi stack wants its backend (`PULUMI_ACCESS_TOKEN` for Pulumi Cloud, or `PULUMI_BACKEND_URL` and the credentials of the bucket it names), the passphrase of its secrets when its stack file has one, and the credentials of every provider its program names, read from a YAML program's resource types or from the packages its `package.json`, `requirements.txt`, `pyproject.toml`, `go.mod` or .NET project file lists. A root module wants the credentials of the providers its lock file, `required_providers` and `provider` blocks name, of its backend, and a `TF_VAR_<name>` for every variable without a default that no var file of the stack sets. A Helm release and a manifests stack want the cluster. For the aws provider it also asks for a region, unless the stack's config or the provider block sets one.
+
+For each job that runs the tool, the check then reads what the workflow hands the step: the names `env:` sets on the workflow, the job and the Sluiceway step, the names an env file of the repo lists when a step before the Sluiceway step loads it, and the login actions before the step. It says which needs nothing in the workflow appears to provide, and names a step it cannot see into, one that writes to the environment or loads secrets, as a maybe. It reads names and never a value, and it never turns this into a warning: a program can read any variable, so it is a reading of the files, not a guarantee. `npx sluiceway check` says the same on your own machine.
+
 ## What Sluiceway promises about them
 
 Sluiceway never holds credentials. That is five promises you can check against the code:
