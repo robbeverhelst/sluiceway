@@ -253,10 +253,17 @@ describe("the env file in the check job", () => {
       REGION: "us",
     };
     let handed: Record<string, string | undefined> | undefined;
+    // The backend part is handed the environment and starts no process here:
+    // a tool that is not there is a warning, and the test is about what it
+    // was handed.
     const out = await quietly(() =>
       runCheck((env) => {
         handed = env;
-        return { adapter: { ...backendContext(env).adapter }, env, run: backendContext(env).run };
+        return {
+          adapter: backendContext(env).adapter,
+          env,
+          run: async () => ({ status: "not-started" }),
+        };
       }),
     );
     expect(handed?.PULUMI_ACCESS_TOKEN).toBe("pul-0123456789");
