@@ -35,6 +35,10 @@ export interface PreviewPageLinks {
 export interface PreviewPageOptions {
   // The job log holds the tool's own diff of the stack (record 0048).
   toolDiffInLog?: boolean | undefined;
+  // The page shows the stack after the merge of a pull request, for its
+  // reviewer, and nothing deploys from it (record 0101). The list of changes
+  // is the same as on a scan's page; the words around it say what it is.
+  pullRequest?: { number: number; baseRef: string } | undefined;
   // Only a test has a reason to set it.
   limit?: number | undefined;
 }
@@ -60,6 +64,57 @@ function jobLog(links: PreviewPageLinks): string {
 function pointer(unlisted: number, id: string, links: PreviewPageLinks): string {
   const are = unlisted === 1 ? "change is" : "changes are";
   return `**${unlisted} more ${are} not listed here**: a preview page holds at most 65,535 bytes. Every change is in the ${jobLog(links)}, in the group <code>${id}</code>, and in the [summary](${links.summary}) of the scan when it fits there.`;
+}
+
+// The words around a scan's page: what it is, and where the rest is.
+function scanAbout(
+  diff: Diff,
+  links: PreviewPageLinks,
+  also: string,
+  id: string,
+  options: PreviewPageOptions,
+): string[] {
+  return [
+    diff.changes.length === 0
+      ? `Sluiceway's own list of what changed in real infrastructure outside the code, never what it changed to. The code has nothing to deploy, and a deploy puts these back as the code says. It is the drift the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.`
+      : diff.changes.some((change) => (change.values ?? []).length > 0)
+        ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}`
+        : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}`,
+    `Every stack this scan previewed is in the [summary](${links.summary}) of the scan, and the tool's own words are in the ${jobLog(links)}, in the group <code>${id}</code>.`,
+    ...(options.toolDiffInLog
+      ? [
+          `The tool's own diff of this stack, values included, is in the ${jobLog(links)}, in the group <code>${id}</code>. It is not on this page.`,
+        ]
+      : []),
+  ];
+}
+
+// The one sentence every page of a pull request preview carries (record
+// 0101): the deploy happens after the merge, from a fresh preview, and
+// refuses a change that moved, so a stale plan can never go out.
+export function nothingDeploysLine(dashboard: string): string {
+  return `**Nothing deploys from this page.** A deploy goes out only after the merge, from a fresh preview of the default branch, and is refused when the change moved since. What is merged and waiting is on the [dashboard](${dashboard}).`;
+}
+
+export function pullRequestWords(pullRequest: { number: number; baseRef: string }): string {
+  return `the merge of #${pullRequest.number} into ${escapeText(pullRequest.baseRef)}`;
+}
+
+// The words around the page of a stack after the merge (record 0101).
+function pullRequestAbout(
+  diff: Diff,
+  pullRequest: { number: number; baseRef: string },
+  links: PreviewPageLinks,
+  id: string,
+): string[] {
+  const values = diff.changes.some((change) => (change.values ?? []).length > 0)
+    ? "with the old and new value only at the paths that <code>dashboard.showValues</code> lists"
+    : "never what it changes to";
+  return [
+    `Sluiceway's own preview of this stack as it would be after ${pullRequestWords(pullRequest)}: what a deploy would change, ${values}, with every property path whole.`,
+    nothingDeploysLine(links.dashboard),
+    `Every stack this run previewed is in the [summary](${links.summary}) of the run, and the tool's own words are in the ${jobLog(links)}, in the group <code>${id}</code>.`,
+  ];
 }
 
 // A stack id is a path and a name from the repo's files, so the summary is
@@ -89,17 +144,9 @@ export function renderPreviewPage(
     ...(destroys.length > 0
       ? [`:warning: **This deploy ${destroyWords(deletes.length, replaces.length)}.**`]
       : []),
-    diff.changes.length === 0
-      ? `Sluiceway's own list of what changed in real infrastructure outside the code, never what it changed to. The code has nothing to deploy, and a deploy puts these back as the code says. It is the drift the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.`
-      : diff.changes.some((change) => (change.values ?? []).length > 0)
-        ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}`
-        : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links.dashboard}) shows, with every property path whole.${also}`,
-    `Every stack this scan previewed is in the [summary](${links.summary}) of the scan, and the tool's own words are in the ${jobLog(links)}, in the group <code>${id}</code>.`,
-    ...(options.toolDiffInLog
-      ? [
-          `The tool's own diff of this stack, values included, is in the ${jobLog(links)}, in the group <code>${id}</code>. It is not on this page.`,
-        ]
-      : []),
+    ...(options.pullRequest !== undefined
+      ? pullRequestAbout(diff, options.pullRequest, links, id)
+      : scanAbout(diff, links, also, id, options)),
   ].join("\n\n");
 
   // Destroys come first, so a cut takes them last (record 0024).

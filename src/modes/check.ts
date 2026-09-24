@@ -6,7 +6,7 @@
 import type { Adapter, FileReference } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import { type BackendCheck, checkSetup } from "../core/check.ts";
-import { ConfigError } from "../core/config.ts";
+import { type Config, ConfigError, type ConfiguredStack } from "../core/config.ts";
 import { hasConfigFile, loadConfig } from "../core/config-file.ts";
 import { judgeJobs, type StackNeeds } from "../core/credentials.ts";
 import { DiscoveryError, type DiscoveryNote } from "../core/discovery.ts";
@@ -36,6 +36,12 @@ export interface CheckContext {
     env: Record<string, string | undefined>;
     run: ProcessRunner;
   };
+  // Only with pull-request-preview: true (record 0101): the preview of the
+  // stacks the pull request claims, with the credentials of its job, handed
+  // in by the dispatcher the way the backend is. It gets the config and the
+  // stacks the check found, and gives back its part of the log and the
+  // summary. Without it the check previews nothing.
+  pullRequestPreview?: (repo: { config: Config; stacks: ConfiguredStack[] }) => Promise<CheckPart>;
 }
 
 export async function check(context: CheckContext): Promise<void> {
@@ -103,7 +109,17 @@ export async function check(context: CheckContext): Promise<void> {
     parts.push(backend);
   }
 
-  const closing = closingPart(context.backend !== undefined);
+  // The pull request preview, last of the slow work (record 0101).
+  if (context.pullRequestPreview !== undefined) {
+    const preview = await context.pullRequestPreview({ config, stacks: report.stacks });
+    write(log, preview);
+    parts.push(preview);
+  }
+
+  const closing = closingPart(
+    context.backend !== undefined,
+    context.pullRequestPreview !== undefined,
+  );
   await summary(context, renderCheckSummary([...parts, closing]));
   write(log, closing);
 }

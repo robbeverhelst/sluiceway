@@ -79,6 +79,11 @@ export interface SluicewayJob {
   environment?: string;
   // What the job hands the step (record 0099).
   provides: JobProvides;
+  // The step sets pull-request-preview: true (record 0101): the check
+  // previews the stacks the pull request claims and writes a page per stack,
+  // which needs checks: write, and the file must not run on
+  // pull_request_target.
+  previewsPullRequests?: true;
 }
 
 // A workflow file that runs Sluiceway in at least one job.
@@ -115,6 +120,9 @@ export type WorkflowWarning =
   // repo's default, which a file cannot show.
   | { kind: "no-permissions"; path: string; job: string; mode: Mode; needs: string[] }
   | { kind: "missing-permissions"; path: string; job: string; mode: Mode; missing: string[] }
+  // Record 0101: pull-request-preview: true in a file that runs on
+  // pull_request_target, which is never previewed on.
+  | { kind: "preview-on-target"; path: string; job: string }
   // Record 0074 from here on. Scans run one at a time, ticks too, and deploys
   // one at a time per stack (records 0004, 0025, 0035).
   | {
@@ -392,7 +400,18 @@ function sluicewayJob(
     const mode = isMode(named) ? named : undefined;
     const runs = mode === undefined ? [] : mode === "auto" ? auto : [mode];
     const provides = providesOf(steps, index, workflowEnv, parsed.env);
-    return { job, mode, runs, ref, refKind: refKind(ref), named, provides };
+    const preview = isRecord(step.with) ? step.with["pull-request-preview"] : undefined;
+    const previews = preview === true || String(preview ?? "").trim() === "true";
+    return {
+      job,
+      mode,
+      runs,
+      ref,
+      refKind: refKind(ref),
+      named,
+      provides,
+      ...(previews ? { previewsPullRequests: true as const } : {}),
+    };
   }
   return undefined;
 }
@@ -464,20 +483,31 @@ function checkOne(path: string, workflow: Parsed, config: Config, report: Workfl
   const { warnings, notes } = report;
   report.workflows.push({
     path,
-    jobs: found.map(({ step: { job, mode, runs, ref, refKind, environment, provides } }) => ({
-      job,
-      mode,
-      runs,
-      ref,
-      refKind,
-      ...(environment === undefined ? {} : { environment }),
-      provides,
-    })),
+    jobs: found.map(
+      ({
+        step: { job, mode, runs, ref, refKind, environment, provides, previewsPullRequests },
+      }) => ({
+        job,
+        mode,
+        runs,
+        ref,
+        refKind,
+        ...(environment === undefined ? {} : { environment }),
+        provides,
+        ...(previewsPullRequests ? { previewsPullRequests } : {}),
+      }),
+    ),
   });
 
   for (const { step } of found) {
     if (step.mode === undefined) {
       warnings.push({ kind: "unknown-mode", path, job: step.job, mode: step.named });
+    }
+    // The preview runs the pull request's code with the job's credentials,
+    // and pull_request_target hands a stranger's code the base branch's
+    // secrets (record 0101).
+    if (step.previewsPullRequests && "pull_request_target" in workflow.on) {
+      warnings.push({ kind: "preview-on-target", path, job: step.job });
     }
     if (step.refKind === "other") {
       warnings.push({ kind: "unreleased-ref", path, job: step.job, ref: step.ref });
@@ -528,6 +558,8 @@ function checkOne(path: string, workflow: Parsed, config: Config, report: Workfl
     if (step.mode === undefined) continue;
     const { job, mode } = step;
     const wanted = needsAll(step.runs, config);
+    // A page per stack of the pull request preview (record 0101).
+    if (step.previewsPullRequests) wanted.checks = "write";
     if (permissions === undefined) {
       warnings.push({ kind: "no-permissions", path, job, mode, needs: missing({}, wanted) });
       continue;

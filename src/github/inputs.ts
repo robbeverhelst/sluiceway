@@ -151,6 +151,18 @@ export function readBackend(getInput: GetInput): boolean {
   throw new Error(`The "backend" input is true or false, and it is ${JSON.stringify(text)}.`);
 }
 
+// `pull-request-preview: true` makes the check preview the stacks the pull
+// request claims, with the credentials of its job (record 0101). Off by
+// default, and read the way backend is, so a typo never starts a tool.
+export function readPullRequestPreview(getInput: GetInput): boolean {
+  const text = getInput("pull-request-preview").trim();
+  if (text === "" || text === "false") return false;
+  if (text === "true") return true;
+  throw new Error(
+    `The "pull-request-preview" input is true or false, and it is ${JSON.stringify(text)}.`,
+  );
+}
+
 // `deployment-id` is an error in every mode but apply (record 0035), so a
 // workflow that hands it to the wrong step hears about it.
 // `dry-run: true` is refused the same way (record 0051). Its default, false,
@@ -169,6 +181,11 @@ export function refuseDeploymentId(mode: string, getInput: GetInput): void {
   const auto = mode === "auto";
   if (!auto && mode !== "check" && getInput("backend").trim() === "true") {
     throw only("backend", "check");
+  }
+  // `pull-request-preview: true` belongs to the check the same way (record
+  // 0101).
+  if (!auto && mode !== "check" && getInput("pull-request-preview").trim() === "true") {
+    throw only("pull-request-preview", "check");
   }
   if (!auto && mode !== "scan" && getInput("strict").trim() === "true") {
     throw only("strict", "scan");
@@ -278,7 +295,17 @@ export function readEnvFileInput(getInput: GetInput): string | undefined {
 export function unusedEnvFileInput(mode: string, getInput: GetInput): string | undefined {
   if (getInput("env-file").trim() === "") return undefined;
   if (mode === "auto" || mode === "scan" || mode === "apply") return undefined;
-  if (mode === "check" && getInput("backend").trim() === "true") return undefined;
-  const where = mode === "check" ? "check mode without backend: true" : `${mode} mode`;
-  return `"env-file" is set on a step in ${where}, which never runs the tool, so the file is not read. Only scan, apply and the check with backend: true do. Take it out of this step.`;
+  // The check runs the tool with backend: true (record 0100) and with
+  // pull-request-preview: true (record 0101).
+  if (
+    mode === "check" &&
+    (getInput("backend").trim() === "true" || getInput("pull-request-preview").trim() === "true")
+  ) {
+    return undefined;
+  }
+  const where =
+    mode === "check"
+      ? "check mode without backend: true or pull-request-preview: true"
+      : `${mode} mode`;
+  return `"env-file" is set on a step in ${where}, which never runs the tool, so the file is not read. Only scan, apply and the check with backend: true or pull-request-preview: true do. Take it out of this step.`;
 }

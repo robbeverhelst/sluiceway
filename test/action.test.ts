@@ -127,6 +127,7 @@ describe("action.yml", () => {
       "job-id",
       "mode",
       "preview-timeout",
+      "pull-request-preview",
       "slack-webhook-url",
       "strict",
       "telegram-bot-token",

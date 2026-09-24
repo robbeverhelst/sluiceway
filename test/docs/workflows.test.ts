@@ -11,6 +11,7 @@ import {
   read,
   section,
   USER_DOCS,
+  type Workflow,
   workflows,
 } from "./docs.ts";
 
@@ -133,12 +134,21 @@ describe("the workflows in the docs", () => {
     expect(wrong).toEqual([]);
   });
 
-  // Record 0042: the check reads files and nothing else.
-  test("a check workflow asks for contents: read and nothing more", () => {
+  // Record 0042: the check reads files and nothing else. With the pull
+  // request preview it writes a page per stack, which is checks: write and
+  // no more (record 0101).
+  test("a check workflow asks for contents: read and nothing more, and one that previews adds checks: write", () => {
     const checks = all.filter(({ workflow }) => isCheckWorkflow(workflow));
-    expect(checks.length).toBeGreaterThan(0);
-    for (const { workflow } of checks) {
-      expect(workflow.permissions).toEqual({ contents: "read" });
+    const previews = ({ workflow }: { workflow: Workflow }) =>
+      Object.values(workflow.jobs).some((job) =>
+        job.steps.some((step) => isSluiceway(step) && step.with?.["pull-request-preview"] === true),
+      );
+    expect(checks.filter(previews).length).toBe(1);
+    expect(checks.filter((one) => !previews(one)).length).toBeGreaterThan(0);
+    for (const found of checks) {
+      expect(found.workflow.permissions).toEqual(
+        previews(found) ? { contents: "read", checks: "write" } : { contents: "read" },
+      );
     }
   });
 });

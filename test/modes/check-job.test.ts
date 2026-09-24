@@ -90,6 +90,42 @@ describe("the backend part of the check", () => {
   });
 });
 
+// Record 0101: with pull-request-preview: true, and only then, the check
+// previews the pull request with the credentials of its job and writes its
+// pages through the port. That part is handed in the same way, so the check
+// job's own imports still reach neither.
+describe("the pull request preview part of the check", () => {
+  test("the part the dispatcher hands in starts the tool and reaches the port", () => {
+    const { files } = reach("modes/check-pull-request.ts");
+    expect(files).toContain("adapters/process.ts");
+    expect(files).toContain("github/octokit-port.ts");
+    expect(files).toContain("modes/pull-request-preview.ts");
+  });
+
+  test("without the input the part is never built", async () => {
+    const root = mkdtempSync(join(tmpdir(), "sluiceway-check-job-"));
+    mkdirSync(join(root, "network"));
+    writeFileSync(join(root, "network/Pulumi.yaml"), "name: network\nruntime: yaml\n");
+    writeFileSync(join(root, "network/Pulumi.prod.yaml"), "");
+    const saved = { ...process.env };
+    process.env = { ...saved, GITHUB_WORKSPACE: root, GITHUB_STEP_SUMMARY: "" };
+    const realWrite = process.stdout.write;
+    process.stdout.write = (() => true) as typeof process.stdout.write;
+    try {
+      await runCheck(undefined, undefined, () => {
+        throw new Error("The check previews no pull request unless the input says so.");
+      });
+      process.env = { ...saved, ...process.env, "INPUT_PULL-REQUEST-PREVIEW": "true" };
+      await expect(runCheck(undefined, undefined, undefined)).rejects.toThrow(
+        "pull-request-preview: true needs the GitHub port and a runner for the tool, and this check has neither.",
+      );
+    } finally {
+      process.stdout.write = realWrite;
+      process.env = { ...saved };
+    }
+  });
+});
+
 describe("runCheck, as a step runs it", () => {
   const saved = { ...process.env };
   const realFetch = globalThis.fetch;
@@ -274,6 +310,35 @@ describe("the env file in the check job", () => {
       out.indexOf("Loaded the env file ci/deploy.env"),
     );
     expect(out).not.toContain("::add-mask::eu");
+  });
+
+  // Record 0101: the pull request preview runs the tool too, so it gets the
+  // file the same way, read once.
+  test("with pull-request-preview: true the preview gets the file's values, masked first", async () => {
+    const root = checkRoot({ "ci/deploy.env": "PULUMI_ACCESS_TOKEN=pul-0123456789\nREGION=eu\n" });
+    process.env = {
+      ...saved,
+      GITHUB_WORKSPACE: root,
+      GITHUB_STEP_SUMMARY: "",
+      "INPUT_PULL-REQUEST-PREVIEW": "true",
+      "INPUT_ENV-FILE": "ci/deploy.env",
+      REGION: "us",
+    };
+    let handed: Record<string, string | undefined> | undefined;
+    const out = await quietly(() =>
+      runCheck(undefined, undefined, (env) => {
+        handed = env;
+        return async () => ({ log: [{ info: "previewed nothing here" }], summary: [] });
+      }),
+    );
+    expect(handed?.PULUMI_ACCESS_TOKEN).toBe("pul-0123456789");
+    expect(handed?.REGION).toBe("eu");
+    expect(out.indexOf("::add-mask::pul-0123456789")).toBeGreaterThanOrEqual(0);
+    expect(out.indexOf("::add-mask::pul-0123456789")).toBeLessThan(
+      out.indexOf("Loaded the env file ci/deploy.env"),
+    );
+    expect(out.match(/Loaded the env file ci\/deploy.env/g)?.length).toBe(1);
+    expect(out).toContain("previewed nothing here");
   });
 
   test("with backend: true a file that is not there fails the check before the tool", async () => {

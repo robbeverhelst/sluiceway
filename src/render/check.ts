@@ -47,6 +47,8 @@ const CANNOT_TELL_WITH_BACKEND =
   "A check cannot say that a preview will work: a missing credential for a provider or a registry the runner cannot reach shows only in a scan.";
 const BACKEND_OFF =
   "With backend: true the check also asks the backend which stacks it holds, with the credentials of its job.";
+const PREVIEWED_PULL_REQUEST =
+  "With pull-request-preview: true the pull request preview above ran the tool for the stacks the pull request claims, and for no other stack.";
 const BACKEND_TITLE = "Stacks in the backend";
 const BACKEND_PASTE_TITLE = "Ready to paste into sluiceway.yaml, over ignore";
 const NOT_IN_BACKEND_TITLE = "A stack is not in the backend";
@@ -348,7 +350,7 @@ function needsWho(mode: string): string {
 // outside one, so the words do not offer it.
 const MODE_LIST = MODES.filter((mode) => mode !== "init").join(", ");
 
-function workflowWarningText(warning: WorkflowWarning): string {
+export function workflowWarningText(warning: WorkflowWarning): string {
   const { path } = warning;
   switch (warning.kind) {
     case "unreadable":
@@ -366,6 +368,8 @@ function workflowWarningText(warning: WorkflowWarning): string {
         return `${path} runs on ${warning.trigger}, and its Sluiceway job loads the credentials of your stacks before it. On ${warning.trigger} those steps would run code that is not on the default branch yet. Keep the check in a workflow of its own, which needs no credentials.`;
       }
       return `${path} runs on ${warning.trigger}. A scan would write the dashboard from code that is not on the default branch yet. Only the workflow of the check may run on pull requests or in a merge queue.`;
+    case "preview-on-target":
+      return `${path}, job ${warning.job}: pull-request-preview: true runs on pull_request_target, which Sluiceway never previews on: it runs with the secrets of the base branch against code that is not merged. Run it on pull_request, where a fork's pull request is refused.`;
     case "missing-job":
       return `${path} has no ${warning.mode} job. The four jobs scan, resolve, apply and settle stay in one file: a scan looks for waiting ticks among the runs of its own workflow, and the rescan box and settle start that same workflow again.`;
     case "boxes-do-nothing":
@@ -902,8 +906,11 @@ export function backendPart(
 
 // What a check cannot tell, with the one sentence record 0042 asks for. The
 // job log says the verdict here, after everything else.
-export function closingPart(askedBackend: boolean): CheckPart {
+export function closingPart(askedBackend: boolean, previewedPullRequest = false): CheckPart {
   const cannot = askedBackend ? [CANNOT_TELL_WITH_BACKEND] : [CANNOT_TELL, BACKEND_OFF];
+  // With pull-request-preview: true the tool ran for the claimed stacks, and
+  // for no other (record 0101).
+  if (previewedPullRequest) cannot.push(PREVIEWED_PULL_REQUEST);
   return {
     log: [VALID, ...cannot].map((text) => ({ info: text })),
     summary: ["### What a check cannot tell", ...cannot],

@@ -3,6 +3,7 @@ import {
   readApplyInputs,
   readBackend,
   readJobId,
+  readPullRequestPreview,
   readScanInputs,
   readToken,
   refuseDeploymentId,
@@ -279,5 +280,29 @@ describe("an empty optional input", () => {
     expect(() => apply({ "deployment-id": " " })).toThrow(
       'The "deployment-id" input is required in apply mode.',
     );
+  });
+});
+
+// Record 0101: `pull-request-preview: true` makes the check preview the
+// stacks the pull request claims, with the credentials of its job. Off by
+// default, read the way backend is, and refused in every mode but check and
+// auto.
+describe("the pull-request-preview input", () => {
+  test("is off when left out or false, on when true, and nothing else", () => {
+    expect(readPullRequestPreview(() => "")).toBe(false);
+    expect(readPullRequestPreview(() => "false")).toBe(false);
+    expect(readPullRequestPreview(() => " true ")).toBe(true);
+    expect(() => readPullRequestPreview(() => "yes")).toThrow(
+      'The "pull-request-preview" input is true or false, and it is "yes".',
+    );
+  });
+
+  test("any mode but check and auto refuses it", () => {
+    const set = (name: string) => (name === "pull-request-preview" ? "true" : "");
+    expect(() => refuseDeploymentId("scan", set)).toThrow(
+      'The "pull-request-preview" input is only for check mode, and this step runs scan mode. Take it out of this step.',
+    );
+    expect(() => refuseDeploymentId("check", set)).not.toThrow();
+    expect(() => refuseDeploymentId("auto", set)).not.toThrow();
   });
 });

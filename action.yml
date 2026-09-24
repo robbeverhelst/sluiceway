@@ -64,6 +64,15 @@ inputs:
       the ones it does not. It runs the tool for that one question and nothing else.
     required: false
     default: "false"
+  pull-request-preview:
+    description: >-
+      check and auto only. true also previews the stacks a pull request claims, as they would be
+      after the merge, with the credentials the job loads before this step, and writes a check run
+      per stack on the pull request's head commit, for the reviewer. Nothing deploys from it, and
+      it leaves no row. A pull request from a fork is refused, and pull_request_target is never
+      used. Off by default.
+    required: false
+    default: "false"
   deploy-timeout:
     description: >-
       apply only. A time limit on the deploy itself, in whole minutes. When it runs out the tool is
@@ -73,7 +82,8 @@ inputs:
     required: false
   env-file:
     description: >-
-      scan, apply, auto, and check with backend: true. A file of NAME=value lines, relative to the
+      scan, apply, auto, and check with backend: true or pull-request-preview: true. A file of
+      NAME=value lines, relative to the
       checkout or absolute, that Sluiceway reads once for the infrastructure tool's process: every
       value is masked in the job log before anything else, and the file wins over a variable the
       job already has. The file may hold plain values or what a step before this one resolved;

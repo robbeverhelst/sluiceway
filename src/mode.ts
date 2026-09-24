@@ -10,6 +10,7 @@ import { runApply } from "./modes/apply-job.ts";
 import { HANDED_ON_STATE, runAuto, SETTLED_STATE } from "./modes/auto-job.ts";
 import { backendContext } from "./modes/check-backend.ts";
 import { runCheck } from "./modes/check-job.ts";
+import { pullRequestPreviewContext } from "./modes/check-pull-request.ts";
 import { runInit } from "./modes/init-job.ts";
 import { runResolve } from "./modes/resolve-job.ts";
 import { runScan } from "./modes/scan-job.ts";
@@ -42,8 +43,9 @@ const handlers: Record<Mode, Handler> = {
   resolve: runResolve,
   apply: runApply,
   settle: () => runSettle(),
-  // The check starts no tool unless backend: true (record 0074).
-  check: () => runCheck(backendContext),
+  // The check starts no tool unless backend: true (record 0074) or
+  // pull-request-preview: true (record 0101).
+  check: () => runCheck(backendContext, undefined, pullRequestPreviewContext),
   init: runInit,
 };
 

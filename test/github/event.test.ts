@@ -4,6 +4,7 @@ import {
   mergedBeforeDispatch,
   mergedBy,
   publicRepo,
+  pullRequestOf,
   readEventPayload,
   startedByPerson,
 } from "../../src/github/event.ts";
@@ -170,5 +171,62 @@ describe("mergedBy", () => {
     expect(mergedBy("push", push({ repository: {} }))).toBeUndefined();
     expect(mergedBy("push", push({ sender: { login: "" } }))).toBeUndefined();
     expect(mergedBy("push", undefined)).toBeUndefined();
+  });
+});
+
+// Record 0101: the pull request of a `pull_request` event, as the preview
+// needs it. A branch that lives in another repository is a fork, and so is
+// one whose repository the payload does not name.
+describe("the pull request of an event payload", () => {
+  const pullRequest = (overrides: Record<string, unknown> = {}) => ({
+    action: "synchronize",
+    number: 12,
+    pull_request: {
+      number: 12,
+      head: {
+        sha: "89abcdef89abcdef89abcdef89abcdef89abcdef",
+        repo: { full_name: "acme/infra" },
+      },
+      base: {
+        sha: "0123456789abcdef0123456789abcdef01234567",
+        ref: "main",
+        repo: { full_name: "acme/infra" },
+      },
+      ...overrides,
+    },
+    repository: { full_name: "acme/infra" },
+  });
+
+  test("is read into the preview's words", () => {
+    expect(pullRequestOf(pullRequest())).toEqual({
+      number: 12,
+      head: "89abcdef89abcdef89abcdef89abcdef89abcdef",
+      base: "0123456789abcdef0123456789abcdef01234567",
+      baseRef: "main",
+      fromFork: false,
+    });
+  });
+
+  test("a head in another repository is from a fork", () => {
+    expect(
+      pullRequestOf(
+        pullRequest({ head: { sha: "89abcdef", repo: { full_name: "mallory/infra" } } }),
+      )?.fromFork,
+    ).toBe(true);
+  });
+
+  test("a head whose repository the payload does not name is from a fork too", () => {
+    expect(pullRequestOf(pullRequest({ head: { sha: "89abcdef", repo: null } }))?.fromFork).toBe(
+      true,
+    );
+  });
+
+  test.each([
+    ["no payload", undefined],
+    ["a payload without a pull request", { ref: "refs/heads/main" }],
+    ["a pull request without a number", pullRequest({ number: "12" })],
+    ["a pull request without a head commit", pullRequest({ head: { repo: {} } })],
+  ])("%s holds no pull request", (_name, given) => {
+    expect(pullRequestOf(given)).toBeUndefined();
   });
 });

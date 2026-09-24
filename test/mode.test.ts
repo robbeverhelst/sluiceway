@@ -159,7 +159,7 @@ describe("the env-file input on a step that never runs the tool", () => {
       {
         title: "Env file input not used",
         message:
-          '"env-file" is set on a step in settle mode, which never runs the tool, so the file is not read. Only scan, apply and the check with backend: true do. Take it out of this step.',
+          '"env-file" is set on a step in settle mode, which never runs the tool, so the file is not read. Only scan, apply and the check with backend: true or pull-request-preview: true do. Take it out of this step.',
       },
     ]);
   });

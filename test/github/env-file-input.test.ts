@@ -37,19 +37,26 @@ describe("the modes that never open it", () => {
     expect(
       unusedEnvFileInput("check", inputs({ "env-file": "ci/deploy.env", backend: "true" })),
     ).toBeUndefined();
+    // The pull request preview runs the tool too (record 0101).
+    expect(
+      unusedEnvFileInput(
+        "check",
+        inputs({ "env-file": "ci/deploy.env", "pull-request-preview": "true" }),
+      ),
+    ).toBeUndefined();
   });
 
   test("resolve, settle and init get a warning that names the modes that do", () => {
     for (const mode of ["resolve", "settle", "init"]) {
       expect(unusedEnvFileInput(mode, set)).toBe(
-        `"env-file" is set on a step in ${mode} mode, which never runs the tool, so the file is not read. Only scan, apply and the check with backend: true do. Take it out of this step.`,
+        `"env-file" is set on a step in ${mode} mode, which never runs the tool, so the file is not read. Only scan, apply and the check with backend: true or pull-request-preview: true do. Take it out of this step.`,
       );
     }
   });
 
   test("the check without backend: true gets one too", () => {
     expect(unusedEnvFileInput("check", set)).toBe(
-      '"env-file" is set on a step in check mode without backend: true, which never runs the tool, so the file is not read. Only scan, apply and the check with backend: true do. Take it out of this step.',
+      '"env-file" is set on a step in check mode without backend: true or pull-request-preview: true, which never runs the tool, so the file is not read. Only scan, apply and the check with backend: true or pull-request-preview: true do. Take it out of this step.',
     );
   });
 
