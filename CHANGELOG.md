@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.0](https://github.com/sluiceway/sluiceway/compare/v0.32.0...v0.33.0) (2026-09-24)
+
+
+### Features
+
+* preview a pull request for its reviewer, never deploying from it ([#238](https://github.com/sluiceway/sluiceway/issues/238)) ([0384221](https://github.com/sluiceway/sluiceway/commit/0384221e595042ff0b81fba81c1da6a1c9623c01))
+
 ## [0.32.0](https://github.com/sluiceway/sluiceway/compare/v0.31.0...v0.32.0) (2026-09-24)
 
 
