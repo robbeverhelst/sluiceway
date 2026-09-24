@@ -1,7 +1,7 @@
 import { parse } from "yaml";
 import type { Change, Op } from "../../core/diff.ts";
 import type { Folded } from "../folded.ts";
-import { changedPaths } from "../opentofu/paths.ts";
+import { changedPaths, hiddenFingerprint } from "../opentofu/paths.ts";
 import { groupOf, type ListedObject, lists } from "./inventory.ts";
 import { heldByOthers } from "./ownership.ts";
 import type { ObjectPair } from "./unified.ts";
@@ -47,6 +47,8 @@ export function foldObjects(
   pairs: ObjectPair[],
   showValues: readonly string[],
   inventory?: string,
+  // Put the value fingerprint on each create and update (record 0102).
+  fingerprint = false,
 ): Folded<"unreadable-output"> {
   const changes: Change[] = [];
   const problems: string[] = [];
@@ -77,14 +79,33 @@ export function foldObjects(
 
     const op: Op = live === undefined ? "create" : merged === undefined ? "delete" : "update";
     const base = { address: identity.address, type: identity.type, name: identity.name, op };
-    if (live === undefined || merged === undefined) {
-      changes.push({ ...base, changedKeys: [], replaceKeys: [] });
-      return;
-    }
     // A Secret's data is masked by kubectl already, and its keys are held
     // like its values: the path stops at data (record 0053's rule for a
     // sensitive map).
     const sensitive = identity.secret ? { data: true, stringData: true } : undefined;
+    if (live === undefined || merged === undefined) {
+      // A create carries the fingerprint of every leaf of the merged object
+      // (record 0102), and a delete none.
+      const created =
+        fingerprint && merged !== undefined
+          ? hiddenFingerprint(
+              {
+                before: undefined,
+                after: withoutServerFields(merged),
+                beforeSensitive: undefined,
+                afterSensitive: sensitive,
+              },
+              [],
+            )
+          : undefined;
+      changes.push({
+        ...base,
+        changedKeys: [],
+        replaceKeys: [],
+        ...(created === undefined ? {} : { fingerprint: created }),
+      });
+      return;
+    }
     const { paths, values } = changedPaths(
       {
         before: withoutServerFields(live),
@@ -98,11 +119,25 @@ export function foldObjects(
     const changedKeys = [...new Set(paths)].sort(byCodeUnit);
     if (changedKeys.length === 0) return;
     const shown = values.sort((a, b) => byCodeUnit(a.path, b.path));
+    // The fingerprint of the leaves that differ, minus the shown paths, with
+    // a Secret's data as its mark (record 0102).
+    const hidden = fingerprint
+      ? hiddenFingerprint(
+          {
+            before: withoutServerFields(live),
+            after: withoutServerFields(merged),
+            beforeSensitive: sensitive,
+            afterSensitive: sensitive,
+          },
+          shown.map((value) => value.path),
+        )
+      : undefined;
     changes.push({
       ...base,
       changedKeys,
       replaceKeys: [],
       ...(shown.length === 0 ? {} : { values: shown }),
+      ...(hidden === undefined ? {} : { fingerprint: hidden }),
     });
   });
 

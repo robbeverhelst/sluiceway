@@ -1,5 +1,6 @@
 import type { Change, Op, ShownValue } from "../../core/diff.ts";
 import { isListedPath, shortValue } from "../../core/show-values.ts";
+import { changeFingerprint, type HiddenValue } from "../../core/value-fingerprint.ts";
 import type { Folded } from "../folded.ts";
 import { segment } from "../opentofu/paths.ts";
 import type { Entry, FieldChange } from "./schema.ts";
@@ -23,6 +24,9 @@ export function foldEntries(
   entries: Entry[],
   namespace: string,
   showValues: readonly string[],
+  // Put the value fingerprint on each update (record 0102). The plugin prints
+  // no manifest for an object it adds, so a create carries none.
+  fingerprint = false,
 ): Folded {
   const changes: Change[] = [];
   const unknown: string[] = [];
@@ -52,7 +56,7 @@ export function foldEntries(
     }
     firstAt.set(address, index);
 
-    const found = op === "update" ? keys(entry, showValues) : { changedKeys: [] };
+    const found = op === "update" ? keys(entry, showValues, fingerprint) : { changedKeys: [] };
     if (found === undefined) {
       unreadable.push(`${at}.changes: expected the paths that change on a MODIFY.`);
       return;
@@ -92,7 +96,8 @@ function typeOf(entry: Entry): string {
 function keys(
   entry: Entry,
   showValues: readonly string[],
-): Pick<Change, "changedKeys" | "values"> | undefined {
+  fingerprint: boolean,
+): Pick<Change, "changedKeys" | "values" | "fingerprint"> | undefined {
   const found = entry.changes ?? [];
   if (found.length === 0) return undefined;
   const secret = entry.kind === "Secret" && !entry.apiVersion.includes("/");
@@ -111,7 +116,23 @@ function keys(
   const shown = values
     .filter((value, index) => values.findIndex((one) => one.path === value.path) === index)
     .sort((a, b) => byCodeUnit(a.path, b.path));
-  return { changedKeys, ...(shown.length === 0 ? {} : { values: shown }) };
+  // The fingerprint of every changed field the row does not show (record
+  // 0102): its old and new value as the plugin printed them, and every
+  // field of a Secret as its mark, because the plugin's stand-in tells the
+  // length of the data.
+  const shownPaths = new Set(shown.map((value) => value.path));
+  const hidden: HiddenValue[] = found.flatMap((change): HiddenValue[] => {
+    const path = propertyPath(change);
+    if (path === "" || shownPaths.has(path)) return [];
+    if (secret) return [{ path, secret: true as const }];
+    return [{ path, old: change.oldValue, new: change.newValue }];
+  });
+  const hiddenFingerprint = fingerprint ? changeFingerprint(hidden) : undefined;
+  return {
+    changedKeys,
+    ...(shown.length === 0 ? {} : { values: shown }),
+    ...(hiddenFingerprint === undefined ? {} : { fingerprint: hiddenFingerprint }),
+  };
 }
 
 // A path in the notation every adapter uses (record 0046): a name, `.name`

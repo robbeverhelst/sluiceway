@@ -39,7 +39,12 @@ export async function preview(stack: Stack, options: PreviewOptions): Promise<Pr
 
   const parsed = parseEntries(diffed.stdout);
   if (!parsed.ok) return failed({ kind: "unreadable-output" }, words, parsed.problems);
-  const folded = foldEntries(parsed.entries, helm.namespace, options.showValues ?? []);
+  const folded = foldEntries(
+    parsed.entries,
+    helm.namespace,
+    options.showValues ?? [],
+    options.valueFingerprint === true,
+  );
   if (!folded.ok) return failed({ kind: folded.reason }, words, folded.detail);
   const diff = { stackId: stackId(stack), changes: folded.changes };
   if (!options.savePlan) return { ok: true, diff, toolLog: words };

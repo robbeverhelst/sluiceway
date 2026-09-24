@@ -71,7 +71,12 @@ async function diff(
       "The tool's output: expected the objects that differ, as the exit code says there are.",
     ]);
   }
-  const folded = foldObjects(read.pairs, options.showValues ?? [], pruning?.inventory);
+  const folded = foldObjects(
+    read.pairs,
+    options.showValues ?? [],
+    pruning?.inventory,
+    options.valueFingerprint === true,
+  );
   if (!folded.ok) return failed({ kind: folded.reason }, log, folded.detail);
   const changes = [...folded.changes, ...(pruning?.deletes ?? [])].sort((a, b) =>
     a.address < b.address ? -1 : a.address > b.address ? 1 : 0,
