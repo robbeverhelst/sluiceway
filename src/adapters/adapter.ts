@@ -184,7 +184,19 @@ export type PrepareResult = ({ ok: true } | { ok: false; reason: PreviewFailureR
   // The tool's own words, with ANSI escapes stripped. They go to the job log
   // and nowhere else (record 0022).
   toolLog: string;
+  // Sluiceway's own words on what the preparation did, for its group in the
+  // job log: a stack that was created, one that was there (record 0107).
+  // Never a word of the tool's.
+  detail?: string[];
 };
+
+export interface PrepareOptions {
+  // `createInBackend: true` (record 0107): the stacks among the ones handed
+  // in whose entry asks that a scan create them in the backend when it lacks
+  // them. Only a scan hands them in: a deploy never creates a stack. An
+  // adapter whose tool has nothing to create reads nothing of it.
+  createInBackend?: readonly Stack[] | undefined;
+}
 
 // The tool is missing, too old, or did not say which version it is. The scan
 // cannot do its work, so this fails the job (records 0001 and 0012). The
@@ -262,7 +274,7 @@ export interface Adapter {
 
   // The steps these stacks need before their previews, in the order to run
   // them. Absent or empty, a preview needs nothing first.
-  prepare?(stacks: Stack[]): Preparation[];
+  prepare?(stacks: Stack[], options?: PrepareOptions): Preparation[];
 
   // Works out what deploying the stack would change. It always resolves: a
   // preview that gave no diff is a preview failure with a reason, so one

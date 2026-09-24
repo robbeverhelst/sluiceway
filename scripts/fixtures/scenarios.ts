@@ -99,6 +99,18 @@ function driftCheck(
 // The stacks the backend holds for the project in cwd, as the check asks for
 // them with backend: true (record 0074). It reads the backend and changes
 // nothing, takes no lock and needs no passphrase.
+// The scan's creation of a stack the backend lacks (record 0107), recorded
+// as the adapter runs it: the name, and nothing about a secrets provider.
+function stackInit(cwd: string, stack: string, expect: Expectation, id = "stack-init"): Step {
+  return {
+    kind: "record",
+    id,
+    cwd,
+    argv: ["pulumi", "stack", "init", stack, ...QUIET],
+    stdout: "text",
+    expect,
+  };
+}
 function stackList(cwd: string, expect: Expectation): Step {
   return {
     kind: "record",
@@ -777,6 +789,18 @@ ${OUTPUTS}`,
     name: "stack-list-empty",
     description: "The stacks the backend holds for a project that has none yet.",
     steps: [stackList("network", { exit: "zero" })],
+  },
+  {
+    name: "create-stack",
+    description:
+      "A stack whose file exists and whose backend lacks it, created by the scan with createInBackend: true (record 0107): the list of network/ holds dev and not prod, prod is made, its preview is all creates, and a second init of prod is refused because the backend holds it now.",
+    steps: [
+      init("network", "dev"),
+      stackList("network", { exit: "zero" }),
+      stackInit("network", "prod", { exit: "zero" }),
+      preview("network", "prod", { exit: "zero", ops: ["create"] }),
+      stackInit("network", "prod", { exit: "nonzero" }, "stack-init-again"),
+    ],
   },
   {
     name: "stack-reference",

@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { PreviewFailureReason } from "../../core/failure-reason.ts";
 import type { Stack } from "../../core/stack.ts";
 import type { BackendAnswer, BackendResult, ToolContext } from "../adapter.ts";
-import { runTool, stripAnsi } from "../tool-run.ts";
+import { type ExitCodes, runTool, stripAnsi } from "../tool-run.ts";
 import { pulumiEnvironment } from "./environment.ts";
 
 // Which stacks the backend holds (record 0074), for the check with
@@ -24,31 +24,47 @@ export async function findInBackend(stacks: Stack[], context: ToolContext): Prom
   const answers: BackendAnswer[] = [];
   const logs: string[] = [];
   for (const [path, inPath] of Map.groupBy(stacks, (stack) => stack.path)) {
-    const result = await runTool(context.run, {
-      argv: LIST,
-      cwd: join(context.root, path),
-      env: pulumiEnvironment(context.env),
-      timeoutMinutes: BACKEND_TIMEOUT_MINUTES,
-    });
-    const unknown = (reason: PreviewFailureReason) =>
-      answers.push(...inPath.map((stack) => ({ stack, found: "unknown" as const, reason })));
-    if (result.stderr !== "") logs.push(stripAnsi(result.stderr));
-    if (!result.ok) {
-      unknown(result.reason);
+    const listed = await listStacks(context, path, BACKEND_TIMEOUT_MINUTES);
+    if (listed.toolLog !== "") logs.push(listed.toolLog);
+    if (!listed.ok) {
+      answers.push(
+        ...inPath.map((stack) => ({ stack, found: "unknown" as const, reason: listed.reason })),
+      );
       continue;
     }
-    const parsed = parseList(result.stdout);
-    if (parsed === undefined) {
-      unknown({ kind: "unreadable-output" });
-      continue;
-    }
-    // A backend may name a stack with its organization and project in front,
-    // as organization/project/stack. The list is of this project alone, so
-    // the last part is the stack's name.
-    const names = new Set(parsed.map(({ name }) => name.split("/").at(-1)));
-    answers.push(...inPath.map((stack) => ({ stack, found: names.has(stack.name) })));
+    answers.push(...inPath.map((stack) => ({ stack, found: listed.names.has(stack.name) })));
   }
   return { answers, toolLog: logs.join("") };
+}
+
+// The names of the stacks the backend holds for one project directory, or
+// why the tool could not say. A backend may name a stack with its
+// organization and project in front, as organization/project/stack. The list
+// is of this project alone, so the last part is the stack's name. The tool's
+// words are its stderr alone: the list itself holds no value, and nobody
+// needs it in the log.
+export async function listStacks(
+  context: ToolContext,
+  path: string,
+  timeoutMinutes: number,
+  exitCodes?: ExitCodes,
+): Promise<
+  ({ ok: true; names: Set<string | undefined> } | { ok: false; reason: PreviewFailureReason }) & {
+    toolLog: string;
+  }
+> {
+  const result = await runTool(context.run, {
+    argv: LIST,
+    cwd: join(context.root, path),
+    env: pulumiEnvironment(context.env),
+    timeoutMinutes,
+    exitCodes,
+  });
+  const toolLog = stripAnsi(result.stderr);
+  if (!result.ok) return { ok: false, reason: result.reason, toolLog };
+  const parsed = parseList(result.stdout);
+  if (parsed === undefined) return { ok: false, reason: { kind: "unreadable-output" }, toolLog };
+  return { ok: true, names: new Set(parsed.map(({ name }) => name.split("/").at(-1))), toolLog };
 }
 
 function parseList(stdout: string): z.output<typeof listed> | undefined {

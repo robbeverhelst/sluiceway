@@ -51,8 +51,14 @@ export const tools: Adapter = {
     if (manifests.length > 0) await kubectl.checkVersion(context, manifests);
   },
 
-  prepare(stacks) {
+  // Pulumi first, as the version check goes: only a stack an entry asks to
+  // create in the backend gives it one (record 0107).
+  prepare(stacks, options) {
+    const isPulumi = (stack: Stack) => adapterOf(stack) === pulumi;
     return [
+      ...(pulumi.prepare?.(stacks.filter(isPulumi), {
+        createInBackend: (options?.createInBackend ?? []).filter(isPulumi),
+      }) ?? []),
       ...(opentofu.prepare?.(stacks.filter((stack) => isOpenTofuOptions(stack.options))) ?? []),
       ...(helm.prepare?.(stacks.filter((stack) => isHelmOptions(stack.options))) ?? []),
     ];

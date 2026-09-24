@@ -5,6 +5,7 @@ import { discover } from "./discover.ts";
 import { detectDrift } from "./drift.ts";
 import { readsFiles } from "./file-references.ts";
 import { deployHistory } from "./history.ts";
+import { prepare } from "./prepare.ts";
 import { previewWithReferences } from "./preview.ts";
 import { readDependencies } from "./references.ts";
 import { toolDiff } from "./tool-diff.ts";
@@ -28,6 +29,7 @@ const preview: Adapter["preview"] = async (stack, options) => {
 export const pulumi: Adapter = {
   discover,
   checkVersion,
+  prepare,
   preview,
   toolDiff,
   detectDrift,
