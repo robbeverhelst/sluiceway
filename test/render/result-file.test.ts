@@ -448,6 +448,24 @@ test("the JSON schema of the result file", () => {
   expect(JSON.stringify(resultFileJsonSchema(), null, 2)).toMatchSnapshot();
 });
 
+// Slice 5.33 (record 0096): the schema says what the file never holds, and the
+// one field that may hold a value says when it does, so a field added later
+// cannot quietly carry one.
+test("the JSON schema says the file holds no secret, and where the one kind of value may be", () => {
+  const schema = resultFileJsonSchema();
+  expect(String(schema.description)).toContain("no secret");
+  expect(String(schema.description)).toContain("dashboard.showValues");
+  const text = JSON.stringify(schema);
+  const values = [...text.matchAll(/"values":\{[^{]*?"description":"([^"]+)"/g)].map(
+    (match) => match[1],
+  );
+  expect(values.length).toBeGreaterThan(0);
+  for (const description of values) {
+    expect(description).toContain("dashboard.showValues");
+    expect(description).toContain("never one the tool marks secret");
+  }
+});
+
 // Record 0061: the schema is published next to the one of sluiceway.yaml, and
 // CI fails when it is stale, as it does for dist/.
 test("the committed schema file is what the generator writes now", () => {

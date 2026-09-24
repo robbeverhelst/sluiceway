@@ -51,7 +51,10 @@ const changeSchema = z.strictObject({
         new: z.string().optional(),
       }),
     )
-    .optional(),
+    .optional()
+    .describe(
+      "The old and new value at a path the repo lists in dashboard.showValues: a scalar of one line, and never one the tool marks secret. The only field of the file that may hold a property value.",
+    ),
 });
 
 const diffSchema = {
@@ -365,7 +368,7 @@ export function resultFileJsonSchema(): Record<string, unknown> {
     $schema,
     title: "Sluiceway result file",
     description:
-      "What the summary of a scan or an apply holds, written under RUNNER_TEMP. No property value except at the paths dashboard.showValues lists, and none of the tool's own words.",
+      "What the summary of a scan or an apply holds, written under RUNNER_TEMP. It holds no secret and none of the tool's own words, and no property value except the old and new value at a path the repo lists in dashboard.showValues.",
     ...rest,
   };
 }
