@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.0](https://github.com/sluiceway/sluiceway/compare/v0.34.0...v0.35.0) (2026-09-24)
+
+
+### Features
+
+* a stack names the env file its tool gets ([#246](https://github.com/sluiceway/sluiceway/issues/246)) ([b2a2f2d](https://github.com/sluiceway/sluiceway/commit/b2a2f2d0a6ee01d7037eed3b179bf2460cff2425))
+
 ## [0.34.0](https://github.com/sluiceway/sluiceway/compare/v0.33.0...v0.34.0) (2026-09-24)
 
 
