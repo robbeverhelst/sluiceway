@@ -113,8 +113,8 @@ describe("action.yml", () => {
     }
   });
 
-  // Record 0035: the five inputs of v1, `job-id` of record 0044, and the four
-  // channels of record 0078.
+  // Record 0035: the five inputs of v1, `job-id` of record 0044, the four
+  // channels of record 0078, and the env file of record 0100.
   test("declares only the inputs the decision records fix", () => {
     expect(Object.keys(action.inputs).sort()).toEqual([
       "backend",
@@ -122,6 +122,7 @@ describe("action.yml", () => {
       "deploy-timeout",
       "deployment-id",
       "dry-run",
+      "env-file",
       "github-token",
       "job-id",
       "mode",
@@ -147,6 +148,17 @@ describe("action.yml", () => {
     expect(action.inputs["dry-run"]?.required).toBe(false);
     expect(action.inputs["dry-run"]?.default).toBe("false");
     expect(action.inputs["dry-run"]?.description).toContain("apply");
+  });
+
+  // Record 0100: the env file is empty by default, and the description names
+  // the modes that read it and says that every value is masked.
+  test("env-file has no default and names the modes that read it", () => {
+    expect(action.inputs["env-file"]?.required).toBe(false);
+    expect(action.inputs["env-file"]?.default).toBeUndefined();
+    const description = action.inputs["env-file"]?.description ?? "";
+    for (const word of ["scan", "apply", "backend: true", "mask"]) {
+      expect(description).toContain(word);
+    }
   });
 
   // Record 0074: the check asks the backend only when a workflow says so.

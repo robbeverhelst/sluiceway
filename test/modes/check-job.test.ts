@@ -45,7 +45,10 @@ describe("the check job never constructs the process runner or the GitHub port",
   test("it reaches neither the process runner nor anything that talks to GitHub", () => {
     expect(files).not.toContain("adapters/process.ts");
     // inputs.ts reads the backend input, as text, and imports nothing.
+    // env-file.ts reads the one file the env-file input names, only with
+    // backend: true (record 0100), and talks to nobody.
     expect(files.filter((file) => file.startsWith("github/"))).toEqual([
+      "github/env-file.ts",
       "github/inputs.ts",
       "github/job-log.ts",
     ]);
@@ -201,5 +204,95 @@ describe("runCheck, as a step runs it", () => {
     await expect(runCheck()).rejects.toThrow(
       "GITHUB_WORKSPACE is not set. Sluiceway runs as a step of a GitHub Actions job.",
     );
+  });
+});
+
+// Slice 5.35 (record 0100): the check with backend: true runs the tool, so
+// it reads the env file for it. Without backend: true the file is never
+// opened.
+describe("the env file in the check job", () => {
+  const saved = { ...process.env };
+  afterEach(() => {
+    process.env = { ...saved };
+  });
+
+  function checkRoot(files: Record<string, string>): string {
+    const root = mkdtempSync(join(tmpdir(), "sluiceway-check-job-"));
+    for (const [file, text] of Object.entries({
+      "network/Pulumi.yaml": "name: network\nruntime: yaml\n",
+      "network/Pulumi.prod.yaml": "",
+      ...files,
+    })) {
+      mkdirSync(dirname(join(root, file)), { recursive: true });
+      writeFileSync(join(root, file), text);
+    }
+    return root;
+  }
+
+  async function quietly(run: () => Promise<void>): Promise<string> {
+    const written: string[] = [];
+    const realWrite = process.stdout.write;
+    process.stdout.write = ((chunk: string) =>
+      written.push(String(chunk)) > 0) as typeof process.stdout.write;
+    try {
+      await run();
+    } finally {
+      process.stdout.write = realWrite;
+    }
+    return written.join("");
+  }
+
+  test("with backend: true the backend gets the file's values, masked first", async () => {
+    const root = checkRoot({ "ci/deploy.env": "PULUMI_ACCESS_TOKEN=pul-0123456789\nREGION=eu\n" });
+    process.env = {
+      ...saved,
+      GITHUB_WORKSPACE: root,
+      GITHUB_STEP_SUMMARY: "",
+      INPUT_BACKEND: "true",
+      "INPUT_ENV-FILE": "ci/deploy.env",
+      REGION: "us",
+    };
+    let handed: Record<string, string | undefined> | undefined;
+    const out = await quietly(() =>
+      runCheck((env) => {
+        handed = env;
+        return { adapter: { ...backendContext(env).adapter }, env, run: backendContext(env).run };
+      }),
+    );
+    expect(handed?.PULUMI_ACCESS_TOKEN).toBe("pul-0123456789");
+    expect(handed?.REGION).toBe("eu");
+    expect(handed?.GITHUB_WORKSPACE).toBe(root);
+    expect(out.indexOf("::add-mask::pul-0123456789")).toBeGreaterThanOrEqual(0);
+    expect(out.indexOf("::add-mask::pul-0123456789")).toBeLessThan(
+      out.indexOf("Loaded the env file ci/deploy.env"),
+    );
+    expect(out).not.toContain("::add-mask::eu");
+  });
+
+  test("with backend: true a file that is not there fails the check before the tool", async () => {
+    const root = checkRoot({});
+    process.env = {
+      ...saved,
+      GITHUB_WORKSPACE: root,
+      GITHUB_STEP_SUMMARY: "",
+      INPUT_BACKEND: "true",
+      "INPUT_ENV-FILE": "ci/deploy.env",
+    };
+    await expect(quietly(() => runCheck(backendContext))).rejects.toThrow(
+      'The "env-file" input names ci/deploy.env, and there is no such file in the checkout.',
+    );
+  });
+
+  test("without backend: true the file is never opened", async () => {
+    const root = checkRoot({});
+    process.env = {
+      ...saved,
+      GITHUB_WORKSPACE: root,
+      GITHUB_STEP_SUMMARY: "",
+      "INPUT_ENV-FILE": "ci/deploy.env",
+    };
+    const out = await quietly(() => runCheck());
+    expect(out).toContain("The setup is valid.");
+    expect(out).not.toContain("env file");
   });
 });

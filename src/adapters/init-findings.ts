@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import { parse } from "yaml";
+import { SECRET_REFERENCE } from "../core/env-file.ts";
 import type { Stack } from "../core/stack.ts";
 import { HELM } from "./helm/options.ts";
 import { KUBECTL } from "./kubectl/options.ts";
@@ -171,9 +172,8 @@ const LOCKFILES: [string, PackageManager][] = [
   ["bun.lockb", "bun"],
 ];
 
-// What 1Password's references start with. The script of docs/credentials.md
-// looks for the same.
-export const SECRET_REFERENCE = "op://";
+// What 1Password's references start with, as core/env-file.ts knows it.
+export { SECRET_REFERENCE };
 
 export function findForWorkflow(stacks: Stack[], files: string[], read: Read): WorkflowFindings {
   const tool = (stack: Stack) => stack.options.tool;

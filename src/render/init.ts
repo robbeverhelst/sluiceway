@@ -236,7 +236,9 @@ function credentialSteps(envFiles: EnvFiles | undefined): string[] {
     return [
       "      # Load your credentials and your state backend settings into the job",
       "      # environment here. Sluiceway passes the environment to the tool and",
-      "      # never looks inside. Whatever loads a secret must also mask it.",
+      "      # never looks inside. Whatever loads a secret must also mask it. Or",
+      "      # name a file of NAME=value lines with the env-file input on the step",
+      "      # below, and Sluiceway loads it for the tool and masks every value.",
     ];
   }
   const file = envFiles.deploy;

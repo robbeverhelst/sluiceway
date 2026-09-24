@@ -254,3 +254,31 @@ export function unusedNotifyInputs(mode: string, getInput: GetInput): string[] {
   if (mode === "auto" || mode === "scan" || mode === "resolve" || mode === "apply") return [];
   return NOTIFY_INPUTS.filter((name) => getInput(name).trim() !== "");
 }
+
+// The env file (record 0100): one file of NAME=value lines that the modes
+// which run the tool read for the tool's process. Empty by default. It names
+// one file: a second line would be a second file, and the order two files
+// load in, and which wins on a name both set, is a question the strict
+// format refuses inside one file too.
+export function readEnvFileInput(getInput: GetInput): string | undefined {
+  const text = getInput("env-file").trim();
+  if (text === "") return undefined;
+  if (/[\r\n]/.test(text)) {
+    throw new Error(
+      'The "env-file" input names one file, and it holds more than one line. To load several files, join them in a step before Sluiceway.',
+    );
+  }
+  return text;
+}
+
+// Only the modes that run the tool open the file (record 0014, promise 4):
+// scan and apply, auto which runs them, and the check with backend: true.
+// Anywhere else the input is a mistake worth a warning, never an error, and
+// the file is never opened.
+export function unusedEnvFileInput(mode: string, getInput: GetInput): string | undefined {
+  if (getInput("env-file").trim() === "") return undefined;
+  if (mode === "auto" || mode === "scan" || mode === "apply") return undefined;
+  if (mode === "check" && getInput("backend").trim() === "true") return undefined;
+  const where = mode === "check" ? "check mode without backend: true" : `${mode} mode`;
+  return `"env-file" is set on a step in ${where}, which never runs the tool, so the file is not read. Only scan, apply and the check with backend: true do. Take it out of this step.`;
+}

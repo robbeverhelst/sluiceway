@@ -7,8 +7,9 @@ import { getOctokit } from "@actions/github";
 import { runProcess } from "../adapters/process.ts";
 import { tools } from "../adapters/tools.ts";
 import { readActionRef } from "../github/action-ref.ts";
+import { loadEnvFile } from "../github/env-file.ts";
 import { readEventPayload } from "../github/event.ts";
-import { readApplyInputs, readJobId } from "../github/inputs.ts";
+import { readApplyInputs, readEnvFileInput, readJobId } from "../github/inputs.ts";
 import { readJob } from "../github/job.ts";
 import { actionsLog } from "../github/job-log.ts";
 import { createOctokitPort } from "../github/octokit-port.ts";
@@ -33,7 +34,15 @@ export async function runApply(
   const log = handed?.step.log ?? actionsLog();
   await apply({
     root: job.root,
-    env,
+    // The tool's environment: the job's, with the env file on top (record
+    // 0100), masked before anything else is printed.
+    env: loadEnvFile({
+      input: readEnvFileInput(core.getInput),
+      root: job.root,
+      env,
+      mask: (value) => core.setSecret(value),
+      log,
+    }),
     // Every tool, each stack to the adapter of its own (record 0053).
     adapter: tools,
     run: runProcess,

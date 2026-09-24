@@ -71,6 +71,15 @@ inputs:
       so. The stack may then be half deployed. Empty by default: no limit of Sluiceway's, and the
       job's own timeout-minutes is the limit.
     required: false
+  env-file:
+    description: >-
+      scan, apply, auto, and check with backend: true. A file of NAME=value lines, relative to the
+      checkout or absolute, that Sluiceway reads once for the infrastructure tool's process: every
+      value is masked in the job log before anything else, and the file wins over a variable the
+      job already has. The file may hold plain values or what a step before this one resolved;
+      Sluiceway resolves no secret reference. Empty by default: the tool gets the job environment
+      as it is. On a step that never runs the tool the file is not read.
+    required: false
   slack-webhook-url:
     description: >-
       scan, resolve and apply. The address of a Slack incoming webhook, from a secret of the repo.

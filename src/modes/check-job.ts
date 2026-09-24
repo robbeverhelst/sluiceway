@@ -6,7 +6,8 @@
 
 import * as core from "@actions/core";
 import { filesOnly } from "../adapters/files-only.ts";
-import { readBackend } from "../github/inputs.ts";
+import { loadEnvFile } from "../github/env-file.ts";
+import { readBackend, readEnvFileInput } from "../github/inputs.ts";
 import { actionsLog, type JobLog } from "../github/job-log.ts";
 import { type CheckContext, check } from "./check.ts";
 
@@ -28,13 +29,26 @@ export async function runCheck(makeBackend?: BackendFactory, log?: JobLog): Prom
   if (asked && makeBackend === undefined) {
     throw new Error("backend: true needs a runner for the tool, and this check has none.");
   }
-  const backend = asked ? makeBackend?.({ ...process.env }) : undefined;
+  const jobLog = log ?? actionsLog();
+  // Only with backend: true does the check run the tool, so only then is
+  // the env file read for it (record 0100).
+  const backend = asked
+    ? makeBackend?.(
+        loadEnvFile({
+          input: readEnvFileInput(core.getInput),
+          root,
+          env: { ...process.env },
+          mask: (value) => core.setSecret(value),
+          log: jobLog,
+        }),
+      )
+    : undefined;
   await check({
     root,
     ...(backend === undefined ? {} : { backend }),
     // Of every tool the check uses what reads files, and nothing that starts
     // it (records 0042, 0053, 0074 and 0092).
     adapter: filesOnly,
-    log: log ?? actionsLog(),
+    log: jobLog,
   });
 }

@@ -1,6 +1,11 @@
 import * as core from "@actions/core";
 import { isMode, MODES, type Mode } from "./core/auto-mode.ts";
-import { type GetInput, refuseDeploymentId, unusedNotifyInputs } from "./github/inputs.ts";
+import {
+  type GetInput,
+  refuseDeploymentId,
+  unusedEnvFileInput,
+  unusedNotifyInputs,
+} from "./github/inputs.ts";
 import { runApply } from "./modes/apply-job.ts";
 import { HANDED_ON_STATE, runAuto, SETTLED_STATE } from "./modes/auto-job.ts";
 import { backendContext } from "./modes/check-backend.ts";
@@ -59,6 +64,10 @@ export async function run(
       "Notification input not used",
     );
   }
+  // Only the modes that run the tool read the env file (record 0100). On
+  // any other step the input is a warning, and the file is never opened.
+  const envFile = unusedEnvFileInput(mode, getInput);
+  if (envFile !== undefined) warn(envFile, "Env file input not used");
   return handlers[mode](directory);
 }
 

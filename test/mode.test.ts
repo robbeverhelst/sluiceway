@@ -139,3 +139,28 @@ describe("the post step", () => {
     expect(settled).toEqual([]);
   });
 });
+
+// Slice 5.35 (record 0100): only the modes that run the tool read the env
+// file. Anywhere else the input is a warning, and the file is never opened.
+describe("the env-file input on a step that never runs the tool", () => {
+  test("is a warning that names it, and the file is not opened", async () => {
+    const warnings: { message: string; title: string }[] = [];
+    const inputs = (name: string) => (name === "env-file" ? "/nowhere/deploy.env" : "");
+    const result = run(
+      "settle",
+      ACTION,
+      inputs,
+      (message, title) => void warnings.push({ message, title }),
+    );
+    // Outside a job, settle stops at the runner's environment, not at a
+    // file that is not there.
+    await expect(result).rejects.not.toThrow("env-file");
+    expect(warnings).toEqual([
+      {
+        title: "Env file input not used",
+        message:
+          '"env-file" is set on a step in settle mode, which never runs the tool, so the file is not read. Only scan, apply and the check with backend: true do. Take it out of this step.',
+      },
+    ]);
+  });
+});
