@@ -2,8 +2,8 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.37.0/assets/mascot/deploying-4-deletes-replaces-dark.svg">
-    <img alt="Sluiceway: deploying, 4 stacks are pending, some changes delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.37.0/assets/mascot/deploying-4-deletes-replaces-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.38.0/assets/mascot/deploying-4-deletes-replaces-dark.svg">
+    <img alt="Sluiceway: deploying, 4 stacks are pending, some changes delete or replace resources" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.38.0/assets/mascot/deploying-4-deletes-replaces-light.svg">
   </picture>
 </p>
 
@@ -17,10 +17,10 @@ Scanned [`34e410f`](https://github.com/example-org/infra/commit/34e410f2ce7bd7cf
 
 ## Deploying
 
-- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.37.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.37.0/assets/mascot/spinner-light.svg"></picture> **apps/api:prod** · deploying · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330) <!-- sluiceway:row stack="apps/api:prod" state="deploying" -->
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.38.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.38.0/assets/mascot/spinner-light.svg"></picture> **apps/api:prod** · deploying · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330) <!-- sluiceway:row stack="apps/api:prod" state="deploying" -->
   from #512 by alice · [compare](https://github.com/example-org/infra/compare/e27f50794430...34e410f2ce7b)
   <!-- /sluiceway:row -->
-- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.37.0/assets/mascot/spinner-queued-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.37.0/assets/mascot/spinner-queued-light.svg"></picture> **apps/worker:prod** · queued behind **apps/api:prod** · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330) <!-- sluiceway:row stack="apps/worker:prod" state="queued" -->
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.38.0/assets/mascot/spinner-queued-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.38.0/assets/mascot/spinner-queued-light.svg"></picture> **apps/worker:prod** · queued behind **apps/api:prod** · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330) <!-- sluiceway:row stack="apps/worker:prod" state="queued" -->
   from #509 by bob · [compare](https://github.com/example-org/infra/compare/ae93aa6a808a...34e410f2ce7b)
   <!-- /sluiceway:row -->
 
@@ -144,4 +144,4 @@ Times are in UTC.
 
 - [ ] Rescan all stacks <!-- sluiceway:rescan -->
 
-<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.37.0 · [docs](https://docs.sluiceway.dev/)</sub>
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.38.0 · [docs](https://docs.sluiceway.dev/)</sub>
