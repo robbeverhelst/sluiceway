@@ -3,6 +3,7 @@ import { type Stack, stackId } from "../../core/stack.ts";
 import type { PreviewOptions, PreviewResult } from "../adapter.ts";
 import { runTool, stripAnsi } from "../tool-run.ts";
 import { command, planArgs, showArgs, workingDirectory } from "./commands.ts";
+import { estimateCost } from "./cost.ts";
 import { optionsOf, tofuEnvironment } from "./environment.ts";
 import { foldChanges } from "./fold.ts";
 import { PlanFile } from "./plan-file.ts";
@@ -69,10 +70,19 @@ async function planAndShow(
     options.valueFingerprint === true,
   );
   if (!folded.ok) return failed({ kind: folded.reason }, log, folded.detail);
+  // The cost estimate (record 0105), from the plan's JSON the preview holds,
+  // only when asked and only for a change: a stack in sync costs nothing
+  // more. A failed estimate never fails the preview.
+  const estimated =
+    options.cost === true && folded.changes.length > 0
+      ? await estimateCost(shown.stdout, plan, options)
+      : undefined;
+  const { toolLog: costLog = "", ...cost } = estimated ?? {};
   return {
     ok: true,
     diff: { stackId: stackId(stack), changes: folded.changes },
-    toolLog: log,
+    toolLog: log + costLog,
+    ...(estimated === undefined ? {} : { cost: cost as Exclude<typeof estimated, undefined> }),
     // The plan JSON as the tool printed it, for the policies alone (record
     // 0106).
     ...(options.keepDocument ? { document: { text: shown.stdout, format: "json" } } : {}),

@@ -5,8 +5,13 @@
 // and workspaces are held to the recorded ones. The recordings write the plan
 // file as {plan}, and the replay takes whatever path the adapter chose.
 import { readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { PLAN_FILE, RECORDING_FILE, type Recording } from "../../../scripts/fixtures/recorder.ts";
+import { dirname, join, resolve } from "node:path";
+import {
+  PLAN_DIR,
+  PLAN_FILE,
+  RECORDING_FILE,
+  type Recording,
+} from "../../../scripts/fixtures/recorder.ts";
 import { FIXTURE_TOFU_VERSIONS } from "../../../scripts/fixtures/versions.ts";
 import type { ProcessRunner, Run, RunResult } from "../../../src/adapters/process.ts";
 
@@ -56,7 +61,9 @@ function fits(recorded: string[], asked: string[]): { plan?: string } | undefine
 
 // Commands are handed out in the order they were recorded. The workspace is
 // part of the command: a recorded TF_WORKSPACE must be what the adapter set,
-// and a command recorded without one must get none from the adapter.
+// and a command recorded without one must get none from the adapter. A
+// command recorded in the plan's directory (record 0105) must run in the
+// directory of the plan the adapter chose last.
 export function replay(
   version: string,
   scenario: string,
@@ -72,7 +79,9 @@ export function replay(
     let plan: string | undefined;
     const index = waiting.findIndex((command) => {
       const fit = fits(command.argv, asked.argv);
-      if (fit === undefined || join(root, command.cwd) !== asked.cwd) return false;
+      const last = plans.at(-1);
+      const cwd = command.cwd === PLAN_DIR ? last && dirname(last) : join(root, command.cwd);
+      if (fit === undefined || cwd !== asked.cwd) return false;
       if (asked.env.TF_WORKSPACE !== command.env?.TF_WORKSPACE) return false;
       plan = fit.plan;
       return true;
