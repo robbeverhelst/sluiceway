@@ -152,3 +152,17 @@ export function masks(value: string): string[] {
   if (lines.length === 1) return [value];
   return [value, ...lines.filter((line) => unmaskedReason(line) === undefined)];
 }
+
+// The environment one stack's tool gets (record 0103): the step's with the
+// stack's own file on top, or why the file could not be loaded, in
+// Sluiceway's own words with the path and a line number and never a line of
+// the file. The glue reads the file; the modes only pass this on.
+export type StackEnv =
+  | { ok: true; env: Record<string, string | undefined> }
+  | { ok: false; detail: string[] };
+
+// The loader of a job: the environment of each stack asked for, by stack id.
+// A stack without a file gets the environment of the step as it is.
+export type StackEnvLoader = (
+  stacks: readonly { id: string; envFile?: string | undefined }[],
+) => Map<string, StackEnv>;

@@ -22,7 +22,11 @@ export type PreviewFailureReason =
   | { kind: "unknown-step" }
   // An error thrown past the adapter: a bug of Sluiceway's own (slice 5.9).
   // The row says so, and the job still goes red.
-  | { kind: "internal-error" };
+  | { kind: "internal-error" }
+  // The env file the stack's entry names could not be loaded (record 0103):
+  // it is not there, or a line of it is refused. The tool never ran for the
+  // stack, and the job log has the path and the line number.
+  | { kind: "env-file-not-loaded" };
 
 // The reason as a row, the summary, an annotation or a deployment status shows
 // it. One form for all of them: lower case and no full stop, the wording of
@@ -55,6 +59,8 @@ export function previewFailureText(reason: PreviewFailureReason): string {
       return `the tool printed more than the ${reason.megabytes} MB Sluiceway holds`;
     case "internal-error":
       return "Sluiceway failed inside itself, which is a bug";
+    case "env-file-not-loaded":
+      return "the env file of the stack could not be loaded";
   }
 }
 

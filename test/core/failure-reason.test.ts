@@ -27,6 +27,14 @@ describe("why a preview failed, in Sluiceway's own words", () => {
     );
   });
 
+  // Slice 5.38 (record 0103): the file a stack names could not be loaded. A
+  // constant string; the path and the line number are detail in the job log.
+  test("the stack's env file could not be loaded", () => {
+    expect(previewFailureText({ kind: "env-file-not-loaded" })).toBe(
+      "the env file of the stack could not be loaded",
+    );
+  });
+
   // Record 0022 as amended: a constant string with nothing filled in, not the
   // stack's name and not the exit code the adapter picked it from.
   test("the stack does not exist in the backend", () => {
