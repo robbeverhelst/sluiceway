@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.0](https://github.com/sluiceway/sluiceway/compare/v0.31.0...v0.32.0) (2026-09-24)
+
+
+### Features
+
+* env-file loads the file a step names for the tool, masked first ([#237](https://github.com/sluiceway/sluiceway/issues/237)) ([377a853](https://github.com/sluiceway/sluiceway/commit/377a85315fcb8aff88822c305632098a0e483291))
+
 ## [0.31.0](https://github.com/sluiceway/sluiceway/compare/v0.30.0...v0.31.0) (2026-09-24)
 
 
