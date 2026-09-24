@@ -107,8 +107,18 @@ export function typeAndName(urn: string): Pick<Change, "type" | "name"> | undefi
 // update, and on a replace only when the provider does. Otherwise the reason
 // lists name what changed, as paths too or as top-level names. Creates,
 // deletes and tracking changes list no keys.
-function keys(step: PreviewStep, op: Op): Pick<Change, "changedKeys" | "replaceKeys" | "values"> {
-  if (op !== "update" && op !== "replace") return { changedKeys: [], replaceKeys: [] };
+function keys(
+  step: PreviewStep,
+  op: Op,
+): Pick<Change, "changedKeys" | "replaceKeys" | "values" | "fingerprint"> {
+  // The value fingerprint (record 0102) rides on a create, an update and a
+  // replace, the ops whose values a deploy writes.
+  const fingerprint =
+    step.fingerprint !== undefined && (op === "create" || op === "update" || op === "replace")
+      ? { fingerprint: step.fingerprint }
+      : {};
+  if (op !== "update" && op !== "replace")
+    return { changedKeys: [], replaceKeys: [], ...fingerprint };
   const paths = step.detailedDiff ?? [];
   const changed = paths.length > 0 ? paths : (step.diffReasons ?? []);
   const replaceKeys = op === "replace" ? sortedSet(step.replaceReasons ?? []) : [];
@@ -118,7 +128,7 @@ function keys(step: PreviewStep, op: Op): Pick<Change, "changedKeys" | "replaceK
   // Values come with the paths of detailedDiff only, and only for the paths
   // `dashboard.showValues` lists (record 0052).
   const values = (step.values ?? []).filter((value) => changedKeys.includes(value.path));
-  return { changedKeys, replaceKeys, ...(values.length === 0 ? {} : { values }) };
+  return { changedKeys, replaceKeys, ...(values.length === 0 ? {} : { values }), ...fingerprint };
 }
 
 function sortedSet(names: string[]): string[] {

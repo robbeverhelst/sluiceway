@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ShownValue } from "../../core/diff.ts";
-import { listedValues } from "./values.ts";
+import { hiddenFingerprint, listedValues } from "./values.ts";
 
 // The document that "pulumi preview --json" prints holds every property value
 // of every resource, in plain text unless somebody marked it secret. This
@@ -56,7 +56,7 @@ const step = z
 // With `dashboard.showValues` set (record 0052), a step keeps the old and new
 // state long enough to read the values at the listed paths, and hands over
 // those values as display text and nothing else of either state.
-function stepWithValues(list: readonly string[]) {
+function stepWithValues(list: readonly string[], fingerprint: boolean) {
   const state = z
     .object({ inputs: z.unknown().optional(), outputs: z.unknown().optional() })
     .nullish();
@@ -85,17 +85,31 @@ function stepWithValues(list: readonly string[]) {
             ? entry.inputDiff === true
             : false,
       }));
-      const values = listedValues(list, {
+      const sources = {
         paths,
         oldInputs: old?.inputs,
         oldOutputs: old?.outputs,
         newInputs: newState?.inputs,
-      });
+      };
+      const values = listedValues(list, sources);
+      // The fingerprint of every other value of the change (record 0102).
+      const hidden = fingerprint
+        ? hiddenFingerprint(
+            rest.op,
+            {
+              ...sources,
+              diffReasons: rest.diffReasons ?? [],
+              replaceReasons: rest.replaceReasons ?? [],
+            },
+            values,
+          )
+        : undefined;
       return {
         ...rest,
         oldState: old == null ? old : { retainOnDelete: old.retainOnDelete },
         detailedDiff: detailedDiff == null ? undefined : Object.keys(detailedDiff),
         ...(values.length === 0 ? {} : { values }),
+        ...(hidden === undefined ? {} : { fingerprint: hidden }),
         ...(stackReference === undefined ? {} : { stackReference }),
       };
     });
@@ -107,8 +121,9 @@ const diagnostics = z.array(z.object({ message: z.string() })).nullish();
 // A preview that worked always holds the step of the root stack resource, so
 // a document without steps is a document Sluiceway cannot read. Defaulting to
 // no steps would show the stack as in sync.
-function previewDocument(showValues: readonly string[]) {
-  const steps = showValues.length === 0 ? step : stepWithValues(showValues);
+function previewDocument(showValues: readonly string[], fingerprint: boolean) {
+  const steps =
+    showValues.length === 0 && !fingerprint ? step : stepWithValues(showValues, fingerprint);
   return z.object({ steps: z.array(steps), diagnostics });
 }
 
@@ -117,6 +132,8 @@ const failedDocument = z.object({ diagnostics });
 
 export type PreviewStep = z.infer<typeof step> & {
   values?: ShownValue[];
+  // The value fingerprint of the step (record 0102), only when asked for.
+  fingerprint?: string;
   // The name of the stack a stack reference reads from (record 0059).
   stackReference?: string;
 };
@@ -127,14 +144,18 @@ export type ParsedPreview =
   // found: the parser's own message can quote its input.
   | { ok: false; problems: string[] };
 
-export function parsePreview(stdout: string, showValues: readonly string[] = []): ParsedPreview {
+export function parsePreview(
+  stdout: string,
+  showValues: readonly string[] = [],
+  fingerprint = false,
+): ParsedPreview {
   let json: unknown;
   try {
     json = JSON.parse(stdout);
   } catch {
     return { ok: false, problems: ["The tool's output: expected one JSON document."] };
   }
-  const parsed = previewDocument(showValues).safeParse(json);
+  const parsed = previewDocument(showValues, fingerprint).safeParse(json);
   if (!parsed.success) return { ok: false, problems: parsed.error.issues.map(problem) };
   return {
     ok: true,

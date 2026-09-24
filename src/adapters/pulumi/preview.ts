@@ -56,7 +56,7 @@ export async function previewWithReferences(
     );
   }
 
-  const parsed = parsePreview(result.stdout, options.showValues);
+  const parsed = parsePreview(result.stdout, options.showValues, options.valueFingerprint === true);
   if (!parsed.ok) {
     return failed({ kind: "unreadable-output" }, toolLog(result.stderr), parsed.problems);
   }

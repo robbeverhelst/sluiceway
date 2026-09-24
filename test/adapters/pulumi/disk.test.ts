@@ -27,8 +27,9 @@ function packagesOf(entry: string): string[] {
   return [...packages].sort();
 }
 
+// node:crypto hashes the value fingerprint (record 0102) and reads no disk.
 test("the preview and the version check import nothing that reaches the disk", () => {
-  expect(packagesOf("adapters/pulumi/preview.ts")).toEqual(["node:path", "zod"]);
+  expect(packagesOf("adapters/pulumi/preview.ts")).toEqual(["node:crypto", "node:path", "zod"]);
   expect(packagesOf("adapters/pulumi/version.ts")).toEqual([]);
 });
 

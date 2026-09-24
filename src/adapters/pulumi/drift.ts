@@ -3,6 +3,11 @@ import { z } from "zod";
 import type { Change, Op } from "../../core/diff.ts";
 import type { PreviewFailureReason } from "../../core/failure-reason.ts";
 import type { Stack } from "../../core/stack.ts";
+import {
+  changeFingerprint,
+  differingLeaves,
+  type HiddenValue,
+} from "../../core/value-fingerprint.ts";
 import type { DriftResult, PreviewOptions } from "../adapter.ts";
 import { runTool, stripAnsi } from "../tool-run.ts";
 import { pulumiEnvironment } from "./environment.ts";
@@ -35,13 +40,17 @@ function driftCommand(name: string): string[] {
 const STREAM_EVENTS = { PULUMI_ENABLE_STREAMING_JSON_PREVIEW: "true" };
 
 // What the check found for one resource, from the event that closes it. Zod
-// drops every other key: the event also holds the old and new state, which
-// are property values (record 0021).
+// drops every other key but the old and new state, which are property values
+// (record 0021): they are read only for the value fingerprint (record 0102),
+// inside this file, and what leaves is the fingerprint.
+const state = z.object({ outputs: z.unknown().optional() }).nullish();
 const outputsEvent = z.object({
   resOutputsEvent: z.object({
     metadata: z.object({
       op: z.string(),
       urn: z.string(),
+      old: state,
+      new: state,
       diffs: z.array(z.string()).nullish(),
       detailedDiff: z
         .record(z.string(), z.unknown())
@@ -67,6 +76,13 @@ const DRIFT_OPS: Record<string, Op | "drop"> = {
   delete: "delete",
 };
 
+const isSecret = (node: unknown): boolean => node === "[secret]";
+
+function fingerprintOf(hidden: HiddenValue[]): { fingerprint?: string } {
+  const fingerprint = changeFingerprint(hidden);
+  return fingerprint === undefined ? {} : { fingerprint };
+}
+
 export async function detectDrift(stack: Stack, options: PreviewOptions): Promise<DriftResult> {
   if (stack.name === undefined) throw new Error("A Pulumi stack always has a name.");
   const result = await runTool(options.run, {
@@ -87,7 +103,7 @@ export async function detectDrift(stack: Stack, options: PreviewOptions): Promis
   }
   // The events hold values, so nothing of stdout but the diagnostics is ever
   // the tool's words here (record 0022).
-  const read = readEvents(result.stdout);
+  const read = readEvents(result.stdout, options.valueFingerprint === true);
   const words = stripAnsi(
     [result.stderr, ...(typeof read === "string" ? [] : read.diagnostics)].join(""),
   );
@@ -122,7 +138,7 @@ interface Events {
 
 // Reads the stream line by line. A problem names a line or an event and what
 // was expected there, never what was found (record 0021).
-function readEvents(stdout: string): Events | string {
+function readEvents(stdout: string, fingerprint: boolean): Events | string {
   const events: Events = { drift: [], unknown: [], diagnostics: [], summary: undefined };
   const seen = new Set<string>();
   let count = 0;
@@ -142,7 +158,7 @@ function readEvents(stdout: string): Events | string {
     const outputs = outputsEvent.safeParse(json);
     if (!outputs.success) continue;
     count++;
-    const { op, urn, diffs, detailedDiff } = outputs.data.resOutputsEvent.metadata;
+    const { op, urn, diffs, detailedDiff, old, new: next } = outputs.data.resOutputsEvent.metadata;
     const at = `The tool's output, at event ${count}`;
     const known = Object.hasOwn(DRIFT_OPS, op) ? DRIFT_OPS[op] : undefined;
     if (known === undefined) {
@@ -163,6 +179,12 @@ function readEvents(stdout: string): Events | string {
       // Paths only on a changed property. A resource that is gone lists none.
       changedKeys: known === "update" ? [...new Set(paths ?? [])].sort() : [],
       replaceKeys: [],
+      // The fingerprint of what drifted (record 0102): the leaves that differ
+      // between the state and what the check read. A secret enters as its
+      // mark.
+      ...(fingerprint && known === "update"
+        ? fingerprintOf(differingLeaves(old?.outputs, next?.outputs, { isSecret }))
+        : {}),
     });
   }
   return events;
