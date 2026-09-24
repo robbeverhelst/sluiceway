@@ -346,6 +346,9 @@ async function resolveTicks(
     rows: liveRows,
     deploys: config.deploys,
     phases: config.phases,
+    // A deploy window is judged at this moment, in the dashboard zone
+    // (record 0104).
+    clock: { now: clockOf(context)(), timeZone: config.dashboard.timeZone },
   };
   // The lookups are the one read the judgement asks for (record 0018).
   const outcomes = await watch.time("ticks", () => lookUpTickers(github, ticksToLookUp(read)));
@@ -565,6 +568,8 @@ function findingText(finding: Finding): string {
       const one = finding.waitingOn.length === 1;
       return `${logGroupTitle(finding.stackId)} is ticked, and it depends on ${words.join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`;
     }
+    case "window-closed":
+      return `${logGroupTitle(finding.stackId)} is ticked outside its deploy window, ${finding.opens === undefined ? "and no window of it opens within a week" : `which opens ${finding.opens.toISOString().slice(0, 16).replace("T", " ")} UTC`}. Its deployment record waits for the window, and a run inside the window starts it.`;
     case "confirm-stale": {
       const { tick, changes } = finding;
       const section = tick.kind === "confirm" ? tick.section : "pending";
@@ -850,6 +855,12 @@ const NOBODY: Record<NobodyReason, string> = {
 
 function runUrl(context: ResolveContext): string {
   return runUrlOf(context.repoUrl, context.runId, context.runAttempt);
+}
+
+// The clock of the run, for a deploy window (record 0104): the one a test
+// injects, else the machine's.
+function clockOf(context: ResolveContext): () => Date {
+  return context.now ?? (() => new Date());
 }
 
 function unverifiedMessage(unverified: readonly LookedUp[]): string {

@@ -272,11 +272,13 @@ async function applying(context: ApplyContext, repo: Repo, report: ApplyReport):
     );
   }
   // A queued record is started by a later `resolve`, under a record of its
-  // own run (record 0056). `resolve` never hands one on.
+  // own run (records 0056 and 0104). `resolve` never hands one on.
   if (claim.kind === "queued") {
     const { behind } = claim;
     throw new ApplyFailedError(
-      `Deployment record ${id} of ${name} is queued behind ${behind.map(logGroupTitle).join(" and ")}. \`apply\` never deploys a queued record: a later \`resolve\` starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out. Nothing was deployed and the record was left alone.`,
+      behind
+        ? `Deployment record ${id} of ${name} is queued behind ${behind.map(logGroupTitle).join(" and ")}. \`apply\` never deploys a queued record: a later \`resolve\` starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out. Nothing was deployed and the record was left alone.`
+        : `Deployment record ${id} of ${name} waits for the deploy window of ${name}. \`apply\` never deploys a queued record: a run inside the window starts it. Nothing was deployed and the record was left alone.`,
     );
   }
 

@@ -9,6 +9,8 @@ export interface OpenRecordOfRun {
   stackId: string;
   // A queued record waits behind these stacks (record 0056).
   behind?: string[];
+  // A queued record waits for the deploy window (record 0104).
+  window?: true;
 }
 
 // Each record is read on its own, so a record of this run is found whether or
@@ -29,6 +31,7 @@ export function openRecordsOfRun(
       id: record.id,
       stackId,
       ...(fact.behind ? { behind: fact.behind } : {}),
+      ...(fact.window ? { window: true as const } : {}),
     });
   }
   return [...found.values()].sort((a, b) => a.id - b.id);

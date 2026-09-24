@@ -92,4 +92,14 @@ describe("openRecordsOfRun", () => {
     });
     expect(openRecordsOfRun([merge], RUN)).toEqual([]);
   });
+
+  // Deploy windows (record 0104): a record that waits for the window outlives
+  // its run, as one behind a stack does, and the settle says so.
+  test("names a record that waits for the deploy window, so it is not ended with its run", () => {
+    const waiting = record(1, {
+      state: "queued",
+      payload: { v: 1, hash: "2b44350653e84a11", ticker: "alice", run: RUN, window: true },
+    });
+    expect(openRecordsOfRun([waiting], RUN)).toEqual([{ id: 1, stackId: "a:prod", window: true }]);
+  });
 });

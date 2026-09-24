@@ -1,5 +1,5 @@
 // The judgement of the ticks of one `resolve` run (records 0018, 0025, 0035,
-// 0051, 0054, 0056, 0064, 0067, 0071 and 0083). `resolve` hands over what it read:
+// 0051, 0054, 0056, 0064, 0067, 0071, 0083 and 0104). `resolve` hands over what it read:
 // the ticks the edit history names, the stacks discovery knows, the open
 // deployments, the pending rows and two lines of config. It gets back which
 // stacks deploy and which wait behind others, which merge ticks go on to their
@@ -23,6 +23,7 @@ import type { MergeNote } from "../render/merge-row.ts";
 import { type BulkAct, bulkRows, sectionChanges } from "./bulk.ts";
 import type { ConfiguredStack } from "./config.ts";
 import { planDeploys } from "./dependencies.ts";
+import { windowState } from "./deploy-window.ts";
 import type { DeployFact } from "./deployment.ts";
 import type { Tick as BodyTick, NobodyReason, Ticker } from "./edit-history.ts";
 import {
@@ -63,6 +64,10 @@ export interface TicksRead {
   // `deploys` and `phases` of sluiceway.yaml.
   deploys: boolean;
   phases: readonly string[];
+  // When the run judges, and the dashboard zone a deploy window is written in
+  // (record 0104). The clock is the mode's, so a test gives the same verdict
+  // on every run.
+  clock: { now: Date; timeZone: string };
 }
 
 // A tick and the ticker its permission lookup is for (record 0018).
@@ -97,7 +102,8 @@ export interface Clear {
 }
 
 // A deployment record to open. With `behind` it is queued behind those stacks
-// and not handed on (record 0056).
+// and not handed on (record 0056). With `window` it is queued for the stack's
+// deploy window and not handed on either (record 0104).
 export interface Deploy {
   stackId: string;
   environment: string;
@@ -107,6 +113,7 @@ export interface Deploy {
   // The value fingerprint of the ticked row (record 0102), when it has one.
   fingerprint?: string | undefined;
   behind: string[] | undefined;
+  window?: true | undefined;
 }
 
 // A merge tick every stack of it allowed (record 0071).
@@ -155,6 +162,9 @@ export type Finding =
       named: string[];
       phases: PhaseGroup[];
     }
+  // The stack's deploy window is closed (record 0104). The record waits for
+  // it, and opens at `opens`, or at no known time when no window ever opens.
+  | { kind: "window-closed"; stackId: string; opens: Date | undefined }
   // A confirm box whose rows changed since it was drawn deploys nothing, and
   // the bulk box asks for a fresh tick (record 0083).
   | {
@@ -577,6 +587,16 @@ export function judgeTicks(read: TicksRead, lookedUp: readonly LookedUp[]): Judg
     const ticker = tickers.get(id);
     if (!stack || hash === undefined || ticker === undefined) return [];
     const fingerprint = fingerprints.get(id);
+    // A stack that would start now waits for its deploy window when that is
+    // closed (record 0104). A stack behind another is judged against the
+    // window when it is started.
+    const window =
+      behind === undefined
+        ? windowState(stack.deployWindows ?? [], read.clock.now, read.clock.timeZone)
+        : undefined;
+    if (window && !window.open) {
+      findings.push({ kind: "window-closed", stackId: id, opens: window.opens });
+    }
     return [
       {
         stackId: id,
@@ -586,6 +606,7 @@ export function judgeTicks(read: TicksRead, lookedUp: readonly LookedUp[]): Judg
         drift: drifted.has(id),
         ...(fingerprint === undefined ? {} : { fingerprint }),
         behind,
+        ...(window && !window.open ? { window: true as const } : {}),
       },
     ];
   });

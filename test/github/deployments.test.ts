@@ -153,6 +153,22 @@ describe("an open deployment whose run is over", () => {
     expect(github.requests).toEqual([]);
   });
 
+  // Deploy windows (record 0104): a record that waits for the window outlives
+  // its run, as one behind a stack does. A run inside the window starts it.
+  test("a record that waits for the deploy window is never ended for its run", async () => {
+    const github = new FakeGitHub();
+    const open = github.seedDeployment({
+      task: "sluiceway:a",
+      payload: { ...payload("4242"), window: true },
+      status: { state: "queued" },
+    });
+    github.seedRun("4242", { completed: true });
+
+    const settled = await settleEndedRuns(github, [github.deployment(open.id)], REPO_URL);
+    expect(settled.ended).toEqual([]);
+    expect(github.requests).toEqual([]);
+  });
+
   test("a run that is still going leaves the record open, however long it waits", async () => {
     const github = new FakeGitHub();
     const open = github.seedDeployment({
@@ -301,6 +317,45 @@ describe("opening a record", () => {
     // A record with no status is an open deployment (record 0035, slice 2.4).
     expect(opened).toEqual({ deployment: 1, unfinished: refused });
     expect(factOf(github, 1)?.kind).toBe("open");
+  });
+});
+
+describe("starting a record that waited for the deploy window (record 0104)", () => {
+  test("the new record of this run carries what the tick approved and waits for nothing", async () => {
+    const github = new FakeGitHub();
+    const waiting = github.seedDeployment({
+      task: "sluiceway:app:prod",
+      payload: {
+        v: 1,
+        hash: "1111111111111111",
+        ticker: "bob",
+        run: "4242",
+        drift: true,
+        fingerprint: "f65a69fe79dd93c3",
+        window: true,
+      },
+      status: { state: "queued" },
+    });
+
+    const started = await startQueuedRecord(writer(github), github.deployment(waiting.id), {
+      sha: "def5678",
+      environment: "sluiceway",
+    });
+
+    expect(started).toEqual({ deployment: 2, ticker: "bob" });
+    expect(github.deployment(2).payload).toEqual({
+      v: 1,
+      hash: "1111111111111111",
+      ticker: "bob",
+      run: RUN,
+      attempt: "2",
+      drift: true,
+      fingerprint: "f65a69fe79dd93c3",
+    });
+    expect(github.deployment(waiting.id).status).toMatchObject({
+      state: "inactive",
+      description: "started in a later run",
+    });
   });
 });
 
@@ -474,7 +529,7 @@ describe("claiming a record (records 0019, 0035 and 0056)", () => {
       "queued",
       "sluiceway:app:prod",
       { ...mine, behind: ["network:prod"] },
-      { kind: "queued", stackId: "app:prod", behind: ["network:prod"] },
+      { kind: "queued", stackId: "app:prod", behind: ["network:prod"], window: false },
     ],
   ])("a record that is %s is refused and gets no status", async (_, task, payload, claim) => {
     const github = new FakeGitHub();

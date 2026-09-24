@@ -95,6 +95,12 @@ export interface DeploymentPayload {
   // on a record written before, or with the check off for the stack: a fresh
   // preview that gives one then refuses the deploy, the safe direction.
   fingerprint?: string | undefined;
+  // The record waits for the stack's deploy window (record 0104): a queued
+  // record that waits for a time and not for a stack. A run inside the window
+  // starts it under a record of its own. An added key, so the version stays
+  // 1. A reader that does not know it reads an open deployment, which is what
+  // it is.
+  window?: boolean | undefined;
 }
 
 // The payload as a schema (record 0096): what every writer writes, checked
@@ -157,8 +163,16 @@ const tickPayloadSchema = z
       .describe(
         "The value fingerprint the tick approved: the first 16 hex characters of a SHA-256 over the values of the diff that the row did not show. The deploy goes out only when a fresh preview gives the same one. Absent on a record written before the key came, or with the check off for the stack.",
       ),
+    window: z
+      .literal(true)
+      .optional()
+      .describe(
+        "A queued record that waits for the stack's deploy window, which a run inside the window starts. Absent otherwise.",
+      ),
   })
-  .describe("The record of a tick, a queued stack, a drift repair or a deploy on merge.");
+  .describe(
+    "The record of a tick, a queued stack, a drift repair, a deploy on merge or a deploy that waits for its window.",
+  );
 
 const mergeRecordSchema = z
   .strictObject({
@@ -201,6 +215,7 @@ export function deploymentPayload(payload: DeploymentPayload): Record<string, un
     ...(payload.drift ? { drift: true } : {}),
     ...(payload.onMerge ? { onMerge: true } : {}),
     ...(payload.fingerprint === undefined ? {} : { fingerprint: payload.fingerprint }),
+    ...(payload.window ? { window: true } : {}),
   });
 }
 
@@ -228,7 +243,7 @@ const RUN_ID = /^[1-9]\d*$/;
 // built from text that came from outside.
 export function readDeploymentPayload(payload: unknown): DeploymentPayload | undefined {
   if (typeof payload !== "object" || payload === null) return undefined;
-  const { v, hash, ticker, run, behind, merge, drift, attempt, onMerge, fingerprint } =
+  const { v, hash, ticker, run, behind, merge, drift, attempt, onMerge, fingerprint, window } =
     payload as Record<string, unknown>;
   if (v !== PAYLOAD_VERSION) return undefined;
   // Only a number is kept, so no link is built from text that came from
@@ -257,6 +272,7 @@ export function readDeploymentPayload(payload: unknown): DeploymentPayload | und
   if (typeof fingerprint === "string" && /^[0-9a-f]{16}$/.test(fingerprint)) {
     read.fingerprint = fingerprint;
   }
+  if (window === true) read.window = true;
   if (behind === undefined) return read;
   const ids = Array.isArray(behind) ? behind : [];
   if (ids.length === 0 || !ids.every((id) => typeof id === "string" && id !== "")) {
@@ -281,6 +297,9 @@ export type DeployFact =
       // Queued behind these stacks (record 0056): it starts only after they
       // went out, in a later run.
       behind?: string[] | undefined;
+      // Queued for the stack's deploy window (record 0104): a run inside the
+      // window starts it.
+      window?: true;
       // The pull request a merge tick merged: the record waits for the scan
       // after the merge, not for its run (record 0054).
       merge?: number;
@@ -531,6 +550,7 @@ function factOf(record: DeploymentRecord, payload: DeploymentPayload): DeployFac
     ticker,
     ...run,
     ...(payload.behind ? { behind: payload.behind } : {}),
+    ...(payload.window ? { window: true as const } : {}),
     ...(payload.merge === undefined ? {} : { merge: payload.merge }),
     ...onMerge,
   };
@@ -688,8 +708,8 @@ export type PreviewFirstWhy =
 export function rowAtLateRead(stack: StackAtLateRead): RowAtLateRead {
   const { previewedAt, liveState, fact } = stack;
   if (fact?.kind === "open") {
-    // A queued record gives a queued row (record 0056).
-    const taken = fact.behind ? "queued" : "deploying";
+    // A queued record gives a queued row (records 0056 and 0104).
+    const taken = fact.behind || fact.window ? "queued" : "deploying";
     return { row: "deploying", from: liveState === taken ? "live" : "record" };
   }
   const usableLive = liveState !== undefined && liveState !== "deploying" && liveState !== "queued";

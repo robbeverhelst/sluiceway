@@ -117,4 +117,25 @@ describe("a record that is not for this job", () => {
     expect(h.adapter.previewed).toEqual([]);
     expect(h.adapter.applied).toEqual([]);
   });
+
+  // A record that waits for the deploy window (record 0104) is started by a
+  // run inside the window, under a record of its own.
+  test("a record that waits for the deploy window is left alone", async () => {
+    const { h, id } = await withRecord({
+      task: "sluiceway:a:prod",
+      payload: {
+        v: 1,
+        hash: "0000000000000000",
+        ticker: "alice",
+        run: RESOLVE_RUN,
+        window: true,
+      },
+      status: { state: "queued" },
+    });
+    await expect(runApply(h)).rejects.toThrow(
+      "waits for the deploy window of a:prod. `apply` never deploys a queued record: a run inside the window starts it. Nothing was deployed and the record was left alone.",
+    );
+    expect(h.github.deploymentStatuses(id)).toHaveLength(1);
+    expect(h.adapter.previewed).toEqual([]);
+  });
 });

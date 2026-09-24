@@ -577,3 +577,65 @@ describe("a record opened on merge", () => {
     expect("onMerge" in (ticked.trail[0] ?? {})).toBe(false);
   });
 });
+
+// Deploy windows (record 0104): a record that waits for the stack's deploy
+// window carries `window`, an added key, and is a queued record without a
+// stack to wait behind.
+describe("a record that waits for the deploy window", () => {
+  const facts = { hash: "2b44350653e84a11", ticker: "alice", run: "4242" };
+
+  test("carries window, an added key written last, so the version stays 1", () => {
+    const written = deploymentPayload({ ...facts, fingerprint: "f65a69fe79dd93c3", window: true });
+    expect(written).toEqual({ v: 1, ...facts, fingerprint: "f65a69fe79dd93c3", window: true });
+    expect(Object.keys(written).at(-1)).toBe("window");
+    expect(readDeploymentPayload({ v: 1, ...facts, window: true })).toEqual({
+      ...facts,
+      window: true,
+    });
+  });
+
+  test("a record of a tick inside the window has no such key, and only true is read", () => {
+    expect(deploymentPayload(facts)).toEqual({ v: 1, ...facts });
+    expect(readDeploymentPayload({ v: 1, ...facts, window: "soon" })).toEqual(facts);
+  });
+
+  test("may wait behind stacks and for the window at once", () => {
+    const both = deploymentPayload({ ...facts, behind: ["b:prod"], window: true });
+    expect(readDeploymentPayload(both)).toEqual({ ...facts, behind: ["b:prod"], window: true });
+  });
+
+  test("is an open deployment that waits, and the fact says for the window", () => {
+    const payload = { v: 1, ...facts, window: true };
+    const open = deployFacts([record({ id: 1, task: "sluiceway:a", state: "queued", payload })]);
+    expect(open.byStack.get("a")).toEqual({
+      kind: "open",
+      deployment: 1,
+      waiting: true,
+      ticker: "alice",
+      run: "4242",
+      window: true,
+    });
+    // Once it ended, whether it waited says nothing about the deploy.
+    const went = deployFacts([record({ id: 2, task: "sluiceway:c", state: "success", payload })]);
+    expect("window" in (went.byStack.get("c") ?? {})).toBe(false);
+  });
+
+  test("gives a queued row at the late read of a scan, as a record behind a stack does", () => {
+    const fact: DeployFact = {
+      kind: "open",
+      deployment: 7,
+      waiting: true,
+      ticker: "alice",
+      run: "4242",
+      window: true,
+    };
+    expect(rowAtLateRead({ previewedAt: undefined, liveState: "queued", fact })).toEqual({
+      row: "deploying",
+      from: "live",
+    });
+    expect(rowAtLateRead({ previewedAt: undefined, liveState: "deploying", fact })).toEqual({
+      row: "deploying",
+      from: "record",
+    });
+  });
+});

@@ -54,6 +54,11 @@
           "description": "The value fingerprint the tick approved: the first 16 hex characters of a SHA-256 over the values of the diff that the row did not show. The deploy goes out only when a fresh preview gives the same one. Absent on a record written before the key came, or with the check off for the stack.",
           "type": "string",
           "pattern": "^[0-9a-f]{16}$"
+        },
+        "window": {
+          "description": "A queued record that waits for the stack's deploy window, which a run inside the window starts. Absent otherwise.",
+          "type": "boolean",
+          "const": true
         }
       },
       "required": [
@@ -63,7 +68,7 @@
         "run"
       ],
       "additionalProperties": false,
-      "description": "The record of a tick, a queued stack, a drift repair or a deploy on merge."
+      "description": "The record of a tick, a queued stack, a drift repair, a deploy on merge or a deploy that waits for its window."
     },
     {
       "type": "object",
