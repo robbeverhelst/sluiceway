@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.0](https://github.com/sluiceway/sluiceway/compare/v0.30.0...v0.31.0) (2026-09-24)
+
+
+### Features
+
+* the check says which credentials each stack needs ([#239](https://github.com/sluiceway/sluiceway/issues/239)) ([49c23b3](https://github.com/sluiceway/sluiceway/commit/49c23b3cafe71d34e7dcce67e4210c13ea68b7da))
+
 ## [0.30.0](https://github.com/sluiceway/sluiceway/compare/v0.29.0...v0.30.0) (2026-09-24)
 
 
