@@ -59603,8 +59603,31 @@ function taskStackId(task) {
   return task.slice(TASK_PREFIX.length);
 }
 var PAYLOAD_VERSION = 1;
+var runId = () => exports_external.string().regex(/^[1-9]\d*$/);
+var v = exports_external.literal(PAYLOAD_VERSION).describe("The version of the payload. A reader checks it first.");
+var ticker = exports_external.string().min(1).describe("The login of the person whose tick started the deploy, plain, without @. On a deploy on merge, whoever merged.");
+var run = runId().describe("The id of the workflow run that deploys. The record is open as long as that run is.");
+var attempt = runId().optional().describe("The attempt of that run which created the record. Absent on older records.");
+var tickPayloadSchema = exports_external.strictObject({
+  v,
+  hash: exports_external.string().regex(/^[0-9a-f]{16}$/).describe("The diff hash the tick approved: the first 16 hex characters of a SHA-256. The deploy goes out only when a fresh preview gives the same hash."),
+  ticker,
+  run,
+  attempt,
+  behind: exports_external.array(exports_external.string().min(1)).min(1).optional().describe("A queued record: the stack ids it waits behind, which have to go out first. Absent otherwise."),
+  drift: exports_external.literal(true).optional().describe("The hash covers drift, and the deploy puts it back. Absent otherwise."),
+  onMerge: exports_external.literal(true).optional().describe("The record was opened after the scan of a merge, for a stack set to deploy on merge. Absent otherwise.")
+}).describe("The record of a tick, a queued stack, a drift repair or a deploy on merge.");
+var mergeRecordSchema = exports_external.strictObject({
+  v,
+  ticker,
+  run,
+  attempt,
+  merge: exports_external.int().positive().describe("The pull request a tick merged. The record carries no hash, never deploys, and ends when the scan after the merge opens the record that does.")
+}).describe("The record of a tick that merged a pull request.");
+var deploymentPayloadSchema = exports_external.union([tickPayloadSchema, mergeRecordSchema]);
 function deploymentPayload(payload) {
-  return {
+  return tickPayloadSchema.parse({
     v: PAYLOAD_VERSION,
     hash: payload.hash,
     ticker: payload.ticker,
@@ -59613,36 +59636,36 @@ function deploymentPayload(payload) {
     ...payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {},
     ...payload.drift ? { drift: true } : {},
     ...payload.onMerge ? { onMerge: true } : {}
-  };
+  });
 }
 function mergePayload(payload) {
-  return {
+  return mergeRecordSchema.parse({
     v: PAYLOAD_VERSION,
     ticker: payload.ticker,
     run: payload.run,
     ...payload.attempt === undefined ? {} : { attempt: payload.attempt },
     merge: payload.merge
-  };
+  });
 }
 var RUN_ID2 = /^[1-9]\d*$/;
 function readDeploymentPayload(payload) {
   if (typeof payload !== "object" || payload === null)
     return;
-  const { v, hash: hash2, ticker, run, behind, merge: merge3, drift, attempt, onMerge } = payload;
-  if (v !== PAYLOAD_VERSION)
+  const { v: v2, hash: hash2, ticker: ticker2, run: run2, behind, merge: merge3, drift, attempt: attempt2, onMerge } = payload;
+  if (v2 !== PAYLOAD_VERSION)
     return;
-  const attempted = typeof attempt === "string" && RUN_ID2.test(attempt) ? { attempt } : {};
+  const attempted = typeof attempt2 === "string" && RUN_ID2.test(attempt2) ? { attempt: attempt2 } : {};
   if (merge3 !== undefined) {
     const number4 = typeof merge3 === "number" && Number.isInteger(merge3) && merge3 > 0;
     const plain = hash2 === undefined && behind === undefined;
-    return number4 && plain && typeof ticker === "string" && typeof run === "string" && RUN_ID2.test(run) ? { hash: "", ticker, run, ...attempted, merge: merge3 } : undefined;
+    return number4 && plain && typeof ticker2 === "string" && typeof run2 === "string" && RUN_ID2.test(run2) ? { hash: "", ticker: ticker2, run: run2, ...attempted, merge: merge3 } : undefined;
   }
-  if (typeof hash2 !== "string" || typeof ticker !== "string" || typeof run !== "string") {
+  if (typeof hash2 !== "string" || typeof ticker2 !== "string" || typeof run2 !== "string") {
     return;
   }
-  if (!RUN_ID2.test(run))
+  if (!RUN_ID2.test(run2))
     return;
-  const read3 = { hash: hash2, ticker, run, ...attempted };
+  const read3 = { hash: hash2, ticker: ticker2, run: run2, ...attempted };
   if (drift === true)
     read3.drift = true;
   if (onMerge === true)
@@ -59699,8 +59722,8 @@ function newestLast(a, b) {
   return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id;
 }
 function factOf(record3, payload) {
-  const { ticker } = payload;
-  const run = payload.attempt === undefined ? { run: payload.run } : { run: payload.run, attempt: payload.attempt };
+  const { ticker: ticker2 } = payload;
+  const run2 = payload.attempt === undefined ? { run: payload.run } : { run: payload.run, attempt: payload.attempt };
   const state = record3.status?.state ?? "";
   const at = new Date(record3.status?.createdAt ?? record3.createdAt);
   const onMerge = payload.onMerge ? { onMerge: true } : {};
@@ -59709,8 +59732,8 @@ function factOf(record3, payload) {
     const inSync = state === "success" && record3.status?.description === IN_SYNC_DESCRIPTION;
     return {
       kind: "succeeded",
-      ticker,
-      ...run,
+      ticker: ticker2,
+      ...run2,
       at: Number.isNaN(ended.getTime()) ? at : ended,
       hash: payload.hash,
       ...inSync ? { inSync } : {},
@@ -59721,8 +59744,8 @@ function factOf(record3, payload) {
     return {
       kind: "failed",
       reason: record3.status?.description || NO_REASON_RECORDED,
-      ticker,
-      ...run,
+      ticker: ticker2,
+      ...run2,
       at,
       ...onMerge
     };
@@ -59731,8 +59754,8 @@ function factOf(record3, payload) {
     kind: "open",
     deployment: record3.id,
     waiting: state !== "in_progress",
-    ticker,
-    ...run,
+    ticker: ticker2,
+    ...run2,
     ...payload.behind ? { behind: payload.behind } : {},
     ...payload.merge === undefined ? {} : { merge: payload.merge },
     ...onMerge
@@ -59989,14 +60012,14 @@ function attributionSource(github, input2, onFailure) {
 }
 
 // src/render/links.ts
-function runLinks(run) {
-  const base = `${run.repoUrl}/actions/runs/${run.runId}`;
-  const summary2 = `${base}/attempts/${run.runAttempt}`;
-  return { summary: summary2, log: run.jobId === undefined ? summary2 : `${base}/job/${run.jobId}` };
+function runLinks(run2) {
+  const base = `${run2.repoUrl}/actions/runs/${run2.runId}`;
+  const summary2 = `${base}/attempts/${run2.runAttempt}`;
+  return { summary: summary2, log: run2.jobId === undefined ? summary2 : `${base}/job/${run2.jobId}` };
 }
-function runUrl2(repoUrl, run, attempt) {
-  const base = `${repoUrl}/actions/runs/${run}`;
-  return attempt === undefined ? base : `${base}/attempts/${attempt}`;
+function runUrl2(repoUrl, run2, attempt2) {
+  const base = `${repoUrl}/actions/runs/${run2}`;
+  return attempt2 === undefined ? base : `${base}/attempts/${attempt2}`;
 }
 function dashboardSearchUrl(repoUrl, label) {
   return `${repoUrl}/issues?q=${encodeURIComponent(`is:issue is:open label:"${label}"`)}`;
@@ -60033,7 +60056,7 @@ var changeSchema = exports_external.strictObject({
     path: exports_external.string(),
     old: exports_external.string().optional(),
     new: exports_external.string().optional()
-  })).optional()
+  })).optional().describe("The old and new value at a path the repo lists in dashboard.showValues: a scalar of one line, and never one the tool marks secret. The only field of the file that may hold a property value.")
 });
 var diffSchema = {
   state: exports_external.enum(["pending", "in-sync", "drift"]),
@@ -60450,14 +60473,14 @@ function withReadDependencies(input2) {
 }
 
 // src/core/settle.ts
-function openRecordsOfRun(records, runId) {
+function openRecordsOfRun(records, runId2) {
   const found = new Map;
   for (const record3 of records) {
     const stackId2 = taskStackId(record3.task);
     if (stackId2 === undefined)
       continue;
     const fact = deployFacts([record3]).byStack.get(stackId2);
-    if (fact?.kind !== "open" || fact.run !== runId || fact.merge !== undefined)
+    if (fact?.kind !== "open" || fact.run !== runId2 || fact.merge !== undefined)
       continue;
     found.set(record3.id, {
       id: record3.id,
@@ -60499,14 +60522,14 @@ function linkOf(writer) {
 }
 async function openRecord(writer, opening) {
   const { github } = writer;
-  const run = { ticker: opening.ticker, run: writer.runId, attempt: writer.runAttempt };
+  const run2 = { ticker: opening.ticker, run: writer.runId, attempt: writer.runAttempt };
   const record3 = await github.createDeployment({
     sha: opening.sha,
     task: deploymentTask(opening.stackId),
     environment: opening.environment,
-    payload: "merge" in opening ? mergePayload({ ...run, merge: opening.merge }) : deploymentPayload({
+    payload: "merge" in opening ? mergePayload({ ...run2, merge: opening.merge }) : deploymentPayload({
       hash: opening.hash,
-      ...run,
+      ...run2,
       behind: opening.behind,
       ...opening.drift ? { drift: true } : {},
       ...opening.onMerge ? { onMerge: true } : {}
@@ -60623,15 +60646,15 @@ async function settleEndedRuns(github, records, repoUrl) {
   }
   queued.sort((a, b) => a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0);
   return await settle2(github, repoUrl, records, [...open2, ...queued], async (id) => {
-    const run = await github.getWorkflowRun(id);
-    return !run || run.completed;
+    const run2 = await github.getWorkflowRun(id);
+    return !run2 || run2.completed;
   });
 }
-async function settleRun(github, records, repoUrl, runId) {
-  const open2 = openRecordsOfRun(records, runId).map(({ id, stackId: stackId2, behind }) => ({
+async function settleRun(github, records, repoUrl, runId2) {
+  const open2 = openRecordsOfRun(records, runId2).map(({ id, stackId: stackId2, behind }) => ({
     deployment: id,
     stackId: stackId2,
-    run: runId,
+    run: runId2,
     ...behind ? { behind } : {}
   }));
   const settled = await settle2(github, repoUrl, records, open2, async () => true);
@@ -61029,46 +61052,46 @@ ${ALREADY_ENDED}
   }
   log.info(`Deployment record ${id}: ${name}, ${payload.onMerge ? "merged" : "ticked"} by ${payload.ticker}, approved diff hash ${payload.hash}. It is in progress.`);
   const progress = { deploying: false };
-  let attempt;
+  let attempt2;
   try {
-    attempt = await deploy(context3, repo, id_, payload, runUrl3, progress);
+    attempt2 = await deploy(context3, repo, id_, payload, runUrl3, progress);
   } catch (error63) {
     const end = unplannedEnd(progress.deploying);
-    attempt = {
+    attempt2 = {
       end,
       failed: `${name} was not deployed: ${deployFailureText(end.reason)}. ${message(error63)}`
     };
   }
-  const reason = reasonOf(attempt);
-  const state = recordStatus(attempt.end).state;
-  report.outcome = applyOutcome(attempt.end);
+  const reason = reasonOf(attempt2);
+  const state = recordStatus(attempt2.end).state;
+  report.outcome = applyOutcome(attempt2.end);
   report.reason = reason && deployFailureText(reason);
-  report.applied = attempt.summary;
+  report.applied = attempt2.summary;
   if (progress.milliseconds !== undefined)
     report.deployMilliseconds = progress.milliseconds;
   const failures = [];
   let ended = false;
   try {
-    await endRecord(context3, id, attempt.end);
+    await endRecord(context3, id, attempt2.end);
     ended = true;
     log.info(`${RESULT_DOT[report.outcome]} Deployment record ${id} ended as ${state}.`);
   } catch (error63) {
     failures.push(`Deployment record ${id} of ${name} could not be given its result (${state}): ${message(error63)}. The \`settle\` job of this run ends it. ${RECORD_PERMISSIONS}`);
   }
-  if (attempt.summary) {
+  if (attempt2.summary) {
     await writeSummary(context3, renderApplySummary({
       stackId: id_,
       ticker: payload.ticker,
       runUrl: runUrl3,
-      outcome: attempt.summary,
+      outcome: attempt2.summary,
       ...payload.onMerge ? { onMerge: true } : {}
     }));
   }
-  if (ended && attempt.row && attempt.setup) {
-    const made = attempt.row;
+  if (ended && attempt2.row && attempt2.setup) {
+    const made = attempt2.row;
     let written;
     try {
-      written = await swapRow(context3, attempt.setup, id_, (facts, attribution, outside) => {
+      written = await swapRow(context3, attempt2.setup, id_, (facts, attribution, outside) => {
         const fact = standingFailure(id_, facts.byStack.get(id_), outside);
         const failure2 = fact !== undefined ? {
           reason: fact.reason,
@@ -61078,7 +61101,7 @@ ${ALREADY_ENDED}
           ...fact.onMerge ? { onMerge: true } : {}
         } : undefined;
         const row = previewRow(id_, made, runLinks(context3), failure2, {
-          toolDiffInLog: attempt.toolDiffInLog
+          toolDiffInLog: attempt2.toolDiffInLog
         });
         return row.state === "pending" ? { ...row, attribution } : row;
       });
@@ -61097,14 +61120,14 @@ ${ALREADY_ENDED}
       }
     }
   }
-  if (attempt.failed)
-    failures.unshift(attempt.failed);
+  if (attempt2.failed)
+    failures.unshift(attempt2.failed);
   if (failures.length > 0)
     throw new ApplyFailedError(failures.join(`
 `));
 }
-function reasonOf(attempt) {
-  return attempt.end.kind === "failed" ? attempt.end.reason : undefined;
+function reasonOf(attempt2) {
+  return attempt2.end.kind === "failed" ? attempt2.end.reason : undefined;
 }
 function applied(result) {
   return result.ok ? { kind: "diff", diff: result.diff } : { kind: "preview-failed", reason: previewFailureText(result.reason) };
@@ -61383,13 +61406,13 @@ async function swapRow(context3, setup, id, make) {
   return dashboard.number;
 }
 var DEPLOY_GRACE_MS = 120000;
-function deployLimit(run, minutes) {
+function deployLimit(run2, minutes) {
   if (minutes === undefined)
-    return { run, ranOut: () => false };
+    return { run: run2, ranOut: () => false };
   let ranOut = false;
   return {
     run: async (one) => {
-      const result = await run({
+      const result = await run2({
         ...one,
         timeoutMs: one.timeoutMs ?? minutes * 60000,
         graceMs: one.graceMs ?? DEPLOY_GRACE_MS
@@ -61947,7 +61970,7 @@ function handOnConfirms(read4) {
   const result = { named: [], acts: [], stale: false, findings: [] };
   const rowTicks = new Set(read4.named.flatMap(({ tick }) => tick.kind === "row" ? [tick.stackId] : []));
   for (const one of read4.named) {
-    const { tick, ticker } = one;
+    const { tick, ticker: ticker2 } = one;
     if (tick.kind !== "confirm") {
       result.named.push(one);
       continue;
@@ -61957,11 +61980,11 @@ function handOnConfirms(read4) {
       result.acts.push({ tick, outcome: "clear" });
       continue;
     }
-    if (!ticker.named) {
-      if (ticker.reason === "not-in-newest-entry") {
+    if (!ticker2.named) {
+      if (ticker2.reason === "not-in-newest-entry") {
         result.findings.push({ kind: "moving", tick });
       } else {
-        result.findings.push({ kind: "nameless", tick, reason: ticker.reason });
+        result.findings.push({ kind: "nameless", tick, reason: ticker2.reason });
         result.acts.push({ tick, outcome: "clear", note: { kind: "orphan" } });
       }
       continue;
@@ -61991,14 +62014,14 @@ function handOnConfirms(read4) {
           hash: hash2,
           ...tick.section === "drift" ? { drift: true } : {}
         },
-        ticker,
+        ticker: ticker2,
         via: tick.section
       });
     }
     result.findings.push({
       kind: "confirm-handed-on",
       tick,
-      login: ticker.editor.login,
+      login: ticker2.editor.login,
       stackIds: handed
     });
   }
@@ -62024,21 +62047,21 @@ function triage(read4) {
     clearMerges: new Map,
     rescanHandled: false
   };
-  for (const { tick, ticker, via } of read4.named) {
+  for (const { tick, ticker: ticker2, via } of read4.named) {
     const fact = tick.kind === "row" ? read4.open.get(tick.stackId) : tick.kind === "merge" ? tick.stackIds.map((id) => read4.open.get(id)).find((one) => one !== undefined) : undefined;
     if (tick.kind === "bulk" || tick.kind === "confirm") {
       if (!read4.deploys) {
         out.findings.push({ kind: "deploys-off", tick });
         out.bulk.push({ tick, outcome: "clear" });
-      } else if (ticker.named) {
+      } else if (ticker2.named) {
         out.toJudge.push({
           target: { kind: "bulk", section: tick.section },
-          editor: ticker.editor
+          editor: ticker2.editor
         });
-      } else if (ticker.reason === "not-in-newest-entry") {
+      } else if (ticker2.reason === "not-in-newest-entry") {
         out.findings.push({ kind: "moving", tick });
       } else {
-        out.findings.push({ kind: "nameless", tick, reason: ticker.reason });
+        out.findings.push({ kind: "nameless", tick, reason: ticker2.reason });
         out.bulk.push({ tick, outcome: "clear", note: { kind: "orphan" } });
       }
       continue;
@@ -62052,27 +62075,27 @@ function triage(read4) {
     } else if (tick.kind === "row" && !read4.deploys) {
       out.findings.push({ kind: "deploys-off", tick });
       out.clear.set(tick.stackId, { hash: tick.hash, note: "deploys-off" });
-    } else if (ticker.named && tick.kind === "merge") {
+    } else if (ticker2.named && tick.kind === "merge") {
       for (const id of tick.stackIds) {
         const stack = read4.stacks.get(id);
         if (!stack)
           continue;
         out.toJudge.push({
           target: { kind: "merge", pr: tick.pr, stackIds: [id], rule: stack.tickers },
-          editor: ticker.editor
+          editor: ticker2.editor
         });
       }
-    } else if (ticker.named) {
+    } else if (ticker2.named) {
       const stack = tick.kind === "row" ? read4.stacks.get(tick.stackId) : undefined;
       out.toJudge.push({
         target: !stack ? { kind: "rescan" } : { kind: "stack", stackId: stackId(stack.stack), rule: stack.tickers },
-        editor: ticker.editor,
+        editor: ticker2.editor,
         ...via ? { via } : {}
       });
-    } else if (ticker.reason === "not-in-newest-entry") {
+    } else if (ticker2.reason === "not-in-newest-entry") {
       out.findings.push({ kind: "moving", tick });
     } else {
-      out.findings.push({ kind: "nameless", tick, reason: ticker.reason });
+      out.findings.push({ kind: "nameless", tick, reason: ticker2.reason });
       if (tick.kind === "row")
         out.clear.set(tick.stackId, { hash: tick.hash, note: true });
       else if (tick.kind === "merge")
@@ -62138,10 +62161,10 @@ function judgeTicks(read4, lookedUp) {
       rescanHandled = true;
   }
   const merges = [];
-  for (const [pr, ticker] of mergesAllowed) {
+  for (const [pr, ticker2] of mergesAllowed) {
     const tick = mergeTicks.get(pr);
     if (tick && !clearMerges.has(pr))
-      merges.push({ tick, ticker });
+      merges.push({ tick, ticker: ticker2 });
   }
   const { start, over } = capDeploys(allowed);
   for (const { stackId: id } of over) {
@@ -62178,18 +62201,18 @@ function judgeTicks(read4, lookedUp) {
   for (const [id, one] of clear)
     if (fromConfirm.has(id))
       one.unticked = true;
-  const tickers2 = new Map(start.map(({ stackId: id, ticker }) => [id, ticker]));
+  const tickers2 = new Map(start.map(({ stackId: id, ticker: ticker2 }) => [id, ticker2]));
   const deploys = [
     ...plan.start.map((id) => ({ id, behind: undefined })),
     ...plan.queued.map(({ stackId: id, behind }) => ({ id, behind }))
   ].flatMap(({ id, behind }) => {
     const stack = read4.stacks.get(id);
     const hash2 = hashes.get(id);
-    const ticker = tickers2.get(id);
-    if (!stack || hash2 === undefined || ticker === undefined)
+    const ticker2 = tickers2.get(id);
+    if (!stack || hash2 === undefined || ticker2 === undefined)
       return [];
     return [
-      { stackId: id, environment: stack.environment, ticker, hash: hash2, drift: drifted.has(id), behind }
+      { stackId: id, environment: stack.environment, ticker: ticker2, hash: hash2, drift: drifted.has(id), behind }
     ];
   });
   return {
@@ -62935,10 +62958,10 @@ async function resolveTicks(context3, handOn, report, watch) {
     }
     const tickers2 = await watch.time("ticks", () => nameTickers(known, (after) => after === undefined ? Promise.resolve(first) : github.readEditHistory(issue3.number, { size: HISTORY_PAGE_SIZE, after })));
     named2 = known.flatMap((tick, index) => {
-      const ticker = tickers2[index];
-      return ticker ? [{ tick, ticker }] : [];
+      const ticker2 = tickers2[index];
+      return ticker2 ? [{ tick, ticker: ticker2 }] : [];
     });
-    const moved = named2.some(({ ticker }) => !ticker.named && ticker.reason === "not-in-newest-entry");
+    const moved = named2.some(({ ticker: ticker2 }) => !ticker2.named && ticker2.reason === "not-in-newest-entry");
     if (!moved || reads === MAX_READS)
       break;
     log.info("The body moved between the read and the walk. Reading again.");
@@ -62972,18 +62995,18 @@ async function resolveTicks(context3, handOn, report, watch) {
   const bulkActs = [...confirms.acts, ...judgement.bulk];
   const failures = [];
   const started = [];
-  for (const { stackId: id, environment, ticker, hash: hash2, drift, behind } of judgement.deploys) {
+  for (const { stackId: id, environment, ticker: ticker2, hash: hash2, drift, behind } of judgement.deploys) {
     try {
       const record3 = await watch.time("opening", () => openRecord(context3, {
         stackId: id,
         environment,
         sha: context3.sha,
-        ticker,
+        ticker: ticker2,
         hash: hash2,
         behind,
         drift
       }));
-      started.push({ stackId: id, environment, deployment: record3.deployment, ticker, behind });
+      started.push({ stackId: id, environment, deployment: record3.deployment, ticker: ticker2, behind });
       if (record3.unfinished !== undefined)
         throw record3.unfinished;
       log.info(behind ? `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.` : `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued.`);
@@ -63204,7 +63227,7 @@ async function mergeAll(context3, config2, read4, ticks) {
     unrelated: config2.scan.unrelated
   }, ticks);
   for (const verdict of verdicts) {
-    const { tick, ticker } = verdict;
+    const { tick, ticker: ticker2 } = verdict;
     const name = tickName(tick);
     const target2 = {
       kind: "merge",
@@ -63214,10 +63237,10 @@ async function mergeAll(context3, config2, read4, ticks) {
     };
     const refuse2 = (refusal) => {
       result.cleared.push(tick.pr);
-      result.problems.push({ target: target2, login: ticker, ...mergeProblem(refusal) });
+      result.problems.push({ target: target2, login: ticker2, ...mergeProblem(refusal) });
     };
     if (!verdict.merge) {
-      log.info(`${name} was ticked by ${ticker}, ${mergeRefusalText(verdict.refusal)}`);
+      log.info(`${name} was ticked by ${ticker2}, ${mergeRefusalText(verdict.refusal)}`);
       refuse2(verdict.refusal);
       continue;
     }
@@ -63229,11 +63252,11 @@ async function mergeAll(context3, config2, read4, ticks) {
       return result;
     }
     if (!answer.merged) {
-      log.info(`${name} was ticked by ${ticker}, and GitHub refused the merge (${answer.status}): ${answer.message}`);
+      log.info(`${name} was ticked by ${ticker2}, and GitHub refused the merge (${answer.status}): ${answer.message}`);
       refuse2(mergeAnswerRefusal(answer));
       continue;
     }
-    log.info(`${name} was ticked by ${ticker} and is merged (${verdict.method}) as ${answer.sha.slice(0, 7)}.`);
+    log.info(`${name} was ticked by ${ticker2} and is merged (${verdict.method}) as ${answer.sha.slice(0, 7)}.`);
     result.mergedPrs.add(tick.pr);
     for (const id of tick.stackIds) {
       const stack = stacks2.get(id);
@@ -63244,14 +63267,14 @@ async function mergeAll(context3, config2, read4, ticks) {
           stackId: id,
           environment: stack.environment,
           sha: answer.sha,
-          ticker,
+          ticker: ticker2,
           merge: tick.pr
         });
         result.merged.push({
           stackId: id,
           environment: stack.environment,
           deployment: record3.deployment,
-          ticker
+          ticker: ticker2
         });
         if (record3.unfinished !== undefined)
           throw record3.unfinished;
@@ -63622,9 +63645,9 @@ async function auto(context3) {
       handed: () => handed
     };
   };
-  const attempt = async (what2, run) => {
+  const attempt2 = async (what2, run2) => {
     try {
-      await run();
+      await run2();
     } catch (error63) {
       failures.push(`${what2}: ${message3(error63)}`);
     }
@@ -63633,19 +63656,19 @@ async function auto(context3) {
     for (const mode of plan.modes) {
       const step3 = stepFor();
       context3.log.info(`Sluiceway runs ${mode}, for the ${context3.eventName} event of this run.`);
-      await attempt(mode, () => runMode(context3, mode, step3));
+      await attempt2(mode, () => runMode(context3, mode, step3));
       const entries = step3.handed();
       if (entries.length > 0 && started.length === 0)
         context3.handedOn?.();
       started.push(...entries);
       for (const entry3 of entries) {
         context3.log.info(`Sluiceway runs apply, for ${entry3.stack} (deployment record ${entry3.deployment}).`);
-        await attempt(`apply of ${entry3.stack}`, () => context3.run.apply(entry3.deployment, stepFor()));
+        await attempt2(`apply of ${entry3.stack}`, () => context3.run.apply(entry3.deployment, stepFor()));
       }
     }
     if (started.length > 0) {
       context3.log.info("Sluiceway runs settle, for the deploys this run started.");
-      await attempt("settle", () => context3.run.settle(stepFor()));
+      await attempt2("settle", () => context3.run.settle(stepFor()));
       context3.settled?.();
     }
   } finally {
@@ -63667,7 +63690,7 @@ function runMode(context3, mode, step3) {
 
 // src/modes/check-backend.ts
 var backendContext = (env) => {
-  return { adapter: tools, env, run: (run) => runProcess(run) };
+  return { adapter: tools, env, run: (run2) => runProcess(run2) };
 };
 
 // src/adapters/files-only.ts
@@ -64726,14 +64749,14 @@ function onMergeDeploys(input2) {
     });
   }
   const environments = new Map(input2.stacks.map(({ id, environment }) => [id, environment]));
-  const ticker = input2.mergedBy ?? "";
+  const ticker2 = input2.mergedBy ?? "";
   const deploys = [
     ...plan.start.map((stackId2) => ({ stackId: stackId2, behind: undefined })),
     ...plan.queued
   ].map(({ stackId: stackId2, behind }) => ({
     stackId: stackId2,
     environment: environments.get(stackId2) ?? "",
-    ticker,
+    ticker: ticker2,
     hash: hashes.get(stackId2) ?? "",
     drift: false,
     behind
@@ -64754,7 +64777,7 @@ function waitOf(input2, diff2) {
 
 // src/core/orphan-tick.ts
 function resolveOnItsWay(runs, ownRunId) {
-  return runs.some((run) => !run.completed && run.id !== ownRunId);
+  return runs.some((run2) => !run2.completed && run2.id !== ownRunId);
 }
 function tickAtLateRead(row2) {
   const { writes } = row2;
@@ -65148,7 +65171,7 @@ function previewPages(github, sha) {
       };
       if (!known) {
         try {
-          known = new Map((await github.listCheckRuns(sha)).map((run) => [run.name, run]));
+          known = new Map((await github.listCheckRuns(sha)).map((run2) => [run2.name, run2]));
         } catch (error63) {
           refused = refusal(error63) ?? { message: messageOf2(error63), permission: false };
           written.refused = refused;
@@ -65159,22 +65182,22 @@ function previewPages(github, sha) {
         const name = previewPageName(stackId2);
         try {
           const found = known.get(name);
-          let run;
+          let run2;
           if (found) {
             try {
-              run = await github.updateCheckRun(found.id, output2);
+              run2 = await github.updateCheckRun(found.id, output2);
               written.updated++;
             } catch (error63) {
               if (statusOf2(error63) !== 404)
                 throw error63;
             }
           }
-          if (!run) {
-            run = await github.createCheckRun({ sha, name, output: output2 });
+          if (!run2) {
+            run2 = await github.createCheckRun({ sha, name, output: output2 });
             written.created++;
           }
-          known.set(name, run);
-          written.urls.set(stackId2, run.htmlUrl);
+          known.set(name, run2);
+          written.urls.set(stackId2, run2.htmlUrl);
         } catch (error63) {
           const stopped = refuse2(error63, index);
           if (stopped)
@@ -65849,8 +65872,8 @@ async function lateDeploys(context3, stacks2, previewed, live) {
   try {
     const records = await readDeploymentRecords(github, stacks2.map(({ environment }) => environment), fallBack);
     const settled = await settleEndedRuns(github, records, context3.repoUrl);
-    for (const { stackId: id, run } of settled.ended) {
-      log.info(`Ended the open deployment of ${logGroupTitle(id)}: run ${run} is over and never reported a result.`);
+    for (const { stackId: id, run: run2 } of settled.ended) {
+      log.info(`Ended the open deployment of ${logGroupTitle(id)}: run ${run2} is over and never reported a result.`);
     }
     return {
       facts: deployFacts(settled.records),
@@ -66091,9 +66114,9 @@ async function previewAll(context3, stacks2, logDiff, showValues, prepared, sayP
   log.info(`Previewed ${plural2(previewed.length, "stack")} in ${seconds3(total)} with a pool of ${context3.pool.size}. Added up, the previews took ${seconds3(addedUp)}. The slowest was ${logGroupTitle(slowest.id)} with ${seconds3(slowest.milliseconds)}.`);
   return [...previewed, ...unpreparedFailures];
 }
-function liveRun(run, id, log) {
+function liveRun(run2, id, log) {
   const prefix = `[${logGroupTitle(id)}]`;
-  return (one) => run({ ...one, onStderrLine: (line3) => log.info(`${prefix} ${stripAnsi(line3)}`) });
+  return (one) => run2({ ...one, onStderrLine: (line3) => log.info(`${prefix} ${stripAnsi(line3)}`) });
 }
 function readDependenciesText(id, read4) {
   const named2 = read4.stackIds.length === 0 ? `${logGroupTitle(id)} reads no stack of this repo through its stack references.` : `${logGroupTitle(id)} reads ${read4.stackIds.map(logGroupTitle).join(", ")} through its stack references.`;
@@ -67301,7 +67324,7 @@ var handlers = {
   check: () => runCheck(backendContext),
   init: runInit
 };
-async function run(mode, directory, getInput2 = getInput, warn = (message5, title) => warning(message5, { title })) {
+async function run2(mode, directory, getInput2 = getInput, warn = (message5, title) => warning(message5, { title })) {
   refuseDeploymentId(mode, getInput2);
   const unused = unusedNotifyInputs(mode, getInput2);
   if (unused.length > 0) {
@@ -67324,7 +67347,7 @@ try {
   if (isPost) {
     await post(mode, (name) => getState(name), () => runSettle());
   } else {
-    await run(mode, actionDirectory(import.meta.url));
+    await run2(mode, actionDirectory(import.meta.url));
   }
 } catch (error63) {
   setFailed(error63 instanceof Error ? error63.message : String(error63));
