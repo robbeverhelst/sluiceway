@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.0](https://github.com/sluiceway/sluiceway/compare/v0.33.0...v0.34.0) (2026-09-24)
+
+
+### Features
+
+* a tick covers the values a row does not show ([#242](https://github.com/sluiceway/sluiceway/issues/242)) ([04d13ff](https://github.com/sluiceway/sluiceway/commit/04d13ffb01645731b60443ad5b08cccbca37e17e))
+
 ## [0.33.0](https://github.com/sluiceway/sluiceway/compare/v0.32.0...v0.33.0) (2026-09-24)
 
 
