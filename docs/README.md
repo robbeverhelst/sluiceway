@@ -11,6 +11,7 @@ The manual for Sluiceway. The [README](../README.md) is the short version.
 - [Start with init](init.md): a first workflow and `sluiceway.yaml`, written from what it finds in your repo.
 - [Configuration](configuration.md): every key of `sluiceway.yaml`.
 - [Credentials](credentials.md): how credentials reach the tool, recipes, private registries, and your own tooling.
+- [Policies](policies.md): Rego policies that Conftest runs against the preview of every pending stack, and what a failed one does to the row.
 
 ## Using it
 

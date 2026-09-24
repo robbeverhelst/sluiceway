@@ -175,6 +175,7 @@ const WRITTEN_KEYS = {
       gone: 1,
       dependsOn: ["b"],
       fingerprint: "f",
+      policyFailed: true,
     }),
   ),
   merge: keysOf(mergeMarker({ pr: 1, stackIds: ["a"], head: "h" })),

@@ -8575,25 +8575,25 @@ var require_picomatch = __commonJS((exports, module) => {
     }
     const matcher = (input2, returnObject = false) => {
       const { isMatch, match, output: output2 } = picomatch.test(input2, regex, options, { glob, posix });
-      const result = { glob, state, regex, posix, input: input2, output: output2, match, isMatch };
+      const result2 = { glob, state, regex, posix, input: input2, output: output2, match, isMatch };
       if (typeof opts.onResult === "function") {
-        opts.onResult(result);
+        opts.onResult(result2);
       }
       if (isMatch === false) {
-        result.isMatch = false;
-        return returnObject ? result : false;
+        result2.isMatch = false;
+        return returnObject ? result2 : false;
       }
       if (isIgnored(input2)) {
         if (typeof opts.onIgnore === "function") {
-          opts.onIgnore(result);
+          opts.onIgnore(result2);
         }
-        result.isMatch = false;
-        return returnObject ? result : false;
+        result2.isMatch = false;
+        return returnObject ? result2 : false;
       }
       if (typeof opts.onMatch === "function") {
-        opts.onMatch(result);
+        opts.onMatch(result2);
       }
-      return returnObject ? result : true;
+      return returnObject ? result2 : true;
     };
     if (returnState) {
       matcher.state = state;
@@ -28312,6 +28312,16 @@ function escapeText(text) {
   return text.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
+// src/core/policy.ts
+var result = exports_external.object({ msg: exports_external.string() });
+var entry = exports_external.object({
+  namespace: exports_external.string(),
+  successes: exports_external.number().int().nonnegative().optional(),
+  failures: exports_external.array(result).optional(),
+  warnings: exports_external.array(result).optional()
+});
+var report = exports_external.array(entry);
+
 // src/render/marker.ts
 var utf8 = new TextDecoder;
 var PAIRS = '((?: [^\\s="]+="[^"]*")*)';
@@ -28425,7 +28435,7 @@ var DEFAULT_NOTIFY_EVENTS = [
 // src/core/phases.ts
 function phaseKeysOf(config2) {
   return [
-    ...new Set(config2.stacks.flatMap((entry) => typeof entry.phase === "object" ? [entry.phase.from] : []))
+    ...new Set(config2.stacks.flatMap((entry2) => typeof entry2.phase === "object" ? [entry2.phase.from] : []))
   ];
 }
 var PHASE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -28476,14 +28486,14 @@ function waitsByPhase(input2) {
 
 // src/core/show-values.ts
 var patterns = new Map;
-function showValuesEntryProblem(entry) {
-  const quoted = JSON.stringify(entry);
-  if (entry === "")
+function showValuesEntryProblem(entry2) {
+  const quoted = JSON.stringify(entry2);
+  if (entry2 === "")
     return;
-  if (entry.includes("**")) {
+  if (entry2.includes("**")) {
     return `${quoted} uses "**". An entry matches one path, and "*" stands for part of one name. Write each path whose value may appear.`;
   }
-  if (!/[^*.[\]]/.test(entry)) {
+  if (!/[^*.[\]]/.test(entry2)) {
     return `${quoted} names no property. Write each path whose value may appear.`;
   }
   return;
@@ -28531,6 +28541,7 @@ var deployWindow = exports_external.strictObject({
     refuse(context, problem);
 });
 var deployWindows = exports_external.array(deployWindow);
+var policyPaths = exports_external.array(stackPath).transform((paths) => [...new Set(paths)]);
 var stackEntry = exports_external.strictObject({
   path: stackPath.describe("Directory of the stack, relative to the repo root."),
   name: text.describe("Name of the stack. Without it the entry covers every stack in path.").exactOptional(),
@@ -28556,20 +28567,21 @@ var stackEntry = exports_external.strictObject({
   envFile: text.refine((path) => !/[\r\n]/.test(path), {
     message: "envFile names one file on one line. To load several files, join them in a step before Sluiceway."
   }).describe("A file of NAME=value lines, relative to the repo root or absolute, that the tool gets for these stacks alone, on top of the job environment and the step's env-file input. Every value is masked first. A file that cannot be loaded fails the preview of these stacks and no other.").exactOptional(),
+  policies: policyPaths.describe("Directories or files of Rego policies these stacks are tested against, relative to the repo root, on top of the top level policies.").exactOptional(),
   options: exports_external.record(exports_external.string(), exports_external.unknown()).describe("Named adapter options of the tool. Only an entry with tool takes them.").exactOptional()
-}).superRefine((entry, context) => {
-  if (entry.tool !== undefined)
+}).superRefine((entry2, context) => {
+  if (entry2.tool !== undefined)
     return;
-  for (const name of Object.keys(entry.options ?? {})) {
+  for (const name of Object.keys(entry2.options ?? {})) {
     refuse(context, { kind: "option-without-tool", option: name }, ["options"]);
   }
 });
 var stackEntries = exports_external.array(stackEntry).superRefine((entries, context) => {
   const seen = new Map;
-  entries.forEach((entry, index) => {
+  entries.forEach((entry2, index) => {
     const id = stackId({
-      path: entry.path,
-      ...entry.name === undefined ? {} : { name: entry.name }
+      path: entry2.path,
+      ...entry2.name === undefined ? {} : { name: entry2.name }
     });
     const first = seen.get(id);
     if (first === undefined)
@@ -28601,8 +28613,8 @@ var configSchema = exports_external.strictObject({
     redact: exports_external.boolean().describe("Keep resource types, resource names and property names out of the issue. The summary stays full. Not access control.").default(false),
     personality: exports_external.boolean().describe("Show the header image and use the voice. false removes both.").default(true),
     readOnly: exports_external.boolean().describe("Draw no boxes: pending rows have none, there is no rescan box, and a line under the Pending heading says so. For a workflow that only scans.").default(false),
-    showValues: exports_external.array(text.superRefine((entry, context) => {
-      const problem = showValuesEntryProblem(entry);
+    showValues: exports_external.array(text.superRefine((entry2, context) => {
+      const problem = showValuesEntryProblem(entry2);
       if (problem !== undefined)
         refuse(context, { kind: "worded", text: problem });
     })).describe('Property paths whose old and new value may appear on the dashboard, as "old → new". Exact paths, or "*" for part of one name. Never a value the tool marks secret, and none at all with redact on.').default([]),
@@ -28624,6 +28636,7 @@ var configSchema = exports_external.strictObject({
     enabled: exports_external.boolean().describe("Check every stack for drift in each scan that a schedule starts, or that a person starts with Run workflow: changes made to real infrastructure outside the code. A stack with drift gets a row with a box, and a tick deploys the code as it is, which puts it back. Costs one more tool run per stack in those scans.").default(false)
   }).prefault({}),
   valueFingerprint: exports_external.boolean().describe("Cover the values a row does not show with a fingerprint on the row, so a tick approves them too: a value that changed between the tick and the deploy stops the deploy, and the row says so without naming the value. A value the tool marks secret never reaches the fingerprint. Turn it off, here or per stack, where a program makes a value that differs on every run.").default(true),
+  policies: policyPaths.describe("Directories or files of Rego policies, relative to the repo root, that every pending stack's preview is tested against with conftest, which the workflow installs. A policy that fails takes the box off the row until it passes and stops a deploy on merge. Empty runs nothing.").default([]),
   attribution: exports_external.strictObject({
     lookback: exports_external.int().min(1).max(LOOKBACK_MAX).describe("How many of the newest commits a job walks to say which pull requests made a row pending. A stack whose last deploy lies further back gets a line that says earlier changes exist. Each 100 commits cost one more GraphQL request.").default(LOOKBACK),
     names: exports_external.int().min(0).max(NAMES_MAX).describe("How many pull requests and direct pushes a row and a line of Recently deployed name, newest first. The rest is a count. 0 names none and always counts.").default(NAMED_ON_A_ROW)
@@ -28644,10 +28657,10 @@ var configSchema = exports_external.strictObject({
     if (first !== index)
       refuse(context, { kind: "phase-named-twice", phase, first }, ["phases", index]);
   });
-  config2.stacks.forEach((entry, index) => {
-    if (typeof entry.phase !== "string" || config2.phases.includes(entry.phase))
+  config2.stacks.forEach((entry2, index) => {
+    if (typeof entry2.phase !== "string" || config2.phases.includes(entry2.phase))
       return;
-    refuse(context, { kind: "unknown-phase", phase: entry.phase, phases: config2.phases }, [
+    refuse(context, { kind: "unknown-phase", phase: entry2.phase, phases: config2.phases }, [
       "stacks",
       index,
       "phase"
@@ -28669,12 +28682,12 @@ class ConfigError extends Error {
 }
 function parseConfig(text2) {
   const raw = text2 === undefined ? null : readYaml(text2);
-  const result = configSchema.safeParse(raw ?? {});
-  if (!result.success) {
-    const found = result.error.issues.flatMap((issue2) => classify(issue2, raw));
+  const result2 = configSchema.safeParse(raw ?? {});
+  if (!result2.success) {
+    const found = result2.error.issues.flatMap((issue2) => classify(issue2, raw));
     throw new ConfigError(inFileOrder(found, raw).map((one) => one.issue));
   }
-  return result.data;
+  return result2.data;
 }
 function readYaml(text2) {
   const lineCounter2 = new $LineCounter;
@@ -28839,26 +28852,26 @@ function unwrap(schema) {
   }
   return inner;
 }
-function ignoreGlob(entry) {
-  return typeof entry === "string" ? entry : entry.glob;
+function ignoreGlob(entry2) {
+  return typeof entry2 === "string" ? entry2 : entry2.glob;
 }
 function ignoredStacks(config2, found) {
   return found.map(stackId).sort((a, b) => a < b ? -1 : a > b ? 1 : 0).flatMap((id) => {
-    const entry = config2.ignore.find((one) => globMatcher([ignoreGlob(one)])(id));
-    return entry === undefined || typeof entry === "string" ? [] : [{ stackId: id, reason: entry.reason }];
+    const entry2 = config2.ignore.find((one) => globMatcher([ignoreGlob(one)])(id));
+    return entry2 === undefined || typeof entry2 === "string" ? [] : [{ stackId: id, reason: entry2.reason }];
   });
 }
 function withIds(config2, found) {
   const given = new Map;
   const issues = [];
-  config2.stacks.forEach((entry, index) => {
-    if (entry.id === undefined)
+  config2.stacks.forEach((entry2, index) => {
+    if (entry2.id === undefined)
       return;
     const path = ["stacks", index, "id"];
-    const covered = found.filter((stack) => covers(entry, stack));
+    const covered = found.filter((stack) => covers(entry2, stack));
     const [only] = covered;
     if (only === undefined) {
-      issues.push({ kind: "id-covers-no-stack", id: entry.id, path });
+      issues.push({ kind: "id-covers-no-stack", id: entry2.id, path });
     } else if (covered.length > 1) {
       issues.push({ kind: "id-covers-stacks", stackIds: covered.map(stackId), path });
     } else if (given.has(only)) {
@@ -28869,17 +28882,17 @@ function withIds(config2, found) {
         path
       });
     } else {
-      given.set(only, entry.id);
+      given.set(only, entry2.id);
     }
   });
   const taken = new Set(found.filter((stack) => !given.has(stack)).map(stackId));
-  config2.stacks.forEach((entry, index) => {
-    if (entry.id === undefined || ![...given.values()].includes(entry.id))
+  config2.stacks.forEach((entry2, index) => {
+    if (entry2.id === undefined || ![...given.values()].includes(entry2.id))
       return;
-    if (taken.has(entry.id)) {
-      issues.push({ kind: "id-taken", id: entry.id, path: ["stacks", index, "id"] });
+    if (taken.has(entry2.id)) {
+      issues.push({ kind: "id-taken", id: entry2.id, path: ["stacks", index, "id"] });
     }
-    taken.add(entry.id);
+    taken.add(entry2.id);
   });
   if (issues.length > 0)
     throw new ConfigError(once(issues));
@@ -28901,12 +28914,12 @@ function once(issues) {
 var DEFAULT_ENVIRONMENT = "sluiceway";
 function applyConfig(config2, found) {
   const stacks = knownStacks(found, config2.ignore.map(ignoreGlob));
-  const misses = config2.stacks.flatMap((entry, index) => {
-    const inPath = stacks.filter((stack) => stack.path === entry.path);
-    if (inPath.some((stack) => covers(entry, stack)))
+  const misses = config2.stacks.flatMap((entry2, index) => {
+    const inPath = stacks.filter((stack) => stack.path === entry2.path);
+    if (inPath.some((stack) => covers(entry2, stack)))
       return [];
-    const ignored = found.filter((stack) => covers(entry, stack));
-    return [{ ...miss(entry, inPath, ignored), path: ["stacks", index] }];
+    const ignored = found.filter((stack) => covers(entry2, stack));
+    return [{ ...miss(entry2, inPath, ignored), path: ["stacks", index] }];
   });
   if (misses.length > 0)
     throw new ConfigError(misses);
@@ -28920,38 +28933,42 @@ function applyConfig(config2, found) {
   return stacks.map((stack) => {
     const entries = entriesOf(config2, stack);
     const id = stackId(stack);
-    const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
-    const drift = entries.findLast((entry) => entry.drift)?.drift?.enabled;
-    const deploy = entries.findLast((entry) => entry.deploy)?.deploy;
-    const valueFingerprint = entries.findLast((entry) => entry.valueFingerprint !== undefined)?.valueFingerprint;
-    const envFile = entries.findLast((entry) => entry.envFile !== undefined)?.envFile;
-    const windows = entries.findLast((entry) => entry.deployWindows !== undefined)?.deployWindows ?? config2.deployWindows;
+    const previewTimeout = entries.findLast((entry2) => entry2.previewTimeout)?.previewTimeout;
+    const drift = entries.findLast((entry2) => entry2.drift)?.drift?.enabled;
+    const deploy = entries.findLast((entry2) => entry2.deploy)?.deploy;
+    const valueFingerprint = entries.findLast((entry2) => entry2.valueFingerprint !== undefined)?.valueFingerprint;
+    const envFile = entries.findLast((entry2) => entry2.envFile !== undefined)?.envFile;
+    const windows = entries.findLast((entry2) => entry2.deployWindows !== undefined)?.deployWindows ?? config2.deployWindows;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
+    const policies = [
+      ...new Set([...config2.policies, ...entries.flatMap((entry2) => entry2.policies ?? [])])
+    ];
     return {
       stack,
-      environment: entries.findLast((entry) => entry.environment)?.environment ?? DEFAULT_ENVIRONMENT,
-      tickers: entries.findLast((entry) => entry.tickers)?.tickers ?? config2.tickers,
-      inputs: [...new Set(entries.flatMap((entry) => entry.inputs ?? []))],
+      environment: entries.findLast((entry2) => entry2.environment)?.environment ?? DEFAULT_ENVIRONMENT,
+      tickers: entries.findLast((entry2) => entry2.tickers)?.tickers ?? config2.tickers,
+      inputs: [...new Set(entries.flatMap((entry2) => entry2.inputs ?? []))],
       ...previewTimeout === undefined ? {} : { previewTimeout },
       ...dependsOnOf(entries, derived2.get(id)),
       ...phase === undefined ? {} : { phase },
       ...from === undefined ? {} : { phaseFrom: from },
-      ...entries.some((entry) => entry.dependsOn === DEPENDS_ON_AUTO) ? { dependsOnAuto: true } : {},
+      ...entries.some((entry2) => entry2.dependsOn === DEPENDS_ON_AUTO) ? { dependsOnAuto: true } : {},
       ...drift === undefined ? {} : { drift },
       ...deploy === "on-merge" ? { deploy } : {},
       ...valueFingerprint === undefined ? {} : { valueFingerprint },
       ...envFile === undefined ? {} : { envFile },
-      ...windows.length === 0 ? {} : { deployWindows: windows }
+      ...windows.length === 0 ? {} : { deployWindows: windows },
+      ...policies.length === 0 ? {} : { policies }
     };
   });
 }
 function entriesOf(config2, stack) {
-  return config2.stacks.filter((entry) => covers(entry, stack)).sort((a, b) => Number(a.name !== undefined) - Number(b.name !== undefined));
+  return config2.stacks.filter((entry2) => covers(entry2, stack)).sort((a, b) => Number(a.name !== undefined) - Number(b.name !== undefined));
 }
 function dependsOnOf(entries, fromPhases = []) {
   const ids = [
-    ...new Set([...entries.flatMap((entry) => listed(entry.dependsOn)), ...fromPhases])
+    ...new Set([...entries.flatMap((entry2) => listed(entry2.dependsOn)), ...fromPhases])
   ].sort(byCodeUnit3);
   return ids.length === 0 ? {} : { dependsOn: ids };
 }
@@ -28960,16 +28977,16 @@ function phasesOf(config2, stacks) {
   const from = new Map;
   const issues = [];
   for (const stack of stacks) {
-    const entry = entriesOf(config2, stack).findLast((one) => one.phase !== undefined);
-    if (entry?.phase === undefined)
+    const entry2 = entriesOf(config2, stack).findLast((one) => one.phase !== undefined);
+    if (entry2?.phase === undefined)
       continue;
     const id = stackId(stack);
-    if (typeof entry.phase === "string") {
-      phaseOf.set(id, entry.phase);
+    if (typeof entry2.phase === "string") {
+      phaseOf.set(id, entry2.phase);
       continue;
     }
-    const path = ["stacks", config2.stacks.indexOf(entry), "phase"];
-    const key = entry.phase.from;
+    const path = ["stacks", config2.stacks.indexOf(entry2), "phase"];
+    const key = entry2.phase.from;
     const read = stack.phaseKeys?.[key];
     if (read === undefined) {
       issues.push({ kind: "no-phase-key", stackId: id, key, path });
@@ -28991,7 +29008,7 @@ function byCodeUnit3(a, b) {
 function checkDependsOn(config2, found, stacks, phaseOf) {
   const known = new Set(stacks.map(stackId));
   const all = new Set(found.map(stackId));
-  const issues = config2.stacks.flatMap((entry, index) => listed(entry.dependsOn).flatMap((id, at) => {
+  const issues = config2.stacks.flatMap((entry2, index) => listed(entry2.dependsOn).flatMap((id, at) => {
     const path = ["stacks", index, "dependsOn", at];
     if (all.has(id) && !known.has(id)) {
       const reason = ignoredStacks(config2, found).find((one) => one.stackId === id)?.reason;
@@ -29016,9 +29033,9 @@ function checkDependsOn(config2, found, stacks, phaseOf) {
       ];
     }
     const self = stacks.find((stack) => stackId(stack) === id);
-    if (self && covers(entry, self))
+    if (self && covers(entry2, self))
       return [{ kind: "depends-on-itself", stackId: id, path }];
-    const earlier = stacks.filter((stack) => covers(entry, stack)).map(stackId).sort(byCodeUnit3).find((one) => throughPhase(config2.phases, phaseOf, id, one));
+    const earlier = stacks.filter((stack) => covers(entry2, stack)).map(stackId).sort(byCodeUnit3).find((one) => throughPhase(config2.phases, phaseOf, id, one));
     if (earlier !== undefined)
       return [
         {
@@ -29077,19 +29094,19 @@ function dependencyCircles(edges) {
     walk([id]);
   return [...circles.values()].sort((a, b) => byCodeUnit3(a[0] ?? "", b[0] ?? ""));
 }
-function covers(entry, stack) {
-  return entry.path === stack.path && (entry.name === undefined || entry.name === stack.name);
+function covers(entry2, stack) {
+  return entry2.path === stack.path && (entry2.name === undefined || entry2.name === stack.name);
 }
-function miss(entry, inPath, ignored) {
+function miss(entry2, inPath, ignored) {
   if (ignored.length > 0)
     return { kind: "entry-only-ignored", stackIds: ignored.map(stackId) };
-  if (entry.name === undefined || inPath.length === 0) {
-    return { kind: "entry-no-stack", stackPath: entry.path };
+  if (entry2.name === undefined || inPath.length === 0) {
+    return { kind: "entry-no-stack", stackPath: entry2.path };
   }
   return {
     kind: "entry-no-named-stack",
-    name: entry.name,
-    stackPath: entry.path,
+    name: entry2.name,
+    stackPath: entry2.path,
     names: inPath.flatMap((stack) => stack.name === undefined ? [] : [stack.name])
   };
 }
@@ -29180,17 +29197,17 @@ function discoverHelm(root, config2) {
   const stacks = [];
   const optionProblems = [];
   const problems = [];
-  config2.stacks.forEach((entry, index) => {
-    if (entry.tool !== HELM)
+  config2.stacks.forEach((entry2, index) => {
+    if (entry2.tool !== HELM)
       return;
-    const parsed = parseHelmOptions(entry.options, index);
+    const parsed = parseHelmOptions(entry2.options, index);
     if (!parsed.ok) {
       optionProblems.push(...parsed.problems);
       return;
     }
     const { options } = parsed;
-    const dir = join(root, entry.path);
-    const shown = JSON.stringify(entry.path);
+    const dir = join(root, entry2.path);
+    const shown = JSON.stringify(entry2.path);
     if (!isDirectory(dir)) {
       problems.push(`stacks[${index}]: ${shown} is not a directory of the repo. ${WHAT_PATH_IS}`);
       return;
@@ -29242,8 +29259,8 @@ function discoverHelm(root, config2) {
       ...chart === undefined ? { builds: [] } : chart
     };
     stacks.push({
-      path: entry.path,
-      ...entry.name === undefined ? {} : { name: entry.name },
+      path: entry2.path,
+      ...entry2.name === undefined ? {} : { name: entry2.name },
       options: { ...bag }
     });
   });
@@ -29393,11 +29410,11 @@ function walk(dir, recursive2, prefix = "") {
   } catch {
     return [];
   }
-  return entries.sort((a, b) => byCodeUnit4(a.name, b.name)).flatMap((entry) => {
-    const path = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
-    if (entry.isDirectory())
+  return entries.sort((a, b) => byCodeUnit4(a.name, b.name)).flatMap((entry2) => {
+    const path = prefix === "" ? entry2.name : `${prefix}/${entry2.name}`;
+    if (entry2.isDirectory())
       return recursive2 ? walk(dir, true, path) : [];
-    return entry.isFile() ? [path] : [];
+    return entry2.isFile() ? [path] : [];
   });
 }
 function byCodeUnit4(a, b) {
@@ -29405,7 +29422,7 @@ function byCodeUnit4(a, b) {
 }
 function filesIn(dir) {
   try {
-    return readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isFile()).map((entry) => entry.name);
+    return readdirSync(dir, { withFileTypes: true }).filter((entry2) => entry2.isFile()).map((entry2) => entry2.name);
   } catch {
     return;
   }
@@ -29417,16 +29434,16 @@ function discoverKubectl(root, config2) {
   const stacks = [];
   const optionProblems = [];
   const problems = [];
-  config2.stacks.forEach((entry, index) => {
-    if (entry.tool !== KUBECTL)
+  config2.stacks.forEach((entry2, index) => {
+    if (entry2.tool !== KUBECTL)
       return;
-    const parsed = parseKubectlOptions(entry.options, index);
+    const parsed = parseKubectlOptions(entry2.options, index);
     if (!parsed.ok) {
       optionProblems.push(...parsed.problems);
       return;
     }
-    const shown = JSON.stringify(entry.path);
-    const dir = join3(root, entry.path);
+    const shown = JSON.stringify(entry2.path);
+    const dir = join3(root, entry2.path);
     const files = filesIn(dir);
     if (files === undefined) {
       problems.push(`stacks[${index}]: ${shown} is not a directory of the repo. ${NAMES}`);
@@ -29440,7 +29457,7 @@ function discoverKubectl(root, config2) {
     const nested = recursive2 ? nestedKustomizations(dir) : [];
     if (nested.length > 0) {
       for (const sub of nested) {
-        problems.push(`stacks[${index}]: ${JSON.stringify(`${entry.path}/${sub}`)} holds a kustomization, which kubectl -R would read as a manifest. Declare it as a stack of its own, or keep it out of ${shown}.`);
+        problems.push(`stacks[${index}]: ${JSON.stringify(`${entry2.path}/${sub}`)} holds a kustomization, which kubectl -R would read as a manifest. Declare it as a stack of its own, or keep it out of ${shown}.`);
       }
       return;
     }
@@ -29450,8 +29467,8 @@ function discoverKubectl(root, config2) {
     }
     const options = { tool: KUBECTL, ...parsed.options };
     stacks.push({
-      path: entry.path,
-      ...entry.name === undefined ? {} : { name: entry.name },
+      path: entry2.path,
+      ...entry2.name === undefined ? {} : { name: entry2.name },
       options: { ...options }
     });
   });
@@ -29525,11 +29542,11 @@ function discoverOpenTofu(root, config2) {
   const optionProblems = [];
   const problems = [];
   const declaredBy = new Map;
-  config2.stacks.forEach((entry, index) => {
-    if (!isFamilyTool(entry.tool))
+  config2.stacks.forEach((entry2, index) => {
+    if (!isFamilyTool(entry2.tool))
       return;
-    const tool = entry.tool;
-    const parsed = parseOpenTofuOptions(entry.options, index, tool);
+    const tool = entry2.tool;
+    const parsed = parseOpenTofuOptions(entry2.options, index, tool);
     if (!parsed.ok) {
       optionProblems.push(...parsed.problems);
       return;
@@ -29539,23 +29556,23 @@ function discoverOpenTofu(root, config2) {
     if (wrapper !== undefined && parsed.options.varFiles.length > 0) {
       optionProblems.push(wrapper === TERRAGRUNT ? `stacks[${index}].options.varFiles: a Terragrunt unit passes its var files in its own terragrunt.hcl (extra_arguments), so the entry takes none.` : `stacks[${index}].options.varFiles: a CDK for Terraform app sets its variables in code, so the entry takes none.`);
     }
-    if (wrapper === CDKTF && entry.name === undefined) {
+    if (wrapper === CDKTF && entry2.name === undefined) {
       optionProblems.push(`stacks[${index}].name: an entry with wrapper: cdktf names the CDK for Terraform stack it deploys, as the app calls it.`);
     }
-    if (wrapper === CDKTF && entry.name !== undefined && !CDKTF_STACK_NAME.test(entry.name)) {
-      optionProblems.push(`stacks[${index}].name: ${JSON.stringify(entry.name)} is not a CDK for Terraform stack name: letters, digits, "-" and "_" only.`);
+    if (wrapper === CDKTF && entry2.name !== undefined && !CDKTF_STACK_NAME.test(entry2.name)) {
+      optionProblems.push(`stacks[${index}].name: ${JSON.stringify(entry2.name)} is not a CDK for Terraform stack name: letters, digits, "-" and "_" only.`);
     }
     const kind = `tool: ${tool}${wrapper === undefined ? "" : ` and wrapper: ${wrapper}`}`;
-    const earlier = declaredBy.get(entry.path);
+    const earlier = declaredBy.get(entry2.path);
     if (earlier === undefined) {
-      declaredBy.set(entry.path, { index, kind });
+      declaredBy.set(entry2.path, { index, kind });
     } else if (earlier.kind !== kind) {
-      optionProblems.push(`stacks[${index}]: ${JSON.stringify(entry.path)} is declared with ${earlier.kind} by stacks[${earlier.index}]. The stacks of one directory share its init, so they name the same tool and wrapper.`);
+      optionProblems.push(`stacks[${index}]: ${JSON.stringify(entry2.path)} is declared with ${earlier.kind} by stacks[${earlier.index}]. The stacks of one directory share its init, so they name the same tool and wrapper.`);
     }
     if (optionProblems.length > before)
       return;
-    const dir = join4(root, entry.path);
-    const shown = JSON.stringify(entry.path);
+    const dir = join4(root, entry2.path);
+    const shown = JSON.stringify(entry2.path);
     const files = filesIn2(dir);
     const names = wrapper === TERRAGRUNT ? "the directory of one Terragrunt unit" : wrapper === CDKTF ? "the directory of a CDK for Terraform app" : "the directory of a root module";
     const about = wrapper === undefined ? `An entry with tool: ${tool}` : `An entry with wrapper: ${wrapper}`;
@@ -29595,8 +29612,8 @@ function discoverOpenTofu(root, config2) {
       return;
     const options = { tool, ...parsed.options };
     stacks.push({
-      path: entry.path,
-      ...entry.name === undefined ? {} : { name: entry.name },
+      path: entry2.path,
+      ...entry2.name === undefined ? {} : { name: entry2.name },
       options: { ...options }
     });
   });
@@ -29606,7 +29623,7 @@ function discoverOpenTofu(root, config2) {
 }
 function filesIn2(dir) {
   try {
-    return readdirSync2(dir, { withFileTypes: true }).filter((entry) => entry.isFile()).map((entry) => entry.name);
+    return readdirSync2(dir, { withFileTypes: true }).filter((entry2) => entry2.isFile()).map((entry2) => entry2.name);
   } catch {
     return;
   }
@@ -29871,9 +29888,9 @@ function explainRootModules(root, config2) {
 function judge(root, config2) {
   const repo = readRepo(root);
   const declared = new Map;
-  config2.stacks.forEach((entry, index) => {
-    if (entry.tool !== undefined && !declared.has(entry.path))
-      declared.set(entry.path, index);
+  config2.stacks.forEach((entry2, index) => {
+    if (entry2.tool !== undefined && !declared.has(entry2.path))
+      declared.set(entry2.path, index);
   });
   const namedBy = new Map;
   for (const directory of repo.directories) {
@@ -29941,7 +29958,7 @@ function readRepo(root) {
     } catch {
       return;
     }
-    const files = entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort(byCodeUnit5);
+    const files = entries.filter((entry2) => entry2.isFile()).map((entry2) => entry2.name).sort(byCodeUnit5);
     const path = relative3 || ".";
     const terragrunt = files.find((file2) => TERRAGRUNT_FILE.test(file2));
     if (terragrunt !== undefined && repo.terragrunt === undefined) {
@@ -29954,10 +29971,10 @@ function readRepo(root) {
     } else if (chosenFiles.length > 0) {
       repo.varDirectories.set(path, chosenFiles);
     }
-    for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name.startsWith(".") || SKIPPED.has(entry.name))
+    for (const entry2 of entries) {
+      if (!entry2.isDirectory() || entry2.name.startsWith(".") || SKIPPED.has(entry2.name))
         continue;
-      walk2(relative3 === "" ? entry.name : `${relative3}/${entry.name}`);
+      walk2(relative3 === "" ? entry2.name : `${relative3}/${entry2.name}`);
     }
   };
   walk2("");
@@ -30115,9 +30132,9 @@ async function discover(root, config2) {
         problems.push(`${slashed(relative3(root, projectFile))}: ${error62.message}`);
       }
     }
-    for (const entry of entries) {
-      if (entry.isDirectory() && !SKIPPED2.has(entry.name))
-        await walk2(join6(dir, entry.name));
+    for (const entry2 of entries) {
+      if (entry2.isDirectory() && !SKIPPED2.has(entry2.name))
+        await walk2(join6(dir, entry2.name));
     }
   };
   await walk2(root);
@@ -30140,12 +30157,12 @@ function keysOf(project, keys) {
   }
   return Object.keys(read2).length === 0 ? undefined : read2;
 }
-function configText(entry) {
-  if (typeof entry === "string")
-    return entry;
-  if (!isMapping2(entry) || entry.secret === true)
+function configText(entry2) {
+  if (typeof entry2 === "string")
+    return entry2;
+  if (!isMapping2(entry2) || entry2.secret === true)
     return;
-  const text5 = entry.value ?? entry.default;
+  const text5 = entry2.value ?? entry2.default;
   return typeof text5 === "string" ? text5 : undefined;
 }
 function isMapping2(value) {
@@ -30183,7 +30200,7 @@ function stackNames(files, extension) {
   return files.filter((file2) => file2.startsWith(prefix) && file2.endsWith(extension)).map((file2) => file2.slice(prefix.length, -extension.length)).filter((name) => name !== "");
 }
 function fileNames(entries) {
-  return entries.filter((entry) => !entry.isDirectory()).map((entry) => entry.name);
+  return entries.filter((entry2) => !entry2.isDirectory()).map((entry2) => entry2.name);
 }
 async function fileNamesIn(dir) {
   try {
@@ -30206,20 +30223,20 @@ function compare(a, b) {
 var TOOLS = [OPENTOFU, TERRAFORM, HELM, KUBECTL];
 var DISCOVERY_SWITCHES = [ROOT_MODULES];
 async function discoverAll(root, config2) {
-  const toolProblems = config2.stacks.flatMap((entry, index) => {
-    if (entry.tool === undefined)
+  const toolProblems = config2.stacks.flatMap((entry2, index) => {
+    if (entry2.tool === undefined)
       return [];
-    if (!TOOLS.includes(entry.tool)) {
+    if (!TOOLS.includes(entry2.tool)) {
       return [
-        `stacks[${index}].tool: unknown tool ${JSON.stringify(entry.tool)}. Known tools: ${TOOLS.join(", ")}.`
+        `stacks[${index}].tool: unknown tool ${JSON.stringify(entry2.tool)}. Known tools: ${TOOLS.join(", ")}.`
       ];
     }
     return [
-      ...entry.dependsOn === DEPENDS_ON_AUTO ? [
-        `stacks[${index}].dependsOn: ${DEPENDS_ON_AUTO} reads the stack references of a Pulumi program, and an ${entry.tool} stack has none. Name the stack ids instead.`
+      ...entry2.dependsOn === DEPENDS_ON_AUTO ? [
+        `stacks[${index}].dependsOn: ${DEPENDS_ON_AUTO} reads the stack references of a Pulumi program, and an ${entry2.tool} stack has none. Name the stack ids instead.`
       ] : [],
-      ...typeof entry.phase === "object" ? [
-        `stacks[${index}].phase: from reads a key of a Pulumi project file, and an ${entry.tool} stack has none. Name the phase instead.`
+      ...typeof entry2.phase === "object" ? [
+        `stacks[${index}].phase: from reads a key of a Pulumi project file, and an ${entry2.tool} stack has none. Name the phase instead.`
       ] : []
     ];
   });
@@ -30611,8 +30628,8 @@ function cdktfNeeds(root, path) {
     { what: "the backend the app sets in code", namedIn: file2, ways: [] }
   ];
   const named = new Map;
-  for (const entry of Array.isArray(listed3) ? listed3 : []) {
-    const spec = typeof entry === "string" ? entry : typeof entry === "object" && entry !== null && typeof entry.name === "string" ? entry.name : undefined;
+  for (const entry2 of Array.isArray(listed3) ? listed3 : []) {
+    const spec = typeof entry2 === "string" ? entry2 : typeof entry2 === "object" && entry2 !== null && typeof entry2.name === "string" ? entry2.name : undefined;
     if (spec === undefined)
       continue;
     const name = (spec.split("@")[0] ?? "").split("/").at(-1) ?? "";
@@ -31273,7 +31290,7 @@ function checkSetup(config2, found, files, references = new Map) {
   const reads = readsOf(claimants, files, new Set(claimed.unclaimed), references);
   return {
     stacks,
-    ignore: config2.ignore.map((entry) => ignoreReport(ignoreGlob(entry), found)),
+    ignore: config2.ignore.map((entry2) => ignoreReport(ignoreGlob(entry2), found)),
     unclaimed: groups(unclaimed),
     suggested: suggestedUnrelated(unclaimed),
     shared: sharedFiles(unclaimed),
@@ -31357,14 +31374,14 @@ async function repoFiles(root) {
   const files = [];
   const walk4 = async (relative6) => {
     const entries = await readdir2(join12(root, ...relative6), { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name === ".git")
+    for (const entry2 of entries) {
+      if (entry2.name === ".git")
         continue;
-      if (entry.isDirectory()) {
-        if (!SKIPPED3.has(entry.name))
-          await walk4([...relative6, entry.name]);
+      if (entry2.isDirectory()) {
+        if (!SKIPPED3.has(entry2.name))
+          await walk4([...relative6, entry2.name]);
       } else {
-        files.push([...relative6, entry.name].join("/"));
+        files.push([...relative6, entry2.name].join("/"));
       }
     }
   };
@@ -31415,7 +31432,7 @@ var WORKFLOW_DIRECTORY = ".github/workflows";
 function readWorkflowFiles(root) {
   let names;
   try {
-    names = readdirSync6(join13(root, WORKFLOW_DIRECTORY), { withFileTypes: true }).filter((entry) => entry.isFile() && /\.ya?ml$/.test(entry.name)).map((entry) => entry.name);
+    names = readdirSync6(join13(root, WORKFLOW_DIRECTORY), { withFileTypes: true }).filter((entry2) => entry2.isFile() && /\.ya?ml$/.test(entry2.name)).map((entry2) => entry2.name);
   } catch {
     return [];
   }
@@ -31628,22 +31645,22 @@ function has(granted, scope) {
   return granted === "write-all" || isRecord3(granted) && granted[scope] === "write";
 }
 function checkWorkflows(files, config2) {
-  const report = { workflows: [], warnings: [], notes: [] };
+  const report2 = { workflows: [], warnings: [], notes: [] };
   for (const { path, text: text7 } of files) {
     const parsed = parseWorkflow(text7);
     if (parsed === "unreadable") {
       if (/sluiceway\/sluiceway@/i.test(text7)) {
-        report.warnings.push({ kind: "unreadable", path });
+        report2.warnings.push({ kind: "unreadable", path });
       }
       continue;
     }
     if (parsed === undefined)
       continue;
-    checkOne(path, parsed, config2, report);
+    checkOne(path, parsed, config2, report2);
   }
-  return report;
+  return report2;
 }
-function checkOne(path, workflow, config2, report) {
+function checkOne(path, workflow, config2, report2) {
   const auto = autoRuns(workflow.on, config2);
   const found = Object.entries(workflow.jobs).flatMap(([name, job]) => {
     const step = sluicewayJob(name, job, workflow.env, auto);
@@ -31655,8 +31672,8 @@ function checkOne(path, workflow, config2, report) {
   });
   if (found.length === 0)
     return;
-  const { warnings, notes } = report;
-  report.workflows.push({
+  const { warnings, notes } = report2;
+  report2.workflows.push({
     path,
     jobs: found.map(({
       step: { job, mode, runs: runs2, ref, refKind: refKind2, environment, provides, previewsPullRequests }
@@ -31946,8 +31963,8 @@ function listed3(words) {
 function ignoreText({ glob, stacks }) {
   return `ignore ${JSON.stringify(glob)} leaves out ${plural2(stacks.length, "stack")}: ${stacks.join(", ")}.`;
 }
-function unmatchedText(entry) {
-  return `ignore ${JSON.stringify(entry.glob)} matches no stack. ${unmatchedWhy(entry)}`;
+function unmatchedText(entry2) {
+  return `ignore ${JSON.stringify(entry2.glob)} matches no stack. ${unmatchedWhy(entry2)}`;
 }
 function unmatchedWhy({ hint }) {
   const why = "It is matched against the stack id, not the directory.";
@@ -32002,9 +32019,9 @@ function couldNotAskText(check2) {
 function ignoreBlock(existing, stackIds) {
   return [
     "ignore:",
-    ...existing.flatMap((entry) => typeof entry === "string" ? [`  - ${JSON.stringify(entry)}`] : [
-      `  - glob: ${JSON.stringify(entry.glob)}`,
-      `    reason: ${JSON.stringify(entry.reason)}`
+    ...existing.flatMap((entry2) => typeof entry2 === "string" ? [`  - ${JSON.stringify(entry2)}`] : [
+      `  - glob: ${JSON.stringify(entry2.glob)}`,
+      `    reason: ${JSON.stringify(entry2.reason)}`
     ]),
     ...stackIds.map((id) => `  - ${JSON.stringify(globOf(id))}`)
   ];
@@ -32124,15 +32141,15 @@ function scansSomewhere(workflows) {
   return workflows.workflows.some(({ jobs }) => jobs.some((job) => job.runs.includes("scan")));
 }
 function checkParts(facts) {
-  const { report } = facts;
+  const { report: report2 } = facts;
   return [
     headerPart(facts.hasConfigFile),
-    stacksPart(report),
+    stacksPart(report2),
     discoveryPart(facts.discovery ?? []),
-    phasesPart(report.phases),
-    ignorePart(report.ignore),
-    unclaimedPart(report, facts.unrelated),
-    readsPart(report),
+    phasesPart(report2.phases),
+    ignorePart(report2.ignore),
+    unclaimedPart(report2, facts.unrelated),
+    readsPart(report2),
     workflowsPart(facts.workflows),
     credentialsPart(facts.credentials)
   ];
@@ -32241,26 +32258,26 @@ function ignorePart(ignore) {
   if (ignore.length === 0)
     return { log: [], summary: [] };
   return {
-    log: ignore.map((entry) => entry.stacks.length > 0 ? { info: line(ignoreText(entry)) } : { warning: line(unmatchedText(entry)), title: "An ignore glob matches no stack" }),
+    log: ignore.map((entry2) => entry2.stacks.length > 0 ? { info: line(ignoreText(entry2)) } : { warning: line(unmatchedText(entry2)), title: "An ignore glob matches no stack" }),
     summary: [
       "### Ignore",
       [
         "| Glob | Leaves out |",
         "|---|---|",
-        ...ignore.map((entry) => row([
-          entry.glob,
-          entry.stacks.length > 0 ? entry.stacks.join(", ") : `No stack. ${unmatchedWhy(entry)}`
+        ...ignore.map((entry2) => row([
+          entry2.glob,
+          entry2.stacks.length > 0 ? entry2.stacks.join(", ") : `No stack. ${unmatchedWhy(entry2)}`
         ]))
       ].join(`
 `)
     ]
   };
 }
-function unclaimedPart(report, unrelated) {
+function unclaimedPart(report2, unrelated) {
   const heading = "### Files that no stack claims";
-  const files = report.unclaimed.flatMap((group) => group.files);
+  const files = report2.unclaimed.flatMap((group) => group.files);
   if (files.length === 0) {
-    const configFile = report.configFile === undefined ? "" : ` ${escapeText(report.configFile)} is not listed: no stack claims it, and a change to it previews every stack.`;
+    const configFile = report2.configFile === undefined ? "" : ` ${escapeText(report2.configFile)} is not listed: no stack claims it, and a change to it previews every stack.`;
     return {
       log: [],
       summary: [
@@ -32270,20 +32287,20 @@ function unclaimedPart(report, unrelated) {
     };
   }
   const count = unclaimedText(files.length);
-  const block = report.suggested.length === 0 ? [] : unrelatedBlock(unrelated, report.suggested);
+  const block = report2.suggested.length === 0 ? [] : unrelatedBlock(unrelated, report2.suggested);
   return {
     log: [
       { info: count },
       { group: "Files that no stack claims", lines: files.map(line) },
-      { info: whereFilesBelong(report.shared) },
+      { info: whereFilesBelong(report2.shared) },
       ...block.length === 0 ? [] : [{ group: "Ready to paste into sluiceway.yaml", lines: block.map(line) }]
     ],
     summary: [
       heading,
       count,
-      report.unclaimed.map(groupLine).join(`
+      report2.unclaimed.map(groupLine).join(`
 `),
-      whereFilesBelong(report.shared, escapeText),
+      whereFilesBelong(report2.shared, escapeText),
       ...block.length === 0 ? [] : [PASTE_NOTE, yaml(block)]
     ]
   };
@@ -32503,7 +32520,7 @@ var line = logGroupTitle;
 async function check2(context) {
   const { log, root } = context;
   let config2;
-  let report;
+  let report2;
   let discovery;
   const needs = [];
   try {
@@ -32516,10 +32533,10 @@ async function check2(context) {
       for (const stack of found)
         references.set(stackId(stack), await readsFiles4(root, stack));
     }
-    report = checkSetup(config2, found, await repoFiles(root), references);
+    report2 = checkSetup(config2, found, await repoFiles(root), references);
     const credentialNeeds4 = context.adapter.credentialNeeds;
     if (credentialNeeds4 !== undefined) {
-      for (const { stack, envFile } of report.stacks) {
+      for (const { stack, envFile } of report2.stacks) {
         needs.push({
           stackId: stackId(stack),
           needs: await credentialNeeds4(root, stack),
@@ -32535,7 +32552,7 @@ async function check2(context) {
   }
   const workflows = checkWorkflows(readWorkflowFiles(root), config2);
   const parts = checkParts({
-    report,
+    report: report2,
     discovery,
     workflows,
     credentials: { stacks: needs, jobs: judgeJobs(needs, workflows.workflows, root) },
@@ -32545,13 +32562,13 @@ async function check2(context) {
   for (const part of parts)
     write(log, part);
   if (context.backend !== undefined) {
-    const { checks: checks3, toolLog } = await askBackend(context.backend, root, report.stacks);
+    const { checks: checks3, toolLog } = await askBackend(context.backend, root, report2.stacks);
     const backend = backendPart(checks3, config2.ignore, toolLog);
     write(log, backend);
     parts.push(backend);
   }
   if (context.pullRequestPreview !== undefined) {
-    const preview = await context.pullRequestPreview({ config: config2, stacks: report.stacks });
+    const preview = await context.pullRequestPreview({ config: config2, stacks: report2.stacks });
     write(log, preview);
     parts.push(preview);
   }
@@ -32578,11 +32595,11 @@ async function askBackend(backend, root, stacks) {
       }
       continue;
     }
-    const result = await backend.adapter.findInBackend?.(group.map(({ stack }) => stack), { root, env: own2?.ok ? own2.env : backend.env, run: backend.run });
-    for (const answer of result?.answers ?? [])
+    const result2 = await backend.adapter.findInBackend?.(group.map(({ stack }) => stack), { root, env: own2?.ok ? own2.env : backend.env, run: backend.run });
+    for (const answer of result2?.answers ?? [])
       answers.set(stackId(answer.stack), answer);
-    if (result !== undefined && result.toolLog !== "")
-      logs.push(result.toolLog);
+    if (result2 !== undefined && result2.toolLog !== "")
+      logs.push(result2.toolLog);
   }
   const checks3 = stacks.map(({ stack }) => {
     const id = stackId(stack);
@@ -32594,13 +32611,13 @@ async function askBackend(backend, root, stacks) {
   return { checks: checks3, toolLog: logs.join("") };
 }
 function write(log, { log: entries }) {
-  for (const entry of entries) {
-    if ("info" in entry)
-      log.info(entry.info);
-    else if ("warning" in entry)
-      log.warning(entry.warning, entry.title);
+  for (const entry2 of entries) {
+    if ("info" in entry2)
+      log.info(entry2.info);
+    else if ("warning" in entry2)
+      log.warning(entry2.warning, entry2.title);
     else
-      log.group(entry.group, entry.lines);
+      log.group(entry2.group, entry2.lines);
   }
 }
 async function summary(context, text7) {
@@ -33198,8 +33215,8 @@ async function init(context) {
     ...findings.envFiles !== undefined && !exists(root, EXPORT_ENV_FILE) ? [EXPORT_ENV_FILE] : []
   ];
   if (!configKept) {
-    const report = checkSetup(config2, stacks, [...new Set([...files, ...written])].sort());
-    const unrelated = report.suggested;
+    const report2 = checkSetup(config2, stacks, [...new Set([...files, ...written])].sort());
+    const unrelated = report2.suggested;
     const covered = checkSetup(parseConfig(starterConfig({ declarable, unrelated, unclaimed: undefined })), stacks, files);
     const directories = [
       ...new Set(covered.unclaimed.flatMap(({ files: unclaimed }) => unclaimed.map((file2) => dirname(file2)).filter((directory) => directory !== ".")))

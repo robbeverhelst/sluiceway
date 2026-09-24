@@ -64,6 +64,14 @@ _Avoid_: Strategy, scan mode, selection
 A step a tool needs before it can preview a stack, such as OpenTofu's init of a directory, CDK for Terraform's synth of an app, or Helm's build of a chart's dependencies. A scan runs every preparation one at a time and before the pool, and a failed one is a preview failure of each stack that needs it.
 _Avoid_: Setup, init step, pre-hook
 
+**Policy**:
+A Rego rule set in a directory or file `policies` or `stacks[].policies` names, that Conftest runs over the preview document of every pending stack, right after its preview, in the same job. A policy that fails takes the box off the row until it passes, is named on the row in its own words, escaped as text, and stops a deploy on merge. A policy that could not run is a warning line, and the row keeps its box.
+_Avoid_: Rule, check (that is the pass over the repo's files), gate, guardrail
+
+**Preview document**:
+The tool's own preview of a stack, values and all: Pulumi's preview JSON, the plan JSON of OpenTofu and Terraform, the manifests a Helm chart or a directory of Kubernetes manifests renders. An adapter hands it back only when asked, the policy runner writes it to a file of its own for as long as conftest runs, and nothing else takes it.
+_Avoid_: Plan file (that is the saved plan), raw output, preview JSON
+
 **Auto mode**:
 What the action does when its step names no mode: it reads the event of the run and runs the modes that event asks for, one after the other in the same step. A push to the default branch scans, an edit of the dashboard resolves and then deploys and settles what it started, the schedule and a dispatch resolve and then scan, a pull request checks, and any other event ends with a notice.
 _Avoid_: Default mode, smart mode, magic mode, router

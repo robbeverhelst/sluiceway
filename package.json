@@ -25,6 +25,7 @@
     "build": "bun build src/main.ts --target=node --format=esm --outfile=dist/index.js && bun build src/cli.ts --target=node --format=esm --outfile=dist/cli.js",
     "build:schema": "bun run scripts/generate-schema.ts",
     "record:fixtures": "bun run scripts/record-fixtures.ts",
+    "record:conftest": "bun run scripts/record-conftest-fixtures.ts",
     "e2e": "bun run scripts/e2e.ts",
     "e2e:mixed": "bun run scripts/e2e-mixed.ts",
     "roadmap": "bun run scripts/roadmap.ts",

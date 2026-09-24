@@ -36,6 +36,10 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A break-glass tick that deploys outside the deploy window, visible on the trail and with a permission of its own
 - A freeze with an end date, for a sale or a release, next to the weekly deploy windows
 - The check warning about a split workflow whose `resolve` job does not run on the schedule while a stack has a deploy window
+- The soft policy failure: a `deny` a repo marks soft keeps the box and asks for a second person to tick
+- The check listing the policy paths of each stack, saying when one is not in the repo, and warning about a workflow with `policies` and no step that installs conftest
+- Checkov as a second policy runner, the program's files as a policy input, and running the policies again in `apply` before the deploy
+- Policies on the pull request preview
 - The check reading what a secret loader action exports, by the names its `with:` or `env:` map, and the names a run step writes to `GITHUB_ENV`
 - More rows in the check's table of credentials: every provider and backend the tools know, a region or a project for clouds other than AWS, the repository or registry of a Helm chart reference, and the packages of a Java Pulumi program
 - A per-job table of credentials in the check's summary, and the same reading in a scan's summary
@@ -159,7 +163,7 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A hosted GitHub App with an org-wide dashboard. A control plane only. Previews and deploys always run in the user's own runners. It reuses the open source core.
 - GitLab and Bitbucket. The UI is a GitHub issue, so this is a different product surface.
 - Interactive notifications (a tick from a button in Slack) and a metrics endpoint. A button needs an app that Slack can call back, and a GitHub Action is not running when someone clicks. The built-in messages go one way (0078), and metrics are pushed from the outputs. Both fit a hosted version.
-- A policy engine, cost estimation. Out of scope for v1.
+- Cost estimation. Out of scope for v1.
 
 ### Not planned
 

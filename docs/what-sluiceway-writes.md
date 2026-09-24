@@ -63,6 +63,7 @@ One row per stack. Its state says where the row sits and is counted, and nothing
 | `gone` | On a drifted row, how many resources were found gone outside the code |
 | `depends-on` | For a stack with `dependsOn: auto`, the stack ids its preview read from its stack references |
 | `fingerprint` | The value fingerprint, 16 hex characters over the values of the diff that the row does not show ([record 0102](adr/0102-a-tick-covers-the-values-it-does-not-show-through-a-value-fingerprint.md)). Only on a pending or drifted row whose diff holds any, and only while `valueFingerprint` is on for the stack |
+| `policy` | `failed` when a policy of the repo failed on the change, so the row has no box ([record 0106](adr/0106-policies-run-against-the-preview-and-a-hard-failure-takes-the-box-off-the-row.md)). A tick on such a row is refused. Absent otherwise |
 
 A pending row from the run, the whole block:
 

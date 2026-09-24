@@ -175,6 +175,15 @@ The preview pages need `checks: write` in the workflow's permissions. With it, t
 
 It cannot change the result of a job that Actions runs. Sluiceway only ever writes `neutral` check runs named `sluiceway / <stack id>`. But the job that scans also runs your programs, so if your branch protection requires checks, anything that runs in this workflow could write a passing check under a required name. Require checks from a workflow that does not have `checks: write`, or accept that. Without `checks: write` Sluiceway works as before and `preview` opens the run's summary.
 
+## The policies
+
+With [`policies`](configuration.md#policies) in `sluiceway.yaml`, a scan runs conftest over the tool's own preview document of every pending stack ([policies](policies.md)). What that means for what leaves where:
+
+- **The preview document is written to a file only while conftest runs**, in a directory of its own, readable by nobody else, and removed after. It holds every value the tool printed, as the saved plan and the rendered set do. Nothing else of Sluiceway takes it.
+- **A policy's message is the one text from outside Sluiceway's code that reaches the issue.** It is your own text, from a `.rego` file on the default branch, reviewed like `dashboard.showValues`. Sluiceway escapes it as text, so it is never markup, and cuts it on the row, but it does not read it: a message that prints a value prints it to the issue. Name what is wrong, not what it is set to.
+- **A policy that fails to run does not fail the change.** A runner without conftest, or with one older than 0.50.0, keeps every box and gets a warning on every scan. Install conftest in the job that scans, and read the run's warnings.
+- **A tick cannot get around a failed policy.** The row has no box, the marker says why, and `resolve` refuses a tick on such a row whatever the body says. Changing the policy is a change to the default branch, with whatever protection it has.
+
 ## Previewing a pull request
 
 Opt in, with `pull-request-preview: true` on the check step ([preview a pull request](workflow.md#preview-a-pull-request-for-its-reviewer)). The check then previews the stacks the pull request claims, as they would be after the merge, with the credentials of its job, and writes a check run per stack on the head commit. It never deploys, never opens a deployment record and leaves no row: the deploy happens after the merge, from a fresh preview, and is refused when the change moved since ([record 0101](adr/0101-a-pull-request-is-previewed-for-its-reviewer-and-never-deployed-from.md)).
