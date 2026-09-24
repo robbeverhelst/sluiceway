@@ -182,7 +182,7 @@ A tick creates a GitHub deployment record for the stack before anything deploys,
 | `sha` | The commit of the default branch the deploy ran on |
 | `payload` | The facts below |
 
-Statuses, newest last: `queued` when the tick is taken, `in_progress` when the deploy starts, then one result. `success` means that afterwards the stack was at the approved hash, also when there turned out to be nothing to deploy. `failure` and `error` mean it did not go out as approved. `inactive` after a `success` means a later deploy superseded it. `inactive` without one means nothing was deployed under this record: a rehearsal, a queued record started again in a later run, or a merge record. A record with no status yet, or one this list does not name, is open. The description of a status is presentation, like the text of a row. GitHub keeps only the newest status of a record after 90 days.
+Statuses, newest last: `queued` when the tick is taken, `in_progress` when the deploy starts, then one result. `success` means that afterwards the stack was at the approved hash, also when there turned out to be nothing to deploy. `failure` and `error` mean it did not go out as approved. `inactive` after a `success` means a later deploy superseded it. `inactive` without one means nothing was deployed under this record: a rehearsal, a queued record started again in a later run, one that waited for its deploy window and was started the same way, or a merge record. A record with no status yet, or one this list does not name, is open. The description of a status is presentation, like the text of a row. GitHub keeps only the newest status of a record after 90 days.
 
 The record of the run, and the statuses the deploy gave it:
 
@@ -233,9 +233,10 @@ Its schema is [`schema/deployment-payload.schema.json`](../schema/deployment-pay
 | `drift` | `true` when the hash covers drift, and the deploy puts the drift back |
 | `onMerge` | `true` on a record that the scan of a merge opened for a stack set to deploy on merge |
 | `fingerprint` | The value fingerprint the tick approved. The deploy goes out only when a fresh preview gives the same one, or none. Absent on a record written before the key came, or with `valueFingerprint` off for the stack |
+| `window` | `true` on a queued record that waits for the stack's [deploy window](configuration.md#deploywindowsdays) and for no stack. A run inside the window starts it under a record of its own, and this one ends as `inactive` |
 | `merge` | The pull request a tick merged. Such a record has no hash and never deploys itself: the scan after the merge opens the record that does |
 
-A tick from the run, then records of a queued stack, a drift repair, a deploy on merge and a merge, one per line:
+A tick from the run, then records of a queued stack, a drift repair, a deploy on merge, a deploy that waits for its window and a merge, one per line:
 
 <!-- example: payloads -->
 ```json
@@ -243,6 +244,7 @@ A tick from the run, then records of a queued stack, a drift repair, a deploy on
 {"v":1,"hash":"1d0a03db50bc7070","ticker":"alice","run":"17034455121","attempt":"1","behind":["infra/network:prod"]}
 {"v":1,"hash":"3317badb7e6c946b","ticker":"carol","run":"17034455121","attempt":"1","drift":true}
 {"v":1,"hash":"ec5ef272e21b14c0","ticker":"erin","run":"17034455121","attempt":"1","onMerge":true}
+{"v":1,"hash":"9b7e1f3c5d2a4068","ticker":"frank","run":"17034455121","attempt":"1","window":true}
 {"v":1,"ticker":"dave","run":"17034455121","attempt":"1","merge":519}
 ```
 <!-- /example -->

@@ -247,6 +247,13 @@ export async function writtenExamples(): Promise<WrittenExamples> {
       attempt: "1",
       onMerge: true,
     }),
+    deploymentPayload({
+      hash: "9b7e1f3c5d2a4068",
+      ticker: "frank",
+      run: exampleRun,
+      attempt: "1",
+      window: true,
+    }),
     mergePayload({ ticker: "dave", run: exampleRun, attempt: "1", merge: 519 }),
   ];
   return {

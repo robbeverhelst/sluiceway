@@ -178,7 +178,7 @@ What the step does on each event:
 | Event | What runs |
 |---|---|
 | A push to the default branch | A scan of the stacks that claim a changed file. A push to any other branch ends with a notice. |
-| The schedule | A full scan. |
+| The schedule | `resolve`, which starts the stacks that waited for their [deploy window](configuration.md#deploywindowsdays) to open, then a full scan. |
 | An edit of the dashboard | The step checks who ticked each box (`resolve`), deploys each stack that passed, one after the other, and then gives a result to any deploy that did not report one (`settle`). |
 | `workflow_dispatch` | `resolve`, which starts the stacks that waited for another one to go out, then a full scan. The rescan box and a deploy that others wait for start the workflow this way. |
 | An edit of any other issue, and any other event | Nothing. One notice on the run says why, and the run is green. |

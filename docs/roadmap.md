@@ -33,6 +33,9 @@ Every item, as `docs/later.md` lists it:
 
 No date and no order. Each waits for a user who asks, and none of them needs a breaking change. [docs/later.md](later.md#deferred-door-left-open) says why each one waited and where that was decided.
 
+- A break-glass tick that deploys outside the deploy window, visible on the trail and with a permission of its own
+- A freeze with an end date, for a sale or a release, next to the weekly deploy windows
+- The check warning about a split workflow whose `resolve` job does not run on the schedule while a stack has a deploy window
 - The check reading what a secret loader action exports, by the names its `with:` or `env:` map, and the names a run step writes to `GITHUB_ENV`
 - More rows in the check's table of credentials: every provider and backend the tools know, a region or a project for clouds other than AWS, the repository or registry of a Helm chart reference, and the packages of a Java Pulumi program
 - A per-job table of credentials in the check's summary, and the same reading in a scan's summary

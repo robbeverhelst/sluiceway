@@ -190,6 +190,7 @@ The zone belongs to the repo, not the reader: one issue is read by everyone, so 
 - The line under the Recently deployed heading names the zone, `Times are in Europe/Brussels.`, and the times on the list leave it out.
 - A time that stands alone says its offset from UTC at that moment: the scan line (`on 2026-07-21 12:02 UTC+2`), the last full scan, the line about a run waiting for a runner, and the failure line on a row. A January time and a July time of one zone each say their own offset, because daylight saving changes it. A moment when the zone is at UTC, such as London in winter, says `UTC`.
 - The markers in the issue keep UTC. Changing the zone moves no row and no hash, and a body written under one zone reads the same under another. A row that the next scan does not draw again keeps its failure line in the zone it was written in, which is why that line says its offset.
+- A [deploy window](#deploywindowsdays) is written in this zone, and the time a queued row says the window opens at is in it too.
 
 A name that is not a zone fails the config with an example of one. An offset such as `+02:00` or `UTC+2` is not a zone name, because it has no daylight saving. The zone is checked against the zone data of the runtime that runs the action. GitHub's runners and the `node24` runtime the action uses carry every zone. A runtime built without zone data knows `UTC` alone, and there any other name fails the config the same way rather than falling back to UTC in silence.
 
@@ -249,6 +250,98 @@ deploys: false
 - Scans go on as before, so the dashboard keeps showing what is pending.
 
 Setting it back to `true` (or taking the line out) is all it takes to deploy again. A tick that was cleared needs a fresh tick.
+
+### `deployWindows[].days`
+
+Default: none, which is any time.
+
+When the stacks of this repo may go out. Each window is the days of the week it is on, a start and an end, in the [dashboard zone](#dashboardtimezone). A tick outside every window is not refused: its deployment record waits for the window, the row says when it opens, and the run that falls inside the window deploys it through the same fresh preview and hash check as any tick. Nobody has to be awake when it opens, and nothing goes out on a Friday evening ([record 0104](adr/0104-a-tick-outside-the-deploy-window-waits-for-it-instead-of-going-out.md)).
+
+```yaml
+dashboard:
+  timeZone: Europe/Brussels
+deployWindows:
+  - days: [monday, tuesday, wednesday, thursday]
+    from: "09:00"
+    to: "17:00"
+  - days: [friday]
+    from: "09:00"
+    to: "12:00"
+```
+
+- **The days are the full names of the week in lower case**, `monday` to `sunday`. A window is on each of the days it names, at the same times.
+- **A tick outside the window waits.** The tick is judged now, by the tick rule and the dependencies as always, and the record is opened now with what the tick approved. The row says `queued for the deploy window, which opens 2026-09-28 09:00 UTC+2 · ticked by alice`, with no box, and the stack counts as deploying. Once the window is open, the next run that `resolve` runs in starts it: in the [one-step workflow](workflow.md) that is the scheduled run, so the schedule decides how soon after the window opens the deploy goes out. In the [split workflow](split-workflow.md#deploy-windows) the `resolve` job runs on the schedule too.
+- **What goes out is what was ticked.** The run inside the window previews again and deploys only when the diff hash is the one the tick approved. A change that moved in between is refused, and the ticker gets the comment as for any moved tick.
+- **A [deploy on merge](#stacksdeploy) waits for the window too.** Its record is opened by the scan of the merge and waits the same way, and its row says `merged by`.
+- **A destroy on a stack set to on-merge still waits for a tick**, window or not. A ticked destroy waits for the window like any tick and goes out when it opens: the person looked at it when they ticked.
+- **Dependencies still decide the order.** A stack behind another is held to the window when the stacks it waited behind went out, and its row says both.
+- **The window is read from the file on the default branch at that moment**, as `tickers` is. Widening a window, or taking it away, moves what waits with it.
+
+What it is not: a change freeze for a company. It is what this repo's file says about this repo's stacks, in a reviewed file, and an outside deploy is as allowed as ever.
+
+A day that is not one, or an empty list of days, fails the config:
+
+```yaml
+# Not valid: a short day name
+deployWindows:
+  - days: [mon, tue]
+    from: "09:00"
+    to: "17:00"
+```
+
+```text
+sluiceway.yaml is not valid:
+- deployWindows[0].days[0]: "mon" is not a day of the week. Write one of: monday, tuesday, wednesday, thursday, friday, saturday, sunday.
+- deployWindows[0].days[1]: "tue" is not a day of the week. Write one of: monday, tuesday, wednesday, thursday, friday, saturday, sunday.
+```
+
+### `deployWindows[].from`
+
+Default: none
+
+When the window opens on each of its days, as `HH:MM` on a 24 hour clock in the dashboard zone. The start is inside the window. Quotes keep an editor from reading `09:00` as anything but text; without them the file loads the same.
+
+```yaml
+# Not valid: not a clock time
+deployWindows:
+  - days: [monday]
+    from: 9am
+    to: "17:00"
+```
+
+```text
+sluiceway.yaml is not valid:
+- deployWindows[0].from: "9am" is not a clock time. Write HH:MM on a 24 hour clock in quotes, such as "09:00" or "17:30". "24:00" is the end of the day.
+```
+
+### `deployWindows[].to`
+
+Default: none
+
+When the window closes, as `HH:MM`, after `from`. The end is outside the window: a window to `17:00` closes as the clock turns 17:00. `24:00` is the end of the day. A window over midnight is two windows, one to `24:00` and one from `00:00` on the next day:
+
+```yaml
+deployWindows:
+  - days: [monday, tuesday, wednesday, thursday]
+    from: "22:00"
+    to: "24:00"
+  - days: [tuesday, wednesday, thursday, friday]
+    from: "00:00"
+    to: "06:00"
+```
+
+```yaml
+# Not valid: the end comes first
+deployWindows:
+  - days: [monday]
+    from: "22:00"
+    to: "06:00"
+```
+
+```text
+sluiceway.yaml is not valid:
+- deployWindows[0]: the window ends at "06:00", which is not after it starts at "22:00". A window over midnight is two windows: one to "24:00" and one from "00:00" on the next day.
+```
 
 ### `ignore`
 
@@ -688,6 +781,41 @@ sluiceway.yaml is not valid:
 - stacks[0].deploy: expected "on-tick" or "on-merge", got "on-push".
 ```
 
+### `stacks[].deployWindows[].days`
+
+Default: the top level [`deployWindows`](#deploywindowsdays)
+
+The deploy windows of the stacks of this entry, in place of the top level ones, in the same shape. An empty list lets them go out at any time while the repo has windows: for a dashboard or a test namespace that nobody needs to hold to office hours, or for the one stack the on-call has to be able to deploy at night. An entry with a name wins over one without ([record 0104](adr/0104-a-tick-outside-the-deploy-window-waits-for-it-instead-of-going-out.md)).
+
+```yaml
+deployWindows:
+  - days: [monday, tuesday, wednesday, thursday]
+    from: "09:00"
+    to: "17:00"
+stacks:
+  # The status page may go out at any time.
+  - path: apps/status
+    deployWindows: []
+  # The database only on Tuesday and Thursday mornings.
+  - path: platform/database
+    deployWindows:
+      - days: [tuesday, thursday]
+        from: "09:00"
+        to: "12:00"
+```
+
+### `stacks[].deployWindows[].from`
+
+Default: none
+
+As [`deployWindows[].from`](#deploywindowsfrom).
+
+### `stacks[].deployWindows[].to`
+
+Default: none
+
+As [`deployWindows[].to`](#deploywindowsto).
+
 ### `stacks[].drift.enabled`
 
 Default: the top level `drift.enabled`.
@@ -993,5 +1121,5 @@ ticker: admin
 
 ```text
 sluiceway.yaml is not valid:
-- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, valueFingerprint, attribution, phases, stacks, discovery, mergeAndDeploy, notify.
+- unknown key "ticker". Known keys here: dashboard, tickers, deploys, deployWindows, ignore, scan, drift, valueFingerprint, attribution, phases, stacks, discovery, mergeAndDeploy, notify.
 ```

@@ -65,7 +65,7 @@ A step a tool needs before it can preview a stack, such as OpenTofu's init of a 
 _Avoid_: Setup, init step, pre-hook
 
 **Auto mode**:
-What the action does when its step names no mode: it reads the event of the run and runs the modes that event asks for, one after the other in the same step. A push to the default branch and the schedule scan, an edit of the dashboard resolves and then deploys and settles what it started, a dispatch resolves and scans, a pull request checks, and any other event ends with a notice.
+What the action does when its step names no mode: it reads the event of the run and runs the modes that event asks for, one after the other in the same step. A push to the default branch scans, an edit of the dashboard resolves and then deploys and settles what it started, the schedule and a dispatch resolve and then scan, a pull request checks, and any other event ends with a notice.
 _Avoid_: Default mode, smart mode, magic mode, router
 
 **One-step workflow**:
@@ -275,8 +275,12 @@ Pulumi's way for a program to read the outputs of another stack, by a name such 
 _Avoid_: Remote state (OpenTofu's word for something else), cross-stack link
 
 **Queued stack**:
-A ticked stack, or one that deploys on merge, whose deployment record waits behind its dependencies, because they were ticked in the same run or are deploying. Its row says "queued behind" them, has no box and counts as deploying. It deploys in a later run once they went out, under a record that carries what the tick approved, drift included, and never deploys when one of them did not.
+A ticked stack, or one that deploys on merge, whose deployment record waits behind its dependencies, because they were ticked in the same run or are deploying, or waits for its deploy window. Its row says "queued behind" them, or "queued for the deploy window" and when it opens, has no box and counts as deploying. It deploys in a later run once they went out and the window is open, under a record that carries what the tick approved, drift included, and never deploys when one of them did not.
 _Avoid_: Blocked stack, waiting stack, pending stack (pending is a row state)
+
+**Deploy window**:
+When a stack may go out, as `deployWindows` in `sluiceway.yaml` writes it for the repo or for a stack: days of the week with a start and an end, in the dashboard zone. A tick outside every window is not refused: its record is opened now with what the tick approved and waits as a queued stack does, and the run that falls inside the window, the scheduled one, deploys it through the fresh preview and the hash check. A deploy on merge waits for it too. It is what this repo's file says, not a change freeze for a company.
+_Avoid_: Maintenance window, freeze, blackout, schedule (that is the workflow's trigger)
 
 **Layer**:
 The stacks of a dependency chain that deploy in one workflow run, because nothing they wait behind is still to go out. `settle` starts the workflow again after a layer, and that run's `resolve` starts the next one.

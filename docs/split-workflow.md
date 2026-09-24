@@ -53,7 +53,7 @@ jobs:
           mode: scan
 
   resolve:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'sluiceway'))
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'sluiceway'))
     runs-on: ubuntu-latest
     concurrency: sluiceway-resolve
     outputs:
@@ -110,7 +110,7 @@ What the parts are for:
 - **`sluiceway-scan`** makes scans run one at a time. A running scan finishes, and of the waiting ones only the newest runs.
 - **`sluiceway-resolve`** does the same for ticks. Any `resolve` run handles every ticked box it finds, so a replaced run loses nothing. Replaced runs show as cancelled in the Actions list. That is normal.
 - **`queue: max`** on `apply` keeps a waiting deploy from being cancelled by a newer one. Never add `cancel-in-progress` to this job.
-- **The `if:` on `resolve`** keeps an edit of an ordinary issue from starting a runner. If you change `dashboard.label`, change it here too. `resolve` also runs when the workflow is dispatched, for [stack dependencies](#stack-dependencies).
+- **The `if:` on `resolve`** keeps an edit of an ordinary issue from starting a runner. If you change `dashboard.label`, change it here too. `resolve` also runs when the workflow is dispatched, for [stack dependencies](#stack-dependencies), and on the schedule, for [deploy windows](#deploy-windows).
 - **`resolve` hands `apply` a deployment record.** It creates one record per ticked stack in GitHub's Deployments list and puts `{ stack, environment, deployment }` in `matrix`. `apply` deploys only while that record is still open. "Re-run failed jobs" therefore deploys nothing. To try again, tick the box again.
 - **`!cancelled()` on `apply`** lets the deploys that `resolve` started go ahead when `resolve` itself ended red, for example because one of several ticks could not be verified or the dashboard could not be written. Without a status check in its `if:`, GitHub skips a job whose `needs` failed. Every entry in `matrix` is a record that `resolve` created after it checked the ticker, so nothing else can get through here.
 - **`settle`** gives a deploy a result when its job was cancelled or rejected, so a row never stays "deploying" for ever. It touches only the deployment records of its own run. When it ended one it starts a full scan, which writes the row again with the failure line, so it needs `actions: write` as well. With `dependsOn`, it also starts the workflow again when a stack went out that others are queued behind ([stack dependencies](#stack-dependencies)).
@@ -207,4 +207,8 @@ With [`dependsOn`](configuration.md#stacksdependson) or [`phases`](configuration
 - **`settle` has `actions: write`.** Once a stack went out that others are queued behind, `settle` starts the workflow again. The `resolve` job of that run starts the stacks that were queued behind it, the next layer.
 
 Without `dependsOn` or a phase, a dispatched `resolve` finds nothing to do in a few seconds and asks GitHub nothing.
+
+## Deploy windows
+
+With [`deployWindows`](configuration.md#deploywindowsdays) in `sluiceway.yaml`, a tick outside the window opens a record that waits for it, and the run that falls inside the window starts it. In this workflow that run is the scheduled one, so the `resolve` job above runs on `schedule` as well: its `if:` names the event. A `resolve` that the schedule starts and finds nothing waiting ends in a few seconds. Without `schedule` in that `if:`, a window opens only when the workflow is dispatched, by the rescan box, by `settle` after a layer went out, or after a merge from the dashboard.
 
