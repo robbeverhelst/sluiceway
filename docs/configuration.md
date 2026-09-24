@@ -150,7 +150,7 @@ Without this key Sluiceway shows which properties change and never what they cha
 - **Only single-line text, numbers and booleans are shown.** A whole object or list, a value of several lines, and a value that is known only once the deploy runs show nothing. A value longer than 40 characters keeps its start and its end.
 - **The same values appear in the summary, on the preview page, in the result file and in the job log.** The issue is emailed and kept in its edit history, so a value that reached it cannot be taken back.
 - **`dashboard.redact: true` turns the list off.** No value is even read.
-- **A tick covers the values it shows.** The diff hash covers them, so if a later merge moves `17.0.4` to `17.0.5` before the deploy, nothing deploys and the row comes back with `17.0.5`. A path that is not listed is approved at whatever value the code has, as before. See [what a tick promises](security.md#what-a-tick-promises).
+- **A tick covers the values it shows.** The diff hash covers them, so if a later merge moves `17.0.4` to `17.0.5` before the deploy, nothing deploys and the row comes back with `17.0.5`. A path that is not listed is covered by the [value fingerprint](#valuefingerprint) instead, without being shown. See [what a tick promises](security.md#what-a-tick-promises).
 - **Changing the list voids ticks once.** Adding or removing a path, or turning `dashboard.redact` on or off, gives the rows that show a value a new hash, so a tick on a row written before is refused as moved and the row asks for a fresh one.
 
 A list to copy in, of paths that are nearly always safe to show:
@@ -336,6 +336,21 @@ drift:
 - **A drift check that fails** leaves the row as the preview made it, with a warning on the run and the tool's words in the job log.
 - **A stack entry can turn it on or off** for its own stacks, with [`stacks[].drift.enabled`](#stacksdriftenabled).
 - **A drifted row's `preview` link** opens a preview page that lists the drift, as a pending row's lists its changes. Without `checks: write` it opens the summary.
+
+### `valueFingerprint`
+
+Default: `true`
+
+Every pending and drifted row carries a value fingerprint next to its diff hash: a hash of the values of the change that the row does not show, sixteen hex characters that name nothing, taken from the tool's own output inside the adapter. A tick approves it with the hash, and `apply` compares it after the hash. A value that changed between the tick and the deploy stops the deploy: the record ends with `a value changed since the tick`, the row comes back with the change as it is now, and a comment asks the ticker to look at it and tick again. A value the tool marks secret enters the fingerprint as its mark and never in the clear ([record 0102](adr/0102-a-tick-covers-the-values-it-does-not-show-through-a-value-fingerprint.md)).
+
+```yaml
+valueFingerprint: false
+```
+
+- **Turn it off where a value differs on every run.** A program that mints a token or a timestamp at each preview gives another fingerprint each time, so no tick of that stack can deploy it. The refusal says so and names this key, and a scan of the same commit says so on the row. Turn it off for that stack alone with [`stacks[].valueFingerprint`](#stacksvaluefingerprint).
+- **What is hashed** is spelled out in the record, per tool and per op, so a reviewer can check a fingerprint from the tool's output. An object the Helm plugin adds, and Helm and kubectl drift, carry none: the plugin prints no manifest for an added object, and those drift checks read no values.
+- **Turning it on or off voids ticks once.** Every pending row of the stacks it changes gets a fingerprint or loses it, so a tick on a row written before is refused and the row asks for a fresh one, as for a change of `dashboard.showValues`.
+- **Its cost, and why it is on.** The fingerprint sits in an issue that may be public, where a value that is neither shown nor marked secret can be guessed against it. [What a tick promises](security.md#what-a-tick-promises) states the cost and what bounds it. It is on by default because the safe reading is the one people assume: a person who ticks `web: update, image` believes they approved the image they read the code for. `dashboard.redact` does not turn it off.
 
 ### `attribution.lookback`
 
@@ -703,6 +718,19 @@ sluiceway.yaml is not valid:
 - stacks[0].drift: expected a mapping, got true. Write it as the top level has it: drift: { enabled: true }.
 ```
 
+### `stacks[].valueFingerprint`
+
+Default: the top level `valueFingerprint`.
+
+Turns the value fingerprint on or off for the stacks of this entry, whatever the top level says. An entry with a name wins over one without ([record 0102](adr/0102-a-tick-covers-the-values-it-does-not-show-through-a-value-fingerprint.md)).
+
+```yaml
+stacks:
+  # A program that rotates a token on every preview.
+  - path: apps/runner
+    valueFingerprint: false
+```
+
 ### `stacks[].options.workspace`
 
 Default: the workspace the job's environment selects, which is `default`.
@@ -947,5 +975,5 @@ ticker: admin
 
 ```text
 sluiceway.yaml is not valid:
-- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, attribution, phases, stacks, discovery, mergeAndDeploy, notify.
+- unknown key "ticker". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, valueFingerprint, attribution, phases, stacks, discovery, mergeAndDeploy, notify.
 ```

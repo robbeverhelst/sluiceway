@@ -28506,6 +28506,7 @@ var stackEntry = exports_external.strictObject({
   drift: exports_external.strictObject({
     enabled: exports_external.boolean().describe("Check these stacks for drift, or not, whatever drift.enabled at the top level says. The scans that check are the same.")
   }).describe("The drift check of these stacks. Default: the top level drift.").exactOptional(),
+  valueFingerprint: exports_external.boolean().describe("Cover the values these stacks' rows do not show with a fingerprint, or not, whatever valueFingerprint at the top level says. Turn it off for a stack whose program makes a value that differs on every run. Default: the top level valueFingerprint.").exactOptional(),
   options: exports_external.record(exports_external.string(), exports_external.unknown()).describe("Named adapter options of the tool. Only an entry with tool takes them.").exactOptional()
 }).superRefine((entry, context) => {
   if (entry.tool !== undefined)
@@ -28572,6 +28573,7 @@ var configSchema = exports_external.strictObject({
   drift: exports_external.strictObject({
     enabled: exports_external.boolean().describe("Check every stack for drift in each scan that a schedule starts, or that a person starts with Run workflow: changes made to real infrastructure outside the code. A stack with drift gets a row with a box, and a tick deploys the code as it is, which puts it back. Costs one more tool run per stack in those scans.").default(false)
   }).prefault({}),
+  valueFingerprint: exports_external.boolean().describe("Cover the values a row does not show with a fingerprint on the row, so a tick approves them too: a value that changed between the tick and the deploy stops the deploy, and the row says so without naming the value. A value the tool marks secret never reaches the fingerprint. Turn it off, here or per stack, where a program makes a value that differs on every run.").default(true),
   attribution: exports_external.strictObject({
     lookback: exports_external.int().min(1).max(LOOKBACK_MAX).describe("How many of the newest commits a job walks to say which pull requests made a row pending. A stack whose last deploy lies further back gets a line that says earlier changes exist. Each 100 commits cost one more GraphQL request.").default(LOOKBACK),
     names: exports_external.int().min(0).max(NAMES_MAX).describe("How many pull requests and direct pushes a row and a line of Recently deployed name, newest first. The rest is a count. 0 names none and always counts.").default(NAMED_ON_A_ROW)
@@ -28864,6 +28866,7 @@ function applyConfig(config2, found) {
     const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
     const drift = entries.findLast((entry) => entry.drift)?.drift?.enabled;
     const deploy = entries.findLast((entry) => entry.deploy)?.deploy;
+    const valueFingerprint = entries.findLast((entry) => entry.valueFingerprint !== undefined)?.valueFingerprint;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     return {
@@ -28877,7 +28880,8 @@ function applyConfig(config2, found) {
       ...from === undefined ? {} : { phaseFrom: from },
       ...entries.some((entry) => entry.dependsOn === DEPENDS_ON_AUTO) ? { dependsOnAuto: true } : {},
       ...drift === undefined ? {} : { drift },
-      ...deploy === "on-merge" ? { deploy } : {}
+      ...deploy === "on-merge" ? { deploy } : {},
+      ...valueFingerprint === undefined ? {} : { valueFingerprint }
     };
   });
 }

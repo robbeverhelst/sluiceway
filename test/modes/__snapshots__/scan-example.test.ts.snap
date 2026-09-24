@@ -25,14 +25,14 @@ Tick a box to deploy that stack exactly as its row shows it.
 > [!CAUTION]
 > 1 pending stack deletes or replaces resources: **network:dev**
 
-- [ ] **app:prod** · 2 creates · [preview](https://github.com/acme/infra/runs/106538952701) <!-- sluiceway:row stack="app:prod" state="pending" hash="9fb39d8d82346ac8" -->
+- [ ] **app:prod** · 2 creates · [preview](https://github.com/acme/infra/runs/106538952701) <!-- sluiceway:row stack="app:prod" state="pending" hash="9fb39d8d82346ac8" fingerprint="6613054be582fdf5" -->
   not deployed from this dashboard yet
   <details><summary>2 changes</summary>
   <kbd>create</kbd> <code>command:local:Command</code> <b>start</b><br>
   <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>release</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **network:dev** · 1 create, 1 update, **2 replaces**, **1 delete** · [preview](https://github.com/acme/infra/runs/106538952702) <!-- sluiceway:row stack="network:dev" state="pending" hash="f64ca542f4ede7ae" destroys="3" deletes="1" -->
+- [ ] **network:dev** · 1 create, 1 update, **2 replaces**, **1 delete** · [preview](https://github.com/acme/infra/runs/106538952702) <!-- sluiceway:row stack="network:dev" state="pending" hash="f64ca542f4ede7ae" destroys="3" deletes="1" fingerprint="935cbdaa3d9e0f1b" -->
   not deployed from this dashboard yet
   :warning: <kbd>DELETE</kbd> <code>random:index/randomString:RandomString</code> <b>subnet</b>
   :warning: <kbd>REPLACE</kbd> <code>local:index/file:File</code> <b>notes</b> · forced by <code>content</code> · also changes <code>contentBase64sha256</code>, <code>contentBase64sha512</code>, <code>contentMd5</code>, <code>contentSha1</code>, <code>contentSha256</code>, <code>contentSha512</code>, <code>id</code>

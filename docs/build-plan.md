@@ -41,7 +41,7 @@ The plan began with the core loop alone and left out drift, stack dependencies a
 
 - **The core loop** in five modes, `scan`, `resolve`, `apply`, `settle` and `check`, run by one step in `auto` mode since slice 5.12 (0077), with narrowed scans, attribution, the size budget, the summary and a preview page per pending stack (M1, M2, 0003, 0010, 0026, 0028, 0037, 0042, 0050).
 - **Four adapters.** Pulumi, found from its files alone, and OpenTofu, Helm and Kubernetes manifests, declared in `sluiceway.yaml` (0001, 0053, 0058, 0060, slices 4.1, 4.6 and 4.9). Since slice 5.29 OpenTofu and Terraform root modules are found from their files too, when the files say plainly that they are root modules (0092).
-- **What a row may show.** Property paths and never values, the tool diff in the job log on request, and values for the paths a repo lists (0046, 0048, 0052).
+- **What a row may show.** Property paths and never values, the tool diff in the job log on request, and values for the paths a repo lists (0046, 0048, 0052). Since slice 5.37 a row also carries a value fingerprint of the values it does not show, so a tick covers them too (0102).
 - **Stop, rehearse, explain.** `deploys: false`, `dry-run`, an `ignore` entry with a reason, and a comment to the ticker when a change moved (0051).
 - **Merge and deploy, part 1** (0054, slice 4.2), **drift, part 1** (0055, slice 4.3) and **stack dependencies, part 1** (0056, slice 4.4).
 - **Deploy on merge, per stack** (0095, slice 5.31): a stack a repo sets to `deploy: on-merge` goes out after the scan of its merge through the path of a tick, and the default stays a tick.

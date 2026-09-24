@@ -124,6 +124,7 @@ describe("a marker of each kind", () => {
           drift: row.drift,
           gone: row.gone,
           dependsOn: row.dependsOn,
+          fingerprint: row.fingerprint,
         }),
       ).toBe(marker);
     }
@@ -173,6 +174,7 @@ const WRITTEN_KEYS = {
       drift: true,
       gone: 1,
       dependsOn: ["b"],
+      fingerprint: "f",
     }),
   ),
   merge: keysOf(mergeMarker({ pr: 1, stackIds: ["a"], head: "h" })),

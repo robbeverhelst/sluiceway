@@ -95,7 +95,7 @@ What deploying one stack would change, told as addresses, ops, tracking changes 
 _Avoid_: Plan, preview output, changeset
 
 **Value**:
-What a property is set to, before or after a deploy. A value never leaves the tool's adapter: Sluiceway shows that a property changes and never what it changes to, whether or not the tool marks it secret. There are two exceptions, both a repo's own choice: the tool diff, which it may turn on for the job log, and the value list.
+What a property is set to, before or after a deploy. A value never leaves the tool's adapter: Sluiceway shows that a property changes and never what it changes to, whether or not the tool marks it secret. There are two exceptions, both a repo's own choice: the tool diff, which it may turn on for the job log, and the value list. A value fingerprint is a hash and not a value, and it leaves.
 _Avoid_: Secret (a secret is only one kind of value, and all values are treated alike), content, setting
 
 **Value list**:
@@ -139,8 +139,12 @@ Nothing to deploy and no known drift.
 _Avoid_: Clean, up to date, green
 
 **Diff hash**:
-A fingerprint of everything a stack's row shows about what a deploy would change. A tick approves that fingerprint, and a deploy goes ahead only if a fresh preview still gives the same one.
-_Avoid_: Checksum, signature, plan id
+A hash of everything a stack's row shows about what a deploy would change. A tick approves it, and a deploy goes ahead only if a fresh preview still gives the same one.
+_Avoid_: Checksum, signature, plan id, fingerprint (that is the value fingerprint's word)
+
+**Value fingerprint**:
+A hash of the values of a stack's diff that its row does not show, sixteen hex characters on the row next to the diff hash, and on the deployment record a tick opens. `apply` compares it after the hash: a value that changed since the tick stops the deploy, and the row and a comment say so without naming the value. A value the tool marks secret enters it as the tool's mark, never in the clear. On for every repo, off per repo or per stack with `valueFingerprint: false`, for a program whose values differ on every run.
+_Avoid_: Value hash, values digest, second hash
 
 **Address**:
 The string that identifies one resource within one stack's diff. The tool's adapter defines it and nothing else looks inside it. It is unique within a diff and the same across two identical previews.

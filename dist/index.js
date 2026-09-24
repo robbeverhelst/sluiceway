@@ -51476,6 +51476,8 @@ function rowMarker(facts) {
   if (facts.dependsOn && facts.dependsOn.length > 0) {
     pairs.push(["depends-on", encodeIds(facts.dependsOn)]);
   }
+  if (facts.fingerprint !== undefined)
+    pairs.push(["fingerprint", facts.fingerprint]);
   return marker("row", pairs);
 }
 function mergeMarker(facts) {
@@ -51636,6 +51638,7 @@ function parseDashboard(body) {
     };
     const dependsOn = pairs.get("depends-on") ?? "";
     const deletes = pairs.get("deletes") ?? "";
+    const fingerprint = pairs.get("fingerprint");
     rows.push({
       known: true,
       stackId,
@@ -51648,6 +51651,7 @@ function parseDashboard(body) {
       drift: pairs.get("drift") === "true",
       ...count("gone") > 0 ? { gone: count("gone") } : {},
       ...dependsOn === "" ? {} : { dependsOn: decodeIds(dependsOn) },
+      ...fingerprint === undefined ? {} : { fingerprint },
       ticked: match[1] === "x" || match[1] === "X",
       text
     });
@@ -51941,6 +51945,7 @@ function listWords(words) {
   return words.length <= 1 ? words[0] ?? "" : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 }
 var PENDING_AGAIN_NOTE = ":information_source: pending again right after a deploy of this same change, a value in the program may differ on every run.";
+var VALUE_EVERY_RUN_NOTE = ":information_source: a value this row does not show differed between two previews of the same commit, so a tick would be refused: a value in the program may differ on every run. Turn the value fingerprint off for this stack with `valueFingerprint: false` on its `stacks` entry.";
 function pendingAgainLine({ logUrl }) {
   return logUrl === undefined ? PENDING_AGAIN_NOTE : `${PENDING_AGAIN_NOTE} Compare the tool's own diff in the [job log](${logUrl}).`;
 }
@@ -52004,11 +52009,14 @@ function driftRow(row, options) {
       shortened: level >= 2 ? level : 0,
       drift: true,
       gone: drift.filter((change) => change.op === "delete").length,
-      dependsOn: row.dependsOn
+      dependsOn: row.dependsOn,
+      fingerprint: row.fingerprint
     })}`
   ];
   if (row.failure)
     lines.push(failureLine(row.failure, options.timeZone));
+  if (row.valueEveryRun)
+    lines.push(VALUE_EVERY_RUN_NOTE);
   if (row.orphanTick && !options.readOnly)
     lines.push(ORPHAN_TICK_NOTE);
   lines.push(...driftLines(drift, summary2, options));
@@ -52035,7 +52043,8 @@ function pendingRow(row, options) {
       failed: row.failure !== undefined,
       shortened: level,
       drift: drift.length > 0,
-      dependsOn: row.dependsOn
+      dependsOn: row.dependsOn,
+      fingerprint: row.fingerprint
     })}`
   ];
   if (row.attribution)
@@ -52044,6 +52053,8 @@ function pendingRow(row, options) {
     lines.push(failureLine(row.failure, options.timeZone));
   if (row.waitsOnMerge)
     lines.push(onMergeNote(row.waitsOnMerge));
+  if (row.valueEveryRun)
+    lines.push(VALUE_EVERY_RUN_NOTE);
   if (row.pendingAgain)
     lines.push(pendingAgainLine(row.pendingAgain));
   if (row.orphanTick && !options.readOnly)
@@ -52584,6 +52595,7 @@ var stackEntry = exports_external.strictObject({
   drift: exports_external.strictObject({
     enabled: exports_external.boolean().describe("Check these stacks for drift, or not, whatever drift.enabled at the top level says. The scans that check are the same.")
   }).describe("The drift check of these stacks. Default: the top level drift.").exactOptional(),
+  valueFingerprint: exports_external.boolean().describe("Cover the values these stacks' rows do not show with a fingerprint, or not, whatever valueFingerprint at the top level says. Turn it off for a stack whose program makes a value that differs on every run. Default: the top level valueFingerprint.").exactOptional(),
   options: exports_external.record(exports_external.string(), exports_external.unknown()).describe("Named adapter options of the tool. Only an entry with tool takes them.").exactOptional()
 }).superRefine((entry, context3) => {
   if (entry.tool !== undefined)
@@ -52650,6 +52662,7 @@ var configSchema = exports_external.strictObject({
   drift: exports_external.strictObject({
     enabled: exports_external.boolean().describe("Check every stack for drift in each scan that a schedule starts, or that a person starts with Run workflow: changes made to real infrastructure outside the code. A stack with drift gets a row with a box, and a tick deploys the code as it is, which puts it back. Costs one more tool run per stack in those scans.").default(false)
   }).prefault({}),
+  valueFingerprint: exports_external.boolean().describe("Cover the values a row does not show with a fingerprint on the row, so a tick approves them too: a value that changed between the tick and the deploy stops the deploy, and the row says so without naming the value. A value the tool marks secret never reaches the fingerprint. Turn it off, here or per stack, where a program makes a value that differs on every run.").default(true),
   attribution: exports_external.strictObject({
     lookback: exports_external.int().min(1).max(LOOKBACK_MAX).describe("How many of the newest commits a job walks to say which pull requests made a row pending. A stack whose last deploy lies further back gets a line that says earlier changes exist. Each 100 commits cost one more GraphQL request.").default(LOOKBACK),
     names: exports_external.int().min(0).max(NAMES_MAX).describe("How many pull requests and direct pushes a row and a line of Recently deployed name, newest first. The rest is a count. 0 names none and always counts.").default(NAMED_ON_A_ROW)
@@ -52942,6 +52955,7 @@ function applyConfig(config2, found) {
     const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
     const drift = entries.findLast((entry) => entry.drift)?.drift?.enabled;
     const deploy = entries.findLast((entry) => entry.deploy)?.deploy;
+    const valueFingerprint = entries.findLast((entry) => entry.valueFingerprint !== undefined)?.valueFingerprint;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     return {
@@ -52955,7 +52969,8 @@ function applyConfig(config2, found) {
       ...from === undefined ? {} : { phaseFrom: from },
       ...entries.some((entry) => entry.dependsOn === DEPENDS_ON_AUTO) ? { dependsOnAuto: true } : {},
       ...drift === undefined ? {} : { drift },
-      ...deploy === "on-merge" ? { deploy } : {}
+      ...deploy === "on-merge" ? { deploy } : {},
+      ...valueFingerprint === undefined ? {} : { valueFingerprint }
     };
   });
 }
@@ -55520,6 +55535,120 @@ function appliedServerSide(stdout) {
 // src/adapters/helm/drift.ts
 import { join as join15 } from "node:path";
 
+// src/core/value-fingerprint.ts
+import { createHash as createHash2 } from "node:crypto";
+var SECRET_MARK = Symbol("sluiceway:secret");
+function byCodeUnit7(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function canonicalJson(value) {
+  if (Array.isArray(value))
+    return `[${value.map(canonicalJson).join(",")}]`;
+  if (typeof value === "object" && value !== null) {
+    const members2 = Object.keys(value).sort(byCodeUnit7).flatMap((key) => {
+      const member = value[key];
+      return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
+    });
+    return `{${members2.join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+function isAbsent(value) {
+  return value === undefined || value === null;
+}
+function hiddenDocument(values2) {
+  const entries = values2.flatMap((value) => {
+    if ("secret" in value)
+      return [{ path: value.path, text: canonicalJson({ path: value.path, secret: true }) }];
+    const old = isAbsent(value.old) ? {} : { old: value.old };
+    const next = isAbsent(value.new) ? {} : { new: value.new };
+    if (isAbsent(value.old) && isAbsent(value.new))
+      return [];
+    return [{ path: value.path, text: canonicalJson({ path: value.path, ...old, ...next }) }];
+  });
+  entries.sort((a, b) => byCodeUnit7(a.path, b.path) || byCodeUnit7(a.text, b.text));
+  return `[${entries.map((entry) => entry.text).join(",")}]`;
+}
+function first16(text7) {
+  return createHash2("sha256").update(text7, "utf8").digest("hex").slice(0, 16);
+}
+function changeFingerprint(values2) {
+  const document = hiddenDocument(values2);
+  return document === "[]" ? undefined : first16(document);
+}
+function segment(key, top) {
+  if (/^[\p{L}_][\p{L}\p{Nd}_]*$/u.test(key))
+    return top ? key : `.${key}`;
+  return `["${key.replaceAll('"', "\\\"")}"]`;
+}
+function isContainer(node2) {
+  return typeof node2 === "object" && node2 !== null;
+}
+function keysOf2(node2) {
+  if (Array.isArray(node2))
+    return node2.map((_, index) => index);
+  if (isContainer(node2))
+    return Object.keys(node2);
+  return [];
+}
+function childOf(node2, key) {
+  if (typeof key === "number")
+    return Array.isArray(node2) ? node2[key] : undefined;
+  return isContainer(node2) && !Array.isArray(node2) ? node2[key] : undefined;
+}
+function differingLeaves(before, after, options = {}) {
+  const found = [];
+  const secret = (node2) => node2 === SECRET_MARK || (options.isSecret?.(node2) ?? false);
+  const walk4 = (old, next, path) => {
+    if (secret(old) || secret(next)) {
+      found.push({ path, secret: true });
+      return;
+    }
+    const oldIn = isContainer(old);
+    const nextIn = isContainer(next);
+    if (oldIn || nextIn) {
+      if (!oldIn && !isAbsent(old))
+        found.push({ path, old });
+      if (!nextIn && !isAbsent(next))
+        found.push({ path, new: next });
+      const keys = new Map;
+      for (const key of [
+        ...keysOf2(oldIn ? old : undefined),
+        ...keysOf2(nextIn ? next : undefined)
+      ]) {
+        keys.set(typeof key === "number" ? `[${key}]` : segment(key, path === ""), key);
+      }
+      for (const [written, key] of keys) {
+        walk4(childOf(oldIn ? old : undefined, key), childOf(nextIn ? next : undefined, key), path + written);
+      }
+      return;
+    }
+    if (isAbsent(old) && isAbsent(next))
+      return;
+    if (old === next)
+      return;
+    found.push({
+      path,
+      ...isAbsent(old) ? {} : { old },
+      ...isAbsent(next) ? {} : { new: next }
+    });
+  };
+  walk4(before, after, options.prefix ?? "");
+  return found;
+}
+function valueFingerprint(diff) {
+  const list = (changes2) => (changes2 ?? []).flatMap((change) => change.fingerprint === undefined ? [] : [{ address: change.address, fingerprint: change.fingerprint }]).sort((a, b) => byCodeUnit7(a.address, b.address) || byCodeUnit7(a.fingerprint, b.fingerprint)).map((entry) => canonicalJson(entry));
+  const changes = list(diff.changes);
+  const drift = list(diff.drift);
+  if (changes.length === 0 && drift.length === 0)
+    return;
+  const driftText = drift.length === 0 ? "" : `"drift":[${drift.join(",")}],`;
+  return first16(`{"changes":[${changes.join(",")}],${driftText}"stackId":${JSON.stringify(diff.stackId)}}`);
+}
+function differsEveryRun(approved, fresh, sameCommit) {
+  return sameCommit && approved.hash === fresh.hash && approved.fingerprint !== undefined && fresh.fingerprint !== undefined && approved.fingerprint !== fresh.fingerprint;
+}
+
 // src/adapters/opentofu/paths.ts
 function changedPaths(sides, showValues) {
   const paths = [];
@@ -55559,7 +55688,7 @@ function changedPaths(sides, showValues) {
         ...isObject3(unknown2) ? Object.keys(unknown2) : []
       ]);
       for (const key of keys) {
-        walk4(before[key], after[key], child(unknown2, key), child(beforeSensitive, key), child(afterSensitive, key), path + segment(key, path === ""));
+        walk4(before[key], after[key], child(unknown2, key), child(beforeSensitive, key), child(afterSensitive, key), path + segment2(key, path === ""));
       }
       return;
     }
@@ -55577,12 +55706,27 @@ function changedPaths(sides, showValues) {
   walk4(sides.before, sides.after, sides.afterUnknown, sides.beforeSensitive, sides.afterSensitive, "");
   return { paths, values: values2 };
 }
+function maskSensitive(value, sensitive) {
+  if (sensitive === true)
+    return SECRET_MARK;
+  if (Array.isArray(value)) {
+    return value.map((item, index) => maskSensitive(item, child(sensitive, index)));
+  }
+  if (isObject3(value)) {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, maskSensitive(item, child(sensitive, key))]));
+  }
+  return value;
+}
+function hiddenFingerprint(sides, shown) {
+  const leaves = differingLeaves(maskSensitive(sides.before, sides.beforeSensitive), maskSensitive(sides.after, sides.afterSensitive));
+  return changeFingerprint(leaves.filter((leaf) => !shown.includes(leaf.path)));
+}
 function replacePath(steps, beforeSensitive, afterSensitive) {
   let path = "";
   let before = beforeSensitive;
   let after = afterSensitive;
   for (const step of steps) {
-    path += typeof step === "number" ? `[${step}]` : segment(step, path === "");
+    path += typeof step === "number" ? `[${step}]` : segment2(step, path === "");
     before = child(before, step);
     after = child(after, step);
     if (before === true || after === true)
@@ -55590,7 +55734,7 @@ function replacePath(steps, beforeSensitive, afterSensitive) {
   }
   return path;
 }
-function segment(key, top) {
+function segment2(key, top) {
   if (/^[\p{L}_][\p{L}\p{Nd}_]*$/u.test(key))
     return top ? key : `.${key}`;
   return `["${key.replaceAll('"', "\\\"")}"]`;
@@ -55647,7 +55791,7 @@ var OPS = {
   MODIFY: "update",
   REMOVE: "delete"
 };
-function foldEntries(entries, namespace, showValues) {
+function foldEntries(entries, namespace, showValues, fingerprint = false) {
   const changes = [];
   const unknown2 = [];
   const unreadable = [];
@@ -55672,7 +55816,7 @@ function foldEntries(entries, namespace, showValues) {
       return;
     }
     firstAt.set(address, index);
-    const found = op === "update" ? keys(entry, showValues) : { changedKeys: [] };
+    const found = op === "update" ? keys(entry, showValues, fingerprint) : { changedKeys: [] };
     if (found === undefined) {
       unreadable.push(`${at}.changes: expected the paths that change on a MODIFY.`);
       return;
@@ -55690,7 +55834,7 @@ function foldEntries(entries, namespace, showValues) {
     return { ok: false, reason: "unreadable-output", detail: unreadable };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
-  changes.sort((a, b) => byCodeUnit7(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit8(a.address, b.address));
   return { ok: true, changes };
 }
 function addressOf(entry) {
@@ -55700,7 +55844,7 @@ function typeOf(entry) {
   const slash = entry.apiVersion.lastIndexOf("/");
   return slash < 0 ? entry.kind : `${entry.kind}.${entry.apiVersion.slice(0, slash)}`;
 }
-function keys(entry, showValues) {
+function keys(entry, showValues, fingerprint) {
   const found = entry.changes ?? [];
   if (found.length === 0)
     return;
@@ -55715,9 +55859,23 @@ function keys(entry, showValues) {
     }
     return path;
   });
-  const changedKeys = [...new Set(paths.filter((path) => path !== ""))].sort(byCodeUnit7);
-  const shown2 = values2.filter((value, index) => values2.findIndex((one) => one.path === value.path) === index).sort((a, b) => byCodeUnit7(a.path, b.path));
-  return { changedKeys, ...shown2.length === 0 ? {} : { values: shown2 } };
+  const changedKeys = [...new Set(paths.filter((path) => path !== ""))].sort(byCodeUnit8);
+  const shown2 = values2.filter((value, index) => values2.findIndex((one) => one.path === value.path) === index).sort((a, b) => byCodeUnit8(a.path, b.path));
+  const shownPaths = new Set(shown2.map((value) => value.path));
+  const hidden = found.flatMap((change) => {
+    const path = propertyPath(change);
+    if (path === "" || shownPaths.has(path))
+      return [];
+    if (secret)
+      return [{ path, secret: true }];
+    return [{ path, old: change.oldValue, new: change.newValue }];
+  });
+  const hiddenFingerprint2 = fingerprint ? changeFingerprint(hidden) : undefined;
+  return {
+    changedKeys,
+    ...shown2.length === 0 ? {} : { values: shown2 },
+    ...hiddenFingerprint2 === undefined ? {} : { fingerprint: hiddenFingerprint2 }
+  };
 }
 function propertyPath(change) {
   let path = "";
@@ -55726,11 +55884,11 @@ function propertyPath(change) {
       continue;
     const [, name = "", indexes = ""] = /^(.*?)((?:\[\d+\])*)$/.exec(part) ?? [];
     if (name !== "")
-      path += segment(name, path === "");
+      path += segment2(name, path === "");
     path += indexes;
   }
   const { field: field2 } = change;
-  return path + (/^\d+$/.test(field2) ? `[${field2}]` : segment(field2, path === ""));
+  return path + (/^\d+$/.test(field2) ? `[${field2}]` : segment2(field2, path === ""));
 }
 function shownValue(path, change) {
   const old = shown2(change.oldValue);
@@ -55756,7 +55914,7 @@ function shown2(value) {
     return "refused";
   return shortValue(value);
 }
-function byCodeUnit7(a, b) {
+function byCodeUnit8(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -55974,7 +56132,7 @@ async function preview(stack, options) {
   const parsed = parseEntries(diffed.stdout);
   if (!parsed.ok)
     return failed({ kind: "unreadable-output" }, words, parsed.problems);
-  const folded = foldEntries(parsed.entries, helm.namespace, options.showValues ?? []);
+  const folded = foldEntries(parsed.entries, helm.namespace, options.showValues ?? [], options.valueFingerprint === true);
   if (!folded.ok)
     return failed({ kind: folded.reason }, words, folded.detail);
   const diff = { stackId: stackId(stack), changes: folded.changes };
@@ -56107,15 +56265,15 @@ function optionsOf2(stack) {
 }
 
 // src/adapters/kubectl/rendered-set.ts
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 import { mkdtemp, readFile as readFile2, rm as rm2, writeFile as writeFile2 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join as join19 } from "node:path";
 
 // src/adapters/kubectl/inventory.ts
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash3 } from "node:crypto";
 function inventoryName(stackId2, repository = "") {
-  const digest = createHash2("sha256").update(`${repository}
+  const digest = createHash3("sha256").update(`${repository}
 ${stackId2}`, "utf8").digest("hex");
   return `sluiceway-${digest.slice(0, 16)}`;
 }
@@ -56152,7 +56310,7 @@ function listed3(node2) {
   };
 }
 function inventoryManifest(name, stackId2, objects2) {
-  const lines = [...new Set(objects2.map((object2) => JSON.stringify(listedLine(object2))))].sort(byCodeUnit8);
+  const lines = [...new Set(objects2.map((object2) => JSON.stringify(listedLine(object2))))].sort(byCodeUnit9);
   return [
     "apiVersion: v1",
     "kind: ConfigMap",
@@ -56268,7 +56426,7 @@ function groupOf(apiVersion) {
 function isObject4(node2) {
   return typeof node2 === "object" && node2 !== null && !Array.isArray(node2);
 }
-function byCodeUnit8(a, b) {
+function byCodeUnit9(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function withInventory(text7, name, stackId2, pruned) {
@@ -56310,7 +56468,7 @@ function stepOf(node2, key, path) {
   if (kind === "f") {
     return {
       node: isObject5(node2) ? node2[rest] : undefined,
-      path: path + segment(rest, path === "")
+      path: path + segment2(rest, path === "")
     };
   }
   if (!Array.isArray(node2))
@@ -56373,7 +56531,7 @@ var SERVER_FIELDS = [
   "managedFields",
   "selfLink"
 ];
-function foldObjects2(pairs, showValues, inventory) {
+function foldObjects2(pairs, showValues, inventory, fingerprint = false) {
   const changes = [];
   const problems = [];
   const firstAt = new Map;
@@ -56400,11 +56558,22 @@ function foldObjects2(pairs, showValues, inventory) {
     firstAt.set(identity2.address, index + 1);
     const op = live === undefined ? "create" : merged === undefined ? "delete" : "update";
     const base = { address: identity2.address, type: identity2.type, name: identity2.name, op };
+    const sensitive = identity2.secret ? { data: true, stringData: true } : undefined;
     if (live === undefined || merged === undefined) {
-      changes.push({ ...base, changedKeys: [], replaceKeys: [] });
+      const created = fingerprint && merged !== undefined ? hiddenFingerprint({
+        before: undefined,
+        after: withoutServerFields(merged),
+        beforeSensitive: undefined,
+        afterSensitive: sensitive
+      }, []) : undefined;
+      changes.push({
+        ...base,
+        changedKeys: [],
+        replaceKeys: [],
+        ...created === undefined ? {} : { fingerprint: created }
+      });
       return;
     }
-    const sensitive = identity2.secret ? { data: true, stringData: true } : undefined;
     const { paths, values: values2 } = changedPaths({
       before: withoutServerFields(live),
       after: withoutServerFields(merged),
@@ -56412,20 +56581,27 @@ function foldObjects2(pairs, showValues, inventory) {
       beforeSensitive: sensitive,
       afterSensitive: sensitive
     }, showValues);
-    const changedKeys = [...new Set(paths)].sort(byCodeUnit9);
+    const changedKeys = [...new Set(paths)].sort(byCodeUnit10);
     if (changedKeys.length === 0)
       return;
-    const shown3 = values2.sort((a, b) => byCodeUnit9(a.path, b.path));
+    const shown3 = values2.sort((a, b) => byCodeUnit10(a.path, b.path));
+    const hidden = fingerprint ? hiddenFingerprint({
+      before: withoutServerFields(live),
+      after: withoutServerFields(merged),
+      beforeSensitive: sensitive,
+      afterSensitive: sensitive
+    }, shown3.map((value) => value.path)) : undefined;
     changes.push({
       ...base,
       changedKeys,
       replaceKeys: [],
-      ...shown3.length === 0 ? {} : { values: shown3 }
+      ...shown3.length === 0 ? {} : { values: shown3 },
+      ...hidden === undefined ? {} : { fingerprint: hidden }
     });
   });
   if (problems.length > 0)
     return { ok: false, reason: "unreadable-output", detail: problems };
-  changes.sort((a, b) => byCodeUnit9(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit10(a.address, b.address));
   return { ok: true, changes };
 }
 function yamlObject(text7) {
@@ -56501,7 +56677,7 @@ function foldDrift(pairs, context3) {
   });
   if (problems.length > 0)
     return { ok: false, reason: "unreadable-output", detail: problems };
-  drift.sort((a, b) => byCodeUnit9(a.address, b.address));
+  drift.sort((a, b) => byCodeUnit10(a.address, b.address));
   return { ok: true, changes: drift };
 }
 function withoutServerFields(object2) {
@@ -56514,7 +56690,7 @@ function withoutServerFields(object2) {
 function isObject6(node2) {
   return typeof node2 === "object" && node2 !== null && !Array.isArray(node2);
 }
-function byCodeUnit9(a, b) {
+function byCodeUnit10(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -56567,7 +56743,7 @@ class RenderedSet {
   }
 }
 function sha256(text7) {
-  return createHash3("sha256").update(text7, "utf8").digest("hex");
+  return createHash4("sha256").update(text7, "utf8").digest("hex");
 }
 async function renderSet(stack, context3) {
   const dir = join19(context3.root, stack.path);
@@ -56842,7 +57018,7 @@ async function diff(stack, options, { set: set2, toolLog: renderLog, pruning }) 
       "The tool's output: expected the objects that differ, as the exit code says there are."
     ]);
   }
-  const folded = foldObjects2(read5.pairs, options.showValues ?? [], pruning?.inventory);
+  const folded = foldObjects2(read5.pairs, options.showValues ?? [], pruning?.inventory, options.valueFingerprint === true);
   if (!folded.ok)
     return failed({ kind: folded.reason }, log, folded.detail);
   const changes = [...folded.changes, ...pruning?.deletes ?? []].sort((a, b) => a.address < b.address ? -1 : a.address > b.address ? 1 : 0);
@@ -57087,7 +57263,7 @@ async function apply3(stack, context3, plan) {
 import { join as join26 } from "node:path";
 function prepare2(stacks) {
   const byPath = Map.groupBy(stacks, (stack) => stack.path);
-  return [...byPath].sort(([a], [b]) => byCodeUnit10(a, b)).map(([path, grouped]) => ({
+  return [...byPath].sort(([a], [b]) => byCodeUnit11(a, b)).map(([path, grouped]) => ({
     title: path,
     stacks: grouped,
     run: async (context3) => {
@@ -57099,7 +57275,7 @@ function prepare2(stacks) {
       if (!synth.ok)
         return synth;
       let toolLog = synth.toolLog;
-      const named = [...grouped].sort((a, b) => byCodeUnit10(a.name ?? "", b.name ?? ""));
+      const named = [...grouped].sort((a, b) => byCodeUnit11(a.name ?? "", b.name ?? ""));
       for (const stack of named) {
         const init = await step(context3, command(stack, initArgs()), workingDirectory(context3.root, stack));
         toolLog += init.toolLog;
@@ -57120,7 +57296,7 @@ async function step(context3, argv, cwd) {
   const toolLog = stripAnsi(result.stdout + result.stderr);
   return result.ok ? { ok: true, toolLog } : { ok: false, reason: result.reason, toolLog };
 }
-function byCodeUnit10(a, b) {
+function byCodeUnit11(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -57136,7 +57312,7 @@ var ACTIONS = {
   forget: { op: "none", tracking: "forget" },
   "forget,create": { op: "create", tracking: "forget" }
 };
-function foldChanges(found, showValues) {
+function foldChanges(found, showValues, fingerprint = false) {
   const changes = [];
   const unknown2 = [];
   const unreadable = [];
@@ -57181,14 +57357,14 @@ function foldChanges(found, showValues) {
       name: displayName(resource),
       ...folded,
       ...moved && resource.previous_address !== undefined ? { previousAddress: resource.previous_address } : {},
-      ...keys2(resource, folded.op, showValues)
+      ...keys2(resource, folded.op, showValues, fingerprint)
     });
   });
   if (unreadable.length > 0)
     return { ok: false, reason: "unreadable-output", detail: unreadable };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
-  changes.sort((a, b) => byCodeUnit11(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit12(a.address, b.address));
   return { ok: true, changes };
 }
 function withTracking(known, tracking) {
@@ -57205,10 +57381,24 @@ function displayName(resource) {
   const name = `${module}${rest}`;
   return resource.deposed === undefined ? name : `${name} (deposed ${resource.deposed})`;
 }
-function keys2(resource, op, showValues) {
+function keys2(resource, op, showValues, fingerprint) {
+  const { change: change3 } = resource;
+  const sides = {
+    before: change3.before,
+    after: change3.after,
+    beforeSensitive: change3.before_sensitive,
+    afterSensitive: change3.after_sensitive
+  };
+  if (op === "create" && fingerprint) {
+    const created = hiddenFingerprint({ ...sides, before: undefined }, []);
+    return {
+      changedKeys: [],
+      replaceKeys: [],
+      ...created === undefined ? {} : { fingerprint: created }
+    };
+  }
   if (op !== "update" && op !== "replace")
     return { changedKeys: [], replaceKeys: [] };
-  const { change: change3 } = resource;
   const { paths, values: values2 } = changedPaths({
     before: change3.before,
     after: change3.after,
@@ -57218,13 +57408,19 @@ function keys2(resource, op, showValues) {
   }, showValues);
   const replaceKeys = op === "replace" ? sortedSet((change3.replace_paths ?? []).map((steps) => replacePath(steps, change3.before_sensitive, change3.after_sensitive))) : [];
   const changedKeys = sortedSet([...paths, ...replaceKeys]);
-  const shown3 = values2.filter((value) => changedKeys.includes(value.path)).sort((a, b) => byCodeUnit11(a.path, b.path));
-  return { changedKeys, replaceKeys, ...shown3.length === 0 ? {} : { values: shown3 } };
+  const shown3 = values2.filter((value) => changedKeys.includes(value.path)).sort((a, b) => byCodeUnit12(a.path, b.path));
+  const hidden = fingerprint ? hiddenFingerprint(sides, shown3.map((value) => value.path)) : undefined;
+  return {
+    changedKeys,
+    replaceKeys,
+    ...shown3.length === 0 ? {} : { values: shown3 },
+    ...hidden === undefined ? {} : { fingerprint: hidden }
+  };
 }
 function sortedSet(names) {
-  return [...new Set(names.filter((name) => name !== ""))].sort(byCodeUnit11);
+  return [...new Set(names.filter((name) => name !== ""))].sort(byCodeUnit12);
 }
-function byCodeUnit11(a, b) {
+function byCodeUnit12(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -57263,7 +57459,7 @@ async function planAndShow(stack, options, plan) {
   const parsed = parsePlan(shown3.stdout);
   if (!parsed.ok)
     return failed({ kind: "unreadable-output" }, log, parsed.problems);
-  const folded = foldChanges(parsed.changes, options.showValues ?? []);
+  const folded = foldChanges(parsed.changes, options.showValues ?? [], options.valueFingerprint === true);
   if (!folded.ok)
     return failed({ kind: folded.reason }, log, folded.detail);
   return { ok: true, diff: { stackId: stackId(stack), changes: folded.changes }, toolLog: log };
@@ -57526,7 +57722,7 @@ function foldSteps(steps) {
     return { ok: false, reason: "unknown-step", detail: unknown2 };
   if (rootCreate !== undefined && changes.length === 0)
     changes.push(rootCreate);
-  changes.sort((a, b) => byCodeUnit12(a.address, b.address));
+  changes.sort((a, b) => byCodeUnit13(a.address, b.address));
   return { ok: true, changes };
 }
 var ROOT_STACK_TYPE = "pulumi:pulumi:Stack";
@@ -57542,19 +57738,20 @@ function typeAndName(urn) {
   return type === undefined || type === "" || name === "" ? undefined : { type, name };
 }
 function keys3(step2, op) {
+  const fingerprint = step2.fingerprint !== undefined && (op === "create" || op === "update" || op === "replace") ? { fingerprint: step2.fingerprint } : {};
   if (op !== "update" && op !== "replace")
-    return { changedKeys: [], replaceKeys: [] };
+    return { changedKeys: [], replaceKeys: [], ...fingerprint };
   const paths = step2.detailedDiff ?? [];
   const changed = paths.length > 0 ? paths : step2.diffReasons ?? [];
   const replaceKeys = op === "replace" ? sortedSet2(step2.replaceReasons ?? []) : [];
   const changedKeys = sortedSet2([...changed, ...replaceKeys]);
   const values2 = (step2.values ?? []).filter((value) => changedKeys.includes(value.path));
-  return { changedKeys, replaceKeys, ...values2.length === 0 ? {} : { values: values2 } };
+  return { changedKeys, replaceKeys, ...values2.length === 0 ? {} : { values: values2 }, ...fingerprint };
 }
 function sortedSet2(names) {
-  return [...new Set(names)].sort(byCodeUnit12);
+  return [...new Set(names)].sort(byCodeUnit13);
 }
-function byCodeUnit12(a, b) {
+function byCodeUnit13(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -57573,11 +57770,14 @@ function driftCommand(name) {
   ];
 }
 var STREAM_EVENTS = { PULUMI_ENABLE_STREAMING_JSON_PREVIEW: "true" };
+var state = exports_external.object({ outputs: exports_external.unknown().optional() }).nullish();
 var outputsEvent = exports_external.object({
   resOutputsEvent: exports_external.object({
     metadata: exports_external.object({
       op: exports_external.string(),
       urn: exports_external.string(),
+      old: state,
+      new: state,
       diffs: exports_external.array(exports_external.string()).nullish(),
       detailedDiff: exports_external.record(exports_external.string(), exports_external.unknown()).nullish().transform((paths) => paths == null ? undefined : Object.keys(paths))
     })
@@ -57593,6 +57793,11 @@ var DRIFT_OPS = {
   update: "update",
   delete: "delete"
 };
+var isSecret = (node2) => node2 === "[secret]";
+function fingerprintOf(hidden) {
+  const fingerprint = changeFingerprint(hidden);
+  return fingerprint === undefined ? {} : { fingerprint };
+}
 async function detectDrift3(stack, options) {
   if (stack.name === undefined)
     throw new Error("A Pulumi stack always has a name.");
@@ -57607,7 +57812,7 @@ async function detectDrift3(stack, options) {
   if (!result.ok && result.reason.kind === "timed-out") {
     return failed(result.reason, stripAnsi(result.stderr));
   }
-  const read5 = readEvents(result.stdout);
+  const read5 = readEvents(result.stdout, options.valueFingerprint === true);
   const words = stripAnsi([result.stderr, ...typeof read5 === "string" ? [] : read5.diagnostics].join(""));
   if (!result.ok)
     return failed(result.reason, words);
@@ -57629,7 +57834,7 @@ async function detectDrift3(stack, options) {
   read5.drift.sort((a, b) => a.address < b.address ? -1 : a.address > b.address ? 1 : 0);
   return { ok: true, drift: read5.drift, toolLog: words };
 }
-function readEvents(stdout) {
+function readEvents(stdout, fingerprint) {
   const events = { drift: [], unknown: [], diagnostics: [], summary: undefined };
   const seen = new Set;
   let count = 0;
@@ -57654,7 +57859,7 @@ function readEvents(stdout) {
     if (!outputs.success)
       continue;
     count++;
-    const { op, urn, diffs, detailedDiff } = outputs.data.resOutputsEvent.metadata;
+    const { op, urn, diffs, detailedDiff, old, new: next } = outputs.data.resOutputsEvent.metadata;
     const at = `The tool's output, at event ${count}`;
     const known = Object.hasOwn(DRIFT_OPS, op) ? DRIFT_OPS[op] : undefined;
     if (known === undefined) {
@@ -57674,7 +57879,8 @@ function readEvents(stdout) {
       ...resource,
       op: known,
       changedKeys: known === "update" ? [...new Set(paths ?? [])].sort() : [],
-      replaceKeys: []
+      replaceKeys: [],
+      ...fingerprint && known === "update" ? fingerprintOf(differingLeaves(old?.outputs, next?.outputs, { isSecret })) : {}
     });
   }
   return events;
@@ -57791,8 +57997,40 @@ function listedValues(list, sources) {
   }
   return shown3.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 }
+var isSecret2 = (node2) => node2 === SECRET;
+function hiddenFingerprint2(op, sources, shown3) {
+  if (op === "create") {
+    return changeFingerprint(differingLeaves(undefined, sources.newInputs, { isSecret: isSecret2 }));
+  }
+  if (op !== "update" && op !== "replace")
+    return;
+  const shownPaths = new Set(shown3.map((value) => value.path));
+  const hidden = [];
+  const seen = new Set;
+  const at = (path, oldSide) => {
+    if (seen.has(path) || shownPaths.has(path))
+      return;
+    seen.add(path);
+    const old = valueAt2(oldSide, path);
+    const next = valueAt2(sources.newInputs, path);
+    if (old.kind === "secret" || next.kind === "secret") {
+      hidden.push({ path, secret: true });
+      return;
+    }
+    if (old.kind === "ambiguous" || next.kind === "ambiguous")
+      return;
+    hidden.push(...differingLeaves(old.kind === "found" ? old.value : undefined, next.kind === "found" ? next.value : undefined, { prefix: path, isSecret: isSecret2 }));
+  };
+  for (const { path, inputDiff } of sources.paths) {
+    at(path, inputDiff ? sources.oldInputs : sources.oldOutputs);
+  }
+  const reasons = sources.paths.length > 0 ? [] : sources.diffReasons;
+  for (const name of [...reasons, ...sources.replaceReasons])
+    at(name, sources.oldInputs);
+  return changeFingerprint(hidden);
+}
 function side(found) {
-  if (found.kind === "refused")
+  if (found.kind === "secret" || found.kind === "ambiguous")
     return "refused";
   if (found.kind === "absent" || found.value === null)
     return;
@@ -57811,11 +58049,11 @@ function valueAt2(root, path) {
   const found = [];
   const walk4 = (node2, prefix) => {
     if (node2 === SECRET) {
-      found.push({ kind: "refused" });
+      found.push({ kind: "secret" });
       return;
     }
-    for (const [segment2, child2] of children(node2, prefix === "")) {
-      const at = prefix + segment2;
+    for (const [segment3, child2] of children(node2, prefix === "")) {
+      const at = prefix + segment3;
       if (at === path)
         found.push({ kind: "found", value: child2 });
       else if (path.startsWith(at) && (path[at.length] === "." || path[at.length] === "["))
@@ -57823,9 +58061,11 @@ function valueAt2(root, path) {
     }
   };
   walk4(root, "");
+  if (found.some((one) => one.kind === "secret"))
+    return { kind: "secret" };
   const [only] = found;
   if (found.length > 1)
-    return { kind: "refused" };
+    return { kind: "ambiguous" };
   return only ?? { kind: "absent" };
 }
 function children(node2, top) {
@@ -57851,8 +58091,8 @@ var stepFields = {
 };
 var STACK_REFERENCE_TYPE = "pulumi:pulumi:StackReference";
 var referenceState = exports_external.object({ inputs: exports_external.object({ name: exports_external.unknown() }).partial().nullish() }).nullish();
-function stackReferenceOf(urn, state) {
-  const name = state?.inputs?.name;
+function stackReferenceOf(urn, state2) {
+  const name = state2?.inputs?.name;
   const type = urn.split("::")[2]?.split("$").at(-1);
   return type === STACK_REFERENCE_TYPE && typeof name === "string" && name !== "" ? name : undefined;
 }
@@ -57865,8 +58105,8 @@ var step2 = exports_external.object({
   const stackReference = stackReferenceOf(rest.urn, newState);
   return stackReference === undefined ? rest : { ...rest, stackReference };
 });
-function stepWithValues(list) {
-  const state = exports_external.object({ inputs: exports_external.unknown().optional(), outputs: exports_external.unknown().optional() }).nullish();
+function stepWithValues(list, fingerprint) {
+  const state2 = exports_external.object({ inputs: exports_external.unknown().optional(), outputs: exports_external.unknown().optional() }).nullish();
   return exports_external.object({
     ...stepFields,
     oldState: exports_external.object({
@@ -57874,7 +58114,7 @@ function stepWithValues(list) {
       inputs: exports_external.unknown().optional(),
       outputs: exports_external.unknown().optional()
     }).nullish(),
-    newState: state,
+    newState: state2,
     detailedDiff: exports_external.record(exports_external.string(), exports_external.unknown()).nullish()
   }).transform(({ oldState: old, newState, detailedDiff, ...rest }) => {
     const stackReference = stackReferenceOf(rest.urn, referenceState.safeParse(newState).data ?? undefined);
@@ -57882,35 +58122,42 @@ function stepWithValues(list) {
       path,
       inputDiff: typeof entry3 === "object" && entry3 !== null && "inputDiff" in entry3 ? entry3.inputDiff === true : false
     }));
-    const values2 = listedValues(list, {
+    const sources = {
       paths,
       oldInputs: old?.inputs,
       oldOutputs: old?.outputs,
       newInputs: newState?.inputs
-    });
+    };
+    const values2 = listedValues(list, sources);
+    const hidden = fingerprint ? hiddenFingerprint2(rest.op, {
+      ...sources,
+      diffReasons: rest.diffReasons ?? [],
+      replaceReasons: rest.replaceReasons ?? []
+    }, values2) : undefined;
     return {
       ...rest,
       oldState: old == null ? old : { retainOnDelete: old.retainOnDelete },
       detailedDiff: detailedDiff == null ? undefined : Object.keys(detailedDiff),
       ...values2.length === 0 ? {} : { values: values2 },
+      ...hidden === undefined ? {} : { fingerprint: hidden },
       ...stackReference === undefined ? {} : { stackReference }
     };
   });
 }
 var diagnostics = exports_external.array(exports_external.object({ message: exports_external.string() })).nullish();
-function previewDocument(showValues) {
-  const steps = showValues.length === 0 ? step2 : stepWithValues(showValues);
+function previewDocument(showValues, fingerprint) {
+  const steps = showValues.length === 0 && !fingerprint ? step2 : stepWithValues(showValues, fingerprint);
   return exports_external.object({ steps: exports_external.array(steps), diagnostics });
 }
 var failedDocument = exports_external.object({ diagnostics });
-function parsePreview(stdout, showValues = []) {
+function parsePreview(stdout, showValues = [], fingerprint = false) {
   let json2;
   try {
     json2 = JSON.parse(stdout);
   } catch {
     return { ok: false, problems: ["The tool's output: expected one JSON document."] };
   }
-  const parsed = previewDocument(showValues).safeParse(json2);
+  const parsed = previewDocument(showValues, fingerprint).safeParse(json2);
   if (!parsed.success)
     return { ok: false, problems: parsed.error.issues.map(problem3) };
   return {
@@ -57972,7 +58219,7 @@ async function previewWithReferences(stack, options) {
   if (result.outputCutAt !== undefined) {
     return failed({ kind: "output-too-large", megabytes: Math.floor(result.outputCutAt / 1024 / 1024) }, toolLog(result.stderr));
   }
-  const parsed = parsePreview(result.stdout, options.showValues);
+  const parsed = parsePreview(result.stdout, options.showValues, options.valueFingerprint === true);
   if (!parsed.ok) {
     return failed({ kind: "unreadable-output" }, toolLog(result.stderr), parsed.problems);
   }
@@ -58016,12 +58263,12 @@ async function readDependencies(stack, names, root, candidates) {
     else if (one.id !== self)
       found.add(one.id);
   }
-  return { stackIds: [...found].sort(byCodeUnit13), elsewhere };
+  return { stackIds: [...found].sort(byCodeUnit14), elsewhere };
 }
 function orElse(first, second) {
   return first.length > 0 ? first : second();
 }
-function byCodeUnit13(a, b) {
+function byCodeUnit14(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -58738,11 +58985,11 @@ function deploymentCalls(octokit, repo) {
         throw new Error("GitHub created no deployment record.");
       return toDeployment(data);
     },
-    async createDeploymentStatus(id, { state, description, logUrl }) {
+    async createDeploymentStatus(id, { state: state2, description, logUrl }) {
       const { data } = await octokit.rest.repos.createDeploymentStatus({
         ...repo,
         deployment_id: id,
-        state,
+        state: state2,
         auto_inactive: false,
         ...description === undefined ? {} : { description },
         ...logUrl === undefined ? {} : { log_url: logUrl }
@@ -58783,7 +59030,7 @@ function deploymentCalls(octokit, repo) {
         deployment_id: id,
         per_page: 2
       });
-      return data[0] ? withSucceededAt(toStatus(data[0]), data.map(({ state, created_at }) => ({ state, createdAt: created_at }))) : undefined;
+      return data[0] ? withSucceededAt(toStatus(data[0]), data.map(({ state: state2, created_at }) => ({ state: state2, createdAt: created_at }))) : undefined;
     },
     async getDeployment(id) {
       const { data } = await octokit.rest.repos.getDeployment({ ...repo, deployment_id: id });
@@ -59050,11 +59297,11 @@ var EDIT_HISTORY = `query ($owner: String!, $repo: String!, $number: Int!, $firs
 }`;
 function createOctokitPort(octokit, repo) {
   return {
-    async listIssues({ label, state }) {
+    async listIssues({ label, state: state2 }) {
       const issues = await octokit.paginate(octokit.rest.issues.listForRepo, {
         ...repo,
         labels: label,
-        state,
+        state: state2,
         sort: "created",
         direction: "asc",
         per_page: 100
@@ -59235,7 +59482,7 @@ function qualify(pullRequest, options) {
   const { claims, unclaimed } = claim2(options.stacks, pullRequest.files, options.unrelated);
   if (unclaimed.length > 0)
     return { qualifies: false, why: "unclaimed" };
-  const stackIds = [...claims.keys()].sort(byCodeUnit14);
+  const stackIds = [...claims.keys()].sort(byCodeUnit15);
   if (stackIds.length === 0)
     return { qualifies: false, why: "no-stack" };
   if (dependOnEachOther(stackIds, options.dependsOn)) {
@@ -59243,7 +59490,7 @@ function qualify(pullRequest, options) {
   }
   return { qualifies: true, stackIds };
 }
-function byCodeUnit14(a, b) {
+function byCodeUnit15(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function dependOnEachOther(ids, dependsOn) {
@@ -59310,7 +59557,7 @@ function mergeMethod(allowed, strategy) {
 
 // src/core/bulk.ts
 var BULK_MIN_ROWS = 2;
-function byCodeUnit15(a, b) {
+function byCodeUnit16(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function bulkRows(rows, section) {
@@ -59324,14 +59571,14 @@ function bulkRows(rows, section) {
       found.push({ stackId: row.stackId, hash: row.hash });
     }
   }
-  return found.sort((a, b) => byCodeUnit15(a.stackId, b.stackId));
+  return found.sort((a, b) => byCodeUnit16(a.stackId, b.stackId));
 }
 function sectionChanges(named, now) {
   const before = new Map(named.map(({ stackId: stackId2, hash: hash2 }) => [stackId2, hash2]));
   const after = new Map(now.map(({ stackId: stackId2, hash: hash2 }) => [stackId2, hash2]));
-  const added = [...after.keys()].filter((id) => !before.has(id)).sort(byCodeUnit15);
-  const gone = [...before.keys()].filter((id) => !after.has(id)).sort(byCodeUnit15);
-  const moved = [...after].filter(([id, hash2]) => before.has(id) && before.get(id) !== hash2).map(([id]) => id).sort(byCodeUnit15);
+  const added = [...after.keys()].filter((id) => !before.has(id)).sort(byCodeUnit16);
+  const gone = [...before.keys()].filter((id) => !after.has(id)).sort(byCodeUnit16);
+  const moved = [...after].filter(([id, hash2]) => before.has(id) && before.get(id) !== hash2).map(([id]) => id).sort(byCodeUnit16);
   return added.length + gone.length + moved.length === 0 ? undefined : { added, gone, moved };
 }
 function holdsBulkTick(live, tick) {
@@ -59388,14 +59635,14 @@ function drawBulk(input2) {
   }
   return box(false);
 }
-function sectionBulk(state, rows, section) {
+function sectionBulk(state2, rows, section) {
   return drawBulk({
     section,
     rows: bulkRows(rows, section),
-    on: state.on,
-    live: state.live.find((line) => line.section === section),
-    act: state.acts?.find(({ tick }) => tick.section === section),
-    scan: state.scan
+    on: state2.on,
+    live: state2.live.find((line) => line.section === section),
+    act: state2.acts?.find(({ tick }) => tick.section === section),
+    scan: state2.scan
   });
 }
 
@@ -59534,7 +59781,7 @@ var queuedLast = (row) => row.state === "queued" ? 1 : 0;
 function dashboardFacts(rows) {
   const sorted = [...rows].sort((a, b) => byCodeUnit(a.stackId, b.stackId));
   const known = sorted.filter((row) => row.known);
-  const of = (state) => known.filter((row) => row.state === state);
+  const of = (state2) => known.filter((row) => row.state === state2);
   const pending = of("pending");
   const deploying = known.filter((row) => isDeployingState(row.state)).sort((a, b) => byCodeUnit(a.stackId, b.stackId) || queuedLast(a) - queuedLast(b));
   const drift = of("drift");
@@ -59773,19 +60020,19 @@ function pendingWords(crates) {
   return crates === 1 ? "1 stack is pending" : `${crates} stacks are pending`;
 }
 var COUNTED = ["pending", "failing", "deploying", "queued"];
-var isCounted = (state) => COUNTED.includes(state);
-function countedAlt(state, crates) {
-  if (state === "pending")
+var isCounted = (state2) => COUNTED.includes(state2);
+function countedAlt(state2, crates) {
+  if (state2 === "pending")
     return `Sluiceway: ${pendingWords(crates)}`;
-  return crates === 0 ? ALT[state] : `${ALT[state]}, ${pendingWords(crates)}`;
+  return crates === 0 ? ALT[state2] : `${ALT[state2]}, ${pendingWords(crates)}`;
 }
-function signed(state, signs) {
+function signed(state2, signs) {
   const verb = signs.deletes && signs.replaces ? "delete or replace" : signs.deletes ? "delete" : "replace";
   const suffix = `${signs.deletes ? "-deletes" : ""}${signs.replaces ? "-replaces" : ""}`;
-  const subject = state === "pending" ? "some" : "some changes";
+  const subject = state2 === "pending" ? "some" : "some changes";
   return { suffix, fact: suffix === "" ? "" : `, ${subject} ${verb} resources` };
 }
-function byCodeUnit16(a, b) {
+function byCodeUnit17(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function plural4(count, word) {
@@ -59797,15 +60044,15 @@ function rowBlock(row, options = {}) {
     throw new Error("A rendered row did not read back as a row block.");
   return block;
 }
-function picture(state, crates, signs, actionRef2) {
-  let name = state;
+function picture(state2, crates, signs, actionRef2) {
+  let name = state2;
   let alt;
-  if (isCounted(state)) {
-    const { suffix, fact } = signed(state, signs);
-    name = `${state}-${crates}${suffix}`;
-    alt = `${countedAlt(state, crates)}${fact}`;
+  if (isCounted(state2)) {
+    const { suffix, fact } = signed(state2, signs);
+    name = `${state2}-${crates}${suffix}`;
+    alt = `${countedAlt(state2, crates)}${fact}`;
   } else {
-    alt = ALT[state];
+    alt = ALT[state2];
   }
   const file2 = (theme) => mascotUrl(actionRef2, `${name}-${theme}.svg`);
   return [
@@ -59889,7 +60136,7 @@ ${INDENT}${short ? deploy.shipped.counted : deploy.shipped.full}` : "";
   return `- ${dot}${escapeText(deploy.stackId)}${result} · ${who} · ${trailMinute(deploy.at, year, timeZone)} · [run](${deploy.runUrl})${shipped}`;
 }
 function newestTrail(deploys, length) {
-  return [...deploys].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit16(a.stackId, b.stackId)).slice(0, length ?? RECENTLY_DEPLOYED);
+  return [...deploys].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit17(a.stackId, b.stackId)).slice(0, length ?? RECENTLY_DEPLOYED);
 }
 function outsideLine(deploy, repoUrl, dots, year, timeZone) {
   const dot = dots ? `${RESULT_DOT.deployed}&nbsp;` : "";
@@ -59957,7 +60204,7 @@ function renderBody(input2) {
   if (previewFailed.length > 0)
     out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
   const { inSync } = facts;
-  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit16(a.stackId, b.stackId));
+  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit17(a.stackId, b.stackId));
   if (inSync.length > 0 || ignored.length > 0) {
     const loud = inSync.filter((row) => row.failed);
     const quiet = inSync.filter((row) => !row.failed);
@@ -60417,21 +60664,21 @@ function stepNotifier(getInput2, log, mask) {
 }
 
 // src/core/diff-hash.ts
-import { createHash as createHash4 } from "node:crypto";
-function byCodeUnit17(a, b) {
+import { createHash as createHash5 } from "node:crypto";
+function byCodeUnit18(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function sortedSet3(keys4) {
-  return [...new Set(keys4)].sort(byCodeUnit17);
+  return [...new Set(keys4)].sort(byCodeUnit18);
 }
-function canonicalJson(value) {
+function canonicalJson2(value) {
   if (typeof value === "string")
     return JSON.stringify(value);
   if (Array.isArray(value))
-    return `[${value.map(canonicalJson).join(",")}]`;
-  const members2 = Object.keys(value).sort(byCodeUnit17).flatMap((key) => {
+    return `[${value.map(canonicalJson2).join(",")}]`;
+  const members2 = Object.keys(value).sort(byCodeUnit18).flatMap((key) => {
     const member = value[key];
-    return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
+    return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson2(member)}`];
   });
   return `{${members2.join(",")}}`;
 }
@@ -60451,17 +60698,17 @@ function canonicalChange(change3) {
 function canonicalValues(values2) {
   if (values2 === undefined || values2.length === 0)
     return;
-  return [...values2].sort((a, b) => byCodeUnit17(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
+  return [...values2].sort((a, b) => byCodeUnit18(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
 }
 function canonicalDiff(diff2) {
   const drift = diff2.drift === undefined || diff2.drift.length === 0 ? "" : `"drift":[${canonicalChanges(diff2.drift).join(",")}],`;
   return `{"changes":[${canonicalChanges(diff2.changes).join(",")}],${drift}"stackId":${JSON.stringify(diff2.stackId)}}`;
 }
 function canonicalChanges(changes) {
-  return changes.map((change3) => ({ address: change3.address, text: canonicalJson(canonicalChange(change3)) })).sort((a, b) => byCodeUnit17(a.address, b.address) || byCodeUnit17(a.text, b.text)).map((change3) => change3.text);
+  return changes.map((change3) => ({ address: change3.address, text: canonicalJson2(canonicalChange(change3)) })).sort((a, b) => byCodeUnit18(a.address, b.address) || byCodeUnit18(a.text, b.text)).map((change3) => change3.text);
 }
 function diffHash(diff2) {
-  return createHash4("sha256").update(canonicalDiff(diff2), "utf8").digest("hex").slice(0, 16);
+  return createHash5("sha256").update(canonicalDiff(diff2), "utf8").digest("hex").slice(0, 16);
 }
 
 // src/core/deploy-gate.ts
@@ -60497,6 +60744,18 @@ function decide(input2, drift) {
   if (hash2 !== approved.hash) {
     return { kind: "moved", end: failed2({ kind: "moved" }), hash: hash2, checked: fresh };
   }
+  const fingerprint = valueFingerprint(fresh.diff);
+  if (fingerprint !== undefined && fingerprint !== approved.fingerprint) {
+    const everyRun = differsEveryRun(approved, { hash: hash2, fingerprint }, input2.sameCommit ?? false);
+    return {
+      kind: "value-changed",
+      end: failed2({ kind: "value-changed", everyRun }),
+      hash: hash2,
+      fingerprint,
+      everyRun,
+      checked: fresh
+    };
+  }
   if (dryRun)
     return { kind: "rehearsed", end: { kind: "rehearsed" }, hash: hash2, checked: fresh };
   return { kind: "deploy", hash: hash2, checked: fresh, repairDrift: drifted };
@@ -60521,7 +60780,7 @@ function applyOutcome(end) {
     case "rehearsed":
       return end.kind;
     case "failed":
-      return end.reason.kind === "moved" || end.reason.kind === "deploys-off" ? "refused" : "failed";
+      return end.reason.kind === "moved" || end.reason.kind === "value-changed" || end.reason.kind === "deploys-off" ? "refused" : "failed";
     case "handed-on":
     case "merged":
       return "failed";
@@ -60564,6 +60823,8 @@ function deployFailureText(reason) {
       return "the run ended without a result";
     case "moved":
       return "the change moved since the tick";
+    case "value-changed":
+      return reason.everyRun ? "a value changed since the tick with no new commit, so it may differ on every run: see valueFingerprint in sluiceway.yaml" : "a value changed since the tick";
     case "tool-error":
       return reason.exitCode === null ? "the tool exited with an error" : `the tool exited with an error (exit code ${reason.exitCode})`;
     case "timed-out":
@@ -60607,7 +60868,8 @@ var tickPayloadSchema = exports_external.strictObject({
   attempt,
   behind: exports_external.array(exports_external.string().min(1)).min(1).optional().describe("A queued record: the stack ids it waits behind, which have to go out first. Absent otherwise."),
   drift: exports_external.literal(true).optional().describe("The hash covers drift, and the deploy puts it back. Absent otherwise."),
-  onMerge: exports_external.literal(true).optional().describe("The record was opened after the scan of a merge, for a stack set to deploy on merge. Absent otherwise.")
+  onMerge: exports_external.literal(true).optional().describe("The record was opened after the scan of a merge, for a stack set to deploy on merge. Absent otherwise."),
+  fingerprint: exports_external.string().regex(/^[0-9a-f]{16}$/).optional().describe("The value fingerprint the tick approved: the first 16 hex characters of a SHA-256 over the values of the diff that the row did not show. The deploy goes out only when a fresh preview gives the same one. Absent on a record written before the key came, or with the check off for the stack.")
 }).describe("The record of a tick, a queued stack, a drift repair or a deploy on merge.");
 var mergeRecordSchema = exports_external.strictObject({
   v,
@@ -60626,7 +60888,8 @@ function deploymentPayload(payload) {
     ...payload.attempt === undefined ? {} : { attempt: payload.attempt },
     ...payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {},
     ...payload.drift ? { drift: true } : {},
-    ...payload.onMerge ? { onMerge: true } : {}
+    ...payload.onMerge ? { onMerge: true } : {},
+    ...payload.fingerprint === undefined ? {} : { fingerprint: payload.fingerprint }
   });
 }
 function mergePayload(payload) {
@@ -60642,7 +60905,7 @@ var RUN_ID2 = /^[1-9]\d*$/;
 function readDeploymentPayload(payload) {
   if (typeof payload !== "object" || payload === null)
     return;
-  const { v: v2, hash: hash2, ticker: ticker2, run: run2, behind, merge: merge3, drift, attempt: attempt2, onMerge } = payload;
+  const { v: v2, hash: hash2, ticker: ticker2, run: run2, behind, merge: merge3, drift, attempt: attempt2, onMerge, fingerprint } = payload;
   if (v2 !== PAYLOAD_VERSION)
     return;
   const attempted = typeof attempt2 === "string" && RUN_ID2.test(attempt2) ? { attempt: attempt2 } : {};
@@ -60661,6 +60924,9 @@ function readDeploymentPayload(payload) {
     read5.drift = true;
   if (onMerge === true)
     read5.onMerge = true;
+  if (typeof fingerprint === "string" && /^[0-9a-f]{16}$/.test(fingerprint)) {
+    read5.fingerprint = fingerprint;
+  }
   if (behind === undefined)
     return read5;
   const ids2 = Array.isArray(behind) ? behind : [];
@@ -60683,8 +60949,8 @@ function isHandedOn(status) {
   return status?.state === "inactive" && (status.description === HANDED_ON_DESCRIPTION || status.description === MERGED_DESCRIPTION);
 }
 function isOpenStatus(status) {
-  const state = status?.state ?? "";
-  return !SUCCEEDED.has(state) && !FAILED.has(state);
+  const state2 = status?.state ?? "";
+  return !SUCCEEDED.has(state2) && !FAILED.has(state2);
 }
 function recordStatus(step3) {
   switch (step3.kind) {
@@ -60704,7 +60970,7 @@ function recordStatus(step3) {
       return { state: "inactive", description: MERGED_DESCRIPTION };
     case "failed":
       return {
-        state: step3.reason.kind === "moved" || step3.reason.kind === "run-ended" ? "error" : "failure",
+        state: step3.reason.kind === "moved" || step3.reason.kind === "value-changed" || step3.reason.kind === "run-ended" ? "error" : "failure",
         description: deployFailureText(step3.reason)
       };
   }
@@ -60715,12 +60981,12 @@ function newestLast(a, b) {
 function factOf(record3, payload) {
   const { ticker: ticker2 } = payload;
   const run2 = payload.attempt === undefined ? { run: payload.run } : { run: payload.run, attempt: payload.attempt };
-  const state = record3.status?.state ?? "";
+  const state2 = record3.status?.state ?? "";
   const at = new Date(record3.status?.createdAt ?? record3.createdAt);
   const onMerge = payload.onMerge ? { onMerge: true } : {};
-  if (SUCCEEDED.has(state)) {
-    const ended = state === "inactive" && record3.status?.succeededAt ? new Date(record3.status.succeededAt) : at;
-    const inSync = state === "success" && record3.status?.description === IN_SYNC_DESCRIPTION;
+  if (SUCCEEDED.has(state2)) {
+    const ended = state2 === "inactive" && record3.status?.succeededAt ? new Date(record3.status.succeededAt) : at;
+    const inSync = state2 === "success" && record3.status?.description === IN_SYNC_DESCRIPTION;
     return {
       kind: "succeeded",
       ticker: ticker2,
@@ -60731,7 +60997,7 @@ function factOf(record3, payload) {
       ...onMerge
     };
   }
-  if (FAILED.has(state)) {
+  if (FAILED.has(state2)) {
     return {
       kind: "failed",
       reason: record3.status?.description || NO_REASON_RECORDED,
@@ -60744,7 +61010,7 @@ function factOf(record3, payload) {
   return {
     kind: "open",
     deployment: record3.id,
-    waiting: state !== "in_progress",
+    waiting: state2 !== "in_progress",
     ticker: ticker2,
     ...run2,
     ...payload.behind ? { behind: payload.behind } : {},
@@ -60866,7 +61132,7 @@ function openRepo(root, discovery) {
     const found = await discovery.discover(root, loaded);
     const ignored = ignoredStacks(loaded, found);
     return {
-      stacks: applyConfig(loaded, found).sort((a, b) => byCodeUnit18(stackId(a.stack), stackId(b.stack))),
+      stacks: applyConfig(loaded, found).sort((a, b) => byCodeUnit19(stackId(a.stack), stackId(b.stack))),
       ignored
     };
   };
@@ -60878,7 +61144,7 @@ function openRepo(root, discovery) {
     }
   };
 }
-function byCodeUnit18(a, b) {
+function byCodeUnit19(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -61331,11 +61597,11 @@ async function doesItFit(write) {
 }
 
 // src/core/dependencies.ts
-function byCodeUnit19(a, b) {
+function byCodeUnit20(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function planDeploys(input2) {
-  const ids2 = [...new Set(input2.allowed)].sort(byCodeUnit19);
+  const ids2 = [...new Set(input2.allowed)].sort(byCodeUnit20);
   const going = new Set(ids2);
   const refused = new Map;
   for (let changed = true;changed; ) {
@@ -61346,7 +61612,7 @@ function planDeploys(input2) {
       const waitingOn = (input2.dependsOn.get(id) ?? []).filter((dependency) => !input2.open.has(dependency) && !going.has(dependency) && (input2.pending.has(dependency) || refused.has(dependency)));
       if (waitingOn.length === 0)
         continue;
-      refused.set(id, [...waitingOn].sort(byCodeUnit19));
+      refused.set(id, [...waitingOn].sort(byCodeUnit20));
       going.delete(id);
       changed = true;
     }
@@ -61356,7 +61622,7 @@ function planDeploys(input2) {
   for (const id of ids2) {
     if (refused.has(id))
       continue;
-    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit19);
+    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit20);
     if (behind.length === 0)
       start.push(id);
     else
@@ -61402,11 +61668,11 @@ function withReadDependencies(input2) {
     return walk4(from);
   };
   const dropped = [];
-  for (const id of [...input2.auto].sort(byCodeUnit19)) {
+  for (const id of [...input2.auto].sort(byCodeUnit20)) {
     const list = dependsOn.get(id);
     if (list === undefined)
       continue;
-    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit19)) {
+    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit20)) {
       if (dependency === id || !dependsOn.has(dependency) || list.includes(dependency))
         continue;
       if (reaches(dependency, id))
@@ -61414,7 +61680,7 @@ function withReadDependencies(input2) {
       else
         list.push(dependency);
     }
-    list.sort(byCodeUnit19);
+    list.sort(byCodeUnit20);
   }
   return { dependsOn, dropped };
 }
@@ -61479,7 +61745,8 @@ async function openRecord(writer, opening) {
       ...run2,
       behind: opening.behind,
       ...opening.drift ? { drift: true } : {},
-      ...opening.onMerge ? { onMerge: true } : {}
+      ...opening.onMerge ? { onMerge: true } : {},
+      ...opening.fingerprint === undefined ? {} : { fingerprint: opening.fingerprint }
     })
   });
   try {
@@ -61504,7 +61771,8 @@ async function startQueuedRecord(writer, queued, at) {
     ticker: payload.ticker,
     hash: payload.hash,
     drift: payload.drift,
-    onMerge: payload.onMerge
+    onMerge: payload.onMerge,
+    fingerprint: payload.fingerprint
   });
   const started = {
     ...opened,
@@ -61779,6 +62047,22 @@ var PUBLIC_LOG_DIFF = {
 
 // src/render/moved-comment.ts
 var MOVED_COMMENT_TAIL = "The row on the dashboard shows the change as it is now. Tick it again to deploy that.";
+var VALUE_CHANGED_TAIL = "The row on the dashboard shows the change as it is now. Look at it and tick it again to deploy that.";
+var EVERY_RUN_TAIL = (tick) => `A value in the program may differ on every run, and no tick can approve it while the value fingerprint is on. Turn it off for this stack with \`valueFingerprint: false\` on its \`stacks\` entry in \`sluiceway.yaml\`, then ${tick}.`;
+function valueChangedComment({
+  login,
+  stackId: stackId2,
+  onMerge,
+  everyRun
+}) {
+  const stack = `**${escapeText(stackId2)}**`;
+  if (onMerge) {
+    const head2 = `@${login} merged a change that ${stack} deploys on merge, and a value the row does not show changed before the deploy`;
+    return everyRun ? `${head2} with no new commit in between, so nothing was deployed. ${EVERY_RUN_TAIL("tick it")}` : `${head2}, so nothing was deployed. The row on the dashboard shows the change as it is now. Look at it and tick it to deploy that.`;
+  }
+  const head = `@${login} ticked ${stack}, and a value the row does not show changed`;
+  return everyRun ? `${head} between the tick and the deploy with no new commit in between, so nothing was deployed. ${EVERY_RUN_TAIL("tick again")}` : `${head} since the tick, so nothing was deployed. ${VALUE_CHANGED_TAIL}`;
+}
 function movedComment({ login, stackId: stackId2, onMerge }) {
   if (onMerge) {
     return `@${login} merged a change that **${escapeText(stackId2)}** deploys on merge, and the change moved before the deploy, so nothing was deployed. The row on the dashboard shows the change as it is now. Tick it to deploy that.`;
@@ -61806,6 +62090,7 @@ function previewRow(stackId2, result, links2, failure2, options = {}) {
         state: "drift",
         diff: result.diff,
         hash: diffHash(result.diff),
+        fingerprint: valueFingerprint(result.diff),
         runUrl: links2.summary,
         previewUrl: options.pageUrl,
         failure: failure2,
@@ -61818,6 +62103,7 @@ function previewRow(stackId2, result, links2, failure2, options = {}) {
     state: "pending",
     diff: result.diff,
     hash: diffHash(result.diff),
+    fingerprint: valueFingerprint(result.diff),
     runUrl: links2.summary,
     previewUrl: options.pageUrl ?? (options.toolDiffInLog ? links2.log : undefined),
     failure: failure2,
@@ -62010,7 +62296,7 @@ ${ALREADY_ENDED}
     };
   }
   const reason = reasonOf(attempt2);
-  const state = recordStatus(attempt2.end).state;
+  const state2 = recordStatus(attempt2.end).state;
   report.outcome = applyOutcome(attempt2.end);
   report.reason = reason && deployFailureText(reason);
   report.applied = attempt2.summary;
@@ -62021,9 +62307,9 @@ ${ALREADY_ENDED}
   try {
     await endRecord(context3, id, attempt2.end);
     ended = true;
-    log.info(`${RESULT_DOT[report.outcome]} Deployment record ${id} ended as ${state}.`);
+    log.info(`${RESULT_DOT[report.outcome]} Deployment record ${id} ended as ${state2}.`);
   } catch (error63) {
-    failures.push(`Deployment record ${id} of ${name} could not be given its result (${state}): ${message(error63)}. The \`settle\` job of this run ends it. ${RECORD_PERMISSIONS}`);
+    failures.push(`Deployment record ${id} of ${name} could not be given its result (${state2}): ${message(error63)}. The \`settle\` job of this run ends it. ${RECORD_PERMISSIONS}`);
   }
   if (attempt2.summary) {
     await writeSummary(context3, renderApplySummary({
@@ -62055,15 +62341,16 @@ ${ALREADY_ENDED}
     } catch (error63) {
       failures.push(`The dashboard could not be written: ${message(error63)}`);
     }
-    if (written !== undefined && reason?.kind === "moved") {
+    if (written !== undefined && (reason?.kind === "moved" || reason?.kind === "value-changed")) {
+      const tick = {
+        login: payload.ticker,
+        stackId: id_,
+        ...payload.onMerge ? { onMerge: true } : {}
+      };
       try {
-        await github.createComment(written, movedComment({
-          login: payload.ticker,
-          stackId: id_,
-          ...payload.onMerge ? { onMerge: true } : {}
-        }));
+        await github.createComment(written, reason.kind === "moved" ? movedComment(tick) : valueChangedComment({ ...tick, everyRun: reason.everyRun }));
       } catch (error63) {
-        failures.push(`The comment to ${payload.ticker} about the moved change could not be written: ${message(error63)}. The job needs the permission \`issues: write\`.`);
+        failures.push(`The comment to ${payload.ticker} about the ${reason.kind === "moved" ? "moved change" : "changed value"} could not be written: ${message(error63)}. The job needs the permission \`issues: write\`.`);
       }
     }
   }
@@ -62140,7 +62427,8 @@ async function deploy(context3, repo, id, payload, runUrl3, progress) {
   const options = {
     ...tool,
     timeoutMinutes: setup.stack.previewTimeout ?? context3.previewTimeoutMinutes,
-    showValues: shownValues(setup.config.dashboard)
+    showValues: shownValues(setup.config.dashboard),
+    valueFingerprint: setup.stack.valueFingerprint ?? setup.config.valueFingerprint
   };
   const fresh = unprepared ?? await adapter.preview(setup.stack.stack, { ...options, savePlan: true });
   try {
@@ -62166,10 +62454,12 @@ async function afterFreshPreview(context3, id, payload, runUrl3, progress, setup
     log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
   }
   const toolDiff5 = logDiff && previewed.ok && previewed.diff.changes.length > 0 ? await adapter.toolDiff(setup.stack.stack, options) : undefined;
+  const sameCommit = await lastScanWasOfThisCommit(context3, setup);
   const asked = deployGate({
     approved: payload,
     fresh: previewed,
-    dryRun: context3.dryRun === true
+    dryRun: context3.dryRun === true,
+    sameCommit
   });
   const gate = asked.kind === "check-drift" ? asked.withDrift(await checkDriftAgain(context3, setup, options, id)) : asked;
   logPreview(context3, id, "The fresh preview", gate.checked, toolDiff5);
@@ -62203,6 +62493,15 @@ async function afterFreshPreview(context3, id, payload, runUrl3, progress, setup
       return {
         end: gate.end,
         failed: notDeployed(gate.end.reason, ` The fresh preview gives diff hash ${gate.hash} and the tick approved ${payload.hash}. The row on the dashboard shows the fresh diff. Tick it again to deploy that.`),
+        row: gate.checked,
+        toolDiffInLog,
+        summary: notDeployedSummary(gate.end.reason, gate.checked),
+        setup
+      };
+    case "value-changed":
+      return {
+        end: gate.end,
+        failed: notDeployed(gate.end.reason, ` The fresh preview gives diff hash ${gate.hash}, the one the tick approved, and value fingerprint ${gate.fingerprint} where the tick approved ${payload.fingerprint ?? "none"}: a value the row does not show changed since the tick.${gate.everyRun ? " The dashboard's last scan was of this same commit, so the value differs between two previews of the same code, and no tick can approve it. Turn the value fingerprint off for this stack with `valueFingerprint: false` on its `stacks` entry in `sluiceway.yaml`." : " The row on the dashboard shows the change as it is now. Look at it and tick it again to deploy that."}`),
         row: gate.checked,
         toolDiffInLog,
         summary: notDeployedSummary(gate.end.reason, gate.checked),
@@ -62320,6 +62619,16 @@ async function writeSummary(context3, text8) {
   } catch (error63) {
     context3.log.info(`Writing the summary failed: ${message(error63)}`);
     context3.log.warning("The summary of this run could not be written. The job log holds what happened.", "Summary not written");
+  }
+}
+async function lastScanWasOfThisCommit(context3, setup) {
+  try {
+    const dashboard = await findDashboard(context3.github, setup.config.dashboard.label);
+    if (!dashboard)
+      return false;
+    return parseDashboard(dashboard.body).root?.scanSha === context3.sha;
+  } catch {
+    return false;
   }
 }
 async function swapRow(context3, setup, id, make) {
@@ -62470,7 +62779,8 @@ function ticksIn(body2) {
         kind: "row",
         stackId: row.stackId,
         hash: row.hash,
-        ...row.drift ? { drift: true } : {}
+        ...row.drift ? { drift: true } : {},
+        ...row.fingerprint === undefined ? {} : { fingerprint: row.fingerprint }
       });
     }
   }
@@ -62906,18 +63216,23 @@ function knownTicks(ticks, stacks2) {
 function indexTicks(named2) {
   const hashes = new Map;
   const drifted = new Set;
+  const fingerprints = new Map;
   for (const { tick } of named2) {
     if (tick.kind !== "row")
       continue;
     hashes.set(tick.stackId, tick.hash);
     if (tick.drift)
       drifted.add(tick.stackId);
+    if (tick.fingerprint === undefined)
+      fingerprints.delete(tick.stackId);
+    else
+      fingerprints.set(tick.stackId, tick.fingerprint);
   }
   const mergeTicks = new Map;
   for (const { tick } of named2)
     if (tick.kind === "merge")
       mergeTicks.set(tick.pr, tick);
-  return { hashes, drifted, mergeTicks };
+  return { hashes, drifted, fingerprints, mergeTicks };
 }
 function handOnConfirms(read5) {
   const result = { named: [], acts: [], stale: false, findings: [] };
@@ -62960,12 +63275,14 @@ function handOnConfirms(read5) {
         continue;
       }
       handed.push(id);
+      const fingerprint = read5.rows.find((row) => row.known && row.stackId === id);
       result.named.push({
         tick: {
           kind: "row",
           stackId: id,
           hash: hash2,
-          ...tick.section === "drift" ? { drift: true } : {}
+          ...tick.section === "drift" ? { drift: true } : {},
+          ...fingerprint?.known && fingerprint.fingerprint !== undefined ? { fingerprint: fingerprint.fingerprint } : {}
         },
         ticker: ticker2,
         via: tick.section
@@ -63063,7 +63380,7 @@ function ticksToLookUp(read5) {
   return triage(read5).toJudge;
 }
 function judgeTicks(read5, lookedUp) {
-  const { hashes, drifted, mergeTicks } = indexTicks(read5.named);
+  const { hashes, drifted, fingerprints, mergeTicks } = indexTicks(read5.named);
   const { findings, bulk, dropped, clear, clearMerges, ...triaged } = triage(read5);
   let rescanHandled = triaged.rescanHandled;
   const allowed = [];
@@ -63164,8 +63481,17 @@ function judgeTicks(read5, lookedUp) {
     const ticker2 = tickers2.get(id);
     if (!stack || hash2 === undefined || ticker2 === undefined)
       return [];
+    const fingerprint = fingerprints.get(id);
     return [
-      { stackId: id, environment: stack.environment, ticker: ticker2, hash: hash2, drift: drifted.has(id), behind }
+      {
+        stackId: id,
+        environment: stack.environment,
+        ticker: ticker2,
+        hash: hash2,
+        drift: drifted.has(id),
+        ...fingerprint === undefined ? {} : { fingerprint },
+        behind
+      }
     ];
   });
   return {
@@ -63254,7 +63580,7 @@ function readWorkflowFiles(root) {
   } catch {
     return [];
   }
-  return names2.sort(byCodeUnit20).map((name) => ({
+  return names2.sort(byCodeUnit21).map((name) => ({
     path: `${WORKFLOW_DIRECTORY}/${name}`,
     text: readFileSync12(join34(root, WORKFLOW_DIRECTORY, name), "utf8")
   }));
@@ -63647,7 +63973,7 @@ function listensToEdits(issues, present3) {
   const types = issues.types;
   return Array.isArray(types) ? types.includes("edited") : types === "edited";
 }
-function byCodeUnit20(a, b) {
+function byCodeUnit21(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -64011,7 +64337,8 @@ async function resolveTicks(context3, handOn, report, watch) {
   const bulkActs = [...confirms.acts, ...judgement.bulk];
   const failures = [];
   const started = [];
-  for (const { stackId: id, environment, ticker: ticker2, hash: hash2, drift, behind } of judgement.deploys) {
+  for (const one of judgement.deploys) {
+    const { stackId: id, environment, ticker: ticker2, hash: hash2, drift, behind, fingerprint } = one;
     try {
       const record3 = await watch.time("opening", () => openRecord(context3, {
         stackId: id,
@@ -64020,7 +64347,8 @@ async function resolveTicks(context3, handOn, report, watch) {
         ticker: ticker2,
         hash: hash2,
         behind,
-        drift
+        drift,
+        fingerprint
       }));
       started.push({ stackId: id, environment, deployment: record3.deployment, ticker: ticker2, behind });
       if (record3.unfinished !== undefined)
@@ -64866,7 +65194,7 @@ var SHARED_FILES = new Set([
   "Directory.Packages.props"
 ]);
 function sharedFiles(files) {
-  return files.filter((file2) => SHARED_FILES.has(file2.slice(file2.lastIndexOf("/") + 1))).sort(byCodeUnit21);
+  return files.filter((file2) => SHARED_FILES.has(file2.slice(file2.lastIndexOf("/") + 1))).sort(byCodeUnit22);
 }
 function checkSetup(config2, found, files, references = new Map) {
   const stacks2 = applyConfig(config2, found);
@@ -64896,7 +65224,7 @@ function readsOf(claimants, files, unclaimed, references) {
     const matches = globMatcher(inputs);
     const claims = (file2) => path === "." || file2.startsWith(`${path}/`) || matches(file2);
     const read5 = references.get(id) ?? [];
-    return [...read5].sort((a, b) => byCodeUnit21(a.path, b.path)).flatMap((reference) => {
+    return [...read5].sort((a, b) => byCodeUnit22(a.path, b.path)).flatMap((reference) => {
       const under = reference.kind === "file" ? [reference.path] : files.filter((file2) => file2.startsWith(`${reference.path}/`));
       const left = under.filter((file2) => !claims(file2));
       if (left.length === 0)
@@ -64950,10 +65278,10 @@ function groups(files) {
     const slash = file2.indexOf("/");
     return slash === -1 ? "." : file2.slice(0, slash);
   };
-  const byDirectory = Map.groupBy([...files].sort(byCodeUnit21), top);
-  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit21(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
+  const byDirectory = Map.groupBy([...files].sort(byCodeUnit22), top);
+  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit22(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
 }
-function byCodeUnit21(a, b) {
+function byCodeUnit22(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -66288,6 +66616,7 @@ function onMergeDeploys(input2) {
   if (input2.readOnly)
     return { deploys: [], waits };
   const hashes = new Map;
+  const fingerprints = new Map;
   for (const stack of input2.stacks) {
     if (stack.deploy !== "on-merge" || input2.open.has(stack.id))
       continue;
@@ -66297,8 +66626,12 @@ function onMergeDeploys(input2) {
     const wait = waitOf(input2, result.diff);
     if (wait)
       waits.set(stack.id, wait);
-    else
+    else {
       hashes.set(stack.id, diffHash(result.diff));
+      const fingerprint = valueFingerprint(result.diff);
+      if (fingerprint !== undefined)
+        fingerprints.set(stack.id, fingerprint);
+    }
   }
   const pending = new Set(input2.livePending);
   for (const [id, result] of input2.previewed) {
@@ -66329,6 +66662,7 @@ function onMergeDeploys(input2) {
     ticker: ticker2,
     hash: hashes.get(stackId2) ?? "",
     drift: false,
+    ...fingerprints.has(stackId2) ? { fingerprint: fingerprints.get(stackId2) } : {},
     behind
   }));
   return { deploys, waits };
@@ -66460,12 +66794,14 @@ function placeRows(so, late) {
         toolDiffInLog: logDiff,
         pageUrl: so.pageUrls.get(id)
       });
+      const everyRun = (fresh.state === "pending" || fresh.state === "drift") && liveRow?.known === true && liveRow.hash !== undefined && differsEveryRun({ hash: liveRow.hash, fingerprint: liveRow.fingerprint }, { hash: fresh.hash, fingerprint: valueFingerprint(fresh.diff) }, live.root?.scanSha === so.scan.sha);
       const row2 = fresh.state === "pending" ? {
         ...fresh,
         attribution: attributed.get(id)?.lines,
         pendingAgain: pendingAgain(fact, fresh.hash) ? { logUrl: logDiff ? links2.log : undefined } : undefined,
+        ...everyRun ? { valueEveryRun: true } : {},
         ...late.waitsOnMerge?.has(id) ? { waitsOnMerge: late.waitsOnMerge.get(id) } : {}
-      } : fresh;
+      } : fresh.state === "drift" && everyRun ? { ...fresh, valueEveryRun: true } : fresh;
       if (!ticked) {
         rows.set(id, row2);
         continue;
@@ -67112,7 +67448,7 @@ async function scanning(context3, report) {
       await checkVersion5(context3, stacks2.map(({ stack }) => stack));
       versionChecked = true;
     }
-    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), prepared, sayPool, checkDrift, stacks2.map(({ stack }) => stack));
+    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), config2.valueFingerprint, prepared, sayPool, checkDrift, stacks2.map(({ stack }) => stack));
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
@@ -67448,7 +67784,7 @@ function driftCheckRule(config2, context3, knownDrift, stacks2) {
   const every = context3.event === "schedule" || context3.event === "workflow_dispatch" && context3.startedByPerson === true;
   return (id) => enabled.has(id) && (every || knownDrift.has(id));
 }
-async function previewAll(context3, stacks2, logDiff, showValues, prepared, sayPool, checkDrift, repoStacks) {
+async function previewAll(context3, stacks2, logDiff, showValues, valueFingerprint2, prepared, sayPool, checkDrift, repoStacks) {
   const { log, now, adapter } = context3;
   if (stacks2.length === 0)
     return [];
@@ -67477,7 +67813,8 @@ async function previewAll(context3, stacks2, logDiff, showValues, prepared, sayP
       ...tool,
       run: liveRun(tool.run, id, log),
       timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
-      showValues
+      showValues,
+      valueFingerprint: configured.valueFingerprint ?? valueFingerprint2
     };
     let previewedOnly;
     try {
@@ -67784,7 +68121,8 @@ async function handOffMerges(context3, config2, stacks2, previewed, waiting, han
           sha: context3.sha,
           ticker: fact.ticker,
           hash: hash2,
-          drift: (result.diff.drift ?? []).length > 0
+          drift: (result.diff.drift ?? []).length > 0,
+          fingerprint: valueFingerprint(result.diff)
         });
         handedOn.push({ stack: id, environment: stack.environment, deployment: record4.deployment });
         if (record4.unfinished !== undefined)
@@ -67862,7 +68200,8 @@ async function handOnMerged(context3, going, handedOn, opened) {
         ticker: one.ticker,
         hash: one.hash,
         behind: one.behind,
-        onMerge: true
+        onMerge: true,
+        fingerprint: one.fingerprint
       });
       opened.add(one.stackId);
       if (one.behind === undefined) {
@@ -68109,9 +68448,9 @@ function openTofuRoots(files, read5) {
   const code2 = files.filter((file2) => /\.(tf|tofu)$/.test(file2) && !SKIPPED4.test(file2));
   const directories = [...new Set(code2.map(directoryOf))];
   const called = new Set(code2.flatMap((file2) => [...(read5(file2) ?? "").matchAll(/^\s*source\s*=\s*"(\.\.?\/[^"]*)"/gm)].map((match) => normal(posix4.join(directoryOf(file2), match[1] ?? "")))));
-  return directories.filter((path) => !called.has(path) && !path.split("/").includes("modules")).sort(byCodeUnit22).map((path) => ({
+  return directories.filter((path) => !called.has(path) && !path.split("/").includes("modules")).sort(byCodeUnit23).map((path) => ({
     path,
-    varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix4.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit22)
+    varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix4.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit23)
   }));
 }
 function openTofuStacks(root) {
@@ -68139,7 +68478,7 @@ function helmCharts(files, read5) {
       return [];
     const release2 = releaseName(typeof chart.name === "string" ? chart.name : "", path);
     return release2 === undefined ? [] : [{ path, release: release2 }];
-  }).sort((a, b) => byCodeUnit22(a.path, b.path));
+  }).sort((a, b) => byCodeUnit23(a.path, b.path));
 }
 function releaseName(name, path) {
   for (const candidate of [name, posix4.basename(path)]) {
@@ -68170,7 +68509,7 @@ function findForWorkflow(stacks2, files, read5) {
     helm: stacks2.some((stack) => tool(stack) === HELM),
     kubectl: stacks2.some((stack) => tool(stack) === KUBECTL),
     node: nodePaths.length === 0 ? undefined : nodeFindings(nodePaths, files, read5),
-    otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit22(a.runtime, b.runtime)),
+    otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit23(a.runtime, b.runtime)),
     helmRepositories: helmRepositories(stacks2, read5),
     envFiles: envFiles(files, read5)
   };
@@ -68201,7 +68540,7 @@ function nodeFindings(paths2, files, read5) {
   const managers = new Set(installs.values());
   const manifest = yamlObject2(read5("package.json"));
   return {
-    installs: [...installs].map(([directory, manager]) => ({ directory, manager })).sort((a, b) => byCodeUnit22(a.directory, b.directory)),
+    installs: [...installs].map(([directory, manager]) => ({ directory, manager })).sort((a, b) => byCodeUnit23(a.directory, b.directory)),
     withoutLockfile,
     versionFile: [".nvmrc", ".node-version"].find((file2) => files.includes(file2)),
     yarnBerry: managers.has("yarn") && files.includes(".yarnrc.yml"),
@@ -68220,7 +68559,7 @@ function helmRepositories(stacks2, read5) {
       return typeof repository === "string" && /^https?:\/\//.test(repository) ? [repository] : [];
     });
   });
-  return [...new Set(repositories)].sort(byCodeUnit22);
+  return [...new Set(repositories)].sort(byCodeUnit23);
 }
 function envFiles(files, read5) {
   const found = files.filter((file2) => /(^|\/)(\.env(\.[^/]+)?|[^/]+\.env)$/.test(file2)).filter((file2) => /^[\w./-]+$/.test(file2)).filter((file2) => (read5(file2) ?? "").split(`
@@ -68264,7 +68603,7 @@ function normal(path) {
   const joined2 = posix4.normalize(path).replace(/\/$/, "");
   return joined2 === "" ? "." : joined2;
 }
-function byCodeUnit22(a, b) {
+function byCodeUnit23(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 

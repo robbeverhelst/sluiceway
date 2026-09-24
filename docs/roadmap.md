@@ -160,5 +160,5 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 
 ### Not planned
 
-32 ideas were rejected on principle. Bringing one back means reopening the decision that rejected it, not scheduling work: [docs/later.md](later.md#rejected-on-principle) lists them.
+34 ideas were rejected on principle. Bringing one back means reopening the decision that rejected it, not scheduling work: [docs/later.md](later.md#rejected-on-principle) lists them.
 <!-- End of the generated part. -->

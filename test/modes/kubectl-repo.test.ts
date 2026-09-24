@@ -105,6 +105,8 @@ async function previewed(scenario: string): Promise<PreviewResult> {
     env: {},
     run: kubectlReplay(KUBECTL, scenario).run,
     timeoutMinutes: 10,
+    // As a scan previews it, with the value fingerprint on (record 0102).
+    valueFingerprint: true,
   });
 }
 

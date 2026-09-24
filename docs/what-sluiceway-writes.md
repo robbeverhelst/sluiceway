@@ -2,7 +2,7 @@
 
 Sluiceway writes three things that a script, another tool or an agent can read: the **markers** in the dashboard issue, the **payload of each deployment record**, and the **result file** of a scan or a deploy, with the step outputs beside it. Together they are Sluiceway's published shape, and this page is their contract. What it documents keeps its meaning under the rule below, and what it leaves out may change in any release (record 0096).
 
-None of the three holds a secret or any of the tool's own words. The markers and the deployment records hold no property value either. The result file holds one only where your repo asks for it: the old and new value at a path listed in [`dashboard.showValues`](configuration.md#dashboardshowvalues), never one the tool marks secret. The markers sit in an issue, which everyone who can read the repo can read, and on a public repo that is everyone. Everything on this page is public in the same way.
+None of the three holds a secret or any of the tool's own words. The markers and the deployment records hold no property value either: a value fingerprint is a hash of sixteen hex characters, never a value. The result file holds one only where your repo asks for it: the old and new value at a path listed in [`dashboard.showValues`](configuration.md#dashboardshowvalues), never one the tool marks secret. The markers sit in an issue, which everyone who can read the repo can read, and on a public repo that is everyone. Everything on this page is public in the same way.
 
 Every example on this page comes from a run: a scan of the example project, a tick, and a deploy that went out and one that failed, with what the real Pulumi CLI printed (`bun run example:written`), and from the [example dashboard](../assets/example-dashboard.md). A test fails when the page and the code disagree.
 
@@ -62,12 +62,13 @@ One row per stack. Its state says where the row sits and is counted, and nothing
 | `drift` | `true` when the hash covers drift, found in a scan that checked it |
 | `gone` | On a drifted row, how many resources were found gone outside the code |
 | `depends-on` | For a stack with `dependsOn: auto`, the stack ids its preview read from its stack references |
+| `fingerprint` | The value fingerprint, 16 hex characters over the values of the diff that the row does not show ([record 0102](adr/0102-a-tick-covers-the-values-it-does-not-show-through-a-value-fingerprint.md)). Only on a pending or drifted row whose diff holds any, and only while `valueFingerprint` is on for the stack |
 
 A pending row from the run, the whole block:
 
 <!-- example: row-block -->
 ```md
-- [ ] **network:dev** · 4 creates · [preview](https://github.com/acme/infra/runs/106538952701) <!-- sluiceway:row stack="network:dev" state="pending" hash="378429630657b00c" -->
+- [ ] **network:dev** · 4 creates · [preview](https://github.com/acme/infra/runs/106538952701) <!-- sluiceway:row stack="network:dev" state="pending" hash="378429630657b00c" fingerprint="fa5c9bfcd54da64a" -->
   not deployed from this dashboard yet
   <details><summary>4 changes</summary>
   <kbd>create</kbd> <code>command:local:Command</code> <b>banner</b><br>
@@ -196,7 +197,8 @@ The record of the run, and the statuses the deploy gave it:
     "hash": "378429630657b00c",
     "ticker": "alice",
     "run": "5151",
-    "attempt": "1"
+    "attempt": "1",
+    "fingerprint": "fa5c9bfcd54da64a"
   },
   "statuses": [
     {
@@ -230,13 +232,14 @@ Its schema is [`schema/deployment-payload.schema.json`](../schema/deployment-pay
 | `behind` | A queued record: the stack ids it waits behind |
 | `drift` | `true` when the hash covers drift, and the deploy puts the drift back |
 | `onMerge` | `true` on a record that the scan of a merge opened for a stack set to deploy on merge |
+| `fingerprint` | The value fingerprint the tick approved. The deploy goes out only when a fresh preview gives the same one, or none. Absent on a record written before the key came, or with `valueFingerprint` off for the stack |
 | `merge` | The pull request a tick merged. Such a record has no hash and never deploys itself: the scan after the merge opens the record that does |
 
 A tick from the run, then records of a queued stack, a drift repair, a deploy on merge and a merge, one per line:
 
 <!-- example: payloads -->
 ```json
-{"v":1,"hash":"378429630657b00c","ticker":"alice","run":"5151","attempt":"1"}
+{"v":1,"hash":"378429630657b00c","ticker":"alice","run":"5151","attempt":"1","fingerprint":"fa5c9bfcd54da64a"}
 {"v":1,"hash":"1d0a03db50bc7070","ticker":"alice","run":"17034455121","attempt":"1","behind":["infra/network:prod"]}
 {"v":1,"hash":"3317badb7e6c946b","ticker":"carol","run":"17034455121","attempt":"1","drift":true}
 {"v":1,"hash":"ec5ef272e21b14c0","ticker":"erin","run":"17034455121","attempt":"1","onMerge":true}
