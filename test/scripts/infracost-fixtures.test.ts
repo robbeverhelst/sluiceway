@@ -71,9 +71,13 @@ for (const version of VERSIONS) {
       });
 
       // Recorded on a CI runner. Any other home directory means a laptop
-      // recording got in.
+      // recording got in. The CLI names its own credentials file under the
+      // home the recorder gives it, /tmp/sluiceway-fixtures/home, which
+      // names nobody either.
       test(`${scenario.name}: names nobody's home directory`, () => {
-        expect(savedOutput(dir)).not.toMatch(/\/Users\/|\/home\/(?!runner\/)|\/private\/tmp\//);
+        expect(savedOutput(dir)).not.toMatch(
+          /\/Users\/|\/home\/(?!runner\/|\.config\/infracost\/)|\/private\/tmp\//,
+        );
       });
 
       // The CLI's own words to stderr are what the job log gets, so a key of
