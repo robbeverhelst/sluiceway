@@ -191,11 +191,12 @@ function checkScan(observed: Observed, expected: Expected, previewed: string[]):
   problems.push(...checkPages(observed, expected, rows, previewed));
 
   // The count the scan logs is taken on the wire, so it has to be the count
-  // the fake GitHub saw (record 0017, build plan slice 3.1). On a dispatch the
-  // one step of auto mode resolves before it scans (record 0077), and those
-  // requests are the step's but not the scan's.
+  // the fake GitHub saw (record 0017, build plan slice 3.1). On a dispatch
+  // and on the schedule the one step of auto mode resolves before it scans
+  // (records 0077 and 0104), and those requests are the step's but not the
+  // scan's.
   const requests = observed.requests.length;
-  if (observed.log.includes(RESOLVED_FIRST)) {
+  if (RESOLVED_FIRST.test(observed.log)) {
     const made = Number(
       /The scan made (\d+) requests? to the GitHub API\./.exec(observed.log)?.[1],
     );
@@ -244,7 +245,8 @@ export function checkOutsideDeploys(observed: Observed, stacks: string[]): strin
 }
 
 // The line of auto mode that says it resolves before it scans.
-const RESOLVED_FIRST = "Sluiceway runs resolve, for the workflow_dispatch event of this run.";
+const RESOLVED_FIRST =
+  /^Sluiceway runs resolve, for the (workflow_dispatch|schedule) event of this run\.$/m;
 
 export function checkFullScan(observed: Observed, expected: Expected): string[] {
   const stacks = Object.keys(expected.rows);
