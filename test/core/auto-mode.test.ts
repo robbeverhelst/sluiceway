@@ -29,8 +29,13 @@ describe("autoModes", () => {
     expect(autoModes(push("refs/heads/main"), { readOnly: false })).toEqual({ modes: ["scan"] });
   });
 
-  test("the schedule scans", () => {
-    expect(autoModes({ name: "schedule" }, { readOnly: false })).toEqual({ modes: ["scan"] });
+  // The schedule is the run that falls inside a deploy window (record 0104):
+  // resolve starts what waited for the window, then the full scan runs.
+  test("the schedule resolves first and then scans", () => {
+    expect(autoModes({ name: "schedule" }, { readOnly: false })).toEqual({
+      modes: ["resolve", "scan"],
+    });
+    expect(autoModes({ name: "schedule" }, { readOnly: true })).toEqual({ modes: ["scan"] });
   });
 
   // The rescan box, settle and resolve after a merge all start the workflow

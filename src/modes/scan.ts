@@ -20,6 +20,7 @@ import type { Attribution } from "../core/attribution.ts";
 import { sharedFiles, suggestedUnrelated } from "../core/check.ts";
 import type { Config, ConfiguredStack } from "../core/config.ts";
 import { withReadDependencies } from "../core/dependencies.ts";
+import { windowState } from "../core/deploy-window.ts";
 import {
   type DeployFacts,
   deployFacts,
@@ -558,7 +559,15 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         if (merges.kind === "preview-first") throw new PreviewFirstError(merges);
         const { waiting } = merges;
         if (waiting.length > 0) {
-          const ended = await handOffMerges(context, config, stacks, previewed, waiting, handedOn);
+          const ended = await handOffMerges(
+            context,
+            config,
+            stacks,
+            previewed,
+            waiting,
+            handedOn,
+            startedAt,
+          );
           // Before the body, so a failed write does not lose the hand-off
           // (record 0035).
           context.outputs?.set("matrix", matrixOutput(handedOn));
@@ -568,7 +577,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         // through the path of a tick (record 0095). After the merges, so a
         // stack a merge from the dashboard already handed on is open.
         const onMerge = onMergeDeploys(
-          onMergeInput(context, config, stacks, previewed, live, deploys.facts),
+          onMergeInput(context, config, stacks, previewed, live, deploys.facts, startedAt),
         );
         waitsOnMerge = onMerge.waits;
         const fresh = onMerge.deploys.filter(({ stackId: id }) => !openedOnMerge.has(id));
@@ -1502,6 +1511,7 @@ async function handOffMerges(
   previewed: ReadonlyMap<string, Previewed>,
   waiting: WaitingMerge[],
   handedOn: MatrixEntry[],
+  now: Date,
 ): Promise<boolean> {
   const { log } = context;
   let ended = false;
@@ -1549,6 +1559,9 @@ async function handOffMerges(
     } else {
       await end({ kind: "merged" });
       const hash = diffHash(result.diff);
+      // The deploy after the merge is the ticker's, and it waits for the
+      // stack's deploy window as the tick would have (record 0104).
+      const window = !windowState(stack.deployWindows ?? [], now, config.dashboard.timeZone).open;
       try {
         const record = await openRecord(context, {
           stackId: id,
@@ -1560,11 +1573,20 @@ async function handOffMerges(
           drift: (result.diff.drift ?? []).length > 0,
           // And the record carries the value fingerprint (record 0102).
           fingerprint: valueFingerprint(result.diff),
+          window,
         });
-        handedOn.push({ stack: id, environment: stack.environment, deployment: record.deployment });
+        if (!window) {
+          handedOn.push({
+            stack: id,
+            environment: stack.environment,
+            deployment: record.deployment,
+          });
+        }
         if (record.unfinished !== undefined) throw record.unfinished;
         log.info(
-          `#${fact.merge} is merged: deployment record ${record.deployment} of ${name} is queued with diff hash ${hash}, ticked by ${fact.ticker}, and handed to apply.`,
+          window
+            ? `#${fact.merge} is merged: deployment record ${record.deployment} of ${name} with diff hash ${hash}, ticked by ${fact.ticker}, waits for the deploy window, and a run inside the window starts it.`
+            : `#${fact.merge} is merged: deployment record ${record.deployment} of ${name} is queued with diff hash ${hash}, ticked by ${fact.ticker}, and handed to apply.`,
         );
       } catch (error) {
         throw new Error(
@@ -1586,6 +1608,7 @@ function onMergeInput(
   previewed: ReadonlyMap<string, Previewed>,
   live: LiveDashboard,
   facts: DeployFacts,
+  now: Date,
 ): Parameters<typeof onMergeDeploys>[0] {
   const liveRows = live.current ? live.first : new Map<string, ParsedRow>();
   // `dependsOn: auto` (record 0059): what the preview read, else what the
@@ -1626,12 +1649,14 @@ function onMergeInput(
         deploy: one.deploy ?? "on-tick",
         dependsOn: dependsOn.get(id),
         phase: one.phase,
+        deployWindows: one.deployWindows,
       };
     }),
     previewed: fresh,
     livePending,
     open,
     phases: config.phases,
+    clock: { now, timeZone: config.dashboard.timeZone },
   };
 }
 
@@ -1658,9 +1683,10 @@ async function handOnMerged(
         behind: one.behind,
         onMerge: true,
         fingerprint: one.fingerprint,
+        window: one.window,
       });
       opened.add(one.stackId);
-      if (one.behind === undefined) {
+      if (one.behind === undefined && !one.window) {
         handedOn.push({
           stack: one.stackId,
           environment: one.environment,
@@ -1669,9 +1695,11 @@ async function handOnMerged(
       }
       if (record.unfinished !== undefined) throw record.unfinished;
       log.info(
-        one.behind === undefined
-          ? `${name} deploys on merge: deployment record ${record.deployment} is queued with diff hash ${one.hash}, merged by ${one.ticker}, and handed to apply.`
-          : `${name} deploys on merge: deployment record ${record.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, is queued behind ${one.behind.map(logGroupTitle).join(" and ")}, and a later run starts it.`,
+        one.behind !== undefined
+          ? `${name} deploys on merge: deployment record ${record.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, is queued behind ${one.behind.map(logGroupTitle).join(" and ")}, and a later run starts it.`
+          : one.window
+            ? `${name} deploys on merge: deployment record ${record.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, waits for the deploy window, and a run inside the window starts it.`
+            : `${name} deploys on merge: deployment record ${record.deployment} is queued with diff hash ${one.hash}, merged by ${one.ticker}, and handed to apply.`,
       );
     } catch (error) {
       throw new Error(

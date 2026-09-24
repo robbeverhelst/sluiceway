@@ -8,6 +8,7 @@
 import type { PreviewResult } from "../adapters/adapter.ts";
 import { isDestroy } from "../render/row.ts";
 import { planDeploys } from "./dependencies.ts";
+import { type DeployWindow, windowState } from "./deploy-window.ts";
 import type { Diff } from "./diff.ts";
 import { diffHash } from "./diff-hash.ts";
 import { type PhaseGroup, waitsByPhase } from "./phases.ts";
@@ -32,6 +33,8 @@ export interface OnMergeInput {
     deploy: DeployOn;
     dependsOn?: readonly string[] | undefined;
     phase?: string | undefined;
+    // Its deploy windows (record 0104), when it has any.
+    deployWindows?: readonly DeployWindow[] | undefined;
   }[];
   // What this scan previewed, by stack id.
   previewed: ReadonlyMap<string, PreviewResult>;
@@ -41,6 +44,9 @@ export interface OnMergeInput {
   open: ReadonlySet<string>;
   // `phases` of the config, for a note that names a phase.
   phases: readonly string[];
+  // When the scan judges, and the dashboard zone a deploy window is written
+  // in (record 0104).
+  clock: { now: Date; timeZone: string };
 }
 
 // Why a stack set to on-merge waits for a tick after all. Its row says so.
@@ -109,12 +115,19 @@ export function onMergeDeploys(input: OnMergeInput): OnMergeDecision {
   }
 
   const environments = new Map(input.stacks.map(({ id, environment }) => [id, environment]));
+  const windows = new Map(input.stacks.map(({ id, deployWindows }) => [id, deployWindows ?? []]));
   const ticker = input.mergedBy ?? "";
   const deploys = [
     ...plan.start.map((stackId) => ({ stackId, behind: undefined })),
     ...plan.queued,
-  ].map(
-    ({ stackId, behind }): Deploy => ({
+  ].map(({ stackId, behind }): Deploy => {
+    // A stack that would go now waits for its deploy window when that is
+    // closed (record 0104), as a tick does. One behind another is held to
+    // the window when it is started.
+    const closed =
+      behind === undefined &&
+      !windowState(windows.get(stackId) ?? [], input.clock.now, input.clock.timeZone).open;
+    return {
       stackId,
       environment: environments.get(stackId) ?? "",
       ticker,
@@ -122,8 +135,9 @@ export function onMergeDeploys(input: OnMergeInput): OnMergeDecision {
       drift: false,
       ...(fingerprints.has(stackId) ? { fingerprint: fingerprints.get(stackId) } : {}),
       behind,
-    }),
-  );
+      ...(closed ? { window: true as const } : {}),
+    };
+  });
   return { deploys, waits };
 }
 

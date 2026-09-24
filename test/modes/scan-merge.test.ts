@@ -22,6 +22,7 @@ import {
   harness,
   inSync,
   pending,
+  QUEUED_SPINNER,
   RUN_ID,
   RUN_URL,
   SHA,
@@ -289,6 +290,38 @@ describe("the scan after a merge", () => {
     ]);
     expect(rows(dashboardBody(github))["a:prod"]?.text.split("\n")[0]).toBe(
       `- ${SPINNER}**a:prod** · waiting to start · ticked by alice · [run](${RUN_URL}/attempts/1) <!-- sluiceway:row stack="a:prod" state="deploying" -->`,
+    );
+  });
+
+  // Deploy windows (record 0104): the deploy after a merge from the dashboard
+  // is the ticker's, and it waits for the window as the tick would have.
+  test("outside the deploy window the record it opens waits for the window, and nothing is handed on", async () => {
+    const diff = pending("a:prod", change("release"));
+    const outputs = rememberingOutputs();
+    const { context, github } = harness(tableAdapter({ ...TABLE, "a:prod": diff }), {
+      config: `${CONFIG}dashboard:
+  timeZone: Europe/Brussels
+deployWindows:
+  - days: [monday, tuesday, wednesday, thursday]
+    from: "09:00"
+    to: "17:00"
+`,
+      outputs,
+    });
+    github.seedComparison(MERGED, SHA, { status: "ahead", files: [] });
+    const merge = seedMergeRecord(github);
+
+    await scan(context);
+
+    expect(github.deployment(merge.id).status).toMatchObject({ state: "inactive" });
+    expect(github.deployment(merge.id + 1).payload).toMatchObject({
+      ticker: "alice",
+      run: RUN_ID,
+      window: true,
+    });
+    expect(JSON.parse(outputs.values.matrix ?? "")).toEqual([]);
+    expect(rows(dashboardBody(github))["a:prod"]?.text.split("\n")[0]).toBe(
+      `- ${QUEUED_SPINNER}**a:prod** · queued for the deploy window, which opens 2026-09-21 09:00 UTC+2 · ticked by alice · [run](${RUN_URL}/attempts/1) <!-- sluiceway:row stack="a:prod" state="queued" -->`,
     );
   });
 

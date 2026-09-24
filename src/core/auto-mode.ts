@@ -22,9 +22,11 @@ export type AutoMode = Extract<Mode, "scan" | "resolve" | "check">;
 // What each event starts, in the order it runs them, before
 // `dashboard.readOnly` takes `resolve` out. An event not here starts nothing.
 // A dispatch resolves first: it starts the next layer of a chain (record 0056).
+// So does the schedule: it is the run that falls inside a deploy window and
+// starts what waited for it (record 0104).
 const STARTS: Readonly<Record<string, readonly AutoMode[]>> = {
   push: ["scan"],
-  schedule: ["scan"],
+  schedule: ["resolve", "scan"],
   workflow_dispatch: ["resolve", "scan"],
   issues: ["resolve"],
   pull_request: ["check"],

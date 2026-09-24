@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PreviewResult } from "../../src/adapters/adapter.ts";
+import type { DeployWindow } from "../../src/core/deploy-window.ts";
 import type { Change, Diff } from "../../src/core/diff.ts";
 import { diffHash } from "../../src/core/diff-hash.ts";
 import { type OnMergeInput, type OnMergeWait, onMergeDeploys } from "../../src/core/on-merge.ts";
@@ -44,6 +45,8 @@ const base = (overrides: Partial<OnMergeInput> = {}): OnMergeInput => ({
   livePending: new Set(),
   open: new Set(),
   phases: [],
+  // A Tuesday morning in Brussels.
+  clock: { now: new Date("2026-09-22T08:00:00Z"), timeZone: "Europe/Brussels" },
   ...overrides,
 });
 
@@ -285,6 +288,65 @@ describe("onMergeDeploys", () => {
         named: [],
         phases: [{ phase: "infra", stackIds: ["network:prod"] }],
       });
+    });
+  });
+
+  // Deploy windows (record 0104): a deploy on merge waits for the window as a
+  // tick does. Its record is opened now and waits, and a run inside the
+  // window starts it. A destroy still waits for a tick, window or not.
+  describe("the deploy window", () => {
+    const OFFICE_HOURS: DeployWindow[] = [
+      { days: ["monday", "tuesday", "wednesday", "thursday"], from: "09:00", to: "17:00" },
+    ];
+    const windowed = (deploy: "on-merge" | "on-tick" = "on-merge") => [
+      { id: "app:prod", environment: "production", deploy, deployWindows: OFFICE_HOURS },
+    ];
+    const FRIDAY = { now: new Date("2026-09-25T16:00:00Z"), timeZone: "Europe/Brussels" };
+
+    test("outside the window the record waits for it, and nothing is handed on", () => {
+      const decided = onMergeDeploys(base({ stacks: windowed(), clock: FRIDAY }));
+      expect(decided.deploys).toEqual([
+        expect.objectContaining({ stackId: "app:prod", behind: undefined, window: true }),
+      ]);
+      expect(decided.waits).toEqual(new Map());
+    });
+
+    test("inside the window it goes as before, with no window key", () => {
+      const decided = onMergeDeploys(base({ stacks: windowed() }));
+      expect(decided.deploys).toEqual([expect.objectContaining({ stackId: "app:prod" })]);
+      expect("window" in (decided.deploys[0] ?? {})).toBe(false);
+    });
+
+    test("a destroy waits for a tick, window or not", () => {
+      const destroy = new Map([["app:prod", ok("app:prod", [change("delete")])]]);
+      for (const clock of [FRIDAY, base().clock]) {
+        const decided = onMergeDeploys(base({ stacks: windowed(), clock, previewed: destroy }));
+        expect(decided.deploys).toEqual([]);
+        expect(decided.waits.get("app:prod")).toEqual({ kind: "destroy" });
+      }
+    });
+
+    test("a stack behind another gets no window key: it is held to the window when it starts", () => {
+      const decided = onMergeDeploys(
+        base({
+          stacks: [
+            ...windowed(),
+            {
+              id: "site:prod",
+              environment: "sluiceway",
+              deploy: "on-merge",
+              dependsOn: ["app:prod"],
+              deployWindows: OFFICE_HOURS,
+            },
+          ],
+          clock: FRIDAY,
+        }),
+      );
+      expect(decided.deploys).toEqual([
+        expect.objectContaining({ stackId: "app:prod", window: true }),
+        expect.objectContaining({ stackId: "site:prod", behind: ["app:prod"] }),
+      ]);
+      expect("window" in (decided.deploys[1] ?? {})).toBe(false);
     });
   });
 });

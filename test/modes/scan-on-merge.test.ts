@@ -186,4 +186,40 @@ describe("a scan no merge started", () => {
       "this change waits for a tick: the scan that found it did not follow a merge.",
     );
   });
+
+  // Deploy windows (record 0104): the scan's clock is Monday 06:00 UTC, which
+  // is 08:00 in Brussels, before office hours open at 09:00.
+  test("outside the deploy window the record waits for it, and the row says when it opens", async () => {
+    const { github, matrix, body, log } = await scanned(
+      { "app:prod": pending("app:prod", change("motd")) },
+      {
+        config: `dashboard:
+  timeZone: Europe/Brussels
+deployWindows:
+  - days: [monday, tuesday, wednesday, thursday]
+    from: "09:00"
+    to: "17:00"
+stacks:
+  - path: app
+    deploy: on-merge
+`,
+      },
+    );
+
+    expect(matrix).toEqual([]);
+    expect(github.deployment(1).payload).toMatchObject({
+      ticker: "alice",
+      onMerge: true,
+      window: true,
+    });
+    expect(github.deployment(1).status?.state).toBe("queued");
+    const row = rows(body)["app:prod"];
+    expect(row?.state).toBe("queued");
+    expect(row?.text.split("\n")[0]).toContain(
+      "· queued for the deploy window, which opens 2026-09-21 09:00 UTC+2 · merged by alice ·",
+    );
+    expect(log.lines).toContain(
+      `app:prod deploys on merge: deployment record 1 with diff hash ${diffHash({ stackId: "app:prod", changes: [change("motd")] })}, merged by alice, waits for the deploy window, and a run inside the window starts it.`,
+    );
+  });
 });
