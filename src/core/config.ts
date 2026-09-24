@@ -2,6 +2,7 @@ import { LineCounter, parseDocument } from "yaml";
 import { z } from "zod";
 import { configErrorText, configProblemText } from "../render/config-problems.ts";
 import { LOOKBACK, NAMED_ON_A_ROW } from "./attribution.ts";
+import { type DeployWindow, WEEKDAYS, windowProblem } from "./deploy-window.ts";
 import { knownStacks } from "./discovery.ts";
 import { globMatcher } from "./glob.ts";
 import { DEFAULT_NOTIFY_EVENTS, NOTIFY_EVENTS } from "./notify.ts";
@@ -69,6 +70,35 @@ const stackPath = text
     const segments = path.split("/").filter((segment) => segment !== "" && segment !== ".");
     return segments.length === 0 ? "." : segments.join("/");
   });
+
+// A clock time of a window, `HH:MM` on a 24 hour clock (record 0104), or
+// `24:00` for the end of the day. Its shape is a pattern so an editor sees
+// it too; `classify` gives it its own words.
+const CLOCK_TIME = /^(?:([01]\d|2[0-3]):[0-5]\d|24:00)$/;
+const clockTime = z.string().regex(CLOCK_TIME);
+
+// One deploy window (record 0104): days of the week, a start and an end, in
+// the dashboard zone. The end comes after the start, so a window over
+// midnight is written as two.
+const deployWindow = z
+  .strictObject({
+    days: z
+      .array(z.enum(WEEKDAYS))
+      .min(1)
+      .describe(
+        "The days of the week the window is on, in full and in lower case: monday to sunday.",
+      ),
+    from: clockTime.describe(
+      "When the window opens on each of those days, as HH:MM on a 24 hour clock in the dashboard zone.",
+    ),
+    to: clockTime.describe("When it closes, as HH:MM, after from. 24:00 is the end of the day."),
+  })
+  .superRefine((window, context) => {
+    const problem = windowProblem(window);
+    if (problem) refuse(context, problem);
+  });
+
+const deployWindows = z.array(deployWindow);
 
 // An entry adds settings to stacks that discovery found. It never creates one,
 // except an entry that names a tool, which declares its stack (record 0053).
@@ -142,6 +172,13 @@ const stackEntry = z
       .enum(["on-tick", "on-merge"])
       .describe(
         "When these stacks deploy. on-tick: when a person ticks the row, the default. on-merge: by themselves after the scan of a merge that found them pending, through the same fresh preview and hash check as a tick, attributed to whoever merged. A change that deletes or replaces something, drift, and a stack it depends on that waits for a tick still wait for a tick.",
+      )
+      .exactOptional(),
+    // The deploy windows of these stacks (record 0104), in place of the top
+    // level ones. An empty list lets them go out at any time.
+    deployWindows: deployWindows
+      .describe(
+        "When these stacks may go out, in place of the top level deployWindows. An empty list lets them go out at any time.",
       )
       .exactOptional(),
     // The drift check of these stacks, like the top level (record 0059).
@@ -310,6 +347,14 @@ export const configSchema = z
         "false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.",
       )
       .default(true),
+    // Deploy windows (record 0104): when a stack may go out, in the dashboard
+    // zone. A tick outside a window is not refused: its record waits for the
+    // window, and a run inside the window starts it. Empty is always.
+    deployWindows: deployWindows
+      .describe(
+        "When the stacks of this repo may go out, in the dashboard zone: a list of windows, each with days of the week, a start and an end. A tick outside every window waits for the next one to open, and so does a deploy on merge. Empty, the default, is any time. A stacks entry sets its own with stacks[].deployWindows.",
+      )
+      .default([]),
     ignore: z
       .array(ignoreEntry)
       .describe(
@@ -479,6 +524,10 @@ export type WhatIsWrong =
   | { kind: "not-a-phase-name"; value: unknown }
   | { kind: "not-a-login"; value: unknown }
   | { kind: "not-a-time-zone"; value: unknown }
+  | { kind: "not-a-weekday"; value: unknown }
+  | { kind: "no-days" }
+  | { kind: "not-a-clock-time"; value: unknown }
+  | { kind: "window-ends-first"; from: string; to: string }
   | { kind: "a-team"; value: unknown }
   | { kind: "not-a-username"; value: unknown }
   | { kind: "no-tickers" }
@@ -659,6 +708,15 @@ function classify(issue: Issue, raw: unknown): Found[] {
   if (key === "deploy" && path[0] === "stacks") {
     return one({ kind: "not-a-deploy-trigger", value });
   }
+  // A deploy window (record 0104): its days, and its clock times when one is
+  // there but is not one. A missing time is a missing key like any other.
+  const inWindow = path.includes("deployWindows");
+  if (inWindow && issue.code === "invalid_value" && path.at(-2) === "days") {
+    return one({ kind: "not-a-weekday", value });
+  }
+  if (inWindow && (key === "from" || key === "to") && value !== undefined) {
+    return one({ kind: "not-a-clock-time", value });
+  }
   if (issue.code === "invalid_value" && path[0] === "notify") {
     return one({ kind: "not-an-event", value, events: NOTIFY_EVENTS });
   }
@@ -677,7 +735,9 @@ function classify(issue: Issue, raw: unknown): Found[] {
   if (issue.code === "too_small") {
     return one(
       issue.origin === "array"
-        ? { kind: "no-tickers" }
+        ? key === "days"
+          ? { kind: "no-days" }
+          : { kind: "no-tickers" }
         : key === "path"
           ? { kind: "empty-stack-path" }
           : { kind: "empty" },
@@ -878,6 +938,10 @@ export interface ConfiguredStack {
   // lines the tool gets for this stack, on top of the environment of the
   // step. Absent for a stack that gets the environment of the step as it is.
   envFile?: string;
+  // The deploy windows of the stack (record 0104): its entries' when one sets
+  // them, else the top level's. Absent when there is none, so a repo without
+  // windows is what it was.
+  deployWindows?: DeployWindow[];
 }
 
 const DEFAULT_ENVIRONMENT = "sluiceway";
@@ -912,6 +976,9 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
       (entry) => entry.valueFingerprint !== undefined,
     )?.valueFingerprint;
     const envFile = entries.findLast((entry) => entry.envFile !== undefined)?.envFile;
+    const windows =
+      entries.findLast((entry) => entry.deployWindows !== undefined)?.deployWindows ??
+      config.deployWindows;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     return {
@@ -931,6 +998,7 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
       ...(deploy === "on-merge" ? { deploy } : {}),
       ...(valueFingerprint === undefined ? {} : { valueFingerprint }),
       ...(envFile === undefined ? {} : { envFile }),
+      ...(windows.length === 0 ? {} : { deployWindows: windows }),
     };
   });
 }

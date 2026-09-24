@@ -6,6 +6,7 @@ import {
   ignoredStacks,
   parseConfig,
 } from "../../src/core/config.ts";
+import type { DeployWindow } from "../../src/core/deploy-window.ts";
 import type { Stack } from "../../src/core/stack.ts";
 
 const stack = (path: string, name?: string): Stack =>
@@ -361,5 +362,53 @@ stacks:
       "ci/grafana-prod.env",
       "/srv/credentials/prod.env",
     ]);
+  });
+});
+
+// Deploy windows (record 0104): the top level sets the windows of every
+// stack, an entry sets its own, and an entry with an empty list lets its
+// stacks go out at any time. A stack with no window carries no key, so a
+// repo without windows is what it was.
+describe("deploy windows on a stack", () => {
+  const WINDOW: DeployWindow = { days: ["monday"], from: "09:00", to: "17:00" };
+  const SATURDAY: DeployWindow = { days: ["saturday"], from: "10:00", to: "11:00" };
+
+  test("are absent when neither the top level nor an entry names any", () => {
+    expect(applyConfig(parseConfig(undefined), FOUND).map((one) => "deployWindows" in one)).toEqual(
+      [false, false, false],
+    );
+    expect(
+      applyConfig(parseConfig("deployWindows: []\n"), FOUND).map((one) => "deployWindows" in one),
+    ).toEqual([false, false, false]);
+  });
+
+  test("the top level gives every stack its windows", () => {
+    const configured = applyConfig(
+      parseConfig('deployWindows:\n  - days: [monday]\n    from: "09:00"\n    to: "17:00"\n'),
+      FOUND,
+    );
+    expect(configured.map((one) => one.deployWindows)).toEqual([[WINDOW], [WINDOW], [WINDOW]]);
+  });
+
+  test("an entry replaces the top level for its stacks, and an empty list lifts every window", () => {
+    const configured = applyConfig(
+      parseConfig(`
+deployWindows:
+  - days: [monday]
+    from: "09:00"
+    to: "17:00"
+stacks:
+  - path: apps/grafana
+    deployWindows:
+      - days: [saturday]
+        from: "10:00"
+        to: "11:00"
+  - path: apps/grafana
+    name: prod
+    deployWindows: []
+`),
+      FOUND,
+    );
+    expect(configured.map((one) => one.deployWindows)).toEqual([[SATURDAY], undefined, [WINDOW]]);
   });
 });

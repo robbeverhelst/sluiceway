@@ -16,6 +16,7 @@ const DEFAULTS: Config = {
   },
   tickers: "write",
   deploys: true,
+  deployWindows: [],
   ignore: [],
   scan: { unrelated: [], logDiff: false },
   drift: { enabled: false },
@@ -81,6 +82,7 @@ phases: [infrastructure, applications]
       },
       tickers: "admin",
       deploys: true,
+      deployWindows: [],
       ignore: ["**/*:dev"],
       scan: { unrelated: ["**/*.md"], logDiff: false },
       drift: { enabled: true },
@@ -111,6 +113,7 @@ const TOP_KEYS = [
   "dashboard",
   "tickers",
   "deploys",
+  "deployWindows",
   "ignore",
   "scan",
   "drift",
@@ -371,6 +374,7 @@ stacks:
       "dependsOn",
       "phase",
       "deploy",
+      "deployWindows",
       "drift",
       "valueFingerprint",
       "envFile",
@@ -587,7 +591,7 @@ describe("a file that is not a mapping", () => {
 describe("the error", () => {
   test("names the file and lists every problem in words, top to bottom", () => {
     expect(() => parseConfig("tickerz: admin\ndashboard:\n  pin: 1\n")).toThrow(
-      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, valueFingerprint, attribution, phases, stacks, discovery, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
+      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, deployWindows, ignore, scan, drift, valueFingerprint, attribution, phases, stacks, discovery, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
     );
   });
 
@@ -770,5 +774,111 @@ describe("the value fingerprint switch", () => {
     expect(
       issues("stacks:\n  - path: apps/a\n    valueFingerprint: 1\n").map((issue) => issue.path),
     ).toEqual([["stacks", 0, "valueFingerprint"]]);
+  });
+});
+
+// Deploy windows (record 0104): when the stacks of a repo may go out, written
+// in the dashboard zone. A tick outside a window waits for it.
+describe("deployWindows", () => {
+  test("is empty unless the file names windows, and empty means always", () => {
+    expect(parseConfig(undefined).deployWindows).toEqual([]);
+    expect(parseConfig("deployWindows: []\n").deployWindows).toEqual([]);
+  });
+
+  test("takes windows of days, a start and an end, as written", () => {
+    expect(
+      parseConfig(
+        'deployWindows:\n  - days: [monday, tuesday, wednesday, thursday]\n    from: "09:00"\n    to: "17:00"\n  - days: [friday]\n    from: "09:00"\n    to: "12:00"\n',
+      ).deployWindows,
+    ).toEqual([
+      { days: ["monday", "tuesday", "wednesday", "thursday"], from: "09:00", to: "17:00" },
+      { days: ["friday"], from: "09:00", to: "12:00" },
+    ]);
+  });
+
+  test("a day is a full name of the week in lower case, and nothing else", () => {
+    expect(issues('deployWindows:\n  - days: [mon]\n    from: "09:00"\n    to: "17:00"\n')).toEqual(
+      [{ kind: "not-a-weekday", value: "mon", path: ["deployWindows", 0, "days", 0] }],
+    );
+    expect(issues('deployWindows:\n  - days: []\n    from: "09:00"\n    to: "17:00"\n')).toEqual([
+      { kind: "no-days", path: ["deployWindows", 0, "days"] },
+    ]);
+  });
+
+  test("a start and an end are HH:MM on a 24 hour clock, quoted or not, and a number is refused", () => {
+    expect(
+      issues('deployWindows:\n  - days: [monday]\n    from: "9am"\n    to: "17:00"\n'),
+    ).toEqual([{ kind: "not-a-clock-time", value: "9am", path: ["deployWindows", 0, "from"] }]);
+    // YAML 1.2 reads an unquoted 09:00 as text, so the quotes are a habit and
+    // not a need. A number is what an older parser would have made of it.
+    expect(
+      parseConfig("deployWindows:\n  - days: [monday]\n    from: 09:00\n    to: 17:00\n")
+        .deployWindows,
+    ).toEqual([{ days: ["monday"], from: "09:00", to: "17:00" }]);
+    expect(issues("deployWindows:\n  - days: [monday]\n    from: 540\n    to: 17:00\n")).toEqual([
+      { kind: "not-a-clock-time", value: 540, path: ["deployWindows", 0, "from"] },
+    ]);
+  });
+
+  test("the end comes after the start, so a window over midnight is two windows", () => {
+    expect(
+      issues('deployWindows:\n  - days: [monday]\n    from: "22:00"\n    to: "06:00"\n'),
+    ).toEqual([
+      { kind: "window-ends-first", from: "22:00", to: "06:00", path: ["deployWindows", 0] },
+    ]);
+    expect(
+      parseConfig(
+        'deployWindows:\n  - days: [monday]\n    from: "22:00"\n    to: "24:00"\n  - days: [tuesday]\n    from: "00:00"\n    to: "06:00"\n',
+      ).deployWindows,
+    ).toHaveLength(2);
+  });
+
+  test("a window takes no other key, and every key is required", () => {
+    expect(
+      issues(
+        'deployWindows:\n  - days: [monday]\n    from: "09:00"\n    to: "17:00"\n    zone: UTC\n',
+      ),
+    ).toEqual([
+      {
+        kind: "unknown-key",
+        key: "zone",
+        known: ["days", "from", "to"],
+        path: ["deployWindows", 0],
+      },
+    ]);
+    expect(issues("deployWindows:\n  - days: [monday]\n")).toEqual([
+      {
+        kind: "wrong-type",
+        expected: "string",
+        value: undefined,
+        path: ["deployWindows", 0, "from"],
+      },
+      {
+        kind: "wrong-type",
+        expected: "string",
+        value: undefined,
+        path: ["deployWindows", 0, "to"],
+      },
+    ]);
+  });
+
+  test("a stack entry takes the same list", () => {
+    expect(
+      parseConfig(
+        'stacks:\n  - path: apps/grafana\n    deployWindows:\n      - days: [saturday]\n        from: "10:00"\n        to: "11:00"\n',
+      ).stacks[0]?.deployWindows,
+    ).toEqual([{ days: ["saturday"], from: "10:00", to: "11:00" }]);
+    expect(
+      issues(
+        'stacks:\n  - path: apps/grafana\n    deployWindows:\n      - days: [monday]\n        from: "17:00"\n        to: "09:00"\n',
+      ),
+    ).toEqual([
+      {
+        kind: "window-ends-first",
+        from: "17:00",
+        to: "09:00",
+        path: ["stacks", 0, "deployWindows", 0],
+      },
+    ]);
   });
 });

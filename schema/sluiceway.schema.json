@@ -90,6 +90,49 @@
       "type": "boolean",
       "description": "false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on."
     },
+    "deployWindows": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday",
+                "sunday"
+              ]
+            },
+            "description": "The days of the week the window is on, in full and in lower case: monday to sunday."
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^(?:([01]\\d|2[0-3]):[0-5]\\d|24:00)$",
+            "description": "When the window opens on each of those days, as HH:MM on a 24 hour clock in the dashboard zone."
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^(?:([01]\\d|2[0-3]):[0-5]\\d|24:00)$",
+            "description": "When it closes, as HH:MM, after from. 24:00 is the end of the day."
+          }
+        },
+        "required": [
+          "days",
+          "from",
+          "to"
+        ],
+        "additionalProperties": false
+      },
+      "description": "When the stacks of this repo may go out, in the dashboard zone: a list of windows, each with days of the week, a start and an end. A tick outside every window waits for the next one to open, and so does a deploy on merge. Empty, the default, is any time. A stacks entry sets its own with stacks[].deployWindows."
+    },
     "ignore": {
       "default": [],
       "type": "array",
@@ -310,6 +353,48 @@
               "on-merge"
             ],
             "description": "When these stacks deploy. on-tick: when a person ticks the row, the default. on-merge: by themselves after the scan of a merge that found them pending, through the same fresh preview and hash check as a tick, attributed to whoever merged. A change that deletes or replaces something, drift, and a stack it depends on that waits for a tick still wait for a tick."
+          },
+          "deployWindows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "days": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "monday",
+                      "tuesday",
+                      "wednesday",
+                      "thursday",
+                      "friday",
+                      "saturday",
+                      "sunday"
+                    ]
+                  },
+                  "description": "The days of the week the window is on, in full and in lower case: monday to sunday."
+                },
+                "from": {
+                  "type": "string",
+                  "pattern": "^(?:([01]\\d|2[0-3]):[0-5]\\d|24:00)$",
+                  "description": "When the window opens on each of those days, as HH:MM on a 24 hour clock in the dashboard zone."
+                },
+                "to": {
+                  "type": "string",
+                  "pattern": "^(?:([01]\\d|2[0-3]):[0-5]\\d|24:00)$",
+                  "description": "When it closes, as HH:MM, after from. 24:00 is the end of the day."
+                }
+              },
+              "required": [
+                "days",
+                "from",
+                "to"
+              ],
+              "additionalProperties": false
+            },
+            "description": "When these stacks may go out, in place of the top level deployWindows. An empty list lets them go out at any time."
           },
           "drift": {
             "type": "object",

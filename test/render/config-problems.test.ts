@@ -375,3 +375,25 @@ describe("words chosen elsewhere", () => {
     );
   });
 });
+
+// Deploy windows (record 0104).
+describe("a deploy window", () => {
+  test("names the days of the week, the clock and the order of start and end", () => {
+    expect(
+      text({ kind: "not-a-weekday", value: "mon", path: ["deployWindows", 0, "days", 0] }),
+    ).toBe(
+      'deployWindows[0].days[0]: "mon" is not a day of the week. Write one of: monday, tuesday, wednesday, thursday, friday, saturday, sunday.',
+    );
+    expect(text({ kind: "no-days", path: ["deployWindows", 0, "days"] })).toBe(
+      "deployWindows[0].days: a window needs at least one day of the week.",
+    );
+    expect(text({ kind: "not-a-clock-time", value: 540, path: ["deployWindows", 0, "from"] })).toBe(
+      'deployWindows[0].from: 540 is not a clock time. Write HH:MM on a 24 hour clock in quotes, such as "09:00" or "17:30". "24:00" is the end of the day.',
+    );
+    expect(
+      text({ kind: "window-ends-first", from: "22:00", to: "06:00", path: ["deployWindows", 0] }),
+    ).toBe(
+      'deployWindows[0]: the window ends at "06:00", which is not after it starts at "22:00". A window over midnight is two windows: one to "24:00" and one from "00:00" on the next day.',
+    );
+  });
+});
