@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.0](https://github.com/sluiceway/sluiceway/compare/v0.36.0...v0.37.0) (2026-09-24)
+
+
+### Features
+
+* policies on the preview, a failed one takes the box off the row ([#250](https://github.com/sluiceway/sluiceway/issues/250)) ([fb35ffa](https://github.com/sluiceway/sluiceway/commit/fb35ffa229e07cc2becd144e3226b3828f147d45))
+
 ## [0.36.0](https://github.com/sluiceway/sluiceway/compare/v0.35.0...v0.36.0) (2026-09-24)
 
 
