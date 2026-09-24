@@ -259,7 +259,9 @@ function backendText(check: BackendCheck): string {
     case true:
       return `${check.stackId} is in the backend.`;
     case false:
-      return `${check.stackId} is not in the backend.`;
+      return check.createInBackend
+        ? `${check.stackId} is not in the backend, and the first scan creates it (createInBackend).`
+        : `${check.stackId} is not in the backend.`;
     case "unknown":
       return `${check.stackId}: could not ask the backend, ${askFailureText(check.reason)}.`;
     case "unchecked":
@@ -297,7 +299,7 @@ function backendCell(check: BackendCheck): string {
     case true:
       return "Yes";
     case false:
-      return "No";
+      return check.createInBackend ? "No, the first scan creates it" : "No";
     case "unknown":
       return `Could not ask: ${askFailureText(check.reason)}`;
     case "unchecked":
@@ -876,9 +878,12 @@ export function backendPart(
   ignore: IgnoreEntry[],
   toolLog: string,
 ): CheckPart {
-  const missing = checks.filter((check) => check.found === false).map((check) => check.stackId);
+  const notThere = checks.filter((check) => check.found === false);
+  // A stack the first scan creates (record 0107) is no red row to come, so
+  // it is no warning and gets no ignore entry.
+  const missing = notThere.filter((check) => !check.createInBackend).map((check) => check.stackId);
   const block = missing.length === 0 ? [] : ignoreBlock(ignore, missing);
-  const allIn = missing.length === 0 && checks.some((check) => check.found === true);
+  const allIn = notThere.length === 0 && checks.some((check) => check.found === true);
   return {
     log: [
       ...(toolLog === ""
@@ -889,7 +894,7 @@ export function backendPart(
         if (check.found === "unknown") {
           return [{ warning: line(couldNotAskText(check)), title: COULD_NOT_ASK_TITLE }];
         }
-        if (check.found === false) {
+        if (check.found === false && !check.createInBackend) {
           return [{ warning: line(notInBackendText(check.stackId)), title: NOT_IN_BACKEND_TITLE }];
         }
         return [];

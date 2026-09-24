@@ -83,7 +83,12 @@ export interface InputsEntry {
 
 // What the backend said about one stack, for the check with backend: true
 // (record 0074). `unchecked` is a stack whose tool has no list to ask.
-export type BackendCheck = { stackId: string } & (
+export type BackendCheck = {
+  stackId: string;
+  // The stack's entry asks the scan to create it when the backend lacks it
+  // (record 0107), so a stack it lacks is no red row to come.
+  createInBackend?: true;
+} & (
   | { found: boolean }
   | { found: "unknown"; reason: PreviewFailureReason }
   | { found: "unchecked" }

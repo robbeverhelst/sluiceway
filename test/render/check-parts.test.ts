@@ -86,6 +86,42 @@ describe("the parts of the check", () => {
     expect(part?.summary).toContain(`- ${text}`);
   });
 
+  // Record 0107: a stack the backend lacks whose entry asks the scan to
+  // create it is a line, not a warning, and stays out of the ignore block.
+  test("a stack the scan will create is a line, not a warning, and not in the ignore block", () => {
+    const part = backendPart(
+      [
+        { stackId: "app:prod", found: false, createInBackend: true },
+        { stackId: "app:qa", found: false },
+      ],
+      [],
+      "",
+    );
+    const warnings = part.log.flatMap((entry) => ("warning" in entry ? [entry.warning] : []));
+    expect(warnings).toEqual([expect.stringContaining("app:qa has files in the repo")]);
+    const block = part.log.find(
+      (entry) => "group" in entry && entry.group === "Ready to paste into sluiceway.yaml, over ignore",
+    );
+    expect(block !== undefined && "lines" in block ? block.lines : []).toEqual([
+      "ignore:",
+      '  - "app:qa"',
+    ]);
+    expect(part.summary.join("\n")).toContain("| app:prod | No, the first scan creates it |");
+  });
+
+  test("with only stacks the scan will create missing, there is no block and no word that every stack is in", () => {
+    const part = backendPart(
+      [
+        { stackId: "app:prod", found: false, createInBackend: true },
+        { stackId: "app:qa", found: true },
+      ],
+      [],
+      "",
+    );
+    expect(texts(part.log)).toEqual(["Stacks in the backend"]);
+    expect(part.summary.join("\n")).not.toContain("Every stack the backend was asked about");
+  });
+
   // The tool's own words stay in the job log (record 0022).
   test("the backend's tool log goes to the job log alone", () => {
     const part = backendPart([{ stackId: "app:prod", found: true }], [], "said this\n");

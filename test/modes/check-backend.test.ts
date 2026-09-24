@@ -33,6 +33,8 @@ const FILES: Files = {
     "  - glob: legacy:*",
     "    reason: kept by hand",
     "stacks:",
+    "  - path: edge",
+    "    createInBackend: true",
     "  - path: web",
     "    tool: helm",
     "    options:",
@@ -47,6 +49,8 @@ const FILES: Files = {
   "network/Pulumi.prod.yaml": "",
   "apps/Pulumi.yaml": project("apps"),
   "apps/Pulumi.qa.yaml": "",
+  "edge/Pulumi.yaml": project("edge"),
+  "edge/Pulumi.prod.yaml": "",
   "site/Pulumi.yaml": project("site"),
   "site/Pulumi.prod.yaml": "",
   "playground/Pulumi.yaml": project("playground"),
@@ -107,6 +111,7 @@ async function run(options: { backend?: ReturnType<typeof backend> } = {}) {
 
 const TABLE = {
   "apps:qa": "unknown",
+  "edge:prod": false,
   "network:dev": true,
   "network:prod": false,
   "site:prod": false,
@@ -117,7 +122,7 @@ describe("the check with backend: true", () => {
     const answers = backend(TABLE);
     await run({ backend: answers });
     expect(answers.asked.map((stacks) => stacks.map(stackId))).toEqual([
-      ["apps:qa", "network:dev", "network:prod", "site:prod", "web"],
+      ["apps:qa", "edge:prod", "network:dev", "network:prod", "site:prod", "web"],
     ]);
   });
 
@@ -125,6 +130,7 @@ describe("the check with backend: true", () => {
     const { group } = await run({ backend: backend(TABLE) });
     expect(group("Stacks in the backend")).toEqual([
       "apps:qa: could not ask the backend, the tool exited with an error (exit code 255).",
+      "edge:prod is not in the backend, and the first scan creates it (createInBackend).",
       "network:dev is in the backend.",
       "network:prod is not in the backend.",
       "site:prod is not in the backend.",
@@ -176,6 +182,7 @@ describe("the check with backend: true", () => {
         "| Stack | In the backend |",
         "|---|---|",
         "| apps:qa | Could not ask: the tool exited with an error (exit code 255) |",
+        "| edge:prod | No, the first scan creates it |",
         "| network:dev | Yes |",
         "| network:prod | No |",
         "| site:prod | No |",

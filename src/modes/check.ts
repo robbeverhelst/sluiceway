@@ -166,13 +166,15 @@ async function askBackend(
     for (const answer of result?.answers ?? []) answers.set(stackId(answer.stack), answer);
     if (result !== undefined && result.toolLog !== "") logs.push(result.toolLog);
   }
-  const checks = stacks.map(({ stack }): BackendCheck => {
+  const checks = stacks.map(({ stack, createInBackend }): BackendCheck => {
     const id = stackId(stack);
     const answer = answers.get(id);
-    if (answer === undefined) return { stackId: id, found: "unchecked" };
+    // Whether the first scan creates the stack (record 0107) rides along.
+    const creates = createInBackend === undefined ? {} : { createInBackend };
+    if (answer === undefined) return { stackId: id, ...creates, found: "unchecked" };
     return answer.found === "unknown"
-      ? { stackId: id, found: "unknown", reason: answer.reason }
-      : { stackId: id, found: answer.found };
+      ? { stackId: id, ...creates, found: "unknown", reason: answer.reason }
+      : { stackId: id, ...creates, found: answer.found };
   });
   return { checks, toolLog: logs.join("") };
 }
