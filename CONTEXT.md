@@ -224,6 +224,10 @@ _Avoid_: Blocked update, pending merge, stuck pull request
 The preview of an update waiting to merge as it would be after the merge: a copy of the checkout with the files of the pull request's head commit in place. Its counts go on the update's row. It approves nothing and deploys nothing: the scan after the merge previews again.
 _Avoid_: PR preview, speculative plan, merge preview
 
+**Pull request preview**:
+The preview of the stacks a pull request claims, as they would be after the merge, for its reviewer: one check run per stack on the pull request's head commit, opt in with `pull-request-preview: true` on the check step of a job that holds credentials that read. It never deploys, never opens a deployment record and leaves no row. A pull request from a fork is refused outright, and `pull_request_target` is never used.
+_Avoid_: PR preview, plan comment, speculative run, proposed run
+
 **Merge record**:
 The deployment record `resolve` opens for a merge it made: on the merge commit, with the ticker and the pull request and no diff hash. It waits for a scan that holds the merge, which ends it and opens the record that deploys the fresh diff.
 _Avoid_: Pending merge, merge deployment, pre-deploy

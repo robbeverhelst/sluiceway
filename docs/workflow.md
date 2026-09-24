@@ -75,6 +75,54 @@ To learn before the first scan which stacks have files in the repo and no stack 
 
 If your repo uses a merge queue and you make this check required, add `merge_group:` next to `pull_request:` in this file, so the queue gets its result. This is the only Sluiceway workflow that may have it.
 
+### Preview a pull request for its reviewer
+
+Opt in. A reviewer wants to see what a change does to the infrastructure while reviewing it, not after merging it. Set `pull-request-preview: true` on the check step of a job that installs your tool and loads credentials, and the check also previews the stacks the pull request claims, as they would be after the merge, and writes one check run per stack on the pull request's head commit, named `sluiceway / <stack id>`. Each shows what a row shows: resource types and names, the changed property paths, the counts and the destroy warning, and a value only at a path [`dashboard.showValues`](configuration.md#dashboardshowvalues) lists. A stack the merge would not change, and a preview that failed, get a page that says so. The pull request's checks list them, and the job summary lists them with their pages.
+
+It never deploys, never opens a deployment record and leaves no row on the dashboard: the dashboard is about what is merged and waiting. The deploy still happens after the merge, from the fresh preview of the scan, and is refused when the change moved since, so a stale plan can never go out. Every page says so.
+
+```yaml
+name: deploy-dashboard-check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  checks: write # a preview page per stack the pull request claims
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Install your tool, and load credentials that can read, not change:
+      # read access to the state backend and the cloud is what a preview needs.
+      - uses: sluiceway/sluiceway@v0
+        with:
+          pull-request-preview: true
+```
+
+Two rules are fixed, each in one sentence:
+
+- **A pull request from a fork is refused outright, and Sluiceway never relies on GitHub withholding secrets from a fork's run.** A preview runs the pull request's code with the credentials of the job.
+- **`pull_request_target` is never used, because it runs with the secrets of the base branch against code that is not merged.** The check warns about a step with the input in a file that runs on it.
+
+Previewing a pull request runs the repo's own program with credentials. For Pulumi and CDK for Terraform that is arbitrary code from the branch, from anyone who may open a pull request in the repo. So give this job credentials that can read, not ones that can change things: a preview reads state and asks the cloud what would change. [Credentials](credentials.md) has the recipes. The workflow that deploys stays a file of its own and never runs on `pull_request` ([the workflow](#the-workflow)).
+
+The cost is one preview per claimed stack per push to the pull request. Only the stacks that claim a changed file are previewed, by the same [claim rule](configuration.md#stacksinputs) a push uses, so a pull request that touches no stack previews nothing, and a file no stack claims is listed in the summary and not previewed for. To limit it further, keep the preview in a workflow of its own next to the check and filter its trigger by path:
+
+```yaml
+on:
+  pull_request:
+    paths:
+      - infra/**
+```
+
+The checkout of a `pull_request` run is the merge of the branch into the base, so leave `ref:` off `actions/checkout`: that is what makes the preview show the merge. A pull request with a conflict has no merge, and GitHub does not start the job. A pull request that changes 300 files or more previews nothing, because GitHub's comparison cannot list its files whole, and the summary says so. The `preview-timeout`, `concurrency` and [`env-file`](credentials.md#an-env-file) inputs apply as in a scan.
+
 ## The workflow
 
 This is the whole workflow, the same one the [README](../README.md#get-started) shows. It goes in `.github/workflows/deploy-dashboard.yml` on the default branch. The comments mark where your own steps go. [Example workflows](example-workflows.md) has it complete for a Node monorepo, a secret manager and a cloud with OIDC.
