@@ -136,32 +136,38 @@ describe("what is refused, by line number and never by its text", () => {
 
 // Every value is masked before anything else, each line of a multi-line
 // value on its own, because the runner matches the log line by line. Not
-// masked: an empty value, true and false, and a value shorter than 8
-// characters, since a mask that short turns ordinary words and numbers
-// everywhere in the log into stars (onboarding log, hurdle 11).
+// masked: an empty value, true and false, and a value of 1 to 3 characters,
+// since a mask that short turns ordinary words and numbers everywhere in
+// the log into stars (onboarding log, hurdle 11). A value of 4 characters
+// or more is masked whatever it is: a short password is still a password.
 describe("what is masked", () => {
   test("a value, and each line of it that is long enough", () => {
     expect(masks("pul-0123456789")).toEqual(["pul-0123456789"]);
-    expect(masks("-----BEGIN KEY-----\nAAAA\nBBBBBBBBBB\n\n-----END KEY-----")).toEqual([
-      "-----BEGIN KEY-----\nAAAA\nBBBBBBBBBB\n\n-----END KEY-----",
+    expect(masks("-----BEGIN KEY-----\nAAAA\nBB\n\n-----END KEY-----")).toEqual([
+      "-----BEGIN KEY-----\nAAAA\nBB\n\n-----END KEY-----",
       "-----BEGIN KEY-----",
-      "BBBBBBBBBB",
+      "AAAA",
       "-----END KEY-----",
     ]);
   });
 
-  test("not an empty value, true, false, or anything shorter than 8 characters", () => {
-    for (const value of ["", "true", "false", "8080", "eu-west", "hunter2", "   "]) {
+  test("a short password, a port and a region are masked all the same", () => {
+    for (const value of ["hunter2", "8080", "eu-west", "prod", "12345678"]) {
+      expect(masks(value)).toEqual([value]);
+    }
+  });
+
+  test("not an empty value, true, false, or a value of 1 to 3 characters", () => {
+    for (const value of ["", "true", "false", "1", "dev", "   "]) {
       expect(masks(value)).toEqual([]);
     }
-    expect(masks("eu-west-1")).toEqual(["eu-west-1"]);
-    expect(masks("12345678")).toEqual(["12345678"]);
   });
 
   test("says why a value is not masked", () => {
     expect(unmaskedReason("")).toBe("empty");
     expect(unmaskedReason("true")).toBe("true or false");
-    expect(unmaskedReason("hunter2")).toBe("shorter than 8 characters");
+    expect(unmaskedReason("dev")).toBe("shorter than 4 characters");
+    expect(unmaskedReason("prod")).toBeUndefined();
     expect(unmaskedReason("pul-0123456789")).toBeUndefined();
   });
 });

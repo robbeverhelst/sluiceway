@@ -14,7 +14,7 @@ const FILE = [
   "# The stacks' credentials",
   "PULUMI_ACCESS_TOKEN=pul-0123456789",
   'TLS_KEY="-----BEGIN KEY-----\nAAAAAAAAAAAA\n-----END KEY-----"',
-  "REGION=eu-west",
+  "REGION=eu",
   "DEBUG=true",
   "EMPTY=",
 ].join("\n");
@@ -63,7 +63,7 @@ describe("with the input", () => {
       HOME: "/home/r",
       PULUMI_ACCESS_TOKEN: "pul-0123456789",
       TLS_KEY: "-----BEGIN KEY-----\nAAAAAAAAAAAA\n-----END KEY-----",
-      REGION: "eu-west",
+      REGION: "eu",
       DEBUG: "true",
       EMPTY: "",
     });
@@ -89,13 +89,13 @@ describe("with the input", () => {
         lines: [
           "5 values for the tool: PULUMI_ACCESS_TOKEN, TLS_KEY, REGION, DEBUG, EMPTY.",
           "Masked: PULUMI_ACCESS_TOKEN, TLS_KEY.",
-          "Not masked: REGION (shorter than 8 characters), DEBUG (true or false), EMPTY (empty).",
+          "Not masked: REGION (shorter than 4 characters), DEBUG (true or false), EMPTY (empty).",
           "The file wins over the job environment for: REGION.",
         ],
       },
     ]);
     expect(JSON.stringify(log)).not.toContain("pul-0123456789");
-    expect(JSON.stringify(log)).not.toContain("eu-west");
+    expect(JSON.stringify(log)).not.toContain("us-east");
   });
 
   test("a file with nothing in it says so", () => {

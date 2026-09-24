@@ -58251,7 +58251,7 @@ function readQuoted(quote, lines) {
   }
   return { kind: "open" };
 }
-var MASK_LENGTH = 8;
+var MASK_LENGTH = 4;
 function unmaskedReason(value) {
   if (value === "")
     return "empty";

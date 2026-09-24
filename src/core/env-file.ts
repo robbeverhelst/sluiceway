@@ -127,11 +127,13 @@ function readQuoted(quote: '"' | "'", lines: string[]): Quoted {
   return { kind: "open" };
 }
 
-// A mask shorter than this hits ordinary words and numbers everywhere in the
-// job log and turns them into stars (onboarding log, hurdle 11), so such a
-// value is not masked. A secret that short is rare, and the log says which
-// names were loaded without a mask.
-export const MASK_LENGTH = 8;
+// A mask of 1 to 3 characters hits ordinary words and numbers everywhere in
+// the job log and turns them into stars (onboarding log, hurdle 11), so such
+// a value is not masked, and the log says which names were loaded without a
+// mask. Everything from 4 characters on is masked whatever it looks like: a
+// short password is still a password, and a mask of `prod` costs less than
+// a password in the log (the owner, 2026-09-24, on pull request 237).
+export const MASK_LENGTH = 4;
 
 // Why a value gets no mask, or undefined when it does.
 export function unmaskedReason(value: string): string | undefined {

@@ -321,7 +321,7 @@ export function checkEnvFile(
   if (log.includes(`::add-mask::${file.unmaskedValue}`)) {
     problems.push(`The step masked ${file.unmaskedName}, which is too short to mask.`);
   }
-  if (!log.includes(`Not masked: ${file.unmaskedName} (shorter than 8 characters).`)) {
+  if (!log.includes(`Not masked: ${file.unmaskedName} (shorter than 4 characters).`)) {
     problems.push(`The step did not say that ${file.unmaskedName} got no mask.`);
   }
   return problems;

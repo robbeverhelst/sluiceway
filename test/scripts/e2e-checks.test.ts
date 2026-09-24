@@ -328,7 +328,7 @@ describe("the env file check", () => {
     "::group::Loaded the env file ci/deploy.env",
     "2 values for the tool: E2E_TOKEN, E2E_SHORT.",
     "Masked: E2E_TOKEN.",
-    "Not masked: E2E_SHORT (shorter than 8 characters).",
+    "Not masked: E2E_SHORT (shorter than 4 characters).",
     "::endgroup::",
   ];
 
