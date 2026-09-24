@@ -1,5 +1,7 @@
 # A stack may deploy on merge, and the default stays a tick
 
+> Amended by 0105: one more reason a stack set to on-merge waits for a tick, after a destroy and drift and before a scan no merge started: its change costs more a month than the repo's `cost.threshold`, or the threshold is set and the cost could not be estimated. The row says which.
+
 > Amends 0003 (the payload key `onMerge`), 0018 (a deploy that is not a tick), 0025 (a scan may open a deployment record for a stack set to on-merge, not only after a merge from the dashboard), 0054 (the scan's `matrix` carries these deploys too), 0056 and 0091 (a queued record carries `onMerge`), and 0061 (the check warns when the split workflow has no job for the scan's matrix). Built as slice 5.31.
 
 Every tool Sluiceway is compared with deploys on merge by default: Terrateam, Digger, Spacelift, env0. DORA's research reads a human approval per change as a cost to lead time and deploy frequency. Sluiceway's tick is not an approval board, but from outside it looks like one: a gate on every change to every stack. The honest answer is that the gate belongs to the stack. A boring stack, such as a dashboard, an exporter or a test namespace, can go out on merge. A stack that holds the cluster, the database or the network waits for a person. Until now the only ways to get that were to tick everything, or to leave a stack off the dashboard (issue 213).

@@ -462,6 +462,77 @@ policies:
 - **An entry adds its own** for its stacks with [`stacks[].policies`](#stackspolicies).
 - **How to write one** is on the [policies page](policies.md): the input each tool gives, the syntax both supported versions of conftest read, and the words a message should hold and not hold.
 
+### `cost.enabled`
+
+Default: `false`
+
+Estimates what each pending change of an OpenTofu or Terraform stack does to the monthly bill, and shows it on the row as a delta, right under the first line: `about **31.20 USD** more a month`, `less a month` for a change that saves, or `about the same cost a month`. The estimate comes from the [Infracost CLI](https://www.infracost.io), the open source 0.10 line, which the workflow installs the way it installs the tool and Sluiceway runs and never wraps. It reads the plan's JSON the preview already made, so no tool runs against the cloud again ([record 0105](adr/0105-a-row-shows-what-a-change-costs-and-a-threshold-turns-a-merge-back-to-a-tick.md)).
+
+```yaml
+cost:
+  enabled: true
+```
+
+- **Opt in, because something leaves the runner.** To price a plan the CLI sends the resource types, regions and quantities of the change to its pricing API, never a value and never a credential, and it reports the counts of its own run there. Sluiceway turns its upload to Infracost Cloud off and its check for a newer version off. Nothing is sent unless this key is on and the CLI is installed.
+- **The workflow installs the CLI and gives it a key.** Infracost's own [setup action](https://github.com/infracost/actions/tree/master/setup) installs the 0.10 line and takes the key, which is free, from a secret of your repo; the CLI reads it, Sluiceway never does. `INFRACOST_CURRENCY` in the job environment picks the currency of the estimate, USD without it.
+
+  ```yaml
+  - uses: infracost/actions/setup@v3
+    with:
+      api-key: ${{ secrets.INFRACOST_API_KEY }}
+  ```
+
+- **Only OpenTofu and Terraform stacks get a line**, because the CLI reads their plans and nothing else. A Pulumi, Helm or Kubernetes manifests stack shows no cost line, and no key makes it.
+- **An estimate that fails is a missing line, never a failed scan.** The CLI is not installed, its key is refused, its pricing API cannot be reached, or its output cannot be read: the row shows no line, the run carries the warning "Cost not estimated" with the reason, and the CLI's own words are in the stack's group of the job log.
+- **The cost is not in the diff hash.** It is derived from the plan, and the hash already covers what changes. A price that moved between the tick and the deploy stops nothing, and a tick approves the change, not the amount.
+- **The estimate is a price list against a plan**, not the bill: usage-based resources count at zero usage, and a resource the CLI has no price for counts nothing. The line always says "about".
+- **A stack entry turns it on or off** for its own stacks with [`stacks[].cost.enabled`](#stackscostenabled).
+
+### `cost.threshold`
+
+Default: none. No threshold gates anything.
+
+The change to the monthly bill above which a stack set to [`deploy: on-merge`](#stacksdeploy) waits for a tick instead of going out, in the currency of the estimate. A change that costs more a month than the threshold is not deployed by the merge, and its row says why: `this stack deploys on merge, and this change waits for a tick: it costs about **120.50 USD** more a month, above the threshold of 100.00 USD.` A tick deploys it as it deploys any stack ([record 0105](adr/0105-a-row-shows-what-a-change-costs-and-a-threshold-turns-a-merge-back-to-a-tick.md)).
+
+```yaml
+cost:
+  enabled: true
+  threshold: 100
+```
+
+- **A failed estimate waits too.** When a threshold is set and the change could not be priced, nobody knows what it costs, so the gate fails closed and the row says `its cost could not be estimated`. A person decides.
+- **A change that saves money, or costs the threshold exactly, goes out.** Only more than the threshold waits, and `0` makes every increase wait.
+- **A stack whose tool has no estimate is not gated.** The threshold means nothing to a Pulumi, Helm or Kubernetes manifests stack, which deploys on merge as before.
+- **It changes nothing for a stack on a tick.** The row shows the cost; the person ticks or not.
+- **A stack entry sets its own** with [`stacks[].cost.threshold`](#stackscostthreshold).
+
+A threshold needs the estimate:
+
+```yaml
+# Not valid: a threshold without the estimate
+cost:
+  threshold: 100
+```
+
+```text
+sluiceway.yaml is not valid:
+- cost.threshold: a threshold needs the estimate: set cost.enabled: true next to it, or on the stack's entry.
+```
+
+And it is an amount, 0 or more:
+
+```yaml
+# Not valid: a negative amount
+cost:
+  enabled: true
+  threshold: -5
+```
+
+```text
+sluiceway.yaml is not valid:
+- cost.threshold: expected an amount a month, 0 or more, got -5.
+```
+
 ### `attribution.lookback`
 
 Default: `100`
@@ -925,6 +996,52 @@ stacks:
 The scan asks the backend for the list of the project's stacks, and runs `pulumi stack init <name>` only when the list lacks the stack, with the environment the stack's preview gets: the passphrase of the job, or of the stack's [`envFile`](#stacksenvfile), is the one the new stack uses, and the tool's default secrets provider stands. A stack the backend already holds is left alone, and the job log says which of the two it was. The init writes an encryption salt into the stack file of the checkout; Sluiceway commits nothing, so set the stack's config secrets from a clone as before ([credentials](credentials.md#state-backends)). A list or an init the tool refuses is a preview failure of that stack alone.
 
 Only a scan creates a stack. A deploy never does: a stack that is gone at deploy time fails the fresh preview as it did. The [check](workflow.md#check-your-setup) with `backend: true` names each such stack the backend lacks and says that the first scan creates it, and leaves it out of the `ignore` block. Off by default, because a typo in a stack file must never create a stack, and refused on an entry with `tool`: an OpenTofu workspace is made by the scan's init, and a Helm release by its first deploy.
+### `stacks[].cost.enabled`
+
+Default: the top level `cost.enabled`.
+
+Turns the cost estimate on or off for the stacks of this entry, whatever the top level says. An entry with a name wins over one without ([record 0105](adr/0105-a-row-shows-what-a-change-costs-and-a-threshold-turns-a-merge-back-to-a-tick.md)).
+
+```yaml
+cost:
+  enabled: true
+stacks:
+  # A sandbox nobody prices.
+  - path: playground
+    cost:
+      enabled: false
+```
+
+It is a mapping, like the top level:
+
+```yaml
+# Not valid: true alone
+stacks:
+  - path: apps/web
+    cost: true
+```
+
+```text
+sluiceway.yaml is not valid:
+- stacks[0].cost: expected a mapping, got true. Write it as the top level has it: cost: { enabled: true }.
+```
+
+### `stacks[].cost.threshold`
+
+Default: the top level `cost.threshold`.
+
+The threshold of the stacks of this entry, in place of the top level one, so a stack that holds the cluster can wait at a lower amount than a dashboard. It needs the estimate on for those stacks, here or at the top level ([record 0105](adr/0105-a-row-shows-what-a-change-costs-and-a-threshold-turns-a-merge-back-to-a-tick.md)).
+
+```yaml
+cost:
+  enabled: true
+  threshold: 500
+stacks:
+  - path: infra/cluster
+    deploy: on-merge
+    cost:
+      threshold: 50
+```
 
 ### `stacks[].options.workspace`
 

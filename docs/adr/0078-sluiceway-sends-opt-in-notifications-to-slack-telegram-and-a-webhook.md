@@ -1,5 +1,7 @@
 # Sluiceway sends opt-in notifications to Slack, Telegram and a webhook
 
+> Amended by 0105: one more call the owner allowed, opt in with `cost.enabled`: the Infracost CLI's pricing API, which gets resource types, regions and quantities and never a value or a credential. Any other call still needs the owner.
+
 Record 0041 decided that Sluiceway sends nothing: it hands the workflow step outputs and a result file, and `docs/notifications.md` shipped recipes for a Slack step, a Telegram step and a generic webhook. The owner, 2026-09-22, on those recipes: "idk about telegram slack being a custom step, cant we build it in? and why wouldnt we?" Every team that wanted a message copied the same 15 lines of shell, with a condition that had to be right for each mode, and got it wrong in ways slices 2.22 and 4.5 had to fix in the docs. So the messages are built in, opt-in, each channel from the repo's own secret.
 
 This supersedes 0041 on "Sluiceway sends nothing", and amends 0014 (promises 1 and 3) and the build plan's list of what to ask the owner before.

@@ -113,6 +113,16 @@ mv test/fixtures/kubectl/fixtures-kubectl-*/* test/fixtures/kubectl/ && rmdir te
 
 To try it on your machine, make a cluster for it and nothing else: `kind create cluster --name sluiceway-fixtures`, then `bun run record:fixtures --tool kubectl --out /tmp/try`.
 
+The cost estimate (record 0105) has a set of its own: `scripts/fixtures/infracost-scenarios.ts` drives tofu over a copy of `examples/opentofu-basic` with a root module of the AWS provider written into it, and the Infracost CLI, the open source 0.10 line, reads each plan's JSON against a fake pricing API the recorder starts on the machine (`scripts/fixtures/fake-pricing-api.ts`), so no recording asks Infracost's own service and the prices never change. `FIXTURE_INFRACOST_VERSIONS` names the version, and the `fixtures-infracost` job of CI records it. To take it from CI:
+
+```sh
+rm -rf test/fixtures/infracost
+gh run download <run id> --pattern 'fixtures-infracost-*' --dir test/fixtures/infracost
+mv test/fixtures/infracost/fixtures-infracost-*/* test/fixtures/infracost/ && rmdir test/fixtures/infracost/fixtures-infracost-*
+```
+
+To try it on your machine: `bun run record:fixtures --tool infracost --out /tmp/try`, with `tofu` and `infracost` 0.10 on your PATH. The recorder needs port 47831 for the fake pricing API.
+
 ## Rules for code
 
 - TypeScript, strict, ESM.

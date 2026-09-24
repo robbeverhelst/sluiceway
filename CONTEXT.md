@@ -154,6 +154,10 @@ _Avoid_: Checksum, signature, plan id, fingerprint (that is the value fingerprin
 A hash of the values of a stack's diff that its row does not show, sixteen hex characters on the row next to the diff hash, and on the deployment record a tick opens. `apply` compares it after the hash: a value that changed since the tick stops the deploy, and the row and a comment say so without naming the value. A value the tool marks secret enters it as the tool's mark, never in the clear. On for every repo, off per repo or per stack with `valueFingerprint: false`, for a program whose values differ on every run.
 _Avoid_: Value hash, values digest, second hash
 
+**Cost line**:
+The line under the first line of a pending row that says what the change does to the monthly bill, as a delta and never the bill: `about **31.20 USD** more a month`, `less a month`, or `about the same cost a month`. Opt in with `cost.enabled`, and only an OpenTofu or Terraform stack gets one, because the Infracost CLI reads their plans and nothing else. It is an estimate against a price list, it is not in the diff hash, and an estimate that failed leaves the line out and never fails the scan.
+_Avoid_: Price, bill, cost report, budget
+
 **Address**:
 The string that identifies one resource within one stack's diff. The tool's adapter defines it and nothing else looks inside it. It is unique within a diff and the same across two identical previews.
 _Avoid_: URN, resource id, id
@@ -207,6 +211,10 @@ _Avoid_: Duplicate tick, ignored tick, second deploy
 **Deploy on merge**:
 A stack's own setting, `deploy: on-merge` in `sluiceway.yaml`, that lets it go out without a tick: the scan of a push to the default branch that finds it pending opens its deployment record, attributed to whoever pushed, and the same run deploys it through the fresh preview and the hash check of a tick. A delete or a replace, drift, a dependency that waits for a tick, any other scan, `deploys: false` and a read-only dashboard keep it waiting for a tick, and its row says why. The default is a tick. Its row says `deploying on merge · merged by`, and so does the trail, so it never reads as a tick.
 _Avoid_: Auto-deploy, continuous deployment, apply on merge, autopilot
+
+**Cost threshold**:
+The change to the monthly bill, `cost.threshold` in `sluiceway.yaml` for the repo or for a stack, above which a stack set to deploy on merge waits for a tick instead, with its row saying why. A change whose cost could not be estimated waits too while a threshold is set: the gate fails closed. It changes nothing for a stack on a tick, and nothing for a stack whose tool has no estimate.
+_Avoid_: Budget, cost gate, spend limit, guardrail
 
 **Rescan box**:
 The one checkbox on the dashboard that belongs to no stack. Ticked by a person with write access, it starts a full scan and deploys nothing. A read-only dashboard has none.

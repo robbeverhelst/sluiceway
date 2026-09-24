@@ -185,5 +185,10 @@ Not planned. Bringing one of these back means reopening the decision named here 
 | GitLab and Bitbucket | The UI is a GitHub issue, so this is a different product surface. |
 | Interactive notifications (a tick from a button in Slack) and a metrics endpoint | A button needs an app that Slack can call back, and a GitHub Action is not running when someone clicks. The built-in messages go one way (0078), and metrics are pushed from the outputs. Both fit a hosted version. |
 | Cost estimation | Out of scope for v1. |
+| The cost estimate in the summary, the preview page, the result file and the notifications | The row is where a person decides, so the line lives there. Each of the others is a published shape or a message of its own, and a cost in the result file is a field of a versioned schema. | 0105 |
+| A cost line for Pulumi, Helm and Kubernetes manifests stacks | The Infracost CLI reads Terraform plans and nothing else. A line only appears where it can be honest. | 0105 |
+| A `cost.currency` key, a usage file and other settings of the Infracost CLI | The CLI reads `INFRACOST_CURRENCY` and its own files from the environment and the runner, which is the workflow's (0013). | 0105 |
+| A warning from the check when `cost.enabled` is on and no step installs the Infracost CLI | The scan says so, once per stack, with the warning "Cost not estimated", and the row shows no line. | 0105 |
+| The Infracost CLI's 2.x line | Its `scan` sends the code to Infracost's own service behind a login, which is not the call the owner allowed: the pricing API, with resource types, regions and quantities. The 0.10 line's `diff` reads the plan's JSON and asks only that. | 0105 |
 | Docs site and Marketplace launch | Part of the public launch, after the core loop is proven. |
 | Launch material: screenshots, a note on merge queues, the JSON schema in SchemaStore, the 1.0.0 tag and the `v1` moving tag | Same. Until then the moving tag is `v0`. |

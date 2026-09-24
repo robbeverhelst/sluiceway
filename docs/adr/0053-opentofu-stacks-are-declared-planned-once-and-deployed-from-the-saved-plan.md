@@ -1,5 +1,7 @@
 # OpenTofu stacks are declared in sluiceway.yaml, initialised one directory at a time, and deployed from the plan that was hashed
 
+> Amended by 0105: when a repo sets `cost.enabled`, the preview also writes the plan's JSON, the output of `tofu show -json`, next to the plan file and runs the Infracost CLI's `diff` on it there, so the change's cost rides on the row. The JSON goes with the plan's directory, and a failed estimate never fails the preview.
+
 > Amended by 0058: a deploy may end as `moved` when the adapter finds, before its tool deploys, that what would go out is not what the fresh preview saw. Helm does, and its preparation is one dependency build per chart.
 
 > Amended by 0092: a root module is also found without an entry, when the repo's own files say it is one: no other directory uses it as a local module source, it is not under `modules/`, it has a backend or cloud block, it names one workspace and no var file, and its lock file or `.tofu` files name the tool. It is one stack in the default workspace with its path as its stack id, planned and deployed as this record says. A directory an entry declares stays the entry's, and `discovery.rootModules: false` turns it off.

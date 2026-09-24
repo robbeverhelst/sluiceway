@@ -184,6 +184,62 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  fixtures-infracost:
+    # The same for the cost estimate (record 0105): the recorder with the
+    # real Infracost CLI, the last release of its open source 0.10 line,
+    # over plans the real tofu makes in a copy of examples/opentofu-basic,
+    # against a fake pricing API the recorder starts on this runner. Nothing
+    # asks Infracost's own service: the key is made up. The AWS provider comes
+    # from the OpenTofu registry and plans without an account.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        infracost: ["0.10.45"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+
+      # The release binary, pinned by version and checksum. The setup action
+      # of Infracost would do, but it wants a key of theirs before it installs.
+      - name: Install the Infracost CLI
+        env:
+          INFRACOST_VERSION: ${{ matrix.infracost }}
+          INFRACOST_SHA256: e2f527d8391a87ac00bfc55237ff875107861715e234bbbeb9b6015aba576c77
+        run: |
+          curl -fsSL -o infracost.tar.gz "https://github.com/infracost/infracost/releases/download/v${INFRACOST_VERSION}/infracost-linux-amd64.tar.gz"
+          echo "${INFRACOST_SHA256}  infracost.tar.gz" | sha256sum --check
+          tar -xzf infracost.tar.gz
+          sudo mv infracost-linux-amd64 /usr/local/bin/infracost
+          infracost --version
+
+      - run: bun install --frozen-lockfile
+
+      - name: Record the fixtures
+        env:
+          INFRACOST_VERSION: ${{ matrix.infracost }}
+        run: bun run record:fixtures --tool infracost --out "$RUNNER_TEMP/fixtures" --expect-version "v$INFRACOST_VERSION"
+
+      # The fixtures in the repo come from here. See CONTRIBUTING.md.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: fixtures-infracost-v${{ matrix.infracost }}
+          path: ${{ runner.temp }}/fixtures
+          retention-days: 7
+          if-no-files-found: error
+
   fixtures-terragrunt:
     # The same for Terragrunt in front of tofu (record 0068): one unit of
     # examples/terragrunt-basic, with the minimum terragrunt the adapter
