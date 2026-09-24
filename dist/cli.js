@@ -31504,7 +31504,18 @@ function sluicewayJob(job, parsed, workflowEnv, auto) {
     const mode = isMode(named) ? named : undefined;
     const runs = mode === undefined ? [] : mode === "auto" ? auto : [mode];
     const provides = providesOf(steps, index, workflowEnv, parsed.env);
-    return { job, mode, runs, ref, refKind: refKind(ref), named, provides };
+    const preview = isRecord3(step.with) ? step.with["pull-request-preview"] : undefined;
+    const previews = preview === true || String(preview ?? "").trim() === "true";
+    return {
+      job,
+      mode,
+      runs,
+      ref,
+      refKind: refKind(ref),
+      named,
+      provides,
+      ...previews ? { previewsPullRequests: true } : {}
+    };
   }
   return;
 }
@@ -31566,19 +31577,25 @@ function checkOne(path, workflow, config2, report) {
   const { warnings, notes } = report;
   report.workflows.push({
     path,
-    jobs: found.map(({ step: { job, mode, runs: runs2, ref, refKind: refKind2, environment, provides } }) => ({
+    jobs: found.map(({
+      step: { job, mode, runs: runs2, ref, refKind: refKind2, environment, provides, previewsPullRequests }
+    }) => ({
       job,
       mode,
       runs: runs2,
       ref,
       refKind: refKind2,
       ...environment === undefined ? {} : { environment },
-      provides
+      provides,
+      ...previewsPullRequests ? { previewsPullRequests } : {}
     }))
   });
   for (const { step } of found) {
     if (step.mode === undefined) {
       warnings.push({ kind: "unknown-mode", path, job: step.job, mode: step.named });
+    }
+    if (step.previewsPullRequests && "pull_request_target" in workflow.on) {
+      warnings.push({ kind: "preview-on-target", path, job: step.job });
     }
     if (step.refKind === "other") {
       warnings.push({ kind: "unreleased-ref", path, job: step.job, ref: step.ref });
@@ -31626,6 +31643,8 @@ function checkOne(path, workflow, config2, report) {
       continue;
     const { job, mode } = step;
     const wanted = needsAll(step.runs, config2);
+    if (step.previewsPullRequests)
+      wanted.checks = "write";
     if (permissions === undefined) {
       warnings.push({ kind: "no-permissions", path, job, mode, needs: missing({}, wanted) });
       continue;
@@ -31758,6 +31777,7 @@ var NO_CONFIG_FILE = "No sluiceway.yaml, so every setting is its default.";
 var CANNOT_TELL = "A check reads files only, so it cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan.";
 var CANNOT_TELL_WITH_BACKEND = "A check cannot say that a preview will work: a missing credential for a provider or a registry the runner cannot reach shows only in a scan.";
 var BACKEND_OFF = "With backend: true the check also asks the backend which stacks it holds, with the credentials of its job.";
+var PREVIEWED_PULL_REQUEST = "With pull-request-preview: true the pull request preview above ran the tool for the stacks the pull request claims, and for no other stack.";
 var BACKEND_TITLE = "Stacks in the backend";
 var BACKEND_PASTE_TITLE = "Ready to paste into sluiceway.yaml, over ignore";
 var NOT_IN_BACKEND_TITLE = "A stack is not in the backend";
@@ -31963,6 +31983,8 @@ function workflowWarningText(warning) {
         return `${path} runs on ${warning.trigger}, and its Sluiceway job loads the credentials of your stacks before it. On ${warning.trigger} those steps would run code that is not on the default branch yet. Keep the check in a workflow of its own, which needs no credentials.`;
       }
       return `${path} runs on ${warning.trigger}. A scan would write the dashboard from code that is not on the default branch yet. Only the workflow of the check may run on pull requests or in a merge queue.`;
+    case "preview-on-target":
+      return `${path}, job ${warning.job}: pull-request-preview: true runs on pull_request_target, which Sluiceway never previews on: it runs with the secrets of the base branch against code that is not merged. Run it on pull_request, where a fork's pull request is refused.`;
     case "missing-job":
       return `${path} has no ${warning.mode} job. The four jobs scan, resolve, apply and settle stay in one file: a scan looks for waiting ticks among the runs of its own workflow, and the rescan box and settle start that same workflow again.`;
     case "boxes-do-nothing":
@@ -32348,8 +32370,10 @@ function backendPart(checks3, ignore, toolLog) {
     ]
   };
 }
-function closingPart(askedBackend) {
+function closingPart(askedBackend, previewedPullRequest = false) {
   const cannot = askedBackend ? [CANNOT_TELL_WITH_BACKEND] : [CANNOT_TELL, BACKEND_OFF];
+  if (previewedPullRequest)
+    cannot.push(PREVIEWED_PULL_REQUEST);
   return {
     log: [VALID, ...cannot].map((text7) => ({ info: text7 })),
     summary: ["### What a check cannot tell", ...cannot]
@@ -32438,7 +32462,12 @@ async function check2(context) {
     write(log, backend);
     parts.push(backend);
   }
-  const closing = closingPart(context.backend !== undefined);
+  if (context.pullRequestPreview !== undefined) {
+    const preview = await context.pullRequestPreview({ config: config2, stacks: report.stacks });
+    write(log, preview);
+    parts.push(preview);
+  }
+  const closing = closingPart(context.backend !== undefined, context.pullRequestPreview !== undefined);
   await summary(context, renderCheckSummary([...parts, closing]));
   write(log, closing);
 }

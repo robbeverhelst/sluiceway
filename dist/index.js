@@ -27550,11 +27550,22 @@ function readBackend(getInput2) {
     return true;
   throw new Error(`The "backend" input is true or false, and it is ${JSON.stringify(text)}.`);
 }
+function readPullRequestPreview(getInput2) {
+  const text = getInput2("pull-request-preview").trim();
+  if (text === "" || text === "false")
+    return false;
+  if (text === "true")
+    return true;
+  throw new Error(`The "pull-request-preview" input is true or false, and it is ${JSON.stringify(text)}.`);
+}
 function refuseDeploymentId(mode, getInput2) {
   const only = (name, of = "apply") => new Error(`The "${name}" input is only for ${of} mode, and this step runs ${mode} mode. Take it out of this step.`);
   const auto = mode === "auto";
   if (!auto && mode !== "check" && getInput2("backend").trim() === "true") {
     throw only("backend", "check");
+  }
+  if (!auto && mode !== "check" && getInput2("pull-request-preview").trim() === "true") {
+    throw only("pull-request-preview", "check");
   }
   if (!auto && mode !== "scan" && getInput2("strict").trim() === "true") {
     throw only("strict", "scan");
@@ -27629,10 +27640,11 @@ function unusedEnvFileInput(mode, getInput2) {
     return;
   if (mode === "auto" || mode === "scan" || mode === "apply")
     return;
-  if (mode === "check" && getInput2("backend").trim() === "true")
+  if (mode === "check" && (getInput2("backend").trim() === "true" || getInput2("pull-request-preview").trim() === "true")) {
     return;
-  const where = mode === "check" ? "check mode without backend: true" : `${mode} mode`;
-  return `"env-file" is set on a step in ${where}, which never runs the tool, so the file is not read. Only scan, apply and the check with backend: true do. Take it out of this step.`;
+  }
+  const where = mode === "check" ? "check mode without backend: true or pull-request-preview: true" : `${mode} mode`;
+  return `"env-file" is set on a step in ${where}, which never runs the tool, so the file is not read. Only scan, apply and the check with backend: true or pull-request-preview: true do. Take it out of this step.`;
 }
 
 // src/modes/apply-job.ts
@@ -58404,6 +58416,26 @@ function mergedBy(eventName, payload) {
   const login = record2(body2?.sender)?.login;
   return typeof login === "string" && login !== "" ? login : undefined;
 }
+function pullRequestOf2(payload) {
+  const pullRequest = record2(record2(payload)?.pull_request);
+  if (!pullRequest || typeof pullRequest.number !== "number")
+    return;
+  const head = record2(pullRequest.head);
+  const base = record2(pullRequest.base);
+  if (typeof head?.sha !== "string" || head.sha === "")
+    return;
+  if (typeof base?.sha !== "string" || base.sha === "")
+    return;
+  const headRepo = record2(head.repo)?.full_name;
+  const baseRepo = record2(base.repo)?.full_name ?? record2(record2(payload)?.repository)?.full_name;
+  return {
+    number: pullRequest.number,
+    head: head.sha,
+    base: base.sha,
+    baseRef: text7(base.ref),
+    fromFork: typeof headRepo !== "string" || headRepo === "" || typeof baseRepo !== "string" || headRepo !== baseRepo
+  };
+}
 
 // src/github/job.ts
 function readJob(env) {
@@ -62377,7 +62409,7 @@ async function runApply(directory, handed) {
 }
 
 // src/modes/auto-job.ts
-import { readFileSync as readFileSync17 } from "node:fs";
+import { readFileSync as readFileSync18 } from "node:fs";
 
 // src/core/resolve.ts
 function matrixOutput(entries) {
@@ -63388,7 +63420,18 @@ function sluicewayJob(job, parsed, workflowEnv, auto) {
     const mode = isMode(named2) ? named2 : undefined;
     const runs = mode === undefined ? [] : mode === "auto" ? auto : [mode];
     const provides = providesOf(steps, index, workflowEnv, parsed.env);
-    return { job, mode, runs, ref, refKind: refKind(ref), named: named2, provides };
+    const preview5 = isRecord3(step3.with) ? step3.with["pull-request-preview"] : undefined;
+    const previews = preview5 === true || String(preview5 ?? "").trim() === "true";
+    return {
+      job,
+      mode,
+      runs,
+      ref,
+      refKind: refKind(ref),
+      named: named2,
+      provides,
+      ...previews ? { previewsPullRequests: true } : {}
+    };
   }
   return;
 }
@@ -63450,19 +63493,25 @@ function checkOne2(path, workflow, config2, report) {
   const { warnings, notes } = report;
   report.workflows.push({
     path,
-    jobs: found.map(({ step: { job, mode, runs: runs2, ref, refKind: refKind2, environment, provides } }) => ({
+    jobs: found.map(({
+      step: { job, mode, runs: runs2, ref, refKind: refKind2, environment, provides, previewsPullRequests }
+    }) => ({
       job,
       mode,
       runs: runs2,
       ref,
       refKind: refKind2,
       ...environment === undefined ? {} : { environment },
-      provides
+      provides,
+      ...previewsPullRequests ? { previewsPullRequests } : {}
     }))
   });
   for (const { step: step3 } of found) {
     if (step3.mode === undefined) {
       warnings.push({ kind: "unknown-mode", path, job: step3.job, mode: step3.named });
+    }
+    if (step3.previewsPullRequests && "pull_request_target" in workflow.on) {
+      warnings.push({ kind: "preview-on-target", path, job: step3.job });
     }
     if (step3.refKind === "other") {
       warnings.push({ kind: "unreleased-ref", path, job: step3.job, ref: step3.ref });
@@ -63510,6 +63559,8 @@ function checkOne2(path, workflow, config2, report) {
       continue;
     const { job, mode } = step3;
     const wanted = needsAll(step3.runs, config2);
+    if (step3.previewsPullRequests)
+      wanted.checks = "write";
     if (permissions === undefined) {
       warnings.push({ kind: "no-permissions", path, job, mode, needs: missing({}, wanted) });
       continue;
@@ -64935,6 +64986,7 @@ var NO_CONFIG_FILE = "No sluiceway.yaml, so every setting is its default.";
 var CANNOT_TELL = "A check reads files only, so it cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan.";
 var CANNOT_TELL_WITH_BACKEND = "A check cannot say that a preview will work: a missing credential for a provider or a registry the runner cannot reach shows only in a scan.";
 var BACKEND_OFF = "With backend: true the check also asks the backend which stacks it holds, with the credentials of its job.";
+var PREVIEWED_PULL_REQUEST = "With pull-request-preview: true the pull request preview above ran the tool for the stacks the pull request claims, and for no other stack.";
 var BACKEND_TITLE = "Stacks in the backend";
 var BACKEND_PASTE_TITLE = "Ready to paste into sluiceway.yaml, over ignore";
 var NOT_IN_BACKEND_TITLE = "A stack is not in the backend";
@@ -65140,6 +65192,8 @@ function workflowWarningText(warning2) {
         return `${path} runs on ${warning2.trigger}, and its Sluiceway job loads the credentials of your stacks before it. On ${warning2.trigger} those steps would run code that is not on the default branch yet. Keep the check in a workflow of its own, which needs no credentials.`;
       }
       return `${path} runs on ${warning2.trigger}. A scan would write the dashboard from code that is not on the default branch yet. Only the workflow of the check may run on pull requests or in a merge queue.`;
+    case "preview-on-target":
+      return `${path}, job ${warning2.job}: pull-request-preview: true runs on pull_request_target, which Sluiceway never previews on: it runs with the secrets of the base branch against code that is not merged. Run it on pull_request, where a fork's pull request is refused.`;
     case "missing-job":
       return `${path} has no ${warning2.mode} job. The four jobs scan, resolve, apply and settle stay in one file: a scan looks for waiting ticks among the runs of its own workflow, and the rescan box and settle start that same workflow again.`;
     case "boxes-do-nothing":
@@ -65525,8 +65579,10 @@ function backendPart(checks3, ignore, toolLog2) {
     ]
   };
 }
-function closingPart(askedBackend) {
+function closingPart(askedBackend, previewedPullRequest = false) {
   const cannot = askedBackend ? [CANNOT_TELL_WITH_BACKEND] : [CANNOT_TELL, BACKEND_OFF];
+  if (previewedPullRequest)
+    cannot.push(PREVIEWED_PULL_REQUEST);
   return {
     log: [VALID, ...cannot].map((text9) => ({ info: text9 })),
     summary: ["### What a check cannot tell", ...cannot]
@@ -65615,7 +65671,12 @@ async function check2(context3) {
     write(log, backend);
     parts.push(backend);
   }
-  const closing = closingPart(context3.backend !== undefined);
+  if (context3.pullRequestPreview !== undefined) {
+    const preview5 = await context3.pullRequestPreview({ config: config2, stacks: report.stacks });
+    write(log, preview5);
+    parts.push(preview5);
+  }
+  const closing = closingPart(context3.backend !== undefined, context3.pullRequestPreview !== undefined);
   await summary2(context3, renderCheckSummary([...parts, closing]));
   write(log, closing);
 }
@@ -65654,7 +65715,7 @@ async function summary2(context3, text9) {
 }
 
 // src/modes/check-job.ts
-async function runCheck(makeBackend, log) {
+async function runCheck(makeBackend, log, makePreview) {
   const root = process.env.GITHUB_WORKSPACE;
   if (!root) {
     throw new Error("GITHUB_WORKSPACE is not set. Sluiceway runs as a step of a GitHub Actions job.");
@@ -65663,65 +65724,31 @@ async function runCheck(makeBackend, log) {
   if (asked && makeBackend === undefined) {
     throw new Error("backend: true needs a runner for the tool, and this check has none.");
   }
+  const previews = readPullRequestPreview(getInput);
+  if (previews && makePreview === undefined) {
+    throw new Error("pull-request-preview: true needs the GitHub port and a runner for the tool, and this check has neither.");
+  }
   const jobLog = log ?? actionsLog();
-  const backend = asked ? makeBackend?.(loadEnvFile({
+  const env = asked || previews ? loadEnvFile({
     input: readEnvFileInput(getInput),
     root,
     env: { ...process.env },
     mask: (value) => setSecret(value),
     log: jobLog
-  })) : undefined;
+  }) : undefined;
+  const backend = asked && env !== undefined ? makeBackend?.(env) : undefined;
+  const pullRequestPreview = previews && env !== undefined ? makePreview?.(env, jobLog) : undefined;
   await check2({
     root,
     ...backend === undefined ? {} : { backend },
+    ...pullRequestPreview === undefined ? {} : { pullRequestPreview },
     adapter: filesOnly,
     log: jobLog
   });
 }
 
-// src/modes/resolve-job.ts
+// src/modes/check-pull-request.ts
 import { readFileSync as readFileSync14 } from "node:fs";
-
-// src/github/workflow-ref.ts
-function readWorkflowRef(env) {
-  const value = env.GITHUB_WORKFLOW_REF ?? "";
-  const at = value.indexOf("@");
-  if (at < 0)
-    return;
-  const file2 = value.slice(0, at).split("/").at(-1) ?? "";
-  const ref = value.slice(at + 1);
-  return file2 === "" || ref === "" ? undefined : { file: file2, ref };
-}
-
-// src/modes/resolve-job.ts
-async function runResolve(directory, step3) {
-  const startup = process.uptime() * 1000;
-  const env = process.env;
-  const read5 = (path) => readFileSync14(path, "utf8");
-  const token = readToken(getInput);
-  const job = readJob(env);
-  const log = step3?.log ?? actionsLog();
-  await resolve2({
-    root: job.root,
-    adapter: tools,
-    github: createOctokitPort(getOctokit(token), { owner: job.owner, repo: job.repo }),
-    log,
-    repoUrl: job.repoUrl,
-    runId: job.runId,
-    runAttempt: job.runAttempt,
-    sha: job.sha,
-    actionRef: readActionRef(env, directory, read5),
-    event: readEventPayload(env, read5),
-    workflow: readWorkflowRef(env),
-    setOutput: (name, value) => step3 ? step3.outputs.set(name, value) : setOutput(name, value),
-    notifier: stepNotifier(getInput, log, setSecret),
-    now: () => new Date,
-    startup
-  });
-}
-
-// src/modes/scan-job.ts
-import { readFileSync as readFileSync15 } from "node:fs";
 import { availableParallelism } from "node:os";
 
 // src/core/pool.ts
@@ -65755,6 +65782,496 @@ async function runPool(items2, size, work) {
   await Promise.all(Array.from({ length: Math.min(size, items2.length) }, slot));
   return results;
 }
+
+// src/core/pull-request-preview.ts
+function refusePullRequestPreview(event) {
+  if (event.name === "pull_request_target")
+    return { kind: "pull-request-target" };
+  if (event.name !== "pull_request" || event.pullRequest === undefined) {
+    return { kind: "not-a-pull-request", event: event.name };
+  }
+  if (event.pullRequest.fromFork)
+    return { kind: "fork" };
+  return;
+}
+var PULL_REQUEST_FILE_CAP = COMPARE_FILE_CAP;
+function stacksOfPullRequest(stacks2, comparison, unrelated) {
+  if (comparison.files.length >= PULL_REQUEST_FILE_CAP)
+    return { kind: "too-many-files" };
+  const paths2 = comparison.files.flatMap(({ path, previousPath }) => previousPath === undefined ? [path] : [path, previousPath]);
+  const claims = claim2(stacks2, paths2, unrelated);
+  return {
+    kind: "claimed",
+    stackIds: stacks2.map(({ id }) => id).filter((id) => claims.claims.has(id)),
+    unclaimed: claims.unclaimed
+  };
+}
+
+// src/render/preview-page.ts
+var PREVIEW_PAGE_FIELD_LIMIT = 65535;
+function previewPageName(stackId2) {
+  return `sluiceway / ${stackId2}`;
+}
+var ENCODER = new TextEncoder;
+function byteLength2(text9) {
+  return ENCODER.encode(text9).length;
+}
+function jobLog(links2) {
+  return links2.log === undefined ? "job log of the scan" : `[job log](${links2.log})`;
+}
+function pointer(unlisted, id, links2) {
+  const are = unlisted === 1 ? "change is" : "changes are";
+  return `**${unlisted} more ${are} not listed here**: a preview page holds at most 65,535 bytes. Every change is in the ${jobLog(links2)}, in the group <code>${id}</code>, and in the [summary](${links2.summary}) of the scan when it fits there.`;
+}
+function scanAbout(diff2, links2, also, id, options) {
+  return [
+    diff2.changes.length === 0 ? `Sluiceway's own list of what changed in real infrastructure outside the code, never what it changed to. The code has nothing to deploy, and a deploy puts these back as the code says. It is the drift the stack's row on the [dashboard](${links2.dashboard}) shows, with every property path whole.` : diff2.changes.some((change3) => (change3.values ?? []).length > 0) ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links2.dashboard}) shows, with every property path whole.${also}` : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links2.dashboard}) shows, with every property path whole.${also}`,
+    `Every stack this scan previewed is in the [summary](${links2.summary}) of the scan, and the tool's own words are in the ${jobLog(links2)}, in the group <code>${id}</code>.`,
+    ...options.toolDiffInLog ? [
+      `The tool's own diff of this stack, values included, is in the ${jobLog(links2)}, in the group <code>${id}</code>. It is not on this page.`
+    ] : []
+  ];
+}
+function nothingDeploysLine(dashboard) {
+  return `**Nothing deploys from this page.** A deploy goes out only after the merge, from a fresh preview of the default branch, and is refused when the change moved since. What is merged and waiting is on the [dashboard](${dashboard}).`;
+}
+function pullRequestWords(pullRequest) {
+  return `the merge of #${pullRequest.number} into ${escapeText(pullRequest.baseRef)}`;
+}
+function pullRequestAbout(diff2, pullRequest, links2, id) {
+  const values2 = diff2.changes.some((change3) => (change3.values ?? []).length > 0) ? "with the old and new value only at the paths that <code>dashboard.showValues</code> lists" : "never what it changes to";
+  return [
+    `Sluiceway's own preview of this stack as it would be after ${pullRequestWords(pullRequest)}: what a deploy would change, ${values2}, with every property path whole.`,
+    nothingDeploysLine(links2.dashboard),
+    `Every stack this run previewed is in the [summary](${links2.summary}) of the run, and the tool's own words are in the ${jobLog(links2)}, in the group <code>${id}</code>.`
+  ];
+}
+function renderPreviewPage(diff2, links2, options = {}) {
+  const id = escapeText(diff2.stackId);
+  const { deletes, replaces, others } = orderChanges(diff2);
+  const destroys = [...deletes, ...replaces];
+  const drift = sortedDrift(diff2);
+  const counted2 = [
+    ...diff2.changes.length > 0 ? [counts([...destroys, ...others])] : [],
+    ...drift.length > 0 ? [driftCounts(drift)] : []
+  ];
+  const also = drift.length > 0 ? " The deploy also puts back what changed outside the code, listed last." : "";
+  const summary3 = [
+    `**${id}** · ${counted2.join(" · ")}`,
+    ...destroys.length > 0 ? [`:warning: **This deploy ${destroyWords(deletes.length, replaces.length)}.**`] : [],
+    ...options.pullRequest !== undefined ? pullRequestAbout(diff2, options.pullRequest, links2, id) : scanAbout(diff2, links2, also, id, options)
+  ].join(`
+
+`);
+  const lines3 = [
+    ...destroys.map((change3) => `- :warning: ${changeLine(change3)}
+`),
+    ...others.map((change3) => `- ${changeLine(change3)}
+`),
+    ...drift.map((change3) => `- ${driftLine(change3)}
+`)
+  ];
+  const limit = options.limit ?? PREVIEW_PAGE_FIELD_LIMIT;
+  const sizes = lines3.map(byteLength2);
+  const whole = sizes.reduce((sum, size) => sum + size, 0);
+  let kept = lines3.length;
+  if (whole > limit) {
+    const room = limit - byteLength2(`
+${pointer(lines3.length, id, links2)}
+`);
+    let used = 0;
+    kept = 0;
+    while (kept < lines3.length && used + (sizes[kept] ?? 0) <= room)
+      used += sizes[kept++] ?? 0;
+  }
+  const unlisted = lines3.length - kept;
+  const text9 = lines3.slice(0, kept).join("") + (unlisted > 0 ? `
+${pointer(unlisted, id, links2)}
+` : "");
+  return {
+    title: `${diff2.stackId.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")}: ${counted2.join(", ").replaceAll("**", "")}`,
+    summary: summary3,
+    text: text9,
+    unlisted
+  };
+}
+
+// src/github/preview-pages.ts
+function statusOf2(error63) {
+  return error63?.status;
+}
+function messageOf2(error63) {
+  return error63 instanceof Error ? error63.message : String(error63);
+}
+function refusal(error63) {
+  const status = statusOf2(error63);
+  if (status !== 403 && status !== 429)
+    return;
+  const message4 = messageOf2(error63);
+  return { message: message4, permission: /not accessible by integration/i.test(message4) };
+}
+function previewPages(github, sha) {
+  let known;
+  let refused;
+  return {
+    async write(pages) {
+      const written = {
+        urls: new Map,
+        created: 0,
+        updated: 0,
+        failed: [],
+        skipped: []
+      };
+      const skipRest = (from) => {
+        written.skipped.push(...pages.slice(from).map(({ stackId: stackId2 }) => stackId2));
+        return written;
+      };
+      if (pages.length === 0)
+        return written;
+      if (refused)
+        return skipRest(0);
+      const refuse2 = (error63, from) => {
+        refused = refusal(error63);
+        written.refused = refused;
+        return refused ? skipRest(from) : undefined;
+      };
+      if (!known) {
+        try {
+          known = new Map((await github.listCheckRuns(sha)).map((run2) => [run2.name, run2]));
+        } catch (error63) {
+          refused = refusal(error63) ?? { message: messageOf2(error63), permission: false };
+          written.refused = refused;
+          return skipRest(0);
+        }
+      }
+      for (const [index, { stackId: stackId2, output: output2 }] of pages.entries()) {
+        const name = previewPageName(stackId2);
+        try {
+          const found = known.get(name);
+          let run2;
+          if (found) {
+            try {
+              run2 = await github.updateCheckRun(found.id, output2);
+              written.updated++;
+            } catch (error63) {
+              if (statusOf2(error63) !== 404)
+                throw error63;
+            }
+          }
+          if (!run2) {
+            run2 = await github.createCheckRun({ sha, name, output: output2 });
+            written.created++;
+          }
+          known.set(name, run2);
+          written.urls.set(stackId2, run2.htmlUrl);
+        } catch (error63) {
+          const stopped = refuse2(error63, index);
+          if (stopped)
+            return stopped;
+          written.failed.push({ stackId: stackId2, message: messageOf2(error63) });
+        }
+      }
+      return written;
+    }
+  };
+}
+
+// src/render/pull-request-preview.ts
+function jobLog2(links2) {
+  return links2.log === undefined ? "job log of the run" : `[job log](${links2.log})`;
+}
+function plainTitle(stackId2, rest) {
+  return `${stackId2.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")}: ${rest}`;
+}
+function renderPullRequestPage(stackId2, result, pullRequest, links2) {
+  const id = escapeText(stackId2);
+  const where2 = `Every stack this run previewed is in the [summary](${links2.summary}) of the run, and the tool's own words are in the ${jobLog2(links2)}, in the group <code>${id}</code>.`;
+  if (!result.ok) {
+    const reason = previewFailureText(result.reason);
+    return {
+      title: plainTitle(stackId2, `preview failed, ${reason}`),
+      summary: [
+        `**${id}** · preview failed`,
+        `The preview of this stack after ${pullRequestWords(pullRequest)} did not produce a diff: ${reason}. The tool's own words are in the ${jobLog2(links2)}, in the group <code>${id}</code>.`,
+        nothingDeploysLine(links2.dashboard)
+      ].join(`
+
+`),
+      text: "",
+      unlisted: 0
+    };
+  }
+  if (result.diff.changes.length === 0) {
+    return {
+      title: plainTitle(stackId2, "no changes"),
+      summary: [
+        `**${id}** · no changes`,
+        `A deploy of this stack after ${pullRequestWords(pullRequest)} would change nothing.`,
+        nothingDeploysLine(links2.dashboard),
+        where2
+      ].join(`
+
+`),
+      text: "",
+      unlisted: 0
+    };
+  }
+  return renderPreviewPage(result.diff, links2, { pullRequest });
+}
+var TITLE = "### The pull request preview";
+function refusalText(refusal2, pullRequest) {
+  switch (refusal2.kind) {
+    case "fork":
+      return `#${pullRequest?.number ?? "?"} comes from a fork, so Sluiceway refuses to preview it: a preview runs the pull request's code with the credentials of this job, and that never relies on GitHub withholding them. Nothing was previewed.`;
+    case "pull-request-target":
+      return "This run was started by pull_request_target, which Sluiceway never previews on: it runs with the secrets of the base branch against code that is not merged. Run the preview on the pull_request event. Nothing was previewed.";
+    case "not-a-pull-request":
+      return `This run was started by a ${refusal2.event} event, which names no pull request, so there is nothing to preview. pull-request-preview: true acts on the pull_request event only.`;
+  }
+}
+function unclaimedText2(unclaimed, show2) {
+  if (unclaimed.length === 0)
+    return [];
+  const listed7 = unclaimed.slice(0, 20).map(show2);
+  const more = unclaimed.length > 20 ? `, and ${unclaimed.length - 20} more` : "";
+  return [
+    `Files no stack claims, for which the scan after the merge previews every stack: ${listed7.join(", ")}${more}.`
+  ];
+}
+function noPagesText(refused, code2) {
+  const permission = code2 ? "`checks: write`" : "checks: write";
+  const why2 = refused.permission ? `${permission} in the workflow's permissions gives each stack its page in the pull request's checks.` : "Every stack the pull request claims is listed here instead.";
+  return `No preview page could be written: GitHub answered ${JSON.stringify(refused.message)}. ${why2}`;
+}
+function pullRequestPreviewPart(facts) {
+  const { pullRequest, outcome } = facts;
+  const one = (text9) => ({ log: [{ info: text9 }], summary: [TITLE, text9] });
+  switch (outcome.kind) {
+    case "refused":
+      return one(refusalText(outcome.refusal, pullRequest));
+    case "too-many-files":
+      return one(`#${pullRequest?.number ?? "?"} changes 300 files or more, more than GitHub's comparison lists, so Sluiceway cannot tell which stacks it claims and previewed nothing. The scan after the merge previews every stack.`);
+    case "nothing-claimed": {
+      const text9 = `#${pullRequest?.number ?? "?"} changes no file that a stack claims, so there is nothing to preview.`;
+      return {
+        log: [text9, ...unclaimedText2(outcome.unclaimed, logGroupTitle)].map((info2) => ({ info: info2 })),
+        summary: [TITLE, text9, ...unclaimedText2(outcome.unclaimed, (path) => `\`${path}\``)]
+      };
+    }
+    case "previewed":
+      return previewedPart(pullRequest, outcome);
+  }
+}
+function previewedPart(pullRequest, outcome) {
+  const merge3 = pullRequest === undefined ? "the merge" : pullRequestWords(pullRequest);
+  const head = pullRequest?.head.slice(0, 7) ?? "";
+  const { pages } = outcome;
+  const written = pages.refused === undefined ? `Wrote the preview pages of ${plural2(outcome.stacks.length, "stack")} on ${head}: ${pages.created} created, ${pages.updated} updated.` : undefined;
+  const log = [
+    {
+      info: `Previewed ${plural2(outcome.stacks.length, "stack")} after ${merge3}, at its head commit ${head}. Nothing deploys from a pull request preview.`
+    },
+    ...outcome.stacks.map(({ stackId: stackId2, outcome: found }) => ({
+      info: `${logGroupTitle(stackId2)}: ${found.replaceAll("**", "")}.`
+    })),
+    ...written === undefined ? [] : [{ info: written }],
+    ...pages.refused === undefined ? [] : [{ info: noPagesText(pages.refused, false) }],
+    ...pages.failed.map(({ stackId: stackId2, message: message4 }) => ({
+      info: `The preview page of ${logGroupTitle(stackId2)} could not be written: ${message4}`
+    })),
+    ...unclaimedText2(outcome.unclaimed, logGroupTitle).map((info2) => ({ info: info2 }))
+  ];
+  const table = [
+    "| Stack | After the merge | Page |",
+    "|---|---|---|",
+    ...outcome.stacks.map(({ stackId: stackId2, outcome: found, pageUrl }) => `| ${escapeText(stackId2)} | ${found} | ${pageUrl === undefined ? "none" : `[preview](${pageUrl})`} |`)
+  ].join(`
+`);
+  const summary3 = [
+    TITLE,
+    `What ${merge3} would change, previewed at its head commit ${head}. Nothing deploys from it: a deploy goes out only after the merge, from a fresh preview, and is refused when the change moved since.`,
+    table,
+    ...pages.refused === undefined ? [] : [`${noPagesText(pages.refused, true)} The summary of the run holds the same.`],
+    ...unclaimedText2(outcome.unclaimed, (path) => `\`${escapeText(path)}\``)
+  ];
+  return { log, summary: summary3 };
+}
+
+// src/modes/pull-request-preview.ts
+function lines3(text9) {
+  const all = text9.split(/\r?\n/);
+  if (all.at(-1) === "")
+    all.pop();
+  return all;
+}
+async function previewPullRequest(context3, repo) {
+  const { log, now, adapter } = context3;
+  const refusal2 = refusePullRequestPreview(context3.event);
+  const pullRequest = context3.event.pullRequest;
+  if (refusal2 !== undefined || pullRequest === undefined) {
+    return pullRequestPreviewPart({
+      pullRequest,
+      outcome: {
+        kind: "refused",
+        refusal: refusal2 ?? { kind: "not-a-pull-request", event: context3.event.name }
+      }
+    });
+  }
+  const words = {
+    number: pullRequest.number,
+    baseRef: pullRequest.baseRef,
+    head: pullRequest.head
+  };
+  let comparison;
+  try {
+    comparison = await context3.github.compareCommits(pullRequest.base, pullRequest.head);
+  } catch (error63) {
+    throw new Error(`The files of #${pullRequest.number} could not be read: the comparison of its base and its head failed (${error63 instanceof Error ? error63.message : error63}). The preview needs contents: read.`);
+  }
+  const claimed = stacksOfPullRequest(repo.stacks.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })), comparison, repo.config.scan.unrelated);
+  if (claimed.kind === "too-many-files") {
+    return pullRequestPreviewPart({ pullRequest: words, outcome: { kind: "too-many-files" } });
+  }
+  const stacks2 = repo.stacks.filter(({ stack }) => claimed.stackIds.includes(stackId(stack)));
+  if (stacks2.length === 0) {
+    return pullRequestPreviewPart({
+      pullRequest: words,
+      outcome: { kind: "nothing-claimed", unclaimed: claimed.unclaimed }
+    });
+  }
+  const tool = { root: context3.root, env: context3.env, run: context3.run };
+  try {
+    await adapter.checkVersion(tool, stacks2.map(({ stack }) => stack));
+  } catch (error63) {
+    if (error63 instanceof ToolVersionError && error63.toolLog !== "") {
+      log.group("The tool's own words", lines3(error63.toolLog));
+    }
+    throw error63;
+  }
+  const failed3 = await prepareStacks({ ...tool, log, adapter }, stacks2, context3.previewTimeoutMinutes);
+  const showValues = shownValues(repo.config.dashboard);
+  const results = await runPool(stacks2, context3.pool.size, async (configured) => {
+    const id = stackId(configured.stack);
+    const started = now().getTime();
+    const result = failed3.get(id) ?? await adapter.preview(configured.stack, {
+      ...tool,
+      timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
+      showValues
+    });
+    const seconds3 = ((now().getTime() - started) / 1000).toFixed(1);
+    log.info(`Previewed ${logGroupTitle(id)} after the merge of #${pullRequest.number} in ${seconds3} s: ${previewOutcome(result)}`);
+    if (!result.ok && result.toolLog !== "") {
+      log.group(`${logGroupTitle(id)} after the merge of #${pullRequest.number}`, [
+        "The tool's own words:",
+        ...lines3(result.toolLog)
+      ]);
+    }
+    return { id, result };
+  });
+  const links2 = {
+    ...runLinks(context3),
+    dashboard: dashboardSearchUrl(context3.repoUrl, repo.config.dashboard.label)
+  };
+  const written = await previewPages(context3.github, pullRequest.head).write(results.map(({ id, result }) => {
+    const { unlisted: _unlisted, ...output2 } = renderPullRequestPage(id, result, words, links2);
+    return { stackId: id, output: output2 };
+  }));
+  const previewed = results.map(({ id, result }) => ({
+    stackId: id,
+    outcome: !result.ok ? `preview failed, ${previewFailureText(result.reason)}` : result.diff.changes.length === 0 ? "no changes" : counts(result.diff.changes),
+    pageUrl: written.urls.get(id)
+  }));
+  return pullRequestPreviewPart({
+    pullRequest: words,
+    outcome: {
+      kind: "previewed",
+      stacks: previewed,
+      unclaimed: claimed.unclaimed,
+      pages: {
+        created: written.created,
+        updated: written.updated,
+        failed: written.failed,
+        refused: written.refused
+      }
+    }
+  });
+}
+
+// src/modes/check-pull-request.ts
+function machineCores() {
+  try {
+    return availableParallelism();
+  } catch {
+    return;
+  }
+}
+var pullRequestPreviewContext = (env, log) => {
+  const inputs = readScanInputs(getInput);
+  const job = readJob(env);
+  const payload = readEventPayload(env, (path) => readFileSync14(path, "utf8"));
+  const context3 = {
+    root: job.root,
+    env,
+    adapter: tools,
+    run: runProcess,
+    github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),
+    log,
+    now: () => new Date,
+    pool: poolSize(inputs.concurrency, machineCores()),
+    previewTimeoutMinutes: inputs.previewTimeoutMinutes,
+    repoUrl: job.repoUrl,
+    runId: job.runId,
+    runAttempt: job.runAttempt,
+    jobId: readJobId(getInput),
+    event: { name: job.event, pullRequest: pullRequestOf2(payload) }
+  };
+  return (repo) => previewPullRequest(context3, repo);
+};
+
+// src/modes/resolve-job.ts
+import { readFileSync as readFileSync15 } from "node:fs";
+
+// src/github/workflow-ref.ts
+function readWorkflowRef(env) {
+  const value = env.GITHUB_WORKFLOW_REF ?? "";
+  const at = value.indexOf("@");
+  if (at < 0)
+    return;
+  const file2 = value.slice(0, at).split("/").at(-1) ?? "";
+  const ref = value.slice(at + 1);
+  return file2 === "" || ref === "" ? undefined : { file: file2, ref };
+}
+
+// src/modes/resolve-job.ts
+async function runResolve(directory, step3) {
+  const startup = process.uptime() * 1000;
+  const env = process.env;
+  const read5 = (path) => readFileSync15(path, "utf8");
+  const token = readToken(getInput);
+  const job = readJob(env);
+  const log = step3?.log ?? actionsLog();
+  await resolve2({
+    root: job.root,
+    adapter: tools,
+    github: createOctokitPort(getOctokit(token), { owner: job.owner, repo: job.repo }),
+    log,
+    repoUrl: job.repoUrl,
+    runId: job.runId,
+    runAttempt: job.runAttempt,
+    sha: job.sha,
+    actionRef: readActionRef(env, directory, read5),
+    event: readEventPayload(env, read5),
+    workflow: readWorkflowRef(env),
+    setOutput: (name, value) => step3 ? step3.outputs.set(name, value) : setOutput(name, value),
+    notifier: stepNotifier(getInput, log, setSecret),
+    now: () => new Date,
+    startup
+  });
+}
+
+// src/modes/scan-job.ts
+import { readFileSync as readFileSync16 } from "node:fs";
+import { availableParallelism as availableParallelism2 } from "node:os";
 
 // src/github/request-count.ts
 function countRequests(octokit) {
@@ -66113,156 +66630,6 @@ function everyPreviewFailed(attempted, failed3) {
   return attempted > 1 && failed3 === attempted;
 }
 
-// src/render/preview-page.ts
-var PREVIEW_PAGE_FIELD_LIMIT = 65535;
-function previewPageName(stackId2) {
-  return `sluiceway / ${stackId2}`;
-}
-var ENCODER = new TextEncoder;
-function byteLength2(text9) {
-  return ENCODER.encode(text9).length;
-}
-function jobLog(links2) {
-  return links2.log === undefined ? "job log of the scan" : `[job log](${links2.log})`;
-}
-function pointer(unlisted, id, links2) {
-  const are = unlisted === 1 ? "change is" : "changes are";
-  return `**${unlisted} more ${are} not listed here**: a preview page holds at most 65,535 bytes. Every change is in the ${jobLog(links2)}, in the group <code>${id}</code>, and in the [summary](${links2.summary}) of the scan when it fits there.`;
-}
-function renderPreviewPage(diff2, links2, options = {}) {
-  const id = escapeText(diff2.stackId);
-  const { deletes, replaces, others } = orderChanges(diff2);
-  const destroys = [...deletes, ...replaces];
-  const drift = sortedDrift(diff2);
-  const counted2 = [
-    ...diff2.changes.length > 0 ? [counts([...destroys, ...others])] : [],
-    ...drift.length > 0 ? [driftCounts(drift)] : []
-  ];
-  const also = drift.length > 0 ? " The deploy also puts back what changed outside the code, listed last." : "";
-  const summary3 = [
-    `**${id}** · ${counted2.join(" · ")}`,
-    ...destroys.length > 0 ? [`:warning: **This deploy ${destroyWords(deletes.length, replaces.length)}.**`] : [],
-    diff2.changes.length === 0 ? `Sluiceway's own list of what changed in real infrastructure outside the code, never what it changed to. The code has nothing to deploy, and a deploy puts these back as the code says. It is the drift the stack's row on the [dashboard](${links2.dashboard}) shows, with every property path whole.` : diff2.changes.some((change3) => (change3.values ?? []).length > 0) ? `Sluiceway's own diff of this stack: what a deploy would change, with the old and new value only at the paths that <code>dashboard.showValues</code> lists. It is the diff the stack's row on the [dashboard](${links2.dashboard}) shows, with every property path whole.${also}` : `Sluiceway's own diff of this stack: what a deploy would change, never what it changes to. It is the diff the stack's row on the [dashboard](${links2.dashboard}) shows, with every property path whole.${also}`,
-    `Every stack this scan previewed is in the [summary](${links2.summary}) of the scan, and the tool's own words are in the ${jobLog(links2)}, in the group <code>${id}</code>.`,
-    ...options.toolDiffInLog ? [
-      `The tool's own diff of this stack, values included, is in the ${jobLog(links2)}, in the group <code>${id}</code>. It is not on this page.`
-    ] : []
-  ].join(`
-
-`);
-  const lines3 = [
-    ...destroys.map((change3) => `- :warning: ${changeLine(change3)}
-`),
-    ...others.map((change3) => `- ${changeLine(change3)}
-`),
-    ...drift.map((change3) => `- ${driftLine(change3)}
-`)
-  ];
-  const limit = options.limit ?? PREVIEW_PAGE_FIELD_LIMIT;
-  const sizes = lines3.map(byteLength2);
-  const whole = sizes.reduce((sum, size) => sum + size, 0);
-  let kept = lines3.length;
-  if (whole > limit) {
-    const room = limit - byteLength2(`
-${pointer(lines3.length, id, links2)}
-`);
-    let used = 0;
-    kept = 0;
-    while (kept < lines3.length && used + (sizes[kept] ?? 0) <= room)
-      used += sizes[kept++] ?? 0;
-  }
-  const unlisted = lines3.length - kept;
-  const text9 = lines3.slice(0, kept).join("") + (unlisted > 0 ? `
-${pointer(unlisted, id, links2)}
-` : "");
-  return {
-    title: `${diff2.stackId.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ")}: ${counted2.join(", ").replaceAll("**", "")}`,
-    summary: summary3,
-    text: text9,
-    unlisted
-  };
-}
-
-// src/github/preview-pages.ts
-function statusOf2(error63) {
-  return error63?.status;
-}
-function messageOf2(error63) {
-  return error63 instanceof Error ? error63.message : String(error63);
-}
-function refusal(error63) {
-  const status = statusOf2(error63);
-  if (status !== 403 && status !== 429)
-    return;
-  const message4 = messageOf2(error63);
-  return { message: message4, permission: /not accessible by integration/i.test(message4) };
-}
-function previewPages(github, sha) {
-  let known;
-  let refused;
-  return {
-    async write(pages) {
-      const written = {
-        urls: new Map,
-        created: 0,
-        updated: 0,
-        failed: [],
-        skipped: []
-      };
-      const skipRest = (from) => {
-        written.skipped.push(...pages.slice(from).map(({ stackId: stackId2 }) => stackId2));
-        return written;
-      };
-      if (pages.length === 0)
-        return written;
-      if (refused)
-        return skipRest(0);
-      const refuse2 = (error63, from) => {
-        refused = refusal(error63);
-        written.refused = refused;
-        return refused ? skipRest(from) : undefined;
-      };
-      if (!known) {
-        try {
-          known = new Map((await github.listCheckRuns(sha)).map((run2) => [run2.name, run2]));
-        } catch (error63) {
-          refused = refusal(error63) ?? { message: messageOf2(error63), permission: false };
-          written.refused = refused;
-          return skipRest(0);
-        }
-      }
-      for (const [index, { stackId: stackId2, output: output2 }] of pages.entries()) {
-        const name = previewPageName(stackId2);
-        try {
-          const found = known.get(name);
-          let run2;
-          if (found) {
-            try {
-              run2 = await github.updateCheckRun(found.id, output2);
-              written.updated++;
-            } catch (error63) {
-              if (statusOf2(error63) !== 404)
-                throw error63;
-            }
-          }
-          if (!run2) {
-            run2 = await github.createCheckRun({ sha, name, output: output2 });
-            written.created++;
-          }
-          known.set(name, run2);
-          written.urls.set(stackId2, run2.htmlUrl);
-        } catch (error63) {
-          const stopped = refuse2(error63, index);
-          if (stopped)
-            return stopped;
-          written.failed.push({ stackId: stackId2, message: messageOf2(error63) });
-        }
-      }
-      return written;
-    }
-  };
-}
-
 // src/render/summary.ts
 var SUMMARY_BUDGET = 1e6;
 function stackAnchor(stackId2) {
@@ -66278,7 +66645,7 @@ function anchorTag(stackId2) {
 function indexLink(stackId2) {
   return `[${escapeText(stackId2)}](#user-content-${stackAnchor(stackId2)})`;
 }
-function jobLog2(options) {
+function jobLog3(options) {
   return options.jobLogUrl === undefined ? "job log" : `[job log](${options.jobLogUrl})`;
 }
 var LEVELS2 = [0, 1, 2, 3];
@@ -66305,13 +66672,13 @@ function diffParts2(stack, level, options) {
     counts([...destroys, ...others])
   ];
   if (destroys.length > 0) {
-    parts.push(level >= 3 ? `:warning: **${destroyWords(deletes.length, replaces.length)}, too many to list here.** Read the ${jobLog2(options)} before you tick.` : destroys.map((change3) => `- :warning: ${changeLine(change3)}`).join(`
+    parts.push(level >= 3 ? `:warning: **${destroyWords(deletes.length, replaces.length)}, too many to list here.** Read the ${jobLog3(options)} before you tick.` : destroys.map((change3) => `- :warning: ${changeLine(change3)}`).join(`
 `));
   }
   if (others.length > 0) {
     const inside2 = plural2(others.length, destroys.length > 0 ? "other change" : "change");
     if (level >= 2)
-      parts.push(`${inside2} not listed here, see the ${jobLog2(options)}.`);
+      parts.push(`${inside2} not listed here, see the ${jobLog3(options)}.`);
     else {
       parts.push(`<details><summary>${inside2}</summary>`, others.map((change3) => `- ${changeLine(change3)}`).join(`
 `), "</details>");
@@ -66336,7 +66703,7 @@ function failedLine(stack, options) {
   const id = escapeText(stack.stackId);
   let line3 = `- ${anchorTag(stack.stackId)}**${id}** · ${escapeText(stack.reason)}`;
   if (options.jobLogUrl !== undefined) {
-    line3 += ` · the tool's own words are in the ${jobLog2(options)}, in the group <code>${id}</code>`;
+    line3 += ` · the tool's own words are in the ${jobLog3(options)}, in the group <code>${id}</code>`;
   }
   if (stack.ignore === undefined)
     return line3;
@@ -66355,7 +66722,7 @@ function cost(parts) {
 }
 function note(shortened, pending, options) {
   const shows = shortened === 1 ? "shows less than its" : "show less than their";
-  return `> **This summary is shortened: ${shortened} of ${plural2(pending, "pending stack")} ${shows} whole diff.** Every diff is in full in the ${jobLog2(options)} of this run, in the group that has the stack id as its title. Deletes and replaces are cut last.`;
+  return `> **This summary is shortened: ${shortened} of ${plural2(pending, "pending stack")} ${shows} whole diff.** Every diff is in full in the ${jobLog3(options)} of this run, in the group that has the stack id as its title. Deletes and replaces are cut last.`;
 }
 function fitToBudget(entries, frameCost, budget) {
   let blocks2 = entries.reduce((sum, entry3) => sum + (entry3.costs[0] ?? 0), 0);
@@ -66553,7 +66920,7 @@ async function previewOne(context3, number4, head, files, stacks2) {
 }
 
 // src/modes/outside-deploys.ts
-function lines3(text9) {
+function lines4(text9) {
   return text9.split(`
 `).filter((line3) => line3.trim() !== "");
 }
@@ -66581,7 +66948,7 @@ async function readHistories(context3, stacks2, limit) {
       read5.set(id, result.deploys);
       return;
     }
-    const words = lines3(result.toolLog);
+    const words = lines4(result.toolLog);
     log.group(`${logGroupTitle(id)}, its history`, [
       `history not read: ${previewFailureText(result.reason)}`,
       ...result.detail,
@@ -66627,7 +66994,7 @@ function seconds3(milliseconds) {
 function minutes(count3) {
   return plural2(count3, "minute");
 }
-function lines4(text9) {
+function lines5(text9) {
   const all = text9.split(/\r?\n/);
   if (all.at(-1) === "")
     all.pop();
@@ -67069,7 +67436,7 @@ async function checkVersion5(context3, stacks2) {
     await context3.adapter.checkVersion({ root: context3.root, env: context3.env, run: context3.run }, stacks2);
   } catch (error63) {
     if (error63 instanceof ToolVersionError && error63.toolLog !== "") {
-      context3.log.group("The tool's own words", lines4(error63.toolLog));
+      context3.log.group("The tool's own words", lines5(error63.toolLog));
     }
     throw error63;
   }
@@ -67120,7 +67487,7 @@ async function previewAll(context3, stacks2, logDiff, showValues, prepared, sayP
       });
     } catch (error63) {
       const milliseconds2 = now().getTime() - started;
-      const detail = lines4(error63 instanceof Error ? error63.stack ?? String(error63) : String(error63));
+      const detail = lines5(error63 instanceof Error ? error63.stack ?? String(error63) : String(error63));
       const result2 = {
         ok: false,
         reason: { kind: "internal-error" },
@@ -67181,7 +67548,7 @@ function readDependenciesText(id, read5) {
 function logResults(context3, previewed) {
   const { log } = context3;
   for (const { id, result, toolDiff: toolDiff5, drift } of previewed) {
-    const words = lines4(result.toolLog + (toolDiff5?.toolLog ?? "") + (drift?.toolLog ?? ""));
+    const words = lines5(result.toolLog + (toolDiff5?.toolLog ?? "") + (drift?.toolLog ?? ""));
     const own2 = [
       ...result.ok ? diffLogLines(result.diff) : [`preview failed: ${previewFailureText(result.reason)}`, ...result.detail],
       ...drift !== undefined && !drift.ok ? [`drift check failed: ${previewFailureText(drift.reason)}`, ...drift.detail] : [],
@@ -67189,7 +67556,7 @@ function logResults(context3, previewed) {
       ...words.length > 0 ? ["The tool's own words:", ...words] : []
     ];
     if (toolDiff5?.ok)
-      log.group(logGroupTitle(id), own2, lines4(toolDiff5.text));
+      log.group(logGroupTitle(id), own2, lines5(toolDiff5.text));
     else
       log.group(logGroupTitle(id), own2);
   }
@@ -67537,9 +67904,9 @@ async function holdsMerge(context3, deployment) {
 }
 
 // src/modes/scan-job.ts
-function machineCores() {
+function machineCores2() {
   try {
-    return availableParallelism();
+    return availableParallelism2();
   } catch {
     return;
   }
@@ -67550,7 +67917,7 @@ async function runScan(directory, step3) {
   const job = readJob(env);
   const log = step3?.log ?? actionsLog();
   const octokit = getOctokit(inputs.token);
-  const payload = readEventPayload(env, (path) => readFileSync15(path, "utf8"));
+  const payload = readEventPayload(env, (path) => readFileSync16(path, "utf8"));
   await scan({
     root: job.root,
     env: loadEnvFile({
@@ -67566,7 +67933,7 @@ async function runScan(directory, step3) {
     requests: countRequests(octokit),
     log,
     now: () => new Date,
-    pool: poolSize(inputs.concurrency, machineCores()),
+    pool: poolSize(inputs.concurrency, machineCores2()),
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
     strict: inputs.strict,
     repoUrl: job.repoUrl,
@@ -67577,7 +67944,7 @@ async function runScan(directory, step3) {
     event: job.event,
     afterMerge: mergedBeforeDispatch(payload),
     workflow: job.workflow,
-    actionRef: readActionRef(env, directory, (path) => readFileSync15(path, "utf8")),
+    actionRef: readActionRef(env, directory, (path) => readFileSync16(path, "utf8")),
     outputs: step3?.outputs ?? actionsOutputs(env.RUNNER_TEMP),
     notifier: stepNotifier(getInput, log, setSecret),
     publicRepo: publicRepo(payload),
@@ -67587,7 +67954,7 @@ async function runScan(directory, step3) {
 }
 
 // src/modes/settle-job.ts
-import { readFileSync as readFileSync16 } from "node:fs";
+import { readFileSync as readFileSync17 } from "node:fs";
 
 // src/modes/settle.ts
 function message4(error63) {
@@ -67672,7 +68039,7 @@ async function runSettle(step3) {
     log: step3?.log ?? actionsLog(),
     repoUrl: job.repoUrl,
     runId: job.runId,
-    event: readEventPayload(env, (path) => readFileSync16(path, "utf8")),
+    event: readEventPayload(env, (path) => readFileSync17(path, "utf8")),
     workflow: readWorkflowRef(env),
     outputs: step3?.outputs ?? actionsOutputs(env.RUNNER_TEMP)
   });
@@ -67687,7 +68054,7 @@ async function runAuto(directory) {
   await auto({
     root: job.root,
     eventName: job.event,
-    event: readEventPayload(env, (path) => readFileSync17(path, "utf8")),
+    event: readEventPayload(env, (path) => readFileSync18(path, "utf8")),
     log: actionsLog(),
     notice: (line3) => notice(line3),
     outputs: actionsOutputs(env.RUNNER_TEMP),
@@ -67698,7 +68065,7 @@ async function runAuto(directory) {
       resolve: (step3) => runResolve(directory, step3),
       apply: (deploymentId, step3) => runApply(directory, { deploymentId, step: step3 }),
       settle: (step3) => runSettle(step3),
-      check: (step3) => runCheck(backendContext, step3.log)
+      check: (step3) => runCheck(backendContext, step3.log, pullRequestPreviewContext)
     }
   });
 }
@@ -67713,9 +68080,9 @@ function refuseOldNode(version3, who = "init") {
 function terminalLog(write2 = console.log) {
   return {
     info: write2,
-    group(title, lines5) {
+    group(title, lines6) {
       write2(title);
-      for (const line3 of lines5)
+      for (const line3 of lines6)
         write2(`  ${line3}`);
     },
     warning: (message5, title) => write2(`${title}: ${message5}`),
@@ -67724,7 +68091,7 @@ function terminalLog(write2 = console.log) {
 }
 
 // src/modes/init.ts
-import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync18, statSync as statSync5, writeFileSync as writeFileSync2 } from "node:fs";
+import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync19, statSync as statSync5, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname as dirname3, join as join38 } from "node:path";
 
 // src/adapters/init-findings.ts
@@ -67954,7 +68321,7 @@ var RUNS_ON = "ubuntu-latest";
 function starterWorkflow(options) {
   const { findings, merges } = options;
   const branch = options.branch ?? DEFAULT_BRANCH;
-  const lines5 = [
+  const lines6 = [
     "# Written by sluiceway init from the files of this repo. Review every step",
     "# before you commit it, and change what init printed it could not know:",
     `# ${DOCS.exampleWorkflows}`,
@@ -67997,7 +68364,7 @@ function starterWorkflow(options) {
     "      # It reads the event of the run: it scans, or deploys what a tick asks for.",
     "      - uses: sluiceway/sluiceway@v0"
   ];
-  return `${lines5.join(`
+  return `${lines6.join(`
 `)}
 `;
 }
@@ -68137,42 +68504,42 @@ var HINTED = 10;
 var SCHEMA = "# yaml-language-server: $schema=https://raw.githubusercontent.com/sluiceway/sluiceway/main/schema/sluiceway.schema.json";
 function starterConfig({ declarable, unrelated, unclaimed }) {
   const { opentofu: opentofu2, helm: helm2 } = declarable;
-  const lines5 = [
+  const lines6 = [
     SCHEMA,
     "#",
     "# Written by sluiceway init from the files of this repo. Review it before",
     `# you commit it. Every key is explained at ${DOCS.configuration}`
   ];
   if (opentofu2.length + helm2.length > 0) {
-    lines5.push("", "stacks:");
+    lines6.push("", "stacks:");
     for (const root of opentofu2) {
       const stacks2 = openTofuStacks(root);
-      lines5.push(stacks2.length > 1 ? `  # An OpenTofu root module with a var file per stack, each in a workspace of its name.` : "  # An OpenTofu root module.");
+      lines6.push(stacks2.length > 1 ? `  # An OpenTofu root module with a var file per stack, each in a workspace of its name.` : "  # An OpenTofu root module.");
       for (const { name, varFile } of stacks2) {
-        lines5.push(`  - path: ${quotedIfNeeded(root.path)}`);
+        lines6.push(`  - path: ${quotedIfNeeded(root.path)}`);
         if (name !== undefined)
-          lines5.push(`    name: ${quotedIfNeeded(name)}`);
-        lines5.push("    tool: opentofu");
+          lines6.push(`    name: ${quotedIfNeeded(name)}`);
+        lines6.push("    tool: opentofu");
         if (varFile !== undefined) {
-          lines5.push("    options:");
+          lines6.push("    options:");
           if (name !== undefined)
-            lines5.push(`      workspace: ${quotedIfNeeded(name)}`);
-          lines5.push(`      varFiles: [${quotedIfNeeded(varFile)}]`);
+            lines6.push(`      workspace: ${quotedIfNeeded(name)}`);
+          lines6.push(`      varFiles: [${quotedIfNeeded(varFile)}]`);
         }
       }
     }
     for (const chart of helm2) {
-      lines5.push("  # A local chart. Set the release and the namespace it runs as, and its", "  # values files: init named both after the chart.", `  - path: ${quotedIfNeeded(chart.path)}`, "    tool: helm", "    options:", `      release: ${chart.release}`, `      namespace: ${chart.release}`, "      chart: .");
+      lines6.push("  # A local chart. Set the release and the namespace it runs as, and its", "  # values files: init named both after the chart.", `  - path: ${quotedIfNeeded(chart.path)}`, "    tool: helm", "    options:", `      release: ${chart.release}`, `      namespace: ${chart.release}`, "      chart: .");
     }
   }
   if (unrelated.length > 0) {
-    lines5.push("", "# Files that look like docs and tooling. A push that changes only these", "# previews nothing. Take out any that one of your programs reads.", "scan:", "  unrelated:", ...unrelated.map((glob) => `    - ${JSON.stringify(glob)}`));
+    lines6.push("", "# Files that look like docs and tooling. A push that changes only these", "# previews nothing. Take out any that one of your programs reads.", "scan:", "  unrelated:", ...unrelated.map((glob) => `    - ${JSON.stringify(glob)}`));
   }
   if (unclaimed !== undefined) {
     const [first] = unclaimed.directories;
-    lines5.push("", "# No stack claims the files in these directories, so a push that changes", "# one of them previews every stack:", ...unclaimed.directories.slice(0, HINTED).map((directory) => `#   ${directory}/`), ...unclaimed.directories.length > HINTED ? [`#   and ${unclaimed.directories.length - HINTED} more, which the check lists`] : [], "# When a stack reads one, name it under inputs in that stack's entry:", "#", "#   stacks:", `#     - path: ${unclaimed.stack}`, "#       inputs:", `#         - "${first}/**"`);
+    lines6.push("", "# No stack claims the files in these directories, so a push that changes", "# one of them previews every stack:", ...unclaimed.directories.slice(0, HINTED).map((directory) => `#   ${directory}/`), ...unclaimed.directories.length > HINTED ? [`#   and ${unclaimed.directories.length - HINTED} more, which the check lists`] : [], "# When a stack reads one, name it under inputs in that stack's entry:", "#", "#   stacks:", `#     - path: ${unclaimed.stack}`, "#       inputs:", `#         - "${first}/**"`);
   }
-  return `${lines5.join(`
+  return `${lines6.join(`
 `)}
 `;
 }
@@ -68263,7 +68630,7 @@ async function init(context3) {
   const files = await repoFiles(root);
   const read5 = (file2) => {
     try {
-      return readFileSync18(join38(root, file2), "utf8");
+      return readFileSync19(join38(root, file2), "utf8");
     } catch {
       return;
     }
@@ -68348,7 +68715,7 @@ function defaultBranch(root) {
   try {
     if (!statSync5(join38(root, ".git")).isDirectory())
       return;
-    const match = /^ref: refs\/remotes\/origin\/(\S+)\s*$/.exec(readFileSync18(file2, "utf8"));
+    const match = /^ref: refs\/remotes\/origin\/(\S+)\s*$/.exec(readFileSync19(file2, "utf8"));
     return match?.[1];
   } catch {
     return;
@@ -68381,7 +68748,7 @@ var handlers = {
   resolve: runResolve,
   apply: runApply,
   settle: () => runSettle(),
-  check: () => runCheck(backendContext),
+  check: () => runCheck(backendContext, undefined, pullRequestPreviewContext),
   init: runInit
 };
 async function run2(mode, directory, getInput2 = getInput, warn = (message5, title) => warning(message5, { title })) {
