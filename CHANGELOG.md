@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.0](https://github.com/sluiceway/sluiceway/compare/v0.29.0...v0.30.0) (2026-09-24)
+
+
+### Features
+
+* the payload of a deployment record has a published schema, and the result file says where its one kind of value may be ([24cf141](https://github.com/sluiceway/sluiceway/commit/24cf141e921cdb001bfe341e3e9fa1fb1d370cf2))
+
 ## [0.29.0](https://github.com/sluiceway/sluiceway/compare/v0.28.0...v0.29.0) (2026-09-23)
 
 
