@@ -112,44 +112,9 @@ In [the workflow](workflow.md#the-workflow), the one Sluiceway step sets the out
 
 The three counts are the counts line of the dashboard as this scan left it, so they include the rows of stacks a narrowed scan did not preview. A scan that fails before it writes the dashboard, for example on a broken `sluiceway.yaml`, sets them to `0` and `dashboard-changed` to `false`, so check the outcome of the step too.
 
-The result file is written under `RUNNER_TEMP` as `sluiceway-scan-result.json` or `sluiceway-apply-result.json`. It holds what the summary of the run holds: stack ids, what each preview found, ops, resource types and names, property paths, counts, failure reasons from Sluiceway's fixed list, how long each preview took, and the pull requests and direct pushes a pending stack claims since its last deploy. Its shape is published as a JSON schema, [`schema/result-file.schema.json`](../schema/result-file.schema.json), which covers both files. It never holds a property value, a stack output or any of the tool's own words. Sluiceway does not upload it, and the runner removes it when the job ends. Add an `actions/upload-artifact` step if you want to keep it.
+The result file is written under `RUNNER_TEMP` as `sluiceway-scan-result.json` or `sluiceway-apply-result.json`. It holds what the summary of the run holds: stack ids, what each preview found, ops, resource types and names, property paths, counts, failure reasons from Sluiceway's fixed list, how long each preview took, and the pull requests and direct pushes a pending stack claims since its last deploy. It holds no secret and none of the tool's own words, and a property value only at a path your repo lists in [`dashboard.showValues`](configuration.md#dashboardshowvalues). Its shape is published as a JSON schema, [`schema/result-file.schema.json`](../schema/result-file.schema.json), which covers both files. Sluiceway does not upload it, and the runner removes it when the job ends. Add an `actions/upload-artifact` step if you want to keep it.
 
-A scan's file, shortened:
-
-```json
-{
-  "version": 1,
-  "mode": "scan",
-  "run": "https://github.com/acme/infra/actions/runs/123",
-  "commit": "0123456789abcdef0123456789abcdef01234567",
-  "seconds": 41.2,
-  "dashboard": {
-    "url": "https://github.com/acme/infra/issues/1",
-    "changed": true,
-    "pending": 1,
-    "deploying": 0,
-    "previewFailed": 0,
-    "inSync": 3,
-    "failedDeploys": 0
-  },
-  "stacks": [
-    {
-      "stack": "network:prod",
-      "state": "pending",
-      "seconds": 18.5,
-      "counts": { "create": 1, "update": 0, "replace": 0, "delete": 0, "trackingOnly": 0 },
-      "changes": [
-        { "type": "aws:s3/bucket:Bucket", "name": "logs", "op": "create", "changedKeys": [], "replaceKeys": [] }
-      ],
-      "attribution": [
-        { "kind": "pull-request", "number": 42, "title": "Add a logs bucket", "url": "https://github.com/acme/infra/pull/42", "author": "alice" }
-      ]
-    }
-  ]
-}
-```
-
-`dashboard` is `null` when the scan did not get as far as writing it. `stacks` lists the stacks this run previewed. `attribution` lists, newest first, what the summary lists for a stack: a pull request with its number, title, address and author, or a direct push with its `commit`, the first line of its message, address and author. It is missing when the lookup failed, and an empty list when nothing the stack claims changed. A pull request title is free text a person wrote, so treat it as such where you send it. An `apply` file names the `deployment`, the `outcome`, the `stack`, the `ticker`, the failure `reason`, how long the job took in `seconds` and the tool's deploy in `deploySeconds` (`null` when nothing was deployed), the fresh `preview` the tick was held against, and the preview `after` a deploy that failed half way. A reader should check `version` first: it goes up when the shape changes in a way that breaks a reader.
+[What Sluiceway writes](what-sluiceway-writes.md#the-result-file-and-the-outputs) documents every field of both files, with files from a real run, and the rule that says what may change. A reader should check `version` first: it goes up when the shape changes in a way that breaks a reader.
 
 Resource names, types and property paths are in the file, as they are on the dashboard. They come from your code, so do not put a secret in a resource name or a map key. Send the file only to a place that people with read access to the repo may see.
 

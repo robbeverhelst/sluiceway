@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { NOTIFY_EVENTS } from "../../src/core/notify.ts";
 import { notificationText, webhookMessage } from "../../src/render/notification.ts";
-import { scanResultSchema } from "../../src/render/result-file.ts";
 import { fences, read } from "./docs.ts";
 
 // Slice 2.22: the recipes of docs/notifications.md tell people about a deploy
@@ -155,12 +154,11 @@ describe("the built-in messages the page shows", () => {
   });
 });
 
-// Record 0061: the result file has a published schema, and the example the
-// page shows is a file a reader could get.
-test("the example scan file fits the schema of the result file", () => {
-  const example = fences(page).find(
-    ({ language, text }) => language === "json" && text.includes('"mode": "scan"'),
-  );
-  expect(scanResultSchema.safeParse(JSON.parse(example?.text ?? "")).success).toBe(true);
+// Record 0061: the result file has a published schema. Slice 5.33 (record
+// 0096): its fields and its examples, taken from a run, are on the page of
+// what Sluiceway writes, so this page shows no example of its own to drift.
+test("the page links the schema and the page that documents every field", () => {
   expect(page).toContain("../schema/result-file.schema.json");
+  expect(page).toContain("what-sluiceway-writes.md#the-result-file-and-the-outputs");
+  expect(fences(page).some(({ text }) => text.includes('"mode": "scan"'))).toBe(false);
 });

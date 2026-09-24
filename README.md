@@ -239,6 +239,7 @@ jobs:
 - **Values at the paths you list** with `showValues`, such as a chart's version, and the tool's own diff in the job log if you ask ([`dashboard.showValues`](https://docs.sluiceway.dev/guides/configuration/#dashboardshowvalues)).
 - **Stop every deploy, or rehearse a tick**: `deploys: false` stops every deploy, and `dry-run` rehearses a tick without deploying ([`deploys`](https://docs.sluiceway.dev/guides/configuration/#deploys), [`dry-run`](https://docs.sluiceway.dev/reference/action/#inputs)).
 - **Notifications**, opt-in: a short message to Slack, Telegram or your own webhook when stacks are pending, drift is found, a deploy fails or a tick is refused, plus outputs and a result file for anything else ([notifications](https://docs.sluiceway.dev/guides/notifications/)).
+- **Readable by scripts and agents**: the markers in the dashboard, the payload of each deployment record and the result file are documented and versioned, with a JSON schema for the payload and the result file, and a rule for what may change ([what Sluiceway hands over](https://docs.sluiceway.dev/guides/notifications/#what-sluiceway-hands-over)).
 
 ## More
 

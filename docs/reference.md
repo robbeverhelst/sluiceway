@@ -43,7 +43,7 @@ An input that is set to an empty string reads as its default, so a workflow can 
 |---|---|---|
 | `matrix` | `resolve`, `scan` | A JSON list with one `{ stack, environment, deployment }` entry per deploy that was started, or `[]`. A scan starts one after a merge from the dashboard ([Merge and deploy](workflow.md#merge-and-deploy)), and one for each stack set to [`deploy: on-merge`](configuration.md#stacksdeploy) that the scan of a push to the default branch hands on. |
 
-`auto` sets what the modes it ran set. `scan` and `apply` also set outputs and write a result file, so a step after Sluiceway can chart numbers or send anything the built-in notifications do not. [Notifications](notifications.md) lists them, next to the built-in Slack, Telegram and webhook messages.
+`auto` sets what the modes it ran set. `scan` and `apply` also set outputs and write a result file, so a step after Sluiceway can chart numbers or send anything the built-in notifications do not. [Notifications](notifications.md) lists them, next to the built-in Slack, Telegram and webhook messages, and [what Sluiceway writes](what-sluiceway-writes.md) documents the result file, the markers and the deployment records, and what may change in them.
 
 No output, result file or webhook message carries a time of day, only durations, so [`dashboard.timeZone`](configuration.md#dashboardtimezone) changes nothing here. It changes only what a person reads on the dashboard, and the markers in the issue keep UTC.
 

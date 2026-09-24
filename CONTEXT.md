@@ -362,6 +362,10 @@ _Avoid_: Check (that is the pass over the repo's files), check page, status chec
 A JSON file that a scan or an `apply` leaves in the job's temporary directory for a later step of the workflow, with what its summary holds and how long the job took, and nothing more. A published JSON schema describes it. Sluiceway never sends it anywhere: a step the user adds does, with its own secret.
 _Avoid_: Report, artifact, export, metrics
 
+**Published shape**:
+What Sluiceway writes for a machine to read and promises to keep: the markers, the payload of each deployment record, and the result file with the step outputs. Each has a version. A documented key keeps its meaning while its version stands, a change that would make a reader misread raises the version, and what the docs leave out on purpose may change in any release. The page is `docs/what-sluiceway-writes.md`, and its examples are taken from a run.
+_Avoid_: API, internals, public interface, protocol
+
 **Notification**:
 One short message Sluiceway posts to a channel the step names (Slack, Telegram or a webhook) when an event happens: stacks newly pending, drift newly found, a deploy that went out or failed, a tick that was refused. It holds stack ids and links and nothing else. Opt-in: each channel is an input of the step, from the repo's own secret, and `notify.events` picks the events. A send that fails is a warning and never changes a job.
 _Avoid_: Alert, ping, webhook event, message hook
