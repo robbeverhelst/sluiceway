@@ -1,5 +1,6 @@
 import type { ShownValue } from "../../core/diff.ts";
 import { isListedPath, shortValue } from "../../core/show-values.ts";
+import { changeFingerprint, differingLeaves, SECRET_MARK } from "../../core/value-fingerprint.ts";
 
 // The property paths that change on an update or a replace, found by
 // comparing `before` and `after` in memory (records 0021 and 0046). The plan
@@ -112,6 +113,37 @@ export function changedPaths(
     "",
   );
   return { paths, values };
+}
+
+// A side of the plan with every subtree the tool marks sensitive replaced by
+// the mark, so a fingerprint enters a sensitive value as its mark and never
+// in the clear (record 0102). The marks are walked with the value: a mark
+// for a key the value does not hold marks nothing.
+export function maskSensitive(value: unknown, sensitive: unknown): unknown {
+  if (sensitive === true) return SECRET_MARK;
+  if (Array.isArray(value)) {
+    return value.map((item, index) => maskSensitive(item, child(sensitive, index)));
+  }
+  if (isObject(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, maskSensitive(item, child(sensitive, key))]),
+    );
+  }
+  return value;
+}
+
+// The value fingerprint of a resource (record 0102): the leaves that differ
+// between the two sides, sensitive ones as their mark, minus the paths the
+// row shows a value for. A create is the new side against nothing.
+export function hiddenFingerprint(
+  sides: Pick<Sides, "before" | "after" | "beforeSensitive" | "afterSensitive">,
+  shown: readonly string[],
+): string | undefined {
+  const leaves = differingLeaves(
+    maskSensitive(sides.before, sides.beforeSensitive),
+    maskSensitive(sides.after, sides.afterSensitive),
+  );
+  return changeFingerprint(leaves.filter((leaf) => !shown.includes(leaf.path)));
 }
 
 // A path as a replace_paths entry gives it: property names, map keys and list

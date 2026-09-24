@@ -1,6 +1,6 @@
 import type { Change, Op, Tracking } from "../../core/diff.ts";
 import type { Folded } from "../folded.ts";
-import { changedPaths, replacePath } from "./paths.ts";
+import { changedPaths, hiddenFingerprint, replacePath } from "./paths.ts";
 import type { ResourceChange } from "./schema.ts";
 
 // From the plan's actions to what a change says (records 0007 and 0053),
@@ -27,7 +27,12 @@ const ACTIONS: Record<string, { op: Op; tracking?: Tracking } | "drop"> = {
   "forget,create": { op: "create", tracking: "forget" },
 };
 
-export function foldChanges(found: ResourceChange[], showValues: readonly string[]): Folded {
+export function foldChanges(
+  found: ResourceChange[],
+  showValues: readonly string[],
+  // Put the value fingerprint on each create, update and replace (record 0102).
+  fingerprint = false,
+): Folded {
   const changes: Change[] = [];
   const unknown: string[] = [];
   const unreadable: string[] = [];
@@ -82,7 +87,7 @@ export function foldChanges(found: ResourceChange[], showValues: readonly string
       ...(moved && resource.previous_address !== undefined
         ? { previousAddress: resource.previous_address }
         : {}),
-      ...keys(resource, folded.op, showValues),
+      ...keys(resource, folded.op, showValues, fingerprint),
     });
   });
 
@@ -124,9 +129,24 @@ function keys(
   resource: ResourceChange,
   op: Op,
   showValues: readonly string[],
-): Pick<Change, "changedKeys" | "replaceKeys" | "values"> {
-  if (op !== "update" && op !== "replace") return { changedKeys: [], replaceKeys: [] };
+  fingerprint: boolean,
+): Pick<Change, "changedKeys" | "replaceKeys" | "values" | "fingerprint"> {
   const { change } = resource;
+  const sides = {
+    before: change.before,
+    after: change.after,
+    beforeSensitive: change.before_sensitive,
+    afterSensitive: change.after_sensitive,
+  };
+  if (op === "create" && fingerprint) {
+    const created = hiddenFingerprint({ ...sides, before: undefined }, []);
+    return {
+      changedKeys: [],
+      replaceKeys: [],
+      ...(created === undefined ? {} : { fingerprint: created }),
+    };
+  }
+  if (op !== "update" && op !== "replace") return { changedKeys: [], replaceKeys: [] };
   const { paths, values } = changedPaths(
     {
       before: change.before,
@@ -149,7 +169,18 @@ function keys(
   const shown = values
     .filter((value) => changedKeys.includes(value.path))
     .sort((a, b) => byCodeUnit(a.path, b.path));
-  return { changedKeys, replaceKeys, ...(shown.length === 0 ? {} : { values: shown }) };
+  const hidden = fingerprint
+    ? hiddenFingerprint(
+        sides,
+        shown.map((value) => value.path),
+      )
+    : undefined;
+  return {
+    changedKeys,
+    replaceKeys,
+    ...(shown.length === 0 ? {} : { values: shown }),
+    ...(hidden === undefined ? {} : { fingerprint: hidden }),
+  };
 }
 
 function sortedSet(names: string[]): string[] {

@@ -63,7 +63,11 @@ async function planAndShow(
 
   const parsed = parsePlan(shown.stdout);
   if (!parsed.ok) return failed({ kind: "unreadable-output" }, log, parsed.problems);
-  const folded = foldChanges(parsed.changes, options.showValues ?? []);
+  const folded = foldChanges(
+    parsed.changes,
+    options.showValues ?? [],
+    options.valueFingerprint === true,
+  );
   if (!folded.ok) return failed({ kind: folded.reason }, log, folded.detail);
   return { ok: true, diff: { stackId: stackId(stack), changes: folded.changes }, toolLog: log };
 }
