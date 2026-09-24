@@ -19,6 +19,7 @@ import { stripAnsi } from "../adapters/tool-run.ts";
 import type { Attribution } from "../core/attribution.ts";
 import { sharedFiles, suggestedUnrelated } from "../core/check.ts";
 import type { Config, ConfiguredStack } from "../core/config.ts";
+import { type CostSettings, costFailureText, costSettings } from "../core/cost.ts";
 import { withReadDependencies } from "../core/dependencies.ts";
 import { windowState } from "../core/deploy-window.ts";
 import {
@@ -114,6 +115,7 @@ import { type ConftestCheck, checkConftest, runPolicies } from "../policy/confte
 import { BODY_LIMIT, type BudgetOptions, bodyDoesNotFitMessage } from "../render/budget.ts";
 import { bulkSweepText } from "../render/bulk-box.ts";
 import { whereFilesBelong } from "../render/check.ts";
+import { costLine } from "../render/cost.ts";
 import { COUNT_DOT, HEADER_DOT } from "../render/dots.ts";
 import { dashboardSearchUrl, type RunLinks, runLinks, runUrl } from "../render/links.ts";
 import {
@@ -382,6 +384,12 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   const plan = await makePlan(context, config, stacks, knownDrift);
   logPlan(context, plan, stacks.length);
   const checkDrift = driftCheckRule(config, context, knownDrift, stacks);
+  // The cost estimate per stack (record 0105): the top level, with the
+  // stack's entry on top.
+  const costByStack = new Map(
+    stacks.map((one) => [stackId(one.stack), costSettings(config.cost, one.cost)] as const),
+  );
+  const costOf = (id: string): CostSettings => costByStack.get(id) ?? costSettings(config.cost);
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
   const unclaimed = unclaimedFiles(plan, config);
   let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
@@ -473,6 +481,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       stacks.map(({ stack }) => stack),
       envFiles,
       policies,
+      costOf,
     );
     for (const one of round) previewed.set(one.id, one);
     logResults(context, round);
@@ -1059,6 +1068,8 @@ async function previewAll(
   envFiles: ReturnType<typeof stackEnvFiles>,
   // The policies of the scan, with conftest as checked (record 0106).
   policies: Policies,
+  // The cost estimate of each stack (record 0105): whether to ask for one.
+  costOf: (id: string) => CostSettings,
 ): Promise<Previewed[]> {
   const { log, now, adapter } = context;
   // Nothing to preview, so a repo without stacks needs no tool, and neither
@@ -1114,6 +1125,7 @@ async function previewAll(
       timeoutMinutes: configured.previewTimeout ?? context.previewTimeoutMinutes,
       showValues,
       valueFingerprint: configured.valueFingerprint ?? valueFingerprint,
+      cost: costOf(id).enabled,
     };
     let previewedOnly: PreviewResult;
     try {
@@ -1148,6 +1160,16 @@ async function previewAll(
     );
     if (previewedOnly.ok && previewedOnly.dependencies) {
       log.info(readDependenciesText(id, previewedOnly.dependencies));
+    }
+    // What the change costs (record 0105), or why the estimate failed. A
+    // failed estimate is a missing line on the row and never a red scan.
+    if (previewedOnly.ok && previewedOnly.cost) {
+      const { cost } = previewedOnly;
+      log.info(
+        cost.ok
+          ? `${logGroupTitle(id)} costs ${plainCostWords(costLine(cost.estimate))}.`
+          : `The cost of ${logGroupTitle(id)} was not estimated: ${costFailureText(cost.reason)}.`,
+      );
     }
     // The drift check takes the same slot of the pool and the same time limit,
     // right after the preview, so one stack never runs the tool twice at once
@@ -1330,6 +1352,7 @@ function logResults(context: ScanContext, previewed: Previewed[]): void {
         ? [`drift check failed: ${previewFailureText(drift.reason)}`, ...drift.detail]
         : []),
       ...policyLogLines(policies),
+      ...costLogLines(result),
       ...toolDiffLogLines(toolDiff),
       ...(words.length > 0 ? ["The tool's own words:", ...words] : []),
     ];
@@ -1349,6 +1372,14 @@ function logResults(context: ScanContext, previewed: Previewed[]): void {
       log.warning(
         `The drift check of ${logGroupTitle(id)} failed: ${previewFailureText(drift.reason)}. Its row shows the preview alone.`,
         "Drift check failed",
+      );
+    }
+    // Never silent either: the row shows no cost line, and the run says
+    // why (record 0105).
+    if (result.ok && result.cost && !result.cost.ok) {
+      log.warning(
+        `The cost of ${logGroupTitle(id)} was not estimated: ${costFailureText(result.cost.reason)}. Its row shows no cost line.`,
+        "Cost not estimated",
       );
     }
   }
@@ -1817,6 +1848,7 @@ function onMergeInput(
         dependsOn: dependsOn.get(id),
         phase: one.phase,
         deployWindows: one.deployWindows,
+        costThreshold: costSettings(config.cost, one.cost).threshold,
       };
     }),
     previewed: fresh,
@@ -1878,6 +1910,21 @@ async function handOnMerged(
 
 // The job log's line for a stack set to on-merge whose change waits: the
 // row's note, as plain text.
+// The cost line of a row without its emphasis, for the job log.
+function plainCostWords(line: string): string {
+  return line.replaceAll("**", "");
+}
+
+// What the stack's group of the job log says about the cost estimate
+// (record 0105): the line as the row shows it, or why there is none.
+function costLogLines(result: PreviewResult): string[] {
+  if (!result.ok || !result.cost) return [];
+  const { cost } = result;
+  return cost.ok
+    ? [`cost: ${plainCostWords(costLine(cost.estimate))}`]
+    : [`cost not estimated: ${costFailureText(cost.reason)}`, ...cost.detail];
+}
+
 function onMergeLogLine(id: string, wait: OnMergeWait): string {
   return onMergeNote(wait)
     .replace(":information_source: this stack", logGroupTitle(id))

@@ -60,6 +60,9 @@ export function previewRow(
     }
     return { state: "in-sync", stackId, failure, ...dependsOn };
   }
+  // What the change costs a month (record 0105), when the estimate came
+  // back. A failed one is a missing line, and the job log says why.
+  const cost = result.cost?.ok ? { cost: result.cost.estimate } : {};
   return {
     state: "pending",
     diff: result.diff,
@@ -69,6 +72,7 @@ export function previewRow(
     previewUrl: options.pageUrl ?? (options.toolDiffInLog ? links.log : undefined),
     failure,
     ...dependsOn,
+    ...cost,
   };
 }
 
