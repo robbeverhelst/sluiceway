@@ -4,6 +4,7 @@
 import type { Change, Diff } from "../core/diff.ts";
 import type { OnMergeWait } from "../core/on-merge.ts";
 import type { PhaseGroup } from "../core/phases.ts";
+import { valueFingerprint } from "../core/value-fingerprint.ts";
 import { escapeText } from "./escape.ts";
 import { mascotUrl } from "./images.ts";
 import { ROW_CLOSE_MARKER, rowMarker } from "./marker.ts";
@@ -58,6 +59,10 @@ export interface PendingRow {
   // log that holds the tool's own diff of the stack, when it holds one (record
   // 0048).
   pendingAgain?: { logUrl?: string | undefined } | undefined;
+  // A value the row does not show differed between two previews of the same
+  // commit (record 0102), so a tick would be refused. The line says so and
+  // names the switch.
+  valueEveryRun?: boolean | undefined;
   // The stacks its preview read from the program's stack references (record
   // 0059). They go on the marker and nowhere else.
   dependsOn?: readonly string[] | undefined;
@@ -74,6 +79,8 @@ export interface DriftRow {
   diff: Diff;
   // The diff hash of `diff`, which covers the drift.
   hash: string;
+  // As on a pending row (record 0102).
+  valueEveryRun?: boolean | undefined;
   // The attempt of the run whose summary lists the drift (record 0044).
   runUrl: string;
   // The stack's preview page, which lists the drift (record 0059). The
@@ -344,6 +351,12 @@ function listWords(words: readonly string[]): string {
 export const PENDING_AGAIN_NOTE =
   ":information_source: pending again right after a deploy of this same change, a value in the program may differ on every run.";
 
+// The line on a row whose value fingerprint differed between two previews of
+// the same commit (record 0102). Fixed words of Sluiceway's own: it names no
+// value, and it names the switch a person needs.
+export const VALUE_EVERY_RUN_NOTE =
+  ":information_source: a value this row does not show differed between two previews of the same commit, so a tick would be refused: a value in the program may differ on every run. Turn the value fingerprint off for this stack with `valueFingerprint: false` on its `stacks` entry.";
+
 function pendingAgainLine({ logUrl }: { logUrl?: string | undefined }): string {
   return logUrl === undefined
     ? PENDING_AGAIN_NOTE
@@ -432,10 +445,12 @@ function driftRow(row: DriftRow, options: RowOptions): string[] {
         drift: true,
         gone: drift.filter((change) => change.op === "delete").length,
         dependsOn: row.dependsOn,
+        fingerprint: valueFingerprint(row.diff),
       },
     )}`,
   ];
   if (row.failure) lines.push(failureLine(row.failure, options.timeZone));
+  if (row.valueEveryRun) lines.push(VALUE_EVERY_RUN_NOTE);
   if (row.orphanTick && !options.readOnly) lines.push(ORPHAN_TICK_NOTE);
   lines.push(...driftLines(drift, summary, options));
   return lines;
@@ -467,12 +482,14 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
         shortened: level,
         drift: drift.length > 0,
         dependsOn: row.dependsOn,
+        fingerprint: valueFingerprint(row.diff),
       },
     )}`,
   ];
   if (row.attribution) lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
   if (row.failure) lines.push(failureLine(row.failure, options.timeZone));
   if (row.waitsOnMerge) lines.push(onMergeNote(row.waitsOnMerge));
+  if (row.valueEveryRun) lines.push(VALUE_EVERY_RUN_NOTE);
   if (row.pendingAgain) lines.push(pendingAgainLine(row.pendingAgain));
   if (row.orphanTick && !options.readOnly) lines.push(ORPHAN_TICK_NOTE);
 

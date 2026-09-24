@@ -6,6 +6,7 @@ import {
   deploymentPayloadJsonSchema,
   deploymentPayloadSchema,
   mergePayload,
+  readDeploymentPayload,
 } from "../../src/core/deployment.ts";
 
 // Slice 5.33 (record 0096): the payload of a deployment record is a surface
@@ -97,5 +98,73 @@ describe("the published JSON schema of the payload", () => {
   test("is committed next to the others, as the generator writes it now", () => {
     const file = resolve(import.meta.dir, "../../schema/deployment-payload.schema.json");
     expect(readFileSync(file, "utf8")).toBe(`${JSON.stringify(schema, null, 2)}\n`);
+  });
+});
+
+// Record 0102: the value fingerprint the tick approved rides on the record as
+// an added key, after every older one.
+describe("the value fingerprint on the payload", () => {
+  const FINGERPRINT = "f65a69fe79dd93c3";
+
+  test("is written last, in the order the payload has always had", () => {
+    const written = deploymentPayload({
+      hash: HASH,
+      ticker: "alice",
+      run: "4242",
+      attempt: "1",
+      drift: true,
+      onMerge: true,
+      fingerprint: FINGERPRINT,
+    });
+    expect(Object.keys(written)).toEqual([
+      "v",
+      "hash",
+      "ticker",
+      "run",
+      "attempt",
+      "drift",
+      "onMerge",
+      "fingerprint",
+    ]);
+    expect(deploymentPayloadSchema.safeParse(written).success).toBe(true);
+  });
+
+  test("is left out when the record carries none", () => {
+    expect(deploymentPayload({ hash: HASH, ticker: "alice", run: "4242" })).not.toHaveProperty(
+      "fingerprint",
+    );
+  });
+
+  test("is held to 16 hex characters, so no value can ride in it", () => {
+    const payload = { v: 1, hash: HASH, ticker: "alice", run: "4242" };
+    expect(
+      deploymentPayloadSchema.safeParse({ ...payload, fingerprint: FINGERPRINT }).success,
+    ).toBe(true);
+    expect(deploymentPayloadSchema.safeParse({ ...payload, fingerprint: "v3" }).success).toBe(
+      false,
+    );
+    expect(() =>
+      deploymentPayload({ hash: HASH, ticker: "alice", run: "4242", fingerprint: "CANARY" }),
+    ).toThrow();
+  });
+
+  test("is read back, and a value that is not one leaves the key out", () => {
+    const payload = { v: 1, hash: HASH, ticker: "alice", run: "4242" };
+    expect(readDeploymentPayload({ ...payload, fingerprint: FINGERPRINT })?.fingerprint).toBe(
+      FINGERPRINT,
+    );
+    expect(readDeploymentPayload({ ...payload, fingerprint: 12 })).toEqual({
+      hash: HASH,
+      ticker: "alice",
+      run: "4242",
+    });
+    expect(readDeploymentPayload(payload)?.fingerprint).toBeUndefined();
+  });
+
+  test("a merge record never carries one", () => {
+    const merge = { v: 1, ticker: "alice", run: "4242", merge: 519 };
+    expect(
+      deploymentPayloadSchema.safeParse({ ...merge, fingerprint: FINGERPRINT }).success,
+    ).toBe(false);
   });
 });

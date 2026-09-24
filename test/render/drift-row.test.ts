@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Change, Diff } from "../../src/core/diff.ts";
 import { diffHash } from "../../src/core/diff-hash.ts";
+import { valueFingerprint } from "../../src/core/value-fingerprint.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
 import { type DriftRow, type PendingRow, renderRow } from "../../src/render/row.ts";
 
@@ -149,5 +150,29 @@ describe("a pending row that also shows drift", () => {
     const text = renderRow({ ...row, diff: plain, hash: diffHash(plain) });
     expect(text).not.toContain("outside the code");
     expect(text).not.toContain("drift=");
+  });
+});
+
+// Record 0102: a drifted row carries the value fingerprint of its drift.
+describe("the value fingerprint on a drift row", () => {
+  test("is on the marker when a drift change carries one, and the line can sit on the row", () => {
+    const row = driftRow({
+      diff: {
+        stackId: "site:prod",
+        changes: [],
+        drift: [gone, { ...changed, fingerprint: "1111111111111111" }],
+      },
+      valueEveryRun: true,
+    });
+    const text = renderRow(row);
+    const expected = valueFingerprint(row.diff) ?? "";
+    expect(text.split("\n")[0]).toEndWith(`gone="1" fingerprint="${expected}" -->`);
+    expect(text).toContain("differed between two previews of the same commit");
+    const [parsed] = parseDashboard(text).rows;
+    expect(parsed?.known && parsed.fingerprint).toBe(expected);
+  });
+
+  test("is left off when no drift change carries one", () => {
+    expect(renderRow(driftRow()).split("\n")[0]).not.toContain("fingerprint");
   });
 });

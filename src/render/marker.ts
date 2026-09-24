@@ -104,6 +104,10 @@ export interface RowFacts {
   // for a stack with `dependsOn: auto` (record 0059). `resolve` never
   // previews, so the row is where it finds them.
   dependsOn?: readonly string[] | undefined;
+  // The value fingerprint of the row (record 0102): a hash of the values its
+  // diff holds that the row does not show. `resolve` copies it onto the
+  // record, and `apply` compares it after the hash.
+  fingerprint?: string | undefined;
 }
 
 // A list of stack ids in one marker value, split on commas. An id is
@@ -219,6 +223,7 @@ export function rowMarker(facts: RowFacts): string {
   if (facts.dependsOn && facts.dependsOn.length > 0) {
     pairs.push(["depends-on", encodeIds(facts.dependsOn)]);
   }
+  if (facts.fingerprint !== undefined) pairs.push(["fingerprint", facts.fingerprint]);
   return marker("row", pairs);
 }
 
@@ -313,6 +318,8 @@ export type ParsedRow =
       // Read from the program's stack references (record 0059). Absent when
       // the marker names none.
       dependsOn?: string[];
+      // The value fingerprint (record 0102). Absent when the marker has none.
+      fingerprint?: string;
       ticked: boolean;
       text: string;
     }
@@ -473,6 +480,7 @@ export function parseDashboard(body: string): ParsedDashboard {
     };
     const dependsOn = pairs.get("depends-on") ?? "";
     const deletes = pairs.get("deletes") ?? "";
+    const fingerprint = pairs.get("fingerprint");
     rows.push({
       known: true,
       stackId,
@@ -485,6 +493,7 @@ export function parseDashboard(body: string): ParsedDashboard {
       drift: pairs.get("drift") === "true",
       ...(count("gone") > 0 ? { gone: count("gone") } : {}),
       ...(dependsOn === "" ? {} : { dependsOn: decodeIds(dependsOn) }),
+      ...(fingerprint === undefined ? {} : { fingerprint }),
       ticked: match[1] === "x" || match[1] === "X",
       text,
     });

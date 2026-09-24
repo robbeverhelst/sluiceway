@@ -211,3 +211,29 @@ describe("writing markers", () => {
     expect(RESCAN_MARKER).toBe("<!-- sluiceway:rescan -->");
   });
 });
+
+// Record 0102: the value fingerprint on a row, after every older key.
+describe("the fingerprint key", () => {
+  test("is written last and read back", () => {
+    const marker = rowMarker({
+      stackId: "apps/grafana:prod",
+      state: "pending",
+      hash: "3fa9c1e2aabbccdd",
+      drift: true,
+      dependsOn: ["apps/db:prod"],
+      fingerprint: "f65a69fe79dd93c3",
+    });
+    expect(marker).toBe(
+      '<!-- sluiceway:row stack="apps/grafana:prod" state="pending" hash="3fa9c1e2aabbccdd" drift="true" depends-on="apps/db:prod" fingerprint="f65a69fe79dd93c3" -->',
+    );
+    const [row] = parseDashboard(`- [ ] x ${marker}\n  ${ROW_CLOSE_MARKER}`).rows;
+    expect(row?.known && row.fingerprint).toBe("f65a69fe79dd93c3");
+  });
+
+  test("is left out when a row has none, and reads as none", () => {
+    const marker = rowMarker({ stackId: "a", state: "pending", hash: "00" });
+    expect(marker).not.toContain("fingerprint");
+    const [row] = parseDashboard(`- [ ] x ${marker}\n  ${ROW_CLOSE_MARKER}`).rows;
+    expect(row?.known && row.fingerprint).toBeUndefined();
+  });
+});

@@ -150,6 +150,13 @@ const tickPayloadSchema = z
       .describe(
         "The record was opened after the scan of a merge, for a stack set to deploy on merge. Absent otherwise.",
       ),
+    fingerprint: z
+      .string()
+      .regex(/^[0-9a-f]{16}$/)
+      .optional()
+      .describe(
+        "The value fingerprint the tick approved: the first 16 hex characters of a SHA-256 over the values of the diff that the row did not show. The deploy goes out only when a fresh preview gives the same one. Absent on a record written before the key came, or with the check off for the stack.",
+      ),
   })
   .describe("The record of a tick, a queued stack, a drift repair or a deploy on merge.");
 
@@ -193,6 +200,7 @@ export function deploymentPayload(payload: DeploymentPayload): Record<string, un
     ...(payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {}),
     ...(payload.drift ? { drift: true } : {}),
     ...(payload.onMerge ? { onMerge: true } : {}),
+    ...(payload.fingerprint === undefined ? {} : { fingerprint: payload.fingerprint }),
   });
 }
 
@@ -220,10 +228,8 @@ const RUN_ID = /^[1-9]\d*$/;
 // built from text that came from outside.
 export function readDeploymentPayload(payload: unknown): DeploymentPayload | undefined {
   if (typeof payload !== "object" || payload === null) return undefined;
-  const { v, hash, ticker, run, behind, merge, drift, attempt, onMerge } = payload as Record<
-    string,
-    unknown
-  >;
+  const { v, hash, ticker, run, behind, merge, drift, attempt, onMerge, fingerprint } =
+    payload as Record<string, unknown>;
   if (v !== PAYLOAD_VERSION) return undefined;
   // Only a number is kept, so no link is built from text that came from
   // outside. Anything else leaves the attempt out, not the record.
@@ -246,6 +252,11 @@ export function readDeploymentPayload(payload: unknown): DeploymentPayload | und
   const read: DeploymentPayload = { hash, ticker, run, ...attempted };
   if (drift === true) read.drift = true;
   if (onMerge === true) read.onMerge = true;
+  // Only a fingerprint is kept, so nothing that came from outside is ever
+  // compared as one (record 0102).
+  if (typeof fingerprint === "string" && /^[0-9a-f]{16}$/.test(fingerprint)) {
+    read.fingerprint = fingerprint;
+  }
   if (behind === undefined) return read;
   const ids = Array.isArray(behind) ? behind : [];
   if (ids.length === 0 || !ids.every((id) => typeof id === "string" && id !== "")) {
