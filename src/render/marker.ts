@@ -326,7 +326,8 @@ export type ParsedRow =
       // The value fingerprint (record 0102). Absent when the marker has none.
       fingerprint?: string;
       // A policy failed on the change, so the row has no box (record 0106).
-      policyFailed: boolean;
+      // Absent when none did.
+      policyFailed?: true;
       ticked: boolean;
       text: string;
     }
@@ -501,7 +502,7 @@ export function parseDashboard(body: string): ParsedDashboard {
       ...(count("gone") > 0 ? { gone: count("gone") } : {}),
       ...(dependsOn === "" ? {} : { dependsOn: decodeIds(dependsOn) }),
       ...(fingerprint === undefined ? {} : { fingerprint }),
-      policyFailed: pairs.get("policy") === "failed",
+      ...(pairs.get("policy") === "failed" ? { policyFailed: true as const } : {}),
       ticked: match[1] === "x" || match[1] === "X",
       text,
     });

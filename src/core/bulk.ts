@@ -24,14 +24,15 @@ function byCodeUnit(a: string, b: string): number {
 
 // The rows a bulk line of the section is about: the known rows of the
 // section's state that show a diff hash, the first block of each stack, in
-// stack id order.
+// stack id order. A row a policy stopped has no box (record 0106), so no
+// bulk box counts it and no confirm box names it.
 export function bulkRows(rows: readonly ParsedRow[], section: BulkSection): BulkStack[] {
   const seen = new Set<string>();
   const found: BulkStack[] = [];
   for (const row of rows) {
     if (seen.has(row.stackId)) continue;
     seen.add(row.stackId);
-    if (row.known && row.state === section && row.hash !== undefined) {
+    if (row.known && row.state === section && row.hash !== undefined && !row.policyFailed) {
       found.push({ stackId: row.stackId, hash: row.hash });
     }
   }

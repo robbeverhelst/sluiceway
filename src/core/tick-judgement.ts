@@ -130,6 +130,9 @@ export type Finding =
   | { kind: "taken"; tick: BodyTick; fact: OpenDeployment }
   // `deploys: false` (record 0051). The box is cleared.
   | { kind: "deploys-off"; tick: BodyTick }
+  // A policy failed on the change, so its row has no box (record 0106). A
+  // tick can only come from a hand-edited body, and is cleared with a note.
+  | { kind: "policy-failed"; tick: BodyTick }
   // The body moved under the walk after the last read. Left for the run that
   // edit woke (record 0025).
   | { kind: "moving"; tick: BodyTick }
@@ -424,6 +427,9 @@ function triage(read: TicksRead): Triage {
     } else if (tick.kind === "row" && !read.deploys) {
       out.findings.push({ kind: "deploys-off", tick });
       out.clear.set(tick.stackId, { hash: tick.hash, note: "deploys-off" });
+    } else if (tick.kind === "row" && policyStopped(read.rows, tick.stackId)) {
+      out.findings.push({ kind: "policy-failed", tick });
+      out.clear.set(tick.stackId, { hash: tick.hash, note: "policy-failed" });
     } else if (ticker.named && tick.kind === "merge") {
       for (const id of tick.stackIds) {
         const stack = read.stacks.get(id);
@@ -452,6 +458,13 @@ function triage(read: TicksRead): Triage {
     }
   }
   return out;
+}
+
+// Whether the live row of the stack says a policy failed on its change
+// (record 0106). Of two blocks for one stack the first counts, as for a tick.
+function policyStopped(rows: readonly ParsedRow[], stackId: string): boolean {
+  const row = rows.find((one) => one.stackId === stackId);
+  return row?.known === true && row.policyFailed === true;
 }
 
 // The ticks that need a permission lookup, in the order they are judged. The

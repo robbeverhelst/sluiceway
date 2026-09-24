@@ -4,9 +4,11 @@
 // shows nothing a row could not show. It is never redacted (record 0023).
 
 import type { Diff } from "../core/diff.ts";
+import type { PolicyOutcome } from "../core/policy.ts";
 import { orderChanges } from "./changes.ts";
 import { PASTE_NOTE, unrelatedBlock, whereFilesBelong } from "./check.ts";
 import { escapeText } from "./escape.ts";
+import { policySummaryLine, policyTextLines } from "./preview-page.ts";
 import {
   byCodeUnit,
   changeLine,
@@ -34,6 +36,8 @@ export type SummaryStack =
       diff: Diff;
       // Newest first. Absent when the lookup failed: attribution never blocks.
       merges?: SummaryMerge[] | undefined;
+      // What the policies made of the change (record 0106).
+      policies?: PolicyOutcome | undefined;
     }
   | {
       kind: "preview-failed";
@@ -156,6 +160,7 @@ function diffParts(stack: DiffStack, level: SummaryLevel, options: SummaryOption
   const parts = [
     `#### ${anchorTag(stack.diff.stackId)}${escapeText(stack.diff.stackId)}`,
     counts([...destroys, ...others]),
+    ...policyParts(stack.policies),
   ];
   if (destroys.length > 0) {
     parts.push(
@@ -189,6 +194,22 @@ function diffParts(stack: DiffStack, level: SummaryLevel, options: SummaryOption
     else parts.push(`From ${mergeCounts(merges)}:`, merges.map(mergeLine).join("\n"));
   }
   return parts;
+}
+
+// The policies of a stack (record 0106), at every level: a failed policy is
+// why the row has no box, and the summary is where a redacted row sends
+// people. A pass without a warning adds nothing.
+function policyParts(policies: PolicyOutcome | undefined): string[] {
+  if (policies === undefined) return [];
+  if (policies.kind === "not-run") return [policySummaryLine(policies) ?? ""];
+  const lines = policyTextLines(policies);
+  if (policies.kind === "failed") {
+    const { failures } = policies.report;
+    return [
+      `:no_entry: **${failures.length} ${failures.length === 1 ? "policy" : "policies"} failed**, so the row has no box until it passes:\n${lines.join("\n")}`,
+    ];
+  }
+  return lines.length === 0 ? [] : [lines.join("\n")];
 }
 
 // The glob is written as a quoted string, which is valid YAML whatever the

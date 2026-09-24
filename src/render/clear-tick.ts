@@ -7,7 +7,13 @@
 
 import type { PhaseGroup } from "../core/phases.ts";
 import { type ParsedRow, parseDashboard } from "./marker.ts";
-import { DEPLOYS_OFF_NOTE, dependencyNote, INDENT, ORPHAN_TICK_NOTE } from "./row.ts";
+import {
+  DEPLOYS_OFF_NOTE,
+  dependencyNote,
+  INDENT,
+  ORPHAN_TICK_NOTE,
+  POLICY_FAILED_NOTE,
+} from "./row.ts";
 
 export interface ClearTickOptions {
   // Adds the note that asks for a fresh tick, or with "deploys-off" the note
@@ -16,9 +22,12 @@ export interface ClearTickOptions {
   // line. The next scan renders the row in the order of record 0027. With
   // `dependsOn` the note names the stacks the tick waits on (record 0056),
   // and with `phases` the phases it waits on (record 0067).
+  // With "policy-failed" the note that a policy stopped the change (record
+  // 0106).
   note?:
     | boolean
     | "deploys-off"
+    | "policy-failed"
     | { dependsOn: readonly string[]; phases?: readonly PhaseGroup[] }
     | undefined;
   // The tick came from the confirm box of the row's section (record 0083), so
@@ -37,9 +46,11 @@ export function clearTick(row: ParsedRow, options: ClearTickOptions = {}): Parse
     INDENT +
     (options.note === "deploys-off"
       ? DEPLOYS_OFF_NOTE
-      : typeof options.note === "object"
-        ? dependencyNote(options.note.dependsOn, options.note.phases)
-        : ORPHAN_TICK_NOTE);
+      : options.note === "policy-failed"
+        ? POLICY_FAILED_NOTE
+        : typeof options.note === "object"
+          ? dependencyNote(options.note.dependsOn, options.note.phases)
+          : ORPHAN_TICK_NOTE);
   // The note is a fixed line of Sluiceway's own, so finding it again is a
   // comparison with a constant and not a reading of the row.
   const lines = options.note && !rest.includes(note) ? [note, ...rest] : rest;

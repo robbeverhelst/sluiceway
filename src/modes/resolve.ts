@@ -550,6 +550,10 @@ function findingText(finding: Finding, timeZone = "UTC"): string {
           return `${off} The box is cleared.`;
       }
     }
+    case "policy-failed":
+      // The row has no box (record 0106), so the tick came from an edit of
+      // the body. Nobody is looked up and nobody is mentioned.
+      return `${tickName(finding.tick)} is ticked, and a policy failed on its change, so its row has no box. The box is cleared.`;
     case "moving":
       return `${tickName(finding.tick)} is ticked in a body that kept moving. Left for the run that edit woke.`;
     case "nameless":

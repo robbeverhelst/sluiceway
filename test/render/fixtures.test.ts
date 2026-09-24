@@ -106,7 +106,6 @@ describe("every rendered block", () => {
           failed: "failure" in row && row.failure !== undefined,
           shortened: row.state === "pending" ? level : 0,
           drift: false,
-          policyFailed: false,
           ticked: false,
           text: block,
         },

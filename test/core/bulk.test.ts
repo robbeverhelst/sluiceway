@@ -284,3 +284,19 @@ describe("whether a live line holds a tick", () => {
     expect(holdsBulkTick(box(true), tick)).toBe(false);
   });
 });
+
+// Record 0106: a row whose change fails a policy has no box, so no bulk box
+// counts it and no confirm box names it.
+describe("a row a policy stopped", () => {
+  test("is not among the rows of its section", () => {
+    const row = (facts: RowFacts) => `- **x** ${rowMarker(facts)}\n  ${ROW_CLOSE_MARKER}`;
+    const body = [
+      row({ state: "pending", stackId: "a", hash: A.hash, policyFailed: true }),
+      row({ state: "pending", stackId: "b", hash: B.hash }),
+      row({ state: "drift", stackId: "c", hash: C.hash, drift: true, policyFailed: true }),
+    ].join("\n");
+    const { rows } = parseDashboard(body);
+    expect(bulkRows(rows, "pending")).toEqual([B]);
+    expect(bulkRows(rows, "drift")).toEqual([]);
+  });
+});

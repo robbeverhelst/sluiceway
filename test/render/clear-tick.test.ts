@@ -86,3 +86,15 @@ describe("clearing a tick", () => {
     expect(clearTick(unknown as ParsedRow, { note: true })).toEqual(unknown as ParsedRow);
   });
 });
+
+// Record 0106: the note under a hand-edited tick on a row a policy stopped.
+describe("the policy note", () => {
+  test("goes right under the first line, with the box cleared", () => {
+    const cleared = clearTick(ticked(), { note: "policy-failed" });
+    const [first, second] = cleared.text.split("\n");
+    expect(first).toStartWith("- [ ] ");
+    expect(second).toBe(
+      "  :information_source: this tick started nothing: a policy failed on this change, so its row has no box.",
+    );
+  });
+});

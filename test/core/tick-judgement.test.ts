@@ -938,3 +938,36 @@ describe("a tick outside the deploy window", () => {
     ]);
   });
 });
+
+// Record 0106: a row whose change fails a policy has no box. A tick on it can
+// only come from a hand-edited body, and deploys nothing: the box is cleared
+// with a note, nobody is looked up, and the job log says why.
+describe("a tick on a row a policy stopped", () => {
+  const stopped: ParsedRow[] = rowsIn("pending", "a:prod").map((one) => ({
+    ...one,
+    policyFailed: true,
+    ticked: true,
+  }));
+
+  test("is cleared with the note, and nobody is looked up", () => {
+    const input = read([by(row("a:prod", "hash-a:prod"))], { rows: stopped });
+    expect(ticksToLookUp(input)).toEqual([]);
+    expect(judged(input)).toMatchObject({
+      deploys: [],
+      clear: [["a:prod", { hash: "hash-a:prod", note: "policy-failed" }]],
+      findings: [{ kind: "policy-failed", tick: row("a:prod", "hash-a:prod") }],
+    });
+  });
+
+  test("deploys: false is said first, as it stops everything", () => {
+    const input = read([by(row("a:prod", "hash-a:prod"))], { rows: stopped, deploys: false });
+    expect(judged(input).findings).toEqual([
+      { kind: "deploys-off", tick: row("a:prod", "hash-a:prod") },
+    ]);
+  });
+
+  test("a tick on a row the policies passed is judged as always", () => {
+    const input = read([by(row("a:prod", "hash-a:prod"))], { rows: rowsIn("pending", "a:prod") });
+    expect(ticksToLookUp(input).length).toBe(1);
+  });
+});

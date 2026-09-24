@@ -35,7 +35,6 @@ describe("reading a body", () => {
           failed: false,
           shortened: 0,
           drift: false,
-          policyFailed: false,
           ticked: false,
           text: [
             '- [ ] **apps/grafana:prod** · `+2 ~1 -0` · [preview](run-url) <!-- sluiceway:row stack="apps/grafana:prod" state="pending" hash="3fa9c1e2aabbccdd" -->',
@@ -52,7 +51,6 @@ describe("reading a body", () => {
           failed: false,
           shortened: 0,
           drift: false,
-          policyFailed: false,
           ticked: false,
           text: [
             '- **apps/loki:prod** · deploying · [run](run-url) <!-- sluiceway:row stack="apps/loki:prod" state="deploying" -->',

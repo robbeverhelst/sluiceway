@@ -260,6 +260,6 @@ describe("the policy key", () => {
     const marker = rowMarker({ stackId: "a", state: "pending", hash: "00", policyFailed: false });
     expect(marker).not.toContain("policy");
     const [row] = parseDashboard(`- [ ] x ${marker}\n  ${ROW_CLOSE_MARKER}`).rows;
-    expect(row?.known && row.policyFailed).toBe(false);
+    expect(row?.known && row.policyFailed).toBeUndefined();
   });
 });

@@ -5,6 +5,7 @@ import type { QueuedWindow } from "../core/deploy-window.ts";
 import type { Change, Diff } from "../core/diff.ts";
 import type { OnMergeWait } from "../core/on-merge.ts";
 import type { PhaseGroup } from "../core/phases.ts";
+import { type PolicyOutcome, policyRunFailureText } from "../core/policy.ts";
 import { escapeText } from "./escape.ts";
 import { mascotUrl } from "./images.ts";
 import { ROW_CLOSE_MARKER, rowMarker } from "./marker.ts";
@@ -72,6 +73,10 @@ export interface PendingRow {
   // The stack is set to on-merge, and this change waits for a tick after all
   // (record 0095). The row says why.
   waitsOnMerge?: OnMergeWait | undefined;
+  // What the policies of the repo made of the change (record 0106). A
+  // failed policy takes the box off the row and is named on it; a run that
+  // failed is a warning line; a pass draws nothing.
+  policies?: PolicyOutcome | undefined;
 }
 
 // A stack with nothing to deploy from its code and drift in real
@@ -279,6 +284,12 @@ export const ORPHAN_TICK_NOTE =
 export const DEPLOYS_OFF_NOTE =
   ":information_source: deploys are turned off in `sluiceway.yaml`, so this tick started nothing.";
 
+// The note on a row whose tick `resolve` cleared because a policy failed on
+// its change (record 0106). Such a row has no box, so the tick came from a
+// hand-edited body.
+export const POLICY_FAILED_NOTE =
+  ":information_source: this tick started nothing: a policy failed on this change, so its row has no box.";
+
 // The note on a row whose tick `resolve` cleared because a stack it depends on
 // has a change waiting that nobody ticked (record 0056). It names them, so a
 // refusal never stays silent.
@@ -465,6 +476,64 @@ function driftRow(row: DriftRow, options: RowOptions): string[] {
   return lines;
 }
 
+// A row names this many failed policies, then counts the rest, as it names
+// at most five authors (record 0029). The page names them all.
+export const FAILURES_ON_A_ROW = 5;
+
+// A policy's message is cut here, in code points, so one policy cannot fill
+// the dashboard. The page shows it whole.
+export const POLICY_MESSAGE_LENGTH = 200;
+
+function policyWords(count: number): string {
+  return `${count} ${count === 1 ? "policy" : "policies"}`;
+}
+
+// One failure in the policy's own words, escaped as untrusted text (record
+// 0106): the message comes from a file of the repo, and is never markup.
+export function policyFailureLine(
+  failure: { namespace: string; message: string },
+  whole = false,
+): string {
+  const points = Array.from(failure.message);
+  const message =
+    whole || points.length <= POLICY_MESSAGE_LENGTH
+      ? failure.message
+      : `${points.slice(0, POLICY_MESSAGE_LENGTH).join("")}…`;
+  return `:no_entry: <code>${escapeText(failure.namespace)}</code> · ${escapeText(message)}`;
+}
+
+// The line of a row whose policies could not run (record 0106): a warning,
+// and the box stays. The reason is one of Sluiceway's own (record 0022).
+export function policiesNotRunLine(
+  outcome: Extract<PolicyOutcome, { kind: "not-run" }>,
+  runUrl: string,
+): string {
+  return `:warning: the policies did not run: ${policyRunFailureText(outcome.reason)}. Nothing was checked, see the [run](${runUrl}).`;
+}
+
+// The lines a pending row carries for its policies (record 0106). A failed
+// policy is never behind a click, like a destroy (record 0027): the lead line
+// says the box is gone, and each failure has a line, up to the cap. A
+// redacted or shortened row keeps the count and points at the page.
+function policyLines(row: PendingRow, options: RowOptions): string[] {
+  const { policies } = row;
+  if (policies === undefined || policies.kind === "passed") return [];
+  if (policies.kind === "not-run") return [policiesNotRunLine(policies, row.runUrl)];
+  const { failures } = policies.report;
+  const lead = `:no_entry: **${policyWords(failures.length)} failed**, so this change has no box until it passes`;
+  const preview = `[preview](${row.previewUrl ?? row.runUrl})`;
+  if (options.redact || (options.level ?? 0) >= 2) {
+    return [`${lead}. They are named on the ${preview}.`];
+  }
+  const named = failures.slice(0, FAILURES_ON_A_ROW);
+  const rest = failures.length - named.length;
+  return [
+    `${lead}:`,
+    ...named.map((failure) => policyFailureLine(failure)),
+    ...(rest > 0 ? [`:no_entry: and ${rest} more on the ${preview}`] : []),
+  ];
+}
+
 function pendingRow(row: PendingRow, options: RowOptions): string[] {
   const level = options.level ?? 0;
   const changes = [...row.diff.changes].sort((a, b) => byCodeUnit(a.address, b.address));
@@ -473,7 +542,10 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
   const folded = changes.filter((change) => !isDestroy(change));
   const destroys = deletes.length + replaces.length;
   const summary = `[summary](${row.runUrl})`;
-  const box = options.readOnly ? "" : `[${row.ticked ? "x" : " "}] `;
+  // A change that fails a policy has no box (record 0106), like a read-only
+  // dashboard: it holds no tick and asks for none.
+  const policyFailed = row.policies?.kind === "failed";
+  const box = options.readOnly || policyFailed ? "" : `[${row.ticked ? "x" : " "}] `;
   // Drift the row also shows (record 0055). A resource that is gone outside
   // the code is no destroy: a deploy creates it again.
   const drift = sortedDrift(row.diff);
@@ -492,15 +564,17 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
         drift: drift.length > 0,
         dependsOn: row.dependsOn,
         fingerprint: row.fingerprint,
+        policyFailed,
       },
     )}`,
   ];
   if (row.attribution) lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
   if (row.failure) lines.push(failureLine(row.failure, options.timeZone));
+  lines.push(...policyLines(row, options));
   if (row.waitsOnMerge) lines.push(onMergeNote(row.waitsOnMerge));
   if (row.valueEveryRun) lines.push(VALUE_EVERY_RUN_NOTE);
   if (row.pendingAgain) lines.push(pendingAgainLine(row.pendingAgain));
-  if (row.orphanTick && !options.readOnly) lines.push(ORPHAN_TICK_NOTE);
+  if (row.orphanTick && !options.readOnly && !policyFailed) lines.push(ORPHAN_TICK_NOTE);
 
   // A row that lists no delete or replace line still carries the warning, with
   // the counts that caused it. The lines are all there or none are.
