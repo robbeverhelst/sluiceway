@@ -110,6 +110,7 @@ The file is optional and sits at the repo root. Since slice 5.9 `sluiceway.yml` 
 | `scan.unrelated` | `[]` | Globs for files that claim nothing and force nothing | 0010 |
 | `scan.logDiff` | `false` | Print the tool's own diff of every pending stack, values included, in that stack's group of the job log and nowhere else | 0048 |
 | `drift.enabled` | `false` | Check every stack for drift in each scan that a schedule starts or a person starts with Run workflow, and in a push's scan only for the stacks whose row showed drift. There is no `drift.schedule`: the loader says the cron goes in the workflow | 0055 |
+| `valueFingerprint` | `true` | Every pending and drifted row carries a value fingerprint, a hash of the values its diff holds that the row does not show, and `apply` compares it after the diff hash: a value that changed since the tick stops the deploy. A value the tool marks secret enters as its mark. Off for a repo whose programs make values that differ on every run | 0102 |
 | `phases` | `[]` | Names of phases in deploy order. A stack in a phase depends on every stack in every earlier phase | 0067 |
 | `stacks[].path` | required per entry | Directory of the stack, relative to the repo root | 0006 |
 | `stacks[].name` | none | Name of the stack. Without it the entry covers every stack in `path` | 0006 |
@@ -123,6 +124,7 @@ The file is optional and sits at the repo root. Since slice 5.9 `sluiceway.yml` 
 | `stacks[].phase` | none | One of `phases`, or `{ from: <key> }`: the text under that key of the stack's Pulumi project file, under `config` or at the top level. The stack depends on every stack in every earlier phase, and `dependsOn` adds to that | 0067 |
 | `stacks[].deploy` | `on-tick` | `on-tick`: the stack deploys when a person ticks its row. `on-merge`: it deploys by itself after the scan of a push to the default branch found it pending, through the path of a tick, attributed to whoever pushed. A delete or replace, drift, `deploys: false`, a read-only dashboard, any other scan and a dependency that waits for a tick keep it waiting for a tick, and its row says why | 0095 |
 | `stacks[].drift.enabled` | the top level | The drift check on or off for the stacks of this entry, in the same scans as `drift.enabled` | 0059 |
+| `stacks[].valueFingerprint` | the top level | The value fingerprint on or off for the stacks of this entry | 0102 |
 | `stacks[].options` | `{}` | Named adapter options, only with `tool`. OpenTofu and Terraform: `workspace`, `varFiles` and `wrapper` (`terragrunt` or `cdktf`). Helm: `release`, `namespace`, `chart`, `version` (a chart reference only), `valuesFiles` and `createNamespace`. kubectl: `context`, `namespace`, `recursive`, `prune`, `forceConflicts` and `fieldManager` | 0006, 0015, 0053, 0058, 0060, 0068, 0069, 0070 |
 | `discovery.rootModules` | `true` | Find OpenTofu and Terraform root modules from their files: not a local module source of another directory, not under `modules/`, a backend or cloud block, one workspace, no var file that chooses, and a lock file or `.tofu` files that name the tool. Each is one stack in the default workspace with its path as its id. A directory a `stacks` entry with a tool names stays the entry's. `discovery` is a mapping of switches that the adapters name, and an unknown one fails the config | 0092 |
 | `attribution.lookback` | `100` | How many of the newest commits a job walks for attribution, 1 to 1,000, one GraphQL page per 100 | 0026, 0072 |
@@ -144,13 +146,14 @@ Rules for config loading:
 |---|---|---|
 | Bot | `github-actions[bot]`, type `Bot` | 0017 |
 | Deployment `task` | `sluiceway:<stack id>` | 0003 |
-| Deployment payload | `{ "v": 1, "hash", "ticker", "run" }`, plus `"drift": true` when the approved hash covers drift, and since slice 5.9 `"attempt"`, the attempt of the run that created the record. `behind` on a queued record (0056), `merge` in place of `hash` on a merge record (0054), `onMerge` (0095). Since slice 5.33 the schema is `schema/deployment-payload.schema.json`, and every payload is checked against it before it is written | 0003, 0055, 0044, 0096 |
+| Deployment payload | `{ "v": 1, "hash", "ticker", "run" }`, plus `"drift": true` when the approved hash covers drift, and since slice 5.9 `"attempt"`, the attempt of the run that created the record. `behind` on a queued record (0056), `merge` in place of `hash` on a merge record (0054), `onMerge` (0095), `fingerprint`, the value fingerprint the tick approved (0102). Since slice 5.33 the schema is `schema/deployment-payload.schema.json`, and every payload is checked against it before it is written | 0003, 0055, 0044, 0096 |
 | Default environment label | `sluiceway` | 0003 |
 | Concurrency groups | The one-step workflow: `sluiceway-${{ github.event.issue.number }}` with `queue: max`. The split workflow: `sluiceway-scan`, `sluiceway-resolve`, `sluiceway-apply-<stack id>` | 0004, 0025, 0035, 0077 |
 | Dispatch input of the scan after a merge | `sluiceway-merged`, the merged pull request numbers joined with commas, sent only to a workflow that declares it | 0064 |
 | Marker version | `1` | 0009 |
-| Row states | `pending`, `deploying`, `in-sync`, `preview-failed`, `queued` since slice 4.4, and `drift` since slice 4.3, with the marker key `drift="true"` on a row whose hash covers drift, and since slice 4.7 `depends-on="<ids>"` on a row of a stack with `dependsOn: auto` | 0009, 0055, 0056, 0059 |
+| Row states | `pending`, `deploying`, `in-sync`, `preview-failed`, `queued` since slice 4.4, and `drift` since slice 4.3, with the marker key `drift="true"` on a row whose hash covers drift, and since slice 4.7 `depends-on="<ids>"` on a row of a stack with `dependsOn: auto`, and since slice 5.37 `fingerprint="<16 hex>"`, the value fingerprint, on a pending or drifted row whose diff holds values the row does not show | 0009, 0055, 0056, 0059, 0102 |
 | Diff hash | SHA-256 of the canonical document, first 16 hex characters | 0008 |
+| Value fingerprint | SHA-256 of the hidden values of a change, and of the change fingerprints of a row, first 16 hex characters each; a secret enters as `{"path":p,"secret":true}` | 0102 |
 | Body target, hard limits | 58,000 characters, 65,536 characters, 262,144 bytes | 0028 |
 | Summary budget | 1,000,000 bytes | 0037 |
 | Preview page | A check run named `sluiceway / <stack id>`, `completed`, `neutral`, its text cut on a line at 65,535 bytes. Needs `checks: write` | 0050 |

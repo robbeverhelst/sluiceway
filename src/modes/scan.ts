@@ -75,6 +75,7 @@ import { everyPreviewFailed } from "../core/scan-result.ts";
 import { shownValues } from "../core/show-values.ts";
 import { type Stack, stackId } from "../core/stack.ts";
 import type { Deploy } from "../core/tick-judgement.ts";
+import { valueFingerprint } from "../core/value-fingerprint.ts";
 import { type RunOfTheWorkflow, waitingRun } from "../core/waiting-run.ts";
 import { attributionSource } from "../github/attribution.ts";
 import { type DashboardResult, findDashboard } from "../github/dashboard.ts";
@@ -1518,6 +1519,8 @@ async function handOffMerges(
           hash,
           // The hash covers drift when this scan found some (record 0055).
           drift: (result.diff.drift ?? []).length > 0,
+          // And the record carries the value fingerprint (record 0102).
+          fingerprint: valueFingerprint(result.diff),
         });
         handedOn.push({ stack: id, environment: stack.environment, deployment: record.deployment });
         if (record.unfinished !== undefined) throw record.unfinished;

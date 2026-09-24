@@ -362,7 +362,8 @@ async function resolveTicks(
   // is taken. A record without a status is an open deployment too, so one
   // whose status failed is still handed on.
   const started: Started[] = [];
-  for (const { stackId: id, environment, ticker, hash, drift, behind } of judgement.deploys) {
+  for (const one of judgement.deploys) {
+    const { stackId: id, environment, ticker, hash, drift, behind, fingerprint } = one;
     try {
       const record = await watch.time("opening", () =>
         openRecord(context, {
@@ -373,6 +374,7 @@ async function resolveTicks(
           hash,
           behind,
           drift,
+          fingerprint,
         }),
       );
       started.push({ stackId: id, environment, deployment: record.deployment, ticker, behind });

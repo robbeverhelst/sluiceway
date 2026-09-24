@@ -815,3 +815,43 @@ describe("the bulk box and its confirm box (record 0083)", () => {
     ]);
   });
 });
+
+// Record 0102: the value fingerprint of a ticked row goes on the deploy, from
+// the tick itself or, for a confirm box, from the live row.
+describe("the value fingerprint on a deploy (record 0102)", () => {
+  test("a row tick hands its fingerprint on", () => {
+    const tick: Tick = {
+      kind: "row",
+      stackId: "a:prod",
+      hash: "h1",
+      fingerprint: "f1f1f1f1f1f1f1f1",
+    };
+    expect(judged(read([by(tick)]))).toMatchObject({
+      deploys: [{ stackId: "a:prod", hash: "h1", fingerprint: "f1f1f1f1f1f1f1f1" }],
+    });
+  });
+
+  test("a tick without one hands none on", () => {
+    const tick: Tick = { kind: "row", stackId: "a:prod", hash: "h1" };
+    const [deploy] = judged(read([by(tick)])).deploys;
+    expect(deploy?.fingerprint).toBeUndefined();
+  });
+
+  test("a confirm box takes the fingerprint of each live row", () => {
+    const confirm: Tick = {
+      kind: "confirm",
+      section: "pending",
+      stacks: [{ stackId: "a:prod", hash: "hash-a:prod" }],
+    };
+    const rows = rowsIn("pending", "a:prod").map((row) =>
+      row.known ? { ...row, fingerprint: "a1a1a1a1a1a1a1a1" } : row,
+    );
+    const handed = handOnConfirms(read([by(confirm)], { rows }));
+    expect(handed.named[0]?.tick).toEqual({
+      kind: "row",
+      stackId: "a:prod",
+      hash: "hash-a:prod",
+      fingerprint: "a1a1a1a1a1a1a1a1",
+    });
+  });
+});

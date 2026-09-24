@@ -19,6 +19,7 @@ const DEFAULTS: Config = {
   ignore: [],
   scan: { unrelated: [], logDiff: false },
   drift: { enabled: false },
+  valueFingerprint: true,
   attribution: { lookback: 100, names: 5 },
   phases: [],
   stacks: [],
@@ -63,6 +64,7 @@ scan:
     - "**/*.md"
 drift:
   enabled: true
+valueFingerprint: false
 phases: [infrastructure, applications]
 `);
     expect(config).toEqual({
@@ -82,6 +84,7 @@ phases: [infrastructure, applications]
       ignore: ["**/*:dev"],
       scan: { unrelated: ["**/*.md"], logDiff: false },
       drift: { enabled: true },
+      valueFingerprint: false,
       attribution: { lookback: 100, names: 5 },
       phases: ["infrastructure", "applications"],
       stacks: [],
@@ -111,6 +114,7 @@ const TOP_KEYS = [
   "ignore",
   "scan",
   "drift",
+  "valueFingerprint",
   "attribution",
   "phases",
   "stacks",
@@ -354,6 +358,7 @@ stacks:
       "phase",
       "deploy",
       "drift",
+      "valueFingerprint",
       "options",
     ];
     expect(issues("stacks:\n  - path: a\n    stack: prod\n    approvers: write\n")).toEqual([
@@ -567,7 +572,7 @@ describe("a file that is not a mapping", () => {
 describe("the error", () => {
   test("names the file and lists every problem in words, top to bottom", () => {
     expect(() => parseConfig("tickerz: admin\ndashboard:\n  pin: 1\n")).toThrow(
-      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, attribution, phases, stacks, discovery, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
+      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, ignore, scan, drift, valueFingerprint, attribution, phases, stacks, discovery, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
     );
   });
 
@@ -725,5 +730,30 @@ describe("mergeAndDeploy", () => {
         path: ["mergeAndDeploy", "preview"],
       },
     ]);
+  });
+});
+
+// Record 0102: the value fingerprint is on for every repo, and a repo or a
+// stack entry turns it off.
+describe("the value fingerprint switch", () => {
+  test("is on by default and can be turned off for the repo", () => {
+    expect(parseConfig("").valueFingerprint).toBe(true);
+    expect(parseConfig("valueFingerprint: false\n").valueFingerprint).toBe(false);
+  });
+
+  test("a stack entry takes it too, and leaves it out when unset", () => {
+    expect(parseConfig("stacks:\n  - path: apps/a\n    valueFingerprint: false\n").stacks).toEqual([
+      { path: "apps/a", valueFingerprint: false },
+    ]);
+    expect(parseConfig("stacks:\n  - path: apps/a\n").stacks).toEqual([{ path: "apps/a" }]);
+  });
+
+  test("anything but true or false is a config error at the key", () => {
+    expect(issues("valueFingerprint: maybe\n").map((issue) => issue.path)).toEqual([
+      ["valueFingerprint"],
+    ]);
+    expect(
+      issues("stacks:\n  - path: apps/a\n    valueFingerprint: 1\n").map((issue) => issue.path),
+    ).toEqual([["stacks", 0, "valueFingerprint"]]);
   });
 });

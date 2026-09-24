@@ -457,3 +457,28 @@ describe("a tick on an update waiting to merge", () => {
     ]);
   });
 });
+
+// Record 0102: a ticked row's value fingerprint rides on the tick, so
+// `resolve` can put it on the record. It is not part of what makes a stretch:
+// the ticker is named by stack id and hash, as before.
+describe("the value fingerprint on a tick", () => {
+  const withFingerprint = [
+    '- [x] **stack-a** · 1 to create <!-- sluiceway:row stack="stack-a" state="pending" hash="aaaaaaaaaaaaaaaa" fingerprint="f65a69fe79dd93c3" -->',
+    "  <!-- /sluiceway:row -->",
+  ].join("\n");
+
+  test("is read from the row", () => {
+    expect(ticksIn(body(withFingerprint))).toEqual([
+      {
+        kind: "row",
+        stackId: "stack-a",
+        hash: "aaaaaaaaaaaaaaaa",
+        fingerprint: "f65a69fe79dd93c3",
+      },
+    ]);
+  });
+
+  test("a row without one gives a tick without one", () => {
+    expect(ticksIn(body(row("stack-a", "x", "aaaaaaaaaaaaaaaa")))).toEqual([A]);
+  });
+});

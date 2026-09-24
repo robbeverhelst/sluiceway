@@ -97,6 +97,8 @@ export type Opening = {
       drift?: boolean | undefined;
       // Opened on merge, and `ticker` is whoever merged (record 0095).
       onMerge?: boolean | undefined;
+      // The value fingerprint the tick approved (record 0102).
+      fingerprint?: string | undefined;
     }
   // The pull request a tick merged. No hash: nothing was previewed yet
   // (record 0054).
@@ -129,6 +131,7 @@ export async function openRecord(writer: RecordWriter, opening: Opening): Promis
             behind: opening.behind,
             ...(opening.drift ? { drift: true } : {}),
             ...(opening.onMerge ? { onMerge: true } : {}),
+            ...(opening.fingerprint === undefined ? {} : { fingerprint: opening.fingerprint }),
           }),
   });
   try {
@@ -167,6 +170,7 @@ export async function startQueuedRecord(
     hash: payload.hash,
     drift: payload.drift,
     onMerge: payload.onMerge,
+    fingerprint: payload.fingerprint,
   });
   const started = {
     ...opened,

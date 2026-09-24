@@ -49,6 +49,11 @@
           "description": "The record was opened after the scan of a merge, for a stack set to deploy on merge. Absent otherwise.",
           "type": "boolean",
           "const": true
+        },
+        "fingerprint": {
+          "description": "The value fingerprint the tick approved: the first 16 hex characters of a SHA-256 over the values of the diff that the row did not show. The deploy goes out only when a fresh preview gives the same one. Absent on a record written before the key came, or with the check off for the stack.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
         }
       },
       "required": [

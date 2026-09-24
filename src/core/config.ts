@@ -155,6 +155,13 @@ const stackEntry = z
       })
       .describe("The drift check of these stacks. Default: the top level drift.")
       .exactOptional(),
+    // The value fingerprint of these stacks, like the top level (record 0102).
+    valueFingerprint: z
+      .boolean()
+      .describe(
+        "Cover the values these stacks' rows do not show with a fingerprint, or not, whatever valueFingerprint at the top level says. Turn it off for a stack whose program makes a value that differs on every run. Default: the top level valueFingerprint.",
+      )
+      .exactOptional(),
     // Named adapter options (records 0006, 0015). Only an entry with a tool
     // takes them, and its adapter checks their names and values (record 0053).
     options: z
@@ -323,6 +330,15 @@ export const configSchema = z
           .default(false),
       })
       .prefault({}),
+    // The value fingerprint (record 0102): a tick covers the values a row does
+    // not show. On for every repo, off where a program makes a value that
+    // differs on every run.
+    valueFingerprint: z
+      .boolean()
+      .describe(
+        "Cover the values a row does not show with a fingerprint on the row, so a tick approves them too: a value that changed between the tick and the deploy stops the deploy, and the row says so without naming the value. A value the tool marks secret never reaches the fingerprint. Turn it off, here or per stack, where a program makes a value that differs on every run.",
+      )
+      .default(true),
     // Slice 5.5 (record 0072): how far attribution looks back, and how many
     // pull requests and direct pushes a row names before the rest is a count.
     attribution: z
@@ -842,6 +858,9 @@ export interface ConfiguredStack {
   // that deploys on a tick, the default, so nothing changes for a repo that
   // does not use it.
   deploy?: "on-merge";
+  // `valueFingerprint` of its stack entries (record 0102). Absent when no
+  // entry sets it, and the top level decides.
+  valueFingerprint?: boolean;
 }
 
 const DEFAULT_ENVIRONMENT = "sluiceway";
@@ -872,6 +891,9 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
     const previewTimeout = entries.findLast((entry) => entry.previewTimeout)?.previewTimeout;
     const drift = entries.findLast((entry) => entry.drift)?.drift?.enabled;
     const deploy = entries.findLast((entry) => entry.deploy)?.deploy;
+    const valueFingerprint = entries.findLast(
+      (entry) => entry.valueFingerprint !== undefined,
+    )?.valueFingerprint;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     return {
@@ -889,6 +911,7 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
         : {}),
       ...(drift === undefined ? {} : { drift }),
       ...(deploy === "on-merge" ? { deploy } : {}),
+      ...(valueFingerprint === undefined ? {} : { valueFingerprint }),
     };
   });
 }

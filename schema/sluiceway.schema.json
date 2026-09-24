@@ -156,6 +156,11 @@
       },
       "additionalProperties": false
     },
+    "valueFingerprint": {
+      "default": true,
+      "type": "boolean",
+      "description": "Cover the values a row does not show with a fingerprint on the row, so a tick approves them too: a value that changed between the tick and the deploy stops the deploy, and the row says so without naming the value. A value the tool marks secret never reaches the fingerprint. Turn it off, here or per stack, where a program makes a value that differs on every run."
+    },
     "attribution": {
       "default": {},
       "type": "object",
@@ -319,6 +324,10 @@
             ],
             "additionalProperties": false,
             "description": "The drift check of these stacks. Default: the top level drift."
+          },
+          "valueFingerprint": {
+            "type": "boolean",
+            "description": "Cover the values these stacks' rows do not show with a fingerprint, or not, whatever valueFingerprint at the top level says. Turn it off for a stack whose program makes a value that differs on every run. Default: the top level valueFingerprint."
           },
           "options": {
             "description": "Named adapter options of the tool. Only an entry with tool takes them.",

@@ -303,3 +303,30 @@ stacks:
     );
   });
 });
+
+// The value fingerprint per stack (record 0102): a stack entry turns it off or
+// on for its stacks, and the entry with a name wins.
+describe("the value fingerprint on a stack", () => {
+  test("is absent when no entry sets it, so the top level decides", () => {
+    expect(
+      applyConfig(parseConfig("valueFingerprint: false\n"), FOUND).map(
+        (one) => one.valueFingerprint,
+      ),
+    ).toEqual([undefined, undefined, undefined]);
+  });
+
+  test("an entry sets its stacks, and the entry with a name wins", () => {
+    const configured = applyConfig(
+      parseConfig(`
+stacks:
+  - path: apps/grafana
+    name: prod
+    valueFingerprint: true
+  - path: apps/grafana
+    valueFingerprint: false
+`),
+      FOUND,
+    );
+    expect(configured.map((one) => one.valueFingerprint)).toEqual([false, true, undefined]);
+  });
+});

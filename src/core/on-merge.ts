@@ -12,6 +12,7 @@ import type { Diff } from "./diff.ts";
 import { diffHash } from "./diff-hash.ts";
 import { type PhaseGroup, waitsByPhase } from "./phases.ts";
 import type { Deploy } from "./tick-judgement.ts";
+import { valueFingerprint } from "./value-fingerprint.ts";
 
 // `stacks[].deploy`. The default is a tick.
 export type DeployOn = "on-tick" | "on-merge";
@@ -69,13 +70,19 @@ export function onMergeDeploys(input: OnMergeInput): OnMergeDecision {
   // under the Pending heading says so once (record 0045).
   if (input.readOnly) return { deploys: [], waits };
   const hashes = new Map<string, string>();
+  // The value fingerprint of each row that goes (record 0102).
+  const fingerprints = new Map<string, string>();
   for (const stack of input.stacks) {
     if (stack.deploy !== "on-merge" || input.open.has(stack.id)) continue;
     const result = input.previewed.get(stack.id);
     if (!result?.ok || result.diff.changes.length === 0) continue;
     const wait = waitOf(input, result.diff);
     if (wait) waits.set(stack.id, wait);
-    else hashes.set(stack.id, diffHash(result.diff));
+    else {
+      hashes.set(stack.id, diffHash(result.diff));
+      const fingerprint = valueFingerprint(result.diff);
+      if (fingerprint !== undefined) fingerprints.set(stack.id, fingerprint);
+    }
   }
 
   // The order of a chain, and what holds a stack back, are the rules of a
@@ -113,6 +120,7 @@ export function onMergeDeploys(input: OnMergeInput): OnMergeDecision {
       ticker,
       hash: hashes.get(stackId) ?? "",
       drift: false,
+      ...(fingerprints.has(stackId) ? { fingerprint: fingerprints.get(stackId) } : {}),
       behind,
     }),
   );

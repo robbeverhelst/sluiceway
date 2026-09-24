@@ -28,6 +28,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "ignore",
       "scan",
       "drift",
+      "valueFingerprint",
       "attribution",
       "phases",
       "stacks",

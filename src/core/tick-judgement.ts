@@ -104,6 +104,8 @@ export interface Deploy {
   ticker: string;
   hash: string;
   drift: boolean;
+  // The value fingerprint of the ticked row (record 0102), when it has one.
+  fingerprint?: string | undefined;
   behind: string[] | undefined;
 }
 
@@ -225,14 +227,18 @@ export function knownTicks<T extends BodyTick>(
 function indexTicks(named: readonly NamedTick[]) {
   const hashes = new Map<string, string>();
   const drifted = new Set<string>();
+  // The value fingerprint of each ticked row (record 0102).
+  const fingerprints = new Map<string, string>();
   for (const { tick } of named) {
     if (tick.kind !== "row") continue;
     hashes.set(tick.stackId, tick.hash);
     if (tick.drift) drifted.add(tick.stackId);
+    if (tick.fingerprint === undefined) fingerprints.delete(tick.stackId);
+    else fingerprints.set(tick.stackId, tick.fingerprint);
   }
   const mergeTicks = new Map<number, MergeTick>();
   for (const { tick } of named) if (tick.kind === "merge") mergeTicks.set(tick.pr, tick);
-  return { hashes, drifted, mergeTicks };
+  return { hashes, drifted, fingerprints, mergeTicks };
 }
 
 // What the confirm boxes of one run come to (record 0083).
@@ -297,12 +303,18 @@ export function handOnConfirms(
         continue;
       }
       handed.push(id);
+      // The confirm box names hashes only: the value fingerprint comes from
+      // the live row of the stack (record 0102).
+      const fingerprint = read.rows.find((row) => row.known && row.stackId === id);
       result.named.push({
         tick: {
           kind: "row",
           stackId: id,
           hash,
           ...(tick.section === "drift" ? { drift: true as const } : {}),
+          ...(fingerprint?.known && fingerprint.fingerprint !== undefined
+            ? { fingerprint: fingerprint.fingerprint }
+            : {}),
         },
         ticker,
         via: tick.section,
@@ -441,7 +453,7 @@ export function ticksToLookUp(read: TicksRead): TickToJudge[] {
 // The verdict on every tick of the run, from what was read and the answers
 // of the lookups `ticksToLookUp` asked for, in that order.
 export function judgeTicks(read: TicksRead, lookedUp: readonly LookedUp[]): Judgement {
-  const { hashes, drifted, mergeTicks } = indexTicks(read.named);
+  const { hashes, drifted, fingerprints, mergeTicks } = indexTicks(read.named);
   const { findings, bulk, dropped, clear, clearMerges, ...triaged } = triage(read);
   let rescanHandled = triaged.rescanHandled;
 
@@ -564,8 +576,17 @@ export function judgeTicks(read: TicksRead, lookedUp: readonly LookedUp[]): Judg
     const hash = hashes.get(id);
     const ticker = tickers.get(id);
     if (!stack || hash === undefined || ticker === undefined) return [];
+    const fingerprint = fingerprints.get(id);
     return [
-      { stackId: id, environment: stack.environment, ticker, hash, drift: drifted.has(id), behind },
+      {
+        stackId: id,
+        environment: stack.environment,
+        ticker,
+        hash,
+        drift: drifted.has(id),
+        ...(fingerprint === undefined ? {} : { fingerprint }),
+        behind,
+      },
     ];
   });
 

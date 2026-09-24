@@ -163,8 +163,8 @@ describe("the value fingerprint on the payload", () => {
 
   test("a merge record never carries one", () => {
     const merge = { v: 1, ticker: "alice", run: "4242", merge: 519 };
-    expect(
-      deploymentPayloadSchema.safeParse({ ...merge, fingerprint: FINGERPRINT }).success,
-    ).toBe(false);
+    expect(deploymentPayloadSchema.safeParse({ ...merge, fingerprint: FINGERPRINT }).success).toBe(
+      false,
+    );
   });
 });

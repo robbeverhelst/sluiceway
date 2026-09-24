@@ -41,9 +41,10 @@ export interface HistoryPage {
 // the ticked bulk box of a section or its confirm box at exactly the stacks
 // and hashes it names (record 0083).
 // `drift` is the row's word that its hash covers drift (record 0055). It
-// changes nothing about who ticked, only what `apply` checks again.
+// changes nothing about who ticked, only what `apply` checks again. So does
+// `fingerprint`, the row's value fingerprint (record 0102).
 export type Tick =
-  | { kind: "row"; stackId: string; hash: string; drift?: true }
+  | { kind: "row"; stackId: string; hash: string; drift?: true; fingerprint?: string }
   | { kind: "merge"; pr: number; stackIds: string[]; head: string }
   | { kind: "rescan" }
   | BulkTick;
@@ -121,6 +122,7 @@ export function ticksIn(body: string): Tick[] {
         stackId: row.stackId,
         hash: row.hash,
         ...(row.drift ? { drift: true as const } : {}),
+        ...(row.fingerprint === undefined ? {} : { fingerprint: row.fingerprint }),
       });
     }
   }
