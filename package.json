@@ -1,6 +1,6 @@
 {
   "name": "sluiceway",
-  "version": "0.35.0",
+  "version": "0.36.0",
   "description": "One GitHub issue that shows which infrastructure stacks have changes waiting, and deploys a stack when someone ticks its box.",
   "type": "module",
   "license": "Apache-2.0",

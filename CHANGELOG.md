@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.0](https://github.com/sluiceway/sluiceway/compare/v0.35.0...v0.36.0) (2026-09-24)
+
+
+### Features
+
+* a tick outside the deploy window waits for it instead of going out ([#249](https://github.com/sluiceway/sluiceway/issues/249)) ([1f3d4db](https://github.com/sluiceway/sluiceway/commit/1f3d4db95a9e9379ec7ff698547acf69ebcab7e3))
+
 ## [0.35.0](https://github.com/sluiceway/sluiceway/compare/v0.34.0...v0.35.0) (2026-09-24)
 
 
