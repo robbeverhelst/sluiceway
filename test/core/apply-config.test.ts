@@ -412,3 +412,69 @@ stacks:
     expect(configured.map((one) => one.deployWindows)).toEqual([[SATURDAY], undefined, [WINDOW]]);
   });
 });
+
+// Policies (record 0106): `policies` at the top level names the directories
+// of Rego policies every pending stack is tested against, and an entry's
+// `policies` add to that for its stacks, the way inputs add up.
+describe("the policies of a stack", () => {
+  test("none by default, and the key is absent so a repo without policies changes nothing", () => {
+    expect(applyConfig(parseConfig(undefined), FOUND).map((one) => one.policies)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  test("the top level names them for every stack, as written, each once", () => {
+    const configured = applyConfig(
+      parseConfig("policies: [policies, ./policies/common/, policies]\n"),
+      FOUND,
+    );
+    expect(configured.map((one) => one.policies)).toEqual([
+      ["policies", "policies/common"],
+      ["policies", "policies/common"],
+      ["policies", "policies/common"],
+    ]);
+  });
+
+  test("an entry adds its own for its stacks, after the top level ones", () => {
+    const configured = applyConfig(
+      parseConfig(`
+policies: [policies]
+stacks:
+  - path: apps/grafana
+    name: prod
+    policies: [policies/prod]
+  - path: apps/grafana
+    policies: [policies/apps, policies]
+`),
+      FOUND,
+    );
+    expect(configured.map((one) => one.policies)).toEqual([
+      ["policies", "policies/apps"],
+      ["policies", "policies/apps", "policies/prod"],
+      ["policies"],
+    ]);
+    expect(
+      applyConfig(parseConfig("stacks:\n  - path: envs/prod\n    policies: [p]\n"), FOUND).map(
+        (one) => one.policies,
+      ),
+    ).toEqual([undefined, undefined, ["p"]]);
+  });
+
+  test("a path outside the repo, an absolute one and a backslash are refused as a stack path is", () => {
+    expect(issues("policies: [/etc/policies]\n", FOUND)).toEqual([
+      { kind: "absolute-path", value: "/etc/policies", path: ["policies", 0] },
+    ]);
+    expect(issues("policies: [../shared]\n", FOUND)).toEqual([
+      { kind: "path-leaves-repo", value: "../shared", path: ["policies", 0] },
+    ]);
+    expect(issues("stacks:\n  - path: envs/prod\n    policies: ['a\\\\b']\n", FOUND)).toEqual([
+      { kind: "backslash-in-path", value: "a\\\\b", path: ["stacks", 0, "policies", 0] },
+    ]);
+  });
+
+  test("a value that is not a list of paths is refused", () => {
+    expect(() => parseConfig("policies: policies\n")).toThrow("policies: expected a list");
+  });
+});

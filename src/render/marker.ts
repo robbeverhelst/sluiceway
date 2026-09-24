@@ -108,6 +108,10 @@ export interface RowFacts {
   // diff holds that the row does not show. `resolve` copies it onto the
   // record, and `apply` compares it after the hash.
   fingerprint?: string | undefined;
+  // A policy failed on the change (record 0106), so the row has no box. A
+  // display cache like `failed`, and the one fact `resolve` and the bulk box
+  // read to refuse a tick on such a row.
+  policyFailed?: boolean | undefined;
 }
 
 // A list of stack ids in one marker value, split on commas. An id is
@@ -224,6 +228,7 @@ export function rowMarker(facts: RowFacts): string {
     pairs.push(["depends-on", encodeIds(facts.dependsOn)]);
   }
   if (facts.fingerprint !== undefined) pairs.push(["fingerprint", facts.fingerprint]);
+  if (facts.policyFailed) pairs.push(["policy", "failed"]);
   return marker("row", pairs);
 }
 
@@ -320,6 +325,8 @@ export type ParsedRow =
       dependsOn?: string[];
       // The value fingerprint (record 0102). Absent when the marker has none.
       fingerprint?: string;
+      // A policy failed on the change, so the row has no box (record 0106).
+      policyFailed: boolean;
       ticked: boolean;
       text: string;
     }
@@ -494,6 +501,7 @@ export function parseDashboard(body: string): ParsedDashboard {
       ...(count("gone") > 0 ? { gone: count("gone") } : {}),
       ...(dependsOn === "" ? {} : { dependsOn: decodeIds(dependsOn) }),
       ...(fingerprint === undefined ? {} : { fingerprint }),
+      policyFailed: pairs.get("policy") === "failed",
       ticked: match[1] === "x" || match[1] === "X",
       text,
     });

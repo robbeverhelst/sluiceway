@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "conftest",
+    "test",
+    "--output",
+    "json",
+    "--all-namespaces",
+    "--no-color",
+    "--policy",
+    "does-not-exist",
+    "inputs/pass.json"
+  ],
+  "exitCode": 1,
+  "stdout": "",
+  "stderr": "Error: running test: load: loading policies: load: 1 error occurred during loading: stat does-not-exist: no such file or directory\n"
+}

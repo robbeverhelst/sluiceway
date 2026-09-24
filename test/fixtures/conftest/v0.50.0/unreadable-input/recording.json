@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "conftest",
+    "test",
+    "--output",
+    "json",
+    "--all-namespaces",
+    "--no-color",
+    "--policy",
+    "policy",
+    "inputs/broken.json"
+  ],
+  "exitCode": 1,
+  "stdout": "",
+  "stderr": "Error: running test: parse configurations: parser unmarshal: unmarshal json: invalid character 'o' in literal null (expecting 'u'), path: inputs/broken.json\n"
+}

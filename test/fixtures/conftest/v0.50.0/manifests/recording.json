@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "conftest",
+    "test",
+    "--output",
+    "json",
+    "--all-namespaces",
+    "--no-color",
+    "--policy",
+    "policy",
+    "inputs/manifests.yaml"
+  ],
+  "exitCode": 1,
+  "stdout": "[\n\t{\n\t\t\"filename\": \"inputs/manifests.yaml\",\n\t\t\"namespace\": \"main\",\n\t\t\"successes\": 4\n\t},\n\t{\n\t\t\"filename\": \"inputs/manifests.yaml\",\n\t\t\"namespace\": \"manifests\",\n\t\t\"successes\": 1,\n\t\t\"failures\": [\n\t\t\t{\n\t\t\t\t\"msg\": \"web needs at least 2 replicas\"\n\t\t\t}\n\t\t]\n\t},\n\t{\n\t\t\"filename\": \"inputs/manifests.yaml\",\n\t\t\"namespace\": \"prod\",\n\t\t\"successes\": 4\n\t}\n]\n",
+  "stderr": ""
+}

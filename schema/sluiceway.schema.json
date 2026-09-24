@@ -204,6 +204,14 @@
       "type": "boolean",
       "description": "Cover the values a row does not show with a fingerprint on the row, so a tick approves them too: a value that changed between the tick and the deploy stops the deploy, and the row says so without naming the value. A value the tool marks secret never reaches the fingerprint. Turn it off, here or per stack, where a program makes a value that differs on every run."
     },
+    "policies": {
+      "description": "Directories or files of Rego policies, relative to the repo root, that every pending stack's preview is tested against with conftest, which the workflow installs. A policy that fails takes the box off the row until it passes and stops a deploy on merge. Empty runs nothing.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
     "attribution": {
       "default": {},
       "type": "object",
@@ -418,6 +426,14 @@
             "type": "string",
             "minLength": 1,
             "description": "A file of NAME=value lines, relative to the repo root or absolute, that the tool gets for these stacks alone, on top of the job environment and the step's env-file input. Every value is masked first. A file that cannot be loaded fails the preview of these stacks and no other."
+          },
+          "policies": {
+            "description": "Directories or files of Rego policies these stacks are tested against, relative to the repo root, on top of the top level policies.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           },
           "options": {
             "description": "Named adapter options of the tool. Only an entry with tool takes them.",

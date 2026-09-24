@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "conftest",
+    "test",
+    "--output",
+    "json",
+    "--all-namespaces",
+    "--no-color",
+    "--policy",
+    "broken",
+    "inputs/pass.json"
+  ],
+  "exitCode": 1,
+  "stdout": "",
+  "stderr": "Error: running test: load: loading policies: load: 1 error occurred during loading: broken/broken.rego:4: rego_parse_error: unexpected eof token\n\t  msg := \"a rule that does not parse\"\n\t                                    ^\n"
+}

@@ -30,6 +30,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "scan",
       "drift",
       "valueFingerprint",
+      "policies",
       "attribution",
       "phases",
       "stacks",
@@ -74,6 +75,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "drift",
       "valueFingerprint",
       "envFile",
+      "policies",
       "options",
     ]);
   });

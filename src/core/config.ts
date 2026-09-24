@@ -99,6 +99,9 @@ const deployWindow = z
   });
 
 const deployWindows = z.array(deployWindow);
+// The paths of policy directories or files (record 0106): relative to the
+// repo root and inside it, like a stack's path, each once and as written.
+const policyPaths = z.array(stackPath).transform((paths) => [...new Set(paths)]);
 
 // An entry adds settings to stacks that discovery found. It never creates one,
 // except an entry that names a tool, which declares its stack (record 0053).
@@ -210,6 +213,12 @@ const stackEntry = z
       })
       .describe(
         "A file of NAME=value lines, relative to the repo root or absolute, that the tool gets for these stacks alone, on top of the job environment and the step's env-file input. Every value is masked first. A file that cannot be loaded fails the preview of these stacks and no other.",
+      )
+      .exactOptional(),
+    // The policies of these stacks (record 0106), added to the top level ones.
+    policies: policyPaths
+      .describe(
+        "Directories or files of Rego policies these stacks are tested against, relative to the repo root, on top of the top level policies.",
       )
       .exactOptional(),
     // Named adapter options (records 0006, 0015). Only an entry with a tool
@@ -397,6 +406,14 @@ export const configSchema = z
         "Cover the values a row does not show with a fingerprint on the row, so a tick approves them too: a value that changed between the tick and the deploy stops the deploy, and the row says so without naming the value. A value the tool marks secret never reaches the fingerprint. Turn it off, here or per stack, where a program makes a value that differs on every run.",
       )
       .default(true),
+    // Policies on the preview (record 0106): Conftest runs the Rego policies
+    // in these paths over the preview document of every pending stack.
+    // Empty, and nothing runs.
+    policies: policyPaths
+      .describe(
+        "Directories or files of Rego policies, relative to the repo root, that every pending stack's preview is tested against with conftest, which the workflow installs. A policy that fails takes the box off the row until it passes and stops a deploy on merge. Empty runs nothing.",
+      )
+      .default([]),
     // Slice 5.5 (record 0072): how far attribution looks back, and how many
     // pull requests and direct pushes a row names before the rest is a count.
     attribution: z
@@ -942,6 +959,10 @@ export interface ConfiguredStack {
   // them, else the top level's. Absent when there is none, so a repo without
   // windows is what it was.
   deployWindows?: DeployWindow[];
+  // The policy paths of the stack (record 0106): the top level ones, then
+  // what its entries add, each once. Absent when the repo names none, so
+  // nothing changes for a repo without policies.
+  policies?: string[];
 }
 
 const DEFAULT_ENVIRONMENT = "sluiceway";
@@ -981,6 +1002,9 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
       config.deployWindows;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
+    const policies = [
+      ...new Set([...config.policies, ...entries.flatMap((entry) => entry.policies ?? [])]),
+    ];
     return {
       stack,
       environment:
@@ -999,6 +1023,7 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
       ...(valueFingerprint === undefined ? {} : { valueFingerprint }),
       ...(envFile === undefined ? {} : { envFile }),
       ...(windows.length === 0 ? {} : { deployWindows: windows }),
+      ...(policies.length === 0 ? {} : { policies }),
     };
   });
 }

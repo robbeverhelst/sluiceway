@@ -47,8 +47,11 @@ export async function preview(stack: Stack, options: PreviewOptions): Promise<Pr
   );
   if (!folded.ok) return failed({ kind: folded.reason }, words, folded.detail);
   const diff = { stackId: stackId(stack), changes: folded.changes };
-  if (!options.savePlan) return { ok: true, diff, toolLog: words };
+  if (!options.savePlan && !options.keepDocument) return { ok: true, diff, toolLog: words };
 
+  // The manifests are rendered once more for a plan to hold the deploy to,
+  // or for the policies to test (record 0106): the diff plugin prints no
+  // manifest of its own.
   const rendered = await run(renderCommand(helm));
   // Never stdout: it is every manifest, values and all.
   const log = words + stripAnsi(rendered.stderr);
@@ -56,7 +59,8 @@ export async function preview(stack: Stack, options: PreviewOptions): Promise<Pr
   return {
     ok: true,
     diff,
-    plan: new RenderedManifests(stackId(stack), rendered.stdout),
+    ...(options.savePlan ? { plan: new RenderedManifests(stackId(stack), rendered.stdout) } : {}),
+    ...(options.keepDocument ? { document: { text: rendered.stdout, format: "yaml" } } : {}),
     toolLog: log,
   };
 }

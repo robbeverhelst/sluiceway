@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "conftest",
+    "test",
+    "--output",
+    "json",
+    "--all-namespaces",
+    "--no-color",
+    "--policy",
+    "policy",
+    "inputs/fail.json"
+  ],
+  "exitCode": 1,
+  "stdout": "[\n\t{\n\t\t\"filename\": \"inputs/fail.json\",\n\t\t\"namespace\": \"main\",\n\t\t\"successes\": 0,\n\t\t\"warnings\": [\n\t\t\t{\n\t\t\t\t\"msg\": \"urn:pulumi:prod::app::aws:s3/bucket:Bucket::logs is replaced\"\n\t\t\t}\n\t\t],\n\t\t\"failures\": [\n\t\t\t{\n\t\t\t\t\"msg\": \"urn:pulumi:prod::app::aws:s3/bucket:Bucket::uploads must not be deleted\"\n\t\t\t}\n\t\t]\n\t},\n\t{\n\t\t\"filename\": \"inputs/fail.json\",\n\t\t\"namespace\": \"manifests\",\n\t\t\"successes\": 1\n\t},\n\t{\n\t\t\"filename\": \"inputs/fail.json\",\n\t\t\"namespace\": \"prod\",\n\t\t\"successes\": 0,\n\t\t\"failures\": [\n\t\t\t{\n\t\t\t\t\"msg\": \"no deletes in prod \\u003cb\\u003ebold\\u003c/b\\u003e *star* [link](https://example.com) #123 @alice `tick` line one\\nline two\"\n\t\t\t},\n\t\t\t{\n\t\t\t\t\"msg\": \"a structured message\",\n\t\t\t\t\"metadata\": {\n\t\t\t\t\t\"severity\": \"high\"\n\t\t\t\t}\n\t\t\t}\n\t\t]\n\t}\n]\n",
+  "stderr": ""
+}

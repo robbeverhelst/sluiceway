@@ -21,6 +21,7 @@ const DEFAULTS: Config = {
   scan: { unrelated: [], logDiff: false },
   drift: { enabled: false },
   valueFingerprint: true,
+  policies: [],
   attribution: { lookback: 100, names: 5 },
   phases: [],
   stacks: [],
@@ -66,6 +67,7 @@ scan:
 drift:
   enabled: true
 valueFingerprint: false
+policies: [policies]
 phases: [infrastructure, applications]
 `);
     expect(config).toEqual({
@@ -87,6 +89,7 @@ phases: [infrastructure, applications]
       scan: { unrelated: ["**/*.md"], logDiff: false },
       drift: { enabled: true },
       valueFingerprint: false,
+      policies: ["policies"],
       attribution: { lookback: 100, names: 5 },
       phases: ["infrastructure", "applications"],
       stacks: [],
@@ -118,6 +121,7 @@ const TOP_KEYS = [
   "scan",
   "drift",
   "valueFingerprint",
+  "policies",
   "attribution",
   "phases",
   "stacks",
@@ -378,6 +382,7 @@ stacks:
       "drift",
       "valueFingerprint",
       "envFile",
+      "policies",
       "options",
     ];
     expect(issues("stacks:\n  - path: a\n    stack: prod\n    approvers: write\n")).toEqual([
@@ -591,7 +596,7 @@ describe("a file that is not a mapping", () => {
 describe("the error", () => {
   test("names the file and lists every problem in words, top to bottom", () => {
     expect(() => parseConfig("tickerz: admin\ndashboard:\n  pin: 1\n")).toThrow(
-      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, deployWindows, ignore, scan, drift, valueFingerprint, attribution, phases, stacks, discovery, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
+      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, deployWindows, ignore, scan, drift, valueFingerprint, policies, attribution, phases, stacks, discovery, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
     );
   });
 

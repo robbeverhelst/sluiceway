@@ -1,0 +1,6 @@
+{
+  "steps": [
+    { "op": "delete", "urn": "urn:pulumi:prod::app::aws:s3/bucket:Bucket::uploads" },
+    { "op": "replace", "urn": "urn:pulumi:prod::app::aws:s3/bucket:Bucket::logs" }
+  ]
+}

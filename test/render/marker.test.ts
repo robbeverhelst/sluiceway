@@ -237,3 +237,29 @@ describe("the fingerprint key", () => {
     expect(row?.known && row.fingerprint).toBeUndefined();
   });
 });
+
+// Record 0106: a row whose change fails a policy has no box, and the marker
+// says so, so a writer without a diff and the tick judgement can tell.
+describe("the policy key", () => {
+  test("is written after the fingerprint and read back", () => {
+    const marker = rowMarker({
+      stackId: "apps/grafana:prod",
+      state: "pending",
+      hash: "3fa9c1e2aabbccdd",
+      fingerprint: "f65a69fe79dd93c3",
+      policyFailed: true,
+    });
+    expect(marker).toBe(
+      '<!-- sluiceway:row stack="apps/grafana:prod" state="pending" hash="3fa9c1e2aabbccdd" fingerprint="f65a69fe79dd93c3" policy="failed" -->',
+    );
+    const [row] = parseDashboard(`- **x** ${marker}\n  ${ROW_CLOSE_MARKER}`).rows;
+    expect(row?.known && row.policyFailed).toBe(true);
+  });
+
+  test("is left out when no policy failed, and reads as not failed", () => {
+    const marker = rowMarker({ stackId: "a", state: "pending", hash: "00", policyFailed: false });
+    expect(marker).not.toContain("policy");
+    const [row] = parseDashboard(`- [ ] x ${marker}\n  ${ROW_CLOSE_MARKER}`).rows;
+    expect(row?.known && row.policyFailed).toBe(false);
+  });
+});

@@ -1,0 +1,6 @@
+{
+  "argv": ["conftest", "--version"],
+  "exitCode": 0,
+  "stdout": "Conftest: 0.50.0\nOPA: 0.62.1\n",
+  "stderr": ""
+}

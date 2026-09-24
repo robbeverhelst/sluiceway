@@ -351,7 +351,7 @@ describe("a valid setup", () => {
 const CONFIG_MESSAGES: [string, string][] = [
   [
     "tickerz: write",
-    'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, deployWindows, ignore, scan, drift, valueFingerprint, attribution, phases, stacks, discovery, mergeAndDeploy, notify.',
+    'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, deployWindows, ignore, scan, drift, valueFingerprint, policies, attribution, phases, stacks, discovery, mergeAndDeploy, notify.',
   ],
   [
     "stacks:\n  - path: network\n    dependsOn: [app]",

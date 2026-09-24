@@ -37,6 +37,21 @@ export interface PreviewOptions extends ToolContext {
   // Only a scan asks, and only for a stack with auto. An adapter whose tool
   // has no such references reads nothing.
   dependencies?: readonly Stack[] | undefined;
+  // The policies (record 0106): hand back the tool's own preview document,
+  // so the policy runner can test it. Only a scan with policies asks, and an
+  // adapter that was not asked hands back none.
+  keepDocument?: boolean | undefined;
+}
+
+// The tool's own preview document, values and all (record 0021): Pulumi's
+// preview JSON, the plan JSON of OpenTofu and Terraform, the manifests a Helm
+// chart or a directory of Kubernetes manifests renders. It exists only for
+// the policy runner, which writes it to a file of its own for as long as
+// conftest runs (record 0106). Nothing else may take `text`: not a row, the
+// summary, a page, the result file, an annotation or the job log.
+export interface PreviewDocument {
+  text: string;
+  format: "json" | "yaml";
 }
 
 // The stacks a preview read that its stack depends on (record 0059). Only
@@ -65,6 +80,8 @@ export type PreviewResult = (
       plan?: SavedPlan;
       // Only when the preview was asked to read them and the tool can.
       dependencies?: ReadDependencies;
+      // Only when the preview was asked to keep it (record 0106).
+      document?: PreviewDocument;
     }
   | {
       ok: false;

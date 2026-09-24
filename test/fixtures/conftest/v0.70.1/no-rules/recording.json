@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "conftest",
+    "test",
+    "--output",
+    "json",
+    "--all-namespaces",
+    "--no-color",
+    "--policy",
+    "no-rules",
+    "inputs/pass.json"
+  ],
+  "exitCode": 0,
+  "stdout": "[\n\t{\n\t\t\"filename\": \"inputs/pass.json\",\n\t\t\"namespace\": \"main\",\n\t\t\"successes\": 0\n\t}\n]\n",
+  "stderr": ""
+}

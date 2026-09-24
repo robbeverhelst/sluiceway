@@ -69,5 +69,12 @@ async function planAndShow(
     options.valueFingerprint === true,
   );
   if (!folded.ok) return failed({ kind: folded.reason }, log, folded.detail);
-  return { ok: true, diff: { stackId: stackId(stack), changes: folded.changes }, toolLog: log };
+  return {
+    ok: true,
+    diff: { stackId: stackId(stack), changes: folded.changes },
+    toolLog: log,
+    // The plan JSON as the tool printed it, for the policies alone (record
+    // 0106).
+    ...(options.keepDocument ? { document: { text: shown.stdout, format: "json" } } : {}),
+  };
 }

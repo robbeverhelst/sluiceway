@@ -64,7 +64,14 @@ export async function previewWithReferences(
   const folded = foldSteps(parsed.steps);
   if (!folded.ok) return failed({ kind: folded.reason }, log, folded.detail);
   return {
-    result: { ok: true, diff: { stackId: stackId(stack), changes: folded.changes }, toolLog: log },
+    result: {
+      ok: true,
+      diff: { stackId: stackId(stack), changes: folded.changes },
+      toolLog: log,
+      // The preview as the tool printed it, for the policies alone (record
+      // 0106).
+      ...(options.keepDocument ? { document: { text: result.stdout, format: "json" } } : {}),
+    },
     references: parsed.steps.flatMap((step) => step.stackReference ?? []),
   };
 }
