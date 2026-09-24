@@ -13,6 +13,11 @@ import type { JobLog } from "../github/job-log.ts";
 export interface PrepareContext extends ToolContext {
   log: Pick<JobLog, "group">;
   adapter: Pick<Adapter, "prepare">;
+  // Set by the scan alone (record 0107): a stack whose entry sets
+  // `createInBackend: true` is handed to its adapter to create in the backend
+  // when the backend lacks it. `apply` never sets it, so a deploy never
+  // creates a stack.
+  createInBackend?: true;
 }
 
 // The preview failure of a stack whose env file could not be loaded (record
@@ -68,15 +73,27 @@ async function prepareWith(
   );
   const tool = { root: context.root, env, run: context.run };
 
-  for (const preparation of context.adapter.prepare(stacks.map(({ stack }) => stack))) {
+  // The stacks to create in the backend, when this is a scan and an entry
+  // asks (record 0107). Otherwise none, whatever the entries say.
+  const createInBackend = context.createInBackend
+    ? stacks.filter((one) => one.createInBackend).map(({ stack }) => stack)
+    : [];
+
+  for (const preparation of context.adapter.prepare(
+    stacks.map(({ stack }) => stack),
+    { createInBackend },
+  )) {
     const ids = preparation.stacks.map(stackId);
     const timeoutMinutes = Math.max(...ids.map((id) => timeouts.get(id) ?? defaultTimeoutMinutes));
     const result = await preparation.run({ ...tool, timeoutMinutes });
     const words = lines(result.toolLog);
     const told = words.length > 0 ? ["The tool's own words:", ...words] : [];
+    // Sluiceway's own words on what was done come before the tool's.
+    const done = result.detail ?? [];
     if (result.ok) {
       context.log.group(`Prepared ${preparation.title}`, [
         `Stacks that need it: ${ids.join(", ")}.`,
+        ...done,
         ...told,
       ]);
       continue;
@@ -84,6 +101,7 @@ async function prepareWith(
     context.log.group(`Preparing ${preparation.title} failed`, [
       previewFailureText(result.reason),
       `Stacks that need it: ${ids.join(", ")}.`,
+      ...done,
       ...told,
     ]);
     for (const id of ids) {

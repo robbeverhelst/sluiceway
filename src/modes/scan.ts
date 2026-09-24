@@ -1076,10 +1076,12 @@ async function previewAll(
   };
 
   // Every preparation runs alone and before the pool (record 0053). A stack
-  // whose preparation failed is a preview failure and is not previewed.
+  // whose preparation failed is a preview failure and is not previewed. A
+  // stack whose entry asks is created in the backend here, by the scan
+  // alone (record 0107).
   const unprepared = stacks.filter(({ stack }) => !prepared.has(stackId(stack)));
   const failed = await prepareStacks(
-    { ...tool, log, adapter },
+    { ...tool, log, adapter, createInBackend: true },
     unprepared,
     context.previewTimeoutMinutes,
     envs,
