@@ -234,3 +234,43 @@ describe("the example projects", () => {
     ]);
   });
 });
+
+// Slice 5.38 (record 0103): the file a stack's entry names is loaded for
+// that stack in every job that runs the tool, so its names count as provided
+// for that stack. A file the check cannot read is a maybe, never a failure.
+describe("the env file of a stack", () => {
+  test("the names it lists are provided for that stack, in every job that runs the tool", async () => {
+    const { group, log } = await run(
+      repo({
+        ...STACKS,
+        "sluiceway.yaml": "stacks:\n  - path: network\n    envFile: ci/network.env\n",
+        "ci/network.env":
+          "PULUMI_BACKEND_URL=s3://CANARY-BUCKET\nPULUMI_CONFIG_PASSPHRASE=CANARY-PASSPHRASE\nAWS_PROFILE=ci\n",
+        [WORKFLOW]: ONE_STEP("", ""),
+      }),
+    );
+    expect(log.lines).toContain(
+      `${WORKFLOW}, job sluiceway names a way to every credential the stacks' files ask for.`,
+    );
+    expect(group(`What ${WORKFLOW}, job sluiceway provides`)).toEqual([
+      "network:prod, the Pulumi backend: PULUMI_BACKEND_URL, listed in ci/network.env, the envFile of the stack.",
+      "network:prod, the passphrase of its secrets: PULUMI_CONFIG_PASSPHRASE, listed in ci/network.env, the envFile of the stack.",
+      "network:prod, the aws provider: AWS_PROFILE, listed in ci/network.env, the envFile of the stack.",
+    ]);
+    expect(JSON.stringify(log)).not.toContain("CANARY");
+  });
+
+  test("a file the check cannot read is named as a maybe, and the stacks without one are judged as before", async () => {
+    const { log } = await run(
+      repo({
+        ...STACKS,
+        "sluiceway.yaml": "stacks:\n  - path: network\n    envFile: ci/resolved.env\n",
+        [WORKFLOW]: ONE_STEP("", ""),
+      }),
+    );
+    expect(log.lines).toContain(
+      `Nothing in ${WORKFLOW}, job sluiceway provides PULUMI_ACCESS_TOKEN or PULUMI_BACKEND_URL, which network:prod needs for the Pulumi backend. The envFile ci/resolved.env of the stack may list it, and the check cannot read it.`,
+    );
+    expect(log.warnings.map(({ title }) => title)).not.toContain("Credentials");
+  });
+});

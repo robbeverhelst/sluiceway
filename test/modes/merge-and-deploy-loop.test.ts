@@ -137,6 +137,7 @@ async function loop(
   const applyContext: ApplyContext = {
     root: first.context.root,
     env: { PATH: "/usr/bin" },
+    mask: () => {},
     adapter,
     run: async () => {
       throw new Error("No process.");

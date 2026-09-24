@@ -92,6 +92,7 @@ function wired(h: ResolveHarness, eventName: string, event: unknown): Wired {
         await apply({
           root: h.context.root,
           env: { PATH: "/usr/bin" },
+          mask: () => {},
           adapter: h.adapter,
           run: async () => {
             throw new Error("The table adapter starts no process.");

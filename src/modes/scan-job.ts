@@ -59,6 +59,9 @@ export async function runScan(directory: string, step?: AutoStep): Promise<void>
       mask: (value) => core.setSecret(value),
       log,
     }),
+    // The values of the env file a stack names are masked the same way
+    // (record 0103).
+    mask: (value) => core.setSecret(value),
     // Every tool, each stack to the adapter of its own (record 0053).
     adapter: tools,
     run: runProcess,

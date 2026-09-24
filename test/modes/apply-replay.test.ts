@@ -90,6 +90,7 @@ async function deployed(
   const outcome = apply({
     root,
     env: { PATH: "/usr/bin", INPUT_GITHUB_TOKEN: "ghs_not_for_the_tool" },
+    mask: () => {},
     adapter,
     run: applyRun ? applyRun(root) : runs.run,
     github,

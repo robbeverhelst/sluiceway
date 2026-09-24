@@ -6,6 +6,7 @@
 import type { Adapter, ToolDeploy } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import type { ConfiguredStack } from "../core/config.ts";
+import type { StackEnv } from "../core/env-file.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
 import { type PoolSize, runPool } from "../core/pool.ts";
 import { stackId } from "../core/stack.ts";
@@ -34,17 +35,26 @@ export async function readHistories(
   stacks: readonly ConfiguredStack[],
   // The newest entries to read per stack: as many as the trail lists.
   limit: number,
+  // The environment of each stack, by stack id (record 0103). A stack whose
+  // env file could not be loaded is not read.
+  envs: ReadonlyMap<string, StackEnv>,
 ): Promise<Map<string, ToolDeploy[]>> {
   const read = new Map<string, ToolDeploy[]>();
   const { adapter, log } = context;
   if (limit === 0 || stacks.length === 0 || adapter.deployHistory === undefined) return read;
   const history = adapter.deployHistory.bind(adapter);
   const cannot: string[] = [];
+  const notLoaded: string[] = [];
   await runPool(stacks, context.pool.size, async (configured) => {
     const id = stackId(configured.stack);
+    const own = envs.get(id);
+    if (own?.ok === false) {
+      notLoaded.push(id);
+      return;
+    }
     const result = await history(configured.stack, {
       root: context.root,
-      env: context.env,
+      env: own?.ok ? own.env : context.env,
       run: context.run,
       timeoutMinutes: configured.previewTimeout ?? context.previewTimeoutMinutes,
       limit,
@@ -80,6 +90,13 @@ export async function readHistories(
     cannot.sort();
     log.info(
       `${cannot.length} ${cannot.length === 1 ? "stack was" : "stacks were"} not read for deploys made outside the dashboard: their tool keeps no history of its deploys (record 0073). ${cannot.map(logGroupTitle).join(", ")}.`,
+    );
+  }
+  if (notLoaded.length > 0) {
+    notLoaded.sort();
+    const one = notLoaded.length === 1;
+    log.info(
+      `${notLoaded.length} ${one ? "stack was" : "stacks were"} not read for deploys made outside the dashboard: ${one ? "its" : "their"} env file could not be loaded (record 0103). ${notLoaded.map(logGroupTitle).join(", ")}.`,
     );
   }
   return read;

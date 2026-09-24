@@ -41,6 +41,7 @@ async function merged(table: Record<string, PreviewResult>) {
   const applyContext: ApplyContext = {
     root: context.root,
     env: { PATH: "/usr/bin" },
+    mask: () => {},
     adapter,
     run: async () => {
       throw new Error("No process here.");

@@ -90,6 +90,8 @@ async function run(options: { backend?: ReturnType<typeof backend> } = {}) {
           backend: {
             adapter: options.backend.adapter,
             env: { PATH: "/usr/bin" },
+            stackEnvs: (stacks) =>
+              new Map(stacks.map(({ id }) => [id, { ok: true, env: { PATH: "/usr/bin" } }])),
             run: async () => {
               throw new Error("The adapter answers from a table.");
             },

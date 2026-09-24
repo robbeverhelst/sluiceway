@@ -44,6 +44,7 @@ import { type AttributionSource, attributionSource } from "../github/attribution
 import { findDashboard } from "../github/dashboard.ts";
 import { swapRows } from "../github/dashboard-write.ts";
 import { claimRecord, endRecord, readDeploymentRecords } from "../github/deployments.ts";
+import { type StackEnvFilesLoad, stackEnvFiles } from "../github/env-file.ts";
 import { publicRepo } from "../github/event.ts";
 import type { JobLog } from "../github/job-log.ts";
 import { eventDashboardUrl, type StepOutputs, writeResultFile } from "../github/outputs.ts";
@@ -79,6 +80,9 @@ export interface ApplyContext {
   // The environment of the job, read once by the glue. The adapter hands it to
   // the tool (record 0013).
   env: Record<string, string | undefined>;
+  // The runner's `setSecret`, for the values of the env file the stack names
+  // (record 0103): every one is masked before the file is named.
+  mask: StackEnvFilesLoad["mask"];
   adapter: Adapter;
   run: ProcessRunner;
   github: GitHubPort;
@@ -503,7 +507,14 @@ async function deploy(
     return { end: { kind: "failed", reason }, failed: notDeployed(reason, ` ${message(error)}`) };
   }
 
-  const tool = { root: context.root, env: context.env, run: context.run };
+  // The environment of the stack: the step's, with the env file its entry
+  // names on top (record 0103), masked first. A file that could not be loaded
+  // is a failed fresh preview, found by the preparation below.
+  const envs = stackEnvFiles({ root: context.root, env: context.env, mask: context.mask, log })([
+    { id, envFile: setup.stack.envFile },
+  ]);
+  const own = envs.get(id);
+  const tool = { root: context.root, env: own?.ok ? own.env : context.env, run: context.run };
   try {
     await adapter.checkVersion(tool, [setup.stack.stack]);
   } catch (error) {
@@ -522,7 +533,12 @@ async function deploy(
   // The stack's preparation, such as OpenTofu's init, before its fresh
   // preview (record 0053). A failed one is a failed fresh preview.
   const unprepared = (
-    await prepareStacks({ ...tool, log, adapter }, [setup.stack], context.previewTimeoutMinutes)
+    await prepareStacks(
+      { ...tool, log, adapter },
+      [setup.stack],
+      context.previewTimeoutMinutes,
+      envs,
+    )
   ).get(id);
 
   // The fresh preview: the same call as the scan's, so the hash is taken the
@@ -565,7 +581,8 @@ async function afterFreshPreview(
       reason: deployFailureText(reason),
       checked: applied(checked),
     }) as const;
-  const tool = { root: context.root, env: context.env, run: context.run };
+  // The stack's own environment, as the fresh preview had it (record 0103).
+  const tool = { root: context.root, env: options.env, run: context.run };
   const preview = () => adapter.preview(setup.stack.stack, options);
   // With `scan.logDiff` on, the tool's own diff of the fresh preview goes to
   // the job log before anything is decided, so a person reading this job sees

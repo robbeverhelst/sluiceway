@@ -742,7 +742,15 @@ function unmetLines({ path, job, judged }: JobCredentials): string[] {
         : maybe.length === 1
           ? ` The step ${maybe[0]} may load it, and the check cannot see into it.`
           : ` The steps ${listed(maybe)} may load it, and the check cannot see into them.`;
-    return `Nothing in ${path}, job ${job} provides ${unmetWays(first.need)}, which ${who} for ${first.need.what}.${opaque}`;
+    // The env files of the stacks the check cannot read (record 0103).
+    const unread = [...new Set(ones.flatMap((one) => one.unread))];
+    const files =
+      unread.length === 0
+        ? ""
+        : unread.length === 1
+          ? ` The envFile ${unread[0]} of the stack may list it, and the check cannot read it.`
+          : ` The envFiles ${listed(unread)} of the stacks may list it, and the check cannot read them.`;
+    return `Nothing in ${path}, job ${job} provides ${unmetWays(first.need)}, which ${who} for ${first.need.what}.${opaque}${files}`;
   });
 }
 

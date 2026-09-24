@@ -9,6 +9,7 @@ import {
   type JobEnvironment,
   jobEnvironment,
   judgeNeeds,
+  stackEnvironment,
   wayWords,
 } from "../../src/core/credentials.ts";
 import type { JobProvides } from "../../src/core/workflow-check.ts";
@@ -123,6 +124,7 @@ describe("a need against what a job hands the tool", () => {
       need: backend,
       met: false,
       maybe: ["Load the environment", "step 3", "hashicorp/vault-action"],
+      unread: [],
     });
   });
 
@@ -202,6 +204,43 @@ describe("a need against what a job hands the tool", () => {
       root,
     );
     expect(JSON.stringify([...loaded.names, loaded.opaque])).not.toContain("CANARY");
+  });
+});
+
+// Slice 5.38 (record 0103): the file a stack's entry names is loaded for
+// that stack in every job that runs the tool.
+describe("the env file of a stack", () => {
+  test("the names it lists are provided for the stack, after what the job names", () => {
+    const root = mkdtempSync(join(tmpdir(), "sluiceway-credentials-"));
+    mkdirSync(join(root, "ci"));
+    writeFileSync(join(root, "ci/aws.env"), "PULUMI_BACKEND_URL=s3://CANARY\nAWS_REGION=eu\n");
+    const job = environment({ names: [{ name: "AWS_REGION", where: "set on the job" }] }, root);
+    const own = stackEnvironment(job, "ci/aws.env", root);
+    expect([...own.names]).toEqual([
+      ["AWS_REGION", "set on the job"],
+      ["PULUMI_BACKEND_URL", "listed in ci/aws.env, the envFile of the stack"],
+    ]);
+    expect(own.unread).toEqual([]);
+    expect(judgeNeeds([backend], own)[0]).toMatchObject({
+      met: true,
+      by: "PULUMI_BACKEND_URL, listed in ci/aws.env, the envFile of the stack",
+    });
+    // The job's own environment is not changed, and no value is read.
+    expect(job.names.size).toBe(1);
+    expect(JSON.stringify([...own.names])).not.toContain("CANARY");
+  });
+
+  test("a file the check cannot read is carried as unread, and a stack without one is the job's", () => {
+    const job = environment({}, "/nowhere");
+    expect(stackEnvironment(job, undefined, "/nowhere")).toBe(job);
+    const own = stackEnvironment(job, "ci/resolved.env", "/nowhere");
+    expect(own.unread).toEqual(["ci/resolved.env"]);
+    expect(judgeNeeds([backend], own)[0]).toEqual({
+      need: backend,
+      met: false,
+      maybe: [],
+      unread: ["ci/resolved.env"],
+    });
   });
 });
 

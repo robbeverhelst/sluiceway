@@ -22,6 +22,7 @@ import {
 } from "../core/pull-request-preview.ts";
 import { shownValues } from "../core/show-values.ts";
 import { stackId } from "../core/stack.ts";
+import { type StackEnvFilesLoad, stackEnvFiles } from "../github/env-file.ts";
 import type { JobLog } from "../github/job-log.ts";
 import type { GitHubPort } from "../github/port.ts";
 import { previewPages } from "../github/preview-pages.ts";
@@ -46,6 +47,9 @@ export interface PullRequestPreviewContext extends RunFacts {
   // The environment of the job, read once by the glue, which the adapter
   // hands to the tool (record 0013). The preview never looks inside.
   env: Record<string, string | undefined>;
+  // The runner's `setSecret`, for the values of the env file a stack names
+  // (record 0103).
+  mask: StackEnvFilesLoad["mask"];
   adapter: Adapter;
   run: ProcessRunner;
   github: GitHubPort;
@@ -135,21 +139,29 @@ export async function previewPullRequest(
     throw error;
   }
 
+  // The env file of each stack, on top of the step's environment (record
+  // 0103), masked first.
+  const envs = stackEnvFiles({ root: context.root, env: context.env, mask: context.mask, log })(
+    stacks.map(({ stack, envFile }) => ({ id: stackId(stack), envFile })),
+  );
   // Every preparation alone and before the pool (record 0053). A stack whose
   // preparation failed is a preview failure and is not previewed.
   const failed = await prepareStacks(
     { ...tool, log, adapter },
     stacks,
     context.previewTimeoutMinutes,
+    envs,
   );
   const showValues = shownValues(repo.config.dashboard);
   const results = await runPool(stacks, context.pool.size, async (configured) => {
     const id = stackId(configured.stack);
     const started = now().getTime();
+    const own = envs.get(id);
     const result: PreviewResult =
       failed.get(id) ??
       (await adapter.preview(configured.stack, {
         ...tool,
+        env: own?.ok ? own.env : tool.env,
         timeoutMinutes: configured.previewTimeout ?? context.previewTimeoutMinutes,
         showValues,
       }));

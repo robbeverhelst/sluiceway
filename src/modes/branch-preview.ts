@@ -14,6 +14,7 @@ import type { PreviewResult } from "../adapters/adapter.ts";
 import type { ConfiguredStack } from "../core/config.ts";
 import { MAX_UPDATES, type WaitingUpdate } from "../core/merge-and-deploy.ts";
 import { stackId } from "../core/stack.ts";
+import type { stackEnvFiles } from "../github/env-file.ts";
 import { logGroupTitle } from "../render/log-text.ts";
 import type { BranchPreview } from "../render/merge-row.ts";
 import { previewOutcome } from "../render/preview-result.ts";
@@ -27,6 +28,8 @@ export async function previewBranches(
   context: ScanContext,
   stacks: readonly ConfiguredStack[],
   updates: readonly WaitingUpdate[],
+  // The env file of each stack (record 0103).
+  envFiles: ReturnType<typeof stackEnvFiles>,
 ): Promise<Map<number, BranchPreview[]>> {
   const { log } = context;
   const previews = new Map<number, BranchPreview[]>();
@@ -48,6 +51,7 @@ export async function previewBranches(
         pullRequest.head,
         pullRequest.files,
         configured,
+        envFiles,
       ),
     );
   }
@@ -60,6 +64,7 @@ async function previewOne(
   head: string,
   files: readonly string[],
   stacks: ConfiguredStack[],
+  envFiles: ReturnType<typeof stackEnvFiles>,
 ): Promise<BranchPreview[]> {
   const { log, now } = context;
   const failedAll = (why: string): BranchPreview[] => {
@@ -98,19 +103,26 @@ async function previewOne(
     }
 
     const tool = { root: copy, env: context.env, run: context.run };
+    // The env file of each stack, read from the checkout and not from the
+    // copy (record 0103): a pull request never changes what a stack's tool
+    // gets before it is merged.
+    const envs = envFiles(stacks.map(({ stack, envFile }) => ({ id: stackId(stack), envFile })));
     const failed = await prepareStacks(
       { ...tool, log, adapter: context.adapter },
       stacks,
       context.previewTimeoutMinutes,
+      envs,
     );
     const previews: BranchPreview[] = [];
     for (const configured of stacks) {
       const id = stackId(configured.stack);
       const started = now().getTime();
+      const own = envs.get(id);
       const result: PreviewResult =
         failed.get(id) ??
         (await context.adapter.preview(configured.stack, {
           ...tool,
+          env: own?.ok ? own.env : tool.env,
           timeoutMinutes: configured.previewTimeout ?? context.previewTimeoutMinutes,
           // Counts only on the row, so no value is ever asked for.
           showValues: [],

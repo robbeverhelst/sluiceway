@@ -86,7 +86,9 @@ describe("the backend part of the check", () => {
   test("the part the dispatcher hands in starts the tool and talks to no GitHub API", () => {
     const { files } = reach("modes/check-backend.ts");
     expect(files).toContain("adapters/process.ts");
-    expect(files.filter((file) => file.startsWith("github/"))).toEqual([]);
+    // env-file.ts reads the env file a stack names, for the backend question
+    // of that stack (record 0103), and talks to nobody.
+    expect(files.filter((file) => file.startsWith("github/"))).toEqual(["github/env-file.ts"]);
   });
 });
 
@@ -293,11 +295,12 @@ describe("the env file in the check job", () => {
     // a tool that is not there is a warning, and the test is about what it
     // was handed.
     const out = await quietly(() =>
-      runCheck((env) => {
+      runCheck((env, glue) => {
         handed = env;
         return {
-          adapter: backendContext(env).adapter,
+          adapter: backendContext(env, glue).adapter,
           env,
+          stackEnvs: backendContext(env, glue).stackEnvs,
           run: async () => ({ status: "not-started" }),
         };
       }),

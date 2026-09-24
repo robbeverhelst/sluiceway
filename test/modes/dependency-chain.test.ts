@@ -37,6 +37,7 @@ async function applyAndSettle(h: ResolveHarness, runId: string): Promise<string[
     await apply({
       root: h.context.root,
       env: { PATH: "/usr/bin" },
+      mask: () => {},
       adapter: h.adapter,
       run: async () => {
         throw new Error("The table adapter starts no process.");

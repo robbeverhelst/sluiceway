@@ -54,6 +54,7 @@ export async function handedOn(
   const context: ApplyContext = {
     root: h.context.root,
     env: { PATH: "/usr/bin" },
+    mask: () => {},
     adapter: h.adapter,
     run: async () => {
       throw new Error("No test of the apply mode with a table adapter starts a process.");

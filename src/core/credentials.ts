@@ -11,7 +11,7 @@
 // as "nothing in this workflow provides", and never as a failure.
 
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { resolve } from "node:path";
 import type { JobProvides } from "./workflow-check.ts";
 
 // One way a need can reach the tool: variable names that go together, a
@@ -144,6 +144,9 @@ export interface JobEnvironment {
   // see: a run step that writes to GITHUB_ENV or loads an env file it cannot
   // read, a step that is handed a secret, a secret loader action.
   opaque: string[];
+  // The env files a stack's entry names that the check cannot read (record
+  // 0103). Empty for the job itself: only a stack's environment has one.
+  unread: string[];
 }
 
 export function jobEnvironment(provides: JobProvides, root: string): JobEnvironment {
@@ -173,7 +176,26 @@ export function jobEnvironment(provides: JobProvides, root: string): JobEnvironm
     }
     if (seen && !opaque.includes(step.step)) opaque.push(step.step);
   }
-  return { names, uses, runs, opaque };
+  return { names, uses, runs, opaque, unread: [] };
+}
+
+// What one stack's tool gets in a job (record 0103): the job's environment,
+// and the names the env file its entry names lists, because the modes that
+// run the tool load that file for the stack. A file the check cannot read in
+// the checkout is a maybe: it may list the name at run time.
+export function stackEnvironment(
+  job: JobEnvironment,
+  envFile: string | undefined,
+  root: string,
+): JobEnvironment {
+  if (envFile === undefined) return job;
+  const listed = envFileNames(root, envFile);
+  if (listed === undefined) return { ...job, unread: [...job.unread, envFile] };
+  const names = new Map(job.names);
+  for (const name of listed) {
+    if (!names.has(name)) names.set(name, `listed in ${envFile}, the envFile of the stack`);
+  }
+  return { ...job, names };
 }
 
 // The paths in a run step's text that look like env files, each once.
@@ -187,11 +209,12 @@ function envFilesNamed(text: string): string[] {
 }
 
 // The variable names an env file of the repo lists, or undefined when there
-// is no such file. Only the name before `=` is read.
+// is no such file. Only the name before `=` is read. A path is relative to
+// the checkout, or absolute as a stack's `envFile` may be (record 0103).
 export function envFileNames(root: string, file: string): string[] | undefined {
   let text: string;
   try {
-    text = readFileSync(join(root, file), "utf8");
+    text = readFileSync(resolve(root, file), "utf8");
   } catch {
     return undefined;
   }
@@ -205,7 +228,9 @@ export function envFileNames(root: string, file: string): string[] | undefined {
 
 export type JudgedNeed = { need: CredentialNeed } & (
   | { met: true; by: string }
-  | { met: false; maybe: string[] }
+  // `maybe`: the steps the check cannot see into. `unread`: the env files of
+  // the stack it cannot read (record 0103).
+  | { met: false; maybe: string[]; unread: string[] }
   | { met: "unknown" }
 );
 
@@ -219,7 +244,7 @@ export function judgeNeeds(needs: CredentialNeed[], job: JobEnvironment): Judged
       const by = meets(way, job);
       if (by !== undefined) return { need, met: true, by };
     }
-    return { need, met: false, maybe: [...job.opaque] };
+    return { need, met: false, maybe: [...job.opaque], unread: [...job.unread] };
   });
 }
 
@@ -242,6 +267,9 @@ function meets(way: CredentialWay, job: JobEnvironment): string | undefined {
 export interface StackNeeds {
   stackId: string;
   needs: CredentialNeed[];
+  // The env file the stack's entry names (record 0103), which the modes
+  // that run the tool load for this stack.
+  envFile?: string | undefined;
 }
 
 // One job that runs the tool, and every need judged against what it hands
@@ -267,8 +295,11 @@ export function judgeJobs(
         return {
           path,
           job,
-          judged: stacks.flatMap(({ stackId, needs }) =>
-            judgeNeeds(needs, environment).map((one) => ({ ...one, stackId })),
+          judged: stacks.flatMap(({ stackId, needs, envFile }) =>
+            judgeNeeds(needs, stackEnvironment(environment, envFile, root)).map((one) => ({
+              ...one,
+              stackId,
+            })),
           ),
         };
       }),

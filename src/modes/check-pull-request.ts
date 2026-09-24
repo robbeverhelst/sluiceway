@@ -28,7 +28,7 @@ function machineCores(): number | undefined {
   }
 }
 
-export const pullRequestPreviewContext: PullRequestPreviewFactory = (env, log) => {
+export const pullRequestPreviewContext: PullRequestPreviewFactory = (env, log, mask) => {
   // The same inputs a scan reads: the pool, the time limit and the token.
   const inputs = readScanInputs(core.getInput);
   const job = readJob(env);
@@ -36,6 +36,7 @@ export const pullRequestPreviewContext: PullRequestPreviewFactory = (env, log) =
   const context = {
     root: job.root,
     env,
+    mask,
     adapter: tools,
     run: runProcess,
     github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),

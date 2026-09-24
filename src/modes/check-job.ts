@@ -14,6 +14,9 @@ import { type CheckContext, check } from "./check.ts";
 // What asks the backend, built from the environment of the job.
 export type BackendFactory = (
   env: Record<string, string | undefined>,
+  // What reads the env file a stack names (record 0103): the checkout, the
+  // runner's `setSecret` and the log.
+  glue: { root: string; mask: (value: string) => void; log: JobLog },
 ) => NonNullable<CheckContext["backend"]>;
 
 // What previews a pull request, built from the environment of the job and
@@ -22,6 +25,7 @@ export type BackendFactory = (
 export type PullRequestPreviewFactory = (
   env: Record<string, string | undefined>,
   log: JobLog,
+  mask: (value: string) => void,
 ) => NonNullable<CheckContext["pullRequestPreview"]>;
 
 // Auto mode hands in the log of its one step, whose summary it shares with
@@ -61,8 +65,11 @@ export async function runCheck(
           log: jobLog,
         })
       : undefined;
-  const backend = asked && env !== undefined ? makeBackend?.(env) : undefined;
-  const pullRequestPreview = previews && env !== undefined ? makePreview?.(env, jobLog) : undefined;
+  const mask = (value: string) => core.setSecret(value);
+  const backend =
+    asked && env !== undefined ? makeBackend?.(env, { root, mask, log: jobLog }) : undefined;
+  const pullRequestPreview =
+    previews && env !== undefined ? makePreview?.(env, jobLog, mask) : undefined;
   await check({
     root,
     ...(backend === undefined ? {} : { backend }),

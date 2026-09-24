@@ -52,6 +52,8 @@ export async function scanned(
   table: Parameters<typeof tableAdapter>[0],
   options: {
     config?: string;
+    // A repo root made by the test, with files in it (record 0103).
+    root?: string;
     repoUrl?: string;
     // What started the scan that writes the dashboard. A dispatch by default.
     event?: string;

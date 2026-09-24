@@ -3,15 +3,16 @@
 // summary. Its context has no process runner and no port, and of the adapter
 // it takes discovery alone, so it has no way to reach either.
 
-import type { Adapter, FileReference } from "../adapters/adapter.ts";
+import type { Adapter, BackendAnswer, FileReference } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import { type BackendCheck, checkSetup } from "../core/check.ts";
 import { type Config, ConfigError, type ConfiguredStack } from "../core/config.ts";
 import { hasConfigFile, loadConfig } from "../core/config-file.ts";
 import { judgeJobs, type StackNeeds } from "../core/credentials.ts";
 import { DiscoveryError, type DiscoveryNote } from "../core/discovery.ts";
+import type { StackEnvLoader } from "../core/env-file.ts";
 import { repoFiles } from "../core/repo-files.ts";
-import { type Stack, stackId } from "../core/stack.ts";
+import { stackId } from "../core/stack.ts";
 import { checkWorkflows, readWorkflowFiles } from "../core/workflow-check.ts";
 import type { JobLog } from "../github/job-log.ts";
 import {
@@ -34,6 +35,9 @@ export interface CheckContext {
   backend?: {
     adapter: Pick<Adapter, "findInBackend">;
     env: Record<string, string | undefined>;
+    // The env file of each stack on top of it (record 0103), read and masked
+    // by the glue that hands this in: the check itself reads no such file.
+    stackEnvs: StackEnvLoader;
     run: ProcessRunner;
   };
   // Only with pull-request-preview: true (record 0101): the preview of the
@@ -71,8 +75,13 @@ export async function check(context: CheckContext): Promise<void> {
     // the stacks that have a row.
     const credentialNeeds = context.adapter.credentialNeeds;
     if (credentialNeeds !== undefined) {
-      for (const { stack } of report.stacks) {
-        needs.push({ stackId: stackId(stack), needs: await credentialNeeds(root, stack) });
+      for (const { stack, envFile } of report.stacks) {
+        needs.push({
+          stackId: stackId(stack),
+          needs: await credentialNeeds(root, stack),
+          // Its env file provides the names it lists (record 0103).
+          ...(envFile === undefined ? {} : { envFile }),
+        });
       }
     }
   } catch (error) {
@@ -102,8 +111,7 @@ export async function check(context: CheckContext): Promise<void> {
   // What the files say is in the job log before the backend is asked, which
   // may take minutes.
   if (context.backend !== undefined) {
-    const stacks = report.stacks.map(({ stack }) => stack);
-    const { checks, toolLog } = await askBackend(context.backend, root, stacks);
+    const { checks, toolLog } = await askBackend(context.backend, root, report.stacks);
     const backend = backendPart(checks, config.ignore, toolLog);
     write(log, backend);
     parts.push(backend);
@@ -124,19 +132,41 @@ export async function check(context: CheckContext): Promise<void> {
   write(log, closing);
 }
 
-// Asks the backend about every stack that has a row (record 0074).
+// Asks the backend about every stack that has a row (record 0074), one env
+// file at a time, with the environment of the stacks it asks about (record
+// 0103). A stack whose file could not be loaded is not asked.
 async function askBackend(
   backend: NonNullable<CheckContext["backend"]>,
   root: string,
-  stacks: Stack[],
+  stacks: ConfiguredStack[],
 ): Promise<{ checks: BackendCheck[]; toolLog: string }> {
-  const result = await backend.adapter.findInBackend?.(stacks, {
-    root,
-    env: backend.env,
-    run: backend.run,
-  });
-  const answers = new Map((result?.answers ?? []).map((answer) => [stackId(answer.stack), answer]));
-  const checks = stacks.map((stack): BackendCheck => {
+  const envs = backend.stackEnvs(
+    stacks.map(({ stack, envFile }) => ({ id: stackId(stack), envFile })),
+  );
+  const answers = new Map<string, BackendAnswer>();
+  const logs: string[] = [];
+  for (const group of Map.groupBy(stacks, (one) => one.envFile).values()) {
+    const first = group[0];
+    if (first === undefined) continue;
+    const own = envs.get(stackId(first.stack));
+    if (own?.ok === false) {
+      for (const { stack } of group) {
+        answers.set(stackId(stack), {
+          stack,
+          found: "unknown",
+          reason: { kind: "env-file-not-loaded" },
+        });
+      }
+      continue;
+    }
+    const result = await backend.adapter.findInBackend?.(
+      group.map(({ stack }) => stack),
+      { root, env: own?.ok ? own.env : backend.env, run: backend.run },
+    );
+    for (const answer of result?.answers ?? []) answers.set(stackId(answer.stack), answer);
+    if (result !== undefined && result.toolLog !== "") logs.push(result.toolLog);
+  }
+  const checks = stacks.map(({ stack }): BackendCheck => {
     const id = stackId(stack);
     const answer = answers.get(id);
     if (answer === undefined) return { stackId: id, found: "unchecked" };
@@ -144,7 +174,7 @@ async function askBackend(
       ? { stackId: id, found: "unknown", reason: answer.reason }
       : { stackId: id, found: answer.found };
   });
-  return { checks, toolLog: result?.toolLog ?? "" };
+  return { checks, toolLog: logs.join("") };
 }
 
 function write(log: JobLog, { log: entries }: CheckPart): void {

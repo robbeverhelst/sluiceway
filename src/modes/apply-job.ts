@@ -43,6 +43,9 @@ export async function runApply(
       mask: (value) => core.setSecret(value),
       log,
     }),
+    // The values of the env file the stack names are masked the same way
+    // (record 0103).
+    mask: (value) => core.setSecret(value),
     // Every tool, each stack to the adapter of its own (record 0053).
     adapter: tools,
     run: runProcess,

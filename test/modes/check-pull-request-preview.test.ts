@@ -66,6 +66,7 @@ function harness(
   const context: PullRequestPreviewContext = {
     root,
     env: { PATH: "/usr/bin" },
+    mask: () => {},
     adapter,
     run: async () => {
       throw new Error("No test of the pull request preview starts a process.");

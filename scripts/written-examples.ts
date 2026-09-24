@@ -158,6 +158,7 @@ async function run(scenario: "deploy" | "deploy-failed"): Promise<Run> {
   await apply({
     root,
     env: { PATH: "/usr/bin" },
+    mask: () => {},
     adapter,
     run: runner,
     github,

@@ -94,6 +94,7 @@ import {
   readDeploymentRecords,
   settleEndedRuns,
 } from "../github/deployments.ts";
+import { type StackEnvFilesLoad, stackEnvFiles } from "../github/env-file.ts";
 import type { JobLog } from "../github/job-log.ts";
 import { dashboardUrl, type StepOutputs, writeResultFile } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
@@ -141,6 +142,9 @@ export interface ScanContext {
   // The environment of the job, read once by the glue. The scan never looks
   // inside. The adapter hands it to the tool (record 0013).
   env: Record<string, string | undefined>;
+  // The runner's `setSecret`, for the values of the env file a stack names
+  // (record 0103): every one is masked before the file is named.
+  mask: StackEnvFilesLoad["mask"];
   adapter: Adapter;
   run: ProcessRunner;
   github: GitHubPort;
@@ -343,6 +347,9 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   if (logDiff && context.publicRepo) {
     log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
   }
+  // The env file of each stack that names one (record 0103), read once per
+  // job when the stack is first previewed, prepared or read, masked first.
+  const envFiles = stackEnvFiles({ root: context.root, env: context.env, mask: context.mask, log });
 
   // The stacks whose row showed drift at the first read (record 0055).
   const knownDrift = new Set<string>();
@@ -366,7 +373,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       stacks.map(({ stack }) => stack),
     );
     versionChecked = true;
-    branchPreviews = await previewBranches(context, stacks, listing.updates);
+    branchPreviews = await previewBranches(context, stacks, listing.updates, envFiles);
   }
   // The records this scan opened for merged changes, handed to `apply`.
   const handedOn: MatrixEntry[] = [];
@@ -435,6 +442,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       sayPool,
       checkDrift,
       stacks.map(({ stack }) => stack),
+      envFiles,
     );
     for (const one of round) previewed.set(one.id, one);
     logResults(context, round);
@@ -480,7 +488,12 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
     // and before the late read that matches them with the records (record
     // 0073).
     if (histories === undefined && ids.length > 0 && full) {
-      histories = await readHistories(context, stacks, config.dashboard.recentlyDeployed);
+      histories = await readHistories(
+        context,
+        stacks,
+        config.dashboard.recentlyDeployed,
+        envFiles(stacks.map(({ stack, envFile }) => ({ id: stackId(stack), envFile }))),
+      );
     }
     // What the scan has at its late read. Row placement decides every row
     // from it and the late read, and never reads or writes itself.
@@ -984,12 +997,23 @@ async function previewAll(
   // Every stack of the repo, which a stack with `dependsOn: auto` may depend
   // on (record 0059).
   repoStacks: readonly Stack[],
+  // The env file of each stack (record 0103).
+  envFiles: ReturnType<typeof stackEnvFiles>,
 ): Promise<Previewed[]> {
   const { log, now, adapter } = context;
   // Nothing to preview, so a repo without stacks needs no tool, and neither
   // does a narrowed scan that keeps every row.
   if (stacks.length === 0) return [];
   const tool = { root: context.root, env: context.env, run: context.run };
+
+  // The environment of each stack: the step's, with the stack's own env file
+  // on top (record 0103). A file that could not be loaded is that stack's
+  // preview failure, found by the preparation below.
+  const envs = envFiles(stacks.map(({ stack, envFile }) => ({ id: stackId(stack), envFile })));
+  const envOf = (id: string): Record<string, string | undefined> => {
+    const own = envs.get(id);
+    return own?.ok ? own.env : tool.env;
+  };
 
   // Every preparation runs alone and before the pool (record 0053). A stack
   // whose preparation failed is a preview failure and is not previewed.
@@ -998,6 +1022,7 @@ async function previewAll(
     { ...tool, log, adapter },
     unprepared,
     context.previewTimeoutMinutes,
+    envs,
   );
   for (const { stack } of unprepared) {
     if (!failed.has(stackId(stack))) prepared.add(stackId(stack));
@@ -1022,6 +1047,7 @@ async function previewAll(
     const started = startedAt.getTime();
     const options = {
       ...tool,
+      env: envOf(id),
       run: liveRun(tool.run, id, log),
       timeoutMinutes: configured.previewTimeout ?? context.previewTimeoutMinutes,
       showValues,

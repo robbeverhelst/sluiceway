@@ -211,6 +211,7 @@ export function harness(
   const context: ScanContext = {
     root: repoRoot(config),
     env: { PATH: "/usr/bin" },
+    mask: () => {},
     adapter,
     run: async () => {
       throw new Error("No test of the scan mode starts a process.");
