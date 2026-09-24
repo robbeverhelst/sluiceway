@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.0](https://github.com/sluiceway/sluiceway/compare/v0.37.0...v0.38.0) (2026-09-24)
+
+
+### Features
+
+* a pulumi stack the backend lacks is created by the scan, opt in ([#254](https://github.com/sluiceway/sluiceway/issues/254)) ([97d8724](https://github.com/sluiceway/sluiceway/commit/97d87244ac3a92b404f82b1056dd5e1c1b06bf55))
+
 ## [0.37.0](https://github.com/sluiceway/sluiceway/compare/v0.36.0...v0.37.0) (2026-09-24)
 
 
