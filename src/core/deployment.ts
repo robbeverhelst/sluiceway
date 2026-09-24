@@ -90,6 +90,11 @@ export interface DeploymentPayload {
   // the version stays 1. A reader that does not know it reads the record as
   // a tick by that person, which deploys the same.
   onMerge?: boolean | undefined;
+  // The value fingerprint the tick approved (record 0102): a hash of the
+  // values the row did not show. An added key, so the version stays 1. Absent
+  // on a record written before, or with the check off for the stack: a fresh
+  // preview that gives one then refuses the deploy, the safe direction.
+  fingerprint?: string | undefined;
 }
 
 // The payload as a schema (record 0096): what every writer writes, checked
@@ -455,7 +460,11 @@ export function recordStatus(step: RecordStep): StatusToWrite {
     case "failed":
       return {
         state:
-          step.reason.kind === "moved" || step.reason.kind === "run-ended" ? "error" : "failure",
+          step.reason.kind === "moved" ||
+          step.reason.kind === "value-changed" ||
+          step.reason.kind === "run-ended"
+            ? "error"
+            : "failure",
         description: deployFailureText(step.reason),
       };
   }

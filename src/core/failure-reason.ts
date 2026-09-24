@@ -67,6 +67,12 @@ export type DeployFailureReason =
   // The fresh preview of `apply` gave another diff hash than the tick
   // approved (record 0008). The record ends as `error`.
   | { kind: "moved" }
+  // The fresh preview gave the diff hash the tick approved and another value
+  // fingerprint (record 0102): a value the row does not show changed since
+  // the tick. `everyRun`: the dashboard's last scan was of this same commit,
+  // so the value differs between two previews of the same code. The record
+  // ends as `error`.
+  | { kind: "value-changed"; everyRun: boolean }
   // The deploy itself failed. exitCode is null when the tool could not be
   // started or a signal ended it.
   | { kind: "tool-error"; exitCode: number | null }
@@ -95,6 +101,10 @@ export function deployFailureText(reason: DeployFailureReason): string {
       return "the run ended without a result";
     case "moved":
       return "the change moved since the tick";
+    case "value-changed":
+      return reason.everyRun
+        ? "a value changed since the tick with no new commit, so it may differ on every run: see valueFingerprint in sluiceway.yaml"
+        : "a value changed since the tick";
     case "tool-error":
       return reason.exitCode === null
         ? "the tool exited with an error"

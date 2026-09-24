@@ -632,6 +632,25 @@ async function afterFreshPreview(
         summary: notDeployedSummary(gate.end.reason, gate.checked),
         setup,
       };
+    case "value-changed":
+      // The hash matches, and a value the row does not show changed since
+      // the tick (record 0102). Nothing goes out, and the row shows the fresh
+      // diff, which a fresh tick can approve.
+      return {
+        end: gate.end,
+        failed: notDeployed(
+          gate.end.reason,
+          ` The fresh preview gives diff hash ${gate.hash}, the one the tick approved, and value fingerprint ${gate.fingerprint} where the tick approved ${payload.fingerprint ?? "none"}: a value the row does not show changed since the tick.${
+            gate.everyRun
+              ? " The dashboard's last scan was of this same commit, so the value differs between two previews of the same code, and no tick can approve it. Turn the value fingerprint off for this stack with `valueFingerprint: false` on its `stacks` entry in `sluiceway.yaml`."
+              : " The row on the dashboard shows the change as it is now. Look at it and tick it again to deploy that."
+          }`,
+        ),
+        row: gate.checked,
+        toolDiffInLog,
+        summary: notDeployedSummary(gate.end.reason, gate.checked),
+        setup,
+      };
     case "rehearsed":
       // The row is the fresh preview, pending with its box, and it never
       // said deploying.

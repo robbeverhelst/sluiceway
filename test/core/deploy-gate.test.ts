@@ -11,6 +11,7 @@ import {
 import { type RecordEnd, recordStatus, type StatusToWrite } from "../../src/core/deployment.ts";
 import type { Change, Diff } from "../../src/core/diff.ts";
 import { diffHash } from "../../src/core/diff-hash.ts";
+import { valueFingerprint } from "../../src/core/value-fingerprint.ts";
 
 // The deploy gate as tables: no GitHub, no tool. Each case is a record, a
 // fresh preview and a drift answer, and what happens to the record.
@@ -384,4 +385,125 @@ describe("the outcome of apply (record 0041)", () => {
       expect(applyOutcome(end)).toBe(outcome as ReturnType<typeof applyOutcome>);
     });
   }
+});
+
+// Record 0102: the value fingerprint is compared after the hash. `withValues`
+// is the ticked diff with a fingerprint on its change, as an adapter that was
+// asked for one hands it over.
+describe("the value fingerprint (record 0102)", () => {
+  const F1 = "1111111111111111";
+  const F2 = "2222222222222222";
+  const withValues = (fingerprint: string): Diff => diff([{ ...change("a1"), fingerprint }]);
+  const APPROVED = { hash: diffHash(TICKED), fingerprint: valueFingerprint(withValues(F1)) };
+
+  const cases: {
+    name: string;
+    approved: GateInput["approved"];
+    fresh: PreviewResult;
+    sameCommit?: boolean;
+    dryRun?: boolean;
+    kind: GateDecision["kind"];
+    status?: StatusToWrite;
+    outcome?: string;
+  }[] = [
+    {
+      name: "the same hash and the same fingerprint deploy",
+      approved: APPROVED,
+      fresh: ok(withValues(F1)),
+      kind: "deploy",
+    },
+    {
+      name: "the same hash with another fingerprint is refused: a value changed",
+      approved: APPROVED,
+      fresh: ok(withValues(F2)),
+      kind: "value-changed",
+      status: { state: "error", description: "a value changed since the tick" },
+      outcome: "refused",
+    },
+    {
+      name: "at the commit of the last scan the value differs on every run, and the reason says so",
+      approved: APPROVED,
+      fresh: ok(withValues(F2)),
+      sameCommit: true,
+      kind: "value-changed",
+      status: {
+        state: "error",
+        description:
+          "a value changed since the tick with no new commit, so it may differ on every run: see valueFingerprint in sluiceway.yaml",
+      },
+      outcome: "refused",
+    },
+    {
+      name: "a record without a fingerprint against a fresh preview with one is refused",
+      approved: { hash: diffHash(TICKED) },
+      fresh: ok(withValues(F1)),
+      kind: "value-changed",
+      status: { state: "error", description: "a value changed since the tick" },
+    },
+    {
+      name: "a fresh preview without a fingerprint deploys: the check is off, or nothing to cover",
+      approved: APPROVED,
+      fresh: ok(TICKED),
+      kind: "deploy",
+    },
+    {
+      name: "a moved change is moved, whatever the fingerprints",
+      approved: APPROVED,
+      fresh: ok(diff([{ ...change("a1", ["image", "replicas"]), fingerprint: F2 }])),
+      kind: "moved",
+    },
+    {
+      name: "a rehearsal stops after the fingerprint check",
+      approved: APPROVED,
+      fresh: ok(withValues(F1)),
+      dryRun: true,
+      kind: "rehearsed",
+    },
+    {
+      name: "a rehearsal is refused like a deploy when a value changed",
+      approved: APPROVED,
+      fresh: ok(withValues(F2)),
+      dryRun: true,
+      kind: "value-changed",
+    },
+  ];
+  for (const one of cases) {
+    test(one.name, () => {
+      const decided = gate({
+        approved: one.approved,
+        fresh: one.fresh,
+        dryRun: one.dryRun ?? false,
+        sameCommit: one.sameCommit ?? false,
+      });
+      expect(decided.kind).toBe(one.kind);
+      if (one.status && "end" in decided) expect(recordStatus(decided.end)).toEqual(one.status);
+      if (one.outcome && "end" in decided) expect(applyOutcome(decided.end)).toBe("refused");
+    });
+  }
+
+  test("a description fits GitHub's limit of 140 characters", () => {
+    for (const everyRun of [false, true]) {
+      const decided = gate({
+        approved: APPROVED,
+        fresh: ok(withValues(F2)),
+        dryRun: false,
+        sameCommit: everyRun,
+      });
+      if (!("end" in decided)) throw new Error("no end");
+      expect(recordStatus(decided.end).description?.length ?? 0).toBeLessThanOrEqual(140);
+    }
+  });
+
+  test("the decision carries both fingerprints for the job log", () => {
+    const decided = gate({
+      approved: APPROVED,
+      fresh: ok(withValues(F2)),
+      dryRun: false,
+      sameCommit: false,
+    });
+    expect(decided.kind === "value-changed" && decided.fingerprint).toBe(
+      valueFingerprint(withValues(F2)) ?? "",
+    );
+    expect(decided.kind === "value-changed" && decided.everyRun).toBe(false);
+  });
 });

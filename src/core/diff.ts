@@ -1,6 +1,7 @@
 // The shape of a diff, as record 0007 fixes it. One field holds values: the
 // ones at paths a repo listed in `dashboard.showValues`, and no other (record
-// 0052, which amends 0021).
+// 0052, which amends 0021). One more holds a hash of the values the row does
+// not show, and never a value (record 0102).
 
 // What a deploy does to the real object.
 export type Op = "create" | "update" | "replace" | "delete" | "none";
@@ -29,6 +30,10 @@ export interface Change {
   // sorted by path. Absent when there are none. The diff hash covers them, as
   // a row shows them (records 0008 and 0052).
   values?: ShownValue[];
+  // The value fingerprint of the change (record 0102): a hash of the leaf
+  // values the row does not show, so a tick covers them. Absent when the
+  // change has none, or when the check is off for the stack. Never a value.
+  fingerprint?: string;
 }
 
 // A value as display text, already shortened. A side is absent when the

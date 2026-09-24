@@ -13,6 +13,7 @@ import type { ApplyResultOutcome } from "../render/result-file.ts";
 import type { DeploymentPayload, RecordEnd } from "./deployment.ts";
 import { diffHash } from "./diff-hash.ts";
 import type { DeployFailureReason } from "./failure-reason.ts";
+import { differsEveryRun, valueFingerprint } from "./value-fingerprint.ts";
 
 // A record end that is a failure, with its reason from the fixed list.
 export type FailedEnd = Extract<RecordEnd, { kind: "failed" }>;
@@ -20,12 +21,17 @@ export type FailedEnd = Extract<RecordEnd, { kind: "failed" }>;
 type FreshPreview = Extract<PreviewResult, { ok: true }>;
 
 export interface GateInput {
-  // What the tick approved: the diff hash, and whether it covers drift.
-  approved: Pick<DeploymentPayload, "hash" | "drift">;
+  // What the tick approved: the diff hash, whether it covers drift, and the
+  // value fingerprint when the record carries one (record 0102).
+  approved: Pick<DeploymentPayload, "hash" | "drift" | "fingerprint">;
   // The fresh preview of `apply`, the same call as the scan's.
   fresh: PreviewResult;
   // The `dry-run` input: stop after the hash check (record 0051).
   dryRun: boolean;
+  // The dashboard's last scan was of the commit this run is of, so the fresh
+  // preview and the row come from the same code (record 0102). Then a value
+  // fingerprint that differs is a value that differs on every run.
+  sameCommit?: boolean | undefined;
 }
 
 // What the gate decided. `checked` is the fresh preview as it was held against
@@ -40,6 +46,17 @@ export type GateDecision =
   | { kind: "in-sync"; end: RecordEnd; checked: FreshPreview }
   // The change moved since the tick (record 0008).
   | { kind: "moved"; end: FailedEnd; hash: string; checked: FreshPreview }
+  // The hash matches and a value the row does not show changed since the
+  // tick (record 0102). `fingerprint` is the fresh one, and `everyRun` that
+  // the value differs between two previews of the same commit.
+  | {
+      kind: "value-changed";
+      end: FailedEnd;
+      hash: string;
+      fingerprint: string;
+      everyRun: boolean;
+      checked: FreshPreview;
+    }
   // Everything a deploy checks was checked, and nothing goes out (record 0051).
   | { kind: "rehearsed"; end: RecordEnd; hash: string; checked: FreshPreview }
   // The hash matches: deploy. With drift in the hash the deploy puts it back
@@ -96,6 +113,22 @@ function decide(input: GateInput, drift: DriftResult | undefined): GateDecision 
   if (hash !== approved.hash) {
     return { kind: "moved", end: failed({ kind: "moved" }), hash, checked: fresh };
   }
+  // The values the row does not show, compared after the hash (record 0102).
+  // A fresh preview without a fingerprint has nothing to compare: the check
+  // is off for the stack, or the diff holds no value. A record without one
+  // against a fresh one is refused, the safe direction of 0008.
+  const fingerprint = valueFingerprint(fresh.diff);
+  if (fingerprint !== undefined && fingerprint !== approved.fingerprint) {
+    const everyRun = differsEveryRun(approved, { hash, fingerprint }, input.sameCommit ?? false);
+    return {
+      kind: "value-changed",
+      end: failed({ kind: "value-changed", everyRun }),
+      hash,
+      fingerprint,
+      everyRun,
+      checked: fresh,
+    };
+  }
   if (dryRun) return { kind: "rehearsed", end: { kind: "rehearsed" }, hash, checked: fresh };
   return { kind: "deploy", hash, checked: fresh, repairDrift: drifted };
 }
@@ -133,7 +166,7 @@ export function unplannedEnd(deploying: boolean): FailedEnd {
 // The `outcome` of a record `apply` gave a result (record 0041). A deploy that
 // went out is deployed, also when its record could not be given the result.
 // `refused` is nothing wrong with the stack or the tool: a change that moved,
-// or deploys turned off (record 0051). Everything else is `failed`.
+// a value that changed (record 0102), or deploys turned off (record 0051). Everything else is `failed`.
 export function applyOutcome(end: RecordEnd): ApplyResultOutcome {
   switch (end.kind) {
     case "deployed":
@@ -141,7 +174,9 @@ export function applyOutcome(end: RecordEnd): ApplyResultOutcome {
     case "rehearsed":
       return end.kind;
     case "failed":
-      return end.reason.kind === "moved" || end.reason.kind === "deploys-off"
+      return end.reason.kind === "moved" ||
+        end.reason.kind === "value-changed" ||
+        end.reason.kind === "deploys-off"
         ? "refused"
         : "failed";
     // Ends of `resolve` and a scan, never of `apply`.
