@@ -397,3 +397,29 @@ describe("a deploy window", () => {
     );
   });
 });
+
+// The cost keys (record 0105).
+describe("the cost keys", () => {
+  test("a threshold needs the switch", () => {
+    expect(text({ kind: "cost-threshold-without-enabled", path: ["cost", "threshold"] })).toBe(
+      "cost.threshold: a threshold needs the estimate: set cost.enabled: true next to it, or on the stack's entry.",
+    );
+  });
+
+  test("a threshold is an amount", () => {
+    expect(text({ kind: "not-an-amount", value: -1, path: ["cost", "threshold"] })).toBe(
+      "cost.threshold: expected an amount a month, 0 or more, got -1.",
+    );
+    expect(text({ kind: "not-an-amount", value: "cheap", path: ["cost", "threshold"] })).toBe(
+      'cost.threshold: expected an amount a month, 0 or more, got "cheap".',
+    );
+  });
+
+  test("cost on a stack is a mapping", () => {
+    expect(
+      text({ kind: "stack-cost-not-a-mapping", value: true, path: ["stacks", 0, "cost"] }),
+    ).toBe(
+      "stacks[0].cost: expected a mapping, got true. Write it as the top level has it: cost: { enabled: true }.",
+    );
+  });
+});

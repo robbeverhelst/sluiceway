@@ -48,6 +48,12 @@ function problemWords(issue: ConfigIssue): string {
       return `expected a list of stack ids, or ${issue.auto}, got ${show(issue.value)}.`;
     case "not-a-phase":
       return `expected a phase name, or a mapping with from, got ${show(issue.value)}.`;
+    case "stack-cost-not-a-mapping":
+      return `expected a mapping, got ${show(issue.value)}. Write it as the top level has it: cost: { enabled: true }.`;
+    case "cost-threshold-without-enabled":
+      return "a threshold needs the estimate: set cost.enabled: true next to it, or on the stack's entry.";
+    case "not-an-amount":
+      return `expected an amount a month, 0 or more, got ${show(issue.value)}.`;
     case "stack-drift-not-a-mapping":
       return `expected a mapping, got ${show(issue.value)}. Write it as the top level has it: drift: { enabled: ${typeof issue.value === "boolean" ? issue.value : true} }.`;
     case "not-a-tick-rule":

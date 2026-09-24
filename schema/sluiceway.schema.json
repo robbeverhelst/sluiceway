@@ -212,6 +212,23 @@
         "minLength": 1
       }
     },
+    "cost": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean",
+          "description": "Estimate what each pending change of an OpenTofu or Terraform stack costs a month, with the Infracost CLI the workflow installs, and show it on the row as a change to the monthly bill. The CLI sends resource types, regions and quantities to its pricing API, never a value or a credential. A Pulumi, Helm or Kubernetes manifests stack gets no estimate. An estimate that fails is a missing line, never a failed scan."
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The change to the monthly bill above which a stack set to deploy on merge waits for a tick instead, and its row says why. In the currency of the estimate, USD unless the workflow sets another. A change whose estimate failed waits too. Needs enabled: true."
+        }
+      },
+      "additionalProperties": false
+    },
     "attribution": {
       "default": {},
       "type": "object",
@@ -438,6 +455,22 @@
           "createInBackend": {
             "type": "boolean",
             "description": "true: a scan creates each Pulumi stack of the entry that the backend lacks, with pulumi stack init right before its first preview, and previews it as all creates. A deploy never creates a stack. Default: false."
+          },
+          "cost": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "description": "Estimate what a change of these stacks costs a month, or not, whatever cost.enabled at the top level says. Only an OpenTofu or Terraform stack gets an estimate."
+              },
+              "threshold": {
+                "type": "number",
+                "minimum": 0,
+                "description": "The change to the monthly bill above which these stacks, when set to deploy on merge, wait for a tick instead, whatever cost.threshold at the top level says. In the currency of the estimate."
+              }
+            },
+            "additionalProperties": false,
+            "description": "The cost estimate of these stacks. Default: the top level cost."
           },
           "options": {
             "description": "Named adapter options of the tool. Only an entry with tool takes them.",

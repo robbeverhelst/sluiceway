@@ -511,3 +511,56 @@ stacks:
     );
   });
 });
+
+// The cost estimate per stack (record 0105): an entry turns it on or off for
+// its stacks and sets its own threshold, the entry with a name wins key by
+// key, and a threshold on a stack whose estimate is off is refused.
+describe("cost on a stack", () => {
+  test("is absent when no entry sets it, so the top level decides", () => {
+    expect(
+      applyConfig(parseConfig("cost:\n  enabled: true\n  threshold: 50\n"), FOUND).map(
+        (one) => one.cost,
+      ),
+    ).toEqual([undefined, undefined, undefined]);
+  });
+
+  test("an entry sets its stacks key by key, and the entry with a name wins", () => {
+    const configured = applyConfig(
+      parseConfig(`
+cost:
+  enabled: true
+stacks:
+  - path: apps/grafana
+    name: prod
+    cost:
+      enabled: true
+      threshold: 200
+  - path: apps/grafana
+    cost:
+      enabled: false
+`),
+      FOUND,
+    );
+    expect(configured.map((one) => one.cost)).toEqual([
+      { enabled: false },
+      { enabled: true, threshold: 200 },
+      undefined,
+    ]);
+  });
+
+  test("a threshold on a stack whose estimate is off is refused, naming the entry", () => {
+    expect(
+      issues("stacks:\n  - path: apps/grafana\n    cost:\n      threshold: 10\n", FOUND),
+    ).toEqual([
+      { kind: "cost-threshold-without-enabled", path: ["stacks", 0, "cost", "threshold"] },
+    ]);
+    expect(
+      issues(
+        "cost:\n  enabled: true\nstacks:\n  - path: apps/grafana\n    name: prod\n    cost:\n      enabled: false\n  - path: apps/grafana\n    cost:\n      threshold: 10\n",
+        FOUND,
+      ),
+    ).toEqual([
+      { kind: "cost-threshold-without-enabled", path: ["stacks", 1, "cost", "threshold"] },
+    ]);
+  });
+});

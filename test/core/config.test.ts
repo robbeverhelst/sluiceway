@@ -22,6 +22,7 @@ const DEFAULTS: Config = {
   drift: { enabled: false },
   valueFingerprint: true,
   policies: [],
+  cost: { enabled: false },
   attribution: { lookback: 100, names: 5 },
   phases: [],
   stacks: [],
@@ -68,6 +69,9 @@ drift:
   enabled: true
 valueFingerprint: false
 policies: [policies]
+cost:
+  enabled: true
+  threshold: 100
 phases: [infrastructure, applications]
 `);
     expect(config).toEqual({
@@ -90,6 +94,7 @@ phases: [infrastructure, applications]
       drift: { enabled: true },
       valueFingerprint: false,
       policies: ["policies"],
+      cost: { enabled: true, threshold: 100 },
       attribution: { lookback: 100, names: 5 },
       phases: ["infrastructure", "applications"],
       stacks: [],
@@ -122,6 +127,7 @@ const TOP_KEYS = [
   "drift",
   "valueFingerprint",
   "policies",
+  "cost",
   "attribution",
   "phases",
   "stacks",
@@ -384,6 +390,7 @@ stacks:
       "envFile",
       "policies",
       "createInBackend",
+      "cost",
       "options",
     ];
     expect(issues("stacks:\n  - path: a\n    stack: prod\n    approvers: write\n")).toEqual([
@@ -597,7 +604,7 @@ describe("a file that is not a mapping", () => {
 describe("the error", () => {
   test("names the file and lists every problem in words, top to bottom", () => {
     expect(() => parseConfig("tickerz: admin\ndashboard:\n  pin: 1\n")).toThrow(
-      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, deployWindows, ignore, scan, drift, valueFingerprint, policies, attribution, phases, stacks, discovery, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
+      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, deployWindows, ignore, scan, drift, valueFingerprint, policies, cost, attribution, phases, stacks, discovery, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
     );
   });
 
@@ -885,6 +892,75 @@ describe("deployWindows", () => {
         to: "09:00",
         path: ["stacks", 0, "deployWindows", 0],
       },
+    ]);
+  });
+});
+
+// The cost estimate (record 0105): off unless a repo opts in, and a
+// threshold only next to the switch that turns it on.
+describe("cost (record 0105)", () => {
+  test("is off by default, and cost.enabled turns it on", () => {
+    expect(parseConfig(undefined).cost).toEqual({ enabled: false });
+    expect(parseConfig("cost:\n  enabled: true\n").cost).toEqual({ enabled: true });
+    expect(parseConfig("cost: {}\n").cost).toEqual({ enabled: false });
+  });
+
+  test("a threshold is an amount a month, 0 or more, next to enabled: true", () => {
+    expect(parseConfig("cost:\n  enabled: true\n  threshold: 100\n").cost).toEqual({
+      enabled: true,
+      threshold: 100,
+    });
+    expect(parseConfig("cost:\n  enabled: true\n  threshold: 0\n").cost).toEqual({
+      enabled: true,
+      threshold: 0,
+    });
+    expect(parseConfig("cost:\n  enabled: true\n  threshold: 12.5\n").cost).toEqual({
+      enabled: true,
+      threshold: 12.5,
+    });
+  });
+
+  test("a threshold without the switch is refused, so it never gates nothing in silence", () => {
+    expect(issues("cost:\n  threshold: 100\n")).toEqual([
+      { kind: "cost-threshold-without-enabled", path: ["cost", "threshold"] },
+    ]);
+    expect(issues("cost:\n  enabled: false\n  threshold: 100\n")).toEqual([
+      { kind: "cost-threshold-without-enabled", path: ["cost", "threshold"] },
+    ]);
+  });
+
+  test("a threshold that is not an amount is refused", () => {
+    expect(issues("cost:\n  enabled: true\n  threshold: -1\n")).toEqual([
+      { kind: "not-an-amount", value: -1, path: ["cost", "threshold"] },
+    ]);
+    expect(issues("cost:\n  enabled: true\n  threshold: cheap\n")).toEqual([
+      { kind: "not-an-amount", value: "cheap", path: ["cost", "threshold"] },
+    ]);
+  });
+
+  test("an unknown key under cost lists the known ones", () => {
+    expect(issues("cost:\n  enabled: true\n  currency: EUR\n")).toEqual([
+      { kind: "unknown-key", key: "currency", known: ["enabled", "threshold"], path: ["cost"] },
+    ]);
+  });
+
+  test("a stack entry takes the same mapping, key by key", () => {
+    expect(
+      parseConfig("stacks:\n  - path: apps/a\n    cost:\n      enabled: false\n").stacks,
+    ).toEqual([{ path: "apps/a", cost: { enabled: false } }]);
+    expect(
+      parseConfig("stacks:\n  - path: apps/a\n    cost:\n      threshold: 20\n").stacks,
+    ).toEqual([{ path: "apps/a", cost: { threshold: 20 } }]);
+    expect(issues("stacks:\n  - path: apps/a\n    cost: true\n")).toEqual([
+      { kind: "stack-cost-not-a-mapping", value: true, path: ["stacks", 0, "cost"] },
+    ]);
+    expect(
+      issues("stacks:\n  - path: apps/a\n    cost:\n      enabled: false\n      threshold: 5\n"),
+    ).toEqual([
+      { kind: "cost-threshold-without-enabled", path: ["stacks", 0, "cost", "threshold"] },
+    ]);
+    expect(issues("stacks:\n  - path: apps/a\n    cost:\n      threshold: -5\n")).toEqual([
+      { kind: "not-an-amount", value: -5, path: ["stacks", 0, "cost", "threshold"] },
     ]);
   });
 });
