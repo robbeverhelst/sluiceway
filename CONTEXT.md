@@ -293,7 +293,7 @@ _Avoid_: Update history, audit log, deploy log, state history
 ### Credentials
 
 **Tool environment**:
-Everything the infrastructure tool needs in order to run: credentials, the state backend, settings. The user's workflow prepares it before Sluiceway starts, and Sluiceway hands it to the tool whole without looking inside, with the values of the env file on top when a step names one.
+Everything the infrastructure tool needs in order to run: credentials, the state backend, settings. The user's workflow prepares it before Sluiceway starts, and Sluiceway hands it to the tool whole without looking inside, with the values of the env file on top when a step names one, and the values of the stack's own env file on top of that when its entry names one.
 _Avoid_: Secrets, env config, credentials config
 
 **Credential need**:
@@ -301,7 +301,7 @@ What a stack's own files say its tool will want from the job environment: the cr
 _Avoid_: Required secrets, missing secrets, env requirements, secret list
 
 **Env file**:
-A file of `NAME=value` lines that the `env-file` input names, which the modes that run the tool read once for the tool's process: every value is masked in the job log first, the file wins over a variable the job already has, and the log names what was loaded and never a value. It is the one file on the runner that Sluiceway reads on the user's word, and it resolves nothing in it: a file of secret references is not one until a step has resolved it.
+A file of `NAME=value` lines that the `env-file` input names, or that a `stacks` entry names with `envFile` for its stacks alone, which the modes that run the tool read once for the tool's process: every value is masked in the job log first, the file wins over a variable the job already has, a stack's file wins over the step's, and the log names what was loaded for which stacks and never a value. A stack's file that cannot be loaded is a preview failure of that stack and of nothing else. They are the only files on the runner that Sluiceway reads on the user's word, and it resolves nothing in them: a file of secret references is not one until a step has resolved it.
 _Avoid_: Dotenv, secrets file, `.env` (that is a name such a file may have), env config
 
 ### Dashboard

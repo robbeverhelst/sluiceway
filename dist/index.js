@@ -52596,6 +52596,9 @@ var stackEntry = exports_external.strictObject({
     enabled: exports_external.boolean().describe("Check these stacks for drift, or not, whatever drift.enabled at the top level says. The scans that check are the same.")
   }).describe("The drift check of these stacks. Default: the top level drift.").exactOptional(),
   valueFingerprint: exports_external.boolean().describe("Cover the values these stacks' rows do not show with a fingerprint, or not, whatever valueFingerprint at the top level says. Turn it off for a stack whose program makes a value that differs on every run. Default: the top level valueFingerprint.").exactOptional(),
+  envFile: text.refine((path) => !/[\r\n]/.test(path), {
+    message: "envFile names one file on one line. To load several files, join them in a step before Sluiceway."
+  }).describe("A file of NAME=value lines, relative to the repo root or absolute, that the tool gets for these stacks alone, on top of the job environment and the step's env-file input. Every value is masked first. A file that cannot be loaded fails the preview of these stacks and no other.").exactOptional(),
   options: exports_external.record(exports_external.string(), exports_external.unknown()).describe("Named adapter options of the tool. Only an entry with tool takes them.").exactOptional()
 }).superRefine((entry, context3) => {
   if (entry.tool !== undefined)
@@ -52956,6 +52959,7 @@ function applyConfig(config2, found) {
     const drift = entries.findLast((entry) => entry.drift)?.drift?.enabled;
     const deploy = entries.findLast((entry) => entry.deploy)?.deploy;
     const valueFingerprint = entries.findLast((entry) => entry.valueFingerprint !== undefined)?.valueFingerprint;
+    const envFile = entries.findLast((entry) => entry.envFile !== undefined)?.envFile;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     return {
@@ -52970,7 +52974,8 @@ function applyConfig(config2, found) {
       ...entries.some((entry) => entry.dependsOn === DEPENDS_ON_AUTO) ? { dependsOnAuto: true } : {},
       ...drift === undefined ? {} : { drift },
       ...deploy === "on-merge" ? { deploy } : {},
-      ...valueFingerprint === undefined ? {} : { valueFingerprint }
+      ...valueFingerprint === undefined ? {} : { valueFingerprint },
+      ...envFile === undefined ? {} : { envFile }
     };
   });
 }
@@ -53166,7 +53171,7 @@ function read(file2) {
 
 // src/core/credentials.ts
 import { readFileSync as readFileSync3 } from "node:fs";
-import { join as join3 } from "node:path";
+import { resolve } from "node:path";
 var WAYS = {
   aws: [
     { names: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"] },
@@ -53265,7 +53270,20 @@ function jobEnvironment(provides, root) {
     if (seen && !opaque.includes(step.step))
       opaque.push(step.step);
   }
-  return { names, uses, runs, opaque };
+  return { names, uses, runs, opaque, unread: [] };
+}
+function stackEnvironment(job, envFile, root) {
+  if (envFile === undefined)
+    return job;
+  const listed2 = envFileNames(root, envFile);
+  if (listed2 === undefined)
+    return { ...job, unread: [...job.unread, envFile] };
+  const names = new Map(job.names);
+  for (const name of listed2) {
+    if (!names.has(name))
+      names.set(name, `listed in ${envFile}, the envFile of the stack`);
+  }
+  return { ...job, names };
 }
 function envFilesNamed(text2) {
   const found = [];
@@ -53279,7 +53297,7 @@ function envFilesNamed(text2) {
 function envFileNames(root, file2) {
   let text2;
   try {
-    text2 = readFileSync3(join3(root, file2), "utf8");
+    text2 = readFileSync3(resolve(root, file2), "utf8");
   } catch {
     return;
   }
@@ -53301,7 +53319,7 @@ function judgeNeeds(needs, job) {
       if (by2 !== undefined)
         return { need, met: true, by: by2 };
     }
-    return { need, met: false, maybe: [...job.opaque] };
+    return { need, met: false, maybe: [...job.opaque], unread: [...job.unread] };
   });
 }
 function meets(way, job) {
@@ -53326,7 +53344,10 @@ function judgeJobs(stacks, workflows, root) {
     return {
       path,
       job,
-      judged: stacks.flatMap(({ stackId: stackId2, needs }) => judgeNeeds(needs, environment).map((one) => ({ ...one, stackId: stackId2 })))
+      judged: stacks.flatMap(({ stackId: stackId2, needs, envFile }) => judgeNeeds(needs, stackEnvironment(environment, envFile, root)).map((one) => ({
+        ...one,
+        stackId: stackId2
+      })))
     };
   }));
 }
@@ -53453,7 +53474,7 @@ function parseKubectlOptions(raw, index) {
 
 // src/adapters/opentofu/credentials.ts
 import { readdirSync, readFileSync as readFileSync4 } from "node:fs";
-import { join as join4, posix } from "node:path";
+import { join as join3, posix } from "node:path";
 
 // src/adapters/opentofu/hcl.ts
 function readHcl(text4) {
@@ -53798,10 +53819,10 @@ function rootModuleNeeds(root, path, varFiles) {
   return needs;
 }
 function terragruntNeeds(root, path) {
-  const file2 = ["terragrunt.hcl", "terragrunt.hcl.json"].map((name) => posix.join(path, name)).find((name) => text5(join4(root, name)) !== "");
+  const file2 = ["terragrunt.hcl", "terragrunt.hcl.json"].map((name) => posix.join(path, name)).find((name) => text5(join3(root, name)) !== "");
   if (file2 === undefined || file2.endsWith(".json"))
     return [];
-  const { blocks } = readHcl(text5(join4(root, file2)));
+  const { blocks } = readHcl(text5(join3(root, file2)));
   const needs = [];
   const remote = blocks.find((block) => block.type === "remote_state");
   const label = remote?.strings.backend;
@@ -53821,7 +53842,7 @@ function cdktfNeeds(root, path) {
   const file2 = posix.join(path, "cdktf.json");
   let parsed;
   try {
-    parsed = JSON.parse(text5(join4(root, file2)));
+    parsed = JSON.parse(text5(join3(root, file2)));
   } catch {
     return [];
   }
@@ -53844,14 +53865,14 @@ function cdktfNeeds(root, path) {
 function readDirectory(root, path) {
   let names;
   try {
-    names = readdirSync(join4(root, path)).sort(byCodeUnit4);
+    names = readdirSync(join3(root, path)).sort(byCodeUnit4);
   } catch {
     names = [];
   }
   const at = (name) => posix.join(path, name);
   const parsed = (name) => ({
     file: at(name),
-    blocks: readHcl(text5(join4(root, at(name)))).blocks
+    blocks: readHcl(text5(join3(root, at(name)))).blocks
   });
   return {
     files: names.map(at),
@@ -53941,7 +53962,7 @@ function waysOf(known) {
   return typeof known === "string" ? cloudWays(known) : known.map((way) => ({ ...way }));
 }
 function varNames(root, file2) {
-  const content = text5(join4(root, file2));
+  const content = text5(join3(root, file2));
   if (file2.endsWith(".json")) {
     try {
       const parsed = JSON.parse(content);
@@ -53975,7 +53996,7 @@ function byCodeUnit4(a, b) {
 
 // src/adapters/pulumi/credentials.ts
 import { readdirSync as readdirSync2, readFileSync as readFileSync5, statSync } from "node:fs";
-import { join as join5, posix as posix2, relative, sep as sep2 } from "node:path";
+import { join as join4, posix as posix2, relative, sep as sep2 } from "node:path";
 var EXTENSIONS = [".json", ".yaml", ".yml"];
 var PACKAGES = {
   aws: "aws",
@@ -54023,11 +54044,11 @@ var PASSPHRASE = [
   { names: ["PULUMI_CONFIG_PASSPHRASE_FILE"] }
 ];
 async function credentialNeeds2(root, stack) {
-  const projectDir = join5(root, stack.path);
-  const extension = EXTENSIONS.find((ext) => isFile(join5(projectDir, `Pulumi${ext}`)));
+  const projectDir = join4(root, stack.path);
+  const extension = EXTENSIONS.find((ext) => isFile(join4(projectDir, `Pulumi${ext}`)));
   if (extension === undefined)
     return [];
-  const projectPath = join5(projectDir, `Pulumi${extension}`);
+  const projectPath = join4(projectDir, `Pulumi${extension}`);
   const project = read2(projectPath);
   if (!isRecord(project))
     return [];
@@ -54053,8 +54074,8 @@ async function credentialNeeds2(root, stack) {
       });
     }
   }
-  const stackDir = typeof project.stackConfigDir === "string" ? join5(projectDir, project.stackConfigDir) : projectDir;
-  const stackPath2 = stack.name === undefined ? undefined : join5(stackDir, `Pulumi.${stack.name}${extension}`);
+  const stackDir = typeof project.stackConfigDir === "string" ? join4(projectDir, project.stackConfigDir) : projectDir;
+  const stackPath2 = stack.name === undefined ? undefined : join4(stackDir, `Pulumi.${stack.name}${extension}`);
   const stackFile = stackPath2 === undefined ? undefined : read2(stackPath2);
   const stackRepoPath = stackPath2 === undefined ? projectFile : repoPath(root, stackPath2);
   if (isRecord(stackFile)) {
@@ -54129,8 +54150,8 @@ async function credentialNeeds2(root, stack) {
   return needs;
 }
 function yamlProviders(projectDir, projectPath, project) {
-  const programDir = isRecord(project) && typeof project.main === "string" ? join5(projectDir, project.main) : projectDir;
-  const programs = programDir === projectDir ? [projectPath, join5(projectDir, "Main.yaml")] : [join5(programDir, "Main.yaml"), join5(programDir, "Pulumi.yaml")];
+  const programDir = isRecord(project) && typeof project.main === "string" ? join4(projectDir, project.main) : projectDir;
+  const programs = programDir === projectDir ? [projectPath, join4(projectDir, "Main.yaml")] : [join4(programDir, "Main.yaml"), join4(programDir, "Pulumi.yaml")];
   const found = [];
   for (const file2 of programs.filter(isFile)) {
     const program = file2 === projectPath ? project : read2(file2);
@@ -54147,7 +54168,7 @@ function yamlProviders(projectDir, projectPath, project) {
 }
 function nodeProviders(root, path) {
   for (const directory of ancestors(path)) {
-    const file2 = join5(root, directory, "package.json");
+    const file2 = join4(root, directory, "package.json");
     if (!isFile(file2))
       continue;
     const manifest = readJson(file2);
@@ -54160,7 +54181,7 @@ function nodeProviders(root, path) {
 var PYTHON_PACKAGE = /\bpulumi[-_]([a-z0-9-]+)/gi;
 function pythonProviders(projectDir) {
   return ["requirements.txt", "pyproject.toml"].flatMap((name) => {
-    const file2 = join5(projectDir, name);
+    const file2 = join4(projectDir, name);
     if (!isFile(file2))
       return [];
     return [...text6(file2).matchAll(PYTHON_PACKAGE)].map((match) => [
@@ -54171,7 +54192,7 @@ function pythonProviders(projectDir) {
 }
 var GO_PACKAGE = /github\.com\/pulumi\/pulumi-([a-z0-9-]+?)(?:-sdk)?\/(?:sdk|v\d+)/g;
 function goProviders(projectDir) {
-  const file2 = join5(projectDir, "go.mod");
+  const file2 = join4(projectDir, "go.mod");
   if (!isFile(file2))
     return [];
   return [...text6(file2).matchAll(GO_PACKAGE)].map((match) => [match[1] ?? "", file2]);
@@ -54185,7 +54206,7 @@ function dotnetProviders(projectDir) {
     return [];
   }
   return names.sort().flatMap((name) => {
-    const file2 = join5(projectDir, name);
+    const file2 = join4(projectDir, name);
     return [...text6(file2).matchAll(DOTNET_PACKAGE)].map((match) => [kebab(match[1] ?? ""), file2]);
   });
 }
@@ -54272,7 +54293,7 @@ async function credentialNeeds3(root, stack) {
 
 // src/adapters/helm/discover.ts
 import { readFileSync as readFileSync6, statSync as statSync2 } from "node:fs";
-import { isAbsolute, join as join6, normalize, relative as relative2, sep as sep3 } from "node:path";
+import { isAbsolute, join as join5, normalize, relative as relative2, sep as sep3 } from "node:path";
 var WHAT_PATH_IS = "An entry with tool: helm names the directory its chart and values files are relative to.";
 function discoverHelm(root, config2) {
   const stacks = [];
@@ -54287,7 +54308,7 @@ function discoverHelm(root, config2) {
       return;
     }
     const { options } = parsed;
-    const dir = join6(root, entry.path);
+    const dir = join5(root, entry.path);
     const shown = JSON.stringify(entry.path);
     if (!isDirectory2(dir)) {
       problems.push(`stacks[${index}]: ${shown} is not a directory of the repo. ${WHAT_PATH_IS}`);
@@ -54295,7 +54316,7 @@ function discoverHelm(root, config2) {
     }
     const before = problems.length;
     const inRepo = (file2) => {
-      const fromRoot = relative2(root, normalize(join6(dir, file2)));
+      const fromRoot = relative2(root, normalize(join5(dir, file2)));
       if (fromRoot === ".." || fromRoot.startsWith(`..${sep3}`) || isAbsolute(fromRoot)) {
         return;
       }
@@ -54329,7 +54350,7 @@ function discoverHelm(root, config2) {
         problems.push(`${where2} must stay inside the repo.`);
         return;
       }
-      if (!isFile2(join6(root, fromRoot)))
+      if (!isFile2(join5(root, fromRoot)))
         problems.push(`${where2} is not a file in ${shown}.`);
     });
     if (problems.length > before)
@@ -54352,7 +54373,7 @@ function discoverHelm(root, config2) {
 function chartFile(root, chartDir) {
   let text7;
   try {
-    text7 = readFileSync6(join6(root, chartDir, "Chart.yaml"), "utf8");
+    text7 = readFileSync6(join5(root, chartDir, "Chart.yaml"), "utf8");
   } catch {
     return "missing";
   }
@@ -54384,7 +54405,7 @@ function chartTree(root, top, topDependencies) {
     for (const { repository } of dependencies) {
       if (!repository.startsWith(LOCAL_DEPENDENCY))
         continue;
-      const target = relative2(root, normalize(join6(root, chartDir, repository.slice(LOCAL_DEPENDENCY.length))));
+      const target = relative2(root, normalize(join5(root, chartDir, repository.slice(LOCAL_DEPENDENCY.length))));
       if (target === ".." || target.startsWith(`..${sep3}`) || isAbsolute(target))
         continue;
       const dependencyDir = target === "" ? "." : target.split(sep3).join("/");
@@ -54419,11 +54440,11 @@ function isFile2(path) {
 }
 
 // src/adapters/kubectl/discover.ts
-import { join as join8 } from "node:path";
+import { join as join7 } from "node:path";
 
 // src/adapters/kubectl/render.ts
 import { readdirSync as readdirSync3, readFileSync as readFileSync7 } from "node:fs";
-import { basename, join as join7 } from "node:path";
+import { basename, join as join6 } from "node:path";
 var KUSTOMIZATION = new Set(["kustomization.yaml", "kustomization.yml", "Kustomization"]);
 var MANIFEST = /\.(yaml|yml|json)$/;
 function isKustomization(file2) {
@@ -54437,7 +54458,7 @@ function sourceOf(dir) {
 }
 function bundleManifests(dir, recursive2 = false) {
   return manifestFiles(dir, recursive2).map((file2) => {
-    const text7 = readFileSync7(join7(dir, file2), "utf8");
+    const text7 = readFileSync7(join6(dir, file2), "utf8");
     return text7.endsWith(`
 `) ? text7 : `${text7}
 `;
@@ -54455,7 +54476,7 @@ function nestedKustomizations(dir) {
 function walk2(dir, recursive2, prefix = "") {
   let entries;
   try {
-    entries = readdirSync3(join7(dir, prefix), { withFileTypes: true });
+    entries = readdirSync3(join6(dir, prefix), { withFileTypes: true });
   } catch {
     return [];
   }
@@ -54492,7 +54513,7 @@ function discoverKubectl(root, config2) {
       return;
     }
     const shown = JSON.stringify(entry.path);
-    const dir = join8(root, entry.path);
+    const dir = join7(root, entry.path);
     const files = filesIn(dir);
     if (files === undefined) {
       problems.push(`stacks[${index}]: ${shown} is not a directory of the repo. ${NAMES}`);
@@ -54528,7 +54549,7 @@ function discoverKubectl(root, config2) {
 
 // src/adapters/opentofu/discover.ts
 import { readdirSync as readdirSync4, statSync as statSync3 } from "node:fs";
-import { isAbsolute as isAbsolute2, join as join9, normalize as normalize2, relative as relative3, sep as sep4 } from "node:path";
+import { isAbsolute as isAbsolute2, join as join8, normalize as normalize2, relative as relative3, sep as sep4 } from "node:path";
 var MODULE_FILES = {
   opentofu: {
     pattern: /\.(tf|tofu|tf\.json|tofu\.json)$/,
@@ -54574,7 +54595,7 @@ function discoverOpenTofu(root, config2) {
     }
     if (optionProblems.length > before)
       return;
-    const dir = join9(root, entry.path);
+    const dir = join8(root, entry.path);
     const shown = JSON.stringify(entry.path);
     const files = filesIn2(dir);
     const names = wrapper === TERRAGRUNT ? "the directory of one Terragrunt unit" : wrapper === CDKTF ? "the directory of a CDK for Terraform app" : "the directory of a root module";
@@ -54603,12 +54624,12 @@ function discoverOpenTofu(root, config2) {
         problems.push(`${where2} must be relative to the directory of the stack.`);
         return;
       }
-      const fromRoot = relative3(root, normalize2(join9(dir, file2)));
+      const fromRoot = relative3(root, normalize2(join8(dir, file2)));
       if (fromRoot === ".." || fromRoot.startsWith(`..${sep4}`) || isAbsolute2(fromRoot)) {
         problems.push(`${where2} must stay inside the repo.`);
         return;
       }
-      if (!isFile3(join9(root, fromRoot)))
+      if (!isFile3(join8(root, fromRoot)))
         problems.push(`${where2} is not a file in ${shown}.`);
     });
     if (problems.length > varProblems)
@@ -54641,7 +54662,7 @@ function isFile3(path) {
 
 // src/adapters/opentofu/root-modules.ts
 import { readdirSync as readdirSync5, readFileSync as readFileSync8 } from "node:fs";
-import { join as join10, posix as posix3 } from "node:path";
+import { join as join9, posix as posix3 } from "node:path";
 var ROOT_MODULES = "rootModules";
 var MODULE_FILE2 = /\.(tf|tofu|tf\.json|tofu\.json)$/;
 var TOFU_FILE = /\.tofu(\.json)?$/;
@@ -54737,7 +54758,7 @@ function readRepo(root) {
   const walk3 = (relative4) => {
     let entries;
     try {
-      entries = readdirSync5(join10(root, relative4), { withFileTypes: true });
+      entries = readdirSync5(join9(root, relative4), { withFileTypes: true });
     } catch {
       return;
     }
@@ -54774,7 +54795,7 @@ function readDirectory2(root, path, files, code2, chosenFiles) {
     chosenFiles
   };
   for (const file2 of code2) {
-    const text7 = read3(join10(root, path, file2));
+    const text7 = read3(join9(root, path, file2));
     const parsed = file2.endsWith(".json") ? readJson2(text7) : readNative(text7);
     if (parsed.state !== undefined)
       directory.state ??= { ...parsed.state, file: file2 };
@@ -54783,7 +54804,7 @@ function readDirectory2(root, path, files, code2, chosenFiles) {
     directory.sources.push(...parsed.sources);
   }
   if (directory.hasLockFile) {
-    const blocks = readHcl(read3(join10(root, path, LOCK_FILE2))).blocks;
+    const blocks = readHcl(read3(join9(root, path, LOCK_FILE2))).blocks;
     for (const block of blocks.filter((one) => one.type === "provider")) {
       const tool = REGISTRIES[block.labels[0]?.split("/")[0] ?? ""];
       if (tool !== undefined)
@@ -54883,7 +54904,7 @@ function byCodeUnit6(a, b) {
 
 // src/adapters/pulumi/discover.ts
 import { readdir as readdir2, readFile } from "node:fs/promises";
-import { isAbsolute as isAbsolute3, join as join11, relative as relative4, sep as sep5 } from "node:path";
+import { isAbsolute as isAbsolute3, join as join10, relative as relative4, sep as sep5 } from "node:path";
 var PROJECT_FILE = "Pulumi";
 var EXTENSIONS2 = [".json", ".yaml", ".yml"];
 var SKIPPED2 = new Set([".git", "node_modules"]);
@@ -54895,7 +54916,7 @@ async function discover(root, config2) {
     const entries = await readdir2(dir, { withFileTypes: true });
     const extension = EXTENSIONS2.find((ext) => fileNames(entries).includes(PROJECT_FILE + ext));
     if (extension !== undefined) {
-      const projectFile = join11(dir, PROJECT_FILE + extension);
+      const projectFile = join10(dir, PROJECT_FILE + extension);
       try {
         const { stackDir, project } = await readProjectFile(root, projectFile);
         const files = stackDir === dir ? fileNames(entries) : await fileNamesIn(stackDir);
@@ -54917,7 +54938,7 @@ async function discover(root, config2) {
     }
     for (const entry of entries) {
       if (entry.isDirectory() && !SKIPPED2.has(entry.name))
-        await walk3(join11(dir, entry.name));
+        await walk3(join10(dir, entry.name));
     }
   };
   await walk3(root);
@@ -54929,7 +54950,7 @@ async function discover(root, config2) {
 class ProjectFileProblem extends Error {
 }
 async function projectName(root, path) {
-  const dir = join11(root, path);
+  const dir = join10(root, path);
   let entries;
   try {
     entries = await readdir2(dir, { withFileTypes: true });
@@ -54939,7 +54960,7 @@ async function projectName(root, path) {
   const extension = EXTENSIONS2.find((ext) => fileNames(entries).includes(PROJECT_FILE + ext));
   if (extension === undefined)
     return;
-  const document = $parseDocument(await readFile(join11(dir, PROJECT_FILE + extension), "utf8"), {
+  const document = $parseDocument(await readFile(join10(dir, PROJECT_FILE + extension), "utf8"), {
     uniqueKeys: false
   });
   if (document.errors.length > 0)
@@ -54973,7 +54994,7 @@ function isMapping2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 async function readProjectFile(root, projectFile) {
-  const dir = join11(projectFile, "..");
+  const dir = join10(projectFile, "..");
   const lineCounter2 = new $LineCounter;
   const document = $parseDocument(await readFile(projectFile, "utf8"), {
     lineCounter: lineCounter2,
@@ -54992,7 +55013,7 @@ async function readProjectFile(root, projectFile) {
   if (typeof named !== "string") {
     throw new ProjectFileProblem("stackConfigDir must be text, the directory that holds the stack files.");
   }
-  const stackDir = join11(dir, named);
+  const stackDir = join10(dir, named);
   const fromRoot = relative4(root, stackDir);
   if (fromRoot === ".." || fromRoot.startsWith(`..${sep5}`) || isAbsolute3(fromRoot)) {
     throw new ProjectFileProblem(`stackConfigDir points outside the repo (${JSON.stringify(named)}). Sluiceway only reads files inside the repo.`);
@@ -55091,13 +55112,13 @@ function compare2(a, b) {
 }
 
 // src/adapters/helm/file-references.ts
-import { join as join12, normalize as normalize3 } from "node:path";
+import { join as join11, normalize as normalize3 } from "node:path";
 async function readsFiles(_root, stack) {
   const options = stack.options;
   const namedIn = "sluiceway.yaml";
   const chart = options.chartDir === undefined || options.chartDir === "." ? [] : [{ path: options.chartDir, kind: "directory", namedIn }];
   const values = options.valuesFiles.map((file2) => ({
-    path: normalize3(join12(stack.path, file2)).split("\\").join("/"),
+    path: normalize3(join11(stack.path, file2)).split("\\").join("/"),
     kind: "file",
     namedIn
   }));
@@ -55106,7 +55127,7 @@ async function readsFiles(_root, stack) {
 
 // src/adapters/pulumi/file-references.ts
 import { readFileSync as readFileSync9, statSync as statSync4 } from "node:fs";
-import { isAbsolute as isAbsolute4, join as join13, normalize as normalize4, relative as relative5, sep as sep6 } from "node:path";
+import { isAbsolute as isAbsolute4, join as join12, normalize as normalize4, relative as relative5, sep as sep6 } from "node:path";
 var EXTENSIONS3 = [".json", ".yaml", ".yml"];
 var PROGRAM_FUNCTIONS = {
   "fn::readFile": "file",
@@ -55115,18 +55136,18 @@ var PROGRAM_FUNCTIONS = {
 };
 async function readsFiles2(root, stack) {
   const found = new Map;
-  const projectDir = join13(root, stack.path);
-  const extension = EXTENSIONS3.find((ext) => isFile4(join13(projectDir, `Pulumi${ext}`)));
+  const projectDir = join12(root, stack.path);
+  const extension = EXTENSIONS3.find((ext) => isFile4(join12(projectDir, `Pulumi${ext}`)));
   if (extension === undefined)
     return [];
-  const projectPath = join13(projectDir, `Pulumi${extension}`);
+  const projectPath = join12(projectDir, `Pulumi${extension}`);
   const project = read4(projectPath);
   if (!isRecord2(project))
     return [];
   const keep = (path, from, namedIn, want) => {
     if (isAbsolute4(path) || path.includes("${"))
       return;
-    const full = normalize4(join13(from, path));
+    const full = normalize4(join12(from, path));
     const fromRoot = relative5(root, full);
     if (fromRoot === "" || fromRoot === ".." || fromRoot.startsWith(`..${sep6}`) || isAbsolute4(fromRoot)) {
       return;
@@ -55143,8 +55164,8 @@ async function readsFiles2(root, stack) {
 ${kind}`, { path: slashed2, kind, namedIn: repoPath2(root, namedIn) });
   };
   if (runtimeName2(project.runtime) === "yaml") {
-    const programDir = typeof project.main === "string" ? join13(projectDir, project.main) : projectDir;
-    const programs = programDir === projectDir ? [projectPath, join13(projectDir, "Main.yaml")] : [join13(programDir, "Main.yaml"), join13(programDir, "Pulumi.yaml")];
+    const programDir = typeof project.main === "string" ? join12(projectDir, project.main) : projectDir;
+    const programs = programDir === projectDir ? [projectPath, join12(projectDir, "Main.yaml")] : [join12(programDir, "Main.yaml"), join12(programDir, "Pulumi.yaml")];
     for (const file2 of programs.filter(isFile4)) {
       const program = file2 === projectPath ? project : read4(file2);
       walk3(program, (key, value) => {
@@ -55170,8 +55191,8 @@ ${kind}`, { path: slashed2, kind, namedIn: repoPath2(root, namedIn) });
     }
   }
   if (stack.name !== undefined) {
-    const stackDir = typeof project.stackConfigDir === "string" ? join13(projectDir, project.stackConfigDir) : projectDir;
-    const stackPath2 = join13(stackDir, `Pulumi.${stack.name}${extension}`);
+    const stackDir = typeof project.stackConfigDir === "string" ? join12(projectDir, project.stackConfigDir) : projectDir;
+    const stackPath2 = join12(stackDir, `Pulumi.${stack.name}${extension}`);
     const stackFile = read4(stackPath2);
     if (isRecord2(stackFile) && isRecord2(stackFile.config)) {
       plainStrings(stackFile.config, (value) => {
@@ -55245,7 +55266,7 @@ async function readsFiles3(root, stack) {
 }
 
 // src/adapters/helm/apply.ts
-import { join as join14 } from "node:path";
+import { join as join13 } from "node:path";
 
 // src/adapters/tool-run.ts
 async function runTool(runner, spec) {
@@ -55490,7 +55511,7 @@ async function apply(stack, context3, plan, options) {
   const helm = optionsOf(stack);
   const run = (argv) => runDeploy(context3.run, {
     argv,
-    cwd: join14(context3.root, stack.path),
+    cwd: join13(context3.root, stack.path),
     env: helmEnvironment(context3.env)
   });
   const failed = (result, toolLog2) => ({
@@ -55533,7 +55554,7 @@ function appliedServerSide(stdout) {
 }
 
 // src/adapters/helm/drift.ts
-import { join as join15 } from "node:path";
+import { join as join14 } from "node:path";
 
 // src/core/value-fingerprint.ts
 import { createHash as createHash2 } from "node:crypto";
@@ -56028,7 +56049,7 @@ async function detectDrift(stack, options) {
   const helm = optionsOf(stack);
   const run = (argv) => runTool(options.run, {
     argv,
-    cwd: join15(options.root, stack.path),
+    cwd: join14(options.root, stack.path),
     env: helmEnvironment(options.env),
     timeoutMinutes: options.timeoutMinutes
   });
@@ -56088,7 +56109,7 @@ function driftOf(plain, threeWay, namespace) {
 }
 
 // src/adapters/helm/prepare.ts
-import { join as join16 } from "node:path";
+import { join as join15 } from "node:path";
 function prepare(stacks) {
   const byChart = new Map;
   for (const stack of stacks) {
@@ -56104,7 +56125,7 @@ function prepare(stacks) {
     run: async (context3) => {
       const result = await runTool(context3.run, {
         argv: dependencyCommand(),
-        cwd: join16(context3.root, chartDir),
+        cwd: join15(context3.root, chartDir),
         env: helmEnvironment(context3.env),
         timeoutMinutes: context3.timeoutMinutes
       });
@@ -56115,12 +56136,12 @@ function prepare(stacks) {
 }
 
 // src/adapters/helm/preview.ts
-import { join as join17 } from "node:path";
+import { join as join16 } from "node:path";
 async function preview(stack, options) {
   const helm = optionsOf(stack);
   const run = (argv) => runTool(options.run, {
     argv,
-    cwd: join17(options.root, stack.path),
+    cwd: join16(options.root, stack.path),
     env: helmEnvironment(options.env),
     timeoutMinutes: options.timeoutMinutes
   });
@@ -56151,11 +56172,11 @@ async function preview(stack, options) {
 }
 
 // src/adapters/helm/tool-diff.ts
-import { join as join18 } from "node:path";
+import { join as join17 } from "node:path";
 async function toolDiff(stack, options) {
   const result = await runTool(options.run, {
     argv: toolDiffCommand(optionsOf(stack)),
-    cwd: join18(options.root, stack.path),
+    cwd: join17(options.root, stack.path),
     env: helmEnvironment(options.env),
     timeoutMinutes: options.timeoutMinutes
   });
@@ -56182,7 +56203,7 @@ var helm = {
 };
 
 // src/adapters/kubectl/apply.ts
-import { join as join20 } from "node:path";
+import { join as join19 } from "node:path";
 
 // src/adapters/kubectl/commands.ts
 var KUBECTL_COMMAND = "kubectl";
@@ -56268,7 +56289,7 @@ function optionsOf2(stack) {
 import { createHash as createHash4 } from "node:crypto";
 import { mkdtemp, readFile as readFile2, rm as rm2, writeFile as writeFile2 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join as join19 } from "node:path";
+import { join as join18 } from "node:path";
 
 // src/adapters/kubectl/inventory.ts
 import { createHash as createHash3 } from "node:crypto";
@@ -56703,7 +56724,7 @@ class RenderedSet {
   pruning = false;
   constructor(dir, stackId2) {
     this.dir = dir;
-    this.path = join19(dir, "manifests.yaml");
+    this.path = join18(dir, "manifests.yaml");
     this.stackId = stackId2;
   }
   static async create(stackId2, text7, prune) {
@@ -56712,13 +56733,13 @@ class RenderedSet {
     return set2;
   }
   static async open(stackId2) {
-    return new RenderedSet(await mkdtemp(join19(tmpdir(), "sluiceway-set-")), stackId2);
+    return new RenderedSet(await mkdtemp(join18(tmpdir(), "sluiceway-set-")), stackId2);
   }
   get prunePath() {
     return this.pruning ? this.scratchPath : undefined;
   }
   get scratchPath() {
-    return join19(this.dir, "prune.yaml");
+    return join18(this.dir, "prune.yaml");
   }
   async write(text7, prune) {
     await writeFile2(this.path, text7, { mode: 384 });
@@ -56746,7 +56767,7 @@ function sha256(text7) {
   return createHash4("sha256").update(text7, "utf8").digest("hex");
 }
 async function renderSet(stack, context3) {
-  const dir = join19(context3.root, stack.path);
+  const dir = join18(context3.root, stack.path);
   const options = optionsOf2(stack);
   let text7;
   let toolLog = "";
@@ -56781,7 +56802,7 @@ async function prune(stack, context3, set2, text7) {
   const name = inventoryName(id, context3.env.GITHUB_REPOSITORY);
   const run = (argv) => runTool(context3.run, {
     argv,
-    cwd: join19(context3.root, stack.path),
+    cwd: join18(context3.root, stack.path),
     env: kubectlEnvironment(context3.env),
     timeoutMinutes: context3.timeoutMinutes
   });
@@ -56843,7 +56864,7 @@ async function apply2(stack, context3, plan) {
   }
   const result = await runDeploy(context3.run, {
     argv: applyCommand(plan.path, optionsOf2(stack)),
-    cwd: join20(context3.root, stack.path),
+    cwd: join19(context3.root, stack.path),
     env: kubectlEnvironment(context3.env)
   });
   const toolLog = stripAnsi(result.stdout + result.stderr);
@@ -56853,7 +56874,7 @@ async function apply2(stack, context3, plan) {
     return { ok: true, toolLog };
   const deleted = await runDeploy(context3.run, {
     argv: deleteCommand(plan.prunePath, optionsOf2(stack)),
-    cwd: join20(context3.root, stack.path),
+    cwd: join19(context3.root, stack.path),
     env: kubectlEnvironment(context3.env)
   });
   const log = toolLog + stripAnsi(deleted.stdout + deleted.stderr);
@@ -56861,7 +56882,7 @@ async function apply2(stack, context3, plan) {
 }
 
 // src/adapters/kubectl/drift.ts
-import { join as join21 } from "node:path";
+import { join as join20 } from "node:path";
 
 // src/adapters/kubectl/unified.ts
 var HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
@@ -56947,7 +56968,7 @@ async function detectDrift2(stack, options) {
   try {
     const result = await runTool(options.run, {
       argv: diffCommand2(rendered.set.path, stackOptions, { managedFields: true }),
-      cwd: join21(options.root, stack.path),
+      cwd: join20(options.root, stack.path),
       env: kubectlEnvironment(options.env, { KUBECTL_EXTERNAL_DIFF: PREVIEW_DIFF }),
       timeoutMinutes: options.timeoutMinutes,
       exitCodes: DIFF_EXIT_CODES
@@ -56974,7 +56995,7 @@ async function detectDrift2(stack, options) {
 }
 
 // src/adapters/kubectl/preview.ts
-import { join as join22 } from "node:path";
+import { join as join21 } from "node:path";
 async function preview2(stack, options) {
   const rendered = await renderSet(stack, options);
   if (!rendered.ok) {
@@ -57002,7 +57023,7 @@ async function diff(stack, options, { set: set2, toolLog: renderLog, pruning }) 
   const failed = (reason, toolLog, detail = []) => ({ ok: false, reason, detail, toolLog });
   const result = await runTool(options.run, {
     argv: diffCommand2(set2.path, optionsOf2(stack)),
-    cwd: join22(options.root, stack.path),
+    cwd: join21(options.root, stack.path),
     env: kubectlEnvironment(options.env, { KUBECTL_EXTERNAL_DIFF: PREVIEW_DIFF }),
     timeoutMinutes: options.timeoutMinutes,
     exitCodes: DIFF_EXIT_CODES
@@ -57026,7 +57047,7 @@ async function diff(stack, options, { set: set2, toolLog: renderLog, pruning }) 
 }
 
 // src/adapters/kubectl/tool-diff.ts
-import { join as join23 } from "node:path";
+import { join as join22 } from "node:path";
 async function toolDiff2(stack, options) {
   const rendered = await renderSet(stack, options);
   if (!rendered.ok)
@@ -57034,7 +57055,7 @@ async function toolDiff2(stack, options) {
   try {
     const result = await runTool(options.run, {
       argv: diffCommand2(rendered.set.path, optionsOf2(stack)),
-      cwd: join23(options.root, stack.path),
+      cwd: join22(options.root, stack.path),
       env: kubectlEnvironment(options.env),
       timeoutMinutes: options.timeoutMinutes,
       exitCodes: DIFF_EXIT_CODES
@@ -57101,7 +57122,7 @@ var kubectl = {
 };
 
 // src/adapters/opentofu/commands.ts
-import { join as join24 } from "node:path";
+import { join as join23 } from "node:path";
 
 // src/adapters/opentofu/environment.ts
 function tofuEnvironment(env, stack) {
@@ -57132,9 +57153,9 @@ function command(stack, args) {
 var CDKTF_OUT = "cdktf.out";
 function workingDirectory(root, stack) {
   if (optionsOf3(stack).wrapper === "cdktf") {
-    return join24(root, stack.path, CDKTF_OUT, "stacks", stack.name ?? "");
+    return join23(root, stack.path, CDKTF_OUT, "stacks", stack.name ?? "");
   }
-  return join24(root, stack.path);
+  return join23(root, stack.path);
 }
 function initArgs() {
   return ["init", "-input=false", "-no-color"];
@@ -57181,7 +57202,7 @@ function synthCommand() {
 // src/adapters/opentofu/plan-file.ts
 import { mkdtemp as mkdtemp2, rm as rm3 } from "node:fs/promises";
 import { tmpdir as tmpdir2 } from "node:os";
-import { join as join25 } from "node:path";
+import { join as join24 } from "node:path";
 
 class PlanFile {
   path;
@@ -57189,11 +57210,11 @@ class PlanFile {
   dir;
   constructor(dir, stackId2) {
     this.dir = dir;
-    this.path = join25(dir, "tfplan");
+    this.path = join24(dir, "tfplan");
     this.stackId = stackId2;
   }
   static async create(stackId2) {
-    return new PlanFile(await mkdtemp2(join25(tmpdir2(), "sluiceway-plan-")), stackId2);
+    return new PlanFile(await mkdtemp2(join24(tmpdir2(), "sluiceway-plan-")), stackId2);
   }
   async dispose() {
     await rm3(this.dir, { recursive: true, force: true });
@@ -57260,7 +57281,7 @@ async function apply3(stack, context3, plan) {
 }
 
 // src/adapters/opentofu/prepare.ts
-import { join as join26 } from "node:path";
+import { join as join25 } from "node:path";
 function prepare2(stacks) {
   const byPath = Map.groupBy(stacks, (stack) => stack.path);
   return [...byPath].sort(([a], [b]) => byCodeUnit11(a, b)).map(([path, grouped]) => ({
@@ -57269,9 +57290,9 @@ function prepare2(stacks) {
     run: async (context3) => {
       const [first] = grouped;
       if (first === undefined || optionsOf3(first).wrapper !== CDKTF) {
-        return step(context3, first ? command(first, initArgs()) : [], join26(context3.root, path));
+        return step(context3, first ? command(first, initArgs()) : [], join25(context3.root, path));
       }
-      const synth = await step(context3, synthCommand(), join26(context3.root, path));
+      const synth = await step(context3, synthCommand(), join25(context3.root, path));
       if (!synth.ok)
         return synth;
       let toolLog = synth.toolLog;
@@ -57575,7 +57596,7 @@ var opentofu = {
 };
 
 // src/adapters/pulumi/apply.ts
-import { join as join27 } from "node:path";
+import { join as join26 } from "node:path";
 
 // src/adapters/pulumi/environment.ts
 function pulumiEnvironment(env) {
@@ -57603,7 +57624,7 @@ async function apply4(stack, context3, _plan, options = {}) {
     throw new Error("A Pulumi stack always has a name.");
   const result = await runDeploy(context3.run, {
     argv: upCommand(stack.name, options.repairDrift === true),
-    cwd: join27(context3.root, stack.path),
+    cwd: join26(context3.root, stack.path),
     env: pulumiEnvironment(context3.env)
   });
   const toolLog = stripAnsi(result.stdout + result.stderr);
@@ -57611,7 +57632,7 @@ async function apply4(stack, context3, _plan, options = {}) {
 }
 
 // src/adapters/pulumi/backend.ts
-import { join as join28 } from "node:path";
+import { join as join27 } from "node:path";
 var LIST = ["pulumi", "stack", "ls", "--json", "--non-interactive", "--color", "never"];
 var BACKEND_TIMEOUT_MINUTES = 10;
 var listed4 = exports_external.array(exports_external.object({ name: exports_external.string() }));
@@ -57621,7 +57642,7 @@ async function findInBackend(stacks, context3) {
   for (const [path, inPath] of Map.groupBy(stacks, (stack) => stack.path)) {
     const result = await runTool(context3.run, {
       argv: LIST,
-      cwd: join28(context3.root, path),
+      cwd: join27(context3.root, path),
       env: pulumiEnvironment(context3.env),
       timeoutMinutes: BACKEND_TIMEOUT_MINUTES
     });
@@ -57652,7 +57673,7 @@ function parseList(stdout) {
 }
 
 // src/adapters/pulumi/drift.ts
-import { join as join29 } from "node:path";
+import { join as join28 } from "node:path";
 
 // src/adapters/pulumi/exit-codes.ts
 var STACK_NOT_FOUND_EXIT_CODE = 6;
@@ -57803,7 +57824,7 @@ async function detectDrift3(stack, options) {
     throw new Error("A Pulumi stack always has a name.");
   const result = await runTool(options.run, {
     argv: driftCommand(stack.name),
-    cwd: join29(options.root, stack.path),
+    cwd: join28(options.root, stack.path),
     env: { ...pulumiEnvironment(options.env), ...STREAM_EVENTS },
     timeoutMinutes: options.timeoutMinutes,
     exitCodes: PULUMI_EXIT_CODES
@@ -57887,7 +57908,7 @@ function readEvents(stdout, fingerprint) {
 }
 
 // src/adapters/pulumi/history.ts
-import { join as join30 } from "node:path";
+import { join as join29 } from "node:path";
 function historyCommand(name, limit) {
   return [
     "pulumi",
@@ -57923,7 +57944,7 @@ async function deployHistory(stack, options) {
     throw new Error("A Pulumi stack always has a name.");
   const result = await runTool(options.run, {
     argv: historyCommand(stack.name, options.limit),
-    cwd: join30(options.root, stack.path),
+    cwd: join29(options.root, stack.path),
     env: pulumiEnvironment(options.env),
     timeoutMinutes: options.timeoutMinutes,
     exitCodes: HISTORY_EXIT_CODES
@@ -57973,7 +57994,7 @@ function readHistory(stdout) {
 }
 
 // src/adapters/pulumi/preview.ts
-import { join as join31 } from "node:path";
+import { join as join30 } from "node:path";
 
 // src/adapters/pulumi/values.ts
 var SECRET = "[secret]";
@@ -58203,7 +58224,7 @@ async function previewWithReferences(stack, options) {
     throw new Error("A Pulumi stack always has a name.");
   const result = await runTool(options.run, {
     argv: previewCommand(stack.name),
-    cwd: join31(options.root, stack.path),
+    cwd: join30(options.root, stack.path),
     env: pulumiEnvironment(options.env),
     timeoutMinutes: options.timeoutMinutes,
     exitCodes: PULUMI_EXIT_CODES
@@ -58273,7 +58294,7 @@ function byCodeUnit14(a, b) {
 }
 
 // src/adapters/pulumi/tool-diff.ts
-import { join as join32 } from "node:path";
+import { join as join31 } from "node:path";
 function toolDiffCommand2(name) {
   return [
     "pulumi",
@@ -58292,7 +58313,7 @@ async function toolDiff4(stack, options) {
     throw new Error("A Pulumi stack always has a name.");
   const result = await runTool(options.run, {
     argv: toolDiffCommand2(stack.name),
-    cwd: join32(options.root, stack.path),
+    cwd: join31(options.root, stack.path),
     env: pulumiEnvironment(options.env),
     timeoutMinutes: options.timeoutMinutes,
     exitCodes: PULUMI_EXIT_CODES
@@ -58404,7 +58425,7 @@ var tools = {
 
 // src/github/env-file.ts
 import { readFileSync as readFileSync10 } from "node:fs";
-import { isAbsolute as isAbsolute5, resolve } from "node:path";
+import { isAbsolute as isAbsolute5, resolve as resolve2 } from "node:path";
 
 // src/core/env-file.ts
 var SECRET_REFERENCE = "op://";
@@ -58554,27 +58575,71 @@ function loadEnvFile(load) {
   const { input: input2, root, env } = load;
   if (input2 === undefined)
     return env;
-  const path = isAbsolute5(input2) ? input2 : resolve(root, input2);
-  let text7;
-  try {
-    text7 = readFileSync10(path, "utf8");
-  } catch (error63) {
-    const code2 = error63.code;
-    if (code2 === "ENOENT") {
-      throw new Error(`The "env-file" input names ${input2}, and there is no such file${isAbsolute5(input2) ? "" : " in the checkout"}.`);
-    }
-    throw new Error(`The "env-file" input names ${input2}, and it could not be read as a file (${typeof code2 === "string" ? code2 : "unknown error"}).`);
-  }
-  const parsed = parseEnvFile(text7);
-  if (!parsed.ok)
-    throw new Error(`The env file ${input2} cannot be loaded. ${parsed.problem}`);
-  const { values: values2 } = parsed;
+  const read5 = readEnvFile(input2, root, 'The "env-file" input');
+  if (!read5.ok)
+    throw new Error(read5.problem);
+  const { values: values2 } = read5;
   for (const value of Object.values(values2))
     for (const mask of masks(value))
       load.mask(mask);
   const replaced = Object.keys(values2).filter((name) => env[name] !== undefined);
   load.log.group(envFileGroupTitle(input2), envFileLines(values2, replaced));
   return { ...env, ...values2 };
+}
+function stackEnvFiles(load) {
+  const { root, env } = load;
+  const loaded = new Map;
+  return (stacks) => {
+    const envs = new Map;
+    for (const { id, envFile } of stacks) {
+      if (envFile === undefined) {
+        envs.set(id, { ok: true, env });
+        continue;
+      }
+      let own2 = loaded.get(envFile);
+      if (own2 === undefined) {
+        own2 = loadStackEnvFile(load, envFile, stacks.flatMap((one) => one.envFile === envFile ? [one.id] : []));
+        loaded.set(envFile, own2);
+      }
+      envs.set(id, own2);
+    }
+    return envs;
+  };
+  function loadStackEnvFile(load2, envFile, stackIds) {
+    const read5 = readEnvFile(envFile, root, "The envFile of the stack");
+    if (!read5.ok)
+      return { ok: false, detail: [read5.problem] };
+    const { values: values2 } = read5;
+    for (const value of Object.values(values2))
+      for (const mask of masks(value))
+        load2.mask(mask);
+    const replaced = Object.keys(values2).filter((name) => env[name] !== undefined);
+    load2.log.group(`${envFileGroupTitle(envFile)} for ${stackIds.join(", ")}`, envFileLines(values2, replaced));
+    return { ok: true, env: { ...env, ...values2 } };
+  }
+}
+function readEnvFile(input2, root, who) {
+  const path = isAbsolute5(input2) ? input2 : resolve2(root, input2);
+  let text7;
+  try {
+    text7 = readFileSync10(path, "utf8");
+  } catch (error63) {
+    const code2 = error63.code;
+    if (code2 === "ENOENT") {
+      return {
+        ok: false,
+        problem: `${who} names ${input2}, and there is no such file${isAbsolute5(input2) ? "" : " in the checkout"}.`
+      };
+    }
+    return {
+      ok: false,
+      problem: `${who} names ${input2}, and it could not be read as a file (${typeof code2 === "string" ? code2 : "unknown error"}).`
+    };
+  }
+  const parsed = parseEnvFile(text7);
+  if (!parsed.ok)
+    return { ok: false, problem: `The env file ${input2} cannot be loaded. ${parsed.problem}` };
+  return parsed;
 }
 
 // src/core/merge-scan.ts
@@ -59461,7 +59526,7 @@ function isNoAccount(error63) {
 
 // src/github/outputs.ts
 import { writeFileSync } from "node:fs";
-import { join as join33 } from "node:path";
+import { join as join32 } from "node:path";
 
 // src/core/merge-and-deploy.ts
 function qualify(pullRequest, options) {
@@ -60489,7 +60554,7 @@ function actionsOutputs(runnerTemp) {
       if (!runnerTemp) {
         throw new Error("RUNNER_TEMP is not set, so there is no directory for the result file");
       }
-      const path = join33(runnerTemp, resultFileName(mode));
+      const path = join32(runnerTemp, resultFileName(mode));
       writeFileSync(path, text8);
       return path;
     }
@@ -60815,6 +60880,8 @@ function previewFailureText(reason) {
       return `the tool printed more than the ${reason.megabytes} MB Sluiceway holds`;
     case "internal-error":
       return "Sluiceway failed inside itself, which is a bug";
+    case "env-file-not-loaded":
+      return "the env file of the stack could not be loaded";
   }
 }
 function deployFailureText(reason) {
@@ -62130,12 +62197,38 @@ function previewOutcome(result) {
 }
 
 // src/modes/prepare.ts
-async function prepareStacks(context3, stacks2, defaultTimeoutMinutes) {
+function envFileFailure(detail) {
+  return { ok: false, reason: { kind: "env-file-not-loaded" }, detail, toolLog: "" };
+}
+async function prepareStacks(context3, stacks2, defaultTimeoutMinutes, envs) {
   const failed3 = new Map;
-  if (stacks2.length === 0 || context3.adapter.prepare === undefined)
+  if (envs === undefined) {
+    await prepareWith(context3, stacks2, defaultTimeoutMinutes, context3.env, failed3);
     return failed3;
+  }
+  const loaded = [];
+  for (const one of stacks2) {
+    const own2 = envs.get(stackId(one.stack));
+    if (own2?.ok === false)
+      failed3.set(stackId(one.stack), envFileFailure(own2.detail));
+    else
+      loaded.push(one);
+  }
+  for (const group of Map.groupBy(loaded, (one) => one.envFile).values()) {
+    const first = group[0];
+    if (first === undefined)
+      continue;
+    const own2 = envs.get(stackId(first.stack));
+    const env = own2?.ok ? own2.env : context3.env;
+    await prepareWith(context3, group, defaultTimeoutMinutes, env, failed3);
+  }
+  return failed3;
+}
+async function prepareWith(context3, stacks2, defaultTimeoutMinutes, env, failed3) {
+  if (stacks2.length === 0 || context3.adapter.prepare === undefined)
+    return;
   const timeouts = new Map(stacks2.map((one) => [stackId(one.stack), one.previewTimeout ?? defaultTimeoutMinutes]));
-  const tool = { root: context3.root, env: context3.env, run: context3.run };
+  const tool = { root: context3.root, env, run: context3.run };
   for (const preparation of context3.adapter.prepare(stacks2.map(({ stack }) => stack))) {
     const ids2 = preparation.stacks.map(stackId);
     const timeoutMinutes = Math.max(...ids2.map((id) => timeouts.get(id) ?? defaultTimeoutMinutes));
@@ -62165,7 +62258,6 @@ async function prepareStacks(context3, stacks2, defaultTimeoutMinutes) {
       });
     }
   }
-  return failed3;
 }
 function lines(text8) {
   const all = text8.split(/\r?\n/);
@@ -62408,7 +62500,11 @@ async function deploy(context3, repo, id, payload, runUrl3, progress) {
     const reason = { kind: "not-started" };
     return { end: { kind: "failed", reason }, failed: notDeployed(reason, ` ${message(error63)}`) };
   }
-  const tool = { root: context3.root, env: context3.env, run: context3.run };
+  const envs = stackEnvFiles({ root: context3.root, env: context3.env, mask: context3.mask, log })([
+    { id, envFile: setup.stack.envFile }
+  ]);
+  const own2 = envs.get(id);
+  const tool = { root: context3.root, env: own2?.ok ? own2.env : context3.env, run: context3.run };
   try {
     await adapter.checkVersion(tool, [setup.stack.stack]);
   } catch (error63) {
@@ -62423,7 +62519,7 @@ async function deploy(context3, repo, id, payload, runUrl3, progress) {
       setup
     };
   }
-  const unprepared = (await prepareStacks({ ...tool, log, adapter }, [setup.stack], context3.previewTimeoutMinutes)).get(id);
+  const unprepared = (await prepareStacks({ ...tool, log, adapter }, [setup.stack], context3.previewTimeoutMinutes, envs)).get(id);
   const options = {
     ...tool,
     timeoutMinutes: setup.stack.previewTimeout ?? context3.previewTimeoutMinutes,
@@ -62447,7 +62543,7 @@ async function afterFreshPreview(context3, id, payload, runUrl3, progress, setup
     reason: deployFailureText(reason),
     checked: applied(checked)
   });
-  const tool = { root: context3.root, env: context3.env, run: context3.run };
+  const tool = { root: context3.root, env: options.env, run: context3.run };
   const preview5 = () => adapter.preview(setup.stack.stack, options);
   const { logDiff } = setup.config.scan;
   if (logDiff && publicRepo(context3.event)) {
@@ -62696,6 +62792,7 @@ async function runApply(directory, handed) {
       mask: (value) => setSecret(value),
       log
     }),
+    mask: (value) => setSecret(value),
     adapter: tools,
     run: runProcess,
     github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),
@@ -62748,7 +62845,7 @@ function parseMatrixOutput(text8) {
 
 // src/modes/resolve.ts
 import { readFileSync as readFileSync13 } from "node:fs";
-import { join as join35 } from "node:path";
+import { join as join34 } from "node:path";
 
 // src/core/edit-history.ts
 var HISTORY_CAP = 100;
@@ -63571,18 +63668,18 @@ function scanAfter(input2) {
 
 // src/core/workflow-check.ts
 import { readdirSync as readdirSync6, readFileSync as readFileSync12 } from "node:fs";
-import { join as join34 } from "node:path";
+import { join as join33 } from "node:path";
 var WORKFLOW_DIRECTORY = ".github/workflows";
 function readWorkflowFiles(root) {
   let names2;
   try {
-    names2 = readdirSync6(join34(root, WORKFLOW_DIRECTORY), { withFileTypes: true }).filter((entry3) => entry3.isFile() && /\.ya?ml$/.test(entry3.name)).map((entry3) => entry3.name);
+    names2 = readdirSync6(join33(root, WORKFLOW_DIRECTORY), { withFileTypes: true }).filter((entry3) => entry3.isFile() && /\.ya?ml$/.test(entry3.name)).map((entry3) => entry3.name);
   } catch {
     return [];
   }
   return names2.sort(byCodeUnit21).map((name) => ({
     path: `${WORKFLOW_DIRECTORY}/${name}`,
-    text: readFileSync12(join34(root, WORKFLOW_DIRECTORY, name), "utf8")
+    text: readFileSync12(join33(root, WORKFLOW_DIRECTORY, name), "utf8")
   }));
 }
 function tokenNeeds(mode, config2) {
@@ -64065,7 +64162,7 @@ async function lookUp(github, login, pauseMs) {
   try {
     return { permission: await github.getPermission(login) };
   } catch {
-    await new Promise((resolve2) => setTimeout(resolve2, pauseMs));
+    await new Promise((resolve3) => setTimeout(resolve3, pauseMs));
     return github.getPermission(login).then((permission) => ({ permission }), (error63) => ({ error: error63 }));
   }
 }
@@ -64192,7 +64289,7 @@ function seconds2(milliseconds) {
 }
 
 // src/modes/resolve.ts
-async function resolve2(context3) {
+async function resolve3(context3) {
   let handedOn = false;
   const handOn = (entries) => {
     context3.setOutput("matrix", matrixOutput(entries));
@@ -64529,7 +64626,7 @@ async function renovateStrategyOf(context3) {
   const [owner = "", repo = ""] = new URL(context3.repoUrl).pathname.split("/").filter(Boolean);
   const setting = await renovateMergeSetting((path) => {
     try {
-      return readFileSync13(join35(context3.root, path), "utf8");
+      return readFileSync13(join34(context3.root, path), "utf8");
     } catch {
       return;
     }
@@ -64695,7 +64792,7 @@ function workflowText(context3) {
   if (!context3.workflow)
     return "";
   try {
-    return readFileSync13(join35(context3.root, WORKFLOW_DIRECTORY, context3.workflow.file), "utf8");
+    return readFileSync13(join34(context3.root, WORKFLOW_DIRECTORY, context3.workflow.file), "utf8");
   } catch {
     return "";
   }
@@ -65033,8 +65130,13 @@ function runMode(context3, mode, step3) {
 }
 
 // src/modes/check-backend.ts
-var backendContext = (env) => {
-  return { adapter: tools, env, run: (run2) => runProcess(run2) };
+var backendContext = (env, glue) => {
+  return {
+    adapter: tools,
+    env,
+    stackEnvs: stackEnvFiles({ ...glue, env }),
+    run: (run2) => runProcess(run2)
+  };
 };
 
 // src/adapters/files-only.ts
@@ -65287,12 +65389,12 @@ function byCodeUnit22(a, b) {
 
 // src/core/repo-files.ts
 import { readdir as readdir3 } from "node:fs/promises";
-import { join as join36 } from "node:path";
+import { join as join35 } from "node:path";
 var SKIPPED3 = new Set([".git", "node_modules"]);
 async function repoFiles(root) {
   const files = [];
   const walk4 = async (relative6) => {
-    const entries = await readdir3(join36(root, ...relative6), { withFileTypes: true });
+    const entries = await readdir3(join35(root, ...relative6), { withFileTypes: true });
     for (const entry3 of entries) {
       if (entry3.name === ".git")
         continue;
@@ -65788,7 +65890,9 @@ ${unmetWays(one.need)}`);
     const who = `${listed6(stacks2)} ${stacks2.length === 1 ? "needs" : "need"}`;
     const maybe = [...new Set(ones.flatMap((one) => one.maybe))];
     const opaque = maybe.length === 0 ? "" : maybe.length === 1 ? ` The step ${maybe[0]} may load it, and the check cannot see into it.` : ` The steps ${listed6(maybe)} may load it, and the check cannot see into them.`;
-    return `Nothing in ${path}, job ${job} provides ${unmetWays(first.need)}, which ${who} for ${first.need.what}.${opaque}`;
+    const unread = [...new Set(ones.flatMap((one) => one.unread))];
+    const files = unread.length === 0 ? "" : unread.length === 1 ? ` The envFile ${unread[0]} of the stack may list it, and the check cannot read it.` : ` The envFiles ${listed6(unread)} of the stacks may list it, and the check cannot read them.`;
+    return `Nothing in ${path}, job ${job} provides ${unmetWays(first.need)}, which ${who} for ${first.need.what}.${opaque}${files}`;
   });
 }
 function providesLine({ path, job }) {
@@ -65971,8 +66075,12 @@ async function check2(context3) {
     report = checkSetup(config2, found, await repoFiles(root), references);
     const credentialNeeds4 = context3.adapter.credentialNeeds;
     if (credentialNeeds4 !== undefined) {
-      for (const { stack } of report.stacks) {
-        needs.push({ stackId: stackId(stack), needs: await credentialNeeds4(root, stack) });
+      for (const { stack, envFile } of report.stacks) {
+        needs.push({
+          stackId: stackId(stack),
+          needs: await credentialNeeds4(root, stack),
+          ...envFile === undefined ? {} : { envFile }
+        });
       }
     }
   } catch (error63) {
@@ -65993,8 +66101,7 @@ async function check2(context3) {
   for (const part of parts)
     write(log, part);
   if (context3.backend !== undefined) {
-    const stacks2 = report.stacks.map(({ stack }) => stack);
-    const { checks: checks3, toolLog: toolLog2 } = await askBackend(context3.backend, root, stacks2);
+    const { checks: checks3, toolLog: toolLog2 } = await askBackend(context3.backend, root, report.stacks);
     const backend = backendPart(checks3, config2.ignore, toolLog2);
     write(log, backend);
     parts.push(backend);
@@ -66009,20 +66116,38 @@ async function check2(context3) {
   write(log, closing);
 }
 async function askBackend(backend, root, stacks2) {
-  const result = await backend.adapter.findInBackend?.(stacks2, {
-    root,
-    env: backend.env,
-    run: backend.run
-  });
-  const answers = new Map((result?.answers ?? []).map((answer) => [stackId(answer.stack), answer]));
-  const checks3 = stacks2.map((stack) => {
+  const envs = backend.stackEnvs(stacks2.map(({ stack, envFile }) => ({ id: stackId(stack), envFile })));
+  const answers = new Map;
+  const logs = [];
+  for (const group of Map.groupBy(stacks2, (one) => one.envFile).values()) {
+    const first = group[0];
+    if (first === undefined)
+      continue;
+    const own2 = envs.get(stackId(first.stack));
+    if (own2?.ok === false) {
+      for (const { stack } of group) {
+        answers.set(stackId(stack), {
+          stack,
+          found: "unknown",
+          reason: { kind: "env-file-not-loaded" }
+        });
+      }
+      continue;
+    }
+    const result = await backend.adapter.findInBackend?.(group.map(({ stack }) => stack), { root, env: own2?.ok ? own2.env : backend.env, run: backend.run });
+    for (const answer of result?.answers ?? [])
+      answers.set(stackId(answer.stack), answer);
+    if (result !== undefined && result.toolLog !== "")
+      logs.push(result.toolLog);
+  }
+  const checks3 = stacks2.map(({ stack }) => {
     const id = stackId(stack);
     const answer = answers.get(id);
     if (answer === undefined)
       return { stackId: id, found: "unchecked" };
     return answer.found === "unknown" ? { stackId: id, found: "unknown", reason: answer.reason } : { stackId: id, found: answer.found };
   });
-  return { checks: checks3, toolLog: result?.toolLog ?? "" };
+  return { checks: checks3, toolLog: logs.join("") };
 }
 function write(log, { log: entries }) {
   for (const entry3 of entries) {
@@ -66064,8 +66189,9 @@ async function runCheck(makeBackend, log, makePreview) {
     mask: (value) => setSecret(value),
     log: jobLog
   }) : undefined;
-  const backend = asked && env !== undefined ? makeBackend?.(env) : undefined;
-  const pullRequestPreview = previews && env !== undefined ? makePreview?.(env, jobLog) : undefined;
+  const mask = (value) => setSecret(value);
+  const backend = asked && env !== undefined ? makeBackend?.(env, { root, mask, log: jobLog }) : undefined;
+  const pullRequestPreview = previews && env !== undefined ? makePreview?.(env, jobLog, mask) : undefined;
   await check2({
     root,
     ...backend === undefined ? {} : { backend },
@@ -66476,13 +66602,16 @@ async function previewPullRequest(context3, repo) {
     }
     throw error63;
   }
-  const failed3 = await prepareStacks({ ...tool, log, adapter }, stacks2, context3.previewTimeoutMinutes);
+  const envs = stackEnvFiles({ root: context3.root, env: context3.env, mask: context3.mask, log })(stacks2.map(({ stack, envFile }) => ({ id: stackId(stack), envFile })));
+  const failed3 = await prepareStacks({ ...tool, log, adapter }, stacks2, context3.previewTimeoutMinutes, envs);
   const showValues = shownValues(repo.config.dashboard);
   const results = await runPool(stacks2, context3.pool.size, async (configured) => {
     const id = stackId(configured.stack);
     const started = now().getTime();
+    const own2 = envs.get(id);
     const result = failed3.get(id) ?? await adapter.preview(configured.stack, {
       ...tool,
+      env: own2?.ok ? own2.env : tool.env,
       timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
       showValues
     });
@@ -66533,13 +66662,14 @@ function machineCores() {
     return;
   }
 }
-var pullRequestPreviewContext = (env, log) => {
+var pullRequestPreviewContext = (env, log, mask) => {
   const inputs = readScanInputs(getInput);
   const job = readJob(env);
   const payload = readEventPayload(env, (path) => readFileSync14(path, "utf8"));
   const context3 = {
     root: job.root,
     env,
+    mask,
     adapter: tools,
     run: runProcess,
     github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),
@@ -66578,7 +66708,7 @@ async function runResolve(directory, step3) {
   const token = readToken(getInput);
   const job = readJob(env);
   const log = step3?.log ?? actionsLog();
-  await resolve2({
+  await resolve3({
     root: job.root,
     adapter: tools,
     github: createOctokitPort(getOctokit(token), { owner: job.owner, repo: job.repo }),
@@ -67179,8 +67309,8 @@ function renderSummary(stacks2, options = {}) {
 // src/modes/branch-preview.ts
 import { cp, mkdir as mkdir2, mkdtemp as mkdtemp3, realpath, rm as rm4, writeFile as writeFile4 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
-import { basename as basename2, dirname as dirname2, join as join37, resolve as resolve3, sep as sep7 } from "node:path";
-async function previewBranches(context3, stacks2, updates) {
+import { basename as basename2, dirname as dirname2, join as join36, resolve as resolve4, sep as sep7 } from "node:path";
+async function previewBranches(context3, stacks2, updates, envFiles) {
   const { log } = context3;
   const previews = new Map;
   for (const { pullRequest, stackIds } of updates.slice(0, MAX_UPDATES)) {
@@ -67189,17 +67319,17 @@ async function previewBranches(context3, stacks2, updates) {
       continue;
     }
     const configured = stackIds.flatMap((id) => stacks2.find(({ stack }) => stackId(stack) === id) ?? []);
-    previews.set(pullRequest.number, await previewOne(context3, pullRequest.number, pullRequest.head, pullRequest.files, configured));
+    previews.set(pullRequest.number, await previewOne(context3, pullRequest.number, pullRequest.head, pullRequest.files, configured, envFiles));
   }
   return previews;
 }
-async function previewOne(context3, number4, head, files, stacks2) {
+async function previewOne(context3, number4, head, files, stacks2, envFiles) {
   const { log, now } = context3;
   const failedAll = (why2) => {
     log.info(`#${number4} could not be previewed: ${why2}`);
     return stacks2.map(({ stack }) => ({ stackId: stackId(stack) }));
   };
-  const copy = await mkdtemp3(join37(context3.env.RUNNER_TEMP || tmpdir3(), "sluiceway-branch-"));
+  const copy = await mkdtemp3(join36(context3.env.RUNNER_TEMP || tmpdir3(), "sluiceway-branch-"));
   try {
     await cp(context3.root, copy, {
       recursive: true,
@@ -67209,7 +67339,7 @@ async function previewOne(context3, number4, head, files, stacks2) {
     const [owner = "", repo = ""] = new URL(context3.repoUrl).pathname.split("/").filter(Boolean);
     const inside2 = await realpath(copy);
     for (const path of files) {
-      const target2 = resolve3(copy, path);
+      const target2 = resolve4(copy, path);
       let text9;
       try {
         text9 = await context3.github.readRepositoryFile({ owner, repo, path, ref: head });
@@ -67227,13 +67357,16 @@ async function previewOne(context3, number4, head, files, stacks2) {
         await writeFile4(target2, text9);
     }
     const tool = { root: copy, env: context3.env, run: context3.run };
-    const failed3 = await prepareStacks({ ...tool, log, adapter: context3.adapter }, stacks2, context3.previewTimeoutMinutes);
+    const envs = envFiles(stacks2.map(({ stack, envFile }) => ({ id: stackId(stack), envFile })));
+    const failed3 = await prepareStacks({ ...tool, log, adapter: context3.adapter }, stacks2, context3.previewTimeoutMinutes, envs);
     const previews = [];
     for (const configured of stacks2) {
       const id = stackId(configured.stack);
       const started = now().getTime();
+      const own2 = envs.get(id);
       const result = failed3.get(id) ?? await context3.adapter.preview(configured.stack, {
         ...tool,
+        env: own2?.ok ? own2.env : tool.env,
         timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
         showValues: []
       });
@@ -67260,18 +67393,24 @@ function lines4(text9) {
   return text9.split(`
 `).filter((line3) => line3.trim() !== "");
 }
-async function readHistories(context3, stacks2, limit) {
+async function readHistories(context3, stacks2, limit, envs) {
   const read5 = new Map;
   const { adapter, log } = context3;
   if (limit === 0 || stacks2.length === 0 || adapter.deployHistory === undefined)
     return read5;
   const history = adapter.deployHistory.bind(adapter);
   const cannot = [];
+  const notLoaded = [];
   await runPool(stacks2, context3.pool.size, async (configured) => {
     const id = stackId(configured.stack);
+    const own2 = envs.get(id);
+    if (own2?.ok === false) {
+      notLoaded.push(id);
+      return;
+    }
     const result = await history(configured.stack, {
       root: context3.root,
-      env: context3.env,
+      env: own2?.ok ? own2.env : context3.env,
       run: context3.run,
       timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
       limit
@@ -67299,6 +67438,11 @@ async function readHistories(context3, stacks2, limit) {
   if (cannot.length > 0) {
     cannot.sort();
     log.info(`${cannot.length} ${cannot.length === 1 ? "stack was" : "stacks were"} not read for deploys made outside the dashboard: their tool keeps no history of its deploys (record 0073). ${cannot.map(logGroupTitle).join(", ")}.`);
+  }
+  if (notLoaded.length > 0) {
+    notLoaded.sort();
+    const one = notLoaded.length === 1;
+    log.info(`${notLoaded.length} ${one ? "stack was" : "stacks were"} not read for deploys made outside the dashboard: ${one ? "its" : "their"} env file could not be loaded (record 0103). ${notLoaded.map(logGroupTitle).join(", ")}.`);
   }
   return read5;
 }
@@ -67400,6 +67544,7 @@ async function scanning(context3, report) {
   if (logDiff && context3.publicRepo) {
     log.warning(PUBLIC_LOG_DIFF.message, PUBLIC_LOG_DIFF.title);
   }
+  const envFiles = stackEnvFiles({ root: context3.root, env: context3.env, mask: context3.mask, log });
   const knownDrift = new Set;
   const plan = await makePlan(context3, config2, stacks2, knownDrift);
   logPlan(context3, plan, stacks2.length);
@@ -67413,7 +67558,7 @@ async function scanning(context3, report) {
   if (listing.kind === "listed" && config2.mergeAndDeploy.preview && listing.updates.length > 0) {
     await checkVersion5(context3, stacks2.map(({ stack }) => stack));
     versionChecked = true;
-    branchPreviews = await previewBranches(context3, stacks2, listing.updates);
+    branchPreviews = await previewBranches(context3, stacks2, listing.updates, envFiles);
   }
   const handedOn = [];
   const openedOnMerge = new Set;
@@ -67448,7 +67593,7 @@ async function scanning(context3, report) {
       await checkVersion5(context3, stacks2.map(({ stack }) => stack));
       versionChecked = true;
     }
-    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), config2.valueFingerprint, prepared, sayPool, checkDrift, stacks2.map(({ stack }) => stack));
+    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), config2.valueFingerprint, prepared, sayPool, checkDrift, stacks2.map(({ stack }) => stack), envFiles);
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
@@ -67478,7 +67623,7 @@ async function scanning(context3, report) {
       budget: context3.limits?.body
     };
     if (histories === undefined && ids2.length > 0 && full) {
-      histories = await readHistories(context3, stacks2, config2.dashboard.recentlyDeployed);
+      histories = await readHistories(context3, stacks2, config2.dashboard.recentlyDeployed, envFiles(stacks2.map(({ stack, envFile }) => ({ id: stackId(stack), envFile }))));
     }
     const soFar = {
       ids: ids2,
@@ -67784,13 +67929,18 @@ function driftCheckRule(config2, context3, knownDrift, stacks2) {
   const every = context3.event === "schedule" || context3.event === "workflow_dispatch" && context3.startedByPerson === true;
   return (id) => enabled.has(id) && (every || knownDrift.has(id));
 }
-async function previewAll(context3, stacks2, logDiff, showValues, valueFingerprint2, prepared, sayPool, checkDrift, repoStacks) {
+async function previewAll(context3, stacks2, logDiff, showValues, valueFingerprint2, prepared, sayPool, checkDrift, repoStacks, envFiles) {
   const { log, now, adapter } = context3;
   if (stacks2.length === 0)
     return [];
   const tool = { root: context3.root, env: context3.env, run: context3.run };
+  const envs = envFiles(stacks2.map(({ stack, envFile }) => ({ id: stackId(stack), envFile })));
+  const envOf = (id) => {
+    const own2 = envs.get(id);
+    return own2?.ok ? own2.env : tool.env;
+  };
   const unprepared = stacks2.filter(({ stack }) => !prepared.has(stackId(stack)));
-  const failed3 = await prepareStacks({ ...tool, log, adapter }, unprepared, context3.previewTimeoutMinutes);
+  const failed3 = await prepareStacks({ ...tool, log, adapter }, unprepared, context3.previewTimeoutMinutes, envs);
   for (const { stack } of unprepared) {
     if (!failed3.has(stackId(stack)))
       prepared.add(stackId(stack));
@@ -67811,6 +67961,7 @@ async function previewAll(context3, stacks2, logDiff, showValues, valueFingerpri
     const started = startedAt.getTime();
     const options = {
       ...tool,
+      env: envOf(id),
       run: liveRun(tool.run, id, log),
       timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
       showValues,
@@ -68266,6 +68417,7 @@ async function runScan(directory, step3) {
       mask: (value) => setSecret(value),
       log
     }),
+    mask: (value) => setSecret(value),
     adapter: tools,
     run: runProcess,
     github: createOctokitPort(octokit, { owner: job.owner, repo: job.repo }),
@@ -68431,7 +68583,7 @@ function terminalLog(write2 = console.log) {
 
 // src/modes/init.ts
 import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync19, statSync as statSync5, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname3, join as join38 } from "node:path";
+import { dirname as dirname3, join as join37 } from "node:path";
 
 // src/adapters/init-findings.ts
 import { posix as posix4 } from "node:path";
@@ -68955,7 +69107,7 @@ function quotedIfNeeded(text9) {
 // src/modes/init.ts
 async function init(context3) {
   const { root, log } = context3;
-  if (!existsSync4(join38(root, ".git")))
+  if (!existsSync4(join37(root, ".git")))
     throw new Error(NOT_A_REPO_ROOT);
   const configKept = hasConfigFile(root);
   const existing = loadConfig(root);
@@ -68969,7 +69121,7 @@ async function init(context3) {
   const files = await repoFiles(root);
   const read5 = (file2) => {
     try {
-      return readFileSync19(join38(root, file2), "utf8");
+      return readFileSync19(join37(root, file2), "utf8");
     } catch {
       return;
     }
@@ -69043,16 +69195,16 @@ function nearest(directory, paths2) {
   return paths2.reduce((best, path) => shared(path) > shared(best) ? path : best);
 }
 function exists2(root, file2) {
-  return existsSync4(join38(root, file2));
+  return existsSync4(join37(root, file2));
 }
 function write2(root, file2, text9, replace = false) {
-  mkdirSync(dirname3(join38(root, file2)), { recursive: true });
-  writeFileSync2(join38(root, file2), text9, { flag: replace ? "w" : "wx" });
+  mkdirSync(dirname3(join37(root, file2)), { recursive: true });
+  writeFileSync2(join37(root, file2), text9, { flag: replace ? "w" : "wx" });
 }
 function defaultBranch(root) {
-  const file2 = join38(root, ".git", "refs", "remotes", "origin", "HEAD");
+  const file2 = join37(root, ".git", "refs", "remotes", "origin", "HEAD");
   try {
-    if (!statSync5(join38(root, ".git")).isDirectory())
+    if (!statSync5(join37(root, ".git")).isDirectory())
       return;
     const match = /^ref: refs\/remotes\/origin\/(\S+)\s*$/.exec(readFileSync19(file2, "utf8"));
     return match?.[1];

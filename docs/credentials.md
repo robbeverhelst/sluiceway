@@ -25,15 +25,15 @@ For each job that runs the tool, the check then reads what the workflow hands th
 
 ## What Sluiceway promises about them
 
-Sluiceway fetches no credential and keeps none. That is five promises you can check against the code ([record 0014](adr/0014-never-hold-credentials-is-five-promises.md), amended by [record 0100](adr/0100-the-env-file-input-loads-the-file-a-step-names-and-masks-every-value.md)):
+Sluiceway fetches no credential and keeps none. That is five promises you can check against the code ([record 0014](adr/0014-never-hold-credentials-is-five-promises.md), amended by [record 0100](adr/0100-the-env-file-input-loads-the-file-a-step-names-and-masks-every-value.md) and [record 0103](adr/0103-a-stack-may-name-the-env-file-its-tool-gets.md)):
 
-1. **No credential inputs.** No input and no config key ever carries a cloud, backend or secret manager credential. The action takes the GitHub token, and, only when you want notifications, the addresses and the bot token of your notification channels, from your secrets ([notifications](notifications.md)). The `env-file` input carries a path, never a value.
-2. **Nothing read by name, and one file read by yours.** No Sluiceway code reads a credential variable of the job environment: the environment goes to the tool as one opaque block. The one file it reads is the one the `env-file` input names, in the checkout you pinned it to or where a step of yours wrote it, and it reads every line of that file the same way, for the tool. It masks every value first, and the job log says which names it loaded and never a value.
-3. **Never stored, never sent.** Nothing from the environment or the env file reaches the issue, deployment records, job summaries, artifacts or caches. The only network calls are to the GitHub API, whatever the tool itself makes, and the notification channels a step names.
-4. **Only the modes that run the tool need credentials.** `scan` and `apply` run the tool. `resolve` and `settle` never do, and never open the env file. `check` does only when its step sets `backend: true`, to ask the backend which stacks it holds, and then only with the credentials you loaded before that step, or the env file the step names.
+1. **No credential inputs.** No input and no config key ever carries a cloud, backend or secret manager credential. The action takes the GitHub token, and, only when you want notifications, the addresses and the bot token of your notification channels, from your secrets ([notifications](notifications.md)). The `env-file` input and `stacks[].envFile` carry a path, never a value.
+2. **Nothing read by name, and files read by yours.** No Sluiceway code reads a credential variable of the job environment: the environment goes to the tool as one opaque block. The files it reads are the one the `env-file` input names and the ones a `stacks` entry names with `envFile`, in the checkout you pinned it to or where a step of yours wrote them, and it reads every line of each the same way, for the tool, a stack's file for that stack alone. It masks every value first, and the job log says which names it loaded for which stacks and never a value.
+3. **Never stored, never sent.** Nothing from the environment or an env file reaches the issue, deployment records, job summaries, artifacts or caches. The only network calls are to the GitHub API, whatever the tool itself makes, and the notification channels a step names.
+4. **Only the modes that run the tool need credentials.** `scan` and `apply` run the tool. `resolve` and `settle` never do, and never open an env file. `check` does only when its step sets `backend: true`, to ask the backend which stacks it holds, and then only with the credentials you loaded before that step, or the env file the step names.
 5. **A hosted version would keep all of this.** The tool always runs in your own runners.
 
-The credentials are in the same job as Sluiceway's own process, so that process could read them, and with `env-file` it reads the ones you name. Its code, which you pin and can read, does nothing else with them. The [security page](security.md) says what that protects against and what it does not.
+The credentials are in the same job as Sluiceway's own process, so that process could read them, and with `env-file` and `envFile` it reads the ones you name. Its code, which you pin and can read, does nothing else with them. The [security page](security.md) says what that protects against and what it does not.
 
 ## Recipes
 
@@ -70,6 +70,27 @@ What Sluiceway does with it:
 - **One file per step.** Two files would raise which wins on a name both set, which the format refuses inside one file too. Join them in a step before Sluiceway.
 
 For a file of secret references, resolve it first. With 1Password, `op inject -i ci/deploy.env -o "$RUNNER_TEMP/deploy.env"` writes the resolved file for the life of the job, and `env-file: ${{ runner.temp }}/deploy.env` loads it. The script under [An env file of secret references](#an-env-file-of-secret-references) does the same without a file on disk.
+
+#### One file per stack
+
+One job has one environment, so a repo whose stacks live in different places had two bad choices: load every credential for every preview, or write a job per group. A `stacks` entry can name the file its stacks get instead ([record 0103](adr/0103-a-stack-may-name-the-env-file-its-tool-gets.md)):
+
+```yaml
+# sluiceway.yaml
+stacks:
+  - path: infra/aws
+    envFile: ci/aws.env
+  - path: infra/proxmox
+    envFile: ci/proxmox.env
+  - path: infra/k8s
+    envFile: ci/k8s.env
+```
+
+Each stack's preview and deploy then gets the job environment, the step's `env-file` on top, and its own file on top of that, and nothing from another stack's file. The rules are the input's: the same format, every value masked first, the file wins, and the job log names what each file loaded for which stacks and never a value. A file is read once per job however many entries name it. A file that is missing or refused fails the preview of its stacks, with the path and the line number in the job log, and every other stack carries on: it never fails the scan. On a deploy it fails the fresh preview, so nothing goes out.
+
+What it does not do: a file of secret references still has to be resolved by a step before Sluiceway, with the secret manager's own credential, which is the job's. A GitHub Environment per stack ([`stacks[].environment`](configuration.md#stacksenvironment)) is the stronger answer where separation of duties matters: it holds the credentials that change things behind required reviewers, in the deploy job of the [split workflow](split-workflow.md). An env file per stack scopes what each stack's tool sees inside one job. Use both when you need both. A different tool version or a different runner per stack is not what an env file does.
+
+The check knows about it: a name the stack's file lists counts as provided for that stack in every job that runs the tool, and a file the check cannot read in the checkout is named as a maybe.
 
 ### A cloud through OIDC
 

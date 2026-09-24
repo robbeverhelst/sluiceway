@@ -88,7 +88,8 @@ inputs:
       value is masked in the job log before anything else, and the file wins over a variable the
       job already has. The file may hold plain values or what a step before this one resolved;
       Sluiceway resolves no secret reference. Empty by default: the tool gets the job environment
-      as it is. On a step that never runs the tool the file is not read.
+      as it is. On a step that never runs the tool the file is not read. A stacks entry of
+      sluiceway.yaml may name a file of its own with envFile, on top of this one for its stacks.
     required: false
   slack-webhook-url:
     description: >-

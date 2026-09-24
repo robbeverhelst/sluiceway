@@ -731,6 +731,24 @@ stacks:
     valueFingerprint: false
 ```
 
+### `stacks[].envFile`
+
+Default: none. The stacks of the entry get the environment of the step as it is.
+
+A file of `NAME=value` lines that the tool gets for the stacks of this entry alone, on top of the job environment and the file the step's [`env-file` input](credentials.md#an-env-file) names. It is for a repo whose stacks live in different places: each stack's preview and deploy sees its own credentials, and a file that is wrong for one stack breaks the preview of that stack and no other ([record 0103](adr/0103-a-stack-may-name-the-env-file-its-tool-gets.md)).
+
+```yaml
+stacks:
+  - path: infra/aws
+    envFile: ci/aws.env
+  - path: infra/proxmox
+    envFile: ci/proxmox.env
+```
+
+The file follows every rule of the input: relative to the checkout or absolute, the strict format, every value masked before anything else happens, and the job log names what was loaded and never a value. A file two entries name is read once per job. The stack's file wins over the step's file, which wins over the job environment. A file that is missing or refused is a preview failure of its stacks, with the path and the line number in the job log, and the scan goes on with the other stacks. An entry with a name wins over one without, and an entry names one file.
+
+Choose a [GitHub Environment](#stacksenvironment) instead, or as well, when the credentials that change things should be held by GitHub behind required reviewers: an env file scopes what each stack's tool sees inside one job, an environment decides who may deploy and where the secrets live. A tool version or a runner per stack is not what this key does.
+
 ### `stacks[].options.workspace`
 
 Default: the workspace the job's environment selects, which is `default`.

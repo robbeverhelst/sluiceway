@@ -1,5 +1,7 @@
 # The env-file input loads the file a step names, masks every value, and promise 2 is amended
 
+> Amended by 0103: one file per step, and one more per stack, which a `stacks` entry names with `envFile` and the same reader loads on top of the step's file for that stack alone.
+
 Every repo that keeps its credentials in a secret manager's env file copied the same two things into its workflow: a loading step and `export-env.sh`, a script that masks each value and writes it to `$GITHUB_ENV` (onboarding log, hurdle 3). It is about twelve lines plus a subtle script, the same in every repo, and getting the masking wrong leaks values into the job log (hurdle 11). Issue 226, the owner on 2026-09-23: the action is open source, pinned by the user and runs on the user's own runner, never on Sluiceway's; its process already holds the whole job environment, which record 0014 says in its own text; so reading a file the user points at adds no exposure that is not already there, only code the user can read. Record 0078 is the precedent: it amended promise 1 to accept the notification channels as inputs, because they are the user's own secrets from the user's own repo. Build plan slice 5.35.
 
 This amends 0014 (promise 2) and 0013 (the tool's environment is the job's, unchanged), and holds 0065 as it is.

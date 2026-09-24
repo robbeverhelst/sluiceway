@@ -1,0 +1,33 @@
+# A stack may name the env file its tool gets, so a repo that spans clouds loads each stack's credentials for that stack alone
+
+> Amends 0013 (there is now an environment per stack, from a file the stack's entry names, on top of the job's), 0014 (promise 2: the files Sluiceway reads are the ones the `env-file` input and `stacks[].envFile` name, each the same way) and 0100 (one file per step, and now one more per stack). Built as slice 5.38, for issue 227.
+
+One job has one environment, so a repo whose stacks live in different places had two bad choices: load every credential for every scan, or split the workflow and hand-write a job per group. A repo with an AWS stack, a Proxmox stack and a Kubernetes stack loaded all three sets of credentials to preview any one of them. That is the opposite of least privilege, it makes the scan slower, and a credential that expires or is wrong for one stack breaks the preview of all of them. `stacks[].environment` scopes the deploy through a GitHub Environment, which is GitHub's mechanism for who may deploy and where the secrets live, and it says nothing about the scan.
+
+Record 0100 made the pieces: one strict format, one reader that masks every value first and names what it loaded, and a rule that the file wins. Each preview is already its own process with its own environment (`ToolContext.env`), so an environment per stack is the same hand-off with another value.
+
+## Decision
+
+- **`stacks[].envFile` names one file of `NAME=value` lines**, relative to the checkout or absolute, like the input. The modes that run the tool read it for the stacks of that entry and hand each of them the job's environment, the file the step's `env-file` input names on top, and the stack's own file on top of that. The stack's file wins, for the reason 0100 gives: the person named it on purpose. Nothing from one stack's file reaches another stack. An entry with a name wins over one without, key by key like every other key, and an entry names one file on one line.
+- **The same rules as the input, and the same code.** The same parser, the same refusals by line number, every value masked with `setSecret` before the file is named, and a group in the job log that names the file, the stacks it was loaded for, what was masked, what was not and why, and what it replaced, never a value. A file two entries name is read, masked and named once per job.
+- **A file that cannot be loaded fails the preview of its stacks and nothing else.** A missing file, a directory, a refused line: the stack's row says `preview failed: the env file of the stack could not be loaded`, a new reason on the fixed list of 0022, and the stack's group in the job log has the path and the line number, never a line of the file. The stack is not prepared, not previewed and not read for its history. Every other stack carries on, and the scan never fails for it. On a deploy the fresh preview fails the same way, so nothing goes out.
+- **Every run of the tool for a stack gets the stack's environment**: its preparation, its preview, its drift check, its tool diff, the read of its history, its fresh preview and its deploy in `apply`, its preview for a pull request or a branch, and the backend question of the check with `backend: true`. Preparations run one env file at a time, so a preparation runs with the environment of the stacks it prepares. The version check keeps the job's environment: it needs no credential.
+- **The check counts the file.** A name the stack's file lists is provided for that stack in every job that runs the tool, and the log says `listed in ci/aws.env, the envFile of the stack`. A file the check cannot read in the checkout, such as one a step writes at run time, is named as a maybe, never a failure (0099).
+- **Which of the two to choose, said plainly in the docs.** An env file per stack scopes what each stack's tool sees inside one job. A GitHub Environment per stack holds the credentials that change things behind required reviewers, in the deploy job of the split workflow, and decides who may deploy. Use both when both are needed. A tool version or a runner per stack is not what an env file does, and the docs say so.
+
+## Considered
+
+- **An `env` key with values in `sluiceway.yaml`.** Rejected: the file is committed, and a value in it would be a credential in the repo. A stack names a file, and the file holds the values, where a step may have resolved them.
+- **Loading every stack's file in the glue, before the mode.** Rejected: the glue does not know the stacks, discovery does, and reading the config twice would report a config error two ways. The modes read the file through the same code as the glue, with the runner's `setSecret` handed in as the one new seam, so a test replays it and nothing in `core/`, `adapters/` or `render/` reads a file.
+- **A preparation with the job's environment, whatever its stacks name.** Rejected: OpenTofu's init reaches the backend, which is what the stack's file holds. Preparing one env file at a time costs a second init only for two stacks of one directory with different files, and inits already run one at a time.
+- **Reading the stack's file from the copy of the checkout in a branch preview.** Rejected: a pull request must not change what a stack's tool gets before it is merged. The file is read from the checkout.
+- **Falling back to the job's environment when the file is missing.** Rejected: a stack that names a file asked for those values, and a preview with the wrong credentials is a preview of nothing, or of the wrong account.
+
+## Consequences
+
+- Record 0013 is amended: there is an environment per stack, as a file the stack's entry names on top of the job's. The job environment still goes to the tool whole, minus `INPUT_*`, and Sluiceway still masks nothing in it and reads no name of it.
+- Record 0014 is amended: promise 2 now reads that the files Sluiceway reads on the user's word are the one the `env-file` input names and the ones `stacks[].envFile` name, every line of each the same way, for the tool, masked first. Promise 1 holds: the key carries a path and never a value.
+- Record 0100 is amended: one file per step, and one more per stack.
+- `PreviewFailureReason` gains `env-file-not-loaded`. `ScanContext`, `ApplyContext`, the pull request preview and the backend part of the check gain the runner's `setSecret`, and the check job's backend part reaches `github/env-file.ts`, which talks to nobody.
+- `CONTEXT.md` amends the env file and the tool environment. `docs/configuration.md` and `docs/credentials.md` gain the key, and every page that makes promise 2 says which files are read.
+- `docs/later.md` loses "an environment per stack" and keeps an `env` key with values.
