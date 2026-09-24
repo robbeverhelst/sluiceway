@@ -162,6 +162,19 @@ const stackEntry = z
         "Cover the values these stacks' rows do not show with a fingerprint, or not, whatever valueFingerprint at the top level says. Turn it off for a stack whose program makes a value that differs on every run. Default: the top level valueFingerprint.",
       )
       .exactOptional(),
+    // The env file of these stacks (record 0103): a file of NAME=value lines
+    // the modes that run the tool read for these stacks alone, on top of the
+    // job's environment and the step's own file. Relative to the checkout or
+    // absolute, like the `env-file` input, and one file on one line.
+    envFile: text
+      .refine((path) => !/[\r\n]/.test(path), {
+        message:
+          "envFile names one file on one line. To load several files, join them in a step before Sluiceway.",
+      })
+      .describe(
+        "A file of NAME=value lines, relative to the repo root or absolute, that the tool gets for these stacks alone, on top of the job environment and the step's env-file input. Every value is masked first. A file that cannot be loaded fails the preview of these stacks and no other.",
+      )
+      .exactOptional(),
     // Named adapter options (records 0006, 0015). Only an entry with a tool
     // takes them, and its adapter checks their names and values (record 0053).
     options: z
@@ -861,6 +874,10 @@ export interface ConfiguredStack {
   // `valueFingerprint` of its stack entries (record 0102). Absent when no
   // entry sets it, and the top level decides.
   valueFingerprint?: boolean;
+  // `envFile` of its stack entries (record 0103): the file of NAME=value
+  // lines the tool gets for this stack, on top of the environment of the
+  // step. Absent for a stack that gets the environment of the step as it is.
+  envFile?: string;
 }
 
 const DEFAULT_ENVIRONMENT = "sluiceway";
@@ -894,6 +911,7 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
     const valueFingerprint = entries.findLast(
       (entry) => entry.valueFingerprint !== undefined,
     )?.valueFingerprint;
+    const envFile = entries.findLast((entry) => entry.envFile !== undefined)?.envFile;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     return {
@@ -912,6 +930,7 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
       ...(drift === undefined ? {} : { drift }),
       ...(deploy === "on-merge" ? { deploy } : {}),
       ...(valueFingerprint === undefined ? {} : { valueFingerprint }),
+      ...(envFile === undefined ? {} : { envFile }),
     };
   });
 }

@@ -298,6 +298,20 @@ stacks:
     ]);
   });
 
+  // Slice 5.38 (record 0103): one file per entry, named on one line.
+  test("envFile is one path on one line, and never empty", () => {
+    expect(issues('stacks:\n  - path: a\n    envFile: ""\n')).toEqual([
+      { kind: "empty", path: ["stacks", 0, "envFile"] },
+    ]);
+    expect(issues('stacks:\n  - path: a\n    envFile: "ci/a.env\\nci/b.env"\n')).toEqual([
+      {
+        kind: "worded",
+        text: "envFile names one file on one line. To load several files, join them in a step before Sluiceway.",
+        path: ["stacks", 0, "envFile"],
+      },
+    ]);
+  });
+
   test("previewTimeout is whole minutes, 1 or more", () => {
     const refused = (value: string) =>
       issues(`stacks:\n  - path: a\n    previewTimeout: ${value}\n`);
@@ -359,6 +373,7 @@ stacks:
       "deploy",
       "drift",
       "valueFingerprint",
+      "envFile",
       "options",
     ];
     expect(issues("stacks:\n  - path: a\n    stack: prod\n    approvers: write\n")).toEqual([

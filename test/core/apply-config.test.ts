@@ -330,3 +330,36 @@ stacks:
     expect(configured.map((one) => one.valueFingerprint)).toEqual([false, true, undefined]);
   });
 });
+
+// Slice 5.38 (record 0103): a stack may name the env file its tool gets,
+// on top of the job's environment and the step's own file.
+describe("the env file of a stack", () => {
+  test("is absent when no entry names one, so the stack gets the environment of the step", () => {
+    expect(applyConfig(parseConfig(undefined), FOUND).map((one) => one.envFile)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  test("an entry names the file of its stacks, and the entry with a name wins", () => {
+    const configured = applyConfig(
+      parseConfig(`
+stacks:
+  - path: apps/grafana
+    name: prod
+    envFile: ci/grafana-prod.env
+  - path: apps/grafana
+    envFile: ci/grafana.env
+  - path: envs/prod
+    envFile: /srv/credentials/prod.env
+`),
+      FOUND,
+    );
+    expect(configured.map((one) => one.envFile)).toEqual([
+      "ci/grafana.env",
+      "ci/grafana-prod.env",
+      "/srv/credentials/prod.env",
+    ]);
+  });
+});

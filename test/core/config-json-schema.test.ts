@@ -71,6 +71,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "deploy",
       "drift",
       "valueFingerprint",
+      "envFile",
       "options",
     ]);
   });

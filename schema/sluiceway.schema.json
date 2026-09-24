@@ -329,6 +329,11 @@
             "type": "boolean",
             "description": "Cover the values these stacks' rows do not show with a fingerprint, or not, whatever valueFingerprint at the top level says. Turn it off for a stack whose program makes a value that differs on every run. Default: the top level valueFingerprint."
           },
+          "envFile": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A file of NAME=value lines, relative to the repo root or absolute, that the tool gets for these stacks alone, on top of the job environment and the step's env-file input. Every value is masked first. A file that cannot be loaded fails the preview of these stacks and no other."
+          },
           "options": {
             "description": "Named adapter options of the tool. Only an entry with tool takes them.",
             "type": "object",
