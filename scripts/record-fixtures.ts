@@ -10,8 +10,10 @@
 // examples/terragrunt-basic and --tool cdktf examples/cdktf-basic, both with
 // tofu behind them (record 0068). cdktf needs the example's packages
 // installed first, with npm ci in examples/cdktf-basic.
+// --tool infracost drives examples/opentofu-basic with tofu and the Infracost
+// CLI against a fake pricing API it starts itself (record 0105).
 //
-//   bun run record:fixtures [--tool pulumi|opentofu|terraform|terragrunt|cdktf|helm|kubectl] [--out <dir>]
+//   bun run record:fixtures [--tool pulumi|opentofu|terraform|terragrunt|cdktf|infracost|helm|kubectl] [--out <dir>]
 //                           [--work-dir <dir>] [--expect-version v3.229.0]
 //                           [--only <scenario>]
 //
@@ -26,6 +28,7 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { bundleManifests } from "../src/adapters/kubectl/render.ts";
 import { CDKTF_SCENARIOS, cdktfEnvironment } from "./fixtures/cdktf-scenarios.ts";
+import { startFakePricingApi } from "./fixtures/fake-pricing-api.ts";
 import {
   HELM,
   HELM_NAMESPACES,
@@ -33,6 +36,7 @@ import {
   helmOps,
   helmScenarios,
 } from "./fixtures/helm-scenarios.ts";
+import { INFRACOST_SCENARIOS, infracostEnvironment } from "./fixtures/infracost-scenarios.ts";
 import {
   KUBECTL,
   KUBECTL_SCENARIOS,
@@ -104,6 +108,9 @@ interface Tool {
   // What the recorder needs for a tool whose plan file it writes itself.
   planFileName?: string;
   bundle?: (dir: string, recursive?: boolean) => string;
+  // Starts what the scenarios need on this machine, such as the fake pricing
+  // API of the cost estimate (record 0105), and gives back what stops it.
+  before?: () => () => void;
 }
 
 const TOOLS: Record<string, Tool> = {
@@ -160,6 +167,19 @@ const TOOLS: Record<string, Tool> = {
     scenarios: CDKTF_SCENARIOS,
     environment: cdktfEnvironment,
     ops: openTofuOps,
+  },
+  // The cost estimate (record 0105): tofu plans, and the Infracost CLI reads
+  // the plan's JSON against a fake pricing API started here.
+  infracost: {
+    name: "infracost",
+    example: "examples/opentofu-basic",
+    fixtures: "infracost",
+    versionArgv: ["infracost", "--version"],
+    version: (stdout) => /v\d+\.\d+\.\d+/.exec(stdout)?.[0] ?? "",
+    scenarios: INFRACOST_SCENARIOS,
+    environment: infracostEnvironment,
+    ops: openTofuOps,
+    before: startFakePricingApi,
   },
   helm: {
     name: "helm",
@@ -258,6 +278,7 @@ if (tool.fixtures === "helm") {
   }
 }
 
+const stop = tool.before?.();
 const problems: string[] = [];
 for (const scenario of scenarios) {
   const started = Date.now();
@@ -282,6 +303,7 @@ for (const scenario of scenarios) {
   console.log(`${found.length === 0 ? "ok  " : "FAIL"} ${scenario.name} (${seconds} s)`);
 }
 
+stop?.();
 rmSync(workDir, { recursive: true, force: true });
 
 if (problems.length > 0) {

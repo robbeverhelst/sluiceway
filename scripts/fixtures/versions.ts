@@ -56,3 +56,14 @@ export const FIXTURE_CDKTF_VERSIONS = {
 
 // The tofu behind terragrunt and cdktf in their recordings.
 export const FIXTURE_WRAPPED_TOFU_VERSION = "v1.12.6";
+
+// The Infracost CLI version of test/fixtures/infracost/ (record 0105): the
+// last release of the open source 0.10 line, whose `diff` reads a plan's JSON
+// and asks only the pricing API. The adapter checks no floor, because a
+// failed estimate is a missing line and never a red scan, so there is one
+// set. The matrix of the fixtures job in .github/workflows/ci.yml and the
+// tofu it installs have to agree. A test checks it.
+export const FIXTURE_INFRACOST_VERSIONS = {
+  minimum: "v0.10.45",
+  newest: "v0.10.45",
+} as const;

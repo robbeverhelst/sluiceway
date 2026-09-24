@@ -69,6 +69,10 @@ export type Step =
       env?: Record<string, string>;
       // What it printed also becomes the plan file.
       stdoutToPlan?: boolean;
+      // What it printed is also written next to the plan file under this
+      // name, as the adapter writes a plan's JSON next to the plan for the
+      // cost estimate (record 0105).
+      stdoutBesidePlan?: string;
       // Whether what it printed shows that the run raced a change made
       // elsewhere while it ran, such as a controller writing the status of an
       // object in the middle of a kubectl diff. Such a run is taken again, at
@@ -84,6 +88,11 @@ export const PLAN_FILE = "{plan}";
 
 // The same for the prune file of a kubectl stack (record 0070).
 export const PRUNE_FILE = "{prune}";
+
+// Stands for the directory of the plan file as a step's cwd, for a command
+// that runs next to the plan and not in the repo, as the cost estimate does
+// (record 0105).
+export const PLAN_DIR = "{plan-dir}";
 
 // What a recorded command has to show for the scenario to be worth keeping. A
 // scenario named "replace" whose preview holds no replace is a lie in waiting.
@@ -165,6 +174,7 @@ export async function recordScenario(
   const pruneFile = join(scenarioWork, "plan", "prune.yaml");
   const argvOf = (argv: string[]) =>
     argv.map((arg) => arg.replace(PLAN_FILE, planFile).replace(PRUNE_FILE, pruneFile));
+  const cwdOf = (cwd: string) => (cwd === PLAN_DIR ? join(planFile, "..") : join(project, cwd));
 
   for (const step of scenario.steps) {
     if (step.kind === "edit") {
@@ -197,7 +207,7 @@ export async function recordScenario(
     } else if (step.kind === "setup") {
       const result = await options.runner({
         argv: argvOf(step.argv),
-        cwd: join(project, step.cwd),
+        cwd: cwdOf(step.cwd),
         env: { ...env, ...step.env },
       });
       if (result.exitCode !== 0) {
@@ -210,7 +220,7 @@ export async function recordScenario(
       const run = () =>
         options.runner({
           argv: argvOf(step.argv),
-          cwd: join(project, step.cwd),
+          cwd: cwdOf(step.cwd),
           env: { ...env, ...step.env },
         });
       let result = await run();
@@ -236,6 +246,9 @@ export async function recordScenario(
       writeFileSync(join(target, command.stderr), result.stderr);
       commands.push(command);
       if (step.stdoutToPlan) writeFileSync(planFile, result.stdout);
+      if (step.stdoutBesidePlan !== undefined) {
+        writeFileSync(join(planFile, "..", step.stdoutBesidePlan), result.stdout);
+      }
     }
   }
 
