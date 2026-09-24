@@ -70,6 +70,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "phase",
       "deploy",
       "drift",
+      "valueFingerprint",
       "options",
     ]);
   });

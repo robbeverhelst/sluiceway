@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import type { Change } from "../../src/core/diff.ts";
-import { valueFingerprint } from "../../src/core/value-fingerprint.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
 import { type FailureLine, type PendingRow, renderRow } from "../../src/render/row.ts";
 
@@ -791,6 +790,7 @@ describe("the value fingerprint on a row", () => {
   const F1 = "1111111111111111";
   const withFingerprints: PendingRow = {
     ...BUCKETS,
+    fingerprint: "2f8143552ea1897d",
     diff: {
       ...BUCKETS.diff,
       changes: BUCKETS.diff.changes.map((one, index) =>
@@ -801,8 +801,7 @@ describe("the value fingerprint on a row", () => {
 
   test("is the fingerprint of the diff, written last on the marker, and the hash stays", () => {
     const first = renderRow(withFingerprints).split("\n")[0] ?? "";
-    const expected = valueFingerprint(withFingerprints.diff) ?? "";
-    expect(expected).toMatch(/^[0-9a-f]{16}$/);
+    const expected = "2f8143552ea1897d";
     expect(first).toEndWith(
       `hash="2b44350653e84a11" destroys="2" deletes="1" fingerprint="${expected}" -->`,
     );
@@ -817,7 +816,7 @@ describe("the value fingerprint on a row", () => {
   test("stays on a redacted, a read-only and a fully shortened row", () => {
     for (const options of [{ redact: true }, { readOnly: true }, { level: 3 as const }]) {
       expect(renderRow(withFingerprints, options).split("\n")[0]).toContain(
-        `fingerprint="${valueFingerprint(withFingerprints.diff)}"`,
+        `fingerprint="2f8143552ea1897d"`,
       );
     }
   });

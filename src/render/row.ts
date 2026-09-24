@@ -4,7 +4,6 @@
 import type { Change, Diff } from "../core/diff.ts";
 import type { OnMergeWait } from "../core/on-merge.ts";
 import type { PhaseGroup } from "../core/phases.ts";
-import { valueFingerprint } from "../core/value-fingerprint.ts";
 import { escapeText } from "./escape.ts";
 import { mascotUrl } from "./images.ts";
 import { ROW_CLOSE_MARKER, rowMarker } from "./marker.ts";
@@ -39,6 +38,9 @@ export interface PendingRow {
   diff: Diff;
   // The diff hash of `diff`. It covers the whole diff whatever the row shows.
   hash: string;
+  // The value fingerprint of `diff` (record 0102), for the marker. Absent when
+  // the diff carries none.
+  fingerprint?: string | undefined;
   // The attempt of the run whose summary shows this diff in full (record
   // 0044).
   runUrl: string;
@@ -79,6 +81,8 @@ export interface DriftRow {
   diff: Diff;
   // The diff hash of `diff`, which covers the drift.
   hash: string;
+  // The value fingerprint of `diff` (record 0102), for the marker.
+  fingerprint?: string | undefined;
   // As on a pending row (record 0102).
   valueEveryRun?: boolean | undefined;
   // The attempt of the run whose summary lists the drift (record 0044).
@@ -445,7 +449,7 @@ function driftRow(row: DriftRow, options: RowOptions): string[] {
         drift: true,
         gone: drift.filter((change) => change.op === "delete").length,
         dependsOn: row.dependsOn,
-        fingerprint: valueFingerprint(row.diff),
+        fingerprint: row.fingerprint,
       },
     )}`,
   ];
@@ -482,7 +486,7 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
         shortened: level,
         drift: drift.length > 0,
         dependsOn: row.dependsOn,
-        fingerprint: valueFingerprint(row.diff),
+        fingerprint: row.fingerprint,
       },
     )}`,
   ];

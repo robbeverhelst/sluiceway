@@ -49,6 +49,7 @@ import type { OnMergeWait } from "./on-merge.ts";
 import { type TickAtLateRead, tickAtLateRead } from "./orphan-tick.ts";
 import { type OutsideDeploy, outsideDeploys, trailOutside } from "./outside-deploy.ts";
 import { oneRowPerStack } from "./scan-plan.ts";
+import { differsEveryRun, valueFingerprint } from "./value-fingerprint.ts";
 
 // One stack this scan previewed.
 export interface PreviewedStack {
@@ -272,6 +273,17 @@ export function placeRows(so: ScanSoFar, late: LateRead): RowsAtLateRead {
         toolDiffInLog: logDiff,
         pageUrl: so.pageUrls.get(id),
       });
+      // A value the row does not show differed between this preview and the
+      // live row's, at the commit of the live body's last scan (record 0102).
+      const everyRun =
+        (fresh.state === "pending" || fresh.state === "drift") &&
+        liveRow?.known === true &&
+        liveRow.hash !== undefined &&
+        differsEveryRun(
+          { hash: liveRow.hash, fingerprint: liveRow.fingerprint },
+          { hash: fresh.hash, fingerprint: valueFingerprint(fresh.diff) },
+          live.root?.scanSha === so.scan.sha,
+        );
       const row =
         fresh.state === "pending"
           ? {
@@ -280,9 +292,12 @@ export function placeRows(so: ScanSoFar, late: LateRead): RowsAtLateRead {
               pendingAgain: pendingAgain(fact, fresh.hash)
                 ? { logUrl: logDiff ? links.log : undefined }
                 : undefined,
+              ...(everyRun ? { valueEveryRun: true } : {}),
               ...(late.waitsOnMerge?.has(id) ? { waitsOnMerge: late.waitsOnMerge.get(id) } : {}),
             }
-          : fresh;
+          : fresh.state === "drift" && everyRun
+            ? { ...fresh, valueEveryRun: true }
+            : fresh;
       if (!ticked) {
         rows.set(id, row);
         continue;

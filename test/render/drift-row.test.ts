@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Change, Diff } from "../../src/core/diff.ts";
 import { diffHash } from "../../src/core/diff-hash.ts";
-import { valueFingerprint } from "../../src/core/value-fingerprint.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
 import { type DriftRow, type PendingRow, renderRow } from "../../src/render/row.ts";
 
@@ -163,9 +162,10 @@ describe("the value fingerprint on a drift row", () => {
         drift: [gone, { ...changed, fingerprint: "1111111111111111" }],
       },
       valueEveryRun: true,
+      fingerprint: "ddaa2268cce4c88d",
     });
     const text = renderRow(row);
-    const expected = valueFingerprint(row.diff) ?? "";
+    const expected = "ddaa2268cce4c88d";
     expect(text.split("\n")[0]).toEndWith(`gone="1" fingerprint="${expected}" -->`);
     expect(text).toContain("differed between two previews of the same commit");
     const [parsed] = parseDashboard(text).rows;

@@ -24,6 +24,10 @@ export interface PreviewOptions extends ToolContext {
   // `dashboard.showValues` (record 0052): the only paths whose values the
   // diff may hold. Absent or empty, it holds none.
   showValues?: readonly string[] | undefined;
+  // The value fingerprint (record 0102): read the values the row does not
+  // show and put their fingerprint on each change. Absent or false, no value
+  // is read for it and no change carries one.
+  valueFingerprint?: boolean | undefined;
   // Keep the plan this preview made, so a deploy can go out exactly as it
   // was hashed (record 0053). Only `apply` asks, and only an adapter whose
   // tool can save a plan keeps one. Whoever asked lets the plan go.

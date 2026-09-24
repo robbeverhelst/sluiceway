@@ -5,6 +5,7 @@ import type { PreviewResult } from "../adapters/adapter.ts";
 import { diffHash } from "../core/diff-hash.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
 import { globOf } from "../core/glob.ts";
+import { valueFingerprint } from "../core/value-fingerprint.ts";
 import type { RunLinks } from "./links.ts";
 import type { FailureLine, Row } from "./row.ts";
 import type { SummaryMerge, SummaryStack } from "./summary.ts";
@@ -49,6 +50,7 @@ export function previewRow(
         state: "drift",
         diff: result.diff,
         hash: diffHash(result.diff),
+        fingerprint: valueFingerprint(result.diff),
         runUrl: links.summary,
         previewUrl: options.pageUrl,
         failure,
@@ -61,6 +63,7 @@ export function previewRow(
     state: "pending",
     diff: result.diff,
     hash: diffHash(result.diff),
+    fingerprint: valueFingerprint(result.diff),
     runUrl: links.summary,
     previewUrl: options.pageUrl ?? (options.toolDiffInLog ? links.log : undefined),
     failure,

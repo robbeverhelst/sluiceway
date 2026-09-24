@@ -93,6 +93,9 @@ export interface TableAdapter extends Adapter {
   previewed: string[];
   // The time limit each preview was started with, by stack id.
   timeouts: Record<string, number>;
+  // Whether each preview was asked for the value fingerprint (record 0102),
+  // by stack id.
+  fingerprintAsked: Record<string, boolean | undefined>;
   versionChecks: number;
   // The stack id of every deploy, in order.
   applied: string[];
@@ -129,6 +132,7 @@ export function tableAdapter(
     },
     previewed: [],
     timeouts: {},
+    fingerprintAsked: {},
     versionChecks: 0,
     applied: [],
     toolDiffs: [],
@@ -154,6 +158,7 @@ export function tableAdapter(
       const id = stackId(previewed);
       adapter.previewed.push(id);
       adapter.timeouts[id] = options.timeoutMinutes;
+      adapter.fingerprintAsked[id] = options.valueFingerprint;
       const answer = table[id];
       if (answer === undefined) throw new Error(`The table holds no answer for ${id}.`);
       return typeof answer === "function" ? answer(options) : answer;
