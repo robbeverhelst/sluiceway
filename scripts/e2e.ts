@@ -67,6 +67,7 @@ import { parseArgs } from "node:util";
 import { type FakeCheckRun, FakeGitHub } from "../test/fake-github/fake-github.ts";
 import { startFakeGitHubServer } from "../test/fake-github/server.ts";
 import {
+  checkEnvFile,
   checkFullScan,
   checkNarrowedScan,
   checkOutsideDeploys,
@@ -290,7 +291,12 @@ async function step(mode: string | undefined, options: StepOptions): Promise<Ste
 // the one step with no mode, which scans on each of these events (record
 // 0077). On a dispatch it resolves first, and finds nothing to start.
 let runNumber = 0;
-function scanStep(sha: string, event = "push", action?: StepOptions["action"]): Promise<Stepped> {
+function scanStep(
+  sha: string,
+  event = "push",
+  action?: StepOptions["action"],
+  inputs?: Record<string, string>,
+): Promise<Stepped> {
   runNumber++;
   const from = action === undefined ? "" : `, from ${action.ref}`;
   return step(undefined, {
@@ -299,6 +305,7 @@ function scanStep(sha: string, event = "push", action?: StepOptions["action"]): 
     event,
     title: `Scan ${runNumber}${from}`,
     ...(action === undefined ? {} : { action }),
+    ...(inputs === undefined ? {} : { inputs }),
   });
 }
 
@@ -336,6 +343,9 @@ await deploy("network", "prod");
 console.log("::endgroup::");
 
 const FIRST_SHA = "1111111111111111111111111111111111111111";
+// The value of the env file the first scan loads (record 0100). Long enough
+// to be masked, and no test result may hold it.
+const ENV_CANARY = "CANARY-ENV-VALUE";
 const SECOND_SHA = "2222222222222222222222222222222222222222";
 
 const expected: Expected = {
@@ -350,7 +360,7 @@ const expected: Expected = {
   sha: FIRST_SHA,
   // A local action has no ref, so its images come from the commit of the run.
   actionRef: FIRST_SHA,
-  secrets: [CANARY_VALUE, CANARY_SECRET],
+  secrets: [CANARY_VALUE, CANARY_SECRET, ENV_CANARY],
 };
 
 // The history of the repo, for attribution (record 0026): the example came
@@ -376,9 +386,26 @@ fake.seedPullRequest({
   commits: [SECOND_SHA],
 });
 
-const first = await scanStep(FIRST_SHA);
+// The first scan names an env file (record 0100): a file a step before
+// Sluiceway would have resolved, with one value long enough to mask and one
+// too short. No program of the example reads either, so the proof is what
+// the step printed, and that the value reached nothing Sluiceway writes.
+const ENV_FILE = {
+  path: "ci/deploy.env",
+  masked: ENV_CANARY,
+  unmaskedName: "SLUICEWAY_E2E_SHORT",
+  unmaskedValue: "e2e",
+};
+mkdirSync(join(workspace, "ci"), { recursive: true });
+writeFileSync(
+  join(workspace, ENV_FILE.path),
+  `# Resolved by a step before Sluiceway.\nSLUICEWAY_E2E_TOKEN=${ENV_CANARY}\n${ENV_FILE.unmaskedName}=${ENV_FILE.unmaskedValue}\n`,
+);
+
+const first = await scanStep(FIRST_SHA, "push", undefined, { "env-file": ENV_FILE.path });
 let good = report("The full scan", [
   ...checkFullScan(first, expected),
+  ...checkEnvFile(first.log, ENV_FILE),
   // network:prod was deployed by hand above, so the tool's history holds a
   // deploy that no deployment record ran (record 0073).
   ...checkOutsideDeploys(first, ["network:prod"]),
@@ -564,7 +591,7 @@ function checkDeploys(stack: string, found: number, expected: number): string[] 
     : [`The backend holds ${found} deploys of ${stack}, expected ${expected}.`];
 }
 
-const secrets = [CANARY_VALUE, CANARY_SECRET];
+const secrets = [CANARY_VALUE, CANARY_SECRET, ENV_CANARY];
 function reportStep(title: string, stepped: LoopStep, problems: string[]): boolean {
   return report(title, [...problems, ...checkNothingLeaks(stepped, secrets)]);
 }

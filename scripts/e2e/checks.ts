@@ -300,3 +300,29 @@ export function checkNarrowedScan(
   }
   return problems;
 }
+
+// The env file of record 0100, on a scan whose step named one: the runner
+// was told to mask the value that is long enough before the log said the
+// file was loaded, the short one was never masked, and the log named both,
+// with why the short one has no mask. The value itself is in `secrets`, so
+// the other checks hold it out of the dashboard, the summary and the pages.
+export function checkEnvFile(
+  log: string,
+  file: { path: string; masked: string; unmaskedName: string; unmaskedValue: string },
+): string[] {
+  const problems: string[] = [];
+  const mask = log.indexOf(`::add-mask::${file.masked}`);
+  const loaded = log.indexOf(`Loaded the env file ${file.path}`);
+  if (mask < 0) problems.push(`The step never masked the value of the env file.`);
+  if (loaded < 0) problems.push(`The step never said it loaded ${file.path}.`);
+  if (mask >= 0 && loaded >= 0 && mask > loaded) {
+    problems.push("The step said it loaded the env file before it masked the value.");
+  }
+  if (log.includes(`::add-mask::${file.unmaskedValue}`)) {
+    problems.push(`The step masked ${file.unmaskedName}, which is too short to mask.`);
+  }
+  if (!log.includes(`Not masked: ${file.unmaskedName} (shorter than 8 characters).`)) {
+    problems.push(`The step did not say that ${file.unmaskedName} got no mask.`);
+  }
+  return problems;
+}

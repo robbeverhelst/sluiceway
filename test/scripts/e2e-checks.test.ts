@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  checkEnvFile,
   checkFullScan,
   checkNarrowedScan,
   type Expected,
@@ -310,6 +311,45 @@ describe("the checks of a narrowed scan", () => {
       checkNarrowedScan({ ...withBody(after), log: quiet, pages: [] }, expected, narrowed),
     ).toEqual([
       'The job log has no line that starts with "This is a narrowed scan: it previews 1 of 4 stacks".',
+    ]);
+  });
+});
+
+// Slice 5.35 (record 0100): the first scan of the e2e run names an env file.
+describe("the env file check", () => {
+  const file = {
+    path: "ci/deploy.env",
+    masked: "CANARY-ENV-VALUE",
+    unmaskedName: "E2E_SHORT",
+    unmaskedValue: "e2e",
+  };
+  const good = [
+    "::add-mask::CANARY-ENV-VALUE",
+    "::group::Loaded the env file ci/deploy.env",
+    "2 values for the tool: E2E_TOKEN, E2E_SHORT.",
+    "Masked: E2E_TOKEN.",
+    "Not masked: E2E_SHORT (shorter than 8 characters).",
+    "::endgroup::",
+  ];
+
+  test("a step that masked first and said so has no problems", () => {
+    expect(checkEnvFile(good.join("\n"), file)).toEqual([]);
+  });
+
+  test("a mask after the log, a short value masked, and no word about it are problems", () => {
+    const wrong = [good[1], good[2], good[3], "::add-mask::e2e", good[5], good[0]];
+    expect(checkEnvFile(wrong.join("\n"), file)).toEqual([
+      "The step said it loaded the env file before it masked the value.",
+      "The step masked E2E_SHORT, which is too short to mask.",
+      "The step did not say that E2E_SHORT got no mask.",
+    ]);
+  });
+
+  test("a step that never loaded the file is named", () => {
+    expect(checkEnvFile("", file)).toEqual([
+      "The step never masked the value of the env file.",
+      "The step never said it loaded ci/deploy.env.",
+      "The step did not say that E2E_SHORT got no mask.",
     ]);
   });
 });
