@@ -26903,11 +26903,11 @@ var require_picomatch = __commonJS((exports, module) => {
       return { isMatch: false, output: "" };
     }
     const opts = options || {};
-    const format2 = opts.format || (posix ? utils.toPosixSlashes : null);
+    const format3 = opts.format || (posix ? utils.toPosixSlashes : null);
     let match = input2 === glob;
-    let output2 = match && format2 ? format2(input2) : input2;
+    let output2 = match && format3 ? format3(input2) : input2;
     if (match === false) {
-      output2 = format2 ? format2(input2) : input2;
+      output2 = format3 ? format3(input2) : input2;
       match = output2 === glob;
     }
     if (match === false || opts.capture === true) {
@@ -27425,7 +27425,7 @@ function isMode(value) {
 }
 var STARTS = {
   push: ["scan"],
-  schedule: ["scan"],
+  schedule: ["resolve", "scan"],
   workflow_dispatch: ["resolve", "scan"],
   issues: ["resolve"],
   pull_request: ["check"],
@@ -51229,6 +51229,134 @@ function bigint3(params) {
 function date4(params) {
   return _coercedDate(ZodDate, params);
 }
+// src/core/deploy-window.ts
+var WEEKDAYS = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday"
+];
+function minutesOf(text) {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(text);
+  if (match)
+    return Number(match[1]) * 60 + Number(match[2]);
+  return text === "24:00" ? 1440 : undefined;
+}
+function windowProblem(window) {
+  const from = minutesOf(window.from);
+  const to = minutesOf(window.to);
+  if (from === undefined || to === undefined)
+    return;
+  return to > from ? undefined : { kind: "window-ends-first", from: window.from, to: window.to };
+}
+var DAYS_AHEAD = 8;
+function windowState(windows, now, timeZone) {
+  if (windows.length === 0)
+    return { open: true };
+  const today = calendarDay(now, timeZone);
+  let opens;
+  for (let ahead = 0;ahead <= DAYS_AHEAD; ahead++) {
+    const day = plusDays(today, ahead);
+    const weekday = weekdayOf(day);
+    for (const window of windows) {
+      if (!window.days.includes(weekday))
+        continue;
+      const from = minutesOf(window.from);
+      const to = minutesOf(window.to);
+      if (from === undefined || to === undefined)
+        continue;
+      const start = instantOf(day, from, timeZone);
+      const end = instantOf(day, to, timeZone);
+      if (start <= now.getTime() && now.getTime() < end)
+        return { open: true };
+      if (start > now.getTime() && (opens === undefined || start < opens))
+        opens = start;
+    }
+  }
+  return { open: false, opens: opens === undefined ? undefined : new Date(opens) };
+}
+var formats = new Map;
+function isUtc(timeZone) {
+  return timeZone === "UTC";
+}
+function format(timeZone) {
+  let found = formats.get(timeZone);
+  if (found === undefined) {
+    found = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+    formats.set(timeZone, found);
+  }
+  return found;
+}
+function wall(at, timeZone) {
+  if (isUtc(timeZone)) {
+    return {
+      year: at.getUTCFullYear(),
+      month: at.getUTCMonth() + 1,
+      day: at.getUTCDate(),
+      minutes: at.getUTCHours() * 60 + at.getUTCMinutes()
+    };
+  }
+  const parts = {};
+  for (const part of format(timeZone).formatToParts(at)) {
+    if (part.type !== "literal")
+      parts[part.type] = Number(part.value);
+  }
+  const { year = 0, month = 1, day = 1, hour = 0, minute = 0 } = parts;
+  return { year, month, day, minutes: hour * 60 + minute };
+}
+function offsetAt(at, timeZone) {
+  if (isUtc(timeZone))
+    return 0;
+  const clock = wall(at, timeZone);
+  const shown = Date.UTC(clock.year, clock.month - 1, clock.day, 0, clock.minutes);
+  const truncated = Math.floor(at.getTime() / 60000) * 60000;
+  return Math.round((shown - truncated) / 60000);
+}
+function calendarDay(at, timeZone) {
+  const { year, month, day } = wall(at, timeZone);
+  return { year, month, day };
+}
+function plusDays(day, days) {
+  const shifted = new Date(Date.UTC(day.year, day.month - 1, day.day + days));
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate()
+  };
+}
+function weekdayOf(day) {
+  const noon = new Date(Date.UTC(day.year, day.month - 1, day.day, 12));
+  return WEEKDAYS[(noon.getUTCDay() + 6) % 7] ?? "monday";
+}
+function instantOf(day, minutes, timeZone) {
+  const guess = Date.UTC(day.year, day.month - 1, day.day, 0, minutes);
+  if (isUtc(timeZone))
+    return guess;
+  const first = guess - offsetAt(new Date(guess), timeZone) * 60000;
+  const second = guess - offsetAt(new Date(first), timeZone) * 60000;
+  return second;
+}
+function queuedWindow(record2, windows, now, timeZone) {
+  const state = windowState(windows ?? [], now, timeZone);
+  if (record2.window)
+    return { opens: state.open ? undefined : state.opens };
+  if (record2.behind && record2.behind.length > 0 && !state.open)
+    return { opens: state.opens };
+  return;
+}
+
 // src/render/config-problems.ts
 function configErrorText(file2, problems) {
   return [`${file2} is not valid:`, ...problems.map((problem) => `- ${problem}`)].join(`
@@ -51281,6 +51409,14 @@ function problemWords(issue3) {
       return `${show(issue3.value)} is not a GitHub login. Write the login alone, without "@". An app is written with [bot], such as renovate[bot].`;
     case "not-a-time-zone":
       return `${show(issue3.value)} is not a time zone. Write an IANA name, such as Europe/Brussels or America/New_York, or leave the key out for UTC.`;
+    case "not-a-weekday":
+      return `${show(issue3.value)} is not a day of the week. Write one of: ${WEEKDAYS.join(", ")}.`;
+    case "no-days":
+      return "a window needs at least one day of the week.";
+    case "not-a-clock-time":
+      return `${show(issue3.value)} is not a clock time. Write HH:MM on a 24 hour clock in quotes, such as "09:00" or "17:30". "24:00" is the end of the day.`;
+    case "window-ends-first":
+      return `the window ends at "${issue3.to}", which is not after it starts at "${issue3.from}". A window over midnight is two windows: one to "24:00" and one from "00:00" on the next day.`;
     case "a-team":
       return `${show(issue3.value)} looks like a team. Teams are not supported yet. Use a level ("write", "maintain", "admin") or usernames.`;
     case "not-a-username":
@@ -51753,9 +51889,9 @@ function readOutside(line) {
 }
 
 // src/render/time.ts
-var formats = new Map;
-function format(timeZone) {
-  let found = formats.get(timeZone);
+var formats2 = new Map;
+function format2(timeZone) {
+  let found = formats2.get(timeZone);
   if (found === undefined) {
     found = new Intl.DateTimeFormat("en-US", {
       timeZone,
@@ -51767,15 +51903,15 @@ function format(timeZone) {
       minute: "2-digit",
       second: "2-digit"
     });
-    formats.set(timeZone, found);
+    formats2.set(timeZone, found);
   }
   return found;
 }
-function isUtc(timeZone) {
+function isUtc2(timeZone) {
   return timeZone === undefined || timeZone === "UTC";
 }
-function wall(at, timeZone) {
-  if (isUtc(timeZone)) {
+function wall2(at, timeZone) {
+  if (isUtc2(timeZone)) {
     const iso = at.toISOString();
     return {
       year: at.getUTCFullYear(),
@@ -51785,7 +51921,7 @@ function wall(at, timeZone) {
     };
   }
   const parts = {};
-  for (const part of format(timeZone).formatToParts(at)) {
+  for (const part of format2(timeZone).formatToParts(at)) {
     if (part.type !== "literal")
       parts[part.type] = Number(part.value);
   }
@@ -51812,14 +51948,14 @@ function offsetName(offset) {
   return `UTC${sign}${hours}${minutes === 0 ? "" : `:${String(minutes).padStart(2, "0")}`}`;
 }
 function minuteAt(at, timeZone) {
-  const time3 = wall(at, timeZone);
+  const time3 = wall2(at, timeZone);
   return `${fullDay(time3)} ${time3.minute} ${offsetName(time3.offset)}`;
 }
 function yearIn(at, timeZone) {
-  return wall(at, timeZone).year;
+  return wall2(at, timeZone).year;
 }
 function trailMinute(at, year, timeZone) {
-  const time3 = wall(at, timeZone);
+  const time3 = wall2(at, timeZone);
   return `${time3.year === year ? time3.day : fullDay(time3)} ${time3.minute}`;
 }
 function zoneLine(timeZone) {
@@ -52096,11 +52232,14 @@ function spinner(actionRef2, queued) {
   const file2 = (theme) => mascotUrl(actionRef2, `${name}-${theme}.svg`);
   return `<picture><source media="(prefers-color-scheme: dark)" srcset="${file2("dark")}"><img alt="" width="${SPINNER_WIDTH}" height="${SPINNER_WIDTH}" src="${file2("light")}"></picture> `;
 }
+function windowWords(window, timeZone) {
+  return window.opens === undefined ? "the deploy window, which is open: the next scheduled run starts it" : `the deploy window, which opens ${minuteAt(window.opens, timeZone)}`;
+}
 function deployingRow(row, options) {
   const behind = row.behind ?? [];
   const onMerge = row.onMerge ? " on merge" : "";
-  const word = behind.length > 0 ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}` : row.waiting ? `waiting to start${onMerge}` : `deploying${onMerge}`;
-  const state = behind.length > 0 ? "queued" : "deploying";
+  const word = behind.length > 0 ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}${row.window ? `, and for ${windowWords(row.window, options.timeZone)}` : ""}` : row.window ? `queued for ${windowWords(row.window, options.timeZone)}` : row.waiting ? `waiting to start${onMerge}` : `deploying${onMerge}`;
+  const state = behind.length > 0 || row.window ? "queued" : "deploying";
   const lines = [
     `- ${options.actionRef === undefined ? "" : spinner(options.actionRef, state === "queued")}**${escapeText(row.stackId)}** · ${word} · ${row.onMerge ? "merged" : "ticked"} by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys, deletes: row.deletes })}`
   ];
@@ -52575,6 +52714,18 @@ var stackPath = text.superRefine((path, context3) => {
   const segments = path.split("/").filter((segment) => segment !== "" && segment !== ".");
   return segments.length === 0 ? "." : segments.join("/");
 });
+var CLOCK_TIME = /^(?:([01]\d|2[0-3]):[0-5]\d|24:00)$/;
+var clockTime = exports_external.string().regex(CLOCK_TIME);
+var deployWindow = exports_external.strictObject({
+  days: exports_external.array(exports_external.enum(WEEKDAYS)).min(1).describe("The days of the week the window is on, in full and in lower case: monday to sunday."),
+  from: clockTime.describe("When the window opens on each of those days, as HH:MM on a 24 hour clock in the dashboard zone."),
+  to: clockTime.describe("When it closes, as HH:MM, after from. 24:00 is the end of the day.")
+}).superRefine((window, context3) => {
+  const problem = windowProblem(window);
+  if (problem)
+    refuse(context3, problem);
+});
+var deployWindows = exports_external.array(deployWindow);
 var stackEntry = exports_external.strictObject({
   path: stackPath.describe("Directory of the stack, relative to the repo root."),
   name: text.describe("Name of the stack. Without it the entry covers every stack in path.").exactOptional(),
@@ -52592,6 +52743,7 @@ var stackEntry = exports_external.strictObject({
     })
   ]).describe("The phase of these stacks, one of phases, or from: a key of the project file that names it. A stack in a phase depends on every stack in every earlier phase.").exactOptional(),
   deploy: exports_external.enum(["on-tick", "on-merge"]).describe("When these stacks deploy. on-tick: when a person ticks the row, the default. on-merge: by themselves after the scan of a merge that found them pending, through the same fresh preview and hash check as a tick, attributed to whoever merged. A change that deletes or replaces something, drift, and a stack it depends on that waits for a tick still wait for a tick.").exactOptional(),
+  deployWindows: deployWindows.describe("When these stacks may go out, in place of the top level deployWindows. An empty list lets them go out at any time.").exactOptional(),
   drift: exports_external.strictObject({
     enabled: exports_external.boolean().describe("Check these stacks for drift, or not, whatever drift.enabled at the top level says. The scans that check are the same.")
   }).describe("The drift check of these stacks. Default: the top level drift.").exactOptional(),
@@ -52657,6 +52809,7 @@ var configSchema = exports_external.strictObject({
   }).prefault({}),
   tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
   deploys: exports_external.boolean().describe("false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.").default(true),
+  deployWindows: deployWindows.describe("When the stacks of this repo may go out, in the dashboard zone: a list of windows, each with days of the week, a start and an end. A tick outside every window waits for the next one to open, and so does a deploy on merge. Empty, the default, is any time. A stacks entry sets its own with stacks[].deployWindows.").default([]),
   ignore: exports_external.array(ignoreEntry).describe("Globs matched against the stack id. An ignored stack has no row. An entry with a reason is listed with it under In sync.").default([]),
   scan: exports_external.strictObject({
     unrelated: globs.describe("Globs for files that claim nothing and force nothing, such as **/*.md.").default([]),
@@ -52798,6 +52951,13 @@ function classify(issue3, raw) {
   if (key === "deploy" && path[0] === "stacks") {
     return one({ kind: "not-a-deploy-trigger", value });
   }
+  const inWindow = path.includes("deployWindows");
+  if (inWindow && issue3.code === "invalid_value" && path.at(-2) === "days") {
+    return one({ kind: "not-a-weekday", value });
+  }
+  if (inWindow && (key === "from" || key === "to") && value !== undefined) {
+    return one({ kind: "not-a-clock-time", value });
+  }
   if (issue3.code === "invalid_value" && path[0] === "notify") {
     return one({ kind: "not-an-event", value, events: NOTIFY_EVENTS });
   }
@@ -52811,7 +52971,7 @@ function classify(issue3, raw) {
     return one(String(value).includes("/") ? { kind: "a-team", value } : { kind: "not-a-username", value });
   }
   if (issue3.code === "too_small") {
-    return one(issue3.origin === "array" ? { kind: "no-tickers" } : key === "path" ? { kind: "empty-stack-path" } : { kind: "empty" });
+    return one(issue3.origin === "array" ? key === "days" ? { kind: "no-days" } : { kind: "no-tickers" } : key === "path" ? { kind: "empty-stack-path" } : { kind: "empty" });
   }
   if (issue3.code === "invalid_type") {
     return one({ kind: "wrong-type", expected: issue3.expected, value });
@@ -52960,6 +53120,7 @@ function applyConfig(config2, found) {
     const deploy = entries.findLast((entry) => entry.deploy)?.deploy;
     const valueFingerprint = entries.findLast((entry) => entry.valueFingerprint !== undefined)?.valueFingerprint;
     const envFile = entries.findLast((entry) => entry.envFile !== undefined)?.envFile;
+    const windows = entries.findLast((entry) => entry.deployWindows !== undefined)?.deployWindows ?? config2.deployWindows;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     return {
@@ -52975,7 +53136,8 @@ function applyConfig(config2, found) {
       ...drift === undefined ? {} : { drift },
       ...deploy === "on-merge" ? { deploy } : {},
       ...valueFingerprint === undefined ? {} : { valueFingerprint },
-      ...envFile === undefined ? {} : { envFile }
+      ...envFile === undefined ? {} : { envFile },
+      ...windows.length === 0 ? {} : { deployWindows: windows }
     };
   });
 }
@@ -60936,8 +61098,9 @@ var tickPayloadSchema = exports_external.strictObject({
   behind: exports_external.array(exports_external.string().min(1)).min(1).optional().describe("A queued record: the stack ids it waits behind, which have to go out first. Absent otherwise."),
   drift: exports_external.literal(true).optional().describe("The hash covers drift, and the deploy puts it back. Absent otherwise."),
   onMerge: exports_external.literal(true).optional().describe("The record was opened after the scan of a merge, for a stack set to deploy on merge. Absent otherwise."),
-  fingerprint: exports_external.string().regex(/^[0-9a-f]{16}$/).optional().describe("The value fingerprint the tick approved: the first 16 hex characters of a SHA-256 over the values of the diff that the row did not show. The deploy goes out only when a fresh preview gives the same one. Absent on a record written before the key came, or with the check off for the stack.")
-}).describe("The record of a tick, a queued stack, a drift repair or a deploy on merge.");
+  fingerprint: exports_external.string().regex(/^[0-9a-f]{16}$/).optional().describe("The value fingerprint the tick approved: the first 16 hex characters of a SHA-256 over the values of the diff that the row did not show. The deploy goes out only when a fresh preview gives the same one. Absent on a record written before the key came, or with the check off for the stack."),
+  window: exports_external.literal(true).optional().describe("A queued record that waits for the stack's deploy window, which a run inside the window starts. Absent otherwise.")
+}).describe("The record of a tick, a queued stack, a drift repair, a deploy on merge or a deploy that waits for its window.");
 var mergeRecordSchema = exports_external.strictObject({
   v,
   ticker,
@@ -60956,7 +61119,8 @@ function deploymentPayload(payload) {
     ...payload.behind && payload.behind.length > 0 ? { behind: payload.behind } : {},
     ...payload.drift ? { drift: true } : {},
     ...payload.onMerge ? { onMerge: true } : {},
-    ...payload.fingerprint === undefined ? {} : { fingerprint: payload.fingerprint }
+    ...payload.fingerprint === undefined ? {} : { fingerprint: payload.fingerprint },
+    ...payload.window ? { window: true } : {}
   });
 }
 function mergePayload(payload) {
@@ -60972,7 +61136,7 @@ var RUN_ID2 = /^[1-9]\d*$/;
 function readDeploymentPayload(payload) {
   if (typeof payload !== "object" || payload === null)
     return;
-  const { v: v2, hash: hash2, ticker: ticker2, run: run2, behind, merge: merge3, drift, attempt: attempt2, onMerge, fingerprint } = payload;
+  const { v: v2, hash: hash2, ticker: ticker2, run: run2, behind, merge: merge3, drift, attempt: attempt2, onMerge, fingerprint, window } = payload;
   if (v2 !== PAYLOAD_VERSION)
     return;
   const attempted = typeof attempt2 === "string" && RUN_ID2.test(attempt2) ? { attempt: attempt2 } : {};
@@ -60994,6 +61158,8 @@ function readDeploymentPayload(payload) {
   if (typeof fingerprint === "string" && /^[0-9a-f]{16}$/.test(fingerprint)) {
     read5.fingerprint = fingerprint;
   }
+  if (window === true)
+    read5.window = true;
   if (behind === undefined)
     return read5;
   const ids2 = Array.isArray(behind) ? behind : [];
@@ -61081,6 +61247,7 @@ function factOf(record3, payload) {
     ticker: ticker2,
     ...run2,
     ...payload.behind ? { behind: payload.behind } : {},
+    ...payload.window ? { window: true } : {},
     ...payload.merge === undefined ? {} : { merge: payload.merge },
     ...onMerge
   };
@@ -61161,7 +61328,7 @@ function standingFailure(stackId2, fact, outside) {
 function rowAtLateRead(stack) {
   const { previewedAt, liveState, fact } = stack;
   if (fact?.kind === "open") {
-    const taken = fact.behind ? "queued" : "deploying";
+    const taken = fact.behind || fact.window ? "queued" : "deploying";
     return { row: "deploying", from: liveState === taken ? "live" : "record" };
   }
   const usableLive = liveState !== undefined && liveState !== "deploying" && liveState !== "queued";
@@ -61765,7 +61932,8 @@ function openRecordsOfRun(records, runId2) {
     found.set(record3.id, {
       id: record3.id,
       stackId: stackId2,
-      ...fact.behind ? { behind: fact.behind } : {}
+      ...fact.behind ? { behind: fact.behind } : {},
+      ...fact.window ? { window: true } : {}
     });
   }
   return [...found.values()].sort((a, b) => a.id - b.id);
@@ -61813,7 +61981,8 @@ async function openRecord(writer, opening) {
       behind: opening.behind,
       ...opening.drift ? { drift: true } : {},
       ...opening.onMerge ? { onMerge: true } : {},
-      ...opening.fingerprint === undefined ? {} : { fingerprint: opening.fingerprint }
+      ...opening.fingerprint === undefined ? {} : { fingerprint: opening.fingerprint },
+      ...opening.window ? { window: true } : {}
     })
   });
   try {
@@ -61881,8 +62050,9 @@ async function claimRecord(writer, id) {
     return { kind: "unreadable-payload", stackId: stackId2 };
   if (payload.run !== writer.runId)
     return { kind: "other-run", stackId: stackId2, run: payload.run };
-  if (payload.behind)
-    return { kind: "queued", stackId: stackId2, behind: payload.behind };
+  if (payload.behind || payload.window) {
+    return { kind: "queued", stackId: stackId2, behind: payload.behind, window: payload.window === true };
+  }
   try {
     await github.createDeploymentStatus(id, {
       ...recordStatus({ kind: "claimed" }),
@@ -61923,6 +62093,8 @@ async function settleEndedRuns(github, records, repoUrl) {
     const one = { deployment: fact.deployment, stackId: stackId2, run: fact.run };
     if (fact.behind)
       queued.push({ ...one, behind: fact.behind });
+    else if (fact.window)
+      queued.push({ ...one, window: true });
     else
       open2.push(one);
   }
@@ -61933,11 +62105,12 @@ async function settleEndedRuns(github, records, repoUrl) {
   });
 }
 async function settleRun(github, records, repoUrl, runId2) {
-  const open2 = openRecordsOfRun(records, runId2).map(({ id, stackId: stackId2, behind }) => ({
+  const open2 = openRecordsOfRun(records, runId2).map(({ id, stackId: stackId2, behind, window }) => ({
     deployment: id,
     stackId: stackId2,
     run: runId2,
-    ...behind ? { behind } : {}
+    ...behind ? { behind } : {},
+    ...window ? { window } : {}
   }));
   const settled = await settle2(github, repoUrl, records, open2, async () => true);
   return { ...settled, open: open2.length };
@@ -61966,7 +62139,7 @@ async function settle2(github, repoUrl, records, open2, over) {
     });
   };
   for (const record3 of open2) {
-    if (record3.behind)
+    if (record3.behind || record3.window)
       continue;
     if (!await over(record3.run))
       continue;
@@ -62366,7 +62539,7 @@ ${ALREADY_ENDED}
   }
   if (claim3.kind === "queued") {
     const { behind } = claim3;
-    throw new ApplyFailedError(`Deployment record ${id} of ${name} is queued behind ${behind.map(logGroupTitle).join(" and ")}. \`apply\` never deploys a queued record: a later \`resolve\` starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out. Nothing was deployed and the record was left alone.`);
+    throw new ApplyFailedError(behind ? `Deployment record ${id} of ${name} is queued behind ${behind.map(logGroupTitle).join(" and ")}. \`apply\` never deploys a queued record: a later \`resolve\` starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out. Nothing was deployed and the record was left alone.` : `Deployment record ${id} of ${name} waits for the deploy window of ${name}. \`apply\` never deploys a queued record: a run inside the window starts it. Nothing was deployed and the record was left alone.`);
   }
   const { payload } = claim3;
   report.ticker = payload.ticker;
@@ -63579,6 +63752,10 @@ function judgeTicks(read5, lookedUp) {
     if (!stack || hash2 === undefined || ticker2 === undefined)
       return [];
     const fingerprint = fingerprints.get(id);
+    const window = behind === undefined ? windowState(stack.deployWindows ?? [], read5.clock.now, read5.clock.timeZone) : undefined;
+    if (window && !window.open) {
+      findings.push({ kind: "window-closed", stackId: id, opens: window.opens });
+    }
     return [
       {
         stackId: id,
@@ -63587,7 +63764,8 @@ function judgeTicks(read5, lookedUp) {
         hash: hash2,
         drift: drifted.has(id),
         ...fingerprint === undefined ? {} : { fingerprint },
-        behind
+        behind,
+        ...window && !window.open ? { window: true } : {}
       }
     ];
   });
@@ -64424,18 +64602,20 @@ async function resolveTicks(context3, handOn, report, watch) {
     open: open2,
     rows: liveRows,
     deploys: config2.deploys,
-    phases: config2.phases
+    phases: config2.phases,
+    clock: { now: clockOf(context3)(), timeZone: config2.dashboard.timeZone }
   };
   const outcomes = await watch.time("ticks", () => judgeTicks2(github, ticksToLookUp(read5)));
   const judgement = watch.time("ticks", () => judgeTicks(read5, outcomes));
-  for (const finding of judgement.findings)
-    log.info(findingText(finding));
+  for (const finding of judgement.findings) {
+    log.info(findingText(finding, config2.dashboard.timeZone));
+  }
   const { dropped, clear, clearMerges } = judgement;
   const bulkActs = [...confirms.acts, ...judgement.bulk];
   const failures = [];
   const started = [];
   for (const one of judgement.deploys) {
-    const { stackId: id, environment, ticker: ticker2, hash: hash2, drift, behind, fingerprint } = one;
+    const { stackId: id, environment, ticker: ticker2, hash: hash2, drift, behind, fingerprint, window } = one;
     try {
       const record3 = await watch.time("opening", () => openRecord(context3, {
         stackId: id,
@@ -64445,18 +64625,26 @@ async function resolveTicks(context3, handOn, report, watch) {
         hash: hash2,
         behind,
         drift,
-        fingerprint
+        fingerprint,
+        window
       }));
-      started.push({ stackId: id, environment, deployment: record3.deployment, ticker: ticker2, behind });
+      started.push({
+        stackId: id,
+        environment,
+        deployment: record3.deployment,
+        ticker: ticker2,
+        behind,
+        ...window ? { window } : {}
+      });
       if (record3.unfinished !== undefined)
         throw record3.unfinished;
-      log.info(behind ? `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.` : `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued.`);
+      log.info(behind ? `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.` : window ? `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued for the deploy window. A run inside the window starts it.` : `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued.`);
     } catch (error63) {
       failures.push(`The deployment record of ${logGroupTitle(id)} could not be written: ${message2(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). No further deploy was started, and the ticks that are left stay for the next run.`);
       break;
     }
   }
-  handOn(started.flatMap(({ stackId: stack, environment, deployment, behind }) => behind ? [] : [{ stack, environment, deployment }]));
+  handOn(started.flatMap(({ stackId: stack, environment, deployment, behind, window }) => behind || window ? [] : [{ stack, environment, deployment }]));
   const merging = await mergeAll(context3, config2, read5, judgement.merges);
   if (merging.failure !== undefined)
     failures.push(merging.failure);
@@ -64521,7 +64709,7 @@ async function resolveTicks(context3, handOn, report, watch) {
     throw new Error(failures.join(`
 `));
 }
-function findingText(finding) {
+function findingText(finding, timeZone = "UTC") {
   switch (finding.kind) {
     case "taken": {
       const { tick, fact } = finding;
@@ -64569,6 +64757,8 @@ function findingText(finding) {
       const one = finding.waitingOn.length === 1;
       return `${logGroupTitle(finding.stackId)} is ticked, and it depends on ${words.join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`;
     }
+    case "window-closed":
+      return `${logGroupTitle(finding.stackId)} is ticked outside its deploy window, ${finding.opens === undefined ? "and no window of it opens within a week" : `which opens ${minuteAt(finding.opens, timeZone)}`}. Its deployment record waits for the window, and a run inside the window starts it.`;
     case "confirm-stale": {
       const { tick, changes } = finding;
       const section = tick.kind === "confirm" ? tick.section : "pending";
@@ -64775,6 +64965,9 @@ var NOBODY = {
 function runUrl3(context3) {
   return runUrl2(context3.repoUrl, context3.runId, context3.runAttempt);
 }
+function clockOf(context3) {
+  return context3.now ?? (() => new Date);
+}
 function unverifiedMessage(unverified) {
   const logins = [...new Set(unverified.map(({ tick }) => tick.editor.login))].join(", ");
   return `GitHub gave no answer about the access of ${logins}, so ${plural2(unverified.length, "tick")} could not be verified. Nothing was deployed for ${unverified.length === 1 ? "it" : "them"}, and the comment on the dashboard asks for a fresh tick (record 0018).`;
@@ -64867,6 +65060,9 @@ async function swapRows2(context3, config2, stacks2, ignored, issue3, swap) {
     const shipped = await source.ship(facts.trail);
     const rows = new Map;
     const carried = new Map;
+    const windows = new Map(stacks2.flatMap((one) => one.deployWindows ? [[stackId(one.stack), one.deployWindows]] : []));
+    const now = clockOf(context3)();
+    const windowOf = (id, record3) => queuedWindow(record3, windows.get(id), now, config2.dashboard.timeZone);
     for (const one of swap.started) {
       const old = live.first.get(one.stackId);
       rows.set(one.stackId, {
@@ -64879,7 +65075,8 @@ async function swapRows2(context3, config2, stacks2, ignored, issue3, swap) {
         deletes: old?.known ? old.deletes : undefined,
         attribution: lines3.get(one.stackId)?.lines,
         behind: one.behind,
-        ...one.onMerge ? { onMerge: true } : {}
+        ...one.onMerge ? { onMerge: true } : {},
+        window: windowOf(one.stackId, one)
       });
     }
     for (const [id, row] of live.first) {
@@ -64898,7 +65095,8 @@ async function swapRows2(context3, config2, stacks2, ignored, issue3, swap) {
           deletes: row.deletes,
           attribution: lines3.get(id)?.lines,
           behind: fact.behind,
-          ...fact.onMerge ? { onMerge: true } : {}
+          ...fact.onMerge ? { onMerge: true } : {},
+          window: windowOf(id, fact)
         });
       } else if (wanted && (row.ticked || wanted.unticked) && row.hash === wanted.hash) {
         carried.set(id, clearTick(row, { note: wanted.note, unticked: wanted.unticked }));
@@ -64945,19 +65143,34 @@ function withRowDependencies(context3, stacks2, rows) {
 async function startQueued(context3, repo, handOn, watch) {
   const { log, github } = context3;
   const config2 = repo.config();
-  if (!config2.stacks.some(({ dependsOn, phase }) => dependsOn !== undefined || phase !== undefined)) {
-    log.info("The event that started this job is not about an issue, and no stack has dependsOn or a phase. Nothing to do.");
+  const windowed = config2.deployWindows.length > 0 || config2.stacks.some(({ deployWindows: deployWindows2 }) => (deployWindows2?.length ?? 0) > 0);
+  if (!windowed && !config2.stacks.some(({ dependsOn, phase }) => dependsOn !== undefined || phase !== undefined)) {
+    log.info("The event that started this job is not about an issue, and no stack has dependsOn, a phase or a deploy window. Nothing to do.");
     return;
   }
   const { stacks: stacks2, ignored } = byId(await repo.stacks());
   const all = [...stacks2.values()];
   const anyAuto = all.some(({ dependsOnAuto }) => dependsOnAuto);
-  const involved = all.filter(({ stack, dependsOn }) => anyAuto || dependsOn !== undefined || all.some((other) => other.dependsOn?.includes(stackId(stack)) === true));
+  const involved = all.filter(({ stack, dependsOn, deployWindows: deployWindows2 }) => anyAuto || dependsOn !== undefined || deployWindows2 !== undefined || all.some((other) => other.dependsOn?.includes(stackId(stack)) === true));
   const settled = await watch.time("records", async () => settleEndedRuns(github, await readRecords(context3, all.map(({ environment }) => environment), involved), context3.repoUrl));
   for (const { stackId: id } of settled.ended) {
     log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
   }
-  const ready = [...deployFacts(settled.records).byStack].flatMap(([id, fact]) => fact.kind === "open" && fact.behind && stacks2.has(id) && queueState(fact.behind, settled.records) === "ready" ? [{ stackId: id, fact }] : []).sort((a, b) => a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0);
+  const now = clockOf(context3)();
+  const { timeZone } = config2.dashboard;
+  const ready = [];
+  const waiting = [...deployFacts(settled.records).byStack].flatMap(([id, fact]) => fact.kind === "open" && (fact.behind || fact.window) && stacks2.has(id) ? [{ id, fact }] : []).sort((a, b) => byCodeUnit(a.id, b.id));
+  for (const { id, fact } of waiting) {
+    if (fact.behind && queueState(fact.behind, settled.records) !== "ready")
+      continue;
+    const window = windowState(stacks2.get(id)?.deployWindows ?? [], now, timeZone);
+    if (window.open) {
+      ready.push({ stackId: id, fact });
+      continue;
+    }
+    const opens = window.opens === undefined ? "no window of it opens within a week" : `which opens ${minuteAt(window.opens, timeZone)}`;
+    log.info(fact.behind ? `${logGroupTitle(id)}: what it waited behind went out, and its deploy window ${window.opens === undefined ? "is closed, and " + opens : opens.replace("which opens", "opens")}. It starts in a run inside the window.` : `${logGroupTitle(id)} waits for its deploy window, ${opens}. Nothing starts it before then.`);
+  }
   if (ready.length === 0) {
     log.info("No queued stack is ready to start. Nothing to do.");
     return;
@@ -64985,7 +65198,7 @@ async function startQueued(context3, repo, handOn, watch) {
       });
       if (record3.unfinished !== undefined)
         throw record3.unfinished;
-      log.info(`${logGroupTitle(id)}: what it waited behind went out, so it starts now. Deployment record ${record3.deployment} is queued and takes over from record ${fact.deployment}.`);
+      log.info(`${logGroupTitle(id)}: ${fact.behind ? "what it waited behind went out" : "its deploy window is open"}, so it starts now. Deployment record ${record3.deployment} is queued and takes over from record ${fact.deployment}.`);
     } catch (error63) {
       failures.push(`The deployment record of ${logGroupTitle(id)} could not be written: ${message2(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). No further deploy was started, and the queued stacks that are left wait for the next run.`);
       break;
@@ -66782,19 +66995,24 @@ function onMergeDeploys(input2) {
     });
   }
   const environments = new Map(input2.stacks.map(({ id, environment }) => [id, environment]));
+  const windows = new Map(input2.stacks.map(({ id, deployWindows: deployWindows2 }) => [id, deployWindows2 ?? []]));
   const ticker2 = input2.mergedBy ?? "";
   const deploys = [
     ...plan.start.map((stackId2) => ({ stackId: stackId2, behind: undefined })),
     ...plan.queued
-  ].map(({ stackId: stackId2, behind }) => ({
-    stackId: stackId2,
-    environment: environments.get(stackId2) ?? "",
-    ticker: ticker2,
-    hash: hashes.get(stackId2) ?? "",
-    drift: false,
-    ...fingerprints.has(stackId2) ? { fingerprint: fingerprints.get(stackId2) } : {},
-    behind
-  }));
+  ].map(({ stackId: stackId2, behind }) => {
+    const closed = behind === undefined && !windowState(windows.get(stackId2) ?? [], input2.clock.now, input2.clock.timeZone).open;
+    return {
+      stackId: stackId2,
+      environment: environments.get(stackId2) ?? "",
+      ticker: ticker2,
+      hash: hashes.get(stackId2) ?? "",
+      drift: false,
+      ...fingerprints.has(stackId2) ? { fingerprint: fingerprints.get(stackId2) } : {},
+      behind,
+      ...closed ? { window: true } : {}
+    };
+  });
   return { deploys, waits };
 }
 function waitOf(input2, diff2) {
@@ -66956,7 +67174,8 @@ function placeRows(so, late) {
         deletes: deletesOf(mine, liveRow),
         attribution: attributed.get(id)?.lines,
         behind: fact.behind,
-        ...fact.onMerge ? { onMerge: true } : {}
+        ...fact.onMerge ? { onMerge: true } : {},
+        window: queuedWindow(fact, so.windows.byStack.get(id), so.windows.now, so.windows.timeZone)
       });
     } else if (liveRow) {
       if (ticked && decided.row === "live") {
@@ -67643,7 +67862,12 @@ async function scanning(context3, report) {
       previewed,
       again,
       pageUrls,
-      histories
+      histories,
+      windows: {
+        byStack: new Map(stacks2.flatMap((one) => one.deployWindows ? [[stackId(one.stack), one.deployWindows]] : [])),
+        now: startedAt,
+        timeZone: config2.dashboard.timeZone
+      }
     };
     let answer;
     try {
@@ -67666,12 +67890,12 @@ async function scanning(context3, report) {
           throw new PreviewFirstError(merges);
         const { waiting } = merges;
         if (waiting.length > 0) {
-          const ended = await handOffMerges(context3, config2, stacks2, previewed, waiting, handedOn);
+          const ended = await handOffMerges(context3, config2, stacks2, previewed, waiting, handedOn, startedAt);
           context3.outputs?.set("matrix", matrixOutput(handedOn));
           if (ended)
             deploys = await lateDeploys(context3, stacks2, previewed, live);
         }
-        const onMerge = onMergeDeploys(onMergeInput(context3, config2, stacks2, previewed, live, deploys.facts));
+        const onMerge = onMergeDeploys(onMergeInput(context3, config2, stacks2, previewed, live, deploys.facts, startedAt));
         waitsOnMerge = onMerge.waits;
         const fresh = onMerge.deploys.filter(({ stackId: id }) => !openedOnMerge.has(id));
         if (fresh.length > 0) {
@@ -68228,7 +68452,7 @@ async function listUpdates(context3, config2, stacks2) {
   }
   return { kind: "listed", updates, onChecks: shown3 };
 }
-async function handOffMerges(context3, config2, stacks2, previewed, waiting, handedOn) {
+async function handOffMerges(context3, config2, stacks2, previewed, waiting, handedOn, now) {
   const { log } = context3;
   let ended = false;
   for (const { id, fact } of waiting) {
@@ -68265,6 +68489,7 @@ async function handOffMerges(context3, config2, stacks2, previewed, waiting, han
     } else {
       await end({ kind: "merged" });
       const hash2 = diffHash(result.diff);
+      const window = !windowState(stack.deployWindows ?? [], now, config2.dashboard.timeZone).open;
       try {
         const record4 = await openRecord(context3, {
           stackId: id,
@@ -68273,12 +68498,19 @@ async function handOffMerges(context3, config2, stacks2, previewed, waiting, han
           ticker: fact.ticker,
           hash: hash2,
           drift: (result.diff.drift ?? []).length > 0,
-          fingerprint: valueFingerprint(result.diff)
+          fingerprint: valueFingerprint(result.diff),
+          window
         });
-        handedOn.push({ stack: id, environment: stack.environment, deployment: record4.deployment });
+        if (!window) {
+          handedOn.push({
+            stack: id,
+            environment: stack.environment,
+            deployment: record4.deployment
+          });
+        }
         if (record4.unfinished !== undefined)
           throw record4.unfinished;
-        log.info(`#${fact.merge} is merged: deployment record ${record4.deployment} of ${name} is queued with diff hash ${hash2}, ticked by ${fact.ticker}, and handed to apply.`);
+        log.info(window ? `#${fact.merge} is merged: deployment record ${record4.deployment} of ${name} with diff hash ${hash2}, ticked by ${fact.ticker}, waits for the deploy window, and a run inside the window starts it.` : `#${fact.merge} is merged: deployment record ${record4.deployment} of ${name} is queued with diff hash ${hash2}, ticked by ${fact.ticker}, and handed to apply.`);
       } catch (error63) {
         throw new Error(`#${fact.merge} is merged, and the deployment record that deploys ${name} could not be written: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permission \`deployments: write\` (record 0054). Nothing deploys: the row shows the stack as pending, and a tick deploys it.`);
       }
@@ -68286,7 +68518,7 @@ async function handOffMerges(context3, config2, stacks2, previewed, waiting, han
   }
   return ended;
 }
-function onMergeInput(context3, config2, stacks2, previewed, live, facts) {
+function onMergeInput(context3, config2, stacks2, previewed, live, facts, now) {
   const liveRows = live.current ? live.first : new Map;
   const read5 = new Map;
   for (const [id, { result }] of previewed) {
@@ -68330,13 +68562,15 @@ function onMergeInput(context3, config2, stacks2, previewed, live, facts) {
         environment: one.environment,
         deploy: one.deploy ?? "on-tick",
         dependsOn: dependsOn.get(id),
-        phase: one.phase
+        phase: one.phase,
+        deployWindows: one.deployWindows
       };
     }),
     previewed: fresh,
     livePending,
     open: open2,
-    phases: config2.phases
+    phases: config2.phases,
+    clock: { now, timeZone: config2.dashboard.timeZone }
   };
 }
 async function handOnMerged(context3, going, handedOn, opened) {
@@ -68352,10 +68586,11 @@ async function handOnMerged(context3, going, handedOn, opened) {
         hash: one.hash,
         behind: one.behind,
         onMerge: true,
-        fingerprint: one.fingerprint
+        fingerprint: one.fingerprint,
+        window: one.window
       });
       opened.add(one.stackId);
-      if (one.behind === undefined) {
+      if (one.behind === undefined && !one.window) {
         handedOn.push({
           stack: one.stackId,
           environment: one.environment,
@@ -68364,7 +68599,7 @@ async function handOnMerged(context3, going, handedOn, opened) {
       }
       if (record4.unfinished !== undefined)
         throw record4.unfinished;
-      log.info(one.behind === undefined ? `${name} deploys on merge: deployment record ${record4.deployment} is queued with diff hash ${one.hash}, merged by ${one.ticker}, and handed to apply.` : `${name} deploys on merge: deployment record ${record4.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, is queued behind ${one.behind.map(logGroupTitle).join(" and ")}, and a later run starts it.`);
+      log.info(one.behind !== undefined ? `${name} deploys on merge: deployment record ${record4.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, is queued behind ${one.behind.map(logGroupTitle).join(" and ")}, and a later run starts it.` : one.window ? `${name} deploys on merge: deployment record ${record4.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, waits for the deploy window, and a run inside the window starts it.` : `${name} deploys on merge: deployment record ${record4.deployment} is queued with diff hash ${one.hash}, merged by ${one.ticker}, and handed to apply.`);
     } catch (error63) {
       throw new Error(`The deployment record that deploys ${name} on merge could not be written: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permission \`deployments: write\` (record 0095). Nothing more deploys on merge in this run: the row shows the stack as pending, and a tick deploys it.`);
     }
@@ -68456,12 +68691,16 @@ async function settle3(context3) {
   const url2 = eventDashboardUrl(context3.repoUrl, context3.event);
   if (url2 !== undefined)
     context3.outputs?.set("dashboard-url", url2);
-  const { stacks: stacks2 } = await openRepo(context3.root, context3.adapter).stacks();
+  const repo = openRepo(context3.root, context3.adapter);
+  const { stacks: stacks2 } = await repo.stacks();
+  const config2 = repo.config();
   const read5 = await readRecords2(context3, stacks2);
   const settled = await settleOwnRun(context3, read5);
   const { records } = settled;
   const ended = settled.ended.length;
-  const ready = [...deployFacts(records).byStack].flatMap(([stack, fact]) => fact.kind === "open" && fact.behind && queueState(fact.behind, records) === "ready" ? [stack] : []);
+  const now = (context3.now ?? (() => new Date))();
+  const windows = new Map(stacks2.map((one) => [stackId(one.stack), one.deployWindows ?? []]));
+  const ready = [...deployFacts(records).byStack].flatMap(([stack, fact]) => fact.kind === "open" && fact.behind && queueState(fact.behind, records) === "ready" && windowState(windows.get(stack) ?? [], now, config2.dashboard.timeZone).open ? [stack] : []);
   for (const stack of ready) {
     log.info(`${logGroupTitle(stack)} can start now: what it waited behind went out. Started the workflow again, and its resolve job starts it.`);
   }

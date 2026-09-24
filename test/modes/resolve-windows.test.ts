@@ -142,7 +142,7 @@ describe("a run inside the window", () => {
     const started = h.github.deployment(entries[0]?.deployment ?? 0);
     expect(started.payload).toEqual({
       v: 1,
-      hash: (recordOf(h, "app:prod")?.payload as { hash: string }).hash,
+      hash: (recordOf(h, "app:prod")?.payload as { hash?: string } | undefined)?.hash,
       ticker: "alice",
       run: NEXT_RUN,
     });

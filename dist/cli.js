@@ -28117,6 +28117,31 @@ function bigint3(params) {
 function date4(params) {
   return _coercedDate(ZodDate, params);
 }
+// src/core/deploy-window.ts
+var WEEKDAYS = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday"
+];
+function minutesOf(text) {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(text);
+  if (match)
+    return Number(match[1]) * 60 + Number(match[2]);
+  return text === "24:00" ? 1440 : undefined;
+}
+function windowProblem(window) {
+  const from = minutesOf(window.from);
+  const to = minutesOf(window.to);
+  if (from === undefined || to === undefined)
+    return;
+  return to > from ? undefined : { kind: "window-ends-first", from: window.from, to: window.to };
+}
+var formats = new Map;
+
 // src/render/config-problems.ts
 function configErrorText(file2, problems) {
   return [`${file2} is not valid:`, ...problems.map((problem) => `- ${problem}`)].join(`
@@ -28169,6 +28194,14 @@ function problemWords(issue2) {
       return `${show(issue2.value)} is not a GitHub login. Write the login alone, without "@". An app is written with [bot], such as renovate[bot].`;
     case "not-a-time-zone":
       return `${show(issue2.value)} is not a time zone. Write an IANA name, such as Europe/Brussels or America/New_York, or leave the key out for UTC.`;
+    case "not-a-weekday":
+      return `${show(issue2.value)} is not a day of the week. Write one of: ${WEEKDAYS.join(", ")}.`;
+    case "no-days":
+      return "a window needs at least one day of the week.";
+    case "not-a-clock-time":
+      return `${show(issue2.value)} is not a clock time. Write HH:MM on a 24 hour clock in quotes, such as "09:00" or "17:30". "24:00" is the end of the day.`;
+    case "window-ends-first":
+      return `the window ends at "${issue2.to}", which is not after it starts at "${issue2.from}". A window over midnight is two windows: one to "24:00" and one from "00:00" on the next day.`;
     case "a-team":
       return `${show(issue2.value)} looks like a team. Teams are not supported yet. Use a level ("write", "maintain", "admin") or usernames.`;
     case "not-a-username":
@@ -28290,7 +28323,7 @@ var OUTSIDE_LINE = new RegExp(`^- .*<!-- sluiceway:outside${PAIRS} -->[ \\t]*$`)
 var BULK_LINE = new RegExp(`^- \\[([ xX])\\] .*<!-- sluiceway:bulk${PAIRS} -->[ \\t]*$`);
 
 // src/render/time.ts
-var formats = new Map;
+var formats2 = new Map;
 
 // src/render/row.ts
 function plural2(count, word) {
@@ -28486,6 +28519,18 @@ var stackPath = text.superRefine((path, context) => {
   const segments = path.split("/").filter((segment) => segment !== "" && segment !== ".");
   return segments.length === 0 ? "." : segments.join("/");
 });
+var CLOCK_TIME = /^(?:([01]\d|2[0-3]):[0-5]\d|24:00)$/;
+var clockTime = exports_external.string().regex(CLOCK_TIME);
+var deployWindow = exports_external.strictObject({
+  days: exports_external.array(exports_external.enum(WEEKDAYS)).min(1).describe("The days of the week the window is on, in full and in lower case: monday to sunday."),
+  from: clockTime.describe("When the window opens on each of those days, as HH:MM on a 24 hour clock in the dashboard zone."),
+  to: clockTime.describe("When it closes, as HH:MM, after from. 24:00 is the end of the day.")
+}).superRefine((window, context) => {
+  const problem = windowProblem(window);
+  if (problem)
+    refuse(context, problem);
+});
+var deployWindows = exports_external.array(deployWindow);
 var stackEntry = exports_external.strictObject({
   path: stackPath.describe("Directory of the stack, relative to the repo root."),
   name: text.describe("Name of the stack. Without it the entry covers every stack in path.").exactOptional(),
@@ -28503,6 +28548,7 @@ var stackEntry = exports_external.strictObject({
     })
   ]).describe("The phase of these stacks, one of phases, or from: a key of the project file that names it. A stack in a phase depends on every stack in every earlier phase.").exactOptional(),
   deploy: exports_external.enum(["on-tick", "on-merge"]).describe("When these stacks deploy. on-tick: when a person ticks the row, the default. on-merge: by themselves after the scan of a merge that found them pending, through the same fresh preview and hash check as a tick, attributed to whoever merged. A change that deletes or replaces something, drift, and a stack it depends on that waits for a tick still wait for a tick.").exactOptional(),
+  deployWindows: deployWindows.describe("When these stacks may go out, in place of the top level deployWindows. An empty list lets them go out at any time.").exactOptional(),
   drift: exports_external.strictObject({
     enabled: exports_external.boolean().describe("Check these stacks for drift, or not, whatever drift.enabled at the top level says. The scans that check are the same.")
   }).describe("The drift check of these stacks. Default: the top level drift.").exactOptional(),
@@ -28568,6 +28614,7 @@ var configSchema = exports_external.strictObject({
   }).prefault({}),
   tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
   deploys: exports_external.boolean().describe("false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.").default(true),
+  deployWindows: deployWindows.describe("When the stacks of this repo may go out, in the dashboard zone: a list of windows, each with days of the week, a start and an end. A tick outside every window waits for the next one to open, and so does a deploy on merge. Empty, the default, is any time. A stacks entry sets its own with stacks[].deployWindows.").default([]),
   ignore: exports_external.array(ignoreEntry).describe("Globs matched against the stack id. An ignored stack has no row. An entry with a reason is listed with it under In sync.").default([]),
   scan: exports_external.strictObject({
     unrelated: globs.describe("Globs for files that claim nothing and force nothing, such as **/*.md.").default([]),
@@ -28709,6 +28756,13 @@ function classify(issue2, raw) {
   if (key === "deploy" && path[0] === "stacks") {
     return one({ kind: "not-a-deploy-trigger", value });
   }
+  const inWindow = path.includes("deployWindows");
+  if (inWindow && issue2.code === "invalid_value" && path.at(-2) === "days") {
+    return one({ kind: "not-a-weekday", value });
+  }
+  if (inWindow && (key === "from" || key === "to") && value !== undefined) {
+    return one({ kind: "not-a-clock-time", value });
+  }
   if (issue2.code === "invalid_value" && path[0] === "notify") {
     return one({ kind: "not-an-event", value, events: NOTIFY_EVENTS });
   }
@@ -28722,7 +28776,7 @@ function classify(issue2, raw) {
     return one(String(value).includes("/") ? { kind: "a-team", value } : { kind: "not-a-username", value });
   }
   if (issue2.code === "too_small") {
-    return one(issue2.origin === "array" ? { kind: "no-tickers" } : key === "path" ? { kind: "empty-stack-path" } : { kind: "empty" });
+    return one(issue2.origin === "array" ? key === "days" ? { kind: "no-days" } : { kind: "no-tickers" } : key === "path" ? { kind: "empty-stack-path" } : { kind: "empty" });
   }
   if (issue2.code === "invalid_type") {
     return one({ kind: "wrong-type", expected: issue2.expected, value });
@@ -28871,6 +28925,7 @@ function applyConfig(config2, found) {
     const deploy = entries.findLast((entry) => entry.deploy)?.deploy;
     const valueFingerprint = entries.findLast((entry) => entry.valueFingerprint !== undefined)?.valueFingerprint;
     const envFile = entries.findLast((entry) => entry.envFile !== undefined)?.envFile;
+    const windows = entries.findLast((entry) => entry.deployWindows !== undefined)?.deployWindows ?? config2.deployWindows;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     return {
@@ -28886,7 +28941,8 @@ function applyConfig(config2, found) {
       ...drift === undefined ? {} : { drift },
       ...deploy === "on-merge" ? { deploy } : {},
       ...valueFingerprint === undefined ? {} : { valueFingerprint },
-      ...envFile === undefined ? {} : { envFile }
+      ...envFile === undefined ? {} : { envFile },
+      ...windows.length === 0 ? {} : { deployWindows: windows }
     };
   });
 }
@@ -31327,7 +31383,7 @@ function isMode(value) {
 }
 var STARTS = {
   push: ["scan"],
-  schedule: ["scan"],
+  schedule: ["resolve", "scan"],
   workflow_dispatch: ["resolve", "scan"],
   issues: ["resolve"],
   pull_request: ["check"],
