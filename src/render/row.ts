@@ -1,11 +1,13 @@
 // The one row renderer every writer uses (records 0009 and 0027). A row block
 // is a pure function of plain data: no clock, no environment, no GitHub.
 
+import type { CostEstimate } from "../core/cost.ts";
 import type { QueuedWindow } from "../core/deploy-window.ts";
 import type { Change, Diff } from "../core/diff.ts";
 import type { OnMergeWait } from "../core/on-merge.ts";
 import type { PhaseGroup } from "../core/phases.ts";
 import { type PolicyOutcome, policyRunFailureText } from "../core/policy.ts";
+import { amount, costLine } from "./cost.ts";
 import { escapeText } from "./escape.ts";
 import { mascotUrl } from "./images.ts";
 import { ROW_CLOSE_MARKER, rowMarker } from "./marker.ts";
@@ -77,6 +79,10 @@ export interface PendingRow {
   // failed policy takes the box off the row and is named on it; a run that
   // failed is a warning line; a pass draws nothing.
   policies?: PolicyOutcome | undefined;
+  // What the change does to the monthly bill (record 0105), when the stack's
+  // tool has an estimate and the repo asked for one. Never in the hash, and
+  // never on the marker.
+  cost?: CostEstimate | undefined;
 }
 
 // A stack with nothing to deploy from its code and drift in real
@@ -343,6 +349,10 @@ export function onMergeNote(wait: OnMergeWait): string {
       return `${waits} the stack drifted, and a deploy would also put back what changed outside the code.`;
     case "not-merged":
       return `${waits} the scan that found it did not follow a merge.`;
+    case "cost":
+      return `${waits} it costs about **${amount(wait.monthly)} ${wait.currency}** more a month, above the threshold of ${amount(wait.threshold)} ${wait.currency}.`;
+    case "cost-unknown":
+      return `${waits} its cost could not be estimated, and \`cost.threshold\` is set to ${amount(wait.threshold)}.`;
     case "depends-on":
       return `${waits} ${waitsOnWords(wait.named, wait.phases)}`;
   }
@@ -568,6 +578,9 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
       },
     )}`,
   ];
+  // The one number a person wants before ticking, right under the first line
+  // (record 0105). It names nothing, so redact and the size budget keep it.
+  if (row.cost) lines.push(costLine(row.cost));
   if (row.attribution) lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
   if (row.failure) lines.push(failureLine(row.failure, options.timeZone));
   lines.push(...policyLines(row, options));

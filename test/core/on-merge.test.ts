@@ -350,3 +350,79 @@ describe("onMergeDeploys", () => {
     });
   });
 });
+
+// Record 0105: a threshold on the cost estimate turns a stack set to on-merge
+// back to a tick, and the wait says what the change costs and the threshold.
+describe("the cost threshold on a stack set to on-merge", () => {
+  const priced = (
+    monthly: number,
+    changes = [change("update")],
+    drift?: Change[],
+  ): PreviewResult => ({
+    ok: true,
+    diff: diff("app:prod", changes, drift),
+    toolLog: "",
+    cost: { ok: true, estimate: { monthly, currency: "USD" } },
+  });
+  const unpriced: PreviewResult = {
+    ok: true,
+    diff: diff("app:prod", [change("update")]),
+    toolLog: "",
+    cost: { ok: false, reason: { kind: "exited", exitCode: 1 }, detail: [] },
+  };
+  const gated = (result: PreviewResult, costThreshold?: number) =>
+    onMergeDeploys(
+      base({
+        stacks: [{ id: "app:prod", environment: "sluiceway", deploy: "on-merge", costThreshold }],
+        previewed: new Map([["app:prod", result]]),
+      }),
+    );
+
+  test("a change that costs more than the threshold waits, and the wait names both", () => {
+    const decided = gated(priced(120.5), 100);
+    expect(decided.deploys).toEqual([]);
+    expect(decided.waits.get("app:prod")).toEqual({
+      kind: "cost",
+      monthly: 120.5,
+      currency: "USD",
+      threshold: 100,
+    });
+  });
+
+  test("a change at or under the threshold goes out", () => {
+    expect(gated(priced(100), 100).deploys.map(({ stackId }) => stackId)).toEqual(["app:prod"]);
+    expect(gated(priced(-40), 0).deploys.map(({ stackId }) => stackId)).toEqual(["app:prod"]);
+  });
+
+  test("an estimate that failed waits when a threshold is set, and says so", () => {
+    const decided = gated(unpriced, 100);
+    expect(decided.deploys).toEqual([]);
+    expect(decided.waits.get("app:prod")).toEqual({ kind: "cost-unknown", threshold: 100 });
+  });
+
+  test("without a threshold the estimate decides nothing, and so does a stack with none", () => {
+    expect(gated(priced(9_999)).deploys.map(({ stackId }) => stackId)).toEqual(["app:prod"]);
+    expect(gated(unpriced).deploys.map(({ stackId }) => stackId)).toEqual(["app:prod"]);
+    expect(
+      gated(ok("app:prod", [change("update")]), 100).deploys.map(({ stackId }) => stackId),
+    ).toEqual(["app:prod"]);
+  });
+
+  test("a destroy and drift are named before the cost, and a scan no merge started after it", () => {
+    expect(gated(priced(500, [change("delete")]), 100).waits.get("app:prod")).toEqual({
+      kind: "destroy",
+    });
+    const drifted = priced(500, [change("update")], [change("update", "vpc")]);
+    expect(gated(drifted, 100).waits.get("app:prod")).toEqual({ kind: "drift" });
+    const decided = onMergeDeploys(
+      base({
+        mergedBy: undefined,
+        stacks: [
+          { id: "app:prod", environment: "sluiceway", deploy: "on-merge", costThreshold: 100 },
+        ],
+        previewed: new Map([["app:prod", priced(500)]]),
+      }),
+    );
+    expect(decided.waits.get("app:prod")?.kind).toBe("cost");
+  });
+});

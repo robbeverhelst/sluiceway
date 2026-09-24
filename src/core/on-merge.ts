@@ -7,6 +7,7 @@
 
 import type { PreviewResult } from "../adapters/adapter.ts";
 import { isDestroy } from "../render/row.ts";
+import { type CostWait, costWait } from "./cost.ts";
 import { planDeploys } from "./dependencies.ts";
 import { type DeployWindow, windowState } from "./deploy-window.ts";
 import type { Diff } from "./diff.ts";
@@ -35,6 +36,8 @@ export interface OnMergeInput {
     phase?: string | undefined;
     // Its deploy windows (record 0104), when it has any.
     deployWindows?: readonly DeployWindow[] | undefined;
+    // `cost.threshold` of the stack (record 0105), when one is set.
+    costThreshold?: number | undefined;
   }[];
   // What this scan previewed, by stack id.
   previewed: ReadonlyMap<string, PreviewResult>;
@@ -59,6 +62,9 @@ export type OnMergeWait =
   | { kind: "destroy" }
   | { kind: "drift" }
   | { kind: "not-merged" }
+  // The change costs more a month than the stack's threshold, or the
+  // threshold is set and the estimate failed (record 0105).
+  | CostWait
   // A stack it depends on has a change that is not going out now (records
   // 0056 and 0067), named as a refused tick names it.
   | { kind: "depends-on"; named: string[]; phases: PhaseGroup[] };
@@ -82,7 +88,7 @@ export function onMergeDeploys(input: OnMergeInput): OnMergeDecision {
     if (stack.deploy !== "on-merge" || input.open.has(stack.id)) continue;
     const result = input.previewed.get(stack.id);
     if (!result?.ok || result.diff.changes.length === 0) continue;
-    const wait = waitOf(input, result.diff);
+    const wait = waitOf(input, result.diff, costWait(result.cost, stack.costThreshold));
     if (wait) waits.set(stack.id, wait);
     else {
       hashes.set(stack.id, diffHash(result.diff));
@@ -142,12 +148,17 @@ export function onMergeDeploys(input: OnMergeInput): OnMergeDecision {
 }
 
 // What holds one stack back by itself, in the order a person most needs to
-// read it: nothing deploys at all, then what a deploy would do, then how the
-// change was found.
-function waitOf(input: OnMergeInput, diff: Diff): OnMergeWait | undefined {
+// read it: nothing deploys at all, then what a deploy would do, to the
+// resources and then to the bill, then how the change was found.
+function waitOf(
+  input: OnMergeInput,
+  diff: Diff,
+  cost: CostWait | undefined,
+): OnMergeWait | undefined {
   if (!input.deploys) return { kind: "deploys-off" };
   if (diff.changes.some(isDestroy)) return { kind: "destroy" };
   if ((diff.drift ?? []).length > 0) return { kind: "drift" };
+  if (cost !== undefined) return cost;
   if (input.mergedBy === undefined) return { kind: "not-merged" };
   return undefined;
 }

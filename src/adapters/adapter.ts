@@ -1,5 +1,6 @@
 import type { FileReference } from "../core/check.ts";
 import type { Config } from "../core/config.ts";
+import type { CostResult } from "../core/cost.ts";
 import type { CredentialNeed } from "../core/credentials.ts";
 import type { Change, Diff } from "../core/diff.ts";
 import type { DiscoveryNote } from "../core/discovery.ts";
@@ -28,6 +29,12 @@ export interface PreviewOptions extends ToolContext {
   // show and put their fingerprint on each change. Absent or false, no value
   // is read for it and no change carries one.
   valueFingerprint?: boolean | undefined;
+  // The cost estimate (record 0105): also work out what the change does to
+  // the monthly bill, from the plan this preview made, with the Infracost
+  // CLI. Only a scan asks, and only an adapter whose tool has a plan the CLI
+  // reads estimates. Absent or false, no estimate is made and nothing leaves
+  // the runner for one.
+  cost?: boolean | undefined;
   // Keep the plan this preview made, so a deploy can go out exactly as it
   // was hashed (record 0053). Only `apply` asks, and only an adapter whose
   // tool can save a plan keeps one. Whoever asked lets the plan go.
@@ -82,6 +89,10 @@ export type PreviewResult = (
       dependencies?: ReadDependencies;
       // Only when the preview was asked to keep it (record 0106).
       document?: PreviewDocument;
+      // Only when the preview was asked for it and the tool has an estimate:
+      // what the change costs a month, or why no estimate came back. Never
+      // part of the diff hash (record 0105).
+      cost?: CostResult;
     }
   | {
       ok: false;
