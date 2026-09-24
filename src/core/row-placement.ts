@@ -35,6 +35,7 @@ import {
 import { waitingBlock } from "../render/waiting-line.ts";
 import type { Attribution } from "./attribution.ts";
 import type { BulkState } from "./bulk.ts";
+import { type DeployWindow, queuedWindow } from "./deploy-window.ts";
 import {
   type DeployFact,
   type DeployFacts,
@@ -95,6 +96,13 @@ export interface ScanSoFar {
   pageUrls: ReadonlyMap<string, string>;
   // The tools' own histories, once a full scan read them (record 0073).
   histories: ReadonlyMap<string, readonly ToolDeploy[]> | undefined;
+  // The deploy windows of each stack that has any, the scan's clock and the
+  // dashboard zone (record 0104), for what a queued row says of the window.
+  windows: {
+    byStack: ReadonlyMap<string, readonly DeployWindow[]>;
+    now: Date;
+    timeZone: string;
+  };
 }
 
 // The deploy facts of one late read (record 0003).
@@ -326,6 +334,7 @@ export function placeRows(so: ScanSoFar, late: LateRead): RowsAtLateRead {
         attribution: attributed.get(id)?.lines,
         behind: fact.behind,
         ...(fact.onMerge ? { onMerge: true } : {}),
+        window: queuedWindow(fact, so.windows.byStack.get(id), so.windows.now, so.windows.timeZone),
       });
     } else if (liveRow) {
       if (ticked && decided.row === "live") {

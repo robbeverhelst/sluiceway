@@ -516,6 +516,15 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       again,
       pageUrls,
       histories,
+      windows: {
+        byStack: new Map(
+          stacks.flatMap((one) =>
+            one.deployWindows ? [[stackId(one.stack), one.deployWindows] as const] : [],
+          ),
+        ),
+        now: startedAt,
+        timeZone: config.dashboard.timeZone,
+      },
     };
 
     let answer: ScanAnswer;

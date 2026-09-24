@@ -178,3 +178,27 @@ function instantOf(day: CalendarDay, minutes: number, timeZone: string): number 
   const second = guess - offsetAt(new Date(first), timeZone) * 60_000;
   return second;
 }
+
+// What a queued row says about the window (record 0104), from the record and
+// the windows the config gives the stack now. A record that waits for the
+// window says when it opens, or that it is open and the next run inside it
+// starts it. A record behind a stack could not start now either while the
+// window is closed, so it says so too. A deploying record says nothing. The
+// windows are the config's of this moment and not the record's, as the tick
+// rule is (record 0018): a repo that moves its window moves the row.
+export interface QueuedWindow {
+  // When the window opens, or nothing when it is open now.
+  opens: Date | undefined;
+}
+
+export function queuedWindow(
+  record: { behind?: readonly string[] | undefined; window?: boolean | undefined },
+  windows: readonly DeployWindow[] | undefined,
+  now: Date,
+  timeZone: string,
+): QueuedWindow | undefined {
+  const state = windowState(windows ?? [], now, timeZone);
+  if (record.window) return { opens: state.open ? undefined : state.opens };
+  if (record.behind && record.behind.length > 0 && !state.open) return { opens: state.opens };
+  return undefined;
+}

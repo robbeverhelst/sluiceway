@@ -9,6 +9,7 @@
 import type { Adapter } from "../adapters/adapter.ts";
 import type { ConfiguredStack } from "../core/config.ts";
 import { queueState } from "../core/dependencies.ts";
+import { windowState } from "../core/deploy-window.ts";
 import { type DeploymentRecord, deployFacts } from "../core/deployment.ts";
 import { openRepo } from "../core/repo.ts";
 import { stackId } from "../core/stack.ts";
@@ -49,6 +50,9 @@ export interface SettleContext {
   // The one output of `settle`, `dashboard-url` (record 0041). A test that
   // does not look at it leaves it out.
   outputs?: StepOutputs | undefined;
+  // The clock a deploy window is judged by (record 0104). The machine's
+  // when a test does not set one.
+  now?: (() => Date) | undefined;
 }
 
 function message(error: unknown): string {
@@ -60,7 +64,9 @@ export async function settle(context: SettleContext): Promise<void> {
   // From the event, so it costs no request and is there on every way out.
   const url = eventDashboardUrl(context.repoUrl, context.event);
   if (url !== undefined) context.outputs?.set("dashboard-url", url);
-  const { stacks } = await openRepo(context.root, context.adapter).stacks();
+  const repo = openRepo(context.root, context.adapter);
+  const { stacks } = await repo.stacks();
+  const config = repo.config();
 
   const read = await readRecords(context, stacks);
   const settled = await settleOwnRun(context, read);
@@ -68,11 +74,17 @@ export async function settle(context: SettleContext): Promise<void> {
   const ended = settled.ended.length;
 
   // The next layer (record 0056): every queued stack whose dependencies went
-  // out, of this run or of another. `settle` cannot hand `apply` a matrix any
-  // more, so it starts the workflow again, and the `resolve` job of that run
-  // starts them.
+  // out, of this run or of another, and whose deploy window is open (record
+  // 0104): a run started now could not start it otherwise. `settle` cannot
+  // hand `apply` a matrix any more, so it starts the workflow again, and the
+  // `resolve` job of that run starts them.
+  const now = (context.now ?? (() => new Date()))();
+  const windows = new Map(stacks.map((one) => [stackId(one.stack), one.deployWindows ?? []]));
   const ready = [...deployFacts(records).byStack].flatMap(([stack, fact]) =>
-    fact.kind === "open" && fact.behind && queueState(fact.behind, records) === "ready"
+    fact.kind === "open" &&
+    fact.behind &&
+    queueState(fact.behind, records) === "ready" &&
+    windowState(windows.get(stack) ?? [], now, config.dashboard.timeZone).open
       ? [stack]
       : [],
   );

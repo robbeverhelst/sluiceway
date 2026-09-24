@@ -119,6 +119,7 @@ function scanSoFar(more: Partial<ScanSoFar> = {}): ScanSoFar {
   return {
     ids: ["app", "db"],
     scan: { sha: "abc123", runId: "1000", at: "2026-09-22T10:10:00.000Z" },
+    windows: { byStack: new Map(), now: new Date("2026-09-22T10:10:00.000Z"), timeZone: "UTC" },
     repoUrl: REPO,
     links: {
       summary: `${REPO}/actions/runs/1000/attempts/1`,

@@ -1,6 +1,7 @@
 // The one row renderer every writer uses (records 0009 and 0027). A row block
 // is a pure function of plain data: no clock, no environment, no GitHub.
 
+import type { QueuedWindow } from "../core/deploy-window.ts";
 import type { Change, Diff } from "../core/diff.ts";
 import type { OnMergeWait } from "../core/on-merge.ts";
 import type { PhaseGroup } from "../core/phases.ts";
@@ -117,6 +118,10 @@ export interface DeployingRow {
   // The record was opened on merge, and `ticker` is whoever merged (record
   // 0095). The row says so, so it never reads as a tick.
   onMerge?: boolean | undefined;
+  // The record waits for the stack's deploy window (record 0104), or waits
+  // behind a stack while the window is closed. The row says when the window
+  // opens, in the dashboard zone, and its marker state is `queued`.
+  window?: QueuedWindow | undefined;
 }
 
 export interface PreviewFailedRow {
@@ -554,16 +559,29 @@ function spinner(actionRef: string, queued: boolean): string {
   return `<picture><source media="(prefers-color-scheme: dark)" srcset="${file("dark")}"><img alt="" width="${SPINNER_WIDTH}" height="${SPINNER_WIDTH}" src="${file("light")}"></picture> `;
 }
 
+// What a row says of the deploy window it waits for (record 0104): when it
+// opens, in the dashboard zone with its offset as every time that stands
+// alone (record 0089), or that it is open and the next run starts it.
+function windowWords(window: QueuedWindow, timeZone: string | undefined): string {
+  return window.opens === undefined
+    ? "the deploy window, which is open: the next scheduled run starts it"
+    : `the deploy window, which opens ${minuteAt(window.opens, timeZone)}`;
+}
+
 function deployingRow(row: DeployingRow, options: RowOptions): string[] {
   const behind = row.behind ?? [];
   const onMerge = row.onMerge ? " on merge" : "";
   const word =
     behind.length > 0
-      ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}`
-      : row.waiting
-        ? `waiting to start${onMerge}`
-        : `deploying${onMerge}`;
-  const state = behind.length > 0 ? "queued" : "deploying";
+      ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}${
+          row.window ? `, and for ${windowWords(row.window, options.timeZone)}` : ""
+        }`
+      : row.window
+        ? `queued for ${windowWords(row.window, options.timeZone)}`
+        : row.waiting
+          ? `waiting to start${onMerge}`
+          : `deploying${onMerge}`;
+  const state = behind.length > 0 || row.window ? "queued" : "deploying";
   const lines = [
     `- ${options.actionRef === undefined ? "" : spinner(options.actionRef, state === "queued")}**${escapeText(row.stackId)}** · ${word} · ${row.onMerge ? "merged" : "ticked"} by ${escapeText(row.ticker)} · [run](${
       row.runUrl

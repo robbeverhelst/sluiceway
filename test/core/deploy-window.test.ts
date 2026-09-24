@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   type DeployWindow,
   minutesOf,
+  queuedWindow,
   windowProblem,
   windowState,
 } from "../../src/core/deploy-window.ts";
@@ -146,5 +147,39 @@ describe("what is wrong with a window", () => {
       from: "09:00",
       to: "09:00",
     });
+  });
+});
+
+// What a queued row says about the window (record 0104): a record that waits
+// for the window says when it opens, or that it is open and the next run
+// starts it; a record behind a stack says so too while the window is closed,
+// because it could not start now either; anything else says nothing.
+describe("the window words of a queued record", () => {
+  const FRIDAY = new Date("2026-09-25T16:00:00Z");
+  const TUESDAY = new Date("2026-09-22T08:00:00Z");
+  const MONDAY_NINE = new Date("2026-09-28T07:00:00Z");
+  const zone = "Europe/Brussels";
+
+  test("a record that waits for the window, while it is closed and once it is open", () => {
+    expect(queuedWindow({ window: true }, OFFICE_HOURS, FRIDAY, zone)).toEqual({
+      opens: MONDAY_NINE,
+    });
+    expect(queuedWindow({ window: true }, OFFICE_HOURS, TUESDAY, zone)).toEqual({
+      opens: undefined,
+    });
+    // The repo took its windows away: the next run starts it.
+    expect(queuedWindow({ window: true }, undefined, FRIDAY, zone)).toEqual({ opens: undefined });
+  });
+
+  test("a record behind a stack, only while the window is closed", () => {
+    expect(queuedWindow({ behind: ["a:prod"] }, OFFICE_HOURS, FRIDAY, zone)).toEqual({
+      opens: MONDAY_NINE,
+    });
+    expect(queuedWindow({ behind: ["a:prod"] }, OFFICE_HOURS, TUESDAY, zone)).toBeUndefined();
+    expect(queuedWindow({ behind: ["a:prod"] }, undefined, FRIDAY, zone)).toBeUndefined();
+  });
+
+  test("a record that is deploying says nothing of the window", () => {
+    expect(queuedWindow({}, OFFICE_HOURS, FRIDAY, zone)).toBeUndefined();
   });
 });

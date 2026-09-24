@@ -12,6 +12,7 @@ import type { Adapter } from "../adapters/adapter.ts";
 import type { BulkAct } from "../core/bulk.ts";
 import type { Config, ConfiguredStack, IgnoredStack } from "../core/config.ts";
 import { queueState, withReadDependencies } from "../core/dependencies.ts";
+import { queuedWindow, windowState } from "../core/deploy-window.ts";
 import { deployFacts, lastDeployedCommit, taskStackId } from "../core/deployment.ts";
 import {
   type Tick as BodyTick,
@@ -88,6 +89,7 @@ import { clearMergeTick, type MergeNote } from "../render/merge-row.ts";
 import type { RefusedTick } from "../render/refused-ticks.ts";
 import { resolveSummary } from "../render/resolve-summary.ts";
 import { byCodeUnit, plural, type Row } from "../render/row.ts";
+import { minuteAt } from "../render/time.ts";
 import { type ResolvePart, resolveTimingLine } from "../render/timing.ts";
 
 export interface ResolveContext {
@@ -222,6 +224,8 @@ interface Started {
   behind?: string[] | undefined;
   // Opened on merge, and `ticker` is whoever merged (record 0095).
   onMerge?: boolean | undefined;
+  // Waits for the stack's deploy window, and is not handed on (record 0104).
+  window?: true | undefined;
 }
 
 function message(error: unknown): string {
@@ -353,7 +357,9 @@ async function resolveTicks(
   // The lookups are the one read the judgement asks for (record 0018).
   const outcomes = await watch.time("ticks", () => lookUpTickers(github, ticksToLookUp(read)));
   const judgement = watch.time("ticks", () => judgeTicks(read, outcomes));
-  for (const finding of judgement.findings) log.info(findingText(finding));
+  for (const finding of judgement.findings) {
+    log.info(findingText(finding, config.dashboard.timeZone));
+  }
   const { dropped, clear, clearMerges } = judgement;
   const bulkActs = [...confirms.acts, ...judgement.bulk];
 
@@ -366,7 +372,7 @@ async function resolveTicks(
   // whose status failed is still handed on.
   const started: Started[] = [];
   for (const one of judgement.deploys) {
-    const { stackId: id, environment, ticker, hash, drift, behind, fingerprint } = one;
+    const { stackId: id, environment, ticker, hash, drift, behind, fingerprint, window } = one;
     try {
       const record = await watch.time("opening", () =>
         openRecord(context, {
@@ -378,14 +384,24 @@ async function resolveTicks(
           behind,
           drift,
           fingerprint,
+          window,
         }),
       );
-      started.push({ stackId: id, environment, deployment: record.deployment, ticker, behind });
+      started.push({
+        stackId: id,
+        environment,
+        deployment: record.deployment,
+        ticker,
+        behind,
+        ...(window ? { window } : {}),
+      });
       if (record.unfinished !== undefined) throw record.unfinished;
       log.info(
         behind
           ? `${logGroupTitle(id)}: deployment record ${record.deployment} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.`
-          : `${logGroupTitle(id)}: deployment record ${record.deployment} is queued.`,
+          : window
+            ? `${logGroupTitle(id)}: deployment record ${record.deployment} is queued for the deploy window. A run inside the window starts it.`
+            : `${logGroupTitle(id)}: deployment record ${record.deployment} is queued.`,
       );
     } catch (error) {
       failures.push(
@@ -398,8 +414,8 @@ async function resolveTicks(
   // Directly after the records and before the body write, so a failed body
   // write does not lose the hand-off (record 0035).
   handOn(
-    started.flatMap(({ stackId: stack, environment, deployment, behind }) =>
-      behind ? [] : [{ stack, environment, deployment }],
+    started.flatMap(({ stackId: stack, environment, deployment, behind, window }) =>
+      behind || window ? [] : [{ stack, environment, deployment }],
     ),
   );
 
@@ -506,8 +522,9 @@ async function resolveTicks(
   if (failures.length > 0) throw new Error(failures.join("\n"));
 }
 
-// One line of the job log for each thing the judgement found.
-function findingText(finding: Finding): string {
+// One line of the job log for each thing the judgement found. The zone is
+// the dashboard's, for a time the line says (record 0089).
+function findingText(finding: Finding, timeZone = "UTC"): string {
   switch (finding.kind) {
     case "taken": {
       const { tick, fact } = finding;
@@ -569,7 +586,7 @@ function findingText(finding: Finding): string {
       return `${logGroupTitle(finding.stackId)} is ticked, and it depends on ${words.join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`;
     }
     case "window-closed":
-      return `${logGroupTitle(finding.stackId)} is ticked outside its deploy window, ${finding.opens === undefined ? "and no window of it opens within a week" : `which opens ${finding.opens.toISOString().slice(0, 16).replace("T", " ")} UTC`}. Its deployment record waits for the window, and a run inside the window starts it.`;
+      return `${logGroupTitle(finding.stackId)} is ticked outside its deploy window, ${finding.opens === undefined ? "and no window of it opens within a week" : `which opens ${minuteAt(finding.opens, timeZone)}`}. Its deployment record waits for the window, and a run inside the window starts it.`;
     case "confirm-stale": {
       const { tick, changes } = finding;
       const section = tick.kind === "confirm" ? tick.section : "pending";
@@ -1053,6 +1070,16 @@ async function swapRows(
 
       const rows = new Map<string, Row>();
       const carried = new Map<string, ParsedRow>();
+      // What a queued row says of the deploy window, at this moment in the
+      // dashboard zone (record 0104).
+      const windows = new Map(
+        stacks.flatMap((one) =>
+          one.deployWindows ? [[stackId(one.stack), one.deployWindows] as const] : [],
+        ),
+      );
+      const now = clockOf(context)();
+      const windowOf = (id: string, record: Parameters<typeof queuedWindow>[0]) =>
+        queuedWindow(record, windows.get(id), now, config.dashboard.timeZone);
       // `destroys` is copied from the old marker, because the header needs it
       // and the row's text is never read (record 0031). A stack whose row was
       // deleted by hand since the tick is deploying all the same, and every
@@ -1071,6 +1098,7 @@ async function swapRows(
           attribution: lines.get(one.stackId)?.lines,
           behind: one.behind,
           ...(one.onMerge ? { onMerge: true } : {}),
+          window: windowOf(one.stackId, one),
         });
       }
       for (const [id, row] of live.first) {
@@ -1091,6 +1119,7 @@ async function swapRows(
             attribution: lines.get(id)?.lines,
             behind: fact.behind,
             ...(fact.onMerge ? { onMerge: true } : {}),
+            window: windowOf(id, fact),
           });
         } else if (wanted && (row.ticked || wanted.unticked) && row.hash === wanted.hash) {
           carried.set(id, clearTick(row, { note: wanted.note, unticked: wanted.unticked }));
@@ -1161,9 +1190,10 @@ function withRowDependencies(
   );
 }
 
-// A `resolve` that no issue edit started: the one `settle` starts, and any
-// other dispatch of the workflow (record 0056). It starts every queued stack
-// whose dependencies went out, under a record of its own run, because `apply`
+// A `resolve` that no issue edit started: the one `settle` starts, the one a
+// schedule starts, and any other dispatch of the workflow (records 0056 and
+// 0104). It starts every queued stack whose dependencies went out and whose
+// deploy window is open, under a record of its own run, because `apply`
 // deploys only a record of the run it is part of (record 0035). The approved
 // hash and the ticker go on unchanged: the ticker was checked when the tick
 // was made, as for any record `apply` takes. The old record ends as
@@ -1176,12 +1206,17 @@ async function startQueued(
 ): Promise<void> {
   const { log, github } = context;
   const config = repo.config();
-  // A phase gives dependencies too (record 0067).
+  // A phase gives dependencies too (record 0067), and a deploy window makes
+  // a record wait as well (record 0104).
+  const windowed =
+    config.deployWindows.length > 0 ||
+    config.stacks.some(({ deployWindows }) => (deployWindows?.length ?? 0) > 0);
   if (
+    !windowed &&
     !config.stacks.some(({ dependsOn, phase }) => dependsOn !== undefined || phase !== undefined)
   ) {
     log.info(
-      "The event that started this job is not about an issue, and no stack has dependsOn or a phase. Nothing to do.",
+      "The event that started this job is not about an issue, and no stack has dependsOn, a phase or a deploy window. Nothing to do.",
     );
     return;
   }
@@ -1191,9 +1226,10 @@ async function startQueued(
   // (record 0059).
   const anyAuto = all.some(({ dependsOnAuto }) => dependsOnAuto);
   const involved = all.filter(
-    ({ stack, dependsOn }) =>
+    ({ stack, dependsOn, deployWindows }) =>
       anyAuto ||
       dependsOn !== undefined ||
+      deployWindows !== undefined ||
       all.some((other) => other.dependsOn?.includes(stackId(stack)) === true),
   );
   const settled = await watch.time("records", async () =>
@@ -1210,16 +1246,33 @@ async function startQueued(
   for (const { stackId: id } of settled.ended) {
     log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
   }
-  const ready = [...deployFacts(settled.records).byStack]
+  const now = clockOf(context)();
+  const { timeZone } = config.dashboard;
+  const ready: { stackId: string; fact: OpenDeployment }[] = [];
+  const waiting = [...deployFacts(settled.records).byStack]
     .flatMap(([id, fact]) =>
-      fact.kind === "open" &&
-      fact.behind &&
-      stacks.has(id) &&
-      queueState(fact.behind, settled.records) === "ready"
-        ? [{ stackId: id, fact }]
-        : [],
+      fact.kind === "open" && (fact.behind || fact.window) && stacks.has(id) ? [{ id, fact }] : [],
     )
-    .sort((a, b) => (a.stackId < b.stackId ? -1 : a.stackId > b.stackId ? 1 : 0));
+    .sort((a, b) => byCodeUnit(a.id, b.id));
+  for (const { id, fact } of waiting) {
+    // Behind stacks that are still going, or that did not go out, which
+    // settleEndedRuns ended already: nothing to say.
+    if (fact.behind && queueState(fact.behind, settled.records) !== "ready") continue;
+    const window = windowState(stacks.get(id)?.deployWindows ?? [], now, timeZone);
+    if (window.open) {
+      ready.push({ stackId: id, fact });
+      continue;
+    }
+    const opens =
+      window.opens === undefined
+        ? "no window of it opens within a week"
+        : `which opens ${minuteAt(window.opens, timeZone)}`;
+    log.info(
+      fact.behind
+        ? `${logGroupTitle(id)}: what it waited behind went out, and its deploy window ${window.opens === undefined ? "is closed, and " + opens : opens.replace("which opens", "opens")}. It starts in a run inside the window.`
+        : `${logGroupTitle(id)} waits for its deploy window, ${opens}. Nothing starts it before then.`,
+    );
+  }
   if (ready.length === 0) {
     log.info("No queued stack is ready to start. Nothing to do.");
     return;
@@ -1248,7 +1301,7 @@ async function startQueued(
       });
       if (record.unfinished !== undefined) throw record.unfinished;
       log.info(
-        `${logGroupTitle(id)}: what it waited behind went out, so it starts now. Deployment record ${record.deployment} is queued and takes over from record ${fact.deployment}.`,
+        `${logGroupTitle(id)}: ${fact.behind ? "what it waited behind went out" : "its deploy window is open"}, so it starts now. Deployment record ${record.deployment} is queued and takes over from record ${fact.deployment}.`,
       );
     } catch (error) {
       failures.push(
