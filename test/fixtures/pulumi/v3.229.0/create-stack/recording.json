@@ -1,0 +1,76 @@
+{
+  "scenario": "create-stack",
+  "description": "A stack whose file exists and whose backend lacks it, created by the scan with createInBackend: true (record 0107): the list of network/ holds dev and not prod, prod is made, its preview is all creates, and a second init of prod is refused because the backend holds it now.",
+  "cliVersion": "v3.229.0",
+  "commands": [
+    {
+      "id": "stack-ls",
+      "argv": [
+        "pulumi",
+        "stack",
+        "ls",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "stack-ls.stdout",
+      "stderr": "stack-ls.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "stack-init",
+      "argv": [
+        "pulumi",
+        "stack",
+        "init",
+        "prod",
+        "--non-interactive",
+        "--color",
+        "never"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "stack-init.stdout",
+      "stderr": "stack-init.stderr",
+      "stdoutFormat": "text"
+    },
+    {
+      "id": "preview",
+      "argv": [
+        "pulumi",
+        "preview",
+        "--json",
+        "--non-interactive",
+        "--color",
+        "never",
+        "--stack",
+        "prod"
+      ],
+      "cwd": "network",
+      "exitCode": 0,
+      "stdout": "preview.stdout",
+      "stderr": "preview.stderr",
+      "stdoutFormat": "json"
+    },
+    {
+      "id": "stack-init-again",
+      "argv": [
+        "pulumi",
+        "stack",
+        "init",
+        "prod",
+        "--non-interactive",
+        "--color",
+        "never"
+      ],
+      "cwd": "network",
+      "exitCode": 1,
+      "stdout": "stack-init-again.stdout",
+      "stderr": "stack-init-again.stderr",
+      "stdoutFormat": "text"
+    }
+  ]
+}
