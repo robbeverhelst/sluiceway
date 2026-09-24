@@ -28568,6 +28568,7 @@ var stackEntry = exports_external.strictObject({
     message: "envFile names one file on one line. To load several files, join them in a step before Sluiceway."
   }).describe("A file of NAME=value lines, relative to the repo root or absolute, that the tool gets for these stacks alone, on top of the job environment and the step's env-file input. Every value is masked first. A file that cannot be loaded fails the preview of these stacks and no other.").exactOptional(),
   policies: policyPaths.describe("Directories or files of Rego policies these stacks are tested against, relative to the repo root, on top of the top level policies.").exactOptional(),
+  createInBackend: exports_external.boolean().describe("true: a scan creates each Pulumi stack of the entry that the backend lacks, with pulumi stack init right before its first preview, and previews it as all creates. A deploy never creates a stack. Default: false.").exactOptional(),
   options: exports_external.record(exports_external.string(), exports_external.unknown()).describe("Named adapter options of the tool. Only an entry with tool takes them.").exactOptional()
 }).superRefine((entry2, context) => {
   if (entry2.tool !== undefined)
@@ -28939,6 +28940,7 @@ function applyConfig(config2, found) {
     const valueFingerprint = entries.findLast((entry2) => entry2.valueFingerprint !== undefined)?.valueFingerprint;
     const envFile = entries.findLast((entry2) => entry2.envFile !== undefined)?.envFile;
     const windows = entries.findLast((entry2) => entry2.deployWindows !== undefined)?.deployWindows ?? config2.deployWindows;
+    const createInBackend = entries.findLast((entry2) => entry2.createInBackend !== undefined)?.createInBackend;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     const policies = [
@@ -28959,7 +28961,8 @@ function applyConfig(config2, found) {
       ...valueFingerprint === undefined ? {} : { valueFingerprint },
       ...envFile === undefined ? {} : { envFile },
       ...windows.length === 0 ? {} : { deployWindows: windows },
-      ...policies.length === 0 ? {} : { policies }
+      ...policies.length === 0 ? {} : { policies },
+      ...createInBackend === true ? { createInBackend } : {}
     };
   });
 }
@@ -30237,6 +30240,9 @@ async function discoverAll(root, config2) {
       ] : [],
       ...typeof entry2.phase === "object" ? [
         `stacks[${index}].phase: from reads a key of a Pulumi project file, and an ${entry2.tool} stack has none. Name the phase instead.`
+      ] : [],
+      ...entry2.createInBackend !== undefined ? [
+        `stacks[${index}].createInBackend: the scan creates a Pulumi stack the backend lacks, and an ${entry2.tool} stack has no such stack: its first scan makes what it needs. Leave the key out.`
       ] : []
     ];
   });
@@ -32003,7 +32009,7 @@ function backendText(check2) {
     case true:
       return `${check2.stackId} is in the backend.`;
     case false:
-      return `${check2.stackId} is not in the backend.`;
+      return check2.createInBackend ? `${check2.stackId} is not in the backend, and the first scan creates it (createInBackend).` : `${check2.stackId} is not in the backend.`;
     case "unknown":
       return `${check2.stackId}: could not ask the backend, ${askFailureText(check2.reason)}.`;
     case "unchecked":
@@ -32031,7 +32037,7 @@ function backendCell(check2) {
     case true:
       return "Yes";
     case false:
-      return "No";
+      return check2.createInBackend ? "No, the first scan creates it" : "No";
     case "unknown":
       return `Could not ask: ${askFailureText(check2.reason)}`;
     case "unchecked":
@@ -32439,9 +32445,10 @@ function workflowsPart(workflows) {
   };
 }
 function backendPart(checks3, ignore, toolLog) {
-  const missing2 = checks3.filter((check2) => check2.found === false).map((check2) => check2.stackId);
+  const notThere = checks3.filter((check2) => check2.found === false);
+  const missing2 = notThere.filter((check2) => !check2.createInBackend).map((check2) => check2.stackId);
   const block = missing2.length === 0 ? [] : ignoreBlock(ignore, missing2);
-  const allIn = missing2.length === 0 && checks3.some((check2) => check2.found === true);
+  const allIn = notThere.length === 0 && checks3.some((check2) => check2.found === true);
   return {
     log: [
       ...toolLog === "" ? [] : [{ group: "The tool's own words", lines: toolLog.replace(/\n$/, "").split(`
@@ -32451,7 +32458,7 @@ function backendPart(checks3, ignore, toolLog) {
         if (check2.found === "unknown") {
           return [{ warning: line(couldNotAskText(check2)), title: COULD_NOT_ASK_TITLE }];
         }
-        if (check2.found === false) {
+        if (check2.found === false && !check2.createInBackend) {
           return [{ warning: line(notInBackendText(check2.stackId)), title: NOT_IN_BACKEND_TITLE }];
         }
         return [];
@@ -32601,12 +32608,13 @@ async function askBackend(backend, root, stacks) {
     if (result2 !== undefined && result2.toolLog !== "")
       logs.push(result2.toolLog);
   }
-  const checks3 = stacks.map(({ stack }) => {
+  const checks3 = stacks.map(({ stack, createInBackend }) => {
     const id = stackId(stack);
     const answer = answers.get(id);
+    const creates = createInBackend === undefined ? {} : { createInBackend };
     if (answer === undefined)
-      return { stackId: id, found: "unchecked" };
-    return answer.found === "unknown" ? { stackId: id, found: "unknown", reason: answer.reason } : { stackId: id, found: answer.found };
+      return { stackId: id, ...creates, found: "unchecked" };
+    return answer.found === "unknown" ? { stackId: id, ...creates, found: "unknown", reason: answer.reason } : { stackId: id, ...creates, found: answer.found };
   });
   return { checks: checks3, toolLog: logs.join("") };
 }

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { type Stack, stackId } from "../../core/stack.ts";
-import type { PrepareOptions, Preparation, PrepareResult, ToolContext } from "../adapter.ts";
+import type { Preparation, PrepareOptions, PrepareResult, ToolContext } from "../adapter.ts";
 import { runTool, stripAnsi } from "../tool-run.ts";
 import { listStacks } from "./backend.ts";
 import { pulumiEnvironment } from "./environment.ts";

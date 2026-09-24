@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { PrepareOptions, Preparation } from "../../src/adapters/adapter.ts";
+import type { Preparation, PrepareOptions } from "../../src/adapters/adapter.ts";
 import { type Stack, stackId } from "../../src/core/stack.ts";
 import { scan } from "../../src/modes/scan.ts";
 import { parseDashboard } from "../../src/render/marker.ts";
@@ -16,7 +16,7 @@ const CONFIG = "stacks:\n  - path: a\n    name: prod\n    createInBackend: true\
 // and that remembers what it was asked.
 function creating(events: string[], refuse: string[] = []) {
   const asked: (readonly Stack[] | undefined)[] = [];
-  const prepare = (stacks: Stack[], options?: PrepareOptions): Preparation[] => {
+  const prepare = (_stacks: Stack[], options?: PrepareOptions): Preparation[] => {
     asked.push(options?.createInBackend);
     return (options?.createInBackend ?? []).map((stack) => ({
       title: `the stack ${stackId(stack)} in the backend`,
@@ -72,7 +72,9 @@ describe("creating a stack in the backend from the scan", () => {
       b: "in-sync",
     });
     // The group says what was done, in Sluiceway's words, then the tool's.
-    const group = log.groups.find((one) => one.title === "Prepared the stack a:prod in the backend");
+    const group = log.groups.find(
+      (one) => one.title === "Prepared the stack a:prod in the backend",
+    );
     expect(group?.lines).toEqual([
       "Stacks that need it: a:prod.",
       "The backend did not hold a:prod, so the stack was created. Its preview shows every resource as a create.",

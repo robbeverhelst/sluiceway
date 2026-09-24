@@ -354,7 +354,7 @@ Globs matched against the **stack id**, not the path. An ignored stack has no ro
 
 A stack without a name, such as a root module discovery found, has its path as its id, so its bare directory does match it. Globs that end in `*` already cross the colon: `apps/*` matches `apps/web:prod`, and `sandbox*` matches every stack whose id starts with `sandbox`. `*` stops at a slash and `**` crosses slashes. The `check` mode warns about a glob that matches no stack, and names the glob that would work.
 
-A stack config file with no stack in the backend is the usual reason to ignore one:
+A stack config file with no stack in the backend is the usual reason to ignore one, unless the scan should create it ([`stacks[].createInBackend`](#stackscreateinbackend)):
 
 ```yaml
 ignore:
@@ -908,6 +908,23 @@ stacks:
     policies:
       - policies/payments
 ```
+
+### `stacks[].createInBackend`
+
+Default: `false`
+
+`true` lets a scan create each Pulumi stack of the entry that the backend does not hold, right before its first preview, and preview it as all creates. A stack file for a stack still to be made is otherwise a red row until someone runs the tool by hand ([record 0107](adr/0107-a-pulumi-stack-the-backend-lacks-is-created-by-the-scan-when-its-entry-asks.md)).
+
+```yaml
+stacks:
+  - path: apps/web
+    name: staging
+    createInBackend: true
+```
+
+The scan asks the backend for the list of the project's stacks, and runs `pulumi stack init <name>` only when the list lacks the stack, with the environment the stack's preview gets: the passphrase of the job, or of the stack's [`envFile`](#stacksenvfile), is the one the new stack uses, and the tool's default secrets provider stands. A stack the backend already holds is left alone, and the job log says which of the two it was. The init writes an encryption salt into the stack file of the checkout; Sluiceway commits nothing, so set the stack's config secrets from a clone as before ([credentials](credentials.md#state-backends)). A list or an init the tool refuses is a preview failure of that stack alone.
+
+Only a scan creates a stack. A deploy never does: a stack that is gone at deploy time fails the fresh preview as it did. The [check](workflow.md#check-your-setup) with `backend: true` names each such stack the backend lacks and says that the first scan creates it, and leaves it out of the `ignore` block. Off by default, because a typo in a stack file must never create a stack, and refused on an entry with `tool`: an OpenTofu workspace is made by the scan's init, and a Helm release by its first deploy.
 
 ### `stacks[].options.workspace`
 

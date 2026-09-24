@@ -193,6 +193,8 @@ What to know about it:
 
 The tool's backend is configured the same way, in the environment: for Pulumi, `PULUMI_ACCESS_TOKEN` for Pulumi Cloud, or `PULUMI_BACKEND_URL` for a bucket or another self-managed backend, and `PULUMI_CONFIG_PASSPHRASE` when stack secrets use a passphrase. Sluiceway never sets or defaults any of them. When one is missing, the tool's own error becomes that stack's preview failure, and the job log shows it.
 
+A stack the scan creates with [`stacks[].createInBackend`](configuration.md#stackscreateinbackend) is made with that same environment: `pulumi stack init` with the name alone, so the tool's default secrets provider stands and the passphrase is the one the job has. The salt it writes into the stack file stays on the runner, because Sluiceway commits nothing. A stack whose config needs secrets still gets them the way it did: set them with `pulumi config set --secret` from a clone and commit the stack file, or give the program what it needs through the environment.
+
 ### OpenTofu
 
 The same pattern holds for OpenTofu (record 0053). Install `tofu` v1.11.0 or newer in a step before Sluiceway, without a wrapper around the binary, because Sluiceway reads what `tofu` itself prints:

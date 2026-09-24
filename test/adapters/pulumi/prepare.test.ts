@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { ProcessRunner, Run, RunResult } from "../../../src/adapters/process.ts";
 import { pulumi } from "../../../src/adapters/pulumi/index.ts";
 import type { Stack } from "../../../src/core/stack.ts";
-import { answering, FIXTURES, readRecording, replay, ROOT, VERSIONS } from "./replay.ts";
+import { answering, FIXTURES, ROOT, readRecording, replay, VERSIONS } from "./replay.ts";
 
 // Slice 5.42, record 0107: a stack whose files exist and whose backend lacks
 // it is created by the scan when its entry asks with createInBackend: true.

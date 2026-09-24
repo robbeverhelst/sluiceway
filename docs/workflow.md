@@ -63,7 +63,7 @@ The job is red only when the config is not valid or discovery fails. What a work
 
 The same check runs on your own machine before any workflow exists: `npx sluiceway check` in your clone, with Node 22 or newer, prints the same lines and fails only where the job would be red. It asks no backend. [init](init.md#run-it) says more about the command line.
 
-To learn before the first scan which stacks have files in the repo and no stack in the backend, which is the usual first red row, set `backend: true` on the check step and load the credentials of your state backend before it. The check then asks the tool for the list of stacks of each Pulumi project, changes nothing, and gives one ready-to-paste `ignore` block for the stacks the backend does not hold. It needs those credentials, so do not run it on pull requests from forks: a separate workflow on `workflow_dispatch` is the usual place. That workflow names the mode, because on a dispatch a step without one would scan. OpenTofu, Helm and Kubernetes manifests stacks are listed as not checked.
+To learn before the first scan which stacks have files in the repo and no stack in the backend, which is the usual first red row, set `backend: true` on the check step and load the credentials of your state backend before it. The check then asks the tool for the list of stacks of each Pulumi project, changes nothing, and gives one ready-to-paste `ignore` block for the stacks the backend does not hold. A stack whose entry sets [`createInBackend: true`](configuration.md#stackscreateinbackend) is named with the line that the first scan creates it, and stays out of the block. It needs those credentials, so do not run it on pull requests from forks: a separate workflow on `workflow_dispatch` is the usual place. That workflow names the mode, because on a dispatch a step without one would scan. OpenTofu, Helm and Kubernetes manifests stacks are listed as not checked.
 
 ```yaml
       # Your credential step for the state backend goes here.
@@ -287,7 +287,7 @@ The [releases](https://github.com/sluiceway/sluiceway/releases) page lists every
 ## What new users ran into
 
 > [!WARNING]
-> A stack config file with no stack in the backend becomes a red row. Leave it out with `ignore` and its full stack id, `<path>:<name>`: `apps/web:dev`, never `apps/web`. The check warns about a glob that leaves out nothing.
+> A stack config file with no stack in the backend becomes a red row. Leave it out with `ignore` and its full stack id, `<path>:<name>`: `apps/web:dev`, never `apps/web`, or let the scan create it with `createInBackend: true` on the stack's entry. The check warns about a glob that leaves out nothing.
 
 > [!WARNING]
 > A program that pulls from a private registry works on your laptop and fails on the runner. Log in to that registry in the workflow. [Credentials](credentials.md) has recipes.

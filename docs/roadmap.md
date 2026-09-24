@@ -51,6 +51,7 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - `dependsOn: auto` from a Terragrunt unit's `dependency` blocks, and zero-config discovery of Terragrunt units from `terragrunt.hcl`
 - `varFiles` on a Terragrunt unit or a CDK for Terraform stack
 - Root module discovery, part 2: a root module that reads `terraform.workspace`, has var files of its own or a `cloud` block with `tags`, found once per workspace or var file; root modules in a repo with Terragrunt files; a module source that is a Git address of the same repo
+- A `secretsProvider` option for the stack `createInBackend` makes, and the salt it writes committed by Sluiceway
 - A `backendConfig` option for OpenTofu (`tofu init -backend-config`)
 - Helm, part 3: a `kubeContext` option, zero-config discovery from `Chart.yaml`, and `--take-ownership` for objects made outside the release
 - Pruning of a Kubernetes manifests stack through kubectl's own ApplySet, and drift in fields its manifests do not set

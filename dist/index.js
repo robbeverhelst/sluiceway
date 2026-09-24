@@ -52889,6 +52889,7 @@ var stackEntry = exports_external.strictObject({
     message: "envFile names one file on one line. To load several files, join them in a step before Sluiceway."
   }).describe("A file of NAME=value lines, relative to the repo root or absolute, that the tool gets for these stacks alone, on top of the job environment and the step's env-file input. Every value is masked first. A file that cannot be loaded fails the preview of these stacks and no other.").exactOptional(),
   policies: policyPaths.describe("Directories or files of Rego policies these stacks are tested against, relative to the repo root, on top of the top level policies.").exactOptional(),
+  createInBackend: exports_external.boolean().describe("true: a scan creates each Pulumi stack of the entry that the backend lacks, with pulumi stack init right before its first preview, and previews it as all creates. A deploy never creates a stack. Default: false.").exactOptional(),
   options: exports_external.record(exports_external.string(), exports_external.unknown()).describe("Named adapter options of the tool. Only an entry with tool takes them.").exactOptional()
 }).superRefine((entry2, context3) => {
   if (entry2.tool !== undefined)
@@ -53260,6 +53261,7 @@ function applyConfig(config2, found) {
     const valueFingerprint = entries.findLast((entry2) => entry2.valueFingerprint !== undefined)?.valueFingerprint;
     const envFile = entries.findLast((entry2) => entry2.envFile !== undefined)?.envFile;
     const windows = entries.findLast((entry2) => entry2.deployWindows !== undefined)?.deployWindows ?? config2.deployWindows;
+    const createInBackend = entries.findLast((entry2) => entry2.createInBackend !== undefined)?.createInBackend;
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     const policies = [
@@ -53280,7 +53282,8 @@ function applyConfig(config2, found) {
       ...valueFingerprint === undefined ? {} : { valueFingerprint },
       ...envFile === undefined ? {} : { envFile },
       ...windows.length === 0 ? {} : { deployWindows: windows },
-      ...policies.length === 0 ? {} : { policies }
+      ...policies.length === 0 ? {} : { policies },
+      ...createInBackend === true ? { createInBackend } : {}
     };
   });
 }
@@ -55367,6 +55370,9 @@ async function discoverAll(root, config2) {
       ] : [],
       ...typeof entry2.phase === "object" ? [
         `stacks[${index}].phase: from reads a key of a Pulumi project file, and an ${entry2.tool} stack has none. Name the phase instead.`
+      ] : [],
+      ...entry2.createInBackend !== undefined ? [
+        `stacks[${index}].createInBackend: the scan creates a Pulumi stack the backend lacks, and an ${entry2.tool} stack has no such stack: its first scan makes what it needs. Leave the key out.`
       ] : []
     ];
   });
@@ -57953,28 +57959,32 @@ async function findInBackend(stacks, context3) {
   const answers = [];
   const logs = [];
   for (const [path, inPath] of Map.groupBy(stacks, (stack) => stack.path)) {
-    const result2 = await runTool(context3.run, {
-      argv: LIST,
-      cwd: join27(context3.root, path),
-      env: pulumiEnvironment(context3.env),
-      timeoutMinutes: BACKEND_TIMEOUT_MINUTES
-    });
-    const unknown2 = (reason) => answers.push(...inPath.map((stack) => ({ stack, found: "unknown", reason })));
-    if (result2.stderr !== "")
-      logs.push(stripAnsi(result2.stderr));
-    if (!result2.ok) {
-      unknown2(result2.reason);
+    const listed5 = await listStacks(context3, path, BACKEND_TIMEOUT_MINUTES);
+    if (listed5.toolLog !== "")
+      logs.push(listed5.toolLog);
+    if (!listed5.ok) {
+      answers.push(...inPath.map((stack) => ({ stack, found: "unknown", reason: listed5.reason })));
       continue;
     }
-    const parsed = parseList(result2.stdout);
-    if (parsed === undefined) {
-      unknown2({ kind: "unreadable-output" });
-      continue;
-    }
-    const names = new Set(parsed.map(({ name }) => name.split("/").at(-1)));
-    answers.push(...inPath.map((stack) => ({ stack, found: names.has(stack.name) })));
+    answers.push(...inPath.map((stack) => ({ stack, found: listed5.names.has(stack.name) })));
   }
   return { answers, toolLog: logs.join("") };
+}
+async function listStacks(context3, path, timeoutMinutes, exitCodes) {
+  const result2 = await runTool(context3.run, {
+    argv: LIST,
+    cwd: join27(context3.root, path),
+    env: pulumiEnvironment(context3.env),
+    timeoutMinutes,
+    exitCodes
+  });
+  const toolLog = stripAnsi(result2.stderr);
+  if (!result2.ok)
+    return { ok: false, reason: result2.reason, toolLog };
+  const parsed = parseList(result2.stdout);
+  if (parsed === undefined)
+    return { ok: false, reason: { kind: "unreadable-output" }, toolLog };
+  return { ok: true, names: new Set(parsed.map(({ name }) => name.split("/").at(-1))), toolLog };
 }
 function parseList(stdout) {
   try {
@@ -58306,8 +58316,57 @@ function readHistory(stdout) {
   return deploys.sort((a, b) => b.endedAt.getTime() - a.endedAt.getTime());
 }
 
-// src/adapters/pulumi/preview.ts
+// src/adapters/pulumi/prepare.ts
 import { join as join30 } from "node:path";
+function prepare3(stacks, options) {
+  const asked = new Set((options?.createInBackend ?? []).map(stackId));
+  return stacks.filter((stack) => asked.has(stackId(stack))).sort((a, b) => byCodeUnit14(stackId(a), stackId(b))).map((stack) => ({
+    title: `the stack ${stackId(stack)} in the backend`,
+    stacks: [stack],
+    run: (context3) => createIfMissing(stack, context3)
+  }));
+}
+function initCommand(name) {
+  return ["pulumi", "stack", "init", name, "--non-interactive", "--color", "never"];
+}
+async function createIfMissing(stack, context3) {
+  if (stack.name === undefined)
+    throw new Error("A Pulumi stack always has a name.");
+  const id = stackId(stack);
+  const listed5 = await listStacks(context3, stack.path, context3.timeoutMinutes, PULUMI_EXIT_CODES);
+  if (!listed5.ok)
+    return { ok: false, reason: listed5.reason, toolLog: listed5.toolLog };
+  if (listed5.names.has(stack.name)) {
+    return {
+      ok: true,
+      toolLog: listed5.toolLog,
+      detail: [`The backend already holds ${id}. Nothing was created.`]
+    };
+  }
+  const init = await runTool(context3.run, {
+    argv: initCommand(stack.name),
+    cwd: join30(context3.root, stack.path),
+    env: pulumiEnvironment(context3.env),
+    timeoutMinutes: context3.timeoutMinutes,
+    exitCodes: PULUMI_EXIT_CODES
+  });
+  const toolLog = listed5.toolLog + stripAnsi(init.stdout + init.stderr);
+  if (!init.ok)
+    return { ok: false, reason: init.reason, toolLog };
+  return {
+    ok: true,
+    toolLog,
+    detail: [
+      `The backend did not hold ${id}, so the stack was created. Its preview shows every resource as a create.`
+    ]
+  };
+}
+function byCodeUnit14(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// src/adapters/pulumi/preview.ts
+import { join as join31 } from "node:path";
 
 // src/adapters/pulumi/values.ts
 var SECRET = "[secret]";
@@ -58537,7 +58596,7 @@ async function previewWithReferences(stack, options) {
     throw new Error("A Pulumi stack always has a name.");
   const result2 = await runTool(options.run, {
     argv: previewCommand(stack.name),
-    cwd: join30(options.root, stack.path),
+    cwd: join31(options.root, stack.path),
     env: pulumiEnvironment(options.env),
     timeoutMinutes: options.timeoutMinutes,
     exitCodes: PULUMI_EXIT_CODES
@@ -58602,17 +58661,17 @@ async function readDependencies(stack, names, root, candidates) {
     else if (one.id !== self)
       found.add(one.id);
   }
-  return { stackIds: [...found].sort(byCodeUnit14), elsewhere };
+  return { stackIds: [...found].sort(byCodeUnit15), elsewhere };
 }
 function orElse(first, second) {
   return first.length > 0 ? first : second();
 }
-function byCodeUnit14(a, b) {
+function byCodeUnit15(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
 // src/adapters/pulumi/tool-diff.ts
-import { join as join31 } from "node:path";
+import { join as join32 } from "node:path";
 function toolDiffCommand2(name) {
   return [
     "pulumi",
@@ -58631,7 +58690,7 @@ async function toolDiff4(stack, options) {
     throw new Error("A Pulumi stack always has a name.");
   const result2 = await runTool(options.run, {
     argv: toolDiffCommand2(stack.name),
-    cwd: join31(options.root, stack.path),
+    cwd: join32(options.root, stack.path),
     env: pulumiEnvironment(options.env),
     timeoutMinutes: options.timeoutMinutes,
     exitCodes: PULUMI_EXIT_CODES
@@ -58678,6 +58737,7 @@ var preview4 = async (stack, options) => {
 var pulumi = {
   discover,
   checkVersion: checkVersion4,
+  prepare: prepare3,
   preview: preview4,
   toolDiff: toolDiff4,
   detectDrift: detectDrift3,
@@ -58716,8 +58776,12 @@ var tools = {
     if (manifests.length > 0)
       await kubectl.checkVersion(context3, manifests);
   },
-  prepare(stacks) {
+  prepare(stacks, options) {
+    const isPulumi = (stack) => adapterOf(stack) === pulumi;
     return [
+      ...pulumi.prepare?.(stacks.filter(isPulumi), {
+        createInBackend: (options?.createInBackend ?? []).filter(isPulumi)
+      }) ?? [],
       ...opentofu.prepare?.(stacks.filter((stack) => isOpenTofuOptions(stack.options))) ?? [],
       ...helm.prepare?.(stacks.filter((stack) => isHelmOptions(stack.options))) ?? []
     ];
@@ -59844,7 +59908,7 @@ function isNoAccount(error63) {
 
 // src/github/outputs.ts
 import { writeFileSync } from "node:fs";
-import { join as join32 } from "node:path";
+import { join as join33 } from "node:path";
 
 // src/core/merge-and-deploy.ts
 function qualify(pullRequest, options) {
@@ -59865,7 +59929,7 @@ function qualify(pullRequest, options) {
   const { claims, unclaimed } = claim2(options.stacks, pullRequest.files, options.unrelated);
   if (unclaimed.length > 0)
     return { qualifies: false, why: "unclaimed" };
-  const stackIds = [...claims.keys()].sort(byCodeUnit15);
+  const stackIds = [...claims.keys()].sort(byCodeUnit16);
   if (stackIds.length === 0)
     return { qualifies: false, why: "no-stack" };
   if (dependOnEachOther(stackIds, options.dependsOn)) {
@@ -59873,7 +59937,7 @@ function qualify(pullRequest, options) {
   }
   return { qualifies: true, stackIds };
 }
-function byCodeUnit15(a, b) {
+function byCodeUnit16(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function dependOnEachOther(ids, dependsOn) {
@@ -59940,7 +60004,7 @@ function mergeMethod(allowed, strategy) {
 
 // src/core/bulk.ts
 var BULK_MIN_ROWS = 2;
-function byCodeUnit16(a, b) {
+function byCodeUnit17(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function bulkRows(rows, section) {
@@ -59954,14 +60018,14 @@ function bulkRows(rows, section) {
       found.push({ stackId: row.stackId, hash: row.hash });
     }
   }
-  return found.sort((a, b) => byCodeUnit16(a.stackId, b.stackId));
+  return found.sort((a, b) => byCodeUnit17(a.stackId, b.stackId));
 }
 function sectionChanges(named, now) {
   const before = new Map(named.map(({ stackId: stackId2, hash: hash2 }) => [stackId2, hash2]));
   const after = new Map(now.map(({ stackId: stackId2, hash: hash2 }) => [stackId2, hash2]));
-  const added = [...after.keys()].filter((id) => !before.has(id)).sort(byCodeUnit16);
-  const gone = [...before.keys()].filter((id) => !after.has(id)).sort(byCodeUnit16);
-  const moved = [...after].filter(([id, hash2]) => before.has(id) && before.get(id) !== hash2).map(([id]) => id).sort(byCodeUnit16);
+  const added = [...after.keys()].filter((id) => !before.has(id)).sort(byCodeUnit17);
+  const gone = [...before.keys()].filter((id) => !after.has(id)).sort(byCodeUnit17);
+  const moved = [...after].filter(([id, hash2]) => before.has(id) && before.get(id) !== hash2).map(([id]) => id).sort(byCodeUnit17);
   return added.length + gone.length + moved.length === 0 ? undefined : { added, gone, moved };
 }
 function holdsBulkTick(live, tick) {
@@ -60415,7 +60479,7 @@ function signed(state2, signs) {
   const subject = state2 === "pending" ? "some" : "some changes";
   return { suffix, fact: suffix === "" ? "" : `, ${subject} ${verb} resources` };
 }
-function byCodeUnit17(a, b) {
+function byCodeUnit18(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function plural4(count, word) {
@@ -60519,7 +60583,7 @@ ${INDENT}${short ? deploy.shipped.counted : deploy.shipped.full}` : "";
   return `- ${dot}${escapeText(deploy.stackId)}${result2} · ${who} · ${trailMinute(deploy.at, year, timeZone)} · [run](${deploy.runUrl})${shipped}`;
 }
 function newestTrail(deploys, length) {
-  return [...deploys].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit17(a.stackId, b.stackId)).slice(0, length ?? RECENTLY_DEPLOYED);
+  return [...deploys].sort((a, b) => b.at.getTime() - a.at.getTime() || byCodeUnit18(a.stackId, b.stackId)).slice(0, length ?? RECENTLY_DEPLOYED);
 }
 function outsideLine(deploy, repoUrl, dots, year, timeZone) {
   const dot = dots ? `${RESULT_DOT.deployed}&nbsp;` : "";
@@ -60587,7 +60651,7 @@ function renderBody(input2) {
   if (previewFailed.length > 0)
     out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
   const { inSync } = facts;
-  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit17(a.stackId, b.stackId));
+  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit18(a.stackId, b.stackId));
   if (inSync.length > 0 || ignored.length > 0) {
     const loud = inSync.filter((row) => row.failed);
     const quiet = inSync.filter((row) => !row.failed);
@@ -60872,7 +60936,7 @@ function actionsOutputs(runnerTemp) {
       if (!runnerTemp) {
         throw new Error("RUNNER_TEMP is not set, so there is no directory for the result file");
       }
-      const path = join32(runnerTemp, resultFileName(mode));
+      const path = join33(runnerTemp, resultFileName(mode));
       writeFileSync(path, text8);
       return path;
     }
@@ -61048,18 +61112,18 @@ function stepNotifier(getInput2, log, mask) {
 
 // src/core/diff-hash.ts
 import { createHash as createHash5 } from "node:crypto";
-function byCodeUnit18(a, b) {
+function byCodeUnit19(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function sortedSet3(keys4) {
-  return [...new Set(keys4)].sort(byCodeUnit18);
+  return [...new Set(keys4)].sort(byCodeUnit19);
 }
 function canonicalJson2(value) {
   if (typeof value === "string")
     return JSON.stringify(value);
   if (Array.isArray(value))
     return `[${value.map(canonicalJson2).join(",")}]`;
-  const members2 = Object.keys(value).sort(byCodeUnit18).flatMap((key) => {
+  const members2 = Object.keys(value).sort(byCodeUnit19).flatMap((key) => {
     const member = value[key];
     return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson2(member)}`];
   });
@@ -61081,14 +61145,14 @@ function canonicalChange(change3) {
 function canonicalValues(values2) {
   if (values2 === undefined || values2.length === 0)
     return;
-  return [...values2].sort((a, b) => byCodeUnit18(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
+  return [...values2].sort((a, b) => byCodeUnit19(a.path, b.path)).map((value) => ({ path: value.path, old: value.old, new: value.new }));
 }
 function canonicalDiff(diff2) {
   const drift = diff2.drift === undefined || diff2.drift.length === 0 ? "" : `"drift":[${canonicalChanges(diff2.drift).join(",")}],`;
   return `{"changes":[${canonicalChanges(diff2.changes).join(",")}],${drift}"stackId":${JSON.stringify(diff2.stackId)}}`;
 }
 function canonicalChanges(changes) {
-  return changes.map((change3) => ({ address: change3.address, text: canonicalJson2(canonicalChange(change3)) })).sort((a, b) => byCodeUnit18(a.address, b.address) || byCodeUnit18(a.text, b.text)).map((change3) => change3.text);
+  return changes.map((change3) => ({ address: change3.address, text: canonicalJson2(canonicalChange(change3)) })).sort((a, b) => byCodeUnit19(a.address, b.address) || byCodeUnit19(a.text, b.text)).map((change3) => change3.text);
 }
 function diffHash(diff2) {
   return createHash5("sha256").update(canonicalDiff(diff2), "utf8").digest("hex").slice(0, 16);
@@ -61522,7 +61586,7 @@ function openRepo(root, discovery) {
     const found = await discovery.discover(root, loaded);
     const ignored = ignoredStacks(loaded, found);
     return {
-      stacks: applyConfig(loaded, found).sort((a, b) => byCodeUnit19(stackId(a.stack), stackId(b.stack))),
+      stacks: applyConfig(loaded, found).sort((a, b) => byCodeUnit20(stackId(a.stack), stackId(b.stack))),
       ignored
     };
   };
@@ -61534,7 +61598,7 @@ function openRepo(root, discovery) {
     }
   };
 }
-function byCodeUnit19(a, b) {
+function byCodeUnit20(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -61987,11 +62051,11 @@ async function doesItFit(write) {
 }
 
 // src/core/dependencies.ts
-function byCodeUnit20(a, b) {
+function byCodeUnit21(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function planDeploys(input2) {
-  const ids2 = [...new Set(input2.allowed)].sort(byCodeUnit20);
+  const ids2 = [...new Set(input2.allowed)].sort(byCodeUnit21);
   const going = new Set(ids2);
   const refused = new Map;
   for (let changed = true;changed; ) {
@@ -62002,7 +62066,7 @@ function planDeploys(input2) {
       const waitingOn = (input2.dependsOn.get(id) ?? []).filter((dependency) => !input2.open.has(dependency) && !going.has(dependency) && (input2.pending.has(dependency) || refused.has(dependency)));
       if (waitingOn.length === 0)
         continue;
-      refused.set(id, [...waitingOn].sort(byCodeUnit20));
+      refused.set(id, [...waitingOn].sort(byCodeUnit21));
       going.delete(id);
       changed = true;
     }
@@ -62012,7 +62076,7 @@ function planDeploys(input2) {
   for (const id of ids2) {
     if (refused.has(id))
       continue;
-    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit20);
+    const behind = (input2.dependsOn.get(id) ?? []).filter((dependency) => going.has(dependency) || input2.open.has(dependency)).sort(byCodeUnit21);
     if (behind.length === 0)
       start.push(id);
     else
@@ -62058,11 +62122,11 @@ function withReadDependencies(input2) {
     return walk4(from);
   };
   const dropped = [];
-  for (const id of [...input2.auto].sort(byCodeUnit20)) {
+  for (const id of [...input2.auto].sort(byCodeUnit21)) {
     const list = dependsOn.get(id);
     if (list === undefined)
       continue;
-    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit20)) {
+    for (const dependency of [...input2.read.get(id) ?? []].sort(byCodeUnit21)) {
       if (dependency === id || !dependsOn.has(dependency) || list.includes(dependency))
         continue;
       if (reaches(dependency, id))
@@ -62070,7 +62134,7 @@ function withReadDependencies(input2) {
       else
         list.push(dependency);
     }
-    list.sort(byCodeUnit20);
+    list.sort(byCodeUnit21);
   }
   return { dependsOn, dropped };
 }
@@ -62558,15 +62622,18 @@ async function prepareWith(context3, stacks2, defaultTimeoutMinutes, env, failed
     return;
   const timeouts = new Map(stacks2.map((one) => [stackId(one.stack), one.previewTimeout ?? defaultTimeoutMinutes]));
   const tool = { root: context3.root, env, run: context3.run };
-  for (const preparation of context3.adapter.prepare(stacks2.map(({ stack }) => stack))) {
+  const createInBackend = context3.createInBackend ? stacks2.filter((one) => one.createInBackend).map(({ stack }) => stack) : [];
+  for (const preparation of context3.adapter.prepare(stacks2.map(({ stack }) => stack), { createInBackend })) {
     const ids2 = preparation.stacks.map(stackId);
     const timeoutMinutes = Math.max(...ids2.map((id) => timeouts.get(id) ?? defaultTimeoutMinutes));
     const result2 = await preparation.run({ ...tool, timeoutMinutes });
     const words = lines(result2.toolLog);
     const told = words.length > 0 ? ["The tool's own words:", ...words] : [];
+    const done = result2.detail ?? [];
     if (result2.ok) {
       context3.log.group(`Prepared ${preparation.title}`, [
         `Stacks that need it: ${ids2.join(", ")}.`,
+        ...done,
         ...told
       ]);
       continue;
@@ -62574,6 +62641,7 @@ async function prepareWith(context3, stacks2, defaultTimeoutMinutes, env, failed
     context3.log.group(`Preparing ${preparation.title} failed`, [
       previewFailureText(result2.reason),
       `Stacks that need it: ${ids2.join(", ")}.`,
+      ...done,
       ...told
     ]);
     for (const id of ids2) {
@@ -63174,7 +63242,7 @@ function parseMatrixOutput(text8) {
 
 // src/modes/resolve.ts
 import { readFileSync as readFileSync13 } from "node:fs";
-import { join as join34 } from "node:path";
+import { join as join35 } from "node:path";
 
 // src/core/edit-history.ts
 var HISTORY_CAP = 100;
@@ -64009,18 +64077,18 @@ function scanAfter(input2) {
 
 // src/core/workflow-check.ts
 import { readdirSync as readdirSync6, readFileSync as readFileSync12 } from "node:fs";
-import { join as join33 } from "node:path";
+import { join as join34 } from "node:path";
 var WORKFLOW_DIRECTORY = ".github/workflows";
 function readWorkflowFiles(root) {
   let names2;
   try {
-    names2 = readdirSync6(join33(root, WORKFLOW_DIRECTORY), { withFileTypes: true }).filter((entry4) => entry4.isFile() && /\.ya?ml$/.test(entry4.name)).map((entry4) => entry4.name);
+    names2 = readdirSync6(join34(root, WORKFLOW_DIRECTORY), { withFileTypes: true }).filter((entry4) => entry4.isFile() && /\.ya?ml$/.test(entry4.name)).map((entry4) => entry4.name);
   } catch {
     return [];
   }
-  return names2.sort(byCodeUnit21).map((name) => ({
+  return names2.sort(byCodeUnit22).map((name) => ({
     path: `${WORKFLOW_DIRECTORY}/${name}`,
-    text: readFileSync12(join33(root, WORKFLOW_DIRECTORY, name), "utf8")
+    text: readFileSync12(join34(root, WORKFLOW_DIRECTORY, name), "utf8")
   }));
 }
 function tokenNeeds(mode, config2) {
@@ -64411,7 +64479,7 @@ function listensToEdits(issues, present3) {
   const types = issues.types;
   return Array.isArray(types) ? types.includes("edited") : types === "edited";
 }
-function byCodeUnit21(a, b) {
+function byCodeUnit22(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -64981,7 +65049,7 @@ async function renovateStrategyOf(context3) {
   const [owner = "", repo = ""] = new URL(context3.repoUrl).pathname.split("/").filter(Boolean);
   const setting = await renovateMergeSetting((path) => {
     try {
-      return readFileSync13(join34(context3.root, path), "utf8");
+      return readFileSync13(join35(context3.root, path), "utf8");
     } catch {
       return;
     }
@@ -65150,7 +65218,7 @@ function workflowText(context3) {
   if (!context3.workflow)
     return "";
   try {
-    return readFileSync13(join34(context3.root, WORKFLOW_DIRECTORY, context3.workflow.file), "utf8");
+    return readFileSync13(join35(context3.root, WORKFLOW_DIRECTORY, context3.workflow.file), "utf8");
   } catch {
     return "";
   }
@@ -65674,7 +65742,7 @@ var SHARED_FILES = new Set([
   "Directory.Packages.props"
 ]);
 function sharedFiles(files) {
-  return files.filter((file2) => SHARED_FILES.has(file2.slice(file2.lastIndexOf("/") + 1))).sort(byCodeUnit22);
+  return files.filter((file2) => SHARED_FILES.has(file2.slice(file2.lastIndexOf("/") + 1))).sort(byCodeUnit23);
 }
 function checkSetup(config2, found, files, references = new Map) {
   const stacks2 = applyConfig(config2, found);
@@ -65704,7 +65772,7 @@ function readsOf(claimants, files, unclaimed, references) {
     const matches = globMatcher(inputs);
     const claims = (file2) => path === "." || file2.startsWith(`${path}/`) || matches(file2);
     const read5 = references.get(id) ?? [];
-    return [...read5].sort((a, b) => byCodeUnit22(a.path, b.path)).flatMap((reference) => {
+    return [...read5].sort((a, b) => byCodeUnit23(a.path, b.path)).flatMap((reference) => {
       const under = reference.kind === "file" ? [reference.path] : files.filter((file2) => file2.startsWith(`${reference.path}/`));
       const left = under.filter((file2) => !claims(file2));
       if (left.length === 0)
@@ -65758,21 +65826,21 @@ function groups(files) {
     const slash = file2.indexOf("/");
     return slash === -1 ? "." : file2.slice(0, slash);
   };
-  const byDirectory = Map.groupBy([...files].sort(byCodeUnit22), top);
-  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit22(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
+  const byDirectory = Map.groupBy([...files].sort(byCodeUnit23), top);
+  return [...byDirectory].sort(([a], [b]) => a === "." ? -1 : b === "." ? 1 : byCodeUnit23(a, b)).map(([directory, grouped]) => ({ directory, files: grouped }));
 }
-function byCodeUnit22(a, b) {
+function byCodeUnit23(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
 // src/core/repo-files.ts
 import { readdir as readdir3 } from "node:fs/promises";
-import { join as join35 } from "node:path";
+import { join as join36 } from "node:path";
 var SKIPPED3 = new Set([".git", "node_modules"]);
 async function repoFiles(root) {
   const files = [];
   const walk4 = async (relative6) => {
-    const entries = await readdir3(join35(root, ...relative6), { withFileTypes: true });
+    const entries = await readdir3(join36(root, ...relative6), { withFileTypes: true });
     for (const entry4 of entries) {
       if (entry4.name === ".git")
         continue;
@@ -65920,7 +65988,7 @@ function backendText(check2) {
     case true:
       return `${check2.stackId} is in the backend.`;
     case false:
-      return `${check2.stackId} is not in the backend.`;
+      return check2.createInBackend ? `${check2.stackId} is not in the backend, and the first scan creates it (createInBackend).` : `${check2.stackId} is not in the backend.`;
     case "unknown":
       return `${check2.stackId}: could not ask the backend, ${askFailureText(check2.reason)}.`;
     case "unchecked":
@@ -65948,7 +66016,7 @@ function backendCell(check2) {
     case true:
       return "Yes";
     case false:
-      return "No";
+      return check2.createInBackend ? "No, the first scan creates it" : "No";
     case "unknown":
       return `Could not ask: ${askFailureText(check2.reason)}`;
     case "unchecked":
@@ -66356,9 +66424,10 @@ function workflowsPart(workflows) {
   };
 }
 function backendPart(checks3, ignore, toolLog2) {
-  const missing2 = checks3.filter((check2) => check2.found === false).map((check2) => check2.stackId);
+  const notThere = checks3.filter((check2) => check2.found === false);
+  const missing2 = notThere.filter((check2) => !check2.createInBackend).map((check2) => check2.stackId);
   const block = missing2.length === 0 ? [] : ignoreBlock(ignore, missing2);
-  const allIn = missing2.length === 0 && checks3.some((check2) => check2.found === true);
+  const allIn = notThere.length === 0 && checks3.some((check2) => check2.found === true);
   return {
     log: [
       ...toolLog2 === "" ? [] : [{ group: "The tool's own words", lines: toolLog2.replace(/\n$/, "").split(`
@@ -66368,7 +66437,7 @@ function backendPart(checks3, ignore, toolLog2) {
         if (check2.found === "unknown") {
           return [{ warning: line2(couldNotAskText(check2)), title: COULD_NOT_ASK_TITLE }];
         }
-        if (check2.found === false) {
+        if (check2.found === false && !check2.createInBackend) {
           return [{ warning: line2(notInBackendText(check2.stackId)), title: NOT_IN_BACKEND_TITLE }];
         }
         return [];
@@ -66518,12 +66587,13 @@ async function askBackend(backend, root, stacks2) {
     if (result2 !== undefined && result2.toolLog !== "")
       logs.push(result2.toolLog);
   }
-  const checks3 = stacks2.map(({ stack }) => {
+  const checks3 = stacks2.map(({ stack, createInBackend }) => {
     const id = stackId(stack);
     const answer = answers.get(id);
+    const creates = createInBackend === undefined ? {} : { createInBackend };
     if (answer === undefined)
-      return { stackId: id, found: "unchecked" };
-    return answer.found === "unknown" ? { stackId: id, found: "unknown", reason: answer.reason } : { stackId: id, found: answer.found };
+      return { stackId: id, ...creates, found: "unchecked" };
+    return answer.found === "unknown" ? { stackId: id, ...creates, found: "unknown", reason: answer.reason } : { stackId: id, ...creates, found: answer.found };
   });
   return { checks: checks3, toolLog: logs.join("") };
 }
@@ -67521,19 +67591,19 @@ function everyPreviewFailed(attempted, failed3) {
 // src/policy/conftest.ts
 import { mkdtemp as mkdtemp3, rm as rm4, stat as stat2, writeFile as writeFile4 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
-import { isAbsolute as isAbsolute6, join as join36 } from "node:path";
+import { isAbsolute as isAbsolute6, join as join37 } from "node:path";
 async function runPolicies(spec) {
   if (spec.document === undefined) {
     return { outcome: { kind: "not-run", reason: { kind: "no-document" } }, toolLog: "" };
   }
   for (const path of spec.policies) {
-    if (isAbsolute6(path) || !await exists2(join36(spec.root, path))) {
+    if (isAbsolute6(path) || !await exists2(join37(spec.root, path))) {
       return { outcome: { kind: "not-run", reason: { kind: "path-missing", path } }, toolLog: "" };
     }
   }
-  const dir = await mkdtemp3(join36(tmpdir3(), "sluiceway-policy-"));
+  const dir = await mkdtemp3(join37(tmpdir3(), "sluiceway-policy-"));
   try {
-    const file2 = join36(dir, `preview.${spec.document.format}`);
+    const file2 = join37(dir, `preview.${spec.document.format}`);
     await writeFile4(file2, spec.document.text, { mode: 384 });
     const run2 = await runTool(spec.run, {
       argv: conftestArgv(spec.policies, file2),
@@ -67802,7 +67872,7 @@ function renderSummary(stacks2, options = {}) {
 // src/modes/branch-preview.ts
 import { cp, mkdir as mkdir2, mkdtemp as mkdtemp4, realpath, rm as rm5, writeFile as writeFile5 } from "node:fs/promises";
 import { tmpdir as tmpdir4 } from "node:os";
-import { basename as basename2, dirname as dirname2, join as join37, resolve as resolve4, sep as sep7 } from "node:path";
+import { basename as basename2, dirname as dirname2, join as join38, resolve as resolve4, sep as sep7 } from "node:path";
 async function previewBranches(context3, stacks2, updates, envFiles) {
   const { log } = context3;
   const previews = new Map;
@@ -67822,7 +67892,7 @@ async function previewOne(context3, number4, head, files, stacks2, envFiles) {
     log.info(`#${number4} could not be previewed: ${why2}`);
     return stacks2.map(({ stack }) => ({ stackId: stackId(stack) }));
   };
-  const copy = await mkdtemp4(join37(context3.env.RUNNER_TEMP || tmpdir4(), "sluiceway-branch-"));
+  const copy = await mkdtemp4(join38(context3.env.RUNNER_TEMP || tmpdir4(), "sluiceway-branch-"));
   try {
     await cp(context3.root, copy, {
       recursive: true,
@@ -68451,7 +68521,7 @@ async function previewAll(context3, stacks2, logDiff, showValues, valueFingerpri
     return own2?.ok ? own2.env : tool.env;
   };
   const unprepared = stacks2.filter(({ stack }) => !prepared.has(stackId(stack)));
-  const failed3 = await prepareStacks({ ...tool, log, adapter }, unprepared, context3.previewTimeoutMinutes, envs);
+  const failed3 = await prepareStacks({ ...tool, log, adapter, createInBackend: true }, unprepared, context3.previewTimeoutMinutes, envs);
   for (const { stack } of unprepared) {
     if (!failed3.has(stackId(stack)))
       prepared.add(stackId(stack));
@@ -69185,7 +69255,7 @@ function terminalLog(write2 = console.log) {
 
 // src/modes/init.ts
 import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync19, statSync as statSync5, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname3, join as join38 } from "node:path";
+import { dirname as dirname3, join as join39 } from "node:path";
 
 // src/adapters/init-findings.ts
 import { posix as posix4 } from "node:path";
@@ -69202,9 +69272,9 @@ function openTofuRoots(files, read5) {
   const code2 = files.filter((file2) => /\.(tf|tofu)$/.test(file2) && !SKIPPED4.test(file2));
   const directories = [...new Set(code2.map(directoryOf))];
   const called = new Set(code2.flatMap((file2) => [...(read5(file2) ?? "").matchAll(/^\s*source\s*=\s*"(\.\.?\/[^"]*)"/gm)].map((match) => normal(posix4.join(directoryOf(file2), match[1] ?? "")))));
-  return directories.filter((path) => !called.has(path) && !path.split("/").includes("modules")).sort(byCodeUnit23).map((path) => ({
+  return directories.filter((path) => !called.has(path) && !path.split("/").includes("modules")).sort(byCodeUnit24).map((path) => ({
     path,
-    varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix4.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit23)
+    varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix4.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit24)
   }));
 }
 function openTofuStacks(root) {
@@ -69232,7 +69302,7 @@ function helmCharts(files, read5) {
       return [];
     const release2 = releaseName(typeof chart.name === "string" ? chart.name : "", path);
     return release2 === undefined ? [] : [{ path, release: release2 }];
-  }).sort((a, b) => byCodeUnit23(a.path, b.path));
+  }).sort((a, b) => byCodeUnit24(a.path, b.path));
 }
 function releaseName(name, path) {
   for (const candidate of [name, posix4.basename(path)]) {
@@ -69263,7 +69333,7 @@ function findForWorkflow(stacks2, files, read5) {
     helm: stacks2.some((stack) => tool(stack) === HELM),
     kubectl: stacks2.some((stack) => tool(stack) === KUBECTL),
     node: nodePaths.length === 0 ? undefined : nodeFindings(nodePaths, files, read5),
-    otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit23(a.runtime, b.runtime)),
+    otherRuntimes: [...other].map(([runtime, found]) => ({ runtime, paths: found.map(({ path }) => path) })).sort((a, b) => byCodeUnit24(a.runtime, b.runtime)),
     helmRepositories: helmRepositories(stacks2, read5),
     envFiles: envFiles(files, read5)
   };
@@ -69294,7 +69364,7 @@ function nodeFindings(paths2, files, read5) {
   const managers = new Set(installs.values());
   const manifest = yamlObject2(read5("package.json"));
   return {
-    installs: [...installs].map(([directory, manager]) => ({ directory, manager })).sort((a, b) => byCodeUnit23(a.directory, b.directory)),
+    installs: [...installs].map(([directory, manager]) => ({ directory, manager })).sort((a, b) => byCodeUnit24(a.directory, b.directory)),
     withoutLockfile,
     versionFile: [".nvmrc", ".node-version"].find((file2) => files.includes(file2)),
     yarnBerry: managers.has("yarn") && files.includes(".yarnrc.yml"),
@@ -69313,7 +69383,7 @@ function helmRepositories(stacks2, read5) {
       return typeof repository === "string" && /^https?:\/\//.test(repository) ? [repository] : [];
     });
   });
-  return [...new Set(repositories)].sort(byCodeUnit23);
+  return [...new Set(repositories)].sort(byCodeUnit24);
 }
 function envFiles(files, read5) {
   const found = files.filter((file2) => /(^|\/)(\.env(\.[^/]+)?|[^/]+\.env)$/.test(file2)).filter((file2) => /^[\w./-]+$/.test(file2)).filter((file2) => (read5(file2) ?? "").split(`
@@ -69357,7 +69427,7 @@ function normal(path) {
   const joined2 = posix4.normalize(path).replace(/\/$/, "");
   return joined2 === "" ? "." : joined2;
 }
-function byCodeUnit23(a, b) {
+function byCodeUnit24(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -69709,7 +69779,7 @@ function quotedIfNeeded(text9) {
 // src/modes/init.ts
 async function init(context3) {
   const { root, log } = context3;
-  if (!existsSync4(join38(root, ".git")))
+  if (!existsSync4(join39(root, ".git")))
     throw new Error(NOT_A_REPO_ROOT);
   const configKept = hasConfigFile(root);
   const existing = loadConfig(root);
@@ -69723,7 +69793,7 @@ async function init(context3) {
   const files = await repoFiles(root);
   const read5 = (file2) => {
     try {
-      return readFileSync19(join38(root, file2), "utf8");
+      return readFileSync19(join39(root, file2), "utf8");
     } catch {
       return;
     }
@@ -69797,16 +69867,16 @@ function nearest(directory, paths2) {
   return paths2.reduce((best, path) => shared(path) > shared(best) ? path : best);
 }
 function exists3(root, file2) {
-  return existsSync4(join38(root, file2));
+  return existsSync4(join39(root, file2));
 }
 function write2(root, file2, text9, replace = false) {
-  mkdirSync(dirname3(join38(root, file2)), { recursive: true });
-  writeFileSync2(join38(root, file2), text9, { flag: replace ? "w" : "wx" });
+  mkdirSync(dirname3(join39(root, file2)), { recursive: true });
+  writeFileSync2(join39(root, file2), text9, { flag: replace ? "w" : "wx" });
 }
 function defaultBranch(root) {
-  const file2 = join38(root, ".git", "refs", "remotes", "origin", "HEAD");
+  const file2 = join39(root, ".git", "refs", "remotes", "origin", "HEAD");
   try {
-    if (!statSync5(join38(root, ".git")).isDirectory())
+    if (!statSync5(join39(root, ".git")).isDirectory())
       return;
     const match = /^ref: refs\/remotes\/origin\/(\S+)\s*$/.exec(readFileSync19(file2, "utf8"));
     return match?.[1];

@@ -61,7 +61,7 @@ What a scan decides before it previews anything: a full scan with the reason for
 _Avoid_: Strategy, scan mode, selection
 
 **Preparation**:
-A step a tool needs before it can preview a stack, such as OpenTofu's init of a directory, CDK for Terraform's synth of an app, or Helm's build of a chart's dependencies. A scan runs every preparation one at a time and before the pool, and a failed one is a preview failure of each stack that needs it.
+A step a tool needs before it can preview a stack, such as OpenTofu's init of a directory, CDK for Terraform's synth of an app, or Helm's build of a chart's dependencies. A scan runs every preparation one at a time and before the pool, and a failed one is a preview failure of each stack that needs it. A Pulumi stack needs one only when its entry sets `createInBackend: true`: the scan then makes the stack in the backend when the backend lacks it, and previews it as all creates. A deploy never creates a stack.
 _Avoid_: Setup, init step, pre-hook
 
 **Policy**:

@@ -154,7 +154,8 @@ describe("what discovery refuses", () => {
   });
 
   test("createInBackend, because only a Pulumi stack has a stack to create (record 0107)", async () => {
-    const config = "stacks:\n  - path: infra/network\n    tool: opentofu\n    createInBackend: true\n";
+    const config =
+      "stacks:\n  - path: infra/network\n    tool: opentofu\n    createInBackend: true\n";
     expect(await problems(MODULE, config)).toEqual([
       "stacks[0].createInBackend: the scan creates a Pulumi stack the backend lacks, and an opentofu stack has no such stack: its first scan makes what it needs. Leave the key out.",
     ]);

@@ -100,7 +100,8 @@ describe("the parts of the check", () => {
     const warnings = part.log.flatMap((entry) => ("warning" in entry ? [entry.warning] : []));
     expect(warnings).toEqual([expect.stringContaining("app:qa has files in the repo")]);
     const block = part.log.find(
-      (entry) => "group" in entry && entry.group === "Ready to paste into sluiceway.yaml, over ignore",
+      (entry) =>
+        "group" in entry && entry.group === "Ready to paste into sluiceway.yaml, over ignore",
     );
     expect(block !== undefined && "lines" in block ? block.lines : []).toEqual([
       "ignore:",
