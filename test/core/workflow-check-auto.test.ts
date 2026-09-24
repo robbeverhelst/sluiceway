@@ -59,7 +59,8 @@ describe("the one-step workflow", () => {
   });
 
   test("lists its one job as auto, with the modes its triggers start", () => {
-    expect(checkWorkflows([file(ONE_STEP)], DEFAULTS).workflows).toEqual([
+    // What the job hands the step is its own test (slice 5.34).
+    expect(checkWorkflows([file(ONE_STEP)], DEFAULTS).workflows).toMatchObject([
       {
         path: ".github/workflows/deploy-dashboard.yml",
         jobs: [

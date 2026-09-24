@@ -25,6 +25,10 @@ const EMPTY: CheckReport = {
 };
 
 const NO_WORKFLOWS: WorkflowReport = { workflows: [], warnings: [], notes: [] };
+// The credentials part is its own test (slice 5.34).
+const NO_CREDENTIALS = { stacks: [], jobs: [] };
+// A job with nothing around its step.
+const PROVIDES = { names: [], steps: [] };
 
 const texts = (entries: CheckLogEntry[]) =>
   entries.map((entry) =>
@@ -34,7 +38,13 @@ const texts = (entries: CheckLogEntry[]) =>
 describe("the parts of the check", () => {
   test("the summary is every part in order, each paragraph apart", () => {
     const parts = [
-      ...checkParts({ report: EMPTY, workflows: NO_WORKFLOWS, unrelated: [], hasConfigFile: true }),
+      ...checkParts({
+        report: EMPTY,
+        workflows: NO_WORKFLOWS,
+        credentials: NO_CREDENTIALS,
+        unrelated: [],
+        hasConfigFile: true,
+      }),
       closingPart(false),
     ];
     const summary = renderCheckSummary(parts);
@@ -48,6 +58,7 @@ describe("the parts of the check", () => {
     const [header] = checkParts({
       report: EMPTY,
       workflows: NO_WORKFLOWS,
+      credentials: NO_CREDENTIALS,
       unrelated: [],
       hasConfigFile: true,
     });
@@ -62,9 +73,13 @@ describe("the parts of the check", () => {
       warnings: [{ kind: "boxes-do-nothing", path: ".github/workflows/x.yml" }],
       notes: [],
     };
-    const part = checkParts({ report: EMPTY, workflows, unrelated: [], hasConfigFile: true }).at(
-      -1,
-    );
+    const part = checkParts({
+      report: EMPTY,
+      workflows,
+      credentials: NO_CREDENTIALS,
+      unrelated: [],
+      hasConfigFile: true,
+    }).at(-2);
     const warning = part?.log.find((entry) => "warning" in entry);
     expect(warning).toMatchObject({ title: "A workflow is missing something" });
     const text = warning !== undefined && "warning" in warning ? warning.warning : "";
@@ -90,6 +105,7 @@ describe("who may deploy", () => {
     ref: "v0",
     refKind: "moving" as const,
     ...(environment === undefined ? {} : { environment }),
+    provides: PROVIDES,
   });
   const partOf = (jobs: ReturnType<typeof job>[]) =>
     checkParts({
@@ -99,9 +115,10 @@ describe("who may deploy", () => {
         warnings: [],
         notes: [],
       },
+      credentials: NO_CREDENTIALS,
       unrelated: [],
       hasConfigFile: true,
-    }).at(-1);
+    }).at(-2);
 
   test("a deploying job with no environment: the tick rule alone", () => {
     const part = partOf([job("auto")]);
@@ -142,7 +159,13 @@ describe("a stack set to on-merge in the check", () => {
     ...(deploy ? { deploy } : {}),
   });
   const parts = (report: CheckReport) =>
-    checkParts({ report, workflows: NO_WORKFLOWS, unrelated: [], hasConfigFile: true });
+    checkParts({
+      report,
+      workflows: NO_WORKFLOWS,
+      credentials: NO_CREDENTIALS,
+      unrelated: [],
+      hasConfigFile: true,
+    });
 
   test("its line and the table say it deploys on merge", () => {
     const all = parts({ ...EMPTY, stacks: [configured("app", "on-merge"), configured("db")] });

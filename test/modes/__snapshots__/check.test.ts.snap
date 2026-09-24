@@ -46,6 +46,15 @@ No workflow in .github/workflows runs a scan yet.
 
 The check reads the workflow files as text. The repo's default token permissions, the rules of an environment and what GitHub itself validates live elsewhere and do not show here.
 
+### Credentials
+
+What each stack's own files say its tool will want from the job environment, as names, and which of them nothing in the workflow appears to provide. A program can read any variable, and a step that writes to the environment is opaque to the check, so this is a reading of the files and never a guarantee. No value is read or shown.
+
+| Stack | Needs | Any one of | Named in |
+|---|---|---|---|
+| app:prod | the Pulumi backend | PULUMI&#95;ACCESS&#95;TOKEN or PULUMI&#95;BACKEND&#95;URL | app/Pulumi.yaml |
+| network:prod | the Pulumi backend | PULUMI&#95;ACCESS&#95;TOKEN or PULUMI&#95;BACKEND&#95;URL | network/Pulumi.yaml |
+
 ### What a check cannot tell
 
 A check reads files only, so it cannot say that a preview will work: a stack that does not exist in the backend, a missing credential or a registry the runner cannot reach shows only in a scan.

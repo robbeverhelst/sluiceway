@@ -8,6 +8,7 @@ import type { ProcessRunner } from "../adapters/process.ts";
 import { type BackendCheck, checkSetup } from "../core/check.ts";
 import { ConfigError } from "../core/config.ts";
 import { hasConfigFile, loadConfig } from "../core/config-file.ts";
+import { judgeJobs, type StackNeeds } from "../core/credentials.ts";
 import { DiscoveryError, type DiscoveryNote } from "../core/discovery.ts";
 import { repoFiles } from "../core/repo-files.ts";
 import { type Stack, stackId } from "../core/stack.ts";
@@ -25,7 +26,7 @@ import {
 export interface CheckContext {
   // The directory of the checked-out repo.
   root: string;
-  adapter: Pick<Adapter, "discover" | "readsFiles" | "explainDiscovery">;
+  adapter: Pick<Adapter, "discover" | "readsFiles" | "explainDiscovery" | "credentialNeeds">;
   log: JobLog;
   // Only with backend: true (record 0074): the one thing the check asks a
   // tool, with the environment of its job, which holds the credentials the
@@ -42,6 +43,7 @@ export async function check(context: CheckContext): Promise<void> {
   let config: ReturnType<typeof loadConfig>;
   let report: ReturnType<typeof checkSetup>;
   let discovery: DiscoveryNote[];
+  const needs: StackNeeds[] = [];
   try {
     // In the order a scan does it, so the first error is the one a scan
     // would stop at. Not through core/repo.ts: the check reads the files of
@@ -59,6 +61,14 @@ export async function check(context: CheckContext): Promise<void> {
       for (const stack of found) references.set(stackId(stack), await readsFiles(root, stack));
     }
     report = checkSetup(config, found, await repoFiles(root), references);
+    // What each stack's own files say its tool will want (record 0099), for
+    // the stacks that have a row.
+    const credentialNeeds = context.adapter.credentialNeeds;
+    if (credentialNeeds !== undefined) {
+      for (const { stack } of report.stacks) {
+        needs.push({ stackId: stackId(stack), needs: await credentialNeeds(root, stack) });
+      }
+    }
   } catch (error) {
     // The job goes red only here: the config is not valid or discovery
     // failed (record 0042). The message is the same a scan gives.
@@ -77,6 +87,7 @@ export async function check(context: CheckContext): Promise<void> {
     report,
     discovery,
     workflows,
+    credentials: { stacks: needs, jobs: judgeJobs(needs, workflows.workflows, root) },
     unrelated: config.scan.unrelated,
     hasConfigFile: hasConfigFile(root),
   });

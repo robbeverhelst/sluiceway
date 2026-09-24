@@ -62,7 +62,8 @@ describe("the workflows the docs ship", () => {
 
   test("lists every job that runs Sluiceway, with its mode and its ref", () => {
     const report = checkWorkflows([file(WHOLE)], DEFAULTS);
-    expect(report.workflows).toEqual([
+    // What each job hands the step is its own test (slice 5.34).
+    expect(report.workflows).toMatchObject([
       {
         path: ".github/workflows/deploy-dashboard.yml",
         jobs: [

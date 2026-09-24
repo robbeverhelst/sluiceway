@@ -1,5 +1,6 @@
 import type { Stack } from "../core/stack.ts";
 import type { Adapter } from "./adapter.ts";
+import { credentialNeeds } from "./credentials.ts";
 import { discoverAll } from "./discover-all.ts";
 import { readsFiles } from "./file-references.ts";
 import { helm } from "./helm/index.ts";
@@ -35,6 +36,7 @@ export const tools: Adapter = {
   // (record 0092).
   explainDiscovery: async (root, config) => explainRootModules(root, config),
   readsFiles,
+  credentialNeeds,
 
   // The tools of these stacks, each once, Pulumi first.
   async checkVersion(context, stacks) {

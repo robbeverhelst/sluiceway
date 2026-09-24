@@ -230,6 +230,11 @@ describe("check", () => {
     expect(text).toContain("Found 1 stack.");
     expect(text).toContain("network:prod");
     expect(text).toContain("The setup is valid.");
+    // What each stack needs, names only (slice 5.34).
+    expect(text).toContain("Credentials each stack needs");
+    expect(text).toContain(
+      "network:prod needs the Pulumi backend: PULUMI_ACCESS_TOKEN or PULUMI_BACKEND_URL.",
+    );
     expect(text).not.toContain("::");
   });
 

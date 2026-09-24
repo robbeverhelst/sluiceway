@@ -1,5 +1,6 @@
 import type { FileReference } from "../core/check.ts";
 import type { Config } from "../core/config.ts";
+import type { CredentialNeed } from "../core/credentials.ts";
 import type { Change, Diff } from "../core/diff.ts";
 import type { DiscoveryNote } from "../core/discovery.ts";
 import type { DeployFailureReason, PreviewFailureReason } from "../core/failure-reason.ts";
@@ -220,6 +221,12 @@ export interface Adapter {
   // read (record 0074), for the check to suggest as inputs. It reads files
   // only and never starts the tool. An adapter that cannot tell leaves it out.
   readsFiles?(root: string, stack: Stack): Promise<FileReference[]>;
+
+  // What the stack's own files say its tool will want from the job
+  // environment (record 0099), for the check to say which of it the workflow
+  // provides. Names only, read from files: it never starts the tool and never
+  // reads the environment. An adapter that cannot tell leaves it out.
+  credentialNeeds?(root: string, stack: Stack): Promise<CredentialNeed[]>;
 
   // Asks the backend which of these stacks it holds (record 0074). Only the
   // check with backend: true calls it, with the credentials of its job. It

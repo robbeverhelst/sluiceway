@@ -22,6 +22,8 @@ export interface HclBlock {
 
 export interface HclFile {
   blocks: HclBlock[];
+  // The attributes at the top of the file, as a var file has them.
+  attributes: string[];
   code: string;
 }
 
@@ -36,7 +38,8 @@ type Token =
 export function readHcl(text: string): HclFile {
   const { tokens, code } = tokenize(text);
   const reader = { tokens, at: 0 };
-  return { blocks: body(reader, false), code };
+  const top = body(reader, false);
+  return { blocks: top.blocks, attributes: top.attributes, code };
 }
 
 interface Reader {
@@ -45,11 +48,10 @@ interface Reader {
 }
 
 // The items of a body up to its closing brace, or to the end of the file.
-function body(reader: Reader, inner: boolean): HclBlock[] {
-  const blocks: HclBlock[] = [];
-  const block: HclBlock = { type: "", labels: [], strings: {}, attributes: [], blocks };
+function body(reader: Reader, inner: boolean): HclBlock {
+  const block: HclBlock = { type: "", labels: [], strings: {}, attributes: [], blocks: [] };
   items(reader, block, inner);
-  return blocks;
+  return block;
 }
 
 function items(reader: Reader, into: HclBlock, inner: boolean): void {

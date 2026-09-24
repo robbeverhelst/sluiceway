@@ -14,6 +14,13 @@ import type {
   UnclaimedGroup,
 } from "../core/check.ts";
 import type { ConfiguredStack, IgnoreEntry } from "../core/config.ts";
+import {
+  type CredentialNeed,
+  type JobCredentials,
+  type JudgedNeed,
+  type StackNeeds,
+  wayWords,
+} from "../core/credentials.ts";
 import type { DiscoveryNote } from "../core/discovery.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
 import { globOf } from "../core/glob.ts";
@@ -88,6 +95,11 @@ const READS_PASTE_TITLE = "Ready to paste into sluiceway.yaml, under stacks";
 const READ_WARNING_TITLE = "A stack reads a file it does not claim";
 const READS_NOTE =
   "The stack's own files name these as read. The entries below add them to the stacks' inputs, and inputs of several entries add up, so they can go under stacks next to the entries you have. Sluiceway reads only what the files name plainly: a path a program builds at run time does not show here.";
+
+// The credentials part (record 0099).
+const NEEDS_TITLE = "Credentials each stack needs";
+const CREDENTIALS_NOTE =
+  "What each stack's own files say its tool will want from the job environment, as names, and which of them nothing in the workflow appears to provide. A program can read any variable, and a step that writes to the environment is opaque to the check, so this is a reading of the files and never a guarantee. No value is read or shown.";
 
 // The workflow part (record 0061).
 const WORKFLOW_WARNING_TITLE = "A workflow is missing something";
@@ -452,6 +464,8 @@ export interface CheckFacts {
   discovery?: DiscoveryNote[];
   // What the workflow files say (record 0061).
   workflows: WorkflowReport;
+  // What each stack needs, and what each job hands it (record 0099).
+  credentials: { stacks: StackNeeds[]; jobs: JobCredentials[] };
   // The scan.unrelated globs the config has.
   unrelated: string[];
   hasConfigFile: boolean;
@@ -470,6 +484,7 @@ export function checkParts(facts: CheckFacts): CheckPart[] {
     unclaimedPart(report, facts.unrelated),
     readsPart(report),
     workflowsPart(facts.workflows),
+    credentialsPart(facts.credentials),
   ];
 }
 
@@ -675,6 +690,114 @@ function readsPart({ reads, inputs }: CheckReport): CheckPart {
         .join("\n"),
       READS_NOTE,
       yaml(block),
+    ],
+  };
+}
+
+// The ways of a need: "A, B, or C", and "A or B" for two.
+function waysText(need: CredentialNeed): string {
+  const words = need.ways.map(wayWords);
+  if (words.length <= 1) return words[0] ?? "";
+  if (words.length === 2) return `${words[0]} or ${words[1]}`;
+  return `${words.slice(0, -1).join(", ")}, or ${words.at(-1)}`;
+}
+
+// One need of one stack, for the job log.
+function needText(stackId: string, need: CredentialNeed): string {
+  const ways =
+    need.ways.length === 0
+      ? `${need.what}, which the check has no table for`
+      : `${need.what}: ${waysText(need)}`;
+  return `${stackId} needs ${ways}. Named in ${need.namedIn}.`;
+}
+
+// The ways of a need in the line that says nothing provides it: the last
+// one joined with "or" and no comma, so the line reads as one breath.
+function unmetWays(need: CredentialNeed): string {
+  const words = need.ways.map(wayWords);
+  return words.length <= 1
+    ? (words[0] ?? "")
+    : `${words.slice(0, -1).join(", ")} or ${words.at(-1)}`;
+}
+
+// The needs nothing in a job names, one line each, stacks with the same
+// need together (record 0099). Never a warning: a guess is not a failure.
+function unmetLines({ path, job, judged }: JobCredentials): string[] {
+  const unmet = judged.filter(
+    (one): one is JudgedNeed & { stackId: string; met: false } => one.met === false,
+  );
+  const grouped = Map.groupBy(unmet, (one) => `${one.need.what}\n${unmetWays(one.need)}`);
+  return [...grouped.values()].map((ones) => {
+    const first = ones[0] as (typeof ones)[number];
+    const stacks = [...new Set(ones.map((one) => one.stackId))];
+    const who = `${listed(stacks)} ${stacks.length === 1 ? "needs" : "need"}`;
+    const maybe = [...new Set(ones.flatMap((one) => one.maybe))];
+    const opaque =
+      maybe.length === 0
+        ? ""
+        : maybe.length === 1
+          ? ` The step ${maybe[0]} may load it, and the check cannot see into it.`
+          : ` The steps ${listed(maybe)} may load it, and the check cannot see into them.`;
+    return `Nothing in ${path}, job ${job} provides ${unmetWays(first.need)}, which ${who} for ${first.need.what}.${opaque}`;
+  });
+}
+
+function providesLine({ path, job }: JobCredentials): string {
+  return `${path}, job ${job} names a way to every credential the stacks' files ask for.`;
+}
+
+// What each stack's files say its tool will want, and what each job that
+// runs the tool hands it (record 0099). Names only, and never a warning.
+function credentialsPart({ stacks, jobs }: CheckFacts["credentials"]): CheckPart {
+  if (stacks.length === 0) return { log: [], summary: [] };
+  const lines = stacks.map(({ stackId, needs }) =>
+    needs.length === 0
+      ? `${stackId} needs nothing that its files name.`
+      : needs.map((need) => needText(stackId, need)),
+  );
+  const rows = stacks.flatMap(({ stackId, needs }) =>
+    needs.length === 0
+      ? [row([stackId, "nothing that its files name", "", ""])]
+      : needs.map((need) =>
+          row([
+            stackId,
+            need.what,
+            need.ways.length === 0 ? "the check has no table for it" : waysText(need),
+            need.namedIn,
+          ]),
+        ),
+  );
+  const perJob = jobs.map((one) => {
+    const unmet = unmetLines(one);
+    return { one, lines: unmet.length === 0 ? [providesLine(one)] : unmet };
+  });
+  return {
+    log: [
+      { group: NEEDS_TITLE, lines: lines.flat().map(line) },
+      ...perJob.flatMap(({ one, lines: texts }): CheckLogEntry[] => [
+        {
+          group: `What ${one.path}, job ${one.job} provides`,
+          lines: one.judged
+            .filter(
+              (judged): judged is JudgedNeed & { stackId: string; met: true } =>
+                judged.met === true,
+            )
+            .map((judged) => line(`${judged.stackId}, ${judged.need.what}: ${judged.by}.`)),
+        },
+        ...texts.map((text) => ({ info: line(text) })),
+      ]),
+    ],
+    summary: [
+      "### Credentials",
+      CREDENTIALS_NOTE,
+      ["| Stack | Needs | Any one of | Named in |", "|---|---|---|---|", ...rows].join("\n"),
+      ...(perJob.length === 0
+        ? []
+        : [
+            perJob
+              .flatMap(({ lines: texts }) => texts.map((text) => `- ${escapeText(text)}`))
+              .join("\n"),
+          ]),
     ],
   };
 }

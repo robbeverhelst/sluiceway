@@ -43,6 +43,25 @@ export function readWorkflowFiles(root: string): WorkflowFile[] {
 //   other    anything else: a branch, a tag of two numbers, a short SHA
 export type RefKind = "moving" | "release" | "commit" | "other";
 
+// What a job hands the Sluiceway step, read from the file as text (record
+// 0099): the variable names its env: blocks set, and the other steps of the
+// job. Names only, never a value.
+export interface JobProvides {
+  // The names env: sets on the workflow, the job or the Sluiceway step, each
+  // with where. env: on another step reaches nothing but that step.
+  names: { name: string; where: string }[];
+  // Every other step of the job, in order, with what it does and whether it
+  // runs before the Sluiceway step. `secret` is a step whose with: or env:
+  // is handed a secret of the repo.
+  steps: {
+    step: string;
+    uses?: string;
+    run?: string;
+    secret?: boolean;
+    before: boolean;
+  }[];
+}
+
 export interface SluicewayJob {
   job: string;
   // Nothing when the step names a mode that does not exist. A step with no
@@ -58,6 +77,8 @@ export interface SluicewayJob {
   // such as required reviewers, are a setting of the repo that no file shows
   // (record 0093).
   environment?: string;
+  // What the job hands the step (record 0099).
+  provides: JobProvides;
 }
 
 // A workflow file that runs Sluiceway in at least one job.
@@ -211,12 +232,16 @@ interface ParsedJob {
   // The strategy block as text, where a matrix names the job it comes from.
   strategy: string;
   environment: string | undefined;
+  // The names of the job's env: block.
+  env: string[];
 }
 
 interface Parsed {
   on: Record<string, unknown>;
   permissions: Permissions;
   jobs: Record<string, ParsedJob>;
+  // The names of the workflow's env: block.
+  env: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -284,17 +309,80 @@ function parseWorkflow(text: string): Parsed | "unreadable" | undefined {
       outputs: isRecord(job.outputs) ? Object.keys(job.outputs) : [],
       strategy: job.strategy === undefined ? "" : JSON.stringify(job.strategy),
       environment: environmentOf(job.environment),
+      env: envNames(job.env),
     };
   }
-  return { on: triggersOf(document.on), permissions: permissionsOf(document.permissions), jobs };
+  return {
+    on: triggersOf(document.on),
+    permissions: permissionsOf(document.permissions),
+    jobs,
+    env: envNames(document.env),
+  };
+}
+
+// The names an env: block sets. Its values are never read (record 0099).
+function envNames(value: unknown): string[] {
+  return isRecord(value) ? Object.keys(value) : [];
+}
+
+// Whether a step is handed a secret of the repo in its with: or env:.
+function handedSecret(step: Record<string, unknown>): boolean {
+  return [step.with, step.env].some(
+    (block) =>
+      isRecord(block) && Object.values(block).some((value) => /secrets\./.test(String(value))),
+  );
+}
+
+// The action a step uses, without its ref: `owner/repo`, or the path of a
+// local action.
+function actionOf(uses: string): string {
+  return uses.trim().split("@")[0] ?? "";
+}
+
+// What the job hands the Sluiceway step at `at` (record 0099): the names of
+// env: on the workflow, the job and the step, and the other steps.
+function providesOf(
+  steps: unknown[],
+  at: number,
+  workflowEnv: string[],
+  jobEnv: string[],
+): JobProvides {
+  const own = steps[at];
+  const stepEnv = isRecord(own) ? envNames(own.env) : [];
+  const names = [
+    ...workflowEnv.map((name) => ({ name, where: "env: on the workflow" })),
+    ...jobEnv.map((name) => ({ name, where: "env: on the job" })),
+    ...stepEnv.map((name) => ({ name, where: "env: on the step" })),
+  ];
+  const others = steps.flatMap((step, index): JobProvides["steps"] => {
+    if (index === at || !isRecord(step)) return [];
+    const uses = typeof step.uses === "string" ? actionOf(step.uses) : undefined;
+    const run = typeof step.run === "string" ? step.run : undefined;
+    const title =
+      typeof step.name === "string" && step.name.trim() !== ""
+        ? step.name.trim()
+        : (uses ?? `step ${index + 1}`);
+    return [
+      {
+        step: title,
+        ...(uses === undefined ? {} : { uses }),
+        ...(run === undefined ? {} : { run }),
+        ...(handedSecret(step) ? { secret: true } : {}),
+        before: index < at,
+      },
+    ];
+  });
+  return { names, steps: others };
 }
 
 function sluicewayJob(
   job: string,
-  steps: unknown[],
+  parsed: ParsedJob,
+  workflowEnv: string[],
   auto: Mode[],
 ): (SluicewayJob & { named: string }) | undefined {
-  for (const step of steps) {
+  const { steps } = parsed;
+  for (const [index, step] of steps.entries()) {
     if (!isRecord(step) || typeof step.uses !== "string") continue;
     const ref = SLUICEWAY_STEP.exec(step.uses.trim())?.[1];
     if (ref === undefined) continue;
@@ -303,7 +391,8 @@ function sluicewayJob(
     const named = written === "" ? "auto" : written;
     const mode = isMode(named) ? named : undefined;
     const runs = mode === undefined ? [] : mode === "auto" ? auto : [mode];
-    return { job, mode, runs, ref, refKind: refKind(ref), named };
+    const provides = providesOf(steps, index, workflowEnv, parsed.env);
+    return { job, mode, runs, ref, refKind: refKind(ref), named, provides };
   }
   return undefined;
 }
@@ -366,7 +455,7 @@ export function checkWorkflows(files: WorkflowFile[], config: Config): WorkflowR
 function checkOne(path: string, workflow: Parsed, config: Config, report: WorkflowReport): void {
   const auto = autoRuns(workflow.on, config);
   const found = Object.entries(workflow.jobs).flatMap(([name, job]) => {
-    const step = sluicewayJob(name, job.steps, auto);
+    const step = sluicewayJob(name, job, workflow.env, auto);
     if (step === undefined) return [];
     if (job.environment !== undefined) step.environment = job.environment;
     return [{ step, permissions: job.permissions ?? workflow.permissions }];
@@ -375,13 +464,14 @@ function checkOne(path: string, workflow: Parsed, config: Config, report: Workfl
   const { warnings, notes } = report;
   report.workflows.push({
     path,
-    jobs: found.map(({ step: { job, mode, runs, ref, refKind, environment } }) => ({
+    jobs: found.map(({ step: { job, mode, runs, ref, refKind, environment, provides } }) => ({
       job,
       mode,
       runs,
       ref,
       refKind,
       ...(environment === undefined ? {} : { environment }),
+      provides,
     })),
   });
 
