@@ -51395,6 +51395,12 @@ function problemWords(issue3) {
       return `expected a list of stack ids, or ${issue3.auto}, got ${show(issue3.value)}.`;
     case "not-a-phase":
       return `expected a phase name, or a mapping with from, got ${show(issue3.value)}.`;
+    case "stack-cost-not-a-mapping":
+      return `expected a mapping, got ${show(issue3.value)}. Write it as the top level has it: cost: { enabled: true }.`;
+    case "cost-threshold-without-enabled":
+      return "a threshold needs the estimate: set cost.enabled: true next to it, or on the stack's entry.";
+    case "not-an-amount":
+      return `expected an amount a month, 0 or more, got ${show(issue3.value)}.`;
     case "stack-drift-not-a-mapping":
       return `expected a mapping, got ${show(issue3.value)}. Write it as the top level has it: drift: { enabled: ${typeof issue3.value === "boolean" ? issue3.value : true} }.`;
     case "not-a-tick-rule":
@@ -51621,6 +51627,19 @@ function policyRunFailureText(reason) {
     case "no-document":
       return "the preview gave no document to test";
   }
+}
+
+// src/render/cost.ts
+function amount(value) {
+  return Math.abs(value).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+function costLine({ monthly, currency }) {
+  if (monthly === 0)
+    return "about the same cost a month";
+  return `about **${amount(monthly)} ${currency}** ${monthly > 0 ? "more" : "less"} a month`;
 }
 
 // src/render/images.ts
@@ -52167,6 +52186,10 @@ function onMergeNote(wait) {
       return `${waits} the stack drifted, and a deploy would also put back what changed outside the code.`;
     case "not-merged":
       return `${waits} the scan that found it did not follow a merge.`;
+    case "cost":
+      return `${waits} it costs about **${amount(wait.monthly)} ${wait.currency}** more a month, above the threshold of ${amount(wait.threshold)} ${wait.currency}.`;
+    case "cost-unknown":
+      return `${waits} its cost could not be estimated, and \`cost.threshold\` is set to ${amount(wait.threshold)}.`;
     case "depends-on":
       return `${waits} ${waitsOnWords(wait.named, wait.phases)}`;
   }
@@ -52318,6 +52341,8 @@ function pendingRow(row, options) {
       policyFailed
     })}`
   ];
+  if (row.cost)
+    lines.push(costLine(row.cost));
   if (row.attribution)
     lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
   if (row.failure)
@@ -52890,6 +52915,13 @@ var stackEntry = exports_external.strictObject({
   }).describe("A file of NAME=value lines, relative to the repo root or absolute, that the tool gets for these stacks alone, on top of the job environment and the step's env-file input. Every value is masked first. A file that cannot be loaded fails the preview of these stacks and no other.").exactOptional(),
   policies: policyPaths.describe("Directories or files of Rego policies these stacks are tested against, relative to the repo root, on top of the top level policies.").exactOptional(),
   createInBackend: exports_external.boolean().describe("true: a scan creates each Pulumi stack of the entry that the backend lacks, with pulumi stack init right before its first preview, and previews it as all creates. A deploy never creates a stack. Default: false.").exactOptional(),
+  cost: exports_external.strictObject({
+    enabled: exports_external.boolean().describe("Estimate what a change of these stacks costs a month, or not, whatever cost.enabled at the top level says. Only an OpenTofu or Terraform stack gets an estimate.").exactOptional(),
+    threshold: exports_external.number().min(0).describe("The change to the monthly bill above which these stacks, when set to deploy on merge, wait for a tick instead, whatever cost.threshold at the top level says. In the currency of the estimate.").exactOptional()
+  }).superRefine((cost, context3) => {
+    if (cost.threshold !== undefined && cost.enabled === false)
+      refuse(context3, { kind: "cost-threshold-without-enabled" }, ["threshold"]);
+  }).describe("The cost estimate of these stacks. Default: the top level cost.").exactOptional(),
   options: exports_external.record(exports_external.string(), exports_external.unknown()).describe("Named adapter options of the tool. Only an entry with tool takes them.").exactOptional()
 }).superRefine((entry2, context3) => {
   if (entry2.tool !== undefined)
@@ -52959,6 +52991,13 @@ var configSchema = exports_external.strictObject({
   }).prefault({}),
   valueFingerprint: exports_external.boolean().describe("Cover the values a row does not show with a fingerprint on the row, so a tick approves them too: a value that changed between the tick and the deploy stops the deploy, and the row says so without naming the value. A value the tool marks secret never reaches the fingerprint. Turn it off, here or per stack, where a program makes a value that differs on every run.").default(true),
   policies: policyPaths.describe("Directories or files of Rego policies, relative to the repo root, that every pending stack's preview is tested against with conftest, which the workflow installs. A policy that fails takes the box off the row until it passes and stops a deploy on merge. Empty runs nothing.").default([]),
+  cost: exports_external.strictObject({
+    enabled: exports_external.boolean().describe("Estimate what each pending change of an OpenTofu or Terraform stack costs a month, with the Infracost CLI the workflow installs, and show it on the row as a change to the monthly bill. The CLI sends resource types, regions and quantities to its pricing API, never a value or a credential. A Pulumi, Helm or Kubernetes manifests stack gets no estimate. An estimate that fails is a missing line, never a failed scan.").default(false),
+    threshold: exports_external.number().min(0).describe("The change to the monthly bill above which a stack set to deploy on merge waits for a tick instead, and its row says why. In the currency of the estimate, USD unless the workflow sets another. A change whose estimate failed waits too. Needs enabled: true.").exactOptional()
+  }).superRefine((cost, context3) => {
+    if (cost.threshold !== undefined && !cost.enabled)
+      refuse(context3, { kind: "cost-threshold-without-enabled" }, ["threshold"]);
+  }).prefault({}),
   attribution: exports_external.strictObject({
     lookback: exports_external.int().min(1).max(LOOKBACK_MAX).describe("How many of the newest commits a job walks to say which pull requests made a row pending. A stack whose last deploy lies further back gets a line that says earlier changes exist. Each 100 commits cost one more GraphQL request.").default(LOOKBACK),
     names: exports_external.int().min(0).max(NAMES_MAX).describe("How many pull requests and direct pushes a row and a line of Recently deployed name, newest first. The rest is a count. 0 names none and always counts.").default(NAMED_ON_A_ROW)
@@ -53068,6 +53107,12 @@ function classify(issue3, raw) {
   }
   if (key === "names" && path[0] === "attribution") {
     return one({ kind: "not-a-count", counts: "names", min: 0, max: NAMES_MAX, value });
+  }
+  if (key === "threshold" && path.includes("cost") && issue3.code !== "custom") {
+    return one({ kind: "not-an-amount", value });
+  }
+  if (issue3.code === "invalid_type" && key === "cost" && path[0] === "stacks") {
+    return one({ kind: "stack-cost-not-a-mapping", value });
   }
   if (key === "previewTimeout" && issue3.code !== "custom") {
     return one({ kind: "not-a-count", counts: "minutes", min: 1, value });
@@ -53252,6 +53297,9 @@ function applyConfig(config2, found) {
   if (dependencyIssues.length > 0)
     throw new ConfigError(dependencyIssues);
   const derived2 = phaseDependencies(config2.phases, phases.phaseOf);
+  const costIssues = checkCostThresholds(config2, stacks);
+  if (costIssues.length > 0)
+    throw new ConfigError(costIssues);
   return stacks.map((stack) => {
     const entries = entriesOf(config2, stack);
     const id = stackId(stack);
@@ -53262,6 +53310,7 @@ function applyConfig(config2, found) {
     const envFile = entries.findLast((entry2) => entry2.envFile !== undefined)?.envFile;
     const windows = entries.findLast((entry2) => entry2.deployWindows !== undefined)?.deployWindows ?? config2.deployWindows;
     const createInBackend = entries.findLast((entry2) => entry2.createInBackend !== undefined)?.createInBackend;
+    const cost = costOf(entries);
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     const policies = [
@@ -53283,9 +53332,36 @@ function applyConfig(config2, found) {
       ...envFile === undefined ? {} : { envFile },
       ...windows.length === 0 ? {} : { deployWindows: windows },
       ...policies.length === 0 ? {} : { policies },
-      ...createInBackend === true ? { createInBackend } : {}
+      ...createInBackend === true ? { createInBackend } : {},
+      ...cost === undefined ? {} : { cost }
     };
   });
+}
+function costOf(entries) {
+  const enabled = entries.findLast((entry2) => entry2.cost?.enabled !== undefined)?.cost?.enabled;
+  const threshold = entries.findLast((entry2) => entry2.cost?.threshold !== undefined)?.cost?.threshold;
+  if (enabled === undefined && threshold === undefined)
+    return;
+  return {
+    ...enabled === undefined ? {} : { enabled },
+    ...threshold === undefined ? {} : { threshold }
+  };
+}
+function checkCostThresholds(config2, stacks) {
+  const refused = new Set;
+  for (const stack of stacks) {
+    const entries = entriesOf(config2, stack);
+    const cost = costOf(entries);
+    if (cost?.threshold === undefined || (cost.enabled ?? config2.cost.enabled))
+      continue;
+    const setBy = entries.findLast((entry2) => entry2.cost?.threshold !== undefined);
+    if (setBy !== undefined)
+      refused.add(config2.stacks.indexOf(setBy));
+  }
+  return [...refused].sort((a, b) => a - b).map((index) => ({
+    kind: "cost-threshold-without-enabled",
+    path: ["stacks", index, "cost", "threshold"]
+  }));
 }
 function entriesOf(config2, stack) {
   return config2.stacks.filter((entry2) => covers(entry2, stack)).sort((a, b) => Number(a.name !== undefined) - Number(b.name !== undefined));
@@ -57518,13 +57594,108 @@ import { mkdtemp as mkdtemp2, rm as rm3 } from "node:fs/promises";
 import { tmpdir as tmpdir2 } from "node:os";
 import { join as join24 } from "node:path";
 
+// src/adapters/opentofu/cost.ts
+import { writeFile as writeFile3 } from "node:fs/promises";
+var INFRACOST = "infracost";
+var PLAN_JSON = "plan.json";
+function costArgs() {
+  return [INFRACOST, "diff", "--path", PLAN_JSON, "--format", "json", "--no-color"];
+}
+function infracostEnvironment(env) {
+  return {
+    ...toolEnvironment(env),
+    INFRACOST_SKIP_UPDATE_CHECK: "true",
+    INFRACOST_ENABLE_CLOUD: "false"
+  };
+}
+var output2 = exports_external.object({
+  currency: exports_external.string(),
+  diffTotalMonthlyCost: exports_external.string(),
+  projects: exports_external.array(exports_external.object({
+    metadata: exports_external.object({
+      type: exports_external.string(),
+      errors: exports_external.array(exports_external.object({ message: exports_external.string() })).optional()
+    })
+  }))
+});
+function readCostOutput(stdout) {
+  let parsed;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return unreadable();
+  }
+  const read5 = output2.safeParse(parsed);
+  const monthly = read5.success ? Number(read5.data.diffTotalMonthlyCost) : Number.NaN;
+  if (!read5.success || !Number.isFinite(monthly))
+    return unreadable();
+  const reported = read5.data.projects.reduce((sum, project) => sum + (project.metadata.errors?.length ?? 0), 0);
+  const failed = read5.data.projects.some((project) => project.metadata.type === "error");
+  if (reported > 0 || failed || read5.data.projects.length === 0) {
+    const errors4 = Math.max(reported, 1);
+    return {
+      ok: false,
+      reason: { kind: "reported-error" },
+      detail: [
+        `The Infracost CLI's output reports ${errors4 === 1 ? "1 error" : `${errors4} errors`} for the plan. Its words are in the log below.`
+      ]
+    };
+  }
+  return { ok: true, estimate: { monthly, currency: read5.data.currency } };
+}
+function unreadable() {
+  return {
+    ok: false,
+    reason: { kind: "unreadable-output" },
+    detail: [
+      "Expected the JSON of infracost diff --format json with currency, diffTotalMonthlyCost and projects, and the output does not fit."
+    ]
+  };
+}
+async function estimateCost(planJson, plan, options) {
+  await writeFile3(plan.jsonPath, planJson);
+  const result2 = await options.run({
+    argv: costArgs(),
+    cwd: plan.dir,
+    env: infracostEnvironment(options.env),
+    timeoutMs: options.timeoutMinutes * 60000
+  });
+  if (result2.status === "not-started") {
+    return {
+      ok: false,
+      reason: { kind: "not-started" },
+      detail: [
+        "The Infracost CLI could not be started. Add a workflow step that installs it before the step that runs Sluiceway, or turn cost.enabled off."
+      ],
+      toolLog: ""
+    };
+  }
+  const toolLog = stripAnsi(result2.stderr);
+  if (result2.status === "timed-out") {
+    return {
+      ok: false,
+      reason: { kind: "timed-out", minutes: options.timeoutMinutes },
+      detail: [],
+      toolLog
+    };
+  }
+  if (result2.exitCode !== 0) {
+    const reason = { kind: "exited", exitCode: result2.exitCode };
+    return { ok: false, reason, detail: [], toolLog };
+  }
+  return { ...readCostOutput(result2.stdout), toolLog };
+}
+
+// src/adapters/opentofu/plan-file.ts
 class PlanFile {
   path;
   stackId;
   dir;
+  jsonPath;
   constructor(dir, stackId2) {
     this.dir = dir;
     this.path = join24(dir, "tfplan");
+    this.jsonPath = join24(dir, PLAN_JSON);
     this.stackId = stackId2;
   }
   static async create(stackId2) {
@@ -57650,7 +57821,7 @@ var ACTIONS = {
 function foldChanges(found, showValues, fingerprint = false) {
   const changes = [];
   const unknown2 = [];
-  const unreadable = [];
+  const unreadable2 = [];
   const firstAt = new Map;
   found.forEach((resource, index) => {
     const at = `The tool's output, at resource_changes[${index}]`;
@@ -57663,7 +57834,7 @@ function foldChanges(found, showValues, fingerprint = false) {
     const moved = resource.previous_address !== undefined;
     const imported = resource.change.importing;
     if (moved && imported) {
-      unreadable.push(`${at}: expected a move or an import, not both.`);
+      unreadable2.push(`${at}: expected a move or an import, not both.`);
       return;
     }
     if (resource.mode === "data") {
@@ -57673,7 +57844,7 @@ function foldChanges(found, showValues, fingerprint = false) {
     }
     const flagged = moved ? "move" : imported ? "import" : undefined;
     if (flagged !== undefined && known !== "drop" && known.tracking !== undefined) {
-      unreadable.push(`${at}: expected one tracking change, found two.`);
+      unreadable2.push(`${at}: expected one tracking change, found two.`);
       return;
     }
     const folded = withTracking(known, flagged);
@@ -57682,7 +57853,7 @@ function foldChanges(found, showValues, fingerprint = false) {
     const address = resource.deposed === undefined ? resource.address : `${resource.address} deposed ${resource.deposed}`;
     const earlier = firstAt.get(address);
     if (earlier !== undefined) {
-      unreadable.push(`${at}.address: expected an address that no earlier change has, and resource_changes[${earlier}] has it.`);
+      unreadable2.push(`${at}.address: expected an address that no earlier change has, and resource_changes[${earlier}] has it.`);
       return;
     }
     firstAt.set(address, index);
@@ -57695,8 +57866,8 @@ function foldChanges(found, showValues, fingerprint = false) {
       ...keys2(resource, folded.op, showValues, fingerprint)
     });
   });
-  if (unreadable.length > 0)
-    return { ok: false, reason: "unreadable-output", detail: unreadable };
+  if (unreadable2.length > 0)
+    return { ok: false, reason: "unreadable-output", detail: unreadable2 };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
   changes.sort((a, b) => byCodeUnit12(a.address, b.address));
@@ -57797,10 +57968,13 @@ async function planAndShow(stack, options, plan) {
   const folded = foldChanges(parsed.changes, options.showValues ?? [], options.valueFingerprint === true);
   if (!folded.ok)
     return failed({ kind: folded.reason }, log, folded.detail);
+  const estimated = options.cost === true && folded.changes.length > 0 ? await estimateCost(shown3.stdout, plan, options) : undefined;
+  const { toolLog: costLog = "", ...cost } = estimated ?? {};
   return {
     ok: true,
     diff: { stackId: stackId(stack), changes: folded.changes },
-    toolLog: log,
+    toolLog: log + costLog,
+    ...estimated === undefined ? {} : { cost },
     ...options.keepDocument ? { document: { text: shown3.stdout, format: "json" } } : {}
   };
 }
@@ -58028,7 +58202,7 @@ var FORGET = { op: "none", tracking: "forget" };
 function foldSteps(steps) {
   const changes = [];
   const unknown2 = [];
-  const unreadable = [];
+  const unreadable2 = [];
   const firstAt = new Map;
   let rootCreate;
   steps.forEach((step2, index) => {
@@ -58044,12 +58218,12 @@ function foldSteps(steps) {
       return;
     const resource = typeAndName(step2.urn);
     if (resource === undefined) {
-      unreadable.push(`${at}.urn: expected the URN of a resource.`);
+      unreadable2.push(`${at}.urn: expected the URN of a resource.`);
       return;
     }
     const earlier = firstAt.get(step2.urn);
     if (earlier !== undefined) {
-      unreadable.push(`${at}.urn: expected an address that no earlier step has, and steps[${earlier}] has it.`);
+      unreadable2.push(`${at}.urn: expected an address that no earlier step has, and steps[${earlier}] has it.`);
       return;
     }
     firstAt.set(step2.urn, index);
@@ -58060,8 +58234,8 @@ function foldSteps(steps) {
     else
       changes.push(change3);
   });
-  if (unreadable.length > 0)
-    return { ok: false, reason: "unreadable-output", detail: unreadable };
+  if (unreadable2.length > 0)
+    return { ok: false, reason: "unreadable-output", detail: unreadable2 };
   if (unknown2.length > 0)
     return { ok: false, reason: "unknown-step", detail: unknown2 };
   if (rootCreate !== undefined && changes.length === 0)
@@ -59167,7 +59341,7 @@ function readJob(env) {
 
 // src/github/job-log.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { writeFile as writeFile3 } from "node:fs/promises";
+import { writeFile as writeFile4 } from "node:fs/promises";
 function actionsLog() {
   return {
     info: (line) => info(line),
@@ -59190,7 +59364,7 @@ function actionsLog() {
       if (!file2) {
         throw new Error("The runner gave this step no summary file (GITHUB_STEP_SUMMARY is not set).");
       }
-      await writeFile3(file2, text8, "utf8");
+      await writeFile4(file2, text8, "utf8");
     }
   };
 }
@@ -59335,19 +59509,19 @@ function checkCalls(octokit, repo) {
       });
       return runs.map(toCheckRun);
     },
-    async createCheckRun({ sha, name, output: output2 }) {
+    async createCheckRun({ sha, name, output: output3 }) {
       const { data } = await octokit.rest.checks.create({
         ...repo,
         name,
         head_sha: sha,
         status: "completed",
         conclusion: "neutral",
-        output: output2
+        output: output3
       });
       return toCheckRun(data);
     },
-    async updateCheckRun(id, output2) {
-      const { data } = await octokit.rest.checks.update({ ...repo, check_run_id: id, output: output2 });
+    async updateCheckRun(id, output3) {
+      const { data } = await octokit.rest.checks.update({ ...repo, check_run_id: id, output: output3 });
       return toCheckRun(data);
     }
   };
@@ -62559,6 +62733,7 @@ function previewRow(stackId2, result2, links2, failure2, options = {}) {
     }
     return { state: "in-sync", stackId: stackId2, failure: failure2, ...dependsOn };
   }
+  const cost = result2.cost?.ok ? { cost: result2.cost.estimate } : {};
   return {
     state: "pending",
     diff: result2.diff,
@@ -62567,7 +62742,8 @@ function previewRow(stackId2, result2, links2, failure2, options = {}) {
     runUrl: links2.summary,
     previewUrl: options.pageUrl ?? (options.toolDiffInLog ? links2.log : undefined),
     failure: failure2,
-    ...dependsOn
+    ...dependsOn,
+    ...cost
   };
 }
 function previewSummary(stackId2, result2, merges, policies) {
@@ -66883,14 +67059,14 @@ function previewPages(github, sha) {
           return skipRest(0);
         }
       }
-      for (const [index, { stackId: stackId2, output: output2 }] of pages.entries()) {
+      for (const [index, { stackId: stackId2, output: output3 }] of pages.entries()) {
         const name = previewPageName(stackId2);
         try {
           const found = known.get(name);
           let run2;
           if (found) {
             try {
-              run2 = await github.updateCheckRun(found.id, output2);
+              run2 = await github.updateCheckRun(found.id, output3);
               written.updated++;
             } catch (error63) {
               if (statusOf2(error63) !== 404)
@@ -66898,7 +67074,7 @@ function previewPages(github, sha) {
             }
           }
           if (!run2) {
-            run2 = await github.createCheckRun({ sha, name, output: output2 });
+            run2 = await github.createCheckRun({ sha, name, output: output3 });
             written.created++;
           }
           known.set(name, run2);
@@ -67115,8 +67291,8 @@ async function previewPullRequest(context3, repo) {
     dashboard: dashboardSearchUrl(context3.repoUrl, repo.config.dashboard.label)
   };
   const written = await previewPages(context3.github, pullRequest.head).write(results.map(({ id, result: result2 }) => {
-    const { unlisted: _unlisted, ...output2 } = renderPullRequestPage(id, result2, words, links2);
-    return { stackId: id, output: output2 };
+    const { unlisted: _unlisted, ...output3 } = renderPullRequestPage(id, result2, words, links2);
+    return { stackId: id, output: output3 };
   }));
   const previewed = results.map(({ id, result: result2 }) => ({
     stackId: id,
@@ -67225,6 +67401,37 @@ function countRequests(octokit) {
   return () => count3;
 }
 
+// src/core/cost.ts
+function costFailureText(reason) {
+  switch (reason.kind) {
+    case "not-started":
+      return "the Infracost CLI could not be started";
+    case "exited":
+      return reason.exitCode === null ? "the Infracost CLI exited with an error" : `the Infracost CLI exited with an error (exit code ${reason.exitCode})`;
+    case "timed-out":
+      return `the estimate timed out after ${reason.minutes} ${reason.minutes === 1 ? "minute" : "minutes"}`;
+    case "unreadable-output":
+      return "the Infracost CLI's output could not be read";
+    case "reported-error":
+      return "the Infracost CLI reported that it could not price the plan";
+  }
+}
+function costSettings(top, entry4) {
+  const threshold = entry4?.threshold ?? top.threshold;
+  return {
+    enabled: entry4?.enabled ?? top.enabled,
+    ...threshold === undefined ? {} : { threshold }
+  };
+}
+function costWait(cost, threshold) {
+  if (threshold === undefined || cost === undefined)
+    return;
+  if (!cost.ok)
+    return { kind: "cost-unknown", threshold };
+  const { monthly, currency } = cost.estimate;
+  return monthly > threshold ? { kind: "cost", monthly, currency, threshold } : undefined;
+}
+
 // src/core/on-merge.ts
 function onMergeDeploys(input2) {
   const waits = new Map;
@@ -67238,7 +67445,7 @@ function onMergeDeploys(input2) {
     const result2 = input2.previewed.get(stack.id);
     if (!result2?.ok || result2.diff.changes.length === 0)
       continue;
-    const wait = waitOf(input2, result2.diff);
+    const wait = waitOf(input2, result2.diff, costWait(result2.cost, stack.costThreshold));
     if (wait)
       waits.set(stack.id, wait);
     else {
@@ -67287,13 +67494,15 @@ function onMergeDeploys(input2) {
   });
   return { deploys, waits };
 }
-function waitOf(input2, diff2) {
+function waitOf(input2, diff2, cost) {
   if (!input2.deploys)
     return { kind: "deploys-off" };
   if (diff2.changes.some(isDestroy))
     return { kind: "destroy" };
   if ((diff2.drift ?? []).length > 0)
     return { kind: "drift" };
+  if (cost !== undefined)
+    return cost;
   if (input2.mergedBy === undefined)
     return { kind: "not-merged" };
   return;
@@ -67589,7 +67798,7 @@ function everyPreviewFailed(attempted, failed3) {
 }
 
 // src/policy/conftest.ts
-import { mkdtemp as mkdtemp3, rm as rm4, stat as stat2, writeFile as writeFile4 } from "node:fs/promises";
+import { mkdtemp as mkdtemp3, rm as rm4, stat as stat2, writeFile as writeFile5 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
 import { isAbsolute as isAbsolute6, join as join37 } from "node:path";
 async function runPolicies(spec) {
@@ -67604,7 +67813,7 @@ async function runPolicies(spec) {
   const dir = await mkdtemp3(join37(tmpdir3(), "sluiceway-policy-"));
   try {
     const file2 = join37(dir, `preview.${spec.document.format}`);
-    await writeFile4(file2, spec.document.text, { mode: 384 });
+    await writeFile5(file2, spec.document.text, { mode: 384 });
     const run2 = await runTool(spec.run, {
       argv: conftestArgv(spec.policies, file2),
       cwd: spec.root,
@@ -67870,7 +68079,7 @@ function renderSummary(stacks2, options = {}) {
 }
 
 // src/modes/branch-preview.ts
-import { cp, mkdir as mkdir2, mkdtemp as mkdtemp4, realpath, rm as rm5, writeFile as writeFile5 } from "node:fs/promises";
+import { cp, mkdir as mkdir2, mkdtemp as mkdtemp4, realpath, rm as rm5, writeFile as writeFile6 } from "node:fs/promises";
 import { tmpdir as tmpdir4 } from "node:os";
 import { basename as basename2, dirname as dirname2, join as join38, resolve as resolve4, sep as sep7 } from "node:path";
 async function previewBranches(context3, stacks2, updates, envFiles) {
@@ -67917,7 +68126,7 @@ async function previewOne(context3, number4, head, files, stacks2, envFiles) {
       if (text9 === undefined)
         await rm5(target2, { force: true, recursive: true });
       else
-        await writeFile5(target2, text9);
+        await writeFile6(target2, text9);
     }
     const tool = { root: copy, env: context3.env, run: context3.run };
     const envs = envFiles(stacks2.map(({ stack, envFile }) => ({ id: stackId(stack), envFile })));
@@ -68115,6 +68324,8 @@ async function scanning(context3, report2) {
   const plan = await makePlan(context3, config2, stacks2, knownDrift);
   logPlan(context3, plan, stacks2.length);
   const checkDrift = driftCheckRule(config2, context3, knownDrift, stacks2);
+  const costByStack = new Map(stacks2.map((one) => [stackId(one.stack), costSettings(config2.cost, one.cost)]));
+  const costOf2 = (id) => costByStack.get(id) ?? costSettings(config2.cost);
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
   const unclaimed = unclaimedFiles(plan, config2);
   let next = planned ? stacks2.filter(({ stack }) => planned.has(stackId(stack))) : stacks2;
@@ -68162,7 +68373,7 @@ async function scanning(context3, report2) {
     if (policies.paths.length > 0 && policies.check === undefined && next.length > 0) {
       policies.check = await checkPolicies(context3, policies.paths);
     }
-    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), config2.valueFingerprint, prepared, sayPool, checkDrift, stacks2.map(({ stack }) => stack), envFiles, policies);
+    const round = await previewAll(context3, next, logDiff, shownValues(config2.dashboard), config2.valueFingerprint, prepared, sayPool, checkDrift, stacks2.map(({ stack }) => stack), envFiles, policies, costOf2);
     for (const one of round)
       previewed.set(one.id, one);
     logResults(context3, round);
@@ -68510,7 +68721,7 @@ function driftCheckRule(config2, context3, knownDrift, stacks2) {
   const every = context3.event === "schedule" || context3.event === "workflow_dispatch" && context3.startedByPerson === true;
   return (id) => enabled.has(id) && (every || knownDrift.has(id));
 }
-async function previewAll(context3, stacks2, logDiff, showValues, valueFingerprint2, prepared, sayPool, checkDrift, repoStacks, envFiles, policies) {
+async function previewAll(context3, stacks2, logDiff, showValues, valueFingerprint2, prepared, sayPool, checkDrift, repoStacks, envFiles, policies, costOf2) {
   const { log, now, adapter } = context3;
   if (stacks2.length === 0)
     return [];
@@ -68546,7 +68757,8 @@ async function previewAll(context3, stacks2, logDiff, showValues, valueFingerpri
       run: liveRun(tool.run, id, log),
       timeoutMinutes: configured.previewTimeout ?? context3.previewTimeoutMinutes,
       showValues,
-      valueFingerprint: configured.valueFingerprint ?? valueFingerprint2
+      valueFingerprint: configured.valueFingerprint ?? valueFingerprint2,
+      cost: costOf2(id).enabled
     };
     let previewedOnly;
     try {
@@ -68571,6 +68783,10 @@ async function previewAll(context3, stacks2, logDiff, showValues, valueFingerpri
     log.info(`Previewed ${logGroupTitle(id)} in ${seconds3(milliseconds)}: ${previewOutcome(previewedOnly)}`);
     if (previewedOnly.ok && previewedOnly.dependencies) {
       log.info(readDependenciesText(id, previewedOnly.dependencies));
+    }
+    if (previewedOnly.ok && previewedOnly.cost) {
+      const { cost: cost2 } = previewedOnly;
+      log.info(cost2.ok ? `${logGroupTitle(id)} costs ${plainCostWords(costLine(cost2.estimate))}.` : `The cost of ${logGroupTitle(id)} was not estimated: ${costFailureText(cost2.reason)}.`);
     }
     let result2 = previewedOnly;
     let drift;
@@ -68686,6 +68902,7 @@ function logResults(context3, previewed) {
       ...result2.ok ? diffLogLines(result2.diff) : [`preview failed: ${previewFailureText(result2.reason)}`, ...result2.detail],
       ...drift !== undefined && !drift.ok ? [`drift check failed: ${previewFailureText(drift.reason)}`, ...drift.detail] : [],
       ...policyLogLines(policies),
+      ...costLogLines(result2),
       ...toolDiffLogLines(toolDiff5),
       ...words.length > 0 ? ["The tool's own words:", ...words] : []
     ];
@@ -68700,6 +68917,9 @@ function logResults(context3, previewed) {
     }
     if (drift !== undefined && !drift.ok) {
       log.warning(`The drift check of ${logGroupTitle(id)} failed: ${previewFailureText(drift.reason)}. Its row shows the preview alone.`, "Drift check failed");
+    }
+    if (result2.ok && result2.cost && !result2.cost.ok) {
+      log.warning(`The cost of ${logGroupTitle(id)} was not estimated: ${costFailureText(result2.cost.reason)}. Its row shows no cost line.`, "Cost not estimated");
     }
   }
   for (const { id, policies } of previewed) {
@@ -68996,7 +69216,8 @@ function onMergeInput(context3, config2, stacks2, previewed, live, facts, now) {
         deploy: one.deploy ?? "on-tick",
         dependsOn: dependsOn.get(id),
         phase: one.phase,
-        deployWindows: one.deployWindows
+        deployWindows: one.deployWindows,
+        costThreshold: costSettings(config2.cost, one.cost).threshold
       };
     }),
     previewed: fresh,
@@ -69037,6 +69258,15 @@ async function handOnMerged(context3, going, handedOn, opened) {
       throw new Error(`The deployment record that deploys ${name} on merge could not be written: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permission \`deployments: write\` (record 0095). Nothing more deploys on merge in this run: the row shows the stack as pending, and a tick deploys it.`);
     }
   }
+}
+function plainCostWords(line3) {
+  return line3.replaceAll("**", "");
+}
+function costLogLines(result2) {
+  if (!result2.ok || !result2.cost)
+    return [];
+  const { cost: cost2 } = result2;
+  return cost2.ok ? [`cost: ${plainCostWords(costLine(cost2.estimate))}`] : [`cost not estimated: ${costFailureText(cost2.reason)}`, ...cost2.detail];
 }
 function onMergeLogLine(id, wait) {
   return onMergeNote(wait).replace(":information_source: this stack", logGroupTitle(id)).replaceAll("**", "").replaceAll("`", "");

@@ -28180,6 +28180,12 @@ function problemWords(issue2) {
       return `expected a list of stack ids, or ${issue2.auto}, got ${show(issue2.value)}.`;
     case "not-a-phase":
       return `expected a phase name, or a mapping with from, got ${show(issue2.value)}.`;
+    case "stack-cost-not-a-mapping":
+      return `expected a mapping, got ${show(issue2.value)}. Write it as the top level has it: cost: { enabled: true }.`;
+    case "cost-threshold-without-enabled":
+      return "a threshold needs the estimate: set cost.enabled: true next to it, or on the stack's entry.";
+    case "not-an-amount":
+      return `expected an amount a month, 0 or more, got ${show(issue2.value)}.`;
     case "stack-drift-not-a-mapping":
       return `expected a mapping, got ${show(issue2.value)}. Write it as the top level has it: drift: { enabled: ${typeof issue2.value === "boolean" ? issue2.value : true} }.`;
     case "not-a-tick-rule":
@@ -28569,6 +28575,13 @@ var stackEntry = exports_external.strictObject({
   }).describe("A file of NAME=value lines, relative to the repo root or absolute, that the tool gets for these stacks alone, on top of the job environment and the step's env-file input. Every value is masked first. A file that cannot be loaded fails the preview of these stacks and no other.").exactOptional(),
   policies: policyPaths.describe("Directories or files of Rego policies these stacks are tested against, relative to the repo root, on top of the top level policies.").exactOptional(),
   createInBackend: exports_external.boolean().describe("true: a scan creates each Pulumi stack of the entry that the backend lacks, with pulumi stack init right before its first preview, and previews it as all creates. A deploy never creates a stack. Default: false.").exactOptional(),
+  cost: exports_external.strictObject({
+    enabled: exports_external.boolean().describe("Estimate what a change of these stacks costs a month, or not, whatever cost.enabled at the top level says. Only an OpenTofu or Terraform stack gets an estimate.").exactOptional(),
+    threshold: exports_external.number().min(0).describe("The change to the monthly bill above which these stacks, when set to deploy on merge, wait for a tick instead, whatever cost.threshold at the top level says. In the currency of the estimate.").exactOptional()
+  }).superRefine((cost, context) => {
+    if (cost.threshold !== undefined && cost.enabled === false)
+      refuse(context, { kind: "cost-threshold-without-enabled" }, ["threshold"]);
+  }).describe("The cost estimate of these stacks. Default: the top level cost.").exactOptional(),
   options: exports_external.record(exports_external.string(), exports_external.unknown()).describe("Named adapter options of the tool. Only an entry with tool takes them.").exactOptional()
 }).superRefine((entry2, context) => {
   if (entry2.tool !== undefined)
@@ -28638,6 +28651,13 @@ var configSchema = exports_external.strictObject({
   }).prefault({}),
   valueFingerprint: exports_external.boolean().describe("Cover the values a row does not show with a fingerprint on the row, so a tick approves them too: a value that changed between the tick and the deploy stops the deploy, and the row says so without naming the value. A value the tool marks secret never reaches the fingerprint. Turn it off, here or per stack, where a program makes a value that differs on every run.").default(true),
   policies: policyPaths.describe("Directories or files of Rego policies, relative to the repo root, that every pending stack's preview is tested against with conftest, which the workflow installs. A policy that fails takes the box off the row until it passes and stops a deploy on merge. Empty runs nothing.").default([]),
+  cost: exports_external.strictObject({
+    enabled: exports_external.boolean().describe("Estimate what each pending change of an OpenTofu or Terraform stack costs a month, with the Infracost CLI the workflow installs, and show it on the row as a change to the monthly bill. The CLI sends resource types, regions and quantities to its pricing API, never a value or a credential. A Pulumi, Helm or Kubernetes manifests stack gets no estimate. An estimate that fails is a missing line, never a failed scan.").default(false),
+    threshold: exports_external.number().min(0).describe("The change to the monthly bill above which a stack set to deploy on merge waits for a tick instead, and its row says why. In the currency of the estimate, USD unless the workflow sets another. A change whose estimate failed waits too. Needs enabled: true.").exactOptional()
+  }).superRefine((cost, context) => {
+    if (cost.threshold !== undefined && !cost.enabled)
+      refuse(context, { kind: "cost-threshold-without-enabled" }, ["threshold"]);
+  }).prefault({}),
   attribution: exports_external.strictObject({
     lookback: exports_external.int().min(1).max(LOOKBACK_MAX).describe("How many of the newest commits a job walks to say which pull requests made a row pending. A stack whose last deploy lies further back gets a line that says earlier changes exist. Each 100 commits cost one more GraphQL request.").default(LOOKBACK),
     names: exports_external.int().min(0).max(NAMES_MAX).describe("How many pull requests and direct pushes a row and a line of Recently deployed name, newest first. The rest is a count. 0 names none and always counts.").default(NAMED_ON_A_ROW)
@@ -28747,6 +28767,12 @@ function classify(issue2, raw) {
   }
   if (key === "names" && path[0] === "attribution") {
     return one({ kind: "not-a-count", counts: "names", min: 0, max: NAMES_MAX, value });
+  }
+  if (key === "threshold" && path.includes("cost") && issue2.code !== "custom") {
+    return one({ kind: "not-an-amount", value });
+  }
+  if (issue2.code === "invalid_type" && key === "cost" && path[0] === "stacks") {
+    return one({ kind: "stack-cost-not-a-mapping", value });
   }
   if (key === "previewTimeout" && issue2.code !== "custom") {
     return one({ kind: "not-a-count", counts: "minutes", min: 1, value });
@@ -28931,6 +28957,9 @@ function applyConfig(config2, found) {
   if (dependencyIssues.length > 0)
     throw new ConfigError(dependencyIssues);
   const derived2 = phaseDependencies(config2.phases, phases.phaseOf);
+  const costIssues = checkCostThresholds(config2, stacks);
+  if (costIssues.length > 0)
+    throw new ConfigError(costIssues);
   return stacks.map((stack) => {
     const entries = entriesOf(config2, stack);
     const id = stackId(stack);
@@ -28941,6 +28970,7 @@ function applyConfig(config2, found) {
     const envFile = entries.findLast((entry2) => entry2.envFile !== undefined)?.envFile;
     const windows = entries.findLast((entry2) => entry2.deployWindows !== undefined)?.deployWindows ?? config2.deployWindows;
     const createInBackend = entries.findLast((entry2) => entry2.createInBackend !== undefined)?.createInBackend;
+    const cost = costOf(entries);
     const phase = phases.phaseOf.get(id);
     const from = phases.from.get(id);
     const policies = [
@@ -28962,9 +28992,36 @@ function applyConfig(config2, found) {
       ...envFile === undefined ? {} : { envFile },
       ...windows.length === 0 ? {} : { deployWindows: windows },
       ...policies.length === 0 ? {} : { policies },
-      ...createInBackend === true ? { createInBackend } : {}
+      ...createInBackend === true ? { createInBackend } : {},
+      ...cost === undefined ? {} : { cost }
     };
   });
+}
+function costOf(entries) {
+  const enabled = entries.findLast((entry2) => entry2.cost?.enabled !== undefined)?.cost?.enabled;
+  const threshold = entries.findLast((entry2) => entry2.cost?.threshold !== undefined)?.cost?.threshold;
+  if (enabled === undefined && threshold === undefined)
+    return;
+  return {
+    ...enabled === undefined ? {} : { enabled },
+    ...threshold === undefined ? {} : { threshold }
+  };
+}
+function checkCostThresholds(config2, stacks) {
+  const refused = new Set;
+  for (const stack of stacks) {
+    const entries = entriesOf(config2, stack);
+    const cost = costOf(entries);
+    if (cost?.threshold === undefined || (cost.enabled ?? config2.cost.enabled))
+      continue;
+    const setBy = entries.findLast((entry2) => entry2.cost?.threshold !== undefined);
+    if (setBy !== undefined)
+      refused.add(config2.stacks.indexOf(setBy));
+  }
+  return [...refused].sort((a, b) => a - b).map((index) => ({
+    kind: "cost-threshold-without-enabled",
+    path: ["stacks", index, "cost", "threshold"]
+  }));
 }
 function entriesOf(config2, stack) {
   return config2.stacks.filter((entry2) => covers(entry2, stack)).sort((a, b) => Number(a.name !== undefined) - Number(b.name !== undefined));
