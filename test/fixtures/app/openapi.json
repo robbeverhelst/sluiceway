@@ -1,0 +1,2144 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Sluiceway app, for the command line",
+    "version": "1.0.0",
+    "description": "The Sluiceway app for `npx sluiceway` and its agents. Every request carries a personal token, made on the person's own page in the app, in `Authorization: Bearer <token>`; a cookie never works here. A token is for one org, and every answer counts as its person, by the same rules as the app's pages. Stack-level facts only: never a resource name, a property path or a value."
+  },
+  "servers": [
+    {
+      "url": "https://app.sluiceway.dev"
+    }
+  ],
+  "security": [
+    {
+      "token": []
+    }
+  ],
+  "paths": {
+    "/api/v1/me": {
+      "get": {
+        "operationId": "me",
+        "summary": "Who the token is, its org, and until when it works.",
+        "responses": {
+          "200": {
+            "description": "The token's person.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or one that does not work.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The token's person no longer belongs to the org, or the app left it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not the token's org, or nothing there the pages would open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The token's rate limit is spent. Retry-After says when.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "GitHub did not say whether the person still belongs to the org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{org}": {
+      "get": {
+        "operationId": "org",
+        "summary": "The org's repos and stacks with their states and counts, as the org view says them.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "The token's org, by its login.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Org"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or one that does not work.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The token's person no longer belongs to the org, or the app left it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not the token's org, or nothing there the pages would open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The token's rate limit is spent. Retry-After says when.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "GitHub did not say whether the person still belongs to the org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{org}/repos/{repo}": {
+      "get": {
+        "operationId": "repo",
+        "summary": "One repo: its scan, counts and stacks.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "The token's org, by its login.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repo",
+            "in": "path",
+            "required": true,
+            "description": "The repo's name, without the org.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The repo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Repo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or one that does not work.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The token's person no longer belongs to the org, or the app left it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not the token's org, or nothing there the pages would open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The token's rate limit is spent. Retry-After says when.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "GitHub did not say whether the person still belongs to the org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{org}/repos/{repo}/stacks/{stack}": {
+      "get": {
+        "operationId": "stack",
+        "summary": "One stack's row: its counts and destroy line as the dashboard says them, and its preview page on GitHub.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "The token's org, by its login.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repo",
+            "in": "path",
+            "required": true,
+            "description": "The repo's name, without the org.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stack",
+            "in": "path",
+            "required": true,
+            "description": "The stack id, encoded: apps%2Fapi%3Aprod.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The stack.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stack"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or one that does not work.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The token's person no longer belongs to the org, or the app left it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not the token's org, or nothing there the pages would open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The token's rate limit is spent. Retry-After says when.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "GitHub did not say whether the person still belongs to the org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{org}/repos/{repo}/stacks/{stack}/tick": {
+      "post": {
+        "operationId": "tick",
+        "summary": "Ticks the stack as the token's person, judged by the action's own rule. The answer comes when the deployment record is open; poll its status.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "The token's org, by its login.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repo",
+            "in": "path",
+            "required": true,
+            "description": "The repo's name, without the org.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stack",
+            "in": "path",
+            "required": true,
+            "description": "The stack id, encoded: apps%2Fapi%3Aprod.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What came of the tick.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TickAnswer"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or one that does not work.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The token's person no longer belongs to the org, or the app left it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not the token's org, or nothing there the pages would open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The token's rate limit is spent. Retry-After says when.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "GitHub did not say whether the person still belongs to the org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{org}/repos/{repo}/deployments/{deployment}": {
+      "get": {
+        "operationId": "deployment",
+        "summary": "One deploy by its deployment record, to poll after a tick.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "The token's org, by its login.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repo",
+            "in": "path",
+            "required": true,
+            "description": "The repo's name, without the org.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deployment",
+            "in": "path",
+            "required": true,
+            "description": "The deployment record's id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The deploy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deploy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or one that does not work.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The token's person no longer belongs to the org, or the app left it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not the token's org, or nothing there the pages would open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The token's rate limit is spent. Retry-After says when.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "GitHub did not say whether the person still belongs to the org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{org}/repos/{repo}/rescan": {
+      "post": {
+        "operationId": "rescan",
+        "summary": "Asks GitHub for a full scan of the repo, as the token's person.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "The token's org, by its login.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repo",
+            "in": "path",
+            "required": true,
+            "description": "The repo's name, without the org.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What was asked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescanAnswer"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or one that does not work.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The token's person no longer belongs to the org, or the app left it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not the token's org, or nothing there the pages would open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The token's rate limit is spent. Retry-After says when.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "GitHub did not say whether the person still belongs to the org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{org}/repos/{repo}/config": {
+      "get": {
+        "operationId": "config",
+        "summary": "sluiceway.yaml at the scanned commit, and every key edit mode changes with its value.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "The token's org, by its login.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repo",
+            "in": "path",
+            "required": true,
+            "description": "The repo's name, without the org.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Config"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or one that does not work.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The token's person no longer belongs to the org, or the app left it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not the token's org, or nothing there the pages would open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The token's rate limit is spent. Retry-After says when.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "GitHub did not say whether the person still belongs to the org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{org}/repos/{repo}/config/pull-request": {
+      "post": {
+        "operationId": "configPullRequest",
+        "summary": "Opens the pull request edit mode opens, on the branch sluiceway/dashboard, from a list of key changes. A person merges it.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "The token's org, by its login.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repo",
+            "in": "path",
+            "required": true,
+            "description": "The repo's name, without the org.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "changes": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/KeyChange"
+                    }
+                  }
+                },
+                "required": [
+                  "changes"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What came of it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PullRequestAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Changes refused before GitHub was asked anything.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangesRefused"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or one that does not work.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The token's person no longer belongs to the org, or the app left it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not the token's org, or nothing there the pages would open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The token's rate limit is spent. Retry-After says when.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "GitHub did not say whether the person still belongs to the org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{org}/audit": {
+      "get": {
+        "operationId": "audit",
+        "summary": "The audit log's lines, newest first, under the page's filters.",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "description": "The token's org, by its login.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repo",
+            "in": "query",
+            "required": false,
+            "description": "A repo, by its name or org/name.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stack",
+            "in": "query",
+            "required": false,
+            "description": "A stack id.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "flagged",
+            "in": "query",
+            "required": false,
+            "description": "1 for the deploys made outside the dashboard only.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The log.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Audit"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or one that does not work.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The token's person no longer belongs to the org, or the app left it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not the token's org, or nothing there the pages would open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The token's rate limit is spent. Retry-After says when.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "GitHub did not say whether the person still belongs to the org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "token": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "A personal token, made on the person's own page in the app (Tokens), for one org, for 30, 90 or 365 days. It starts sluiceway_."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "description": "Every answer that is not a success.",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "One plain sentence."
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "no-token",
+              "token-not-working",
+              "org-gone",
+              "not-a-member",
+              "github-silent",
+              "rate-limited",
+              "not-found",
+              "changes-refused"
+            ]
+          }
+        },
+        "required": [
+          "error",
+          "code"
+        ],
+        "additionalProperties": false
+      },
+      "ChangesRefused": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "changes-refused"
+            ]
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "One sentence per change that was refused."
+          }
+        },
+        "required": [
+          "error",
+          "code",
+          "problems"
+        ],
+        "additionalProperties": false
+      },
+      "Me": {
+        "type": "object",
+        "properties": {
+          "login": {
+            "type": "string"
+          },
+          "org": {
+            "type": "string"
+          },
+          "token": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "name",
+              "expiresAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "login",
+          "org",
+          "token"
+        ],
+        "additionalProperties": false
+      },
+      "Counts": {
+        "type": "object",
+        "properties": {
+          "pending": {
+            "type": "integer"
+          },
+          "deploying": {
+            "type": "integer"
+          },
+          "drifted": {
+            "type": "integer"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "in-sync": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pending",
+          "deploying",
+          "drifted",
+          "failed",
+          "in-sync"
+        ],
+        "additionalProperties": false
+      },
+      "StackLine": {
+        "type": "object",
+        "properties": {
+          "stack": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "deploying",
+              "drifted",
+              "failed",
+              "in-sync"
+            ],
+            "description": "The app's five states: queued is deploying, drift is drifted, preview failed is failed."
+          },
+          "word": {
+            "type": "string",
+            "description": "The dashboard's own word: queued, preview failed, in sync…"
+          },
+          "destroys": {
+            "type": "boolean",
+            "description": "A pending stack that deletes or replaces resources."
+          },
+          "line": {
+            "type": "string",
+            "description": "The row's one line of meaning, as the org view says it."
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "stack",
+          "repo",
+          "state",
+          "word",
+          "destroys",
+          "line",
+          "at"
+        ],
+        "additionalProperties": false
+      },
+      "RepoLine": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "page": {
+            "type": "string"
+          },
+          "dashboard": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The dashboard issue on GitHub."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stacks": {
+            "type": "integer"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/Counts"
+          },
+          "recordWriter": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "While the repo's sluiceway.yaml does not name sluiceway[bot] in recordWriters."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "page",
+          "dashboard",
+          "stacks",
+          "counts",
+          "recordWriter"
+        ],
+        "additionalProperties": false
+      },
+      "Org": {
+        "type": "object",
+        "properties": {
+          "org": {
+            "type": "object",
+            "properties": {
+              "login": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "organization",
+                  "account"
+                ]
+              },
+              "page": {
+                "type": "string",
+                "description": "The org's page in the app."
+              }
+            },
+            "required": [
+              "login",
+              "kind",
+              "page"
+            ],
+            "additionalProperties": false
+          },
+          "counts": {
+            "$ref": "#/components/schemas/Counts"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "lastScan": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "sha": {
+                    "type": "string"
+                  },
+                  "at": {
+                    "type": "string"
+                  },
+                  "repo": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sha",
+                  "at",
+                  "repo"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepoLine"
+            }
+          },
+          "stacks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StackLine"
+            }
+          },
+          "locked": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "counts": {
+                  "$ref": "#/components/schemas/Counts"
+                },
+                "total": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "name",
+                "counts",
+                "total"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The adopted repos past the free allowance: their name and state counts only."
+          },
+          "allowance": {
+            "type": "object",
+            "properties": {
+              "plan": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "sentence": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "plan",
+              "limit",
+              "sentence"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "org",
+          "counts",
+          "total",
+          "lastScan",
+          "repos",
+          "stacks",
+          "locked",
+          "allowance"
+        ],
+        "additionalProperties": false
+      },
+      "Repo": {
+        "type": "object",
+        "properties": {
+          "org": {
+            "type": "object",
+            "properties": {
+              "login": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "organization",
+                  "account"
+                ]
+              },
+              "page": {
+                "type": "string",
+                "description": "The org's page in the app."
+              }
+            },
+            "required": [
+              "login",
+              "kind",
+              "page"
+            ],
+            "additionalProperties": false
+          },
+          "repo": {
+            "$ref": "#/components/schemas/RepoLine"
+          },
+          "scan": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "sha": {
+                    "type": "string"
+                  },
+                  "at": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "run": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "sha",
+                  "at",
+                  "run"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "counts": {
+            "$ref": "#/components/schemas/Counts"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "stacks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StackLine"
+            }
+          }
+        },
+        "required": [
+          "org",
+          "repo",
+          "scan",
+          "counts",
+          "total",
+          "stacks"
+        ],
+        "additionalProperties": false
+      },
+      "Deploy": {
+        "type": "object",
+        "description": "A deploy, as the audit log says it.",
+        "properties": {
+          "deployment": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "description": "The deployment record, or null for a deploy made outside the dashboard."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stack": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "who": {
+            "type": "string",
+            "description": "ticked by alice, merged by bob, or no tick."
+          },
+          "via": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "in the app, or via the command line: where the tick was asked."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "type": "string",
+            "description": "In the trail's words: waiting to start, deploying now, went out, failed, no changes, drift fixed, drift gone, rehearsed, destroyed."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "in-sync",
+              "failed",
+              "none",
+              "deploying"
+            ]
+          },
+          "sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "flagged": {
+            "type": "boolean",
+            "description": "Deployed outside the dashboard."
+          },
+          "approvedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "deployment",
+          "stack",
+          "repo",
+          "who",
+          "via",
+          "result",
+          "state",
+          "sha",
+          "run",
+          "at",
+          "flagged",
+          "approvedBy"
+        ],
+        "additionalProperties": false
+      },
+      "Stack": {
+        "type": "object",
+        "properties": {
+          "stack": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "deploying",
+              "drifted",
+              "failed",
+              "in-sync"
+            ],
+            "description": "The app's five states: queued is deploying, drift is drifted, preview failed is failed."
+          },
+          "word": {
+            "type": "string"
+          },
+          "line": {
+            "type": "string"
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "creates": {
+                "type": "integer"
+              },
+              "updates": {
+                "type": "integer"
+              },
+              "replaces": {
+                "type": "integer"
+              },
+              "deletes": {
+                "type": "integer"
+              },
+              "tracking": {
+                "type": "integer"
+              },
+              "changed": {
+                "type": "integer"
+              },
+              "gone": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "creates",
+              "updates",
+              "replaces",
+              "deletes",
+              "tracking",
+              "changed",
+              "gone"
+            ],
+            "additionalProperties": false
+          },
+          "changes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "1 update, 1 replace: the row's counts in its words."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "destroys": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "What the row deletes or replaces."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "drift": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "1 changed, 1 gone outside the code."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ticked": {
+            "type": "boolean"
+          },
+          "failed": {
+            "type": "boolean"
+          },
+          "dashboard": {
+            "type": "string"
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "type": "object",
+                "description": "The stack's preview page: the check run of this name on the scanned commit, which the commit's checks list.",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "url"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastDeploy": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "deployment": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "who": {
+                    "type": "string"
+                  },
+                  "via": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "result": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "in-sync",
+                      "failed",
+                      "none",
+                      "deploying"
+                    ]
+                  },
+                  "sha": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "run": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "at": {
+                    "type": "string"
+                  },
+                  "flagged": {
+                    "type": "boolean"
+                  },
+                  "approvedBy": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "deployment",
+                  "who",
+                  "via",
+                  "result",
+                  "state",
+                  "sha",
+                  "run",
+                  "at",
+                  "flagged",
+                  "approvedBy"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "stack",
+          "repo",
+          "state",
+          "word",
+          "line",
+          "counts",
+          "changes",
+          "destroys",
+          "drift",
+          "ticked",
+          "failed",
+          "dashboard",
+          "preview",
+          "run",
+          "lastDeploy",
+          "at"
+        ],
+        "additionalProperties": false
+      },
+      "Audit": {
+        "type": "object",
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Deploy"
+            }
+          },
+          "asked": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "at": {
+                  "type": "string"
+                },
+                "repo": {
+                  "type": "string"
+                },
+                "who": {
+                  "type": "string"
+                },
+                "words": {
+                  "type": "string"
+                },
+                "link": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "via": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "at",
+                "repo",
+                "who",
+                "words",
+                "link",
+                "via"
+              ],
+              "additionalProperties": false
+            },
+            "description": "A rescan asked in the app or through the command line, and a pull request the command line opened."
+          },
+          "history": {
+            "type": "object",
+            "properties": {
+              "words": {
+                "type": "string"
+              },
+              "since": {
+                "type": "string"
+              },
+              "plan": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "words",
+              "since",
+              "plan"
+            ],
+            "additionalProperties": false
+          },
+          "locked": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "lines": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "name",
+                "lines"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "lines",
+          "asked",
+          "history",
+          "locked"
+        ],
+        "additionalProperties": false
+      },
+      "TickAnswer": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "asked",
+              "refused",
+              "github",
+              "moved",
+              "taken",
+              "failed"
+            ],
+            "description": "asked: the record is open and GitHub and the runner decide the rest; github: the tick happens on the dashboard on GitHub."
+          },
+          "sentence": {
+            "type": "string"
+          },
+          "deployment": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "status": {
+                    "type": "string",
+                    "description": "The deploy to poll."
+                  }
+                },
+                "required": [
+                  "id",
+                  "status"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dashboard": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "sentence",
+          "deployment",
+          "dashboard"
+        ],
+        "additionalProperties": false
+      },
+      "RescanAnswer": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "asked",
+              "refused",
+              "github",
+              "failed"
+            ]
+          },
+          "sentence": {
+            "type": "string"
+          },
+          "dashboard": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "outcome",
+          "sentence",
+          "dashboard"
+        ],
+        "additionalProperties": false
+      },
+      "Config": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "keys": {
+            "type": "object",
+            "description": "Every key a change may name, with the value the file gives it.",
+            "additionalProperties": {}
+          },
+          "pullRequest": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "branch": {
+                "type": "string"
+              },
+              "base": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "title",
+              "branch",
+              "base"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "repo",
+          "file",
+          "sha",
+          "url",
+          "text",
+          "problem",
+          "keys",
+          "pullRequest"
+        ],
+        "additionalProperties": false
+      },
+      "KeyChange": {
+        "type": "object",
+        "description": "A documented key of sluiceway.yaml that edit mode changes: dashboard.title, dashboard.redact, dashboard.sections, drift.enabled, tickers, recordWriters (true names sluiceway[bot]), ignore, stacks[<stack id>].deploy, stacks[<stack id>].tickers, and the rest the config route lists. null puts the action's default back.",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {}
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "PullRequestAnswer": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "opened",
+              "pull-request-open",
+              "nothing-to-change",
+              "config-invalid",
+              "two-files",
+              "no-default-branch",
+              "read-failed",
+              "write-failed"
+            ]
+          },
+          "pullRequest": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sentence": {
+            "type": "string"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "outcome",
+          "pullRequest",
+          "url",
+          "sentence",
+          "changes",
+          "problems"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

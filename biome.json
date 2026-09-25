@@ -20,6 +20,7 @@
       "!test/fixtures/kubectl",
       "!test/fixtures/conftest",
       "!test/fixtures/infracost",
+      "!test/fixtures/app",
       "!scripts/fixtures/conftest"
     ]
   },

@@ -16,5 +16,24 @@ Both read the files at path, or where you stand, and nothing else: no
 credentials, no token, no tool, no network. scan, resolve, apply and settle
 run only in the workflow.
 
-https://docs.sluiceway.dev/guides/init/"
+https://docs.sluiceway.dev/guides/init/
+
+With the Sluiceway app, as the person whose token it is:
+  sluiceway login          Paste a token from the app, or pipe it in.
+  sluiceway logout
+  sluiceway status [repo]  The org's stacks, or a repo's, by state.
+  sluiceway stack <repo> <stack id>
+                           A stack's row and its preview page.
+  sluiceway tick <repo> <stack id> [--yes]
+                           Tick it. A destroy needs --yes. Prints the
+                           deployment record once it waits to start.
+  sluiceway rescan <repo>  Ask GitHub for a full scan.
+  sluiceway settings <repo> [set <key>=<value> ...]
+                           Read the keys, or open a pull request that
+                           sets them.
+
+These call the app alone, over HTTPS, and never GitHub. --json answers in
+JSON, and --app <address> names another app than https://app.sluiceway.dev.
+Exit codes: 0 done, 1 failed, 2 not understood, 3 not signed in, 4 not
+found, 5 refused, 6 try again later."
 `;

@@ -52,16 +52,33 @@ describe("the command line cannot reach a runner's powers", () => {
     expect(dynamic).toEqual([]);
   });
 
+  // Slice 5.53 (record 0116): node:child_process starts the keychain's own
+  // command, and node:os finds the person's home for the token file.
   test("the packages it imports", () => {
     expect(packages).toEqual([
+      "node:child_process",
       "node:fs",
       "node:fs/promises",
+      "node:os",
       "node:path",
       "node:url",
       "picomatch",
       "yaml",
       "zod",
     ]);
+  });
+
+  // The app's commands reach the app through one client, and init and the
+  // check reach neither it nor the keychain.
+  test("one file calls fetch, and init and the check reach none of the app's code", () => {
+    const callers = files.filter((file) =>
+      /\bfetch\(/.test(readFileSync(join(SRC, file), "utf8").replace(/\/\/.*$/gm, "")),
+    );
+    expect(callers).toEqual(["cli/app-client.ts"]);
+    for (const entry of ["modes/init.ts", "modes/check.ts"]) {
+      const reached = reach(entry).files;
+      expect(reached.filter((file) => file.startsWith("cli/"))).toEqual([]);
+    }
   });
 });
 
@@ -103,6 +120,12 @@ describe("the package", () => {
 
 describe("the committed bundle", () => {
   const bundle = readFileSync(join(ROOT, "dist/cli.js"), "utf8");
+
+  // Record 0116: the app's commands add a client and a token store, not a
+  // package. npx downloads this file on every first run.
+  test("stays small: under 1.5 MB", () => {
+    expect(Buffer.byteLength(bundle)).toBeLessThan(1_500_000);
+  });
 
   test("starts with the line that runs it with node", () => {
     expect(bundle.split("\n")[0]).toBe("#!/usr/bin/env node");

@@ -38,6 +38,15 @@ async function cli(argv: string[], cwd: string, nodeVersion = "24.15.0") {
     nodeVersion,
     out: (line) => void out.push(line),
     err: (line) => void err.push(line),
+    // init and the check reach none of what the app's commands use.
+    fetch: globalThis.fetch,
+    tokens: {
+      read: () => Promise.reject(new Error("init and the check read no token.")),
+      write: () => Promise.reject(new Error("init and the check keep no token.")),
+      remove: () => Promise.reject(new Error("init and the check keep no token.")),
+    },
+    readToken: () => Promise.reject(new Error("init and the check ask for no token.")),
+    sleep: () => Promise.reject(new Error("init and the check never wait.")),
   });
   return { code, out, err, text: out.join("\n") };
 }
