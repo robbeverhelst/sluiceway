@@ -6,7 +6,7 @@ import { type AutoContext, type AutoStep, auto } from "../../src/modes/auto.ts";
 import { resolve } from "../../src/modes/resolve.ts";
 import { scan } from "../../src/modes/scan.ts";
 import { settle } from "../../src/modes/settle.ts";
-import { parseDashboard } from "../../src/render/marker.ts";
+import { parseDashboard, parseDashboard as parseRows } from "../../src/render/marker.ts";
 import {
   ACTION_REF,
   change,
@@ -80,7 +80,7 @@ function wired(h: ResolveHarness, eventName: string, event: unknown): Wired {
       },
       resolve: async (step) => {
         ran.push("resolve");
-        await resolve({
+        return await resolve({
           ...h.context,
           event,
           log: step.log,
@@ -280,5 +280,103 @@ describe("auto mode on its other events", () => {
       },
     };
     await expect(auto(strict)).rejects.toThrow("A preview failed");
+  });
+});
+
+// Outside records (slice 5.44, record 0109): a writer other than Sluiceway
+// opens a record naming the run of a dispatch it made. The one step resolves,
+// which hands the record on, deploys it through the fresh preview and the
+// hash check, settles, and skips its scan: the deploy wrote its own row.
+describe("auto mode on a dispatch with a record another writer opened for the run", () => {
+  function hashOf(h: ResolveHarness, stack: string): string {
+    const row = parseRows(h.github.issue(h.number).body).rows.find(
+      ({ stackId }) => stackId === stack,
+    );
+    if (!row?.known || !row.hash) throw new Error(`no hash on the row of ${stack}`);
+    return row.hash;
+  }
+
+  function outsideRecord(h: ResolveHarness, stack: string, hash = hashOf(h, stack)) {
+    return h.github.seedDeployment({
+      task: `sluiceway:${stack}`,
+      environment: "sluiceway",
+      sha: SHA,
+      payload: { v: 1, hash, ticker: "dave", run: RESOLVE_RUN },
+      status: { state: "queued" },
+    });
+  }
+
+  test("deploys the record, settles, and skips the scan with a line that says why", async () => {
+    const h = await scanned(TABLE);
+    const record = outsideRecord(h, "a:prod");
+    const w = wired(h, "workflow_dispatch", { ref: "refs/heads/main", inputs: {} });
+    await auto(w.context);
+
+    expect(w.ran).toEqual(["resolve", `apply ${record.id}`, "settle"]);
+    expect(h.adapter.applied).toEqual(["a:prod"]);
+    expect(h.github.deploymentStatuses(record.id).at(-1)?.state).toBe("success");
+    expect(rows(h)).toEqual({ "a:prod": "in-sync", "b:prod": "pending" });
+    expect(w.marks).toEqual(["handed on", "settled"]);
+    expect(w.log.lines).toContain(
+      "The scan of this run is skipped: resolve handed on 1 deployment record that another writer opened for this run, and the dispatch named no merged pull requests, so there is nothing to scan for. The deploy writes its own row, and the next push, schedule or dispatch scans (record 0109).",
+    );
+    const matrix = JSON.parse(w.outputs.values.matrix ?? "") as MatrixEntry[];
+    expect(matrix).toEqual([{ stack: "a:prod", environment: "sluiceway", deployment: record.id }]);
+  });
+
+  test("a record with a hash the fresh preview does not give deploys nothing, and the step is red", async () => {
+    const h = await scanned(TABLE);
+    const record = outsideRecord(h, "a:prod", "0000000000000000");
+    const w = wired(h, "workflow_dispatch", { ref: "refs/heads/main" });
+
+    await expect(auto(w.context)).rejects.toThrow("a:prod");
+    expect(w.ran).toEqual(["resolve", `apply ${record.id}`, "settle"]);
+    expect(h.adapter.applied).toEqual([]);
+    expect(h.github.deploymentStatuses(record.id).at(-1)).toMatchObject({
+      state: "error",
+      description: "the change moved since the tick",
+    });
+    expect(w.outputs.values.outcome).toBe("refused");
+  });
+
+  test("a dispatch that names the merged pull requests scans as before", async () => {
+    const h = await scanned(TABLE);
+    const record = outsideRecord(h, "a:prod");
+    const w = wired(h, "workflow_dispatch", {
+      ref: "refs/heads/main",
+      inputs: { "sluiceway-merged": "" },
+    });
+    await auto(w.context);
+
+    expect(w.ran).toEqual(["resolve", `apply ${record.id}`, "scan", "settle"]);
+  });
+
+  test("the schedule deploys the record and scans as before", async () => {
+    const h = await scanned(TABLE);
+    const record = outsideRecord(h, "a:prod");
+    const w = wired(h, "schedule", { schedule: "0 9 * * 1-5" });
+    await auto(w.context);
+
+    expect(w.ran).toEqual(["resolve", `apply ${record.id}`, "scan", "settle"]);
+  });
+
+  test("a dispatch that also starts a queued stack scans, as the next layer always did", async () => {
+    const h = await scanned(
+      { ...TABLE, "c:prod": pending("c:prod", change("cache")) },
+      { config: "stacks:\n  - path: b\n    dependsOn: [a:prod]\n" },
+    );
+    tick(h, ALICE, ["a:prod", "b:prod"]);
+    await resolve({ ...h.context, event: h.github.deliverEvent() });
+    const first = h.github
+      .deploymentsOf("sluiceway")
+      .find(({ task }) => task === "sluiceway:a:prod");
+    h.github.addDeploymentStatus(first?.id ?? 0, { state: "success", autoInactive: false });
+    const record = outsideRecord(h, "c:prod");
+    const w = wired(h, "workflow_dispatch", { ref: "refs/heads/main" });
+    await auto(w.context);
+
+    expect(w.ran.filter((one) => !one.startsWith("apply"))).toEqual(["resolve", "scan", "settle"]);
+    expect(h.adapter.applied.sort()).toEqual(["b:prod", "c:prod"]);
+    expect(h.github.deploymentStatuses(record.id).at(-1)?.state).toBe("success");
   });
 });

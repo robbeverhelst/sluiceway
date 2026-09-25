@@ -5,6 +5,8 @@
 // check reads the triggers of a workflow file and asks the same rule which
 // modes its step may run.
 
+import { MERGE_SCAN_INPUT } from "./merge-scan.ts";
+
 // Every mode of the action, in the order the docs list them. The entry point,
 // the check and its words all read this one list.
 export const MODES = ["auto", "scan", "resolve", "apply", "settle", "check", "init"] as const;
@@ -51,6 +53,8 @@ export interface AutoEvent {
   // payload names it.
   ref?: string | undefined;
   defaultBranch?: string | undefined;
+  // For a dispatch: the names of the inputs it carried, whatever their values.
+  inputs?: readonly string[] | undefined;
 }
 
 export type AutoPlan = { modes: AutoMode[] } | { notice: string };
@@ -89,6 +93,32 @@ export function autoModes(event: AutoEvent, config: { readOnly: boolean }): Auto
     }
   }
   return { modes };
+}
+
+// What `resolve` handed on, as auto mode counts it: every matrix entry, and
+// how many of them were outside records (record 0109).
+export interface HandedOn {
+  entries: number;
+  outsideRecords: number;
+}
+
+// Whether the scan that follows `resolve` on a dispatch is skipped (record
+// 0109), as the line for the job log, or nothing when the scan runs. A run
+// that a writer dispatched to deploy the records it opened has nothing to
+// scan for: the deploys write their own rows, and a scan per deploy is the
+// cost the split workflow avoided. The scan runs when `resolve` also started
+// a queued stack, whose run always scanned after the layer, when the dispatch
+// named the merged pull requests, which the scan after a merge reads (record
+// 0064), and on the schedule, whose scan is the drift check and the window.
+export function scanSkippedAfterResolve(event: AutoEvent, handedOn: HandedOn): string | undefined {
+  if (event.name !== "workflow_dispatch") return undefined;
+  if (handedOn.outsideRecords === 0 || handedOn.outsideRecords !== handedOn.entries) {
+    return undefined;
+  }
+  if ((event.inputs ?? []).includes(MERGE_SCAN_INPUT)) return undefined;
+  const count = handedOn.outsideRecords;
+  const one = count === 1;
+  return `The scan of this run is skipped: resolve handed on ${count} deployment ${one ? "record" : "records"} that another writer opened for this run, and the dispatch named no merged pull requests, so there is nothing to scan for. The ${one ? "deploy writes its own row" : "deploys write their own rows"}, and the next push, schedule or dispatch scans (record 0109).`;
 }
 
 // The events a workflow file can be started on, as the check reads its `on:`.

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { autoModes, autoModesOn } from "../../src/core/auto-mode.ts";
+import { autoModes, autoModesOn, scanSkippedAfterResolve } from "../../src/core/auto-mode.ts";
 
 // Slice 5.12 (record 0077): with no mode, the action reads the event and
 // picks what to run itself, so the workflow needs no if: and no needs:.
@@ -161,4 +161,43 @@ describe("autoModesOn", () => {
       }
     },
   );
+});
+
+// Slice 5.44 (record 0109): a dispatched run whose resolve handed on nothing
+// but outside records, and whose dispatch named no merged pull requests, has
+// nothing to scan for. The deploys write their own rows.
+describe("scanSkippedAfterResolve", () => {
+  const dispatch = (inputs?: string[]) => ({
+    name: "workflow_dispatch",
+    ...(inputs === undefined ? {} : { inputs }),
+  });
+
+  test("skips the scan of a dispatch that handed on outside records alone, and says why", () => {
+    expect(scanSkippedAfterResolve(dispatch(), { entries: 1, outsideRecords: 1 })).toBe(
+      "The scan of this run is skipped: resolve handed on 1 deployment record that another writer opened for this run, and the dispatch named no merged pull requests, so there is nothing to scan for. The deploy writes its own row, and the next push, schedule or dispatch scans (record 0109).",
+    );
+    expect(scanSkippedAfterResolve(dispatch([]), { entries: 2, outsideRecords: 2 })).toBe(
+      "The scan of this run is skipped: resolve handed on 2 deployment records that another writer opened for this run, and the dispatch named no merged pull requests, so there is nothing to scan for. The deploys write their own rows, and the next push, schedule or dispatch scans (record 0109).",
+    );
+  });
+
+  test("scans when resolve also started a queued stack, or handed on nothing", () => {
+    expect(scanSkippedAfterResolve(dispatch(), { entries: 2, outsideRecords: 1 })).toBeUndefined();
+    expect(scanSkippedAfterResolve(dispatch(), { entries: 0, outsideRecords: 0 })).toBeUndefined();
+  });
+
+  test("scans when the dispatch named the merged pull requests, whatever else it named", () => {
+    expect(
+      scanSkippedAfterResolve(dispatch(["sluiceway-merged"]), { entries: 1, outsideRecords: 1 }),
+    ).toBeUndefined();
+    expect(
+      scanSkippedAfterResolve(dispatch(["reason"]), { entries: 1, outsideRecords: 1 }),
+    ).toBeDefined();
+  });
+
+  test("the schedule always scans", () => {
+    expect(
+      scanSkippedAfterResolve({ name: "schedule" }, { entries: 1, outsideRecords: 1 }),
+    ).toBeUndefined();
+  });
 });

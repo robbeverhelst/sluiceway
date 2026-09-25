@@ -17,10 +17,10 @@ import type { OutputName } from "../github/outputs.ts";
 import { readWorkflowRef } from "../github/workflow-ref.ts";
 import { stepNotifier } from "../notify/step.ts";
 import type { AutoStep } from "./auto.ts";
-import { resolve } from "./resolve.ts";
+import { type ResolveOutcome, resolve } from "./resolve.ts";
 
 // Auto mode hands in the log and the outputs of its one step (record 0077).
-export async function runResolve(directory: string, step?: AutoStep): Promise<void> {
+export async function runResolve(directory: string, step?: AutoStep): Promise<ResolveOutcome> {
   // For the timing line (slice 5.23): the process started this long ago.
   const startup = process.uptime() * 1000;
   // The one read of the environment (build plan, section 5).
@@ -29,7 +29,7 @@ export async function runResolve(directory: string, step?: AutoStep): Promise<vo
   const token = readToken(core.getInput);
   const job = readJob(env);
   const log = step?.log ?? actionsLog();
-  await resolve({
+  return await resolve({
     root: job.root,
     // Every tool, each stack to the adapter of its own (record 0053).
     adapter: tools,

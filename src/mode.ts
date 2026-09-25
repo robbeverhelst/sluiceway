@@ -40,7 +40,8 @@ type Handler = (directory: string) => Promise<void>;
 const handlers: Record<Mode, Handler> = {
   auto: runAuto,
   scan: runScan,
-  resolve: runResolve,
+  // What resolve tells auto mode is for auto mode alone (record 0109).
+  resolve: async (directory) => void (await runResolve(directory)),
   apply: runApply,
   settle: () => runSettle(),
   // The check starts no tool unless backend: true (record 0074) or

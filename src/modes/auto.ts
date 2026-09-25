@@ -6,13 +6,18 @@
 // on, each goes to `apply` in turn, and `settle` runs last whenever anything
 // was handed on, also when a mode before it ended red.
 
-import { type AutoEvent, type AutoMode, autoModes } from "../core/auto-mode.ts";
+import {
+  type AutoEvent,
+  type AutoMode,
+  autoModes,
+  scanSkippedAfterResolve,
+} from "../core/auto-mode.ts";
 import { loadConfig } from "../core/config-file.ts";
 import { type MatrixEntry, matrixOutput, parseMatrixOutput } from "../core/resolve.ts";
 import { editedIssue } from "../github/event.ts";
 import type { JobLog } from "../github/job-log.ts";
 import type { StepOutputs } from "../github/outputs.ts";
-import { notTheDashboardText } from "./resolve.ts";
+import { notTheDashboardText, type ResolveOutcome } from "./resolve.ts";
 
 // What one mode inside the step is handed: the step's log, whose summary it
 // shares with the other modes, and the step's outputs.
@@ -35,7 +40,8 @@ export interface AutoContext {
   // The modes, each as the glue builds it for this job.
   run: {
     scan(step: AutoStep): Promise<void>;
-    resolve(step: AutoStep): Promise<void>;
+    // What it handed on beyond `matrix`, for the scan that may follow (record 0109).
+    resolve(step: AutoStep): Promise<ResolveOutcome>;
     apply(deploymentId: number, step: AutoStep): Promise<void>;
     settle(step: AutoStep): Promise<void>;
     check(step: AutoStep): Promise<void>;
@@ -59,11 +65,13 @@ function text(value: unknown): string | undefined {
 // What the rule needs of the event, read from its payload.
 export function autoEvent(eventName: string, payload: unknown): AutoEvent {
   const body = record(payload);
+  const inputs = record(body?.inputs);
   return {
     name: eventName,
     action: text(body?.action),
     ref: text(body?.ref),
     defaultBranch: text(record(body?.repository)?.default_branch),
+    ...(inputs === undefined ? {} : { inputs: Object.keys(inputs) }),
   };
 }
 
@@ -83,9 +91,8 @@ function message(error: unknown): string {
 }
 
 export async function auto(context: AutoContext): Promise<void> {
-  const plan = autoModes(autoEvent(context.eventName, context.event), {
-    readOnly: readOnly(context.root),
-  });
+  const event = autoEvent(context.eventName, context.event);
+  const plan = autoModes(event, { readOnly: readOnly(context.root) });
   if ("notice" in plan) {
     context.notice(plan.notice);
     return;
@@ -143,14 +150,30 @@ export async function auto(context: AutoContext): Promise<void> {
     }
   };
 
+  // The scan of a dispatch is skipped when resolve handed on nothing but
+  // outside records (record 0109).
+  let skipScan: string | undefined;
   try {
     for (const mode of plan.modes) {
+      if (mode === "scan" && skipScan !== undefined) {
+        context.log.info(skipScan);
+        continue;
+      }
       const step = stepFor();
       context.log.info(`Sluiceway runs ${mode}, for the ${context.eventName} event of this run.`);
-      await attempt(mode, () => runMode(context, mode, step));
+      let outcome: ResolveOutcome | undefined;
+      await attempt(mode, async () => {
+        outcome = await runMode(context, mode, step);
+      });
       // What was handed on deploys even when the mode itself ended red, as
       // `!cancelled()` let the apply jobs of the split workflow go ahead.
       const entries = step.handed();
+      if (mode === "resolve") {
+        skipScan = scanSkippedAfterResolve(event, {
+          entries: entries.length,
+          outsideRecords: outcome?.outsideRecords ?? 0,
+        });
+      }
       if (entries.length > 0 && started.length === 0) context.handedOn?.();
       started.push(...entries);
       for (const entry of entries) {
@@ -173,13 +196,19 @@ export async function auto(context: AutoContext): Promise<void> {
   if (failures.length > 0) throw new Error(failures.join(" "));
 }
 
-function runMode(context: AutoContext, mode: AutoMode, step: AutoStep): Promise<void> {
+async function runMode(
+  context: AutoContext,
+  mode: AutoMode,
+  step: AutoStep,
+): Promise<ResolveOutcome | undefined> {
   switch (mode) {
     case "scan":
-      return context.run.scan(step);
+      await context.run.scan(step);
+      return undefined;
     case "resolve":
-      return context.run.resolve(step);
+      return await context.run.resolve(step);
     case "check":
-      return context.run.check(step);
+      await context.run.check(step);
+      return undefined;
   }
 }
