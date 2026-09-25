@@ -198,7 +198,8 @@ function previewedPart(
     ...(pages.refused === undefined
       ? []
       : [`${noPagesText(pages.refused, true)} The summary of the run holds the same.`]),
-    ...unclaimedText(outcome.unclaimed, (path) => `\`${escapeText(path)}\``),
+    // In <code> and not a code span, which would show the references as typed.
+    ...unclaimedText(outcome.unclaimed, (path) => `<code>${escapeText(path)}</code>`),
   ];
   return { log, summary };
 }

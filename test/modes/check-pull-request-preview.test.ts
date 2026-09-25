@@ -148,7 +148,7 @@ describe("the pull request preview of the check", () => {
       `| network:prod | 1 update, **1 delete** | [preview](${prod?.htmlUrl}) |`,
     );
     expect(summary).toContain(
-      "Files no stack claims, for which the scan after the merge previews every stack: `package-lock.json`.",
+      "Files no stack claims, for which the scan after the merge previews every stack: <code>package-lock.json</code>.",
     );
     // The closing says the preview ran the tool for these stacks only.
     expect(summary).toContain(

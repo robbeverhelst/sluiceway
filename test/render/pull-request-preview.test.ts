@@ -120,7 +120,7 @@ describe("the check's part about the pull request preview", () => {
             pageUrl: `${REPO_URL}/runs/2`,
           },
         ],
-        unclaimed: ["package-lock.json"],
+        unclaimed: ["package-lock.json", "packages/@scope/a_b.json"],
         pages: { created: 2, updated: 0, failed: [], refused: undefined },
       },
     });
@@ -133,14 +133,16 @@ describe("the check's part about the pull request preview", () => {
         `| network:dev | no changes | [preview](${REPO_URL}/runs/1) |`,
         `| storage/buckets:prod | 1 update, **1 replace** | [preview](${REPO_URL}/runs/2) |`,
       ].join("\n"),
-      "Files no stack claims, for which the scan after the merge previews every stack: `package-lock.json`.",
+      // In <code>, where a character reference and a span are read as they
+      // are in any other HTML, and not in a code span, where they show as typed.
+      "Files no stack claims, for which the scan after the merge previews every stack: <code>package-lock.json</code>, <code>packages/<span>@</span>scope/a&#95;b.json</code>.",
     ]);
     expect(texts(part)).toEqual([
       "Previewed 2 stacks after the merge of #12 into main, at its head commit 89abcde. Nothing deploys from a pull request preview.",
       "network:dev: no changes.",
       "storage/buckets:prod: 1 update, 1 replace.",
       "Wrote the preview pages of 2 stacks on 89abcde: 2 created, 0 updated.",
-      "Files no stack claims, for which the scan after the merge previews every stack: package-lock.json.",
+      "Files no stack claims, for which the scan after the merge previews every stack: package-lock.json, packages/@scope/a_b.json.",
     ]);
   });
 
