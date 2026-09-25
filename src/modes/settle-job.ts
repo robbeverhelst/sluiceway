@@ -5,8 +5,8 @@
 
 import { readFileSync } from "node:fs";
 import * as core from "@actions/core";
-import { getOctokit } from "@actions/github";
 import { tools } from "../adapters/tools.ts";
+import { createGitHubClient } from "../github/client.ts";
 import { readEventPayload } from "../github/event.ts";
 import { readToken } from "../github/inputs.ts";
 import { readJob } from "../github/job.ts";
@@ -27,7 +27,7 @@ export async function runSettle(step?: AutoStep): Promise<void> {
     root: job.root,
     // Every tool, each stack to the adapter of its own (record 0053).
     adapter: tools,
-    github: createOctokitPort(getOctokit(token), { owner: job.owner, repo: job.repo }),
+    github: createOctokitPort(createGitHubClient(token), { owner: job.owner, repo: job.repo }),
     log: step?.log ?? actionsLog(),
     repoUrl: job.repoUrl,
     runId: job.runId,

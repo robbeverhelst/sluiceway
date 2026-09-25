@@ -15,6 +15,7 @@ import {
 } from "../../scripts/written-examples.ts";
 import { deploymentPayloadJsonSchema, deploymentPayloadSchema } from "../../src/core/deployment.ts";
 import { deployFailureText, previewFailureText } from "../../src/core/failure-reason.ts";
+import { API_VERSION } from "../../src/github/client.ts";
 import {
   bulkMarker,
   mergeMarker,
@@ -101,6 +102,15 @@ describe("the rows drawn with the reason words", () => {
     const prose = section(page, "#### Drawing a row from its marker");
     expect(prose).toContain(`\`${deployFailureText({ kind: "on-record" })}\``);
     expect(prose).toContain(`\`${previewFailureText({ kind: "in-summary" })}\``);
+  });
+});
+
+describe("the GitHub API version", () => {
+  // Issue 266: every call names the version, and a reader of the page who
+  // talks to GitHub beside the action knows which one the shape was read and
+  // written under.
+  test("is the one the action pins", () => {
+    expect(section(page, "## The GitHub API version")).toContain(`\`${API_VERSION}\``);
   });
 });
 

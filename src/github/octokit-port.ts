@@ -273,11 +273,11 @@ export function createOctokitPort(octokit: Octokit, repo: Repo): GitHubPort {
           workflow_id: workflow,
           ref,
           ...(inputs ? { inputs } : {}),
-          // GitHub answers 200 with the run it started, where it used to
-          // answer 204 with nothing (slice 5.9).
-          return_run_details: true,
         },
       );
+      // Under API version 2026-03-10 GitHub always answers 200 with the run
+      // it started (issue 266). Slice 5.9 had to ask for it with
+      // `return_run_details`, which that version no longer takes.
       const page = (data as { html_url?: unknown } | undefined)?.html_url;
       return typeof page === "string" ? page : undefined;
     },

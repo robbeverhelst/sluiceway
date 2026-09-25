@@ -258,8 +258,9 @@ export interface GitHubPort {
   // needs `actions: write`: without it GitHub answers 403.
   // With `inputs` only for a workflow that declares them: GitHub refuses a
   // dispatch with an input the workflow does not declare (record 0064).
-  // Asks GitHub for the run it started (`return_run_details`, slice 5.9) and
-  // gives back the page of that run, or nothing when GitHub did not say.
+  // Gives back the page of the run it started, which GitHub names in its
+  // answer under API version 2026-03-10 (slice 5.9, issue 266), or nothing
+  // when GitHub did not say.
   dispatchWorkflow(
     workflow: string,
     ref: string,

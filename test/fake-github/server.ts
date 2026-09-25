@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { API_VERSION } from "../../src/github/client.ts";
 import type { Issue } from "../../src/github/port.ts";
 import { type FakeGitHub, FakeGitHubError } from "./fake-github.ts";
 import { checkRoutes } from "./server-checks.ts";
@@ -16,6 +17,10 @@ import { runRoutes } from "./server-runs.ts";
 export interface FakeGitHubServer {
   // What GITHUB_API_URL is set to.
   url: string;
+  // Every request refused for the API version it named or left out, as
+  // "<method> <path> named ..." (issue 266). Empty when the action sent the
+  // version it pins on every call.
+  refused: string[];
   close(): Promise<void>;
 }
 
@@ -140,8 +145,9 @@ function routes(fake: FakeGitHub, baseUrl: () => string): [string, RegExp, Route
             ? (body.inputs as Record<string, string>)
             : undefined;
         const page = await fake.dispatchWorkflow(workflow, text(body.ref), inputs);
-        // GitHub names the run only when it is asked to (slice 5.9).
-        if (body.return_run_details !== true || page === undefined) return { status: 204 };
+        // Under API version 2026-03-10 GitHub always names the run it started
+        // and takes no `return_run_details` (issue 266).
+        if (page === undefined) return { status: 204 };
         const id = page.slice(page.lastIndexOf("/") + 1);
         return {
           status: 200,
@@ -306,11 +312,29 @@ function send(response: ServerResponse, answer: Answer): void {
 
 export async function startFakeGitHubServer(fake: FakeGitHub): Promise<FakeGitHubServer> {
   let url = "";
+  const refused: string[] = [];
   const table = routes(fake, () => url);
   const server = createServer(async (request, response) => {
     try {
       const target = new URL(request.url ?? "/", "http://fake");
       const method = request.method ?? "GET";
+      // The fake answers the version the action pins and no other, so a call
+      // that forgets it fails wherever it is made (issue 266). GitHub itself
+      // runs such a call under its default version, and answers 400 to a
+      // version it does not know.
+      const version = request.headers["x-github-api-version"];
+      if (version !== API_VERSION) {
+        const named =
+          typeof version === "string" ? `named API version ${version}` : "named no API version";
+        refused.push(`${method} ${target.pathname} ${named}`);
+        send(response, {
+          status: 400,
+          json: {
+            message: `The fake GitHub server answers API version ${API_VERSION} only, and this request ${named}`,
+          },
+        });
+        return;
+      }
       for (const [verb, pattern, route] of table) {
         const match = verb === method ? pattern.exec(target.pathname) : null;
         if (!match) continue;
@@ -341,6 +365,7 @@ export async function startFakeGitHubServer(fake: FakeGitHub): Promise<FakeGitHu
   url = `http://127.0.0.1:${port}`;
   return {
     url,
+    refused,
     close: () =>
       new Promise((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { getOctokit } from "@actions/github";
+import { API_VERSION, createGitHubClient } from "../../src/github/client.ts";
 import { createOctokitPort } from "../../src/github/octokit-port.ts";
 import { FakeGitHub } from "./fake-github.ts";
 import { type FakeGitHubServer, startFakeGitHubServer } from "./server.ts";
@@ -17,7 +17,7 @@ async function served() {
   const fake = new FakeGitHub();
   const server = await startFakeGitHubServer(fake);
   servers.push(server);
-  const octokit = getOctokit("a-token", { baseUrl: server.url });
+  const octokit = createGitHubClient("a-token", { baseUrl: server.url });
   return { fake, port: createOctokitPort(octokit, { owner: "acme", repo: "infra" }) };
 }
 
@@ -48,8 +48,10 @@ describe("the runs an issue edit started, over HTTP", () => {
     const server = servers[0];
     const answer = await fetch(
       `${server?.url}/repos/acme/infra/actions/workflows/sluiceway.yml/runs?event=push`,
+      { headers: { "x-github-api-version": API_VERSION } },
     );
     expect(answer.status).toBe(400);
+    expect(server?.refused).toEqual([]);
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getOctokit } from "@actions/github";
+import { createGitHubClient } from "../../src/github/client.ts";
 import { createOctokitPort } from "../../src/github/octokit-port.ts";
 
 // The real Octokit with its fetch swapped for one that answers from a list, as
@@ -18,13 +18,15 @@ function portThatAnswers(status: number, json?: unknown) {
       headers: { "content-type": "application/json" },
     });
   };
-  const octokit = getOctokit("a-token", { request: { fetch } });
+  const octokit = createGitHubClient("a-token", { request: { fetch } });
   return { port: createOctokitPort(octokit, { owner: "acme", repo: "infra" }), sent };
 }
 
 describe("dispatching a workflow", () => {
-  // Slice 5.9: it asks for the run it started, and gives back its page.
-  test("is one POST to the workflow's dispatches, with the ref, asking for the run it starts", async () => {
+  // Slice 5.9: it gives back the page of the run it started. Under API
+  // version 2026-03-10 GitHub always names the run and the parameter that
+  // asked for it, `return_run_details`, is gone (issue 266), so it is not sent.
+  test("is one POST to the workflow's dispatches, with the ref alone, and gives back the run's page", async () => {
     const { port, sent } = portThatAnswers(200, {
       workflow_run_id: 99,
       run_url: "https://api.github.com/repos/acme/infra/actions/runs/99",
@@ -38,7 +40,7 @@ describe("dispatching a workflow", () => {
       {
         method: "POST",
         path: "/repos/acme/infra/actions/workflows/sluiceway.yml/dispatches",
-        body: { ref: "main", return_run_details: true },
+        body: { ref: "main" },
       },
     ]);
   });

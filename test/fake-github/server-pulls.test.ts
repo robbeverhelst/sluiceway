@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { getOctokit } from "@actions/github";
+import { createGitHubClient } from "../../src/github/client.ts";
 import { createOctokitPort } from "../../src/github/octokit-port.ts";
 import { FakeGitHub } from "./fake-github.ts";
 import { type FakeGitHubServer, startFakeGitHubServer } from "./server.ts";
@@ -18,7 +18,7 @@ test("the open pull requests, the merge settings and a merge go over HTTP as the
   const fake = new FakeGitHub();
   const server = await startFakeGitHubServer(fake);
   servers.push(server);
-  const port = createOctokitPort(getOctokit("a-token", { baseUrl: server.url }), {
+  const port = createOctokitPort(createGitHubClient("a-token", { baseUrl: server.url }), {
     owner: "acme",
     repo: "infra",
   });
@@ -47,7 +47,7 @@ test("more than 100 open pull requests come in pages over HTTP, one request each
   const fake = new FakeGitHub();
   const server = await startFakeGitHubServer(fake);
   servers.push(server);
-  const port = createOctokitPort(getOctokit("a-token", { baseUrl: server.url }), {
+  const port = createOctokitPort(createGitHubClient("a-token", { baseUrl: server.url }), {
     owner: "acme",
     repo: "infra",
   });

@@ -4,11 +4,11 @@
 import { readFileSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import * as core from "@actions/core";
-import { getOctokit } from "@actions/github";
 import { runProcess } from "../adapters/process.ts";
 import { tools } from "../adapters/tools.ts";
 import { poolSize } from "../core/pool.ts";
 import { readActionRef } from "../github/action-ref.ts";
+import { createGitHubClient } from "../github/client.ts";
 import { loadEnvFile } from "../github/env-file.ts";
 import {
   mergedBeforeDispatch,
@@ -45,7 +45,7 @@ export async function runScan(directory: string, step?: AutoStep): Promise<void>
   const inputs = readScanInputs(core.getInput);
   const job = readJob(env);
   const log = step?.log ?? actionsLog();
-  const octokit = getOctokit(inputs.token);
+  const octokit = createGitHubClient(inputs.token);
   const payload = readEventPayload(env, (path) => readFileSync(path, "utf8"));
   await scan({
     root: job.root,

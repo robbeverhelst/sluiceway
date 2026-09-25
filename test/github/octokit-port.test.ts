@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getOctokit } from "@actions/github";
+import { createGitHubClient } from "../../src/github/client.ts";
 import { createOctokitPort } from "../../src/github/octokit-port.ts";
 
 // The real Octokit, with its fetch swapped for one that answers from a list.
@@ -36,7 +36,7 @@ function portThatAnswers(answers: Answer[]) {
       headers: { "content-type": "application/json", ...answer.headers },
     });
   };
-  const octokit = getOctokit("a-token", { request: { fetch } });
+  const octokit = createGitHubClient("a-token", { request: { fetch } });
   return { port: createOctokitPort(octokit, { owner: "acme", repo: "infra" }), sent };
 }
 

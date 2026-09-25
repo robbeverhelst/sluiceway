@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { getOctokit } from "@actions/github";
+import { createGitHubClient } from "../../src/github/client.ts";
 import { createOctokitPort } from "../../src/github/octokit-port.ts";
 import { FakeGitHub } from "../fake-github/fake-github.ts";
 import { type FakeGitHubServer, startFakeGitHubServer } from "../fake-github/server.ts";
@@ -37,7 +37,7 @@ function portThatAnswers(answers: { status?: number; json: unknown; headers?: ob
     Object.defineProperty(response, "url", { value: url });
     return response;
   };
-  const octokit = getOctokit("a-token", { request: { fetch } });
+  const octokit = createGitHubClient("a-token", { request: { fetch } });
   return { port: createOctokitPort(octokit, { owner: "acme", repo: "infra" }), sent };
 }
 
@@ -101,7 +101,7 @@ async function served() {
   const fake = new FakeGitHub();
   const server = await startFakeGitHubServer(fake);
   servers.push(server);
-  const octokit = getOctokit("a-token", { baseUrl: server.url });
+  const octokit = createGitHubClient("a-token", { baseUrl: server.url });
   return { fake, port: createOctokitPort(octokit, { owner: "acme", repo: "infra" }) };
 }
 

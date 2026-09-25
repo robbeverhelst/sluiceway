@@ -3,10 +3,10 @@
 
 import { readFileSync } from "node:fs";
 import * as core from "@actions/core";
-import { getOctokit } from "@actions/github";
 import { runProcess } from "../adapters/process.ts";
 import { tools } from "../adapters/tools.ts";
 import { readActionRef } from "../github/action-ref.ts";
+import { createGitHubClient } from "../github/client.ts";
 import { loadEnvFile } from "../github/env-file.ts";
 import { readEventPayload } from "../github/event.ts";
 import { readApplyInputs, readEnvFileInput, readJobId } from "../github/inputs.ts";
@@ -49,7 +49,10 @@ export async function runApply(
     // Every tool, each stack to the adapter of its own (record 0053).
     adapter: tools,
     run: runProcess,
-    github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),
+    github: createOctokitPort(createGitHubClient(inputs.token), {
+      owner: job.owner,
+      repo: job.repo,
+    }),
     log,
     previewTimeoutMinutes: inputs.previewTimeoutMinutes,
     deployTimeoutMinutes: inputs.deployTimeoutMinutes,

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { getOctokit } from "@actions/github";
+import { API_VERSION, createGitHubClient } from "../../src/github/client.ts";
 import { createOctokitPort } from "../../src/github/octokit-port.ts";
 import type { GitHubPort } from "../../src/github/port.ts";
 import { FakeGitHub } from "./fake-github.ts";
@@ -22,7 +22,7 @@ afterEach(async () => {
 async function overHttp(fake: FakeGitHub): Promise<GitHubPort> {
   const server = await startFakeGitHubServer(fake);
   servers.push(server);
-  const octokit = getOctokit("a-token", { baseUrl: server.url });
+  const octokit = createGitHubClient("a-token", { baseUrl: server.url });
   return createOctokitPort(octokit, { owner: "acme", repo: "infra" });
 }
 
@@ -271,6 +271,7 @@ describe("a writer that is not Sluiceway, over HTTP", () => {
 
     const answer = await fetch(`${server.url}/repos/acme/infra/deployments/${second.id}/statuses`, {
       method: "POST",
+      headers: { "x-github-api-version": API_VERSION },
       body: JSON.stringify({ state: "success" }),
     });
     expect(answer.status).toBe(201);

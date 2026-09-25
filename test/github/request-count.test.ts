@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { getOctokit } from "@actions/github";
+import { createGitHubClient } from "../../src/github/client.ts";
 import { createOctokitPort } from "../../src/github/octokit-port.ts";
 import { countRequests } from "../../src/github/request-count.ts";
 import { FakeGitHub } from "../fake-github/fake-github.ts";
@@ -20,7 +20,7 @@ test("every request on the wire counts once: two pages of a list, a read and a G
   for (let i = 0; i < 150; i++) fake.seedIssue({ labels: ["sluiceway"] });
   const server = await startFakeGitHubServer(fake);
   servers.push(server);
-  const octokit = getOctokit("a-token", { baseUrl: server.url });
+  const octokit = createGitHubClient("a-token", { baseUrl: server.url });
   const requests = countRequests(octokit);
   const port = createOctokitPort(octokit, { owner: "acme", repo: "infra" });
 
@@ -36,7 +36,7 @@ test("every request on the wire counts once: two pages of a list, a read and a G
 test("a request GitHub refuses counts too", async () => {
   const server = await startFakeGitHubServer(new FakeGitHub());
   servers.push(server);
-  const octokit = getOctokit("a-token", { baseUrl: server.url });
+  const octokit = createGitHubClient("a-token", { baseUrl: server.url });
   const requests = countRequests(octokit);
   await expect(
     createOctokitPort(octokit, { owner: "acme", repo: "infra" }).getIssue(99),

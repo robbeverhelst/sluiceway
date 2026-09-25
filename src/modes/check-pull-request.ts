@@ -8,10 +8,10 @@
 import { readFileSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import * as core from "@actions/core";
-import { getOctokit } from "@actions/github";
 import { runProcess } from "../adapters/process.ts";
 import { tools } from "../adapters/tools.ts";
 import { poolSize } from "../core/pool.ts";
+import { createGitHubClient } from "../github/client.ts";
 import { pullRequestOf, readEventPayload } from "../github/event.ts";
 import { readJobId, readScanInputs } from "../github/inputs.ts";
 import { readJob } from "../github/job.ts";
@@ -39,7 +39,10 @@ export const pullRequestPreviewContext: PullRequestPreviewFactory = (env, log, m
     mask,
     adapter: tools,
     run: runProcess,
-    github: createOctokitPort(getOctokit(inputs.token), { owner: job.owner, repo: job.repo }),
+    github: createOctokitPort(createGitHubClient(inputs.token), {
+      owner: job.owner,
+      repo: job.repo,
+    }),
     log,
     now: () => new Date(),
     pool: poolSize(inputs.concurrency, machineCores()),
