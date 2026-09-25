@@ -105,7 +105,6 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A recently deployed list longer than 50 lines
 - Reading a deployment record whose payload has another version
 - Finding a stack's records after its `environment` label changed
-- `settle` writing the row of a stack whose record it ended
 - A failure line on a row that a narrowed scan carries through
 - Allowing for a runner clock that differs from GitHub's
 - A shortening level that also drops a row's links, for more than about 100 stacks pending at once

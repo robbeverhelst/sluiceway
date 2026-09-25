@@ -60,7 +60,7 @@ One row per stack. Its state says where the row sits and is counted, and nothing
 | Key | Meaning |
 |---|---|
 | `stack` | The stack id |
-| `state` | `pending`, `deploying`, `queued`, `preview-failed`, `drift` or `in-sync`. A state you do not know: pass over the row |
+| `state` | `pending`, `deploying`, `queued`, `preview-failed`, `drift` or `in-sync`. A state you do not know: pass over the row. `preview-failed` is also the row `settle` writes for a deploy it ended, with its failure line, until the next scan previews the stack ([record 0113](adr/0113-settle-writes-the-row-of-a-deploy-it-ended-with-the-failure-line.md)) |
 | `hash` | The diff hash of what the row shows, 16 hex characters. Only on a row rendered from a diff |
 | `destroys` | How many deletes and replaces the diff holds |
 | `deletes` | How many of the destroys are deletes. Written whenever `destroys` is. Absent on a row written before the key came |

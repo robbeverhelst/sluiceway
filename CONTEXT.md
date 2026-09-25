@@ -375,7 +375,7 @@ Which group a stack's row belongs to: pending, drift, deploying, in sync, previe
 _Avoid_: Status, stack state, phase
 
 **Preview failure**:
-A stack whose preview did not produce a diff. Its row has no checkbox and links to the run that failed. One stack's preview failure never stops the others.
+A stack whose preview did not produce a diff. Its row has no checkbox and links to the run that failed. One stack's preview failure never stops the others. `settle` writes a row of the same state for a deploy it ended, which says there is no preview since the deploy ended and carries the failure line, until the next scan previews the stack.
 _Avoid_: Error row, broken stack, failed stack
 
 **Failure line**:
