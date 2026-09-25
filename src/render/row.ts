@@ -179,7 +179,18 @@ export interface RowOptions {
   // `dashboard.timeZone` (record 0089): the zone of the failure line's time,
   // which says its offset. UTC when absent. The marker stays the same.
   timeZone?: string | undefined;
+  // `dashboard.pendingDetail` (record 0114): how much a pending row shows
+  // under its first line. The marker is the same at every setting, and no
+  // setting drops a failure line or a delete or replace line. Full when
+  // absent.
+  detail?: PendingDetail | undefined;
 }
+
+// full: every line, as before record 0114. compact: the first line, and only
+// the lines no setting hides and the ones that say why a row has no box or a
+// tick would not go. names: the stack id and its counts, without the preview
+// link, and only the lines no setting hides.
+export type PendingDetail = "full" | "compact" | "names";
 
 export const INDENT = "  ";
 
@@ -550,12 +561,15 @@ export function policiesNotRunLine(
 // redacted or shortened row keeps the count and points at the page.
 function policyLines(row: PendingRow, options: RowOptions): string[] {
   const { policies } = row;
+  const short = (options.detail ?? "full") !== "full";
   if (policies === undefined || policies.kind === "passed") return [];
-  if (policies.kind === "not-run") return [policiesNotRunLine(policies, row.runUrl)];
+  // A warning that decides nothing, so a shorter row leaves it to the page.
+  if (policies.kind === "not-run") return short ? [] : [policiesNotRunLine(policies, row.runUrl)];
   const { failures } = policies.report;
   const lead = `:no_entry: **${policyWords(failures.length)} failed**, so this change has no box until it passes`;
   const preview = `[preview](${row.previewUrl ?? row.runUrl})`;
-  if (options.redact || (options.level ?? 0) >= 2) {
+  // A row with no box always says why, in one line at a shorter detail.
+  if (options.redact || short || (options.level ?? 0) >= 2) {
     return [`${lead}. They are named on the ${preview}.`];
   }
   const named = failures.slice(0, FAILURES_ON_A_ROW);
@@ -585,9 +599,13 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
   const driftCount = drift.length > 0 ? ` · ${driftCounts(drift)}` : "";
   // The counts of the first line, on the marker as well (record 0110).
   const { creates, updates, tracking } = changeCounts(changes);
+  // How much the row shows under its first line (record 0114).
+  const detail = options.detail ?? "full";
+  const full = detail === "full";
+  const preview = detail === "names" ? "" : ` · [preview](${row.previewUrl ?? row.runUrl})`;
 
   const lines = [
-    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)}${driftCount} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker(
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)}${driftCount}${preview} ${rowMarker(
       {
         stackId: row.diff.stackId,
         state: "pending",
@@ -609,14 +627,18 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
   ];
   // The one number a person wants before ticking, right under the first line
   // (record 0105). It names nothing, so redact and the size budget keep it.
-  if (row.cost) lines.push(costLine(row.cost));
-  if (row.attribution) lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
+  if (row.cost && full) lines.push(costLine(row.cost));
+  if (row.attribution && full)
+    lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
+  // No setting hides a failure line (record 0114).
   if (row.failure) lines.push(failureLine(row.failure, options.timeZone));
   lines.push(...policyLines(row, options));
-  if (row.waitsOnMerge) lines.push(onMergeNote(row.waitsOnMerge));
-  if (row.valueEveryRun) lines.push(VALUE_EVERY_RUN_NOTE);
-  if (row.pendingAgain) lines.push(pendingAgainLine(row.pendingAgain));
-  if (row.orphanTick && !options.readOnly && !policyFailed) lines.push(ORPHAN_TICK_NOTE);
+  // The notes that say why a tick would not go, or did not, stay at compact.
+  const notes = detail !== "names";
+  if (row.waitsOnMerge && notes) lines.push(onMergeNote(row.waitsOnMerge));
+  if (row.valueEveryRun && notes) lines.push(VALUE_EVERY_RUN_NOTE);
+  if (row.pendingAgain && full) lines.push(pendingAgainLine(row.pendingAgain));
+  if (row.orphanTick && notes && !options.readOnly && !policyFailed) lines.push(ORPHAN_TICK_NOTE);
 
   // A row that lists no delete or replace line still carries the warning, with
   // the counts that caused it. The lines are all there or none are.
@@ -628,17 +650,20 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
         ? `Read the ${summary}.`
         : `Read the ${summary} before you tick.`;
       lines.push(`:warning: **${warning}** ${read}`);
-    } else {
+    } else if (full) {
       lines.push(
         `Changes ${options.redact ? "are listed in the" : "not listed here, see the"} ${summary}`,
       );
     }
-    lines.push(...driftLines(drift, summary, options), ...outsideFold(row.attribution, level));
+    if (full)
+      lines.push(...driftLines(drift, summary, options), ...outsideFold(row.attribution, level));
     return lines;
   }
 
+  // Every delete and replace line, at every detail (record 0024).
   for (const change of [...deletes, ...replaces])
     lines.push(`:warning: ${changeLine(change, { row: true })}`);
+  if (!full) return lines;
   if (folded.length > 0) {
     const inside = plural(folded.length, destroys > 0 ? "other change" : "change");
     if (level >= 2) {
