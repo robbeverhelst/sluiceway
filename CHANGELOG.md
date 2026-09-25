@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.0](https://github.com/sluiceway/sluiceway/compare/v0.43.0...v0.44.0) (2026-09-25)
+
+
+### Features
+
+* deploy freezes, a period when every deploy waits ([#281](https://github.com/sluiceway/sluiceway/issues/281)) ([0d488ee](https://github.com/sluiceway/sluiceway/commit/0d488ee19e465079b78b01e5037df0c5eed2b5ab))
+
 ## [0.43.0](https://github.com/sluiceway/sluiceway/compare/v0.42.2...v0.43.0) (2026-09-25)
 
 
