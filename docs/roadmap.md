@@ -141,7 +141,7 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Folding the Pulumi step ops that no recording shows (`create-replacement`, `delete-replaced`, `read-replacement`, `import-replacement`, `discard`, `discard-replaced`, `remove-pending-replace`)
 - Previewing a Pulumi stack whose state holds a resource twice at one URN, such as a copy left waiting for deletion by a deploy that failed half way
 - Naming the step op that Sluiceway did not know, in the job log
-- Stopping GitHub from linking a `#123`, an `@name` or a web address that sits inside a resource name or a stack id
+- Stopping GitHub from linking a commit id of the repo, or drawing an emoji for a code such as `:key:`, inside a resource name or a stack id
 - Trying a dashboard write again after an API error
 - A preview after a deploy that went out, to check the row
 - A row of its own for a deploy that ended before any preview (the tool missing, the stack gone, a broken `sluiceway.yaml`)

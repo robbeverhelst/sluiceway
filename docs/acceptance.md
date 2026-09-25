@@ -28,7 +28,7 @@ This pass exists because CI runs against a fake GitHub. Each line checks somethi
 - [ ] Set `dashboard.redact: true`. No resource type, resource name or property name is left in the issue, and the summary is still full.
 - [ ] Set `dashboard.personality: false`. The image is gone and the dry line shows.
 - [ ] A stack with a delete shows the plain header, the open `DELETE` line and bold counts.
-- [ ] A resource named `#1 @octocat www.example.com *x*` shows as that plain text on its row: no link, no mention, no emphasis. If GitHub links any of it, the escaping in `src/render/escape.ts` needs one more step (see `docs/later.md`).
+- [ ] A resource named `#1 @octocat www.example.com *x*` shows as that plain text on its row: no link, no mention, no emphasis. Record 0112 says what `src/render/escape.ts` writes for it. If GitHub links any of it, that record no longer matches GitHub.
 - [ ] Open the summary of a scan run. Key caps, folds, the warning sign and the links to pull requests render, and no list runs into the one before it. The job log holds one group per previewed stack, titled with the stack id, with the same changes in it.
 - [ ] Click `preview` on a pending row. It opens that stack's preview page, `sluiceway / <stack id>`, with the counts, the warning when it destroys something, every change with its property paths, and links to the dashboard, the summary and the job log that land. Note which workflow run's jobs list shows the page, and whether a pull request's checks show it. Scan the same commit again from the rescan box: the commit still has one page per pending stack. Take `checks: write` out of the workflow and scan: the rows link to the summary and the job log says `No preview page was written` (record 0050).
 

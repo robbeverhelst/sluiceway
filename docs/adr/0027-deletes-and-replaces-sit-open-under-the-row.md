@@ -1,5 +1,7 @@
 # Deletes and replaces sit open under the row, everything else is folded
 
+> Amended by 0112: "HTML escaped" also writes `#` and `@` inside a span, the `-` of `GH-` before a digit inside a span, and a character reference for the dot of `www.` and the colon of `://`, because GitHub links an issue reference, a mention and a web address in a name otherwise.
+>
 > Amended by 0089: the failure line's time is in the repo's zone, `dashboard.timeZone`, and ends in its offset from UTC at that moment, such as `2026-07-21 12:02 UTC+2`. Without the key it is `UTC` as written here.
 >
 > Amended by 0044: a link that shows a stack's diff names the attempt of the run, and a preview failure's `run` links to the log of the job.
