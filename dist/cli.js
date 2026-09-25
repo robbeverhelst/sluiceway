@@ -8694,7 +8694,10 @@ var require_picomatch2 = __commonJS((exports, module) => {
 });
 
 // src/cli.ts
-import { readFileSync as readFileSync11 } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { readFileSync as readFileSync12 } from "node:fs";
+import { homedir } from "node:os";
+import { join as join16 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/cli/run.ts
@@ -33600,8 +33603,406 @@ function defaultBranch(root) {
   }
 }
 
+// src/cli/exit.ts
+var EXIT = {
+  ok: 0,
+  failed: 1,
+  usage: 2,
+  signedOut: 3,
+  notFound: 4,
+  refused: 5,
+  later: 6
+};
+
+// src/cli/app-client.ts
+class AppError extends Error {
+  code;
+  exit;
+  problems;
+  constructor(message, code, exit, problems = []) {
+    super(message);
+    this.code = code;
+    this.exit = exit;
+    this.problems = problems;
+  }
+}
+var EXIT_OF = {
+  "no-token": EXIT.signedOut,
+  "token-not-working": EXIT.signedOut,
+  "org-gone": EXIT.signedOut,
+  "not-a-member": EXIT.signedOut,
+  "not-found": EXIT.notFound,
+  "rate-limited": EXIT.later,
+  "github-silent": EXIT.later,
+  "changes-refused": EXIT.refused
+};
+var TIMEOUT_MS = 30000;
+function appClient(options) {
+  const request = async (method, path, body2) => {
+    let response;
+    try {
+      response = await options.fetch(`${options.app}${path}`, {
+        method,
+        headers: {
+          authorization: `Bearer ${options.token}`,
+          accept: "application/json",
+          "user-agent": `sluiceway/${options.version}`,
+          ...body2 === undefined ? {} : { "content-type": "application/json" }
+        },
+        ...body2 === undefined ? {} : { body: JSON.stringify(body2) },
+        redirect: "error",
+        signal: AbortSignal.timeout(TIMEOUT_MS)
+      });
+    } catch (error63) {
+      const reason = error63 instanceof Error ? error63.message : String(error63);
+      throw new AppError(`Could not reach ${options.app}: ${reason}`, "unreachable", EXIT.failed);
+    }
+    let answer;
+    try {
+      answer = await response.json();
+    } catch {
+      answer = undefined;
+    }
+    if (answer === null || typeof answer !== "object") {
+      throw new AppError(`${options.app} answered ${response.status}, and not with the app's words.`, "not-the-app", EXIT.failed);
+    }
+    if (response.ok)
+      return answer;
+    const { error: error62, code, problems } = answer;
+    if (typeof error62 !== "string" || typeof code !== "string") {
+      throw new AppError(`${options.app} answered ${response.status}, and not with the app's words.`, "not-the-app", EXIT.failed);
+    }
+    const retry = response.headers.get("retry-after");
+    const message = code === "rate-limited" && retry !== null && /^\d+$/.test(retry) ? `${error62} Try again in ${retry} seconds.` : error62;
+    throw new AppError(message, code, EXIT_OF[code] ?? EXIT.failed, Array.isArray(problems) ? problems.map(String) : []);
+  };
+  return {
+    get: (path) => request("GET", path),
+    post: (path, body2) => request("POST", path, body2)
+  };
+}
+
+// src/cli/app-commands.ts
+var POLL_MS = 2000;
+var POLL_FOR_MS = 60000;
+async function runAppCommand(parsed, io) {
+  let ending;
+  try {
+    ending = await dispatch(parsed, io);
+  } catch (error62) {
+    if (!(error62 instanceof AppError))
+      throw error62;
+    ending = {
+      exit: error62.exit,
+      lines: [],
+      errors: [error62.message, ...error62.problems.map((problem) => `  ${problem}`)],
+      json: {
+        error: error62.message,
+        code: error62.code,
+        exit: error62.exit,
+        ...error62.problems.length > 0 ? { problems: error62.problems } : {}
+      }
+    };
+  }
+  if (parsed.json)
+    io.out(JSON.stringify(ending.json, null, 2));
+  else {
+    for (const line2 of ending.lines)
+      io.out(line2);
+    for (const line2 of ending.errors ?? [])
+      io.err(line2);
+  }
+  return ending.exit;
+}
+function tokensPage(app) {
+  return `${app}/settings/tokens`;
+}
+async function dispatch(parsed, io) {
+  const { app } = parsed;
+  if (parsed.command === "login")
+    return login(app, io);
+  if (parsed.command === "logout")
+    return logout(app, io);
+  const token = await io.tokens.read(app);
+  if (token === undefined) {
+    throw new AppError(`Not signed in to ${app}. Make a token on ${tokensPage(app)}, then run sluiceway login.`, "not-signed-in", EXIT.signedOut);
+  }
+  const client = appClient({ app, token, version: io.version, fetch: io.fetch });
+  const me = await client.get("/api/v1/me");
+  const org = `/api/v1/orgs/${encodeURIComponent(me.org)}`;
+  const repoPath3 = (repo) => `${org}/repos/${encodeURIComponent(repoName(me.org, repo))}`;
+  switch (parsed.command) {
+    case "status":
+      return parsed.repo === undefined ? orgStatus(await client.get(org)) : repoStatus(await client.get(repoPath3(parsed.repo)));
+    case "stack":
+      return stackRow(await client.get(`${repoPath3(parsed.repo)}/stacks/${encodeURIComponent(parsed.stack)}`));
+    case "tick":
+      return tick(client, repoPath3(parsed.repo), parsed, io);
+    case "rescan":
+      return rescan(await client.post(`${repoPath3(parsed.repo)}/rescan`));
+    case "settings":
+      return parsed.changes === undefined ? settings(await client.get(`${repoPath3(parsed.repo)}/config`)) : pullRequest(await client.post(`${repoPath3(parsed.repo)}/config/pull-request`, {
+        changes: parsed.changes
+      }));
+  }
+}
+function repoName(org, repo) {
+  const slash = repo.indexOf("/");
+  if (slash === -1)
+    return repo;
+  if (repo.slice(0, slash).toLowerCase() !== org.toLowerCase()) {
+    throw new AppError(`The token is for ${org}, and ${repo} is not in it.`, "not-found", EXIT.notFound);
+  }
+  return repo.slice(slash + 1);
+}
+async function login(app, io) {
+  const token = (await io.readToken(`Paste a token from ${tokensPage(app)}: `)).trim();
+  if (token === "") {
+    throw new AppError(`No token was given. Make one on ${tokensPage(app)} and paste it, or pipe it in.`, "no-token", EXIT.usage);
+  }
+  if (!token.startsWith("sluiceway_")) {
+    throw new AppError(`That is not a Sluiceway token: one starts with sluiceway_. Make one on ${tokensPage(app)}.`, "not-a-sluiceway-token", EXIT.usage);
+  }
+  const me = await appClient({ app, token, version: io.version, fetch: io.fetch }).get("/api/v1/me");
+  const kept = await io.tokens.write(app, token);
+  return {
+    exit: EXIT.ok,
+    lines: [
+      `Signed in to ${app} as ${me.login}, for ${me.org}, with the token ${me.token.name}, which works until ${me.token.expiresAt}.`,
+      `The token is kept in ${kept}.`
+    ],
+    json: { app, ...me, kept }
+  };
+}
+async function logout(app, io) {
+  const places = await io.tokens.remove(app);
+  if (places.length === 0) {
+    return {
+      exit: EXIT.ok,
+      lines: [`There was no token for ${app}.`],
+      json: { app, removed: [] }
+    };
+  }
+  return {
+    exit: EXIT.ok,
+    lines: [
+      `Signed out of ${app}: the token is gone from ${places.join(" and ")}.`,
+      `It still works until it expires. Revoke it on ${tokensPage(app)} to stop it now.`
+    ],
+    json: { app, removed: places }
+  };
+}
+var STATES = ["pending", "deploying", "drifted", "failed", "in-sync"];
+function countsWords(counts2, total) {
+  const parts = STATES.filter((state) => counts2[state] > 0).map((state) => `${counts2[state]} ${state === "in-sync" ? "in sync" : state}`);
+  return [...parts, `${total} ${total === 1 ? "stack" : "stacks"}`].join(", ");
+}
+var GROUPS = [
+  { label: "Needs you", states: ["pending", "drifted", "failed"] },
+  { label: "In flight", states: ["deploying"] },
+  { label: "In sync", states: ["in-sync"] }
+];
+function grouped(stacks, withRepo) {
+  const lines = [];
+  for (const group of GROUPS) {
+    const states = group.states;
+    const rank = (row2) => states.indexOf(row2.state) * 2 + (row2.destroys ? 0 : 1);
+    const rows = stacks.map((row2, index) => ({ row: row2, index })).filter(({ row: row2 }) => states.includes(row2.state)).sort((a, b) => rank(a.row) - rank(b.row) || a.index - b.index).map(({ row: row2 }) => row2);
+    if (rows.length === 0)
+      continue;
+    lines.push(group.label);
+    for (const row2 of rows) {
+      const name = withRepo ? `${row2.repo}  ${row2.stack}` : row2.stack;
+      if (row2.state === "in-sync") {
+        lines.push(`  ${name}`);
+        continue;
+      }
+      const word = row2.destroys ? `${row2.word}, deletes or replaces` : row2.word;
+      lines.push(`  ${name}  ${word}${row2.line === "" ? "" : `  ${row2.line}`}`);
+    }
+  }
+  return lines;
+}
+function orgStatus(org) {
+  const lines = [
+    `${org.org.login}: ${countsWords(org.counts, org.total)}`,
+    org.lastScan === null ? "No scan yet." : `Last scan: ${org.lastScan.sha.slice(0, 7)} of ${org.lastScan.repo} at ${org.lastScan.at}`,
+    "",
+    ...grouped(org.stacks, true)
+  ];
+  const writers = org.repos.filter((repo) => repo.recordWriter !== null);
+  if (writers.length > 0) {
+    lines.push("", ...writers.map((repo) => `${repo.name}: ${repo.recordWriter}`));
+  }
+  if (org.locked.length > 0 || org.allowance.sentence !== null) {
+    lines.push("", ...org.locked.map((repo) => `Locked: ${repo.name} (${countsWords(repo.counts, repo.total)})`), ...org.allowance.sentence === null ? [] : [org.allowance.sentence]);
+  }
+  return { exit: EXIT.ok, lines, json: org };
+}
+function repoStatus(repo) {
+  const scan = repo.scan === null ? "No scan yet." : `Last scan: ${repo.scan.sha.slice(0, 7)}${repo.scan.at === null ? "" : ` at ${repo.scan.at}`}`;
+  return {
+    exit: EXIT.ok,
+    lines: [
+      `${repo.repo.name}: ${countsWords(repo.counts, repo.total)}`,
+      scan,
+      ...repo.repo.dashboard === null ? [] : [`Dashboard: ${repo.repo.dashboard}`],
+      ...repo.repo.recordWriter === null ? [] : [repo.repo.recordWriter],
+      "",
+      ...grouped(repo.stacks, false)
+    ],
+    json: repo
+  };
+}
+function deployWords(deploy) {
+  return `${deploy.result}, ${deploy.who}, at ${deploy.at}`;
+}
+function stackRow(stack) {
+  const lines = [`${stack.stack} in ${stack.repo}: ${stack.word}`];
+  if (stack.line !== "")
+    lines.push(stack.line);
+  if (stack.changes !== null)
+    lines.push(`Changes: ${stack.changes}`);
+  if (stack.destroys !== null)
+    lines.push(`Deletes or replaces: ${stack.destroys}`);
+  if (stack.drift !== null)
+    lines.push(`Drift: ${stack.drift}`);
+  if (stack.ticked)
+    lines.push("Ticked on the dashboard.");
+  if (stack.preview !== null)
+    lines.push(`Preview: ${stack.preview.name}, on ${stack.preview.url}`);
+  if (stack.run !== null)
+    lines.push(`Run: ${stack.run}`);
+  if (stack.lastDeploy !== null)
+    lines.push(`Last deploy: ${deployWords(stack.lastDeploy)}`);
+  lines.push(`Dashboard: ${stack.dashboard}`);
+  return { exit: EXIT.ok, lines, json: stack };
+}
+async function tick(client, repoPath3, parsed, io) {
+  const stackPath2 = `${repoPath3}/stacks/${encodeURIComponent(parsed.stack)}`;
+  const stack = await client.get(stackPath2);
+  if (stack.destroys !== null && !parsed.yes) {
+    throw new AppError(`${parsed.stack} deletes or replaces resources (${stack.destroys}). Run the tick again with --yes to deploy that.`, "needs-yes", EXIT.refused);
+  }
+  const answer = await client.post(`${stackPath2}/tick`);
+  if (answer.outcome !== "asked") {
+    return {
+      exit: answer.outcome === "failed" ? EXIT.failed : EXIT.refused,
+      lines: [],
+      errors: [answer.sentence],
+      json: { tick: answer, deploy: null }
+    };
+  }
+  const follow = `The workflow deploys it through a fresh preview and the hash check, and the dashboard says how it went: ${answer.dashboard}`;
+  if (answer.deployment === null) {
+    return {
+      exit: EXIT.ok,
+      lines: [answer.sentence, follow],
+      json: { tick: answer, deploy: null }
+    };
+  }
+  const id = answer.deployment.id;
+  const deploy = await poll(client, `${repoPath3}/deployments/${id}`, io);
+  if (deploy === undefined) {
+    const message = `The app has not shown deployment record ${id} yet. See it with sluiceway stack ${parsed.repo} ${parsed.stack}.`;
+    return {
+      exit: EXIT.later,
+      lines: [answer.sentence],
+      errors: [message],
+      json: { tick: answer, deploy: null, error: message, code: "not-shown-yet", exit: EXIT.later }
+    };
+  }
+  const json2 = { tick: answer, deploy };
+  if (deploy.state === "failed") {
+    return {
+      exit: EXIT.failed,
+      lines: [
+        answer.sentence,
+        `Deployment record ${id}: failed.`,
+        `The dashboard says why: ${answer.dashboard}`
+      ],
+      json: json2
+    };
+  }
+  const open2 = deploy.result === "waiting to start" || deploy.result === "deploying now";
+  return {
+    exit: EXIT.ok,
+    lines: [
+      answer.sentence,
+      open2 ? `Deployment record ${id}: ${deploy.result}.` : `Deployment record ${id}: the app says ${deploy.result}.`,
+      follow
+    ],
+    json: json2
+  };
+}
+async function poll(client, path, io) {
+  for (let waited = 0;; waited += POLL_MS) {
+    try {
+      return await client.get(path);
+    } catch (error62) {
+      if (!(error62 instanceof AppError) || error62.code !== "not-found")
+        throw error62;
+    }
+    if (waited >= POLL_FOR_MS)
+      return;
+    await io.sleep(POLL_MS);
+  }
+}
+function rescan(answer) {
+  if (answer.outcome === "asked") {
+    return {
+      exit: EXIT.ok,
+      lines: [answer.sentence, `Dashboard: ${answer.dashboard}`],
+      json: answer
+    };
+  }
+  return {
+    exit: answer.outcome === "failed" ? EXIT.failed : EXIT.refused,
+    lines: [],
+    errors: [answer.sentence],
+    json: answer
+  };
+}
+function settings(config2) {
+  const sha = config2.sha === null ? "" : ` at ${config2.sha.slice(0, 7)}`;
+  const head = config2.file === null ? `${config2.repo} has no sluiceway.yaml${sha}: every key has the action's default.` : `${config2.file} of ${config2.repo}${sha}: ${config2.url ?? ""}`;
+  return {
+    exit: EXIT.ok,
+    lines: [
+      head,
+      ...config2.problem === null ? [] : [config2.problem],
+      ...Object.entries(config2.keys).map(([key, value]) => `  ${key} = ${JSON.stringify(value)}`)
+    ],
+    json: config2
+  };
+}
+function pullRequest(answer) {
+  const lines = [
+    answer.sentence,
+    ...answer.changes.map((change) => `  ${change}`),
+    ...answer.url === null ? [] : [answer.url]
+  ];
+  switch (answer.outcome) {
+    case "opened":
+    case "nothing-to-change":
+      return { exit: EXIT.ok, lines, json: answer };
+    case "read-failed":
+    case "write-failed":
+      return { exit: EXIT.failed, lines: [], errors: lines, json: answer };
+    default:
+      return {
+        exit: EXIT.refused,
+        lines: [],
+        errors: [...lines, ...answer.problems.map((problem) => `  ${problem}`)],
+        json: answer
+      };
+  }
+}
+
 // src/cli/args.ts
+var DEFAULT_APP = "https://app.sluiceway.dev";
 var RUNNER_MODES = new Set(["scan", "resolve", "apply", "settle", "auto"]);
+var APP_COMMANDS = new Set(["login", "logout", "status", "stack", "tick", "rescan", "settings"]);
 function parseArgs(argv) {
   if (argv.includes("--help") || argv.includes("-h"))
     return { command: "help" };
@@ -33612,6 +34013,8 @@ function parseArgs(argv) {
     return { command: "usage", message: "Name a command." };
   if (RUNNER_MODES.has(name))
     return { command: "refused", mode: name };
+  if (APP_COMMANDS.has(name))
+    return parseAppCommand(name, rest);
   if (name !== "init" && name !== "check") {
     return { command: "usage", message: `Unknown command "${name}".` };
   }
@@ -33631,11 +34034,123 @@ function parseArgs(argv) {
   if (paths.length > 1) {
     return {
       command: "usage",
-      message: `${name} takes one path, and got ${paths.map((path2) => `"${path2}"`).join(" and ")}.`
+      message: `${name} takes one path, and got ${quoted2(paths)}.`
     };
   }
   const [path] = paths;
   return name === "init" ? { command: "init", force, path } : { command: "check", path };
+}
+function quoted2(values) {
+  return values.map((value) => `"${value}"`).join(" and ");
+}
+function usage(message) {
+  return { command: "usage", message };
+}
+function parseAppCommand(name, rest) {
+  let app = DEFAULT_APP;
+  let json2 = false;
+  let yes = false;
+  const words = [];
+  let options = true;
+  for (let index = 0;index < rest.length; index++) {
+    const arg = rest[index] ?? "";
+    if (options && arg === "--")
+      options = false;
+    else if (options && arg === "--json")
+      json2 = true;
+    else if (options && name === "tick" && arg === "--yes")
+      yes = true;
+    else if (options && (arg === "--app" || arg.startsWith("--app="))) {
+      const value = arg === "--app" ? rest[++index] : arg.slice("--app=".length);
+      if (value === undefined || value === "")
+        return usage("--app needs an address.");
+      const address = appAddress(value);
+      if (address === undefined) {
+        return usage(`--app must be an https address, or http on this machine, and got "${value}".`);
+      }
+      app = address;
+    } else if (options && arg.startsWith("-")) {
+      return usage(`Unknown option "${arg}" for ${name}.`);
+    } else
+      words.push(arg);
+  }
+  const shared = { app, json: json2 };
+  switch (name) {
+    case "login":
+    case "logout":
+      if (words.length > 0)
+        return usage(`${name} takes no argument, and got ${quoted2(words)}.`);
+      return { command: name, ...shared };
+    case "status":
+      if (words.length > 1) {
+        return usage(`status takes one repo at most, and got ${quoted2(words)}.`);
+      }
+      return { command: "status", repo: words[0], ...shared };
+    case "stack":
+    case "tick": {
+      const [repo, stack, ...extra] = words;
+      if (repo === undefined || stack === undefined) {
+        return usage(`${name} needs a repo and a stack id.`);
+      }
+      if (extra.length > 0) {
+        return usage(`${name} takes a repo and a stack id, and got also ${quoted2(extra)}.`);
+      }
+      return name === "tick" ? { command: "tick", repo, stack, yes, ...shared } : { command: "stack", repo, stack, ...shared };
+    }
+    case "rescan": {
+      const [repo, ...extra] = words;
+      if (repo === undefined)
+        return usage("rescan needs a repo.");
+      if (extra.length > 0)
+        return usage(`rescan takes one repo, and got also ${quoted2(extra)}.`);
+      return { command: "rescan", repo, ...shared };
+    }
+    default: {
+      const [repo, verb, ...pairs] = words;
+      if (repo === undefined)
+        return usage("settings needs a repo.");
+      if (verb === undefined)
+        return { command: "settings", repo, changes: undefined, ...shared };
+      if (verb !== "set")
+        return usage(`settings takes set after the repo, and got "${verb}".`);
+      if (pairs.length === 0)
+        return usage("settings set needs at least one key=value.");
+      const changes = [];
+      for (const pair of pairs) {
+        const change = keyChange(pair);
+        if (change === undefined) {
+          return usage(`settings set takes key=value, and got "${pair}".`);
+        }
+        changes.push(change);
+      }
+      return { command: "settings", repo, changes, ...shared };
+    }
+  }
+}
+function appAddress(value) {
+  let url2;
+  try {
+    url2 = new URL(value);
+  } catch {
+    return;
+  }
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(url2.hostname);
+  if (url2.protocol !== "https:" && !(url2.protocol === "http:" && local))
+    return;
+  return url2.origin;
+}
+function keyChange(pair) {
+  const from = pair.startsWith("stacks[") ? Math.max(pair.indexOf("]"), 0) : 0;
+  const at = pair.indexOf("=", from);
+  if (at <= 0)
+    return;
+  const key = pair.slice(0, at);
+  const text7 = pair.slice(at + 1);
+  try {
+    return { key, value: JSON.parse(text7) };
+  } catch {
+    return { key, value: text7 };
+  }
 }
 
 // src/cli/terminal.ts
@@ -33659,8 +34174,8 @@ function terminalLog(write3 = console.log) {
 }
 
 // src/cli/run.ts
-var FAILED = 1;
-var USAGE = 2;
+var FAILED = EXIT.failed;
+var USAGE = EXIT.usage;
 var HELP = `Usage:
   sluiceway init [--force] [path]
       Write .github/workflows/deploy-dashboard.yml and, when there is none,
@@ -33676,7 +34191,26 @@ Both read the files at path, or where you stand, and nothing else: no
 credentials, no token, no tool, no network. scan, resolve, apply and settle
 run only in the workflow.
 
-${DOCS.init}`;
+${DOCS.init}
+
+With the Sluiceway app, as the person whose token it is:
+  sluiceway login          Paste a token from the app, or pipe it in.
+  sluiceway logout
+  sluiceway status [repo]  The org's stacks, or a repo's, by state.
+  sluiceway stack <repo> <stack id>
+                           A stack's row and its preview page.
+  sluiceway tick <repo> <stack id> [--yes]
+                           Tick it. A destroy needs --yes. Prints the
+                           deployment record once it waits to start.
+  sluiceway rescan <repo>  Ask GitHub for a full scan.
+  sluiceway settings <repo> [set <key>=<value> ...]
+                           Read the keys, or open a pull request that
+                           sets them.
+
+These call the app alone, over HTTPS, and never GitHub. --json answers in
+JSON, and --app <address> names another app than ${DEFAULT_APP}.
+Exit codes: 0 done, 1 failed, 2 not understood, 3 not signed in, 4 not
+found, 5 refused, 6 try again later.`;
 async function runCli(argv, io) {
   const parsed = parseArgs(argv);
   switch (parsed.command) {
@@ -33698,6 +34232,14 @@ async function runCli(argv, io) {
     case "refused":
       io.err(`sluiceway ${parsed.mode} needs the run's identity and the workflow token, so it runs only in the workflow: ${DOCS.workflow}`);
       return USAGE;
+    case "login":
+    case "logout":
+    case "status":
+    case "stack":
+    case "tick":
+    case "rescan":
+    case "settings":
+      return runAppCommand(parsed, io);
   }
   const log = terminalLog(io.out);
   try {
@@ -33724,19 +34266,188 @@ function isDirectory2(path) {
   }
 }
 
+// src/cli/token-store.ts
+import { chmodSync, mkdirSync as mkdirSync2, readFileSync as readFileSync11, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { join as join15 } from "node:path";
+var SERVICE = "sluiceway";
+function filePlace(configDir) {
+  const dir = join15(configDir, "sluiceway");
+  const file2 = join15(dir, "tokens.json");
+  const load = () => {
+    try {
+      const parsed = JSON.parse(readFileSync11(file2, "utf8"));
+      return parsed !== null && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+  const save = (tokens) => {
+    if (Object.keys(tokens).length === 0) {
+      rmSync(file2, { force: true });
+      return;
+    }
+    mkdirSync2(dir, { recursive: true, mode: 448 });
+    chmodSync(dir, 448);
+    writeFileSync2(file2, `${JSON.stringify(tokens, null, 2)}
+`, { mode: 384 });
+    chmodSync(file2, 384);
+  };
+  return {
+    where: file2,
+    read: (app) => {
+      const token = load()[app];
+      return typeof token === "string" ? token : undefined;
+    },
+    write: (app, token) => {
+      save({ ...load(), [app]: token });
+      return true;
+    },
+    remove: (app) => {
+      const tokens = load();
+      if (!(app in tokens))
+        return false;
+      delete tokens[app];
+      save(tokens);
+      return true;
+    }
+  };
+}
+function macKeychain(run) {
+  const read5 = (app) => {
+    const found = run("security", ["find-generic-password", "-a", app, "-s", SERVICE, "-w"]);
+    return found?.code === 0 ? found.stdout.replace(/\n$/, "") : undefined;
+  };
+  return {
+    where: "the macOS keychain",
+    read: read5,
+    write: (app, token) => {
+      const line2 = `add-generic-password -U -a "${app}" -s "${SERVICE}" -l "Sluiceway" -w "${token}"
+`;
+      run("security", ["-i"], line2);
+      return read5(app) === token;
+    },
+    remove: (app) => run("security", ["delete-generic-password", "-a", app, "-s", SERVICE])?.code === 0
+  };
+}
+function secretService(run) {
+  const attributes = (app) => ["service", SERVICE, "app", app];
+  const read5 = (app) => {
+    const found = run("secret-tool", ["lookup", ...attributes(app)]);
+    return found?.code === 0 && found.stdout !== "" ? found.stdout.replace(/\n$/, "") : undefined;
+  };
+  return {
+    where: "the Secret Service keyring",
+    read: read5,
+    write: (app, token) => {
+      run("secret-tool", ["store", "--label=Sluiceway", ...attributes(app)], token);
+      return read5(app) === token;
+    },
+    remove: (app) => run("secret-tool", ["clear", ...attributes(app)])?.code === 0
+  };
+}
+function tokenStore(options) {
+  const file2 = filePlace(options.configDir);
+  const keychain = options.platform === "darwin" ? macKeychain(options.run) : options.platform === "linux" ? secretService(options.run) : undefined;
+  const places = keychain === undefined ? [file2] : [keychain, file2];
+  return {
+    read: async (app) => {
+      for (const place of places) {
+        const token = place.read(app);
+        if (token !== undefined)
+          return token;
+      }
+      return;
+    },
+    write: async (app, token) => {
+      if (keychain?.write(app, token)) {
+        file2.remove(app);
+        return keychain.where;
+      }
+      file2.write(app, token);
+      return file2.where;
+    },
+    remove: async (app) => places.filter((place) => place.remove(app)).map((place) => place.where)
+  };
+}
+
 // src/cli.ts
 function packageVersion() {
+  if (typeof SLUICEWAY_VERSION === "string")
+    return SLUICEWAY_VERSION;
   try {
     const file2 = fileURLToPath(new URL("../package.json", import.meta.url));
-    return String(JSON.parse(readFileSync11(file2, "utf8")).version);
+    return String(JSON.parse(readFileSync12(file2, "utf8")).version);
   } catch {
     return "unknown";
   }
+}
+function configDir() {
+  if (process.platform === "win32") {
+    return process.env.APPDATA ?? join16(homedir(), "AppData", "Roaming");
+  }
+  const xdg = process.env.XDG_CONFIG_HOME;
+  return xdg !== undefined && xdg !== "" ? xdg : join16(homedir(), ".config");
+}
+var run = (command, args, input2) => {
+  const result2 = spawnSync(command, args, {
+    input: input2 ?? "",
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "ignore"],
+    timeout: 1e4
+  });
+  if (result2.error !== undefined || result2.status === null)
+    return;
+  return { code: result2.status, stdout: result2.stdout };
+};
+async function readToken(prompt) {
+  const stdin = process.stdin;
+  if (!stdin.isTTY) {
+    const chunks = [];
+    for await (const chunk of stdin)
+      chunks.push(Buffer.from(chunk));
+    return Buffer.concat(chunks).toString("utf8");
+  }
+  process.stderr.write(prompt);
+  stdin.setRawMode(true);
+  stdin.setEncoding("utf8");
+  stdin.resume();
+  return new Promise((resolve3, reject) => {
+    let typed = "";
+    const done = (error62) => {
+      stdin.off("data", onData);
+      stdin.setRawMode(false);
+      stdin.pause();
+      process.stderr.write(`
+`);
+      if (error62 === undefined)
+        resolve3(typed);
+      else
+        reject(error62);
+    };
+    const onData = (data) => {
+      for (const char of data) {
+        if (char === "\r" || char === `
+` || char === "\x04")
+          return done();
+        if (char === "\x03")
+          return done(new Error("Stopped."));
+        if (char === "" || char === "\b")
+          typed = typed.slice(0, -1);
+        else
+          typed += char;
+      }
+    };
+    stdin.on("data", onData);
+  });
 }
 process.exitCode = await runCli(process.argv.slice(2), {
   cwd: process.cwd(),
   version: packageVersion(),
   nodeVersion: process.versions.node,
   out: (line2) => console.log(line2),
-  err: (line2) => console.error(line2)
+  err: (line2) => console.error(line2),
+  fetch: globalThis.fetch,
+  tokens: tokenStore({ platform: process.platform, configDir: configDir(), run }),
+  readToken,
+  sleep: (ms) => new Promise((resolve3) => setTimeout(resolve3, ms))
 });
