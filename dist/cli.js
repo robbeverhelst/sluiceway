@@ -28314,8 +28314,23 @@ var NAMED = {
   ">": "&gt;",
   '"': "&quot;"
 };
+var SPLIT = new Set(["#", "@"]);
+function escapeOne(match) {
+  const named = NAMED[match];
+  if (named !== undefined)
+    return named;
+  if (SPLIT.has(match))
+    return `<span>${match}</span>`;
+  if (match === "://")
+    return "&#58;//";
+  if (match.toLowerCase() === "www.")
+    return `${match.slice(0, 3)}&#46;`;
+  if (match.toLowerCase() === "gh-")
+    return `${match.slice(0, 2)}<span>-</span>`;
+  return `&#${match.charCodeAt(0)};`;
+}
 function escapeText(text) {
-  return text.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
+  return text.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/www\.|:\/\/|gh-(?=\d)|[&<>"*_`~[\]|\\#@]/gi, escapeOne);
 }
 
 // src/core/policy.ts

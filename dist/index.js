@@ -47496,8 +47496,23 @@ var NAMED = {
   ">": "&gt;",
   '"': "&quot;"
 };
+var SPLIT = new Set(["#", "@"]);
+function escapeOne(match) {
+  const named = NAMED[match];
+  if (named !== undefined)
+    return named;
+  if (SPLIT.has(match))
+    return `<span>${match}</span>`;
+  if (match === "://")
+    return "&#58;//";
+  if (match.toLowerCase() === "www.")
+    return `${match.slice(0, 3)}&#46;`;
+  if (match.toLowerCase() === "gh-")
+    return `${match.slice(0, 2)}<span>-</span>`;
+  return `&#${match.charCodeAt(0)};`;
+}
 function escapeText(text) {
-  return text.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/[&<>"]/g, (char) => NAMED[char] ?? char).replace(/[*_`~[\]|\\]/g, (char) => `&#${char.charCodeAt(0)};`);
+  return text.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/www\.|:\/\/|gh-(?=\d)|[&<>"*_`~[\]|\\#@]/gi, escapeOne);
 }
 
 // src/core/policy.ts
@@ -67368,7 +67383,7 @@ function previewedPart(pullRequest, outcome) {
     `What ${merge3} would change, previewed at its head commit ${head}. Nothing deploys from it: a deploy goes out only after the merge, from a fresh preview, and is refused when the change moved since.`,
     table,
     ...pages.refused === undefined ? [] : [`${noPagesText(pages.refused, true)} The summary of the run holds the same.`],
-    ...unclaimedText2(outcome.unclaimed, (path) => `\`${escapeText(path)}\``)
+    ...unclaimedText2(outcome.unclaimed, (path) => `<code>${escapeText(path)}</code>`)
   ];
   return { log, summary: summary3 };
 }
