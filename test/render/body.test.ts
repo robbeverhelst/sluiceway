@@ -190,7 +190,7 @@ describe("the body of record 0029", () => {
         "",
         "Tick a box to deploy that stack exactly as its row shows it.",
         "",
-        `- [ ] **apps/api:prod** · 1 update · [preview](${RUN_URL}) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="3fa9c1e2aabbccdd" -->`,
+        `- [ ] **apps/api:prod** · 1 update · [preview](${RUN_URL}) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->`,
         "  <details><summary>1 change</summary>",
         "  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>",
         "  </details>",

@@ -67,6 +67,7 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Reading Renovate presets from npm, a web address or another platform, presets with parameters, and `packageRules`, for the merge method
 - Waiting, in the scan after a merge, for a dependency that became pending after the merge
 - A warning from the check when `mergeAndDeploy` is on and the workflow does not declare the `sluiceway-merged` input
+- The counts on a deploying row's marker, and the drift counts on a pending row's marker
 - Drift detection, part 3
 - Stack dependencies, part 3
 - A named `refresh` option (preview, re-preview and deploy with refresh on every run of a stack)

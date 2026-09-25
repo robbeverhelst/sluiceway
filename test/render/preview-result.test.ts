@@ -137,7 +137,7 @@ describe("a preview that read what its stack depends on", () => {
       toolLog: "",
     };
     for (const result of [PENDING, inSync, drifted]) {
-      expect(marker(read(result))).toContain(' depends-on="network:prod" -->');
+      expect(marker(read(result))).toContain(' depends-on="network:prod"');
     }
   });
 

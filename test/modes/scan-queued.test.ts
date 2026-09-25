@@ -61,7 +61,7 @@ describe("a scan while a chain is under way", () => {
     await scan(scanContext(h));
 
     expect(firstLine(rowsOf(h)["app:prod"])).toBe(
-      `- ${QUEUED_SPINNER}**app:prod** · queued behind **network:prod** · ticked by alice · [run](${REPO_URL}/actions/runs/${RESOLVE_RUN}) <!-- sluiceway:row stack="app:prod" state="queued" -->`,
+      `- ${QUEUED_SPINNER}**app:prod** · queued behind **network:prod** · ticked by alice · [run](${REPO_URL}/actions/runs/${RESOLVE_RUN}) <!-- sluiceway:row stack="app:prod" state="queued" behind="network:prod" -->`,
     );
   });
 

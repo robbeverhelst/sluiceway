@@ -20,7 +20,7 @@ Scanned [`34e410f`](https://github.com/example-org/infra/commit/34e410f2ce7bd7cf
 - <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.41.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.41.0/assets/mascot/spinner-light.svg"></picture> **apps/api:prod** · deploying · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330) <!-- sluiceway:row stack="apps/api:prod" state="deploying" -->
   from #512 by alice · [compare](https://github.com/example-org/infra/compare/e27f50794430...34e410f2ce7b)
   <!-- /sluiceway:row -->
-- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.41.0/assets/mascot/spinner-queued-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.41.0/assets/mascot/spinner-queued-light.svg"></picture> **apps/worker:prod** · queued behind **apps/api:prod** · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330) <!-- sluiceway:row stack="apps/worker:prod" state="queued" -->
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.41.0/assets/mascot/spinner-queued-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.41.0/assets/mascot/spinner-queued-light.svg"></picture> **apps/worker:prod** · queued behind **apps/api:prod** · ticked by alice · [run](https://github.com/example-org/infra/actions/runs/17034467330) <!-- sluiceway:row stack="apps/worker:prod" state="queued" behind="apps/api:prod" -->
   from #509 by bob · [compare](https://github.com/example-org/infra/compare/ae93aa6a808a...34e410f2ce7b)
   <!-- /sluiceway:row -->
 
@@ -43,14 +43,14 @@ Tick a box to deploy that stack exactly as its row shows it.
 >
 > 1 drifted stack has resources gone outside the code: **platform/external-dns:prod**
 
-- [ ] **apps/billing:prod** · 1 create, 1 update · [preview](https://github.com/example-org/infra/runs/48213301) <!-- sluiceway:row stack="apps/billing:prod" state="pending" hash="1d0a03db50bc7070" -->
+- [ ] **apps/billing:prod** · 1 create, 1 update · [preview](https://github.com/example-org/infra/runs/48213301) <!-- sluiceway:row stack="apps/billing:prod" state="pending" hash="1d0a03db50bc7070" creates="1" updates="1" -->
   from #514 by erin, #511 by renovate&#91;bot&#93; · [compare](https://github.com/example-org/infra/compare/92a260fb62d8...34e410f2ce7b)
   <details><summary>2 changes</summary>
   <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>billing</b> · <code>spec.replicas</code> <code>2</code> → <code>3</code><br>
   <kbd>create</kbd> <code>kubernetes:monitoring.coreos.com/v1:ServiceMonitor</code> <b>billing</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/runs/48213302) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" deletes="3" -->
+- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/runs/48213302) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" deletes="3" tracking="1" -->
   from #498 by dave · [compare](https://github.com/example-org/infra/compare/461a661f5643...34e410f2ce7b)
   :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>legacy-jobs</b>
   :warning: <kbd>DELETE</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>legacy-worker</b>
@@ -59,7 +59,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>forget</kbd> <code>aws:iam/role:Role</code> <b>legacy-worker</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **apps/web:staging** · 2 creates, 1 update · [preview](https://github.com/example-org/infra/runs/48213303) <!-- sluiceway:row stack="apps/web:staging" state="pending" hash="ec5ef272e21b14c0" -->
+- [ ] **apps/web:staging** · 2 creates, 1 update · [preview](https://github.com/example-org/infra/runs/48213303) <!-- sluiceway:row stack="apps/web:staging" state="pending" hash="ec5ef272e21b14c0" creates="2" updates="1" -->
   from #516 by carol, #510 by bob, and 1 change outside this stack · [compare](https://github.com/example-org/infra/compare/aa6e427d334b...34e410f2ce7b)
   <details><summary>3 changes</summary>
   <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>web</b> · <code>metadata.labels&#91;&quot;app.kubernetes.io/version&quot;&#93;</code>, <code>spec.template.spec.containers&#91;0&#93;.image</code><br>
@@ -70,7 +70,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <a href="https://github.com/example-org/infra/pull/497">#497</a> by frank<br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **infra/network:prod** · 1 update, **1 replace** · [preview](https://github.com/example-org/infra/runs/48213304) <!-- sluiceway:row stack="infra/network:prod" state="pending" hash="32cbe8fae705b3a9" destroys="1" deletes="0" -->
+- [ ] **infra/network:prod** · 1 update, **1 replace** · [preview](https://github.com/example-org/infra/runs/48213304) <!-- sluiceway:row stack="infra/network:prod" state="pending" hash="32cbe8fae705b3a9" destroys="1" deletes="0" updates="1" replaces="1" -->
   from [11fa403](https://github.com/example-org/infra/commit/11fa403908e7cf940afa4635f39fb7d8bf5f0eaa) by gina · [compare](https://github.com/example-org/infra/compare/55050087957c...34e410f2ce7b)
   :warning: <kbd>REPLACE</kbd> <code>aws:ec2/subnet:Subnet</code> <b>private-b</b> · forced by <code>cidrBlock</code>
   <details><summary>1 other change</summary>
@@ -84,7 +84,7 @@ Tick a box to deploy that stack exactly as its row shows it.
 
 Real infrastructure changed outside the code. Deploying a stack puts it back as its code says.
 
-- [ ] **monitoring/grafana:prod** · 1 changed outside the code · [preview](https://github.com/example-org/infra/runs/48213305) <!-- sluiceway:row stack="monitoring/grafana:prod" state="drift" hash="3317badb7e6c946b" drift="true" -->
+- [ ] **monitoring/grafana:prod** · 1 changed outside the code · [preview](https://github.com/example-org/infra/runs/48213305) <!-- sluiceway:row stack="monitoring/grafana:prod" state="drift" hash="3317badb7e6c946b" drift="true" changed="1" -->
   <details><summary>1 change outside the code</summary>
   <kbd>changed</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>grafana</b> · <code>spec.replicas</code><br>
   </details>

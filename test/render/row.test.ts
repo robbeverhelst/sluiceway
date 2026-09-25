@@ -42,7 +42,7 @@ describe("a pending row", () => {
   test("the worked example of record 0027", () => {
     expect(renderRow(BUCKETS)).toBe(
       [
-        '- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](run-url) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="2b44350653e84a11" destroys="2" deletes="1" -->',
+        '- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](run-url) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="2b44350653e84a11" destroys="2" deletes="1" creates="1" updates="1" replaces="1" tracking="1" -->',
         "  from #433 by alice, #429 by alice, [3fa9c1e](commit-url) by bob, and 1 change outside this stack · [compare](compare-url)",
         "  :warning: <kbd>DELETE</kbd> <code>aws:s3/bucketPolicy:BucketPolicy</code> <b>uploads-public-read</b>",
         "  :warning: <kbd>REPLACE</kbd> <code>aws:s3/bucket:Bucket</code> <b>uploads</b> · forced by <code>bucket</code> · also changes <code>tags</code>",
@@ -83,7 +83,7 @@ describe("a pending row", () => {
       change("create", "t", "c3"),
     ]);
     expect(firstLine(renderRow(row))).toBe(
-      `- [ ] **a:prod** · 3 creates, 2 updates, **2 deletes**, 2 tracking only · [preview](${RUN_URL}) <!-- sluiceway:row stack="a:prod" state="pending" hash="00000000000000aa" destroys="2" deletes="2" -->`,
+      `- [ ] **a:prod** · 3 creates, 2 updates, **2 deletes**, 2 tracking only · [preview](${RUN_URL}) <!-- sluiceway:row stack="a:prod" state="pending" hash="00000000000000aa" destroys="2" deletes="2" creates="3" updates="2" tracking="2" -->`,
     );
     const replaces = pending("a:prod", [
       change("replace", "t", "r1"),
@@ -92,13 +92,33 @@ describe("a pending row", () => {
     expect(firstLine(renderRow(replaces))).toContain("· **2 replaces** ·");
   });
 
+  // Record 0110: the counts ride on the marker too, so a reader without the
+  // diff can draw the first line. A change with an op and a tracking change
+  // counts under its op, as the first line counts it.
+  test("the marker carries the counts of the first line, and reads them back", () => {
+    const block = renderRow(
+      pending("a:prod", [
+        change("update", "t", "u", { changedKeys: ["k"], tracking: "import" }),
+        change("none", "t", "m", { tracking: "move" }),
+        change("replace", "t", "r"),
+      ]),
+    );
+    expect(firstLine(block)).toContain("· 1 update, **1 replace**, 1 tracking only ·");
+    expect(firstLine(block)).toEndWith(
+      '<!-- sluiceway:row stack="a:prod" state="pending" hash="00000000000000aa" destroys="1" deletes="0" updates="1" replaces="1" tracking="1" -->',
+    );
+    const [row] = parseDashboard(block).rows;
+    expect(row).toMatchObject({ updates: 1, replaces: 1, tracking: 1 });
+    expect(row?.known && row.creates).toBeUndefined();
+  });
+
   test("a row with no delete or replace folds everything and caches no destroys", () => {
     const row = pending("apps/api:prod", [
       change("update", "kubernetes:apps/v1:Deployment", "api", { changedKeys: ["spec"] }),
     ]);
     expect(renderRow(row)).toBe(
       [
-        `- [ ] **apps/api:prod** · 1 update · [preview](${RUN_URL}) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="00000000000000aa" -->`,
+        `- [ ] **apps/api:prod** · 1 update · [preview](${RUN_URL}) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="00000000000000aa" updates="1" -->`,
         "  <details><summary>1 change</summary>",
         "  <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>api</b> · <code>spec</code><br>",
         "  </details>",
@@ -289,7 +309,9 @@ describe("the lines a deploy leaves on a row", () => {
 
   test("a row with a failure line says so on its marker", () => {
     const first = renderRow({ ...BUCKETS, failure: FAILURE }).split("\n")[0];
-    expect(first).toEndWith('hash="2b44350653e84a11" destroys="2" deletes="1" failed="true" -->');
+    expect(first).toEndWith(
+      'hash="2b44350653e84a11" destroys="2" deletes="1" failed="true" creates="1" updates="1" replaces="1" tracking="1" -->',
+    );
   });
 });
 
@@ -438,7 +460,7 @@ describe("a redacted row", () => {
     };
     expect(renderRow(row, { redact: true })).toBe(
       [
-        `- [ ] **apps/api:prod** · 1 update · [preview](${RUN_URL}) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="00000000000000aa" -->`,
+        `- [ ] **apps/api:prod** · 1 update · [preview](${RUN_URL}) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="00000000000000aa" updates="1" -->`,
         `  Changes are listed in the [summary](${RUN_URL})`,
         "  <!-- /sluiceway:row -->",
       ].join("\n"),
@@ -531,11 +553,12 @@ describe("a shortened row", () => {
   const full = level(0);
   // The first line is never shortened (record 0028). Only its marker says
   // which level the row is at, for the writers that cannot read the rest.
-  const first = (n: 1 | 2 | 3) => (full[0] ?? "").replace(" -->", ` shortened="${n}" -->`);
+  const first = (n: 1 | 2 | 3) =>
+    (full[0] ?? "").replace(' deletes="1" ', ` deletes="1" shortened="${n}" `);
 
-  test("the marker of a shortened row holds its level, after every other key", () => {
+  test("the marker of a shortened row holds its level, after every key that came before it", () => {
     expect(level(2)[0]).toBe(
-      '- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](run-url) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="2b44350653e84a11" destroys="2" deletes="1" shortened="2" -->',
+      '- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](run-url) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="2b44350653e84a11" destroys="2" deletes="1" shortened="2" creates="1" updates="1" replaces="1" tracking="1" -->',
     );
     expect(full[0]).not.toContain("shortened");
   });
@@ -603,7 +626,9 @@ describe("a shortened row", () => {
     const lines = renderRow(row).split("\n");
     for (const n of [1, 2, 3] as const) {
       const short = renderRow(row, { level: n }).split("\n");
-      expect(short[0]).toBe((lines[0] ?? "").replace(" -->", ` shortened="${n}" -->`));
+      expect(short[0]).toBe(
+        (lines[0] ?? "").replace(' failed="true" ', ` failed="true" shortened="${n}" `),
+      );
       expect(short.slice(2, 4)).toEqual(lines.slice(2, 4));
     }
   });
@@ -747,7 +772,7 @@ describe("text from outside is never markup", () => {
   test("a hostile stack id, type, name and key are escaped on every line", () => {
     const lines = renderRow(row).split("\n");
     expect(lines[0]).toBe(
-      '- [ ] **apps/&lt;b&gt;&#42;x&#42;&lt;/b&gt; &quot;q&quot;:prod** · 1 update, **1 replace**, **1 delete** · [preview](run-url) <!-- sluiceway:row stack="apps/%3Cb%3E*x*%3C/b%3E%20%22q%22:prod" state="pending" hash="00000000000000aa" destroys="2" deletes="1" -->',
+      '- [ ] **apps/&lt;b&gt;&#42;x&#42;&lt;/b&gt; &quot;q&quot;:prod** · 1 update, **1 replace**, **1 delete** · [preview](run-url) <!-- sluiceway:row stack="apps/%3Cb%3E*x*%3C/b%3E%20%22q%22:prod" state="pending" hash="00000000000000aa" destroys="2" deletes="1" updates="1" replaces="1" -->',
     );
     expect(lines[1]).toStartWith(
       "  :warning: <kbd>DELETE</kbd> <code>&lt;script&gt;&lt;/details&gt;   &lt;!-- /sluiceway:row --&gt; - &#91;x&#93;",
@@ -799,11 +824,11 @@ describe("the value fingerprint on a row", () => {
     },
   };
 
-  test("is the fingerprint of the diff, written last on the marker, and the hash stays", () => {
+  test("is the fingerprint of the diff, written after the keys before it on the marker, and the hash stays", () => {
     const first = renderRow(withFingerprints).split("\n")[0] ?? "";
     const expected = "2f8143552ea1897d";
     expect(first).toEndWith(
-      `hash="2b44350653e84a11" destroys="2" deletes="1" fingerprint="${expected}" -->`,
+      `hash="2b44350653e84a11" destroys="2" deletes="1" fingerprint="${expected}" creates="1" updates="1" replaces="1" tracking="1" -->`,
     );
     const [row] = parseDashboard(renderRow(withFingerprints)).rows;
     expect(row?.known && row.fingerprint).toBe(expected);

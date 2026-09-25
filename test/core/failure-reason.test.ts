@@ -137,3 +137,19 @@ describe("why a deploy failed, in Sluiceway's own words", () => {
     expect(longest.length).toBeLessThanOrEqual(140);
   });
 });
+
+// Record 0110: a reader that draws a row from the markers and the deployment
+// records alone holds no reason, so it writes this one and keeps the
+// action's sentence. Two constants with nothing filled in, one per list,
+// each naming where the reason is.
+describe("the reason word for a reason the reader does not hold", () => {
+  test("a deploy: the reason is on the deployment record", () => {
+    expect(deployFailureText({ kind: "on-record" })).toBe("the reason is on the deployment record");
+  });
+
+  test("a preview: the reason is in the summary of the run", () => {
+    expect(previewFailureText({ kind: "in-summary" })).toBe(
+      "the reason is in the summary of the run",
+    );
+  });
+});

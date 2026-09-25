@@ -14,6 +14,7 @@ import {
   writtenExamples,
 } from "../../scripts/written-examples.ts";
 import { deploymentPayloadJsonSchema, deploymentPayloadSchema } from "../../src/core/deployment.ts";
+import { deployFailureText, previewFailureText } from "../../src/core/failure-reason.ts";
 import {
   bulkMarker,
   mergeMarker,
@@ -82,6 +83,27 @@ describe("the examples on the page", () => {
   });
 });
 
+// Record 0110: the two rows a reader draws with the reason words are what the
+// renderer gives for them, and each word is on the fixed list.
+describe("the rows drawn with the reason words", () => {
+  test("are a preview failure row and a failure line, each with its word", () => {
+    const [first = "", , third = "", fourth = ""] = (examples["drawn-rows"] ?? "").split("\n");
+    expect(first).toContain(
+      `· preview failed: ${previewFailureText({ kind: "in-summary" })} · [run](`,
+    );
+    expect(fourth).toStartWith(
+      `  :x: last deploy failed: ${deployFailureText({ kind: "on-record" })} · ticked by bob ·`,
+    );
+    expect(third).toEndWith(
+      '<!-- sluiceway:row stack="apps/web:prod" state="in-sync" failed="true" -->',
+    );
+    expect(parseDashboard(examples["drawn-rows"] ?? "").rows).toHaveLength(2);
+    const prose = section(page, "#### Drawing a row from its marker");
+    expect(prose).toContain(`\`${deployFailureText({ kind: "on-record" })}\``);
+    expect(prose).toContain(`\`${previewFailureText({ kind: "in-summary" })}\``);
+  });
+});
+
 describe("a marker of each kind", () => {
   // Parsed and written again by the code, each example is itself: the page
   // shows exactly what the writers write.
@@ -112,21 +134,8 @@ describe("a marker of each kind", () => {
     for (const marker of (examples["row-markers"] ?? "").split("\n")) {
       const [row] = parseDashboard(`- x ${marker}\n  ${ROW_CLOSE_MARKER}`).rows;
       if (!row?.known) throw new Error(`Not a row: ${marker}`);
-      expect(
-        rowMarker({
-          stackId: row.stackId,
-          state: row.state,
-          hash: row.hash,
-          destroys: row.destroys,
-          deletes: row.deletes,
-          failed: row.failed,
-          shortened: row.shortened,
-          drift: row.drift,
-          gone: row.gone,
-          dependsOn: row.dependsOn,
-          fingerprint: row.fingerprint,
-        }),
-      ).toBe(marker);
+      const { known: _known, ticked: _ticked, text: _text, ...facts } = row;
+      expect(rowMarker(facts)).toBe(marker);
     }
   });
 
@@ -174,9 +183,15 @@ const WRITTEN_KEYS = {
       shortened: 1,
       drift: true,
       gone: 1,
+      changed: 1,
       dependsOn: ["b"],
       fingerprint: "f",
       policyFailed: true,
+      creates: 1,
+      updates: 1,
+      replaces: 1,
+      tracking: 1,
+      behind: ["c"],
     }),
   ),
   merge: keysOf(mergeMarker({ pr: 1, stackIds: ["a"], head: "h" })),

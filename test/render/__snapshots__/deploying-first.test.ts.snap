@@ -22,7 +22,7 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 - <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/spinner-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/spinner-light.svg"></picture> **network:prod** · deploying · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="network:prod" state="deploying" -->
   <!-- /sluiceway:row -->
-- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/spinner-queued-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/spinner-queued-light.svg"></picture> **site:prod** · queued behind **network:prod** · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="site:prod" state="queued" -->
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/spinner-queued-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.11.0/assets/mascot/spinner-queued-light.svg"></picture> **site:prod** · queued behind **network:prod** · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="site:prod" state="queued" behind="network:prod" -->
   <!-- /sluiceway:row -->
 
 ## Pending

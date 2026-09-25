@@ -27,7 +27,7 @@ describe("the queued row", () => {
   test("says what it waits behind, who ticked it and which run, with no box", () => {
     expect(renderRow(queued("site:prod", ["app:prod"]))).toBe(
       [
-        `- **site:prod** · queued behind **app:prod** · ticked by alice · [run](${RUN_URL}) <!-- sluiceway:row stack="site:prod" state="queued" -->`,
+        `- **site:prod** · queued behind **app:prod** · ticked by alice · [run](${RUN_URL}) <!-- sluiceway:row stack="site:prod" state="queued" behind="app:prod" -->`,
         "  <!-- /sluiceway:row -->",
       ].join("\n"),
     );
@@ -38,19 +38,22 @@ describe("the queued row", () => {
     expect(first).toContain("queued behind **app:prod** and **db&#95;&#42;:prod** ·");
   });
 
-  test("carries its destroys on the marker, and reads back as a known row with no tick", () => {
-    const [row] = parseDashboard(renderRow(queued("site:prod", ["app:prod"], 2))).rows;
+  test("carries its destroys and what it waits behind on the marker, and reads back as a known row with no tick", () => {
+    const [row] = parseDashboard(renderRow(queued("site:prod", ["app:prod", "db:prod"], 2))).rows;
     expect(row).toMatchObject({
       known: true,
       stackId: "site:prod",
       state: "queued",
       destroys: 2,
+      behind: ["app:prod", "db:prod"],
       ticked: false,
     });
   });
 
-  test("an empty list is an ordinary deploying row", () => {
-    expect(renderRow(queued("site:prod", []))).toContain('state="deploying"');
+  test("an empty list is an ordinary deploying row, with nothing behind on its marker", () => {
+    const first = renderRow(queued("site:prod", [])).split("\n")[0];
+    expect(first).toContain('state="deploying"');
+    expect(first).not.toContain("behind");
   });
 });
 

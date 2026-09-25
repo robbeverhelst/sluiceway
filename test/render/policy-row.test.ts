@@ -53,7 +53,7 @@ describe("a pending row whose change fails a policy", () => {
   test("has no box, says so, and lists each failure in the policy's own words, escaped", () => {
     expect(renderRow(row(FAILED))).toBe(
       [
-        '- **storage:prod** · 1 update · [preview](page-url) <!-- sluiceway:row stack="storage:prod" state="pending" hash="2b44350653e84a11" policy="failed" -->',
+        '- **storage:prod** · 1 update · [preview](page-url) <!-- sluiceway:row stack="storage:prod" state="pending" hash="2b44350653e84a11" policy="failed" updates="1" -->',
         "  from #12 by alice",
         "  :no_entry: **2 policies failed**, so this change has no box until it passes:",
         "  :no_entry: <code>main</code> · bucket uploads must not be public",
@@ -157,7 +157,7 @@ describe("a pending row whose policies could not run", () => {
       reason: { kind: "tool-error", exitCode: 1 },
     };
     expect(renderRow(row(notRun)).split("\n").slice(0, 3)).toEqual([
-      '- [ ] **storage:prod** · 1 update · [preview](page-url) <!-- sluiceway:row stack="storage:prod" state="pending" hash="2b44350653e84a11" -->',
+      '- [ ] **storage:prod** · 1 update · [preview](page-url) <!-- sluiceway:row stack="storage:prod" state="pending" hash="2b44350653e84a11" updates="1" -->',
       "  from #12 by alice",
       "  :warning: the policies did not run: conftest exited with an error (exit code 1). Nothing was checked, see the [run](run-url).",
     ]);

@@ -51748,6 +51748,7 @@ function rootMarker(facts) {
   }
   return marker("dashboard", pairs);
 }
+var COUNT_KEYS = ["creates", "updates", "replaces", "tracking"];
 function rowMarker(facts) {
   const pairs = [
     ["stack", facts.stackId],
@@ -51767,6 +51768,8 @@ function rowMarker(facts) {
     pairs.push(["drift", "true"]);
   if (facts.gone)
     pairs.push(["gone", String(facts.gone)]);
+  if (facts.changed)
+    pairs.push(["changed", String(facts.changed)]);
   if (facts.dependsOn && facts.dependsOn.length > 0) {
     pairs.push(["depends-on", encodeIds(facts.dependsOn)]);
   }
@@ -51774,6 +51777,12 @@ function rowMarker(facts) {
     pairs.push(["fingerprint", facts.fingerprint]);
   if (facts.policyFailed)
     pairs.push(["policy", "failed"]);
+  for (const key of COUNT_KEYS) {
+    if (facts[key])
+      pairs.push([key, String(facts[key])]);
+  }
+  if (facts.behind && facts.behind.length > 0)
+    pairs.push(["behind", encodeIds(facts.behind)]);
   return marker("row", pairs);
 }
 function mergeMarker(facts) {
@@ -51941,6 +51950,7 @@ function parseDashboard(body) {
       return /^\d+$/.test(value) ? Number(value) : 0;
     };
     const dependsOn = pairs.get("depends-on") ?? "";
+    const behind = pairs.get("behind") ?? "";
     const deletes = pairs.get("deletes") ?? "";
     const fingerprint = pairs.get("fingerprint");
     rows.push({
@@ -51954,9 +51964,12 @@ function parseDashboard(body) {
       shortened: count("shortened"),
       drift: pairs.get("drift") === "true",
       ...count("gone") > 0 ? { gone: count("gone") } : {},
+      ...count("changed") > 0 ? { changed: count("changed") } : {},
       ...dependsOn === "" ? {} : { dependsOn: decodeIds(dependsOn) },
       ...fingerprint === undefined ? {} : { fingerprint },
       ...pairs.get("policy") === "failed" ? { policyFailed: true } : {},
+      ...Object.fromEntries(COUNT_KEYS.filter((key) => count(key) > 0).map((key) => [key, count(key)])),
+      ...behind === "" ? {} : { behind: decodeIds(behind) },
       ticked: match[1] === "x" || match[1] === "X",
       text
     });
@@ -52142,15 +52155,24 @@ function isDestroy(change) {
 function plural2(count, word) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
-function counts(changes) {
+function changeCounts(changes) {
   const of = (op) => changes.filter((change) => change.op === op).length;
-  const trackingOnly = changes.filter((change) => change.op === "none" && change.tracking).length;
+  return {
+    creates: of("create"),
+    updates: of("update"),
+    replaces: of("replace"),
+    deletes: of("delete"),
+    tracking: changes.filter((change) => change.op === "none" && change.tracking).length
+  };
+}
+function counts(changes) {
+  const { creates, updates, replaces, deletes, tracking } = changeCounts(changes);
   return [
-    of("create") && plural2(of("create"), "create"),
-    of("update") && plural2(of("update"), "update"),
-    of("replace") && `**${plural2(of("replace"), "replace")}**`,
-    of("delete") && `**${plural2(of("delete"), "delete")}**`,
-    trackingOnly && `${trackingOnly} tracking only`
+    creates && plural2(creates, "create"),
+    updates && plural2(updates, "update"),
+    replaces && `**${plural2(replaces, "replace")}**`,
+    deletes && `**${plural2(deletes, "delete")}**`,
+    tracking && `${tracking} tracking only`
   ].filter(Boolean).join(", ");
 }
 function valueSuffix(change, path, show2) {
@@ -52319,6 +52341,7 @@ function driftRow(row, options) {
       shortened: level >= 2 ? level : 0,
       drift: true,
       gone: drift.filter((change) => change.op === "delete").length,
+      changed: drift.filter((change) => change.op === "update").length,
       dependsOn: row.dependsOn,
       fingerprint: row.fingerprint
     })}`
@@ -52377,6 +52400,7 @@ function pendingRow(row, options) {
   const box = options.readOnly || policyFailed ? "" : `[${row.ticked ? "x" : " "}] `;
   const drift = sortedDrift(row.diff);
   const driftCount = drift.length > 0 ? ` · ${driftCounts(drift)}` : "";
+  const { creates, updates, tracking } = changeCounts(changes);
   const lines = [
     `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)}${driftCount} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker({
       stackId: row.diff.stackId,
@@ -52389,7 +52413,11 @@ function pendingRow(row, options) {
       drift: drift.length > 0,
       dependsOn: row.dependsOn,
       fingerprint: row.fingerprint,
-      policyFailed
+      policyFailed,
+      creates,
+      updates,
+      replaces: replaces.length,
+      tracking
     })}`
   ];
   if (row.cost)
@@ -52453,7 +52481,7 @@ function deployingRow(row, options) {
   const word = behind.length > 0 ? `queued behind ${behind.map((id) => `**${escapeText(id)}**`).join(" and ")}${row.window ? `, and for ${windowWords(row.window, options.timeZone)}` : ""}` : row.window ? `queued for ${windowWords(row.window, options.timeZone)}` : row.waiting ? `waiting to start${onMerge}` : `deploying${onMerge}`;
   const state = behind.length > 0 || row.window ? "queued" : "deploying";
   const lines = [
-    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef, state === "queued")}**${escapeText(row.stackId)}** · ${word} · ${row.onMerge ? "merged" : "ticked"} by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys, deletes: row.deletes })}`
+    `- ${options.actionRef === undefined ? "" : spinner(options.actionRef, state === "queued")}**${escapeText(row.stackId)}** · ${word} · ${row.onMerge ? "merged" : "ticked"} by ${escapeText(row.ticker)} · [run](${row.runUrl}) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys, deletes: row.deletes, behind })}`
   ];
   if (row.attribution)
     lines.push(row.attribution.full, ...outsideFold(row.attribution, 0));
@@ -61485,6 +61513,8 @@ function previewFailureText(reason) {
       return "Sluiceway failed inside itself, which is a bug";
     case "env-file-not-loaded":
       return "the env file of the stack could not be loaded";
+    case "in-summary":
+      return "the reason is in the summary of the run";
   }
 }
 function deployFailureText(reason) {
@@ -61511,6 +61541,8 @@ function deployFailureText(reason) {
       return "the deploy stopped before the tool ran";
     case "dependency-failed":
       return "a stack it depends on did not deploy";
+    case "on-record":
+      return "the reason is on the deployment record";
   }
 }
 

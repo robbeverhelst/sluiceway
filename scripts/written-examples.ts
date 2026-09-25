@@ -17,11 +17,13 @@ import type { Adapter } from "../src/adapters/adapter.ts";
 import type { ProcessRunner } from "../src/adapters/process.ts";
 import { pulumi } from "../src/adapters/pulumi/index.ts";
 import { deploymentPayload, mergePayload } from "../src/core/deployment.ts";
+import { deployFailureText, previewFailureText } from "../src/core/failure-reason.ts";
 import type { MatrixEntry } from "../src/core/resolve.ts";
 import type { OutputName } from "../src/github/outputs.ts";
 import { apply } from "../src/modes/apply.ts";
 import { resolve } from "../src/modes/resolve.ts";
 import { scan } from "../src/modes/scan.ts";
+import { renderRow } from "../src/render/row.ts";
 import { replay } from "../test/adapters/pulumi/replay.ts";
 import {
   ACTION_REF,
@@ -69,6 +71,7 @@ const LANGUAGES = {
   "root-marker": "md",
   "row-block": "md",
   "row-markers": "md",
+  "drawn-rows": "md",
   "merge-row": "md",
   "waiting-line": "md",
   "bulk-box": "md",
@@ -223,6 +226,32 @@ function markerOf(line: string): string {
   return line.slice(line.indexOf("<!-- sluiceway:"));
 }
 
+// Two rows a reader draws from facts alone, with the renderer and the reason
+// word of record 0110 in place of the reason it does not hold: a preview
+// failure row, and an in sync row with a failure line. The stack, the ticker
+// and the run are the example dashboard's.
+function drawnRows(): string {
+  const exampleRepo = "https://github.com/example-org/infra";
+  return [
+    renderRow({
+      state: "preview-failed",
+      stackId: "apps/web:staging",
+      reason: previewFailureText({ kind: "in-summary" }),
+      runUrl: `${exampleRepo}/actions/runs/17034455121`,
+    }),
+    renderRow({
+      state: "in-sync",
+      stackId: "apps/web:prod",
+      failure: {
+        reason: deployFailureText({ kind: "on-record" }),
+        ticker: "bob",
+        at: new Date("2026-09-20T16:40:03Z"),
+        runUrl: `${exampleRepo}/actions/runs/17029855012`,
+      },
+    }),
+  ].join("\n");
+}
+
 export async function writtenExamples(): Promise<WrittenExamples> {
   const deployed = await run("deploy");
   const failed = await run("deploy-failed");
@@ -268,10 +297,14 @@ export async function writtenExamples(): Promise<WrittenExamples> {
     "row-markers": [
       row("apps/api:prod"),
       row("apps/worker:prod"),
+      row("apps/billing:prod"),
+      row("infra/network:prod"),
       row("apps/legacy-worker:prod"),
+      row("monitoring/grafana:prod"),
       row("platform/external-dns:prod"),
       row("apps/auth:prod"),
     ].join("\n"),
+    "drawn-rows": drawnRows(),
     "merge-row": lineWith(dashboard, "<!-- sluiceway:merge "),
     "waiting-line": lineWith(dashboard, "<!-- sluiceway:waiting "),
     "bulk-box": lineWith(dashboard, '<!-- sluiceway:bulk section="pending"'),

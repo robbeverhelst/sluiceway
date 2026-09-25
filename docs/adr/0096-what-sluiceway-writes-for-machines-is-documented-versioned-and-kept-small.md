@@ -1,5 +1,7 @@
 # What Sluiceway writes for machines is documented, versioned, and kept small
 
+> Amended by 0110: the row table documents `changed`, `creates`, `updates`, `replaces`, `tracking` and `behind`, the generated row markers show each, and a section under the table gives the two reason words a reader writes for the reasons the markers do not carry.
+>
 > Amends 0003 (the payload has a published schema and the writer checks every payload against it), 0009 (the marker keys are split into documented and left out, and the version rule is stated for readers outside Sluiceway), and 0041 and 0061 (the result file's schema says it holds no secret, and where its one kind of value may be). Built as slice 5.33.
 
 Sluiceway writes three things that a machine can read: the markers in the dashboard body (0009), the payload of each deployment record (0003), and the result file with the step outputs beside it (0041). The docs treated them as internals, and issue 233 proposed saying at 1.0 that they are not promised. The owner decided the opposite on 2026-09-24 (issue 234): people, scripts and future agents should be able to build on them on purpose. They already carried versions. What was missing was the writing down, the schemas and a rule.

@@ -22,7 +22,7 @@ Scanned [\`0123456\`](https://github.com/acme/infra/commit/0123456789abcdef01234
 
 Tick a box to deploy that stack exactly as its row shows it.
 
-- [ ] **app:prod** · 1 update · [preview](https://github.com/acme/infra/runs/106538952701) <!-- sluiceway:row stack="app:prod" state="pending" hash="de2a01f100d259ac" -->
+- [ ] **app:prod** · 1 update · [preview](https://github.com/acme/infra/runs/106538952701) <!-- sluiceway:row stack="app:prod" state="pending" hash="de2a01f100d259ac" updates="1" -->
   not deployed from this dashboard yet
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>aws:s3/bucket:Bucket</code> <b>motd</b> · <code>tags</code><br>
@@ -33,7 +33,7 @@ Tick a box to deploy that stack exactly as its row shows it.
 
 Real infrastructure changed outside the code. Deploying a stack puts it back as its code says.
 
-- [ ] **site:prod** · 1 changed outside the code · [preview](https://github.com/acme/infra/runs/106538952702) <!-- sluiceway:row stack="site:prod" state="drift" hash="870c1a68fb125e34" drift="true" -->
+- [ ] **site:prod** · 1 changed outside the code · [preview](https://github.com/acme/infra/runs/106538952702) <!-- sluiceway:row stack="site:prod" state="drift" hash="870c1a68fb125e34" drift="true" changed="1" -->
   <details><summary>1 change outside the code</summary>
   <kbd>changed</kbd> <code>aws:s3/bucket:Bucket</code> <b>assets</b> · <code>tags</code><br>
   </details>

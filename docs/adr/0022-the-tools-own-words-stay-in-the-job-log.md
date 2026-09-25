@@ -1,5 +1,7 @@
 # The tool's own words stay in the job log, and nothing is masked by guessing
 
+> Amended by 0110: each list gains a reason word for a reader that draws a row from the markers and the deployment records and holds no reason: for a deploy, "the reason is on the deployment record", for a preview, "the reason is in the summary of the run". Sluiceway never writes either.
+>
 > Amended by 0048: with `scan.logDiff` on, the tool's words in the job log include its own diff, printed with workflow commands stopped.
 >
 > Amended by 0051: the list for a deploy gains "deploys are turned off in sluiceway.yaml".

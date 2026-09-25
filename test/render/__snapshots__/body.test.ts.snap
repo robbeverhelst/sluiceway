@@ -27,7 +27,7 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 Tick a box to deploy that stack exactly as its row shows it.
 
-- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -96,7 +96,7 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 Tick a box to deploy that stack exactly as its row shows it.
 
-- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -147,14 +147,14 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 ## Deploying
 
-- **q:queued** · queued behind **n:network** · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="q:queued" state="queued" -->
+- **q:queued** · queued behind **n:network** · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="q:queued" state="queued" behind="n:network" -->
   <!-- /sluiceway:row -->
 
 ## Pending
 
 Tick a box to deploy that stack exactly as its row shows it.
 
-- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -207,7 +207,7 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 Tick a box to deploy that stack exactly as its row shows it.
 
-- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -407,17 +407,17 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 Tick a box to deploy that stack exactly as its row shows it.
 
-- [ ] **stack-0** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-0** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -465,18 +465,18 @@ Tick a box to deploy that stack exactly as its row shows it.
 > [!CAUTION]
 > 1 pending stack deletes or replaces resources: **stack-0**
 
-- [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" deletes="1" -->
+- [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" deletes="1" creates="1" -->
   :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-1</b>
   <details><summary>1 other change</summary>
   <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -521,62 +521,62 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 Tick a box to deploy that stack exactly as its row shows it.
 
-- [ ] **stack-0** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-0** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-10** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-10" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-10** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-10" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-11** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-11" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-11** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-11" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-3** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-3" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-3** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-3" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-4** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-4" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-4** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-4" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-5** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-5" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-5** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-5" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-6** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-6" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-6** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-6" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-7** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-7" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-7** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-7" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-8** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-8" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-8** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-8" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-9** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-9" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-9** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-9" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -624,63 +624,63 @@ Tick a box to deploy that stack exactly as its row shows it.
 > [!CAUTION]
 > 1 pending stack deletes or replaces resources: **stack-0**
 
-- [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" deletes="1" -->
+- [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" deletes="1" creates="1" -->
   :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-1</b>
   <details><summary>1 other change</summary>
   <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-10** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-10" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-10** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-10" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-11** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-11" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-11** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-11" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-3** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-3" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-3** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-3" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-4** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-4" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-4** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-4" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-5** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-5" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-5** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-5" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-6** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-6" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-6** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-6" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-7** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-7" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-7** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-7" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-8** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-8" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-8** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-8" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-9** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-9" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-9** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-9" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -725,102 +725,102 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 Tick a box to deploy that stack exactly as its row shows it.
 
-- [ ] **stack-0** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-0** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-10** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-10" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-10** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-10" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-11** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-11" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-11** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-11" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-12** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-12" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-12** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-12" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-13** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-13" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-13** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-13" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-14** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-14" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-14** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-14" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-15** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-15" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-15** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-15" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-16** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-16" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-16** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-16" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-17** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-17" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-17** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-17" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-18** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-18" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-18** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-18" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-19** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-19" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-19** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-19" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-3** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-3" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-3** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-3" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-4** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-4" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-4** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-4" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-5** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-5" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-5** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-5" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-6** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-6" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-6** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-6" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-7** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-7" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-7** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-7" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-8** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-8" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-8** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-8" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-9** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-9" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-9** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-9" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -868,103 +868,103 @@ Tick a box to deploy that stack exactly as its row shows it.
 > [!CAUTION]
 > 1 pending stack deletes or replaces resources: **stack-0**
 
-- [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" deletes="1" -->
+- [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" deletes="1" creates="1" -->
   :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-1</b>
   <details><summary>1 other change</summary>
   <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-10** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-10" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-10** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-10" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-11** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-11" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-11** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-11" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-12** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-12" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-12** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-12" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-13** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-13" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-13** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-13" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-14** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-14" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-14** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-14" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-15** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-15" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-15** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-15" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-16** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-16" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-16** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-16" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-17** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-17" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-17** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-17" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-18** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-18" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-18** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-18" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-19** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-19" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-19** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-19" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-3** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-3" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-3** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-3" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-4** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-4" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-4** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-4" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-5** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-5" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-5** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-5" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-6** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-6" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-6** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-6" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-7** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-7" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-7** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-7" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-8** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-8" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-8** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-8" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-9** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-9" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-9** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-9" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -1009,107 +1009,107 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 Tick a box to deploy that stack exactly as its row shows it.
 
-- [ ] **stack-0** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-0** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-10** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-10" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-10** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-10" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-11** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-11" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-11** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-11" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-12** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-12" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-12** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-12" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-13** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-13" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-13** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-13" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-14** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-14" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-14** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-14" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-15** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-15" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-15** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-15" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-16** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-16" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-16** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-16" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-17** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-17" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-17** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-17" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-18** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-18" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-18** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-18" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-19** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-19" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-19** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-19" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-20** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-20" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-20** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-20" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-3** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-3" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-3** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-3" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-4** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-4" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-4** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-4" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-5** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-5" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-5** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-5" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-6** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-6" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-6** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-6" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-7** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-7" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-7** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-7" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-8** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-8" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-8** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-8" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-9** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-9" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-9** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-9" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -1157,108 +1157,108 @@ Tick a box to deploy that stack exactly as its row shows it.
 > [!CAUTION]
 > 1 pending stack deletes or replaces resources: **stack-0**
 
-- [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" deletes="1" -->
+- [ ] **stack-0** · 1 create, **1 delete** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-0" state="pending" hash="3fa9c1e2aabbccdd" destroys="1" deletes="1" creates="1" -->
   :warning: <kbd>DELETE</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-1</b>
   <details><summary>1 other change</summary>
   <kbd>create</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-1** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-1" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-10** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-10" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-10** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-10" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-11** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-11" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-11** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-11" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-12** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-12" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-12** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-12" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-13** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-13" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-13** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-13" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-14** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-14" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-14** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-14" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-15** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-15" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-15** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-15" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-16** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-16" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-16** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-16" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-17** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-17" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-17** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-17" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-18** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-18" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-18** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-18" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-19** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-19" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-19** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-19" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-2** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-2" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-20** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-20" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-20** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-20" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-3** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-3" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-3** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-3" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-4** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-4" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-4** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-4" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-5** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-5" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-5** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-5" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-6** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-6" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-6** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-6" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-7** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-7" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-7** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-7" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-8** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-8" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-8** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-8" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **stack-9** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-9" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **stack-9** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="stack-9" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -3792,7 +3792,65 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 Tick a box to deploy that stack exactly as its row shows it.
 
-- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
+  <details><summary>1 change</summary>
+  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
+  </details>
+  <!-- /sluiceway:row -->
+
+## In sync
+
+<details><summary>1 stack in sync</summary>
+
+- e:calm <!-- sluiceway:row stack="e:calm" state="in-sync" -->
+  <!-- /sluiceway:row -->
+
+</details>
+
+## Recently deployed
+
+Times are in UTC.
+
+- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
+- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
+- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
+
+---
+
+- [ ] Rescan all stacks <!-- sluiceway:rescan -->
+
+<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://docs.sluiceway.dev/)</sub>
+"
+`;
+
+exports[`snapshots queued, with the still crate 1`] = `
+"<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/queued-1-dark.svg">
+    <img alt="Sluiceway: queued behind dependencies, 1 stack is pending" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/queued-1-light.svg">
+  </picture>
+</p>
+
+<div align="center">
+
+🟡&nbsp;**1 pending** · 🔵&nbsp;1 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync
+
+Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
+
+</div>
+
+## Deploying
+
+- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/spinner-queued-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/spinner-queued-light.svg"></picture> **q:queued** · queued behind **n:network** · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="q:queued" state="queued" behind="n:network" -->
+  <!-- /sluiceway:row -->
+
+## Pending
+
+Tick a box to deploy that stack exactly as its row shows it.
+
+- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -3850,7 +3908,7 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 This dashboard is read only, so rows have no boxes and nothing deploys from here. Rows get their boxes when \`dashboard.readOnly\` comes out of \`sluiceway.yaml\`.
 
-- **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" -->
+- **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -4011,7 +4069,7 @@ Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a
 
 Tick a box to deploy that stack exactly as its row shows it.
 
-- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" -->
+- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" updates="1" -->
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
   </details>
@@ -4087,13 +4145,13 @@ Tick a box to deploy that stack exactly as its row shows it.
 > [!CAUTION]
 > 4 pending stacks delete or replace resources: **apps/legacy-worker:prod**, **data/postgres:prod**, **platform/ingress:prod**, **storage/buckets:prod**
 
-- [ ] **apps/api:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="962ea94dcf7ae8b4" -->
+- [ ] **apps/api:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="962ea94dcf7ae8b4" updates="1" -->
   from #5 by alice, #4 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/4193607...8c41f0e)
   <details><summary>1 change</summary>
   <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>api</b> · <code>spec</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **apps/billing:staging** · 9 creates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/billing:staging" state="pending" hash="97b512f9290de364" -->
+- [ ] **apps/billing:staging** · 9 creates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/billing:staging" state="pending" hash="97b512f9290de364" creates="9" -->
   not deployed from this dashboard yet
   <details><summary>9 changes</summary>
   <kbd>create</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>billing-external-4</b><br>
@@ -4107,7 +4165,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>billing-canary-1</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" deletes="3" -->
+- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" deletes="3" tracking="1" -->
   from #427 by dave · [compare](https://github.com/example-org/infra/compare/284fd2d...8c41f0e)
   :warning: <kbd>DELETE</kbd> <code>aws:sqs/queue:Queue</code> <b>legacy-jobs</b>
   :warning: <kbd>DELETE</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>legacy-worker</b>
@@ -4116,7 +4174,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>forget</kbd> <code>aws:iam/role:Role</code> <b>legacy-worker</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **apps/notifications:prod** · 1 create, 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/notifications:prod" state="pending" hash="abc0050a30343911" -->
+- [ ] **apps/notifications:prod** · 1 create, 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/notifications:prod" state="pending" hash="abc0050a30343911" creates="1" updates="1" -->
   from #428 by dave, and 3 changes outside this stack, and earlier changes · [compare](https://github.com/example-org/infra/compare/52798b7...8c41f0e)
   :information_source: a tick on this row was not picked up. Tick again to deploy.
   <details><summary>2 changes</summary>
@@ -4124,7 +4182,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>create</kbd> <code>kubernetes:batch/v1:CronJob</code> <b>digest</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **apps/search:prod** · 2 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/search:prod" state="pending" hash="571e68c7e24a4543" failed="true" -->
+- [ ] **apps/search:prod** · 2 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/search:prod" state="pending" hash="571e68c7e24a4543" failed="true" updates="2" -->
   from #432 by carol, #426 by carol · [compare](https://github.com/example-org/infra/compare/24988d1...8c41f0e)
   :x: last deploy failed: the change moved since the tick · ticked by alice · 2026-09-21 08:52 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120077)
   <details><summary>2 changes</summary>
@@ -4132,7 +4190,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>update</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>search-config</b> · <code>data</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **apps/web:prod** · 2 creates, 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/web:prod" state="pending" hash="3c2564c67a3d62b5" -->
+- [ ] **apps/web:prod** · 2 creates, 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/web:prod" state="pending" hash="3c2564c67a3d62b5" creates="2" updates="1" -->
   from #418 by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1dfd7ad...8c41f0e)
   <details><summary>3 changes</summary>
   <kbd>update</kbd> <code>kubernetes:apps/v1:Deployment</code> <b>web</b> · <code>metadata</code>, <code>spec</code><br>
@@ -4140,7 +4198,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>create</kbd> <code>kubernetes:core/v1:ConfigMap</code> <b>web-feature-flags</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **data/postgres:prod** · 2 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/postgres:prod" state="pending" hash="620c897f92719080" destroys="1" deletes="0" -->
+- [ ] **data/postgres:prod** · 2 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/postgres:prod" state="pending" hash="620c897f92719080" destroys="1" deletes="0" updates="2" replaces="1" -->
   from #431 by bob · [compare](https://github.com/example-org/infra/compare/912fee8...8c41f0e)
   :warning: <kbd>REPLACE</kbd> <code>aws:rds/instance:Instance</code> <b>main</b> · forced by <code>engineVersion</code>, <code>storageType</code> · also changes <code>instanceClass</code>
   <details><summary>2 other changes</summary>
@@ -4148,7 +4206,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>update</kbd> <code>aws:rds/parameterGroup:ParameterGroup</code> <b>main</b> · <code>parameters</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **infra/dns:prod** · 1 update, 2 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="infra/dns:prod" state="pending" hash="58731081e177634d" -->
+- [ ] **infra/dns:prod** · 1 update, 2 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="infra/dns:prod" state="pending" hash="58731081e177634d" updates="1" tracking="2" -->
   from 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/5bef5d8...8c41f0e)
   <details><summary>3 changes</summary>
   <kbd>update</kbd> <code>cloudflare:index/record:Record</code> <b>api</b> · <code>ttl</code><br>
@@ -4156,7 +4214,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>import</kbd> <code>cloudflare:index/record:Record</code> <b>status-page</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **monitoring/dashboards:prod** · 46 creates, 74 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="monitoring/dashboards:prod" state="pending" hash="0e2b9558a96aa3f5" -->
+- [ ] **monitoring/dashboards:prod** · 46 creates, 74 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="monitoring/dashboards:prod" state="pending" hash="0e2b9558a96aa3f5" creates="46" updates="74" -->
   from #435 by erin · [compare](https://github.com/example-org/infra/compare/2b772f2...8c41f0e)
   <details><summary>120 changes</summary>
   <kbd>create</kbd> <code>kubernetes:apiextensions.k8s.io/v1:CustomResourceDefinition</code> <b>dashboard-admission-12</b><br>
@@ -4281,7 +4339,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>create</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>dashboard-webhook-76</b><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" deletes="0" -->
+- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" deletes="0" creates="13" updates="32" replaces="1" -->
   from #436 by renovate[bot], #434 by carol, #430 by renovate[bot], #425 by bob, #421 by renovate[bot], and 2 more, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/5990691...8c41f0e)
   :warning: <kbd>REPLACE</kbd> <code>kubernetes:batch/v1:Job</code> <b>ingress-admission-patch</b> · forced by <code>spec</code>
   <details><summary>45 other changes</summary>
@@ -4332,7 +4390,7 @@ Tick a box to deploy that stack exactly as its row shows it.
   <kbd>update</kbd> <code>kubernetes:rbac.authorization.k8s.io/v1:ClusterRole</code> <b>ingress-webhook-12</b> · <code>rules</code><br>
   </details>
   <!-- /sluiceway:row -->
-- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="ac75cd9db439bb8e" destroys="2" deletes="1" -->
+- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="ac75cd9db439bb8e" destroys="2" deletes="1" creates="1" updates="1" replaces="1" tracking="1" -->
   from #433 by alice, #429 by alice, [3fa9c1e](https://github.com/example-org/infra/commit/3fa9c1e) by bob, and 1 change outside this stack · [compare](https://github.com/example-org/infra/compare/7008dda...8c41f0e)
   :warning: <kbd>DELETE</kbd> <code>aws:s3/bucketPolicy:BucketPolicy</code> <b>uploads-public-read</b>
   :warning: <kbd>REPLACE</kbd> <code>aws:s3/bucket:Bucket</code> <b>uploads</b> · forced by <code>bucket</code> · also changes <code>tags</code>
@@ -4497,49 +4555,49 @@ Tick a box to deploy that stack exactly as its row shows it.
 > [!CAUTION]
 > 4 pending stacks delete or replace resources: **apps/legacy-worker:prod**, **data/postgres:prod**, **platform/ingress:prod**, **storage/buckets:prod**
 
-- [ ] **apps/api:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="962ea94dcf7ae8b4" -->
+- [ ] **apps/api:prod** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/api:prod" state="pending" hash="962ea94dcf7ae8b4" updates="1" -->
   from #5 by alice, #4 by renovate[bot] · [compare](https://github.com/example-org/infra/compare/4193607...8c41f0e)
   Changes are listed in the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **apps/billing:staging** · 9 creates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/billing:staging" state="pending" hash="97b512f9290de364" -->
+- [ ] **apps/billing:staging** · 9 creates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/billing:staging" state="pending" hash="97b512f9290de364" creates="9" -->
   not deployed from this dashboard yet
   Changes are listed in the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" deletes="3" -->
+- [ ] **apps/legacy-worker:prod** · **3 deletes**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" deletes="3" tracking="1" -->
   from #427 by dave · [compare](https://github.com/example-org/infra/compare/284fd2d...8c41f0e)
   :warning: **deletes 3.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
-- [ ] **apps/notifications:prod** · 1 create, 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/notifications:prod" state="pending" hash="abc0050a30343911" -->
+- [ ] **apps/notifications:prod** · 1 create, 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/notifications:prod" state="pending" hash="abc0050a30343911" creates="1" updates="1" -->
   from #428 by dave, and 3 changes outside this stack, and earlier changes · [compare](https://github.com/example-org/infra/compare/52798b7...8c41f0e)
   :information_source: a tick on this row was not picked up. Tick again to deploy.
   Changes are listed in the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **apps/search:prod** · 2 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/search:prod" state="pending" hash="571e68c7e24a4543" failed="true" -->
+- [ ] **apps/search:prod** · 2 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/search:prod" state="pending" hash="571e68c7e24a4543" failed="true" updates="2" -->
   from #432 by carol, #426 by carol · [compare](https://github.com/example-org/infra/compare/24988d1...8c41f0e)
   :x: last deploy failed: the change moved since the tick · ticked by alice · 2026-09-21 08:52 UTC · [run](https://github.com/example-org/infra/actions/runs/17034120077)
   Changes are listed in the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **apps/web:prod** · 2 creates, 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/web:prod" state="pending" hash="3c2564c67a3d62b5" -->
+- [ ] **apps/web:prod** · 2 creates, 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/web:prod" state="pending" hash="3c2564c67a3d62b5" creates="2" updates="1" -->
   from #418 by carol, and 2 changes outside this stack · [compare](https://github.com/example-org/infra/compare/1dfd7ad...8c41f0e)
   Changes are listed in the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **data/postgres:prod** · 2 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/postgres:prod" state="pending" hash="620c897f92719080" destroys="1" deletes="0" -->
+- [ ] **data/postgres:prod** · 2 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="data/postgres:prod" state="pending" hash="620c897f92719080" destroys="1" deletes="0" updates="2" replaces="1" -->
   from #431 by bob · [compare](https://github.com/example-org/infra/compare/912fee8...8c41f0e)
   :warning: **replaces 1.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
-- [ ] **infra/dns:prod** · 1 update, 2 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="infra/dns:prod" state="pending" hash="58731081e177634d" -->
+- [ ] **infra/dns:prod** · 1 update, 2 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="infra/dns:prod" state="pending" hash="58731081e177634d" updates="1" tracking="2" -->
   from 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/5bef5d8...8c41f0e)
   Changes are listed in the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **monitoring/dashboards:prod** · 46 creates, 74 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="monitoring/dashboards:prod" state="pending" hash="0e2b9558a96aa3f5" -->
+- [ ] **monitoring/dashboards:prod** · 46 creates, 74 updates · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="monitoring/dashboards:prod" state="pending" hash="0e2b9558a96aa3f5" creates="46" updates="74" -->
   from #435 by erin · [compare](https://github.com/example-org/infra/compare/2b772f2...8c41f0e)
   Changes are listed in the [summary](https://github.com/example-org/infra/actions/runs/17034455121)
   <!-- /sluiceway:row -->
-- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" deletes="0" -->
+- [ ] **platform/ingress:prod** · 13 creates, 32 updates, **1 replace** · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="platform/ingress:prod" state="pending" hash="f46faa2cc8a9aa8c" destroys="1" deletes="0" creates="13" updates="32" replaces="1" -->
   from #436 by renovate[bot], #434 by carol, #430 by renovate[bot], #425 by bob, #421 by renovate[bot], and 2 more, and 4 changes outside this stack · [compare](https://github.com/example-org/infra/compare/5990691...8c41f0e)
   :warning: **replaces 1.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
-- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="ac75cd9db439bb8e" destroys="2" deletes="1" -->
+- [ ] **storage/buckets:prod** · 1 create, 1 update, **1 replace**, **1 delete**, 1 tracking only · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="storage/buckets:prod" state="pending" hash="ac75cd9db439bb8e" destroys="2" deletes="1" creates="1" updates="1" replaces="1" tracking="1" -->
   from #433 by alice, #429 by alice, [3fa9c1e](https://github.com/example-org/infra/commit/3fa9c1e) by bob, and 1 change outside this stack · [compare](https://github.com/example-org/infra/compare/7008dda...8c41f0e)
   :warning: **deletes 1, replaces 1.** Read the [summary](https://github.com/example-org/infra/actions/runs/17034455121) before you tick.
   <!-- /sluiceway:row -->
@@ -4644,64 +4702,6 @@ These stacks could not be previewed, so they cannot be deployed from here until 
 - storage/buckets:staging <!-- sluiceway:row stack="storage/buckets:staging" state="in-sync" -->
   <!-- /sluiceway:row -->
 - storage/cdn:prod <!-- sluiceway:row stack="storage/cdn:prod" state="in-sync" -->
-  <!-- /sluiceway:row -->
-
-</details>
-
-## Recently deployed
-
-Times are in UTC.
-
-- 🟢&nbsp;apps/auth:prod · alice · 09-21 09:41 · [run](https://github.com/example-org/infra/actions/runs/17034388102)
-- 🟢&nbsp;apps/auth:staging · alice · 09-21 09:12 · [run](https://github.com/example-org/infra/actions/runs/17034120455)
-- 🟢&nbsp;platform/external-dns:prod · carol · 09-20 17:30 · [run](https://github.com/example-org/infra/actions/runs/17029910331)
-
----
-
-- [ ] Rescan all stacks <!-- sluiceway:rescan -->
-
-<sub>[Sluiceway](https://github.com/sluiceway/sluiceway) v0.1.0 · [docs](https://docs.sluiceway.dev/)</sub>
-"
-`;
-
-exports[`snapshots queued, with the still crate 1`] = `
-"<!-- sluiceway:dashboard v="1" scan-sha="8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c" scan-run="17034455121" scan-at="2026-09-21T10:02:41Z" full-scan-at="2026-09-21T06:00:12Z" full-scan-run="17031200455" -->
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/queued-1-dark.svg">
-    <img alt="Sluiceway: queued behind dependencies, 1 stack is pending" width="880" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/queued-1-light.svg">
-  </picture>
-</p>
-
-<div align="center">
-
-🟡&nbsp;**1 pending** · 🔵&nbsp;1 deploying · ⚪&nbsp;0 preview failed · 🟢&nbsp;1 in sync
-
-Scanned [\`8c41f0e\`](https://github.com/example-org/infra/commit/8c41f0e7d2b94a6f1e3c5d7a9b0c2e4f6a8b1d3c) on 2026-09-21 10:02 UTC · [run](https://github.com/example-org/infra/actions/runs/17034455121) · <sub>last full scan 2026-09-21 06:00 UTC</sub>
-
-</div>
-
-## Deploying
-
-- <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/spinner-queued-dark.svg"><img alt="" width="16" height="16" src="https://raw.githubusercontent.com/sluiceway/sluiceway/v0.1.0/assets/mascot/spinner-queued-light.svg"></picture> **q:queued** · queued behind **n:network** · ticked by carol · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="q:queued" state="queued" -->
-  <!-- /sluiceway:row -->
-
-## Pending
-
-Tick a box to deploy that stack exactly as its row shows it.
-
-- [ ] **d:pending** · 1 update · [preview](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="d:pending" state="pending" hash="3fa9c1e2aabbccdd" -->
-  <details><summary>1 change</summary>
-  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet-0</b> · <code>length</code><br>
-  </details>
-  <!-- /sluiceway:row -->
-
-## In sync
-
-<details><summary>1 stack in sync</summary>
-
-- e:calm <!-- sluiceway:row stack="e:calm" state="in-sync" -->
   <!-- /sluiceway:row -->
 
 </details>

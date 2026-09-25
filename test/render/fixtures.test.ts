@@ -23,6 +23,19 @@ function deletesOf(row: Row): { deletes?: number } {
   return { deletes: row.diff.changes.filter((change) => change.op === "delete").length };
 }
 
+// Record 0110: the counts of the first line, each only when it is not 0.
+function countsOf(row: Row): Record<string, number> {
+  if (row.state !== "pending") return {};
+  const of = (op: string) => row.diff.changes.filter((change) => change.op === op).length;
+  const found = {
+    creates: of("create"),
+    updates: of("update"),
+    replaces: of("replace"),
+    tracking: row.diff.changes.filter((change) => change.op === "none" && change.tracking).length,
+  };
+  return Object.fromEntries(Object.entries(found).filter(([, count]) => count > 0));
+}
+
 describe("the fixtures", () => {
   test("58 stacks: 11 pending, 2 deploying, 2 preview failures, 43 in sync", () => {
     expect(byState(rows58())).toEqual({
@@ -103,6 +116,7 @@ describe("every rendered block", () => {
           hash: row.state === "pending" ? row.hash : undefined,
           destroys: destroysOf(row),
           ...deletesOf(row),
+          ...countsOf(row),
           failed: "failure" in row && row.failure !== undefined,
           shortened: row.state === "pending" ? level : 0,
           drift: false,

@@ -394,6 +394,10 @@ _Avoid_: Flapping, drift, stuck row
 Why a preview or a deploy failed, in words from a short fixed list that Sluiceway owns. It never quotes the tool. The tool's own words stay in the job log, one link away.
 _Avoid_: Error message, error text, tool error
 
+**Reason word**:
+The failure reason a reader outside Sluiceway writes when it draws a row from the markers and the deployment records and holds no reason: `the reason is on the deployment record` on a failure line, `the reason is in the summary of the run` on a preview failure row. Both are on the fixed list, and Sluiceway itself never writes either, because a scan and an `apply` always hold the reason.
+_Avoid_: Placeholder reason, unknown reason, fallback text
+
 **Summary**:
 The page of a scan's workflow run where every stack's diff is shown, with far more room than the dashboard has. It shows the same kind of facts as a row and nothing more. It opens with an index of the stacks that rows link to, and every stack has its own anchor in it. Shortened and redacted rows link to it, and so does a pending row's preview link when the stack has no preview page. On the rare scan that does not fit even there, it says so and points at the job log, which holds every diff in full. An `apply` writes one too, about its one stack: what went out, or why nothing did.
 _Avoid_: Full diff, report, native output

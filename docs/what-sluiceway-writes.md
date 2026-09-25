@@ -61,15 +61,21 @@ One row per stack. Its state says where the row sits and is counted, and nothing
 | `failed` | `true` when the row carries a failure line: a deploy failed and no later one cleared it |
 | `drift` | `true` when the hash covers drift, found in a scan that checked it |
 | `gone` | On a drifted row, how many resources were found gone outside the code |
+| `changed` | On a drifted row, how many resources were found changed outside the code ([record 0110](adr/0110-the-row-marker-carries-its-counts-and-what-a-queued-row-waits-behind-and-the-example-is-data.md)). Absent on a row written before the key came |
 | `depends-on` | For a stack with `dependsOn: auto`, the stack ids its preview read from its stack references |
 | `fingerprint` | The value fingerprint, 16 hex characters over the values of the diff that the row does not show ([record 0102](adr/0102-a-tick-covers-the-values-it-does-not-show-through-a-value-fingerprint.md)). Only on a pending or drifted row whose diff holds any, and only while `valueFingerprint` is on for the stack |
 | `policy` | `failed` when a policy of the repo failed on the change, so the row has no box ([record 0106](adr/0106-policies-run-against-the-preview-and-a-hard-failure-takes-the-box-off-the-row.md)). A tick on such a row is refused. Absent otherwise |
+| `creates` | On a pending row, how many creates the diff holds (record 0110). Each of the four counts is absent at 0, and on a row written before the keys came |
+| `updates` | How many updates |
+| `replaces` | How many replaces. The same number as `destroys` less `deletes` |
+| `tracking` | How many changes only touch the tool's record of a resource: an import, a forget or a move, with no op |
+| `behind` | On a queued row, the stack ids it waits behind, as its deployment record's `behind` names them (record 0110). Absent on a row that waits for its deploy window alone, and on a row written before the key came |
 
 A pending row from the run, the whole block:
 
 <!-- example: row-block -->
 ```md
-- [ ] **network:dev** · 4 creates · [preview](https://github.com/acme/infra/runs/106538952701) <!-- sluiceway:row stack="network:dev" state="pending" hash="378429630657b00c" fingerprint="fa5c9bfcd54da64a" -->
+- [ ] **network:dev** · 4 creates · [preview](https://github.com/acme/infra/runs/106538952701) <!-- sluiceway:row stack="network:dev" state="pending" hash="378429630657b00c" fingerprint="fa5c9bfcd54da64a" creates="4" -->
   not deployed from this dashboard yet
   <details><summary>4 changes</summary>
   <kbd>create</kbd> <code>command:local:Command</code> <b>banner</b><br>
@@ -81,17 +87,41 @@ A pending row from the run, the whole block:
 ```
 <!-- /example -->
 
-Row markers of the example dashboard: deploying, queued, pending with deletes, drifted with a resource gone, and in sync:
+Row markers of the example dashboard: deploying, queued behind the deploying one, pending with an update and a create, pending with a replace, pending with deletes and a tracking change, drifted with a resource changed, drifted with a resource gone, and in sync:
 
 <!-- example: row-markers -->
 ```md
 <!-- sluiceway:row stack="apps/api:prod" state="deploying" -->
-<!-- sluiceway:row stack="apps/worker:prod" state="queued" -->
-<!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" deletes="3" -->
+<!-- sluiceway:row stack="apps/worker:prod" state="queued" behind="apps/api:prod" -->
+<!-- sluiceway:row stack="apps/billing:prod" state="pending" hash="1d0a03db50bc7070" creates="1" updates="1" -->
+<!-- sluiceway:row stack="infra/network:prod" state="pending" hash="32cbe8fae705b3a9" destroys="1" deletes="0" updates="1" replaces="1" -->
+<!-- sluiceway:row stack="apps/legacy-worker:prod" state="pending" hash="63a63bc225aca792" destroys="3" deletes="3" tracking="1" -->
+<!-- sluiceway:row stack="monitoring/grafana:prod" state="drift" hash="3317badb7e6c946b" drift="true" changed="1" -->
 <!-- sluiceway:row stack="platform/external-dns:prod" state="drift" hash="78b602d7bc070d24" drift="true" gone="1" -->
 <!-- sluiceway:row stack="apps/auth:prod" state="in-sync" -->
 ```
 <!-- /example -->
+
+#### Drawing a row from its marker
+
+The markers hold enough to draw every row's first line without the diff: the state, the counts, what a queued row waits behind, and whether a failure line rides on it. Two things a row shows are on no marker, on purpose, and a reader that draws a row writes a fixed sentence of Sluiceway's own in their place (record 0110):
+
+- **The reason a deploy failed** is the description of the `failure` or `error` status on the deployment record, which is not part of this page. A failure line drawn from the facts alone reads `the reason is on the deployment record`.
+- **The reason a preview failed** is in the summary of the run and in the [result file](#a-preview), not on the row's marker. A preview failure row drawn from the facts alone reads `the reason is in the summary of the run`.
+
+Both sentences are on the fixed list of reasons (record 0022), so they keep their meaning like a documented key. The renderer draws them as any other reason:
+
+<!-- example: drawn-rows -->
+```md
+- **apps/web:staging** · preview failed: the reason is in the summary of the run · [run](https://github.com/example-org/infra/actions/runs/17034455121) <!-- sluiceway:row stack="apps/web:staging" state="preview-failed" -->
+  <!-- /sluiceway:row -->
+- apps/web:prod <!-- sluiceway:row stack="apps/web:prod" state="in-sync" failed="true" -->
+  :x: last deploy failed: the reason is on the deployment record · ticked by bob · 2026-09-20 16:40 UTC · [run](https://github.com/example-org/infra/actions/runs/17029855012)
+  <!-- /sluiceway:row -->
+```
+<!-- /example -->
+
+The example dashboard is also data: `scripts/example-dashboard.ts` exports its rows, trail and outside deploys as `EXAMPLE`, and `exampleBody` draws the whole body from them under any setting, so a reader redraws the example with the renderer instead of taking it through these markers.
 
 ### An update waiting to merge
 

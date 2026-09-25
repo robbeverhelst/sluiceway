@@ -26,7 +26,12 @@ export type PreviewFailureReason =
   // The env file the stack's entry names could not be loaded (record 0103):
   // it is not there, or a line of it is refused. The tool never ran for the
   // stack, and the job log has the path and the line number.
-  | { kind: "env-file-not-loaded" };
+  | { kind: "env-file-not-loaded" }
+  // Not a way a preview fails: the word a reader outside Sluiceway writes
+  // when it draws a preview failure row from the markers alone and holds no
+  // reason (record 0110). The reason is in the summary of the run, and in
+  // the result file. The scan never writes it.
+  | { kind: "in-summary" };
 
 // The reason as a row, the summary, an annotation or a deployment status shows
 // it. One form for all of them: lower case and no full stop, the wording of
@@ -61,6 +66,8 @@ export function previewFailureText(reason: PreviewFailureReason): string {
       return "Sluiceway failed inside itself, which is a bug";
     case "env-file-not-loaded":
       return "the env file of the stack could not be loaded";
+    case "in-summary":
+      return "the reason is in the summary of the run";
   }
 }
 
@@ -99,7 +106,12 @@ export type DeployFailureReason =
   | { kind: "dependency-failed" }
   // Anything else that stopped `apply` before the tool ran, such as a
   // broken `sluiceway.yaml`. The job log says what.
-  | { kind: "not-started" };
+  | { kind: "not-started" }
+  // Not a way a deploy fails: the word a reader outside Sluiceway writes
+  // when it draws a failure line from the markers and the deployment records
+  // and holds no reason, because the description of a status is not part of
+  // the published shape (records 0096 and 0110). `apply` never writes it.
+  | { kind: "on-record" };
 
 export function deployFailureText(reason: DeployFailureReason): string {
   switch (reason.kind) {
@@ -129,5 +141,7 @@ export function deployFailureText(reason: DeployFailureReason): string {
       return "the deploy stopped before the tool ran";
     case "dependency-failed":
       return "a stack it depends on did not deploy";
+    case "on-record":
+      return "the reason is on the deployment record";
   }
 }

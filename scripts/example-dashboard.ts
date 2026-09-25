@@ -12,15 +12,16 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { attributor, type CommitWalk, type WalkedCommit } from "../src/core/attribution.ts";
+import type { IgnoredStack } from "../src/core/config.ts";
 import type { Change, Op, ShownValue, Tracking } from "../src/core/diff.ts";
 import { diffHash } from "../src/core/diff-hash.ts";
 import type { OutsideDeploy } from "../src/core/outside-deploy.ts";
 import { type RecentDeploy, renderBody, rowBlock } from "../src/render/body.ts";
 import { renderBulkLine } from "../src/render/bulk-box.ts";
-import { type ParsedBulk, parseDashboard } from "../src/render/marker.ts";
-import { mergeBlock } from "../src/render/merge-row.ts";
+import { type BulkFacts, parseDashboard, type RootFacts } from "../src/render/marker.ts";
+import { type MergeRow, mergeBlock } from "../src/render/merge-row.ts";
 import type { DeployingRow, DriftRow, InSyncRow, PendingRow, Row } from "../src/render/row.ts";
-import { waitingBlock } from "../src/render/waiting-line.ts";
+import { type WaitingLine, waitingBlock } from "../src/render/waiting-line.ts";
 
 // Where the body is committed. `assets/` is already what other pages fetch
 // raw at an exact tag: the header pictures (record 0033).
@@ -280,22 +281,19 @@ const ROWS: Row[] = [...DEPLOYING, ...PENDING, ...DRIFTED, ...IN_SYNC];
 
 // A person ticked Repair all under the drifted rows, and `resolve` put the
 // confirm box in its place (record 0083). Pending keeps its bulk box.
-const CONFIRM: ParsedBulk[] = parseDashboard(
-  renderBulkLine({
-    kind: "confirm",
-    section: "drift",
-    by: "carol",
-    stacks: DRIFTED.map((row) => ({ stackId: row.diff.stackId, hash: row.hash })),
-    scanRun: SCAN_RUN,
-    ticked: false,
-  }),
-).bulk;
+const CONFIRM: Extract<BulkFacts, { kind: "confirm" }> = {
+  kind: "confirm",
+  section: "drift",
+  by: "carol",
+  stacks: DRIFTED.map((row) => ({ stackId: row.diff.stackId, hash: row.hash })),
+  scanRun: SCAN_RUN,
+};
 
 // A Renovate update that merges and deploys with one tick, with its branch
 // preview (records 0054 and 0071), and one that waits on its checks (record
 // 0081).
-const MERGES = [
-  mergeBlock({
+const MERGES: MergeRow[] = [
+  {
     pr: 519,
     stackIds: ["platform/ingress-nginx:prod"],
     head: sha("renovate ingress-nginx"),
@@ -309,16 +307,16 @@ const MERGES = [
         ],
       },
     ],
-  }),
+  },
 ];
 
-const WAITING = [
-  waitingBlock({
+const WAITING: WaitingLine[] = [
+  {
     pr: 521,
     stackIds: ["apps/web:prod"],
     title: "Update dependency next to v15.5",
     author: "renovate[bot]",
-  }),
+  },
 ];
 
 const utc = (iso: string) => new Date(iso);
@@ -374,26 +372,78 @@ const OUTSIDE: OutsideDeploy[] = [
   },
 ];
 
+// The example as data (record 0110): everything the renderer draws the body
+// from, before any setting is applied. A reader outside this repo takes it
+// whole and draws the example under its own setting with `renderBody`, as
+// `exampleBody` does, instead of taking it through the markers of the
+// published file, which lose the made-up changes and the trail's lines.
+export interface ExampleDashboard {
+  root: RootFacts;
+  rows: readonly Row[];
+  recentlyDeployed: readonly RecentDeploy[];
+  outsideDeploys: readonly OutsideDeploy[];
+  repoUrl: string;
+  ignored: readonly IgnoredStack[];
+  merges: readonly MergeRow[];
+  waiting: readonly WaitingLine[];
+  // The confirm box under the drifted rows. The bulk box under the pending
+  // rows needs no data: the renderer draws it from the rows.
+  confirm: Extract<BulkFacts, { kind: "confirm" }>;
+}
+
+export const EXAMPLE: ExampleDashboard = {
+  root: {
+    scanSha: SCAN_SHA,
+    scanRun: SCAN_RUN,
+    scanAt: "2026-09-21T10:02:41Z",
+    fullScanAt: "2026-09-21T06:00:12Z",
+    fullScanRun: "17031200455",
+  },
+  rows: ROWS,
+  recentlyDeployed: RECENT,
+  outsideDeploys: OUTSIDE,
+  repoUrl: REPO_URL,
+  ignored: [{ stackId: "sandbox/playground:dev", reason: "a scratch stack, deployed by hand" }],
+  merges: MERGES,
+  waiting: WAITING,
+  confirm: CONFIRM,
+};
+
+// The settings of `sluiceway.yaml` a body is drawn under. The published
+// example is drawn with every default: personality on, nothing redacted,
+// UTC, boxes.
+export interface ExampleSettings {
+  redact?: boolean | undefined;
+  personality?: boolean | undefined;
+  timeZone?: string | undefined;
+  readOnly?: boolean | undefined;
+}
+
 // The body as a scan writes it into the dashboard issue.
-export function exampleBody(actionRef = exampleActionRef()): string {
+export function exampleBody(
+  actionRef = exampleActionRef(),
+  settings: ExampleSettings = {},
+): string {
+  const { redact, timeZone, readOnly } = settings;
+  const personality = settings.personality ?? true;
+  const rowOptions = { redact, readOnly, timeZone, actionRef: personality ? actionRef : undefined };
   return renderBody({
-    root: {
-      scanSha: SCAN_SHA,
-      scanRun: SCAN_RUN,
-      scanAt: "2026-09-21T10:02:41Z",
-      fullScanAt: "2026-09-21T06:00:12Z",
-      fullScanRun: "17031200455",
-    },
-    rows: ROWS.map((row) => rowBlock(row, { actionRef })),
-    recentlyDeployed: RECENT,
-    outsideDeploys: OUTSIDE,
-    repoUrl: REPO_URL,
+    root: EXAMPLE.root,
+    rows: EXAMPLE.rows.map((row) => rowBlock(row, rowOptions)),
+    recentlyDeployed: EXAMPLE.recentlyDeployed,
+    outsideDeploys: EXAMPLE.outsideDeploys,
+    repoUrl: EXAMPLE.repoUrl,
     actionRef,
-    personality: true,
-    ignored: [{ stackId: "sandbox/playground:dev", reason: "a scratch stack, deployed by hand" }],
-    merges: MERGES,
-    waiting: WAITING,
-    bulk: { on: true, live: CONFIRM },
+    personality,
+    timeZone,
+    readOnly,
+    ignored: EXAMPLE.ignored,
+    merges: EXAMPLE.merges.map((row) => mergeBlock(row, { redact })),
+    waiting: EXAMPLE.waiting.map((line) => waitingBlock(line, { redact })),
+    bulk: {
+      on: !readOnly,
+      live: parseDashboard(renderBulkLine({ ...EXAMPLE.confirm, ticked: false })).bulk,
+    },
   });
 }
 

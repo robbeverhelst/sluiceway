@@ -195,17 +195,38 @@ export function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
+// How many changes of each kind a diff holds: the numbers of the first line,
+// and since record 0110 the counts on the marker too.
+export interface ChangeCounts {
+  creates: number;
+  updates: number;
+  replaces: number;
+  deletes: number;
+  // Changes that only touch the tool's record of a resource (record 0007).
+  tracking: number;
+}
+
+export function changeCounts(changes: readonly Change[]): ChangeCounts {
+  const of = (op: Change["op"]) => changes.filter((change) => change.op === op).length;
+  return {
+    creates: of("create"),
+    updates: of("update"),
+    replaces: of("replace"),
+    deletes: of("delete"),
+    tracking: changes.filter((change) => change.op === "none" && change.tracking).length,
+  };
+}
+
 // Words with zeros left out, in a fixed order. Replaces and deletes are bold,
 // so the first line alone says that a row destroys something.
 export function counts(changes: Change[]): string {
-  const of = (op: Change["op"]) => changes.filter((change) => change.op === op).length;
-  const trackingOnly = changes.filter((change) => change.op === "none" && change.tracking).length;
+  const { creates, updates, replaces, deletes, tracking } = changeCounts(changes);
   return [
-    of("create") && plural(of("create"), "create"),
-    of("update") && plural(of("update"), "update"),
-    of("replace") && `**${plural(of("replace"), "replace")}**`,
-    of("delete") && `**${plural(of("delete"), "delete")}**`,
-    trackingOnly && `${trackingOnly} tracking only`,
+    creates && plural(creates, "create"),
+    updates && plural(updates, "update"),
+    replaces && `**${plural(replaces, "replace")}**`,
+    deletes && `**${plural(deletes, "delete")}**`,
+    tracking && `${tracking} tracking only`,
   ]
     .filter(Boolean)
     .join(", ");
@@ -474,6 +495,7 @@ function driftRow(row: DriftRow, options: RowOptions): string[] {
         shortened: level >= 2 ? level : 0,
         drift: true,
         gone: drift.filter((change) => change.op === "delete").length,
+        changed: drift.filter((change) => change.op === "update").length,
         dependsOn: row.dependsOn,
         fingerprint: row.fingerprint,
       },
@@ -560,6 +582,8 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
   // the code is no destroy: a deploy creates it again.
   const drift = sortedDrift(row.diff);
   const driftCount = drift.length > 0 ? ` · ${driftCounts(drift)}` : "";
+  // The counts of the first line, on the marker as well (record 0110).
+  const { creates, updates, tracking } = changeCounts(changes);
 
   const lines = [
     `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)}${driftCount} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker(
@@ -575,6 +599,10 @@ function pendingRow(row: PendingRow, options: RowOptions): string[] {
         dependsOn: row.dependsOn,
         fingerprint: row.fingerprint,
         policyFailed,
+        creates,
+        updates,
+        replaces: replaces.length,
+        tracking,
       },
     )}`,
   ];
@@ -672,7 +700,7 @@ function deployingRow(row: DeployingRow, options: RowOptions): string[] {
   const lines = [
     `- ${options.actionRef === undefined ? "" : spinner(options.actionRef, state === "queued")}**${escapeText(row.stackId)}** · ${word} · ${row.onMerge ? "merged" : "ticked"} by ${escapeText(row.ticker)} · [run](${
       row.runUrl
-    }) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys, deletes: row.deletes })}`,
+    }) ${rowMarker({ stackId: row.stackId, state, destroys: row.destroys, deletes: row.deletes, behind })}`,
   ];
   if (row.attribution) lines.push(row.attribution.full, ...outsideFold(row.attribution, 0));
   return lines;

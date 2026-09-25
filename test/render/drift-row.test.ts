@@ -45,7 +45,7 @@ describe("a drift row", () => {
   test("has a box, the drift counts, a preview link that lands on the summary without a page, and every drift line in a fold", () => {
     expect(renderRow(driftRow())).toBe(
       [
-        `- [ ] **site:prod** · 1 changed, 1 gone outside the code · [preview](${RUN}) <!-- sluiceway:row stack="site:prod" state="drift" hash="3503645c1819ce4f" drift="true" gone="1" -->`,
+        `- [ ] **site:prod** · 1 changed, 1 gone outside the code · [preview](${RUN}) <!-- sluiceway:row stack="site:prod" state="drift" hash="3503645c1819ce4f" drift="true" gone="1" changed="1" -->`,
         "  <details><summary>2 changes outside the code</summary>",
         "  <kbd>changed</kbd> <code>aws:s3/bucket:Bucket</code> <b>assets</b> · <code>tags.owner</code>, <code>versioning.enabled</code><br>",
         "  <kbd>gone</kbd> <code>local:index/file:File</code> <b>notes</b><br>",
@@ -70,7 +70,7 @@ describe("a drift row", () => {
     );
     const [first = "", second] = text.split("\n");
     expect(first).toStartWith("- [x] **site:prod**");
-    expect(first).toEndWith('drift="true" gone="1" -->');
+    expect(first).toEndWith('drift="true" gone="1" changed="1" -->');
     expect(first).toContain('failed="true"');
     expect(second).toBe(
       "  :x: last deploy failed: the tool exited with an error · ticked by alice · 2026-09-22 08:00 UTC · [run](https://github.com/acme/infra/actions/runs/6)",
@@ -80,7 +80,7 @@ describe("a drift row", () => {
   test("redacted, it names no type, name or path, and keeps the counts", () => {
     expect(renderRow(driftRow(), { redact: true })).toBe(
       [
-        `- [ ] **site:prod** · 1 changed, 1 gone outside the code · [preview](${RUN}) <!-- sluiceway:row stack="site:prod" state="drift" hash="3503645c1819ce4f" drift="true" gone="1" -->`,
+        `- [ ] **site:prod** · 1 changed, 1 gone outside the code · [preview](${RUN}) <!-- sluiceway:row stack="site:prod" state="drift" hash="3503645c1819ce4f" drift="true" gone="1" changed="1" -->`,
         `  Changes outside the code are listed in the [summary](${RUN})`,
         "  <!-- /sluiceway:row -->",
       ].join("\n"),
@@ -99,7 +99,7 @@ describe("a drift row", () => {
     expect(renderRow(driftRow(), { readOnly: true })).toStartWith("- **site:prod** · 1 changed");
   });
 
-  test("reads back as a known drift row with its hash", () => {
+  test("reads back as a known drift row with its hash, and what was found gone and changed", () => {
     const row = driftRow({ ticked: true });
     expect(parseDashboard(renderRow(row)).rows[0]).toMatchObject({
       known: true,
@@ -108,8 +108,21 @@ describe("a drift row", () => {
       hash: row.hash,
       destroys: 0,
       drift: true,
+      gone: 1,
+      changed: 1,
       ticked: true,
     });
+  });
+
+  // Record 0110: a drifted row with nothing gone carries `changed` alone, so a
+  // reader without the diff does not draw it as a resource gone.
+  test("with nothing gone, the marker carries changed alone", () => {
+    const diff: Diff = { stackId: "site:prod", changes: [], drift: [changed, pet] };
+    const first = renderRow({ state: "drift", diff, hash: diffHash(diff), runUrl: RUN }).split(
+      "\n",
+    )[0];
+    expect(first).toContain("· 2 changed outside the code ·");
+    expect(first).toEndWith('drift="true" changed="2" -->');
   });
 });
 
@@ -120,7 +133,7 @@ describe("a pending row that also shows drift", () => {
   test("stays pending, counts the drift on its first line, and lists it under its changes", () => {
     expect(renderRow(row)).toBe(
       [
-        `- [ ] **site:prod** · 1 update · 1 gone outside the code · [preview](${RUN}) <!-- sluiceway:row stack="site:prod" state="pending" hash="e03c45e1b434d22b" drift="true" -->`,
+        `- [ ] **site:prod** · 1 update · 1 gone outside the code · [preview](${RUN}) <!-- sluiceway:row stack="site:prod" state="pending" hash="e03c45e1b434d22b" drift="true" updates="1" -->`,
         "  <details><summary>1 change</summary>",
         "  <kbd>update</kbd> <code>random:index/randomPet:RandomPet</code> <b>pet</b> · <code>length</code><br>",
         "  </details>",
@@ -166,7 +179,7 @@ describe("the value fingerprint on a drift row", () => {
     });
     const text = renderRow(row);
     const expected = "ddaa2268cce4c88d";
-    expect(text.split("\n")[0]).toEndWith(`gone="1" fingerprint="${expected}" -->`);
+    expect(text.split("\n")[0]).toEndWith(`gone="1" changed="1" fingerprint="${expected}" -->`);
     expect(text).toContain("differed between two previews of the same commit");
     const [parsed] = parseDashboard(text).rows;
     expect(parsed?.known && parsed.fingerprint).toBe(expected);

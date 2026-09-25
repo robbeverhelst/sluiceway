@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import {
+  EXAMPLE,
   EXAMPLE_FILE,
   exampleActionRef,
   exampleBody,
@@ -11,6 +12,11 @@ import {
   withHardBreaks,
   withReadmeExample,
 } from "../../scripts/example-dashboard.ts";
+import { renderBody, rowBlock } from "../../src/render/body.ts";
+import { renderBulkLine } from "../../src/render/bulk-box.ts";
+import { parseDashboard } from "../../src/render/marker.ts";
+import { mergeBlock } from "../../src/render/merge-row.ts";
+import { waitingBlock } from "../../src/render/waiting-line.ts";
 import { ROOT, read } from "./docs.ts";
 
 // The example dashboard (slice 5.24, record 0088): the whole body the
@@ -131,6 +137,55 @@ describe("what the example shows", () => {
       [...body.matchAll(/https:\/\/github\.com\/([^/)\s"]+\/[^/)\s"]+)/g)].map((match) => match[1]),
     );
     expect([...repos].sort()).toEqual(["example-org/infra", "sluiceway/sluiceway"]);
+  });
+});
+
+// Record 0110: the example is data first, so a reader can redraw it whole
+// with the renderer, under any setting, instead of taking it through its
+// markers, which lose the made-up changes and the trail's lines.
+describe("the example as data", () => {
+  test("exports its rows, trail and outside deploys, and the renderer gives the published body from them", () => {
+    const ids = EXAMPLE.rows.map((row) => ("diff" in row ? row.diff.stackId : row.stackId));
+    expect(ids).toHaveLength(16);
+    expect(new Set(ids).size).toBe(16);
+    expect(EXAMPLE.recentlyDeployed).toHaveLength(5);
+    expect(EXAMPLE.outsideDeploys).toHaveLength(1);
+    const actionRef = exampleActionRef();
+    const body = renderBody({
+      root: EXAMPLE.root,
+      rows: EXAMPLE.rows.map((row) => rowBlock(row, { actionRef })),
+      recentlyDeployed: EXAMPLE.recentlyDeployed,
+      outsideDeploys: EXAMPLE.outsideDeploys,
+      repoUrl: EXAMPLE.repoUrl,
+      actionRef,
+      personality: true,
+      ignored: EXAMPLE.ignored,
+      merges: EXAMPLE.merges.map((row) => mergeBlock(row)),
+      waiting: EXAMPLE.waiting.map((line) => waitingBlock(line)),
+      bulk: {
+        on: true,
+        live: parseDashboard(renderBulkLine({ ...EXAMPLE.confirm, ticked: false })).bulk,
+      },
+    });
+    expect(`${body}\n`).toBe(read(EXAMPLE_FILE));
+  });
+
+  test("redraws under another setting: redacted, without personality, in a zone, read only", () => {
+    const body = exampleBody(exampleActionRef(), {
+      redact: true,
+      personality: false,
+      timeZone: "Europe/Brussels",
+      readOnly: true,
+    });
+    for (const row of EXAMPLE.rows) {
+      expect(body).toContain("diff" in row ? row.diff.stackId : row.stackId);
+    }
+    expect(body).not.toContain("raw.githubusercontent.com");
+    expect(body).not.toContain("kubernetes:apps/v1:Deployment");
+    for (const row of parseDashboard(body).rows) expect(row.text).not.toStartWith("- [ ] ");
+    expect(body).not.toContain("Rescan all stacks");
+    expect(body).toContain("Times are in Europe/Brussels");
+    expect(body).not.toBe(exampleBody());
   });
 });
 

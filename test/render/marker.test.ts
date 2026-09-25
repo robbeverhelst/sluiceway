@@ -263,3 +263,118 @@ describe("the policy key", () => {
     expect(row?.known && row.policyFailed).toBeUndefined();
   });
 });
+
+// Record 0110: a pending row's marker carries how many changes of each kind
+// its diff holds, so a reader without the diff can draw the counts of its
+// first line. After every older key, each left out at 0.
+describe("the counts keys", () => {
+  test("are written after the policy key, in the order of the first line, and read back", () => {
+    const marker = rowMarker({
+      stackId: "apps/grafana:prod",
+      state: "pending",
+      hash: "3fa9c1e2aabbccdd",
+      destroys: 2,
+      deletes: 1,
+      policyFailed: true,
+      creates: 1,
+      updates: 2,
+      replaces: 1,
+      tracking: 3,
+    });
+    expect(marker).toBe(
+      '<!-- sluiceway:row stack="apps/grafana:prod" state="pending" hash="3fa9c1e2aabbccdd" destroys="2" deletes="1" policy="failed" creates="1" updates="2" replaces="1" tracking="3" -->',
+    );
+    const [row] = parseDashboard(`- **x** ${marker}\n  ${ROW_CLOSE_MARKER}`).rows;
+    expect(row?.known && row).toMatchObject({ creates: 1, updates: 2, replaces: 1, tracking: 3 });
+  });
+
+  test("a count of 0 is left out, and reads as absent", () => {
+    const marker = rowMarker({
+      stackId: "a",
+      state: "pending",
+      hash: "00",
+      creates: 0,
+      updates: 1,
+      replaces: 0,
+      tracking: 0,
+    });
+    expect(marker).toBe('<!-- sluiceway:row stack="a" state="pending" hash="00" updates="1" -->');
+    const [row] = parseDashboard(`- [ ] x ${marker}\n  ${ROW_CLOSE_MARKER}`).rows;
+    if (!row?.known) throw new Error("not a row");
+    expect(row.updates).toBe(1);
+    expect(row.creates).toBeUndefined();
+    expect(row.replaces).toBeUndefined();
+    expect(row.tracking).toBeUndefined();
+  });
+
+  test("a count that is not a whole number reads as absent", () => {
+    const [row] = parseDashboard(
+      `- [ ] x <!-- sluiceway:row stack="a" state="pending" hash="00" creates="many" updates="-1" -->\n  ${ROW_CLOSE_MARKER}`,
+    ).rows;
+    if (!row?.known) throw new Error("not a row");
+    expect(row.creates).toBeUndefined();
+    expect(row.updates).toBeUndefined();
+  });
+});
+
+// Record 0110: how many resources a drifted row's drift check found changed
+// outside the code, next to `gone`, so a drifted row with nothing gone is not
+// drawn as one change outside the code.
+describe("the changed key", () => {
+  test("follows gone, and reads back", () => {
+    const marker = rowMarker({
+      stackId: "site:prod",
+      state: "drift",
+      hash: "be148b80efa3bb8f",
+      drift: true,
+      gone: 1,
+      changed: 2,
+      dependsOn: ["db:prod"],
+    });
+    expect(marker).toBe(
+      '<!-- sluiceway:row stack="site:prod" state="drift" hash="be148b80efa3bb8f" drift="true" gone="1" changed="2" depends-on="db:prod" -->',
+    );
+    const [row] = parseDashboard(`- [ ] x ${marker}\n  ${ROW_CLOSE_MARKER}`).rows;
+    expect(row?.known && row).toMatchObject({ gone: 1, changed: 2 });
+  });
+
+  test("is written without gone, left out at 0, and reads as absent then", () => {
+    expect(
+      rowMarker({ stackId: "a", state: "drift", hash: "00", drift: true, gone: 0, changed: 1 }),
+    ).toBe('<!-- sluiceway:row stack="a" state="drift" hash="00" drift="true" changed="1" -->');
+    const marker = rowMarker({ stackId: "a", state: "drift", hash: "00", drift: true, changed: 0 });
+    expect(marker).not.toContain("changed");
+    const [row] = parseDashboard(`- [ ] x ${marker}\n  ${ROW_CLOSE_MARKER}`).rows;
+    expect(row?.known && row.changed).toBeUndefined();
+  });
+});
+
+// Record 0110: what a queued row waits behind, on its marker, so a reader
+// can draw `queued behind network:prod` as the row says. The last key, a list
+// of stack ids like `depends-on`, and a display cache: the fact stays on the
+// deployment record (record 0056).
+describe("the behind key", () => {
+  test("is written last and read back, with any id in it", () => {
+    const ids = ["network:prod", "a,b:prod"];
+    const marker = rowMarker({
+      stackId: "app:prod",
+      state: "queued",
+      destroys: 1,
+      deletes: 1,
+      creates: 2,
+      behind: ids,
+    });
+    expect(marker).toBe(
+      '<!-- sluiceway:row stack="app:prod" state="queued" destroys="1" deletes="1" creates="2" behind="network:prod,a%252Cb:prod" -->',
+    );
+    const [row] = parseDashboard(`- **x** ${marker}\n  ${ROW_CLOSE_MARKER}`).rows;
+    expect(row?.known && row.behind).toEqual(ids);
+  });
+
+  test("is left out when a row waits behind nothing, and reads as none", () => {
+    const marker = rowMarker({ stackId: "a", state: "queued", behind: [] });
+    expect(marker).toBe('<!-- sluiceway:row stack="a" state="queued" -->');
+    const [row] = parseDashboard(`- **x** ${marker}\n  ${ROW_CLOSE_MARKER}`).rows;
+    expect(row?.known && row.behind).toBeUndefined();
+  });
+});

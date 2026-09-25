@@ -44,12 +44,20 @@ describe("a row that waits for the deploy window", () => {
     );
   });
 
-  test("a stack behind another that also waits for the window says both", () => {
-    expect(
-      renderRow(waiting({ behind: ["app:prod"] }), { timeZone: "Europe/Brussels" }).split("\n")[0],
-    ).toContain(
+  test("a stack behind another that also waits for the window says both, and its marker names the stack", () => {
+    const first = renderRow(waiting({ behind: ["app:prod"] }), {
+      timeZone: "Europe/Brussels",
+    }).split("\n")[0];
+    expect(first).toContain(
       "· queued behind **app:prod**, and for the deploy window, which opens 2026-09-28 09:00 UTC+2 · ticked by alice ·",
     );
+    expect(first).toEndWith('state="queued" behind="app:prod" -->');
+  });
+
+  // Record 0110: the window is not a stack, so a row that waits for it alone
+  // has nothing behind on its marker.
+  test("a row that waits for the window alone has nothing behind on its marker", () => {
+    expect(renderRow(waiting()).split("\n")[0]).toEndWith('state="queued" -->');
   });
 
   test("a deploy on merge that waits for the window says merged by", () => {
@@ -84,7 +92,7 @@ describe("a row that waits for the deploy window", () => {
 
   test("a queued row with no window is byte for byte what it was", () => {
     expect(renderRow(waiting({ window: undefined, behind: ["app:prod"] })).split("\n")[0]).toBe(
-      `- **site:prod** · queued behind **app:prod** · ticked by alice · [run](${RUN_URL}) <!-- sluiceway:row stack="site:prod" state="queued" -->`,
+      `- **site:prod** · queued behind **app:prod** · ticked by alice · [run](${RUN_URL}) <!-- sluiceway:row stack="site:prod" state="queued" behind="app:prod" -->`,
     );
   });
 });
