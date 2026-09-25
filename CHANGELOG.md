@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.42.1](https://github.com/sluiceway/sluiceway/compare/v0.42.0...v0.42.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* every GitHub call names the API version 2026-03-10 ([#268](https://github.com/sluiceway/sluiceway/issues/268)) ([5b177cf](https://github.com/sluiceway/sluiceway/commit/5b177cff8e0c0e95f5d880e4ad80b8cc74882c9e))
+
 ## [0.42.0](https://github.com/sluiceway/sluiceway/compare/v0.41.0...v0.42.0) (2026-09-25)
 
 
