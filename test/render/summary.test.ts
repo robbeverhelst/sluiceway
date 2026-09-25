@@ -255,7 +255,7 @@ describe("the summary of a scan", () => {
 
     expect(text).toContain('#### <a id="sluiceway-a-5f-b-3a-prod"></a>a&#95;b:prod\n');
     expect(text).toContain(
-      `- [#7 Add &#91;click&#93;(https://evil.example) &lt;img src=x&gt; &#42;now&#42;](${REPO_URL}/pull/7) by renovate&#91;bot&#93;\n`,
+      `- [#7 Add &#91;click&#93;(https&#58;//evil.example) &lt;img src=x&gt; &#42;now&#42;](${REPO_URL}/pull/7) by renovate&#91;bot&#93;\n`,
     );
     expect(text).toContain(`- [0123456 Fix the thing](${REPO_URL}/commit/0123456)\n`);
     expect(text).not.toContain("fake row");

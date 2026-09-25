@@ -107,6 +107,22 @@ describe("the output of a preview page", () => {
     expect(page.summary).toContain("**a&lt;b&gt;:c**");
     expect(page.text).toContain("<code>&#42;x&#42;</code>");
   });
+
+  // Record 0112 (issue 271): POST /markdown in the repo's context renders the
+  // page, and linked #1, @name and a web address in a name there.
+  test("a #, an @ and a web address in a name stay plain text", () => {
+    const NAME = "#1 @sluiceway www.example.com *x*";
+    const PLAIN = "<span>#</span>1 <span>@</span>sluiceway www&#46;example.com &#42;x&#42;";
+    const page = renderPreviewPage(
+      { stackId: `${NAME}:prod`, changes: [change("update", "t", NAME, { changedKeys: ["k"] })] },
+      LINKS,
+    );
+    expect(page.summary).toContain(`**${PLAIN}:prod**`);
+    expect(page.text).toContain(`<b>${PLAIN}</b>`);
+    expect(page.summary + page.text).not.toContain(NAME);
+    // The title is plain text, never rendered, so it keeps the id as it is.
+    expect(page.title).toStartWith(`${NAME}:prod: `);
+  });
 });
 
 // GitHub refuses a summary or a text over 65,535 characters, a summary over

@@ -136,7 +136,7 @@ describe("a scan with policies", () => {
     );
     // The message with markup, escaped, and its line break gone.
     expect(app?.text).toContain(
-      ":no_entry: <code>prod</code> · no deletes in prod &lt;b&gt;bold&lt;/b&gt; &#42;star&#42; &#91;link&#93;(https://example.com) #123 @alice &#96;tick&#96; line one line two",
+      ":no_entry: <code>prod</code> · no deletes in prod &lt;b&gt;bold&lt;/b&gt; &#42;star&#42; &#91;link&#93;(https&#58;//example.com) <span>#</span>123 <span>@</span>alice &#96;tick&#96; line one line two",
     );
     // The page names them too, before the changes.
     const page = github.checkRuns(SHA).find(({ name }) => name === "sluiceway / app:prod");

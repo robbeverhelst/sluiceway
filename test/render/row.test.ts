@@ -777,7 +777,7 @@ describe("text from outside is never markup", () => {
     expect(lines[1]).toStartWith(
       "  :warning: <kbd>DELETE</kbd> <code>&lt;script&gt;&lt;/details&gt;   &lt;!-- /sluiceway:row --&gt; - &#91;x&#93;",
     );
-    expect(lines[1]).toEndWith("<b>&#91;click&#93;(https://example.com)</b>");
+    expect(lines[1]).toEndWith("<b>&#91;click&#93;(https&#58;//example.com)</b>");
     expect(lines[2]).toContain(
       "forced by <code>&lt;i&gt;k&lt;/i&gt;</code> · also changes <code>&#96;b&#96;</code>",
     );
@@ -795,6 +795,43 @@ describe("text from outside is never markup", () => {
       expect(rows[0]).toMatchObject({ stackId: row.diff.stackId, ticked: false, text: block });
     }
     expect(renderRow(row).split("\n")).toHaveLength(7);
+  });
+
+  // Record 0112: the name the release verification found linked (issue 271).
+  // GitHub links #1 and @name in every text node, before and after the fold,
+  // and a web address in the Markdown of the first line. A span splits the
+  // first two, a reference in www. or :// the third.
+  test("a #, an @ and a web address stay plain text, open and in the fold", () => {
+    const NAME = "#1 @sluiceway www.example.com *x*";
+    const PLAIN = "<span>#</span>1 <span>@</span>sluiceway www&#46;example.com &#42;x&#42;";
+    const lines = renderRow({
+      state: "pending",
+      diff: {
+        stackId: `${NAME}:prod`,
+        changes: [
+          change("delete", "t", NAME, { address: "1" }),
+          change("update", "t", NAME, { address: "2", changedKeys: ["https://x.io"] }),
+        ],
+      },
+      hash: "00000000000000aa",
+      runUrl: "run-url",
+    }).split("\n");
+    expect(lines[0]).toStartWith(
+      `- [ ] **${PLAIN}:prod** · 1 update, **1 delete** · [preview](run-url) `,
+    );
+    expect(lines[1]).toBe(`  :warning: <kbd>DELETE</kbd> <code>t</code> <b>${PLAIN}</b>`);
+    expect(lines[3]).toBe(
+      `  <kbd>update</kbd> <code>t</code> <b>${PLAIN}</b> · <code>https&#58;//x.io</code><br>`,
+    );
+    // The marker keeps the id as it is, inside a comment GitHub never shows.
+    const shown = lines.join("\n").replace(/<!--.*?-->/g, "");
+    // No text node, as GitHub decodes it before linking, holds #1 or @name.
+    for (const text of shown.split(/<[^>]*>/)) {
+      const decoded = text.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
+      expect(decoded).not.toMatch(/#\d|@\w/);
+    }
+    // And the source holds no web address for the Markdown to find.
+    expect(shown).not.toMatch(/www\.|:\/\//i);
   });
 
   test("a failure reason and a ticker are escaped too", () => {

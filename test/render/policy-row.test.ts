@@ -57,7 +57,7 @@ describe("a pending row whose change fails a policy", () => {
         "  from #12 by alice",
         "  :no_entry: **2 policies failed**, so this change has no box until it passes:",
         "  :no_entry: <code>main</code> · bucket uploads must not be public",
-        "  :no_entry: <code>prod</code> · no deletes in prod &lt;b&gt;bold&lt;/b&gt; &#42;star&#42; &#91;link&#93;(https://example.com) line one line two",
+        "  :no_entry: <code>prod</code> · no deletes in prod &lt;b&gt;bold&lt;/b&gt; &#42;star&#42; &#91;link&#93;(https&#58;//example.com) line one line two",
         "  <details><summary>1 change</summary>",
         "  <kbd>update</kbd> <code>aws:s3/bucket:Bucket</code> <b>uploads</b> · <code>acl</code><br>",
         "  </details>",
