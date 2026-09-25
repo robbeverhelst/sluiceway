@@ -31456,6 +31456,9 @@ async function repoFiles(root) {
 import { readdirSync as readdirSync6, readFileSync as readFileSync9 } from "node:fs";
 import { join as join13 } from "node:path";
 
+// src/core/merge-scan.ts
+var MERGE_SCAN_INPUT = "sluiceway-merged";
+
 // src/core/auto-mode.ts
 var MODES = ["auto", "scan", "resolve", "apply", "settle", "check", "init"];
 function isMode(value) {
@@ -32921,9 +32924,6 @@ while IFS= read -r raw || [ -n "$raw" ]; do
   printf '%s<<%s\\n%s\\n%s\\n' "$name" "$delimiter" "$value" "$delimiter" >>"$GITHUB_ENV"
 done <"$file"
 `;
-
-// src/core/merge-scan.ts
-var MERGE_SCAN_INPUT = "sluiceway-merged";
 
 // src/render/docs-site.ts
 var DOCS_SITE = "https://docs.sluiceway.dev";
