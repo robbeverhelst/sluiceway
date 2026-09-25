@@ -49,8 +49,7 @@
 //      by the run it dispatched, which skips its scan.
 //  14. A push between the tick and the deploy (record 0111): apply compares
 //      the commit it checked out with main, refuses as moved before the tool
-//      runs and starts a full scan, which shows the row pending with the push
-//      and the failure line.
+//      runs and starts a full scan, which shows the row pending with the push.
 //
 // The tool only runs in a copy inside the work directory, against a file
 // backend made there, with an environment built from nothing. `node` on PATH
@@ -88,7 +87,7 @@ import {
   checkMergeTick,
   checkNothingLeaks,
   checkOutsideRecord,
-  checkPendingWithFailure,
+  checkPendingAfterRefusal,
   checkQueued,
   checkRefusedTick,
   checkRehearsal,
@@ -1210,7 +1209,7 @@ good =
 // the commit of the tick, so no fresh preview of it could show the push:
 // apply compares that commit with main, refuses as moved before the tool
 // runs, starts a full scan and tells alice. The scan of the newer commit
-// shows app:prod pending with the push and the failure line, never in sync.
+// shows app:prod pending with the push, never in sync.
 console.log("::group::A change to app:prod, ticked, then a push to it before apply");
 edit("app/Pulumi.prod.yml", "app:tier: business", "app:tier: enterprise");
 console.log("::endgroup::");
@@ -1263,7 +1262,7 @@ good =
       : [`settle ended with exit code ${settledAfterPush.exitCode}.`]),
     ...checkDeploys("app:prod", await deploysOf("app", "prod"), appDeploysBeforePush),
     ...(afterPush.exitCode === 0 ? [] : [`The scan ended with exit code ${afterPush.exitCode}.`]),
-    ...checkPendingWithFailure(dashboardBody(afterPush), "app:prod"),
+    ...checkPendingAfterRefusal(dashboardBody(afterPush), "app:prod"),
   ]) && good;
 
 console.log("::group::The dashboard after the narrowed scan");

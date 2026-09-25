@@ -248,6 +248,9 @@ async function step(
   }
   const commentsBefore = fake.comments(1).length;
   const dispatchesBefore = fake.dispatches.length;
+  // Nothing is pushed while a step runs: main holds the commit it checked
+  // out (record 0111).
+  fake.seedBranch("main", SHA);
   const server = await startFakeGitHubServer(fake);
   const requestsBefore = fake.requests.length;
   try {

@@ -315,9 +315,12 @@ export function checkBranchMoved(
 }
 
 // The row of a stack after the scan of a newer commit, whose deploy was
-// refused: pending with the change as it is now, and the failure line.
-export function checkPendingWithFailure(body: string, stack: string): string[] {
-  return [...rowState(body, stack, "pending"), ...failureLine(body, stack, true)];
+// refused: pending with the change as it is now, never in sync. The failure
+// line is not checked here: the fake's records keep times of their own, older
+// than the tool's own history, so a deploy of an earlier scene reads as newer
+// than the refusal. The mode tests on the fake hold the line.
+export function checkPendingAfterRefusal(body: string, stack: string): string[] {
+  return rowState(body, stack, "pending");
 }
 
 // A rehearsal (record 0051): `apply` with `dry-run: true` previews, checks
