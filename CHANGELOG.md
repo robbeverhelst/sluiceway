@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.0](https://github.com/sluiceway/sluiceway/compare/v0.39.0...v0.40.0) (2026-09-25)
+
+
+### Features
+
+* the dashboard says a scan is running from its first write ([#261](https://github.com/sluiceway/sluiceway/issues/261)) ([b1791a6](https://github.com/sluiceway/sluiceway/commit/b1791a669aff82c51b4191e4bea7bda4c8a17a88))
+
 ## [0.39.0](https://github.com/sluiceway/sluiceway/compare/v0.38.0...v0.39.0) (2026-09-25)
 
 
