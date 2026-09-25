@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.42.2](https://github.com/sluiceway/sluiceway/compare/v0.42.1...v0.42.2) (2026-09-25)
+
+
+### Bug Fixes
+
+* a #, an @ or a web address in a name stays plain text ([#273](https://github.com/sluiceway/sluiceway/issues/273)) ([9921f65](https://github.com/sluiceway/sluiceway/commit/9921f6551f8797f5a540e48731f39f0f16da3f92))
+* a cancelled deploy's failure line reaches its row in seconds ([#275](https://github.com/sluiceway/sluiceway/issues/275)) ([72f8307](https://github.com/sluiceway/sluiceway/commit/72f8307a5b1e97b72b8ce76f37cdff81220b223e))
+* a push after the tick is refused as moved, never shown in sync ([#274](https://github.com/sluiceway/sluiceway/issues/274)) ([f324984](https://github.com/sluiceway/sluiceway/commit/f3249848b00565d043467dac22087b2eee891546))
+
 ## [0.42.1](https://github.com/sluiceway/sluiceway/compare/v0.42.0...v0.42.1) (2026-09-25)
 
 
