@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { NewDeploymentStatus } from "../../src/github/port.ts";
 import { type ScanContext, scan } from "../../src/modes/scan.ts";
 import { type SettleContext, settle } from "../../src/modes/settle.ts";
-import { change, harness, pending } from "./harness.ts";
+import { ACTION_REF, change, harness, pending, SHA } from "./harness.ts";
 import {
   ALICE,
   matrix,
@@ -36,6 +36,7 @@ function settleContext(h: ResolveHarness): SettleContext {
     runId: h.context.runId,
     event: h.context.event,
     workflow: WORKFLOW,
+    actionRef: ACTION_REF,
   };
 }
 
@@ -150,23 +151,151 @@ describe("settle", () => {
     expect(h.github.requests).not.toContain("getWorkflowRun");
   });
 
-  test("starts a full scan once it ended a record, and leaves the body to that scan", async () => {
+  test("starts a full scan once it ended a record, after it wrote their rows", async () => {
     const h = await started(["a:prod", "b:prod"]);
-    const body = h.github.issue(h.number).body;
 
     await settle(settleContext(h));
 
-    // One dispatch, after both records were ended.
+    // One dispatch, after both records were ended and the body was written.
     expect(h.github.dispatches).toEqual([{ workflow: WORKFLOW.file, ref: WORKFLOW.ref }]);
-    expect(h.github.requests.filter((name) => name !== "listNewestDeployments")).toEqual([
-      "createDeploymentStatus",
-      "createDeploymentStatus",
-      "dispatchWorkflow",
-    ]);
-    // `settle` has no diff to render a row from (record 0014).
-    expect(h.github.issue(h.number).body).toBe(body);
+    const asked = h.github.requests.filter((name) => name !== "listNewestDeployments");
+    expect(asked.slice(0, 2)).toEqual(["createDeploymentStatus", "createDeploymentStatus"]);
+    expect(asked.indexOf("updateIssueBody")).toBeGreaterThan(1);
+    expect(asked.at(-1)).toBe("dispatchWorkflow");
     expect(h.log.lines.at(-1)).toBe(
-      "Started a full scan, which writes the rows of these stacks again with the failure line.",
+      "Started a full scan, which previews these stacks again and writes their rows with the fresh diff.",
+    );
+  });
+
+  // Record 0113, for issue 272: the line does not wait for the scan.
+  test("writes the failure line on the row of the deploy it ended, before the scan", async () => {
+    const h = await started(["a:prod"]);
+    const before = rowsOf(h);
+    const [, ...carried] = (before["a:prod"] ?? "").split("\n");
+
+    await settle(settleContext(h));
+
+    const row = rowsOf(h)["a:prod"] ?? "";
+    const [first, failure, ...rest] = row.split("\n");
+    expect(first).toBe(
+      '- **a:prod** · no preview since its deploy ended, the next scan previews it <!-- sluiceway:row stack="a:prod" state="preview-failed" failed="true" -->',
+    );
+    expect(failure).toStartWith(
+      "  :x: last deploy failed: the run ended without a result · ticked by alice · ",
+    );
+    expect(failure).toEndWith(` · [run](${RESOLVE_RUN_URL})`);
+    // Every other line of the block, as `resolve` wrote it.
+    expect(rest).toEqual(carried);
+    // Every other row, byte for byte.
+    expect(rowsOf(h)["b:prod"]).toBe(before["b:prod"]);
+    const body = h.github.issue(h.number).body;
+    expect(body).not.toContain('state="deploying"');
+    expect(body).toContain("0 deploying");
+    expect(body).toContain("1 failed deploy");
+    expect(h.log.lines).toContain(
+      "Wrote the failure line on the row of a:prod, before the full scan previews it again (record 0113).",
+    );
+  });
+
+  test("the row of a deploy that apply had started says the same", async () => {
+    const h = await started(["a:prod"]);
+    // `apply` took the record and wrote its deploying row, then was cancelled.
+    h.github.addDeploymentStatus(deploymentOf(h, "a:prod"), {
+      state: "in_progress",
+      autoInactive: false,
+    });
+
+    await settle(settleContext(h));
+
+    expect(rowsOf(h)["a:prod"]).toContain('state="preview-failed" failed="true"');
+  });
+
+  test("a row that does not say deploying is left to the scan", async () => {
+    const h = await scanned(TABLE);
+    tick(h, ALICE, ["a:prod"]);
+    // The body write of `resolve` failed, so the row is still ticked.
+    const updateIssueBody = h.github.updateIssueBody.bind(h.github);
+    h.github.updateIssueBody = async () => {
+      throw new Error("Server Error");
+    };
+    await expect(wake(h)).rejects.toThrow("Server Error");
+    h.github.updateIssueBody = updateIssueBody;
+    const before = rowsOf(h)["a:prod"];
+
+    await settle(settleContext(h));
+
+    // Carried byte for byte, tick included. The trail already lists the
+    // failed deploy, as it does after every swap.
+    expect(rowsOf(h)["a:prod"]).toBe(before);
+    expect(h.github.dispatches).toHaveLength(1);
+  });
+
+  test("a stack a newer record took over keeps its row", async () => {
+    const h = await started(["a:prod"]);
+    // A new tick opened a record of another run, right after this one ended.
+    const createDeploymentStatus = h.github.createDeploymentStatus.bind(h.github);
+    h.github.createDeploymentStatus = async (id, status) => {
+      const written = await createDeploymentStatus(id, status);
+      h.github.seedRun("7000", { completed: false });
+      h.github.seedDeployment({
+        task: "sluiceway:a:prod",
+        payload: { v: 1, hash: "2b44350653e84a11", ticker: "bob", run: "7000" },
+        status: { state: "queued" },
+      });
+      return written;
+    };
+    const before = rowsOf(h)["a:prod"];
+
+    await settle(settleContext(h));
+
+    expect(rowsOf(h)["a:prod"]).toBe(before);
+    expect(h.github.dispatches).toHaveLength(1);
+  });
+
+  test("a body write GitHub refuses is a line of the job log, and the scan still follows", async () => {
+    const h = await started(["a:prod"]);
+    h.github.updateIssueBody = async () => {
+      throw new Error("Resource not accessible by integration");
+    };
+
+    await settle(settleContext(h));
+
+    expect(h.github.deployment(deploymentOf(h, "a:prod")).status?.state).toBe("error");
+    expect(h.github.dispatches).toHaveLength(1);
+    expect(h.log.lines).toContain(
+      "The failure line could not be written on the row: Resource not accessible by integration. The full scan writes the row.",
+    );
+  });
+
+  test("with no open dashboard it writes nothing and the scan still follows", async () => {
+    const h = await started(["a:prod"]);
+    await h.github.closeIssue(h.number);
+    h.github.requests.length = 0;
+
+    await settle(settleContext(h));
+
+    expect(h.github.requests).not.toContain("updateIssueBody");
+    expect(h.github.dispatches).toHaveLength(1);
+    expect(h.log.lines).toContain(
+      "There is no open dashboard to write. The full scan writes the row.",
+    );
+  });
+
+  test("a narrowed scan previews the row even when the full scan never came", async () => {
+    const h = await started(["a:prod"]);
+    await settle(settleContext(h));
+    // A push that only `b:prod` claims.
+    const NEXT = "2222222222222222222222222222222222222222";
+    h.github.seedComparison(SHA, NEXT, { status: "ahead", files: [{ path: "b/index.ts" }] });
+    h.adapter.previewed.length = 0;
+
+    await scan({ ...scanContext(h), sha: NEXT, event: "push" });
+
+    expect([...h.adapter.previewed].sort()).toEqual(["a:prod", "b:prod"]);
+    const row = rowsOf(h)["a:prod"] ?? "";
+    expect(row).toContain('state="pending"');
+    expect(row).toContain(
+      ":x: last deploy failed: the run ended without a result · ticked by alice",
     );
   });
 

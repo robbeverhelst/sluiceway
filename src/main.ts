@@ -13,7 +13,7 @@ try {
     await post(
       mode,
       (name) => core.getState(name),
-      () => runSettle(),
+      () => runSettle(actionDirectory(import.meta.url)),
     );
   } else {
     // Only the entry point's own address says where the action sits, in the

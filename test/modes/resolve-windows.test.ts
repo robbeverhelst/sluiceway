@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { HANDED_ON_DESCRIPTION } from "../../src/core/deployment.ts";
 import { type ScanContext, scan } from "../../src/modes/scan.ts";
 import { type SettleContext, settle } from "../../src/modes/settle.ts";
-import { change, harness, pending, QUEUED_SPINNER, REPO_URL } from "./harness.ts";
+import { ACTION_REF, change, harness, pending, QUEUED_SPINNER, REPO_URL } from "./harness.ts";
 import {
   ALICE,
   matrix,
@@ -260,6 +260,7 @@ describe("settle at the end of the run that opened it", () => {
       runId: h.context.runId,
       event: h.context.event,
       workflow: WORKFLOW,
+      actionRef: ACTION_REF,
     };
 
     await settle(context);

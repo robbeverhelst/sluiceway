@@ -112,6 +112,7 @@ test("a scan, a tick, an apply and a settle send every request with the API vers
     runId: RESOLVE_RUN,
     event,
     workflow: WORKFLOW,
+    actionRef: ACTION_REF,
   });
 
   // The loop went round: the tick deployed exactly that stack.

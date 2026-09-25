@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type SettleContext, settle } from "../../src/modes/settle.ts";
-import { change, pending, REPO_URL } from "./harness.ts";
+import { ACTION_REF, change, pending, REPO_URL } from "./harness.ts";
 import { rememberingOutputs } from "./outputs-harness.ts";
 import { ALICE, type ResolveHarness, scanned, tick, WORKFLOW, wake } from "./resolve-harness.ts";
 
@@ -19,6 +19,7 @@ function settleContext(h: ResolveHarness, outputs: SettleContext["outputs"]): Se
     runId: h.context.runId,
     event: h.context.event,
     workflow: WORKFLOW,
+    actionRef: ACTION_REF,
     outputs,
   };
 }

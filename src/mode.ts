@@ -43,7 +43,7 @@ const handlers: Record<Mode, Handler> = {
   // What resolve tells auto mode is for auto mode alone (record 0109).
   resolve: async (directory) => void (await runResolve(directory)),
   apply: runApply,
-  settle: () => runSettle(),
+  settle: (directory) => runSettle(directory),
   // The check starts no tool unless backend: true (record 0074) or
   // pull-request-preview: true (record 0101).
   check: () => runCheck(backendContext, undefined, pullRequestPreviewContext),

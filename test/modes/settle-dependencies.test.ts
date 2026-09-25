@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type SettleContext, settle } from "../../src/modes/settle.ts";
-import { change, pending } from "./harness.ts";
+import { ACTION_REF, change, pending } from "./harness.ts";
 import {
   ALICE,
   matrix,
@@ -36,6 +36,7 @@ function settleContext(h: ResolveHarness): SettleContext {
     runId: h.context.runId,
     event: h.context.event,
     workflow: WORKFLOW,
+    actionRef: ACTION_REF,
   };
 }
 

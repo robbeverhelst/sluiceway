@@ -122,6 +122,7 @@ function wired(h: ResolveHarness, eventName: string, event: unknown): Wired {
           runId: RESOLVE_RUN,
           event,
           workflow: WORKFLOW,
+          actionRef: ACTION_REF,
           outputs: step.outputs,
         });
       },

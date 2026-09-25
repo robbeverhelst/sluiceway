@@ -66,6 +66,7 @@ async function applyAndSettle(h: ResolveHarness, runId: string): Promise<string[
     runId,
     event: h.context.event,
     workflow: WORKFLOW,
+    actionRef: ACTION_REF,
   });
   h.github.seedRun(runId, { completed: true });
   return h.github.dispatches.length > before ? ["dispatched"] : [];

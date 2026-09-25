@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 import * as core from "@actions/core";
 import { tools } from "../adapters/tools.ts";
+import { readActionRef } from "../github/action-ref.ts";
 import { createGitHubClient } from "../github/client.ts";
 import { readEventPayload } from "../github/event.ts";
 import { readToken } from "../github/inputs.ts";
@@ -18,7 +19,8 @@ import type { AutoStep } from "./auto.ts";
 import { settle } from "./settle.ts";
 
 // Auto mode hands in the log and the outputs of its one step (record 0077).
-export async function runSettle(step?: AutoStep): Promise<void> {
+// The directory is where the action sits, for its own version (record 0033).
+export async function runSettle(directory: string, step?: AutoStep): Promise<void> {
   // The one read of the environment (build plan, section 5).
   const env = process.env;
   const token = readToken(core.getInput);
@@ -34,5 +36,6 @@ export async function runSettle(step?: AutoStep): Promise<void> {
     event: readEventPayload(env, (path) => readFileSync(path, "utf8")),
     workflow: readWorkflowRef(env),
     outputs: step?.outputs ?? actionsOutputs(env.RUNNER_TEMP),
+    actionRef: readActionRef(env, directory, (path) => readFileSync(path, "utf8")),
   });
 }

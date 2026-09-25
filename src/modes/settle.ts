@@ -4,15 +4,21 @@
 // reports, and without this its stack would stay deploying. With dependencies
 // it also starts the next layer (record 0056). It is handed no
 // tool environment and no process runner, so it cannot run the tool (record
-// 0014, promise 4).
+// 0014, promise 4). The row of each deploy it ended gets the failure line
+// right away, from the record, and the full scan it starts writes the fresh
+// row after it (record 0113).
 
 import type { Adapter } from "../adapters/adapter.ts";
-import type { ConfiguredStack } from "../core/config.ts";
+import type { Config, ConfiguredStack, IgnoredStack } from "../core/config.ts";
 import { queueState } from "../core/dependencies.ts";
 import { windowState } from "../core/deploy-window.ts";
 import { type DeploymentRecord, deployFacts } from "../core/deployment.ts";
 import { openRepo } from "../core/repo.ts";
+import { failureToWrite } from "../core/settle.ts";
 import { stackId } from "../core/stack.ts";
+import { attributionSource } from "../github/attribution.ts";
+import { findDashboard } from "../github/dashboard.ts";
+import { swapRows } from "../github/dashboard-write.ts";
 import {
   type EndedRecord,
   type FallBackStack,
@@ -26,9 +32,12 @@ import type { JobLog } from "../github/job-log.ts";
 import { eventDashboardUrl, type StepOutputs } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
 import type { WorkflowRef } from "../github/workflow-ref.ts";
+import type { BudgetOptions } from "../render/budget.ts";
 import { DOT_AT_ZERO, RESULT_DOT } from "../render/dots.ts";
+import { runUrl } from "../render/links.ts";
 import { logGroupTitle } from "../render/log-text.ts";
-import { isDeployingState, parseDashboard } from "../render/marker.ts";
+import { isDeployingState, type ParsedRow, parseDashboard } from "../render/marker.ts";
+import { settledRow } from "../render/settled-row.ts";
 
 export interface SettleContext {
   // The directory of the checked-out repo.
@@ -53,6 +62,11 @@ export interface SettleContext {
   // The clock a deploy window is judged by (record 0104). The machine's
   // when a test does not set one.
   now?: (() => Date) | undefined;
+  // The action ref the header pictures are served from (record 0033), for
+  // the body it writes (record 0113).
+  actionRef: string;
+  // Only a test has a reason to set this.
+  limits?: { body?: BudgetOptions } | undefined;
 }
 
 function message(error: unknown): string {
@@ -65,7 +79,7 @@ export async function settle(context: SettleContext): Promise<void> {
   const url = eventDashboardUrl(context.repoUrl, context.event);
   if (url !== undefined) context.outputs?.set("dashboard-url", url);
   const repo = openRepo(context.root, context.adapter);
-  const { stacks } = await repo.stacks();
+  const { stacks, ignored } = await repo.stacks();
   const config = repo.config();
 
   const read = await readRecords(context, stacks);
@@ -102,14 +116,130 @@ export async function settle(context: SettleContext): Promise<void> {
     return;
   }
 
-  // `settle` has no diff to render a row from (record 0014), so it leaves the
-  // body alone and starts a full scan, as `resolve` does for the rescan box.
-  // That scan meets a deploying row with no open deployment, previews the
-  // stack and writes its row with the failure line (record 0004).
+  // `settle` has no diff to render a row from (record 0014). It puts the
+  // failure line on the row of each deploy it ended, which needs no tool, and
+  // starts a full scan, as `resolve` does for the rescan box, which previews
+  // the stacks and writes their rows with the fresh diff (record 0113).
+  if (ended > 0) {
+    await writeFailureLines(context, config, { stacks, ignored }, settled.ended);
+  }
   await dispatchScan(context);
   if (ended > 0) {
     log.info(
-      "Started a full scan, which writes the rows of these stacks again with the failure line.",
+      "Started a full scan, which previews these stacks again and writes their rows with the fresh diff.",
+    );
+  }
+}
+
+// One row swap for the deploys this run ended (record 0113), made at the late
+// read of every try from the records as they are then. A write that does not
+// happen is a line of the log: the records are ended, and the scan that
+// follows writes the rows.
+async function writeFailureLines(
+  context: SettleContext,
+  config: Config,
+  repo: { stacks: readonly ConfiguredStack[]; ignored: readonly IgnoredStack[] },
+  ended: readonly EndedRecord[],
+): Promise<void> {
+  const { github, log } = context;
+  const ids = new Set(ended.map(({ stackId: id }) => id));
+  const mine = repo.stacks.filter(({ stack }) => ids.has(stackId(stack)));
+  if (mine.length === 0) return;
+  const written: string[] = [];
+  try {
+    const dashboard = await findDashboard(github, config.dashboard.label);
+    if (!dashboard) {
+      log.info("There is no open dashboard to write. The full scan writes the row.");
+      return;
+    }
+    const result = await swapRows(
+      {
+        github,
+        log,
+        runId: context.runId,
+        repoUrl: context.repoUrl,
+        actionRef: context.actionRef,
+        dashboard: config.dashboard,
+        deploys: config.deploys,
+        ignored: repo.ignored,
+        budget: context.limits?.body,
+      },
+      dashboard.number,
+      async (live, root) => {
+        const facts = deployFacts(
+          await readDeploymentRecords(
+            github,
+            repo.stacks.map(({ environment }) => environment),
+            mine.map(({ stack, environment }) => ({ stackId: stackId(stack), environment })),
+          ),
+        );
+        const carried = new Map<string, ParsedRow>();
+        for (const { stack } of mine) {
+          const id = stackId(stack);
+          const row = live.first.get(id);
+          const failure = failureToWrite(
+            id,
+            row?.known ? row.state : undefined,
+            facts.byStack.get(id),
+            live.outside,
+            context.runId,
+          );
+          if (!row || !failure) continue;
+          carried.set(
+            id,
+            settledRow(
+              row,
+              {
+                reason: failure.reason,
+                ticker: failure.ticker,
+                at: failure.at,
+                runUrl: runUrl(context.repoUrl, failure.run, failure.attempt),
+                ...(failure.onMerge ? { onMerge: true } : {}),
+              },
+              { timeZone: config.dashboard.timeZone },
+            ),
+          );
+        }
+        written.splice(0, written.length, ...[...carried.keys()].sort());
+        // The trail's shipped lines, as in every swap (record 0072). The walk
+        // needs the workflow token only, and it never blocks.
+        const shipped = await attributionSource(
+          github,
+          {
+            stacks: repo.stacks.map(({ stack, inputs }) => ({
+              id: stackId(stack),
+              path: stack.path,
+              inputs,
+            })),
+            unrelated: config.scan.unrelated,
+            repoUrl: context.repoUrl,
+            scanSha: root.scanSha,
+            ...config.attribution,
+            trailLength: config.dashboard.recentlyDeployed,
+          },
+          (why) =>
+            log.info(
+              `The trail was written without what its deploys shipped: ${why}. It only explains the trail, so nothing else changes (record 0072).`,
+            ),
+        ).ship(facts.trail);
+        return { facts, shipped, rows: new Map(), carried };
+      },
+    );
+    if (!result.fits) {
+      log.info(
+        `With the failure line the dashboard body is ${result.size.toLocaleString("en-US")} characters, over what GitHub keeps. Nothing was written. The full scan writes the row.`,
+      );
+      return;
+    }
+  } catch (error) {
+    log.info(
+      `The failure line could not be written on the row: ${message(error)}. The full scan writes the row.`,
+    );
+    return;
+  }
+  for (const id of written) {
+    log.info(
+      `Wrote the failure line on the row of ${logGroupTitle(id)}, before the full scan previews it again (record 0113).`,
     );
   }
 }
