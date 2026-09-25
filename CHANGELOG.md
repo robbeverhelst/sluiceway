@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.0](https://github.com/sluiceway/sluiceway/compare/v0.42.2...v0.43.0) (2026-09-25)
+
+
+### Features
+
+* dashboard layout keys for section order, detail and boxes ([#278](https://github.com/sluiceway/sluiceway/issues/278)) ([da2279f](https://github.com/sluiceway/sluiceway/commit/da2279f58b98cd3b91a258bcd71c2804fb376022))
+
 ## [0.42.2](https://github.com/sluiceway/sluiceway/compare/v0.42.1...v0.42.2) (2026-09-25)
 
 
