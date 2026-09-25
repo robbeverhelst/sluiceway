@@ -213,6 +213,25 @@ describe("comparing two commits", () => {
     await expect(github.compareCommits("bbb", "aaa")).rejects.toMatchObject({ status: 404 });
   });
 
+  test("like GitHub, a branch is compared as the commit at its head", async () => {
+    const github = new FakeGitHub();
+    github.seedBranch("main", "aaa");
+    expect(await github.compareCommits("aaa", "main")).toEqual({ status: "identical", files: [] });
+
+    github.seedBranch("main", "bbb");
+    github.seedComparison("aaa", "bbb", { status: "ahead", files: [{ path: "x.ts" }] });
+    expect(await github.compareCommits("aaa", "main")).toEqual({
+      status: "ahead",
+      files: [{ path: "x.ts" }],
+    });
+  });
+
+  test("a branch the repo does not have is a 404", async () => {
+    await expect(new FakeGitHub().compareCommits("aaa", "main")).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
   test("like GitHub, it never lists more than 300 files", async () => {
     const github = new FakeGitHub();
     const files = Array.from({ length: 450 }, (_, index) => ({ path: `f${index}` }));

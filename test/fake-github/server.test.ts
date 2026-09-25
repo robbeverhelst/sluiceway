@@ -119,6 +119,12 @@ describe("the fake GitHub server", () => {
     });
   });
 
+  test("a comparison with a branch compares with the commit at its head (record 0111)", async () => {
+    const { fake, port } = await served();
+    fake.seedBranch("main", "aaa111");
+    expect(await port.compareCommits("aaa111", "main")).toEqual({ status: "identical", files: [] });
+  });
+
   test("a person's permission is looked up, and a failing lookup keeps its status", async () => {
     const { fake, port } = await served();
     fake.seedPermission("alice", { push: true, maintain: true, admin: false });

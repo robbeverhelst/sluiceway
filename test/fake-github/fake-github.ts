@@ -100,6 +100,8 @@ export class FakeGitHub implements GitHubPort {
   readonly #comments = new Map<number, string[]>();
   readonly #pinned: number[] = [];
   readonly #comparisons = new Map<string, Comparison>();
+  // The commit at the head of each branch, by name (record 0111).
+  readonly #branches = new Map<string, string>();
   readonly #trees = new Map<
     string,
     { entries: { path: string; sha: string; type: string }[]; truncated: boolean }
@@ -174,6 +176,12 @@ export class FakeGitHub implements GitHubPort {
 
   seedComparison(base: string, head: string, comparison: Comparison): void {
     this.#comparisons.set(`${base}...${head}`, comparison);
+  }
+
+  // Moves a branch to a commit, as a push does. A comparison that names the
+  // branch compares with that commit.
+  seedBranch(name: string, sha: string): void {
+    this.#branches.set(name, sha);
   }
 
   // A commit of the repo, newer than every commit seeded before it (record
@@ -485,7 +493,13 @@ export class FakeGitHub implements GitHubPort {
 
   async compareCommits(base: string, head: string): Promise<Comparison> {
     this.#count("compareCommits");
-    const comparison = this.#comparisons.get(`${base}...${head}`);
+    // GitHub takes a branch name where it takes a commit.
+    const headSha = this.#branches.get(head) ?? head;
+    const comparison =
+      this.#comparisons.get(`${base}...${headSha}`) ??
+      (this.#branches.has(head) && base === headSha
+        ? { status: "identical", files: [] }
+        : undefined);
     if (!comparison) throw new FakeGitHubError(404, "Not Found");
     return {
       status: comparison.status,
