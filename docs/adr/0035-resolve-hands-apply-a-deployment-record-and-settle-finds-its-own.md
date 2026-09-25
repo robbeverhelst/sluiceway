@@ -7,6 +7,8 @@
 > Amended by 0054: `scan` sets `matrix` too, for the record it opens after a merge from the dashboard. It is `[]` on every other scan.
 >
 > Amended by 0077: in auto mode the step deploys what `resolve` and the scan hand on itself, and settles after them, or in the post step of a cancelled run.
+>
+> Amended by 0111: `apply` compares the commit it checked out with the head of its branch after discovery and before the version check, and when it refuses for a newer commit it starts a full scan the way `settle` does.
 
 Records 0003 and 0019 say that `resolve` creates the deployment record and passes it on, and that `apply` deploys only on an open record. No record named the inputs and outputs that carry this through a workflow. The brief's names (`stack`, `expected-hash`, a matrix of `{ stack, environment, expectedHash }`) no longer fit: the approved hash lives on the record (0003), so handing it over a second time would give two sources for one fact. This record fixes the names.
 

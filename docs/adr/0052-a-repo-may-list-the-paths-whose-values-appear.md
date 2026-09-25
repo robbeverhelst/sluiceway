@@ -1,5 +1,7 @@
 # A repo may list the property paths whose values appear, and nothing is guessed
 
+> Amended by 0111: a merge that lands after the `apply` job checked out its commit is refused as moved by a comparison with the branch, since its fresh preview cannot see it.
+
 Record 0046 gave rows nested paths, so a Helm release row now says `version` or `values.image.tag` where it used to say `values`. The first real user still could not tell a version bump from anything else without opening the code: "Could we show what is being updated, so I know it is just a version bump?" (onboarding log, hurdle 22). The owner decided on 2026-09-22 that a repo may list the paths whose old and new values appear, empty by default, with a list to copy in from the docs.
 
 ## Decision

@@ -1,6 +1,8 @@
 # A team can stop, rehearse and explain, and an empty fresh preview is not a failure
 
 > Amended by 0083: while `deploys` is `false` there is no bulk box and no confirm box.
+>
+> Amended by 0111: a refusal for a commit pushed after the checkout gets its own comment, written without a row swap, which says the next scan shows the change.
 
 The first real user compared Sluiceway with the internal dashboard that inspired it, on 2026-09-22 (onboarding log, hurdle 23). That dashboard had five things a team misses here, and the owner decided to adopt all five (build plan, slice 2.20). This record fixes each one. Every part stands on its own and was built as its own commit.
 
