@@ -29,6 +29,7 @@ A marker is an HTML comment in the dashboard body, `<!-- sluiceway:<kind> key="v
 
 - **Where it sits.** The root marker is the first line of the body. Every other marker sits at the end of its line, after a list item's `- ` and, where there is one, its box `[ ]` or `[x]`. A line is one regex, anchored on the start of the line and the marker at its end.
 - **A row block** is every line from the one that ends in a row marker through the one that holds `<!-- /sluiceway:row -->`, the row's last line.
+- **Where a row sits says nothing.** A row block may sit under its section's heading, in a fold, or in the one closed fold of the sections a repo turned off with the [layout keys](configuration.md#dashboardsections), and the order of the sections is the repo's own. Every row block is in the body at every setting and its marker is the same, so find rows by their markers, never by the heading above them.
 - **Values** are percent-encoded as UTF-8 bytes with upper case hex, for `%`, `"`, `<`, `>`, and every byte up to `0x20` and `0x7F`. Nothing else is encoded, so `apps/grafana:prod` reads as itself. Decode any run of `%XX`.
 - **A list** of stack ids is one value, split on commas. An id escapes `,` as `%2C` and `%` as `%25` before the value is encoded.
 - **Key order is fixed** so the body is byte for byte the same between runs, but do not depend on it. A key that is absent has its default: a count of 0, `false`, no hash.
@@ -182,7 +183,7 @@ A box that deploys every row of a section at once. After a tick it becomes a con
 
 ### The rescan box
 
-A tick starts a full scan. The marker has no keys.
+A tick starts a full scan. The marker has no keys. A read-only dashboard has none, and neither does one with [`dashboard.rescanBox: false`](configuration.md#dashboardrescanbox).
 
 <!-- example: rescan-box -->
 ```md

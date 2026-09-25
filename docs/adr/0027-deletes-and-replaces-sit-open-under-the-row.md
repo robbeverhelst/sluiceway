@@ -1,5 +1,7 @@
 # Deletes and replaces sit open under the row, everything else is folded
 
+> Amended by 0114: `dashboard.pendingDetail` may show less under a pending row's first line, `compact` or `names`. The failure line and every delete and replace line stay at every setting, and the marker is the same.
+>
 > Amended by 0113: one more row form, the row `settle` writes for a deploy it ended: `**id** · no preview since its deploy ended, the next scan previews it` with the state `preview-failed` and `failed="true"`, the failure line right under the first line and the lines of the deploying row carried under it.
 >
 > Amended by 0112: "HTML escaped" also writes `#` and `@` inside a span, the `-` of `GH-` before a digit inside a span, and a character reference for the dot of `www.` and the colon of `://`, because GitHub links an issue reference, a mention and a web address in a name otherwise.

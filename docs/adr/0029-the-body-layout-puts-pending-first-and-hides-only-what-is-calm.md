@@ -1,5 +1,7 @@
 # The body puts pending first and folds away only rows that need nothing
 
+> Amended by 0114: the order of the sections is `dashboard.sections`, In sync may be a list or off, the counts line may leave out a count of 0, and the rescan box and the footer may be off. A section that is off keeps its rows in one closed fold at the end of the sections.
+>
 > Amended by 0108: a scan that is running gets one line right under the scan line, from the root marker, above the line of 0086.
 >
 > Amended by 0089: every time on the dashboard is in the repo's zone, `dashboard.timeZone`, UTC by default. A time that stands alone ends in its offset from UTC, the line under Recently deployed names the zone, and the markers keep UTC.

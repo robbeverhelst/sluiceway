@@ -1,5 +1,7 @@
 # The example dashboard is made up, published at a release tag, and written on the release pull request
 
+> Amended by 0114: `exampleBody` also takes each layout key of `dashboard`, and a test per key redraws the example under it.
+>
 > Amended by 0110: the generator exports the example as data, `EXAMPLE`, and `exampleBody` draws the body from it under the settings a reader gives, so a reader redraws the example whole instead of taking it through the published file's markers.
 
 > Amended by 0097: the README's copy keeps the header picture and the counts line open above the fold, and ends each continued row line in `<br>`.

@@ -1,5 +1,7 @@
 # Deploying sits at the top, and its rows start with a spinner
 
+> Amended by 0114: this order is the default of `dashboard.sections`, and `dashboard.deployingSection: false` moves the deploying rows to the closed fold at the end of the sections.
+>
 > Amended by 0098: a queued row starts with the crate standing still, not the moving spinner.
 
 Record 0029 put Pending first, because ticking is what a person opens the dashboard for, and rejected putting the short sections above the long pending list. Record 0027 fixed the row of a deploying stack as plain text: `**id** · deploying · ticked by carol · [run](url)`. The owner asked on 2026-09-22 for both to change: while something deploys, that is what the person is watching, and the section vanishes when it is empty, so pending loses nothing. Build plan slice 4.12 brings it in.

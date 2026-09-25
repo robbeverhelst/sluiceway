@@ -201,6 +201,119 @@ dashboard:
   timeZone: Europe/Brussels
 ```
 
+### `dashboard.sections`
+
+Default: `["deploying","updates","pending","drifted","previewFailed","inSync","recentlyDeployed"]`
+
+The order of the sections on the dashboard, top to bottom. The names are `deploying`, `updates` (the updates waiting to merge), `pending`, `drifted`, `previewFailed`, `inSync` and `recentlyDeployed`. The sections the list names come first, in its order. A section the list leaves out follows them in the default order, so leaving one out never hides it, and a list written before a later version adds a section keeps working. A name that is not a section, or one named twice, fails the config.
+
+The destroy alert and the deploy all box stay with Pending, and the repair all box with Drifted, wherever those sections go. A section with nothing in it is left out as always, and Pending is always shown. The header, the counts line and the scan line stay above every section, and the rescan box and the footer below them.
+
+```yaml
+dashboard:
+  sections: [pending, previewFailed, deploying]
+```
+
+This and every other layout key below change what the dashboard draws and where, never what a marker says: every stack keeps its row block in the issue, so a reader of [what Sluiceway writes](what-sluiceway-writes.md) sees the same facts whatever the look. None of them can hide a delete or replace line, a preview failure or a failure line. Every mode draws the same layout, so a tick never moves a section.
+
+### `dashboard.deployingSection`
+
+Default: `true`
+
+`false` takes the Deploying section off the page. Its rows move to one closed fold at the end of the sections, `N stacks in sections this dashboard does not show`, which every section that is off shares. The counts line, the header picture and the spinner inside the fold still say what is deploying.
+
+```yaml
+dashboard:
+  deployingSection: false
+```
+
+### `dashboard.driftedSection`
+
+Default: `true`
+
+`false` takes the Drifted section off the page, and its rows move to the closed fold at the end of the sections, with no repair all box. A drifted row with a failure line, or with a resource gone outside the code that the destroy alert names, stays open under the Drifted heading. The rows in the fold keep their boxes: a tick there repairs the drift as a tick anywhere does.
+
+### `dashboard.inSyncSection`
+
+Default: `fold`
+
+How the In sync section shows its rows. `fold`, the default, puts them in a fold. `list` shows every row open. `off` takes the section off the page: the rows move to the closed fold at the end of the sections, and the fold of stacks left out by `ignore` is not drawn. At every setting a row with a failure line stays open under the In sync heading.
+
+```yaml
+dashboard:
+  inSyncSection: off
+```
+
+### `dashboard.zeroCounts`
+
+Default: `true`
+
+`false` leaves a count of 0 out of the counts line, so `**3 pending** · 0 deploying · 0 preview failed · 12 in sync` becomes `**3 pending** · 12 in sync`. The pending count always stays.
+
+### `dashboard.destroyAlert`
+
+Default: `destroys`
+
+When the caution block above the pending rows is drawn. `destroys`, the default, draws it while a pending stack deletes or replaces something or a drifted stack has a resource gone. `always` also draws a note in its place when nothing is destroyed, `No pending stack deletes or replaces resources.`, so the block never moves the rows under it. There is no setting that turns it off.
+
+```yaml
+# Not valid: the destroy alert cannot be turned off
+dashboard:
+  destroyAlert: never
+```
+
+### `dashboard.pendingDetail`
+
+Default: `full`
+
+How much a pending row shows under its first line.
+
+- `full`, the default: everything, as the dashboard has always drawn it.
+- `compact`: the first line, the failure line, every delete and replace line, and the notes that say why a row has no box or why a tick would not go (a failed policy, a tick nothing picked up, a value that differs on every run, a stack set to on-merge that waits for a tick). The attribution line, the cost line, the fold of other changes and the drift and outside folds go. They are in the summary and on the preview page.
+- `names`: the stack id and its counts, without the preview link, then the failure line, every delete and replace line, and the line of a failed policy, which says why the row has no box.
+
+The delete and replace lines stay at every setting, and under the size budget and `redact` they turn into the same warning with their counts as before. The marker of a row is the same at every setting, and so is its diff hash: a tick approves the whole diff whatever the row shows, as under `redact`.
+
+```yaml
+dashboard:
+  pendingDetail: compact
+```
+
+### `dashboard.deployAll`
+
+Default: `true`
+
+`false` draws no deploy all box under the pending rows. Each row keeps its own box.
+
+### `dashboard.repairAll`
+
+Default: `true`
+
+`false` draws no repair all box under the drifted rows.
+
+### `dashboard.rescanBox`
+
+Default: `true`
+
+`false` draws no rescan box. A full scan is then started with Run workflow or by the schedule. A read-only dashboard never has one.
+
+### `dashboard.footer`
+
+Default: `true`
+
+`false` leaves out the small line at the bottom with the version and the docs link. Without it and without the rescan box the rule above them goes too.
+
+```yaml
+dashboard:
+  sections: [pending, previewFailed]
+  deployingSection: false
+  inSyncSection: off
+  zeroCounts: false
+  pendingDetail: names
+  rescanBox: false
+  footer: false
+```
+
 ### `tickers`
 
 Default: `write`

@@ -1,5 +1,7 @@
 # Deploy all is a bulk box and a confirm box, and the confirm box is a tick on each row
 
+> Amended by 0114: `dashboard.deployAll` and `dashboard.repairAll` turn each box off, the key this record left for when someone asked.
+>
 > Amends 0009 (a marker kind of a new sort outside the row blocks), 0018 (two new boxes and how each is judged), 0025 (the walk reads both boxes, and the scan sweeps them), 0045 and 0051 (neither draws them). Built as slice 5.18.
 
 The owner, 2026-09-22: "we need an all option for drifted and deploying which pops up an are u sure which u have to click again." A repo with twenty pending stacks after a shared change, or a morning with ten drifted stacks, meant twenty or ten ticks, one row at a time. This record fixes how one tick covers a section, and what makes it safe to offer.

@@ -217,11 +217,11 @@ The change to the monthly bill, `cost.threshold` in `sluiceway.yaml` for the rep
 _Avoid_: Budget, cost gate, spend limit, guardrail
 
 **Rescan box**:
-The one checkbox on the dashboard that belongs to no stack. Ticked by a person with write access, it starts a full scan and deploys nothing. A read-only dashboard has none.
+The one checkbox on the dashboard that belongs to no stack. Ticked by a person with write access, it starts a full scan and deploys nothing. A read-only dashboard has none, and neither does one with `dashboard.rescanBox: false`.
 _Avoid_: Refresh button, rescan tick, scan trigger
 
 **Bulk box**:
-The box under the pending rows, `Deploy all N pending stacks`, or under the drifted rows, `Repair all N drifted stacks`, when the section has two rows or more. A tick on it deploys nothing: it asks for a confirm box. There is none while deploys are off or on a read-only dashboard.
+The box under the pending rows, `Deploy all N pending stacks`, or under the drifted rows, `Repair all N drifted stacks`, when the section has two rows or more. A tick on it deploys nothing: it asks for a confirm box. There is none while deploys are off, on a read-only dashboard, or where `dashboard.deployAll` or `dashboard.repairAll` turns it off.
 _Avoid_: Select all, deploy-all button, batch tick
 
 **Confirm box**:
@@ -351,7 +351,7 @@ A row block that a writer takes from the live body and writes back as it is, bec
 _Avoid_: Kept row, old row, stale row
 
 **Counts line**:
-The first line of text on the dashboard: how many stacks are pending, deploying, preview failed and in sync, always all four. It adds how many stacks drifted, how many pending stacks destroy resources and how many rows carry a failure line, each only when it is not 0. Under a header it is centered and every count has a count dot.
+The first line of text on the dashboard: how many stacks are pending, deploying, preview failed and in sync, all four unless `dashboard.zeroCounts: false` leaves a 0 out, and the pending count always. It adds how many stacks drifted, how many pending stacks destroy resources and how many rows carry a failure line, each only when it is not 0. Under a header it is centered and every count has a count dot.
 _Avoid_: Header line, stats, totals
 
 **Scan line**:
@@ -426,6 +426,10 @@ _Avoid_: Target, sink, destination, integration
 A dashboard drawn with nothing to tick, for a workflow that only scans: pending rows have no box, there is no rescan box, and the line under the Pending heading says so. Set with `dashboard.readOnly`. It changes what is drawn, not who may deploy: what keeps a workflow from deploying is that it has no `resolve` job.
 _Avoid_: Dry run, view-only mode, preview mode, locked dashboard
 
+**Layout key**:
+One of the keys under `dashboard` in `sluiceway.yaml` that decide how the dashboard looks: the order of the sections, which of Deploying, Drifted and In sync are shown, the zero counts, the destroy alert, how much a pending row shows, the bulk boxes, the rescan box and the footer. Each defaults to the dashboard as it was, and every writer draws the same layout. A layout key never drops a row block and never changes a marker: a section that is off keeps its rows in one closed fold at the end of the sections. Pending and Preview failed are always shown, and no layout key hides a destroy, a preview failure or a failure line.
+_Avoid_: Template, theme, view, dashboard mode
+
 **Size budget**:
 How large the dashboard body may get before rows are shortened. It exists because an issue body that is too large is dropped without an error.
 _Avoid_: Limit, cap, quota
@@ -467,7 +471,7 @@ A change whose op is replace or delete: a real object goes away. Destroys are li
 _Avoid_: Destructive change, dangerous change, removal
 
 **Destroy alert**:
-The one caution block right above the pending list that names every pending stack with a destroy, and in a paragraph of its own every drifted stack with a resource gone outside the code. It is an index to the delete and replace lines, which stay open under each row. It is computed from the row markers and decides nothing, and it shows under redact and without personality too.
+The one caution block right above the pending list that names every pending stack with a destroy, and in a paragraph of its own every drifted stack with a resource gone outside the code. It is an index to the delete and replace lines, which stay open under each row. It is computed from the row markers and decides nothing, and it shows under redact, without personality and at every layout too. With `dashboard.destroyAlert: always` a note takes its place when nothing is destroyed.
 _Avoid_: Destroy warning (that is the line on the row and on the counts line), destroy banner, danger box
 
 **Example dashboard**:
