@@ -53,6 +53,7 @@ async function applyAndSettle(h: ResolveHarness, runId: string): Promise<string[
       sha: SHA,
       actionRef: ACTION_REF,
       deploymentId: entry.deployment,
+      workflow: { file: "sluiceway.yml", ref: "refs/heads/main" },
       event: h.context.event,
     });
   }

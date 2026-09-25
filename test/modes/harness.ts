@@ -243,6 +243,9 @@ export function harness(
     actionRef: ACTION_REF,
     ...rest,
   };
+  // The branch the run is on holds the commit it checked out, as when
+  // nothing was pushed since (record 0111).
+  github.seedBranch("main", context.sha);
   return { context, github, log };
 }
 

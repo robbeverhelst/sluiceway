@@ -107,6 +107,7 @@ function wired(h: ResolveHarness, eventName: string, event: unknown): Wired {
           sha: SHA,
           actionRef: ACTION_REF,
           deploymentId,
+          workflow: { file: "sluiceway.yml", ref: "refs/heads/main" },
           event,
           outputs: step.outputs,
         });

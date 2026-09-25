@@ -180,6 +180,7 @@ async function run(scenario: "deploy" | "deploy-failed"): Promise<Run> {
     sha: SHA,
     actionRef: ACTION_REF,
     deploymentId: deployment,
+    workflow: { file: "sluiceway.yml", ref: "refs/heads/main" },
     outputs: applyOutputs,
   }).catch(() => {});
   const { task, environment, sha, payload } = github.deployment(deployment);

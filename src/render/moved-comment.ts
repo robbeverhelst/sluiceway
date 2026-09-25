@@ -54,3 +54,16 @@ export function movedComment({ login, stackId, onMerge }: MovedTick): string {
   }
   return `@${login} ticked **${escapeText(stackId)}**, and the change moved since the tick, so nothing was deployed. ${MOVED_COMMENT_TAIL}`;
 }
+
+// The comment for a push that reached the branch after the commit the run
+// checked out, before the deploy started (record 0111). `apply` refused
+// before its fresh preview, so no row shows the change yet: the scan it
+// started does. Same plain words, naming nothing of the diff.
+export function branchMovedComment({ login, stackId, onMerge }: MovedTick): string {
+  const stack = `**${escapeText(stackId)}**`;
+  const tail = "The next scan shows the change as it is now on its row.";
+  if (onMerge) {
+    return `@${login} merged a change that ${stack} deploys on merge, and a newer commit reached the branch before the deploy started, so nothing was deployed. ${tail} Tick it to deploy that.`;
+  }
+  return `@${login} ticked ${stack}, and a newer commit reached the branch before the deploy started, so nothing was deployed. ${tail} Tick it again to deploy that.`;
+}

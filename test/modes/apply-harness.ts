@@ -13,7 +13,16 @@ import {
   steppingClock,
   type TableAdapter,
 } from "./harness.ts";
-import { ALICE, matrix, RESOLVE_RUN, rowsOf, scanned, tick, wake } from "./resolve-harness.ts";
+import {
+  ALICE,
+  matrix,
+  RESOLVE_RUN,
+  rowsOf,
+  scanned,
+  tick,
+  WORKFLOW,
+  wake,
+} from "./resolve-harness.ts";
 
 // The id of the apply job (record 0044).
 export const APPLY_JOB_ID = "106502299999";
@@ -71,6 +80,7 @@ export async function handedOn(
     sha: SHA,
     actionRef: ACTION_REF,
     deploymentId: first.deployment,
+    workflow: WORKFLOW,
     // The same run, so the same event: the edit that `resolve` acted on.
     event: h.context.event,
   };

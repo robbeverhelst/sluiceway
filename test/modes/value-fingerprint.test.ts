@@ -170,6 +170,7 @@ describe("apply", () => {
     const h = await handedOn(withF1(), ["a:prod"]);
     h.table["a:prod"] = pending("a:prod", fingerprinted("web", F2));
     h.context.sha = OTHER_SHA;
+    h.github.seedBranch("main", OTHER_SHA);
 
     await expect(runApply(h)).rejects.toThrow("a value changed since the tick");
 
@@ -208,6 +209,7 @@ describe("apply", () => {
     const h = await handedOn({ "a:prod": pending("a:prod", change("web")) }, ["a:prod"]);
     h.table["a:prod"] = pending("a:prod", fingerprinted("web", F1));
     h.context.sha = OTHER_SHA;
+    h.github.seedBranch("main", OTHER_SHA);
 
     await expect(runApply(h)).rejects.toThrow("a value changed since the tick");
     expect(h.adapter.applied).toEqual([]);

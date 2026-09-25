@@ -30,6 +30,7 @@ import {
   deployFailureText,
   previewFailureText,
 } from "../core/failure-reason.ts";
+import { comparedRef, type MovedWhy, movedSinceCheckout } from "../core/moved-since-checkout.ts";
 import {
   applyNotification,
   DEFAULT_NOTIFY_EVENTS,
@@ -49,6 +50,7 @@ import { publicRepo } from "../github/event.ts";
 import type { JobLog } from "../github/job-log.ts";
 import { eventDashboardUrl, type StepOutputs, writeResultFile } from "../github/outputs.ts";
 import type { GitHubPort } from "../github/port.ts";
+import type { WorkflowRef } from "../github/workflow-ref.ts";
 import type { Notifier } from "../notify/send.ts";
 import {
   ALREADY_ENDED,
@@ -66,7 +68,7 @@ import {
   toolDiffLogLines,
 } from "../render/log-text.ts";
 import { parseDashboard } from "../render/marker.ts";
-import { movedComment, valueChangedComment } from "../render/moved-comment.ts";
+import { branchMovedComment, movedComment, valueChangedComment } from "../render/moved-comment.ts";
 import { previewRow } from "../render/preview-result.ts";
 import { type ApplyResultOutcome, applyResultFile } from "../render/result-file.ts";
 import { type AttributionLines, type FailureLine, isDestroy, type Row } from "../render/row.ts";
@@ -109,6 +111,11 @@ export interface ApplyContext {
   actionRef: string;
   // The `deployment-id` input: the record to deploy (record 0035).
   deploymentId: number;
+  // The workflow of the run and the ref it runs on. `apply` compares the
+  // checked-out commit with the head of that branch before its fresh preview,
+  // and starts a full scan when the branch moved under the stack (record
+  // 0111). Nothing when the runner did not say, and then nothing deploys.
+  workflow: WorkflowRef | undefined;
   // The `dry-run` input: stop after the hash check, deploy nothing and end
   // the record as rehearsed (record 0051).
   dryRun?: boolean | undefined;
@@ -397,8 +404,52 @@ async function applying(context: ApplyContext, repo: Repo, report: ApplyReport):
     }
   }
 
+  // A push that reached the branch after the checkout (record 0111): no
+  // fresh preview shows it, so the row is left to a full scan this job
+  // starts, and the ticker is told that the next scan shows the change.
+  if (ended && attempt.branchMoved && attempt.setup) {
+    const { setup } = attempt;
+    try {
+      await dispatchScan(context);
+    } catch (error) {
+      failures.push(message(error));
+    }
+    try {
+      const dashboard = await findDashboard(github, setup.config.dashboard.label);
+      if (dashboard) {
+        await github.createComment(
+          dashboard.number,
+          branchMovedComment({
+            login: payload.ticker,
+            stackId: id_,
+            ...(payload.onMerge ? { onMerge: true } : {}),
+          }),
+        );
+      }
+    } catch (error) {
+      failures.push(
+        `The comment to ${payload.ticker} about the newer commit could not be written: ${message(error)}. The job needs the permission \`issues: write\`.`,
+      );
+    }
+  }
+
   if (attempt.failed) failures.unshift(attempt.failed);
   if (failures.length > 0) throw new ApplyFailedError(failures.join("\n"));
+}
+
+// The full scan after a refusal for a newer commit (record 0111), started the
+// way `settle` starts one: this same workflow, on this same ref (record 0035).
+async function dispatchScan(context: ApplyContext): Promise<void> {
+  const { workflow } = context;
+  if (!workflow) return;
+  try {
+    await context.github.dispatchWorkflow(workflow.file, workflow.ref);
+    context.log.info("A full scan was started, which shows the change as it is now on the row.");
+  } catch (error) {
+    throw new Error(
+      `A full scan could not be started: ${message(error)}. The apply job needs the permission \`actions: write\`, and the workflow (${workflow.file}) needs a \`workflow_dispatch\` trigger that runs the scan (record 0017). The record is ended, and the next scan writes its row again.`,
+    );
+  }
 }
 
 // How far the job got with the tool's deploy.
@@ -432,6 +483,9 @@ interface Attempt {
   toolDiffInLog?: boolean | undefined;
   summary?: ApplyOutcome | undefined;
   setup?: Setup | undefined;
+  // The branch moved under the stack after the checkout, and the tool never
+  // ran (record 0111).
+  branchMoved?: boolean | undefined;
 }
 
 function reasonOf(attempt: Attempt): DeployFailureReason | undefined {
@@ -509,6 +563,11 @@ async function deploy(
     return { end: { kind: "failed", reason }, failed: notDeployed(reason, ` ${message(error)}`) };
   }
 
+  // A push after the checkout never reaches the fresh preview, so the
+  // branch is read before it (record 0111). The tool has not run yet.
+  const moved = await sinceCheckout(context, setup, id);
+  if (moved) return moved;
+
   // The environment of the stack: the step's, with the env file its entry
   // names on top (record 0103), masked first. A file that could not be loaded
   // is a failed fresh preview, found by the preparation below.
@@ -560,6 +619,82 @@ async function deploy(
     // A plan file holds values in plain text (record 0021): it goes on every
     // way out, deployed or not.
     if (fresh.ok) await fresh.plan?.dispose();
+  }
+}
+
+// Record 0111: the commit this run checked out against the head of the
+// branch the run is on. A newer commit that a scan would preview the stack
+// for is a change that moved since the tick. Anything that keeps the answer
+// from being known deploys nothing.
+async function sinceCheckout(
+  context: ApplyContext,
+  setup: Setup,
+  id: string,
+): Promise<Attempt | undefined> {
+  const name = logGroupTitle(id);
+  const checkout = context.sha.slice(0, 7);
+  const refused = (reason: DeployFailureReason, why: string): Attempt => ({
+    end: { kind: "failed", reason },
+    failed: `${name} was not deployed: ${deployFailureText(reason)}. ${why}`,
+    summary: { kind: "not-deployed", reason: deployFailureText(reason) },
+    setup,
+  });
+  if (!context.workflow) {
+    return refused(
+      { kind: "not-started" },
+      "GITHUB_WORKFLOW_REF is not set, so this job does not know which branch it runs on, and nothing says the branch did not move since the tick.",
+    );
+  }
+  const ref = comparedRef(context.workflow.ref);
+  let comparison: Awaited<ReturnType<GitHubPort["compareCommits"]>>;
+  try {
+    comparison = await context.github.compareCommits(context.sha, ref);
+  } catch (error) {
+    return refused(
+      { kind: "not-started" },
+      `Comparing ${checkout}, the commit this run checked out, with ${ref} failed: ${message(error)}. Without it nothing says the branch did not move since the tick. The job needs the permission \`contents: read\`.`,
+    );
+  }
+  const found = movedSinceCheckout({
+    comparison,
+    stack: id,
+    stacks: setup.stacks.map((one) => ({
+      id: stackId(one.stack),
+      path: one.stack.path,
+      inputs: one.inputs,
+    })),
+    unrelated: setup.config.scan.unrelated,
+  });
+  if (found.kind === "still") {
+    context.log.info(
+      `${ref} holds nothing newer for ${name} than ${checkout}, the commit this run checked out.`,
+    );
+    return undefined;
+  }
+  return {
+    ...refused(
+      { kind: "moved" },
+      `${movedText(found.why, { ref, checkout, name })} Nothing was previewed or deployed. A full scan is started, which shows the change as it is now on the row. Tick it again to deploy that.`,
+    ),
+    branchMoved: true,
+  };
+}
+
+function movedText(
+  why: MovedWhy,
+  { ref, checkout, name }: { ref: string; checkout: string; name: string },
+): string {
+  const from = `${ref} moved on from ${checkout}, the commit this run checked out,`;
+  const files = (list: string[]) => (list.length === 1 ? "a file" : "files");
+  switch (why.kind) {
+    case "claims":
+      return `${from} to a commit that changes ${files(why.files)} ${name} claims: ${why.files.join(", ")}.`;
+    case "unclaimed":
+      return `${from} to a commit that changes ${files(why.files)} no stack claims, so a scan of it previews every stack: ${why.files.join(", ")}.`;
+    case "not-a-straight-line":
+      return `${ref} is not a straight line on from ${checkout}, the commit this run checked out (GitHub says ${why.status}), so what it holds is not what was previewed.`;
+    case "file-cap":
+      return `${from} and the comparison lists the most files GitHub gives, so which stacks the newer commits change cannot be told.`;
   }
 }
 

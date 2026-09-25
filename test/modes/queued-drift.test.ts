@@ -72,6 +72,7 @@ function applyContext(h: ResolveHarness, deploymentId: number): ApplyContext {
     sha: SHA,
     actionRef: ACTION_REF,
     deploymentId,
+    workflow: { file: "sluiceway.yml", ref: "refs/heads/main" },
     event: h.context.event,
   };
 }

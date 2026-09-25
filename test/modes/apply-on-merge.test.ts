@@ -57,6 +57,7 @@ async function merged(table: Record<string, PreviewResult>) {
     sha: SHA,
     actionRef: ACTION_REF,
     deploymentId: entry.deployment,
+    workflow: { file: "sluiceway.yml", ref: "refs/heads/main" },
     event: "push",
   };
   return { github, log, adapter, applyContext, deployment: entry.deployment };

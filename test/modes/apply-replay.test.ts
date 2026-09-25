@@ -103,6 +103,7 @@ async function deployed(
     sha: SHA,
     actionRef: ACTION_REF,
     deploymentId: deployment,
+    workflow: { file: "sluiceway.yml", ref: "refs/heads/main" },
     outputs,
   });
   return { outcome, github, log, deployment, runs, root, outputs };

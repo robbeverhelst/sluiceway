@@ -58,6 +58,7 @@ test("a scan, a tick, an apply and a settle send every request with the API vers
     .join("\n");
   fake.editBody(1, ticked, ALICE);
   fake.seedPermission(ALICE.login, WRITE);
+  fake.seedBranch("main", SHA);
   fake.seedRun(RESOLVE_RUN, { completed: false });
   const event = fake.deliverEvent();
   const outputs: Record<string, string> = {};
@@ -99,6 +100,7 @@ test("a scan, a tick, an apply and a settle send every request with the API vers
     sha: SHA,
     actionRef: ACTION_REF,
     deploymentId: entry.deployment,
+    workflow: { file: "sluiceway.yml", ref: "refs/heads/main" },
     event,
   });
   const afterApply = sent();

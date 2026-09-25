@@ -101,6 +101,8 @@ async function loop(
   github.seedRun(RESOLVE, { completed: true });
   const [merged] = github.merges;
   if (!merged) throw new Error("resolve merged nothing");
+  // The merge moved the branch, and the runs after it check out its commit.
+  github.seedBranch("main", merged.sha);
 
   // The merge changed what a:prod deploys. The scan that resolve started runs
   // on the merge commit.
@@ -154,6 +156,7 @@ async function loop(
     sha: merged.sha,
     actionRef: ACTION_REF,
     deploymentId: matrix[0]?.deployment ?? 0,
+    workflow: { file: "sluiceway.yml", ref: "refs/heads/main" },
     event: undefined,
     outputs: applyOutputs,
   };

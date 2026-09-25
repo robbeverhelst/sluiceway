@@ -14,6 +14,7 @@ import { readJob } from "../github/job.ts";
 import { actionsLog } from "../github/job-log.ts";
 import { createOctokitPort } from "../github/octokit-port.ts";
 import { actionsOutputs } from "../github/outputs.ts";
+import { readWorkflowRef } from "../github/workflow-ref.ts";
 import { stepNotifier } from "../notify/step.ts";
 import { apply } from "./apply.ts";
 import type { AutoStep } from "./auto.ts";
@@ -64,6 +65,7 @@ export async function runApply(
     sha: job.sha,
     actionRef: readActionRef(env, directory, (path) => readFileSync(path, "utf8")),
     deploymentId: inputs.deploymentId,
+    workflow: readWorkflowRef(env),
     dryRun: inputs.dryRun,
     event: readEventPayload(env, (path) => readFileSync(path, "utf8")),
     outputs: handed?.step.outputs ?? actionsOutputs(env.RUNNER_TEMP),
