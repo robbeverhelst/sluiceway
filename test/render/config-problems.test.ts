@@ -398,6 +398,27 @@ describe("a deploy window", () => {
   });
 });
 
+// The deploy freezes (record 0115).
+describe("the freeze keys", () => {
+  test("a date and a time, and an end after the start", () => {
+    expect(
+      text({ kind: "not-a-date-time", value: "2026-12-20", path: ["freezes", 0, "from"] }),
+    ).toBe(
+      'freezes[0].from: "2026-12-20" is not a date and a time. Write YYYY-MM-DDTHH:MM in the dashboard zone, such as "2026-12-20T00:00", with no zone and no seconds, on a day the calendar has.',
+    );
+    expect(
+      text({
+        kind: "freeze-ends-first",
+        from: "2027-01-05T00:00",
+        to: "2026-12-20T00:00",
+        path: ["freezes", 0],
+      }),
+    ).toBe(
+      'freezes[0]: the freeze ends at "2026-12-20T00:00", which is not after it starts at "2027-01-05T00:00".',
+    );
+  });
+});
+
 // The cost keys (record 0105).
 describe("the cost keys", () => {
   test("a threshold needs the switch", () => {

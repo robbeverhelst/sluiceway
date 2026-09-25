@@ -413,6 +413,36 @@ stacks:
   });
 });
 
+// Deploy freezes (record 0115) belong to the repo: every stack gets them,
+// and an entry that lifts the windows of its stacks does not lift a freeze.
+describe("the deploy freezes of a stack", () => {
+  const FREEZE = { from: "2026-12-20T00:00", to: "2027-01-05T00:00", reason: "Year end" };
+
+  test("are absent when the repo names none", () => {
+    expect(applyConfig(parseConfig(undefined), FOUND).map((one) => "freezes" in one)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  test("every stack gets them, an entry with deployWindows: [] too", () => {
+    const configured = applyConfig(
+      parseConfig(`
+freezes:
+  - from: 2026-12-20T00:00
+    to: 2027-01-05T00:00
+    reason: Year end
+stacks:
+  - path: apps/grafana
+    deployWindows: []
+`),
+      FOUND,
+    );
+    expect(configured.map((one) => one.freezes)).toEqual([[FREEZE], [FREEZE], [FREEZE]]);
+  });
+});
+
 // Policies (record 0106): `policies` at the top level names the directories
 // of Rego policies every pending stack is tested against, and an entry's
 // `policies` add to that for its stacks, the way inputs add up.

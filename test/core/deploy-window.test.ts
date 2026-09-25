@@ -168,7 +168,10 @@ describe("the window words of a queued record", () => {
       opens: undefined,
     });
     // The repo took its windows away: the next run starts it.
-    expect(queuedWindow({ window: true }, undefined, FRIDAY, zone)).toEqual({ opens: undefined });
+    expect(queuedWindow({ window: true }, undefined, FRIDAY, zone)).toEqual({
+      opens: undefined,
+      anyTime: true,
+    });
   });
 
   test("a record behind a stack, only while the window is closed", () => {

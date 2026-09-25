@@ -1,5 +1,6 @@
 // Deploy windows (record 0104): when a stack may go out, as `sluiceway.yaml`
-// writes it, per repo and per stack, in the dashboard zone (record 0089). A
+// writes it, per repo and per stack, in the dashboard zone (record 0089), and
+// deploy freezes (record 0115), when nothing goes out at all. A
 // tick outside the window is not refused: its deployment record waits for
 // the window, as a queued record waits for a dependency (record 0056), and a
 // run that falls inside the window starts it. This file holds the rule alone:
@@ -187,8 +188,13 @@ function instantOf(day: CalendarDay, minutes: number, timeZone: string): number 
 // windows are the config's of this moment and not the record's, as the tick
 // rule is (record 0018): a repo that moves its window moves the row.
 export interface QueuedWindow {
-  // When the window opens, or nothing when it is open now.
+  // When the stack may go out, or nothing when it may now.
   opens: Date | undefined;
+  // The deploy freeze that holds it now (record 0115).
+  freeze?: HeldFreeze | undefined;
+  // It may go now and the stack has no window: nothing holds it any more,
+  // so the row names no window.
+  anyTime?: true | undefined;
 }
 
 export function queuedWindow(
@@ -196,9 +202,197 @@ export function queuedWindow(
   windows: readonly DeployWindow[] | undefined,
   now: Date,
   timeZone: string,
+  freezes: readonly DeployFreeze[] = [],
 ): QueuedWindow | undefined {
-  const state = windowState(windows ?? [], now, timeZone);
-  if (record.window) return { opens: state.open ? undefined : state.opens };
-  if (record.behind && record.behind.length > 0 && !state.open) return { opens: state.opens };
+  const state = deployState(windows, freezes, now, timeZone);
+  const closed = (held: Extract<DeployState, { open: false }>): QueuedWindow => ({
+    opens: held.opens,
+    ...(held.freeze === undefined ? {} : { freeze: held.freeze }),
+  });
+  if (record.window) {
+    if (!state.open) return closed(state);
+    return (windows ?? []).length === 0
+      ? { opens: undefined, anyTime: true }
+      : { opens: undefined };
+  }
+  if (record.behind && record.behind.length > 0 && !state.open) return closed(state);
   return undefined;
+}
+
+// Deploy freezes (record 0115): periods, from one date and clock time to
+// another in the dashboard zone, when nothing goes out at all. A freeze is
+// the repo's, not a stack's: no entry lifts it, and a destroy waits like
+// anything else. A freeze and a window together let a stack go at the first
+// moment both allow.
+export interface DeployFreeze {
+  // `YYYY-MM-DDTHH:MM` on the wall of the dashboard zone. `from` is inside
+  // and `to` is outside, as for a window.
+  from: string;
+  to: string;
+  reason?: string | undefined;
+}
+
+// What is wrong with one freeze whose two ends have the shape of a date and
+// a time: a date the calendar does not have, or an end that is not after
+// the start.
+export type FreezeProblem =
+  | { kind: "not-a-date-time"; value: string }
+  | { kind: "freeze-ends-first"; from: string; to: string };
+
+const DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)$/;
+
+// The wall of a date and time as written, or nothing for a text that is
+// not one or names a day the calendar does not have.
+function wallOf(text: string): { day: CalendarDay; minutes: number } | undefined {
+  const match = DATE_TIME.exec(text);
+  if (!match) return undefined;
+  const [year, month, day, hour, minute] = match.slice(1).map(Number) as [
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  const real = new Date(Date.UTC(year, month - 1, day));
+  if (real.getUTCMonth() !== month - 1 || real.getUTCDate() !== day) return undefined;
+  return { day: { year, month, day }, minutes: hour * 60 + minute };
+}
+
+export function freezeProblem(freeze: DeployFreeze): FreezeProblem | undefined {
+  for (const value of [freeze.from, freeze.to]) {
+    if (DATE_TIME.test(value) && wallOf(value) === undefined) {
+      return { kind: "not-a-date-time", value };
+    }
+  }
+  // The shape is fixed, so the text sorts as the time does.
+  return freeze.to > freeze.from
+    ? undefined
+    : { kind: "freeze-ends-first", from: freeze.from, to: freeze.to };
+}
+
+// When a freeze starts and ends, as instants.
+function spanOf(
+  freeze: DeployFreeze,
+  timeZone: string,
+): { starts: number; ends: number } | undefined {
+  const from = wallOf(freeze.from);
+  const to = wallOf(freeze.to);
+  if (from === undefined || to === undefined) return undefined;
+  return {
+    starts: instantOf(from.day, from.minutes, timeZone),
+    ends: instantOf(to.day, to.minutes, timeZone),
+  };
+}
+
+// The freeze that holds a stack back now: when the freezes stop holding
+// without a break, and the reason of the one that ends last.
+export interface HeldFreeze {
+  reason?: string | undefined;
+  ends: Date;
+}
+
+function heldAt(
+  freezes: readonly DeployFreeze[],
+  at: number,
+  timeZone: string,
+): HeldFreeze | undefined {
+  const spans = freezes.flatMap((freeze) => {
+    const span = spanOf(freeze, timeZone);
+    return span === undefined ? [] : [{ freeze, ...span }];
+  });
+  let last: (typeof spans)[number] | undefined;
+  let until = at;
+  for (;;) {
+    const holding = spans.filter(({ starts, ends }) => starts <= until && until < ends);
+    if (holding.length === 0) break;
+    for (const one of holding) if (last === undefined || one.ends > last.ends) last = one;
+    until = last?.ends ?? until;
+  }
+  if (last === undefined) return undefined;
+  return {
+    ...(last.freeze.reason === undefined ? {} : { reason: last.freeze.reason }),
+    ends: new Date(last.ends),
+  };
+}
+
+// Whether a stack may go out now, by its windows and the repo's freezes, and
+// when it may when it may not: the first moment no freeze holds and a
+// window is open. `freeze` is there while one holds now.
+export type DeployState =
+  | { open: true }
+  | { open: false; opens: Date | undefined; freeze?: HeldFreeze };
+
+// How many times a window opening and a freeze ending are looked past
+// before giving up; each turn moves on by at least one of them.
+const TURNS = 64;
+
+export function deployState(
+  windows: readonly DeployWindow[] | undefined,
+  freezes: readonly DeployFreeze[] | undefined,
+  now: Date,
+  timeZone: string,
+): DeployState {
+  const held = heldAt(freezes ?? [], now.getTime(), timeZone);
+  const first = windowState(windows ?? [], now, timeZone);
+  if (held === undefined && first.open) return { open: true };
+  let at = held?.ends ?? (first.open ? now : first.opens);
+  for (let turn = 0; at !== undefined && turn < TURNS; turn++) {
+    const frozen = heldAt(freezes ?? [], at.getTime(), timeZone);
+    if (frozen !== undefined) {
+      at = frozen.ends;
+      continue;
+    }
+    const window = windowState(windows ?? [], at, timeZone);
+    if (window.open) break;
+    at = window.opens;
+  }
+  return { open: false, opens: at, ...(held === undefined ? {} : { freeze: held }) };
+}
+
+// A freeze the dashboard names under the scan line: one that holds, or that
+// starts within a week.
+export interface ShownFreeze {
+  reason?: string | undefined;
+  starts: Date;
+  ends: Date;
+  holds: boolean;
+}
+
+const WEEK = 7 * 24 * 60 * 60_000;
+
+export function shownFreezes(
+  freezes: readonly DeployFreeze[],
+  now: Date,
+  timeZone: string,
+): ShownFreeze[] {
+  const time = now.getTime();
+  return freezes
+    .flatMap((freeze): ShownFreeze[] => {
+      const span = spanOf(freeze, timeZone);
+      if (span === undefined || span.starts - WEEK > time || span.ends <= time) return [];
+      return [
+        {
+          ...(freeze.reason === undefined ? {} : { reason: freeze.reason }),
+          starts: new Date(span.starts),
+          ends: new Date(span.ends),
+          holds: span.starts <= time,
+        },
+      ];
+    })
+    .sort((a, b) => a.starts.getTime() - b.starts.getTime());
+}
+
+// The freezes that ended before `now`, which hold nothing any more: the
+// check warns about each.
+export function endedFreezes(
+  freezes: readonly DeployFreeze[],
+  now: Date,
+  timeZone: string,
+): { freeze: DeployFreeze; ended: Date }[] {
+  return freezes.flatMap((freeze) => {
+    const span = spanOf(freeze, timeZone);
+    return span !== undefined && span.ends <= now.getTime()
+      ? [{ freeze, ended: new Date(span.ends) }]
+      : [];
+  });
 }

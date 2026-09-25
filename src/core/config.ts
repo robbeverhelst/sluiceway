@@ -2,7 +2,13 @@ import { LineCounter, parseDocument } from "yaml";
 import { z } from "zod";
 import { configErrorText, configProblemText } from "../render/config-problems.ts";
 import { LOOKBACK, NAMED_ON_A_ROW } from "./attribution.ts";
-import { type DeployWindow, WEEKDAYS, windowProblem } from "./deploy-window.ts";
+import {
+  type DeployFreeze,
+  type DeployWindow,
+  freezeProblem,
+  WEEKDAYS,
+  windowProblem,
+} from "./deploy-window.ts";
 import { knownStacks } from "./discovery.ts";
 import { globMatcher } from "./glob.ts";
 import { DEFAULT_NOTIFY_EVENTS, NOTIFY_EVENTS } from "./notify.ts";
@@ -99,6 +105,28 @@ const deployWindow = z
   });
 
 const deployWindows = z.array(deployWindow);
+
+// A date and a clock time of a deploy freeze (record 0115), on the wall of
+// the dashboard zone: `YYYY-MM-DDTHH:MM`, no zone and no seconds. Its shape is
+// a pattern so an editor sees it too; `freezeProblem` checks the calendar.
+const DATE_TIME = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/;
+const dateTime = z.string().regex(DATE_TIME);
+
+// One deploy freeze (record 0115): a start, an end after it, and why.
+const deployFreeze = z
+  .strictObject({
+    from: dateTime.describe(
+      "When the freeze starts, as YYYY-MM-DDTHH:MM in the dashboard zone, such as 2026-12-20T00:00.",
+    ),
+    to: dateTime.describe("When it ends, as YYYY-MM-DDTHH:MM, after from. The end is outside it."),
+    reason: text
+      .describe("Why nothing goes out, shown on the dashboard and on every row that waits for it.")
+      .optional(),
+  })
+  .superRefine((freeze, context) => {
+    const problem = freezeProblem(freeze);
+    if (problem) refuse(context, problem);
+  });
 // The paths of policy directories or files (record 0106): relative to the
 // repo root and inside it, like a stack's path, each once and as written.
 const policyPaths = z.array(stackPath).transform((paths) => [...new Set(paths)]);
@@ -499,6 +527,15 @@ export const configSchema = z
         "When the stacks of this repo may go out, in the dashboard zone: a list of windows, each with days of the week, a start and an end. A tick outside every window waits for the next one to open, and so does a deploy on merge. Empty, the default, is any time. A stacks entry sets its own with stacks[].deployWindows.",
       )
       .default([]),
+    // Deploy freezes (record 0115): periods when nothing goes out at all. A
+    // tick, a deploy on merge and the deploy after a merge wait for the end,
+    // as they wait for a window. No stack entry lifts one.
+    freezes: z
+      .array(deployFreeze)
+      .describe(
+        "Periods when nothing goes out, in the dashboard zone: each a start and an end as YYYY-MM-DDTHH:MM and an optional reason. A tick, a deploy on merge and a destroy wait for the end, and a deploy window after it, and go out at the first moment both allow. Empty, the default, freezes nothing.",
+      )
+      .default([]),
     ignore: z
       .array(ignoreEntry)
       .describe(
@@ -709,6 +746,8 @@ export type WhatIsWrong =
   | { kind: "no-days" }
   | { kind: "not-a-clock-time"; value: unknown }
   | { kind: "window-ends-first"; from: string; to: string }
+  | { kind: "not-a-date-time"; value: unknown }
+  | { kind: "freeze-ends-first"; from: string; to: string }
   | { kind: "a-team"; value: unknown }
   | { kind: "not-a-username"; value: unknown }
   | { kind: "no-tickers" }
@@ -906,6 +945,11 @@ function classify(issue: Issue, raw: unknown): Found[] {
   }
   if (inWindow && (key === "from" || key === "to") && value !== undefined) {
     return one({ kind: "not-a-clock-time", value });
+  }
+  // A deploy freeze (record 0115): a start or an end that is there and is
+  // not a date and a time.
+  if (path[0] === "freezes" && (key === "from" || key === "to") && value !== undefined) {
+    return one({ kind: "not-a-date-time", value });
   }
   if (issue.code === "invalid_value" && path[0] === "dashboard") {
     return one({ kind: "not-one-of", value, choices: issue.values.map(String) });
@@ -1141,6 +1185,10 @@ export interface ConfiguredStack {
   // them, else the top level's. Absent when there is none, so a repo without
   // windows is what it was.
   deployWindows?: DeployWindow[];
+  // The deploy freezes of the repo (record 0115), on every stack: no entry
+  // lifts one. Absent when there is none, so a repo without freezes is what
+  // it was.
+  freezes?: DeployFreeze[];
   // The policy paths of the stack (record 0106): the top level ones, then
   // what its entries add, each once. Absent when the repo names none, so
   // nothing changes for a repo without policies.
@@ -1215,6 +1263,7 @@ export function applyConfig(config: Config, found: Stack[]): ConfiguredStack[] {
       ...(valueFingerprint === undefined ? {} : { valueFingerprint }),
       ...(envFile === undefined ? {} : { envFile }),
       ...(windows.length === 0 ? {} : { deployWindows: windows }),
+      ...(config.freezes.length === 0 ? {} : { freezes: config.freezes }),
       ...(policies.length === 0 ? {} : { policies }),
       ...(createInBackend === true ? { createInBackend } : {}),
       ...(cost === undefined ? {} : { cost }),

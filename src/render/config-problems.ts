@@ -80,6 +80,10 @@ function problemWords(issue: ConfigIssue): string {
       return `${show(issue.value)} is not a clock time. Write HH:MM on a 24 hour clock in quotes, such as "09:00" or "17:30". "24:00" is the end of the day.`;
     case "window-ends-first":
       return `the window ends at "${issue.to}", which is not after it starts at "${issue.from}". A window over midnight is two windows: one to "24:00" and one from "00:00" on the next day.`;
+    case "not-a-date-time":
+      return `${show(issue.value)} is not a date and a time. Write YYYY-MM-DDTHH:MM in the dashboard zone, such as "2026-12-20T00:00", with no zone and no seconds, on a day the calendar has.`;
+    case "freeze-ends-first":
+      return `the freeze ends at "${issue.to}", which is not after it starts at "${issue.from}".`;
     case "a-team":
       return `${show(issue.value)} looks like a team. Teams are not supported yet. Use a level ("write", "maintain", "admin") or usernames.`;
     case "not-a-username":

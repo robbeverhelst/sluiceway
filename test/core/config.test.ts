@@ -37,6 +37,7 @@ const DEFAULTS: Config = {
   deploys: true,
   recordWriters: [],
   deployWindows: [],
+  freezes: [],
   ignore: [],
   scan: { unrelated: [], logDiff: false },
   drift: { enabled: false },
@@ -80,6 +81,10 @@ dashboard:
   personality: false
   readOnly: true
 tickers: admin
+freezes:
+  - from: 2026-12-20T00:00
+    to: 2027-01-05T00:00
+    reason: Year-end freeze
 ignore:
   - "**/*:dev"
 scan:
@@ -129,6 +134,7 @@ phases: [infrastructure, applications]
       deploys: true,
       recordWriters: [],
       deployWindows: [],
+      freezes: [{ from: "2026-12-20T00:00", to: "2027-01-05T00:00", reason: "Year-end freeze" }],
       ignore: ["**/*:dev"],
       scan: { unrelated: ["**/*.md"], logDiff: false },
       drift: { enabled: true },
@@ -163,6 +169,7 @@ const TOP_KEYS = [
   "deploys",
   "recordWriters",
   "deployWindows",
+  "freezes",
   "ignore",
   "scan",
   "drift",
@@ -656,7 +663,7 @@ describe("a file that is not a mapping", () => {
 describe("the error", () => {
   test("names the file and lists every problem in words, top to bottom", () => {
     expect(() => parseConfig("tickerz: admin\ndashboard:\n  pin: 1\n")).toThrow(
-      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, recordWriters, deployWindows, ignore, scan, drift, valueFingerprint, policies, cost, attribution, phases, stacks, discovery, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
+      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, recordWriters, deployWindows, freezes, ignore, scan, drift, valueFingerprint, policies, cost, attribution, phases, stacks, discovery, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
     );
   });
 
@@ -968,6 +975,81 @@ describe("deployWindows", () => {
         path: ["stacks", 0, "deployWindows", 0],
       },
     ]);
+  });
+});
+
+// Deploy freezes (record 0115): periods of the repo when nothing goes out,
+// written as dates and clock times in the dashboard zone.
+describe("freezes (record 0115)", () => {
+  test("is empty unless the file names freezes", () => {
+    expect(parseConfig(undefined).freezes).toEqual([]);
+    expect(parseConfig("freezes: []\n").freezes).toEqual([]);
+  });
+
+  test("takes a start, an end and a reason, quoted or not", () => {
+    expect(
+      parseConfig(
+        'freezes:\n  - from: 2026-12-20T00:00\n    to: "2027-01-05T00:00"\n    reason: Year-end freeze\n  - from: "2027-03-01T18:00"\n    to: "2027-03-02T06:00"\n',
+      ).freezes,
+    ).toEqual([
+      { from: "2026-12-20T00:00", to: "2027-01-05T00:00", reason: "Year-end freeze" },
+      { from: "2027-03-01T18:00", to: "2027-03-02T06:00" },
+    ]);
+  });
+
+  test("a start and an end are YYYY-MM-DDTHH:MM that exist, with no zone and no seconds", () => {
+    for (const value of [
+      "2026-12-20",
+      "2026-12-20 00:00",
+      "2026-12-20T00:00Z",
+      "2026-12-20T00:00:00",
+      "2026-12-20T24:00",
+    ]) {
+      expect(issues(`freezes:\n  - from: "${value}"\n    to: "2027-01-05T00:00"\n`)).toEqual([
+        { kind: "not-a-date-time", value, path: ["freezes", 0, "from"] },
+      ]);
+    }
+    expect(issues('freezes:\n  - from: "2027-02-29T00:00"\n    to: "2027-03-05T00:00"\n')).toEqual([
+      { kind: "not-a-date-time", value: "2027-02-29T00:00", path: ["freezes", 0] },
+    ]);
+    expect(issues("freezes:\n  - from: 20261220\n    to: 2027-01-05T00:00\n")).toEqual([
+      { kind: "not-a-date-time", value: 20261220, path: ["freezes", 0, "from"] },
+    ]);
+  });
+
+  test("the end comes after the start", () => {
+    expect(issues('freezes:\n  - from: "2027-01-05T00:00"\n    to: "2026-12-20T00:00"\n')).toEqual([
+      {
+        kind: "freeze-ends-first",
+        from: "2027-01-05T00:00",
+        to: "2026-12-20T00:00",
+        path: ["freezes", 0],
+      },
+    ]);
+  });
+
+  test("a freeze takes no other key, needs both ends, and a reason is not empty", () => {
+    expect(
+      issues(
+        'freezes:\n  - from: "2026-12-20T00:00"\n    to: "2027-01-05T00:00"\n    stacks: [a]\n',
+      ),
+    ).toEqual([
+      { kind: "unknown-key", key: "stacks", known: ["from", "to", "reason"], path: ["freezes", 0] },
+    ]);
+    expect(issues('freezes:\n  - from: "2026-12-20T00:00"\n')).toEqual([
+      { kind: "wrong-type", expected: "string", value: undefined, path: ["freezes", 0, "to"] },
+    ]);
+    expect(
+      issues(
+        'freezes:\n  - from: "2026-12-20T00:00"\n    to: "2027-01-05T00:00"\n    reason: ""\n',
+      ),
+    ).toEqual([{ kind: "empty", path: ["freezes", 0, "reason"] }]);
+  });
+
+  test("a stack entry has no freezes: nothing lifts one for a stack", () => {
+    expect(
+      issues("stacks:\n  - path: apps/grafana\n    freezes: []\n").map(({ kind }) => kind),
+    ).toEqual(["unknown-key"]);
   });
 });
 
