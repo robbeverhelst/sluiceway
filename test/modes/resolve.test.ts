@@ -69,12 +69,14 @@ describe("an edit of an issue that is not the dashboard", () => {
     expect(matrix(h)).toEqual([]);
   });
 
-  test("an event that is not about an issue costs no API call", async () => {
+  // Since record 0109 such a run reads one page of records per environment
+  // name, for a record another writer opened for it, and nothing more.
+  test("an event that is not about an issue costs one read of the records", async () => {
     const h = await scanned(TABLE);
 
     await wake(h, { ref: "refs/heads/main" });
 
-    expect(h.github.requests).toEqual([]);
+    expect(h.github.requests).toEqual(["listNewestDeployments"]);
     expect(matrix(h)).toEqual([]);
   });
 

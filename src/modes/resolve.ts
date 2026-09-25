@@ -32,6 +32,7 @@ import { repositoryOf } from "../core/notify.ts";
 import { renovateMergeSetting } from "../core/renovate-config.ts";
 import { openRepo, type Repo, type RepoStacks } from "../core/repo.ts";
 import { capDeploys, type MatrixEntry, matrixOutput } from "../core/resolve.ts";
+import { deployableRecordsOfRun } from "../core/settle.ts";
 import { stackId } from "../core/stack.ts";
 import { type Stopwatch, stopwatch } from "../core/stopwatch.ts";
 import {
@@ -131,9 +132,16 @@ export interface ResolveContext {
 // Where `resolve`'s time goes, part by part.
 type Watch = Stopwatch<ResolvePart>;
 
+// What `resolve` tells auto mode beyond `matrix` (record 0109): how many of
+// the deploys it handed on were outside records, which another writer opened
+// for this run. A dispatched run that handed on nothing else skips its scan.
+export interface ResolveOutcome {
+  outsideRecords: number;
+}
+
 // `resolve` always sets `matrix`, to `[]` when it started nothing (record
 // 0035), also when it fails before it got that far.
-export async function resolve(context: ResolveContext): Promise<void> {
+export async function resolve(context: ResolveContext): Promise<ResolveOutcome> {
   let handedOn = false;
   const handOn = (entries: readonly MatrixEntry[]) => {
     context.setOutput("matrix", matrixOutput(entries));
@@ -141,7 +149,7 @@ export async function resolve(context: ResolveContext): Promise<void> {
   };
   // What the job log says once the run acts on the dashboard, for the job
   // summary (slice 5.9). An edit of any other issue writes none.
-  const report: RunReport = { acting: false, lines: [], scanStarted: false };
+  const report: RunReport = { acting: false, lines: [], scanStarted: false, outsideRecords: 0 };
   const watch: Watch = stopwatch(context.now ?? (() => new Date(0)));
   const recording: ResolveContext = {
     ...context,
@@ -170,6 +178,7 @@ export async function resolve(context: ResolveContext): Promise<void> {
       );
     }
   }
+  return { outsideRecords: report.outsideRecords };
 }
 
 // The cheap check of record 0017, as one line for the job log, or nothing
@@ -191,6 +200,8 @@ interface RunReport {
   scanStarted: boolean;
   // The page of the scan it started, when GitHub named it.
   scanUrl?: string | undefined;
+  // The outside records it handed on (record 0109).
+  outsideRecords: number;
 }
 
 // A summary that cannot be written never turns the job red: the job log
@@ -249,7 +260,7 @@ async function resolveTicks(
   const issue = editedIssue(context.event);
   if (!issue) {
     report.acting = true;
-    await startQueued(context, repo, handOn, watch);
+    await startQueued(context, repo, handOn, watch, report);
     return;
   }
   const notTheDashboard = notTheDashboardText(issue, repo.config);
@@ -1195,18 +1206,24 @@ function withRowDependencies(
 }
 
 // A `resolve` that no issue edit started: the one `settle` starts, the one a
-// schedule starts, and any other dispatch of the workflow (records 0056 and
-// 0104). It starts every queued stack whose dependencies went out and whose
-// deploy window is open, under a record of its own run, because `apply`
-// deploys only a record of the run it is part of (record 0035). The approved
-// hash and the ticker go on unchanged: the ticker was checked when the tick
-// was made, as for any record `apply` takes. The old record ends as
-// `inactive`, "started in a later run", which is no deploy fact.
+// schedule starts, and any other dispatch of the workflow (records 0056, 0104
+// and 0109). It reads the records of every environment the stacks use, one
+// page each (record 0003), and hands two kinds of record to `apply`. An
+// outside record (record 0109): one that names this run already and waits for
+// nothing, which a writer other than Sluiceway opened before the run got
+// here, so it goes on as it is. And every queued stack whose dependencies
+// went out and whose deploy window is open, under a new record of this run,
+// because `apply` deploys only a record of the run it is part of (record
+// 0035). The approved hash and the ticker go on unchanged in both: the ticker
+// was checked when the tick was made, or is the outside writer's word, and
+// every record `apply` takes is trusted the same way. The old queued record
+// ends as `inactive`, "started in a later run", which is no deploy fact.
 async function startQueued(
   context: ResolveContext,
   repo: Repo,
   handOn: (entries: readonly MatrixEntry[]) => void,
   watch: Watch,
+  report: RunReport,
 ): Promise<void> {
   const { log, github } = context;
   const config = repo.config();
@@ -1215,27 +1232,26 @@ async function startQueued(
   const windowed =
     config.deployWindows.length > 0 ||
     config.stacks.some(({ deployWindows }) => (deployWindows?.length ?? 0) > 0);
-  if (
-    !windowed &&
-    !config.stacks.some(({ dependsOn, phase }) => dependsOn !== undefined || phase !== undefined)
-  ) {
-    log.info(
-      "The event that started this job is not about an issue, and no stack has dependsOn, a phase or a deploy window. Nothing to do.",
-    );
-    return;
-  }
+  const chained = config.stacks.some(
+    ({ dependsOn, phase }) => dependsOn !== undefined || phase !== undefined,
+  );
   const { stacks, ignored } = byId(await repo.stacks());
   const all = [...stacks.values()];
   // A stack with auto may depend on any stack, and only its row knows which
-  // (record 0059).
+  // (record 0059). A record that may sit past the page is one of theirs: the
+  // REST fall back asks for them (record 0003). An outside record is fresh
+  // and on the page.
   const anyAuto = all.some(({ dependsOnAuto }) => dependsOnAuto);
-  const involved = all.filter(
-    ({ stack, dependsOn, deployWindows }) =>
-      anyAuto ||
-      dependsOn !== undefined ||
-      deployWindows !== undefined ||
-      all.some((other) => other.dependsOn?.includes(stackId(stack)) === true),
-  );
+  const involved =
+    windowed || chained
+      ? all.filter(
+          ({ stack, dependsOn, deployWindows }) =>
+            anyAuto ||
+            dependsOn !== undefined ||
+            deployWindows !== undefined ||
+            all.some((other) => other.dependsOn?.includes(stackId(stack)) === true),
+        )
+      : [];
   const settled = await watch.time("records", async () =>
     settleEndedRuns(
       github,
@@ -1250,10 +1266,48 @@ async function startQueued(
   for (const { stackId: id } of settled.ended) {
     log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
   }
+
+  // The outside records (record 0109): a record of a stack discovery does
+  // not know, or of a stack whose newest record is another one, is left
+  // alone. It ends as any open record of a run that is over does.
+  const facts = deployFacts(settled.records);
+  const outside: Started[] = [];
+  for (const { id, stackId: stack } of deployableRecordsOfRun(settled.records, context.runId)) {
+    const known = stacks.get(stack);
+    if (!known) {
+      log.info(
+        `Deployment record ${id} names this run, and discovery does not know its stack, ${logGroupTitle(stack)}. It is left alone, and it ends as every open record of a run that is over does (record 0003).`,
+      );
+      continue;
+    }
+    const newest = facts.byStack.get(stack);
+    if (newest?.kind !== "open" || newest.deployment !== id) {
+      log.info(
+        newest?.kind === "open"
+          ? `Deployment record ${id} names this run, and ${logGroupTitle(stack)} is deploying under record ${newest.deployment}. It is left alone.`
+          : `Deployment record ${id} names this run, and a newer record of ${logGroupTitle(stack)} already ended. It is left alone.`,
+      );
+      continue;
+    }
+    outside.push({
+      stackId: stack,
+      environment: known.environment,
+      deployment: id,
+      ticker: newest.ticker,
+      ...(newest.onMerge ? { onMerge: true } : {}),
+    });
+  }
+  if (outside.length === 0 && !windowed && !chained) {
+    log.info(
+      "The event that started this job is not about an issue, no open deployment record names this run, and no stack has dependsOn, a phase or a deploy window. Nothing to do.",
+    );
+    return;
+  }
+
   const now = clockOf(context)();
   const { timeZone } = config.dashboard;
   const ready: { stackId: string; fact: OpenDeployment }[] = [];
-  const waiting = [...deployFacts(settled.records).byStack]
+  const waiting = [...facts.byStack]
     .flatMap(([id, fact]) =>
       fact.kind === "open" && (fact.behind || fact.window) && stacks.has(id) ? [{ id, fact }] : [],
     )
@@ -1277,14 +1331,30 @@ async function startQueued(
         : `${logGroupTitle(id)} waits for its deploy window, ${opens}. Nothing starts it before then.`,
     );
   }
-  if (ready.length === 0) {
+  if (ready.length === 0 && outside.length === 0) {
     log.info("No queued stack is ready to start. Nothing to do.");
     return;
   }
 
+  // One cap and one order for both kinds (record 0035): stack id order, and
+  // never more than one run can hold.
+  type Start = { stackId: string; outside: Started } | { stackId: string; fact: OpenDeployment };
+  const starts = capDeploys<Start>([
+    ...outside.map((one) => ({ stackId: one.stackId, outside: one })),
+    ...ready.map((one) => ({ stackId: one.stackId, fact: one.fact })),
+  ]).start;
   const failures: string[] = [];
   const started: Started[] = [];
-  for (const { stackId: id, fact } of capDeploys(ready).start) {
+  for (const one of starts) {
+    if ("outside" in one) {
+      started.push(one.outside);
+      report.outsideRecords++;
+      log.info(
+        `${logGroupTitle(one.stackId)}: deployment record ${one.outside.deployment} names this run and waits for nothing, and this run did not open it. It is handed to apply, which previews the stack again and deploys only on the hash the record carries (record 0109).`,
+      );
+      continue;
+    }
+    const { stackId: id, fact } = one;
     const stack = stacks.get(id);
     const queued = settled.records.find((record) => record.id === fact.deployment);
     if (!stack || !queued) continue;

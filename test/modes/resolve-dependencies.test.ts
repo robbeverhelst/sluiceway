@@ -210,13 +210,15 @@ describe("a resolve that a dispatch started", () => {
     });
   });
 
-  test("with no dependsOn in the config asks GitHub nothing", async () => {
+  // One page of records per environment name, for an outside record (record
+  // 0109), and no REST fall back, since no stack depends on another.
+  test("with no dependsOn in the config asks GitHub for the records once and nothing more", async () => {
     const h = await scanned(TABLE);
 
     await wake(h, { ref: "refs/heads/main" });
 
     expect(matrix(h)).toEqual([]);
-    expect(h.github.requests).toEqual([]);
+    expect(h.github.requests).toEqual(["listNewestDeployments"]);
   });
 });
 
