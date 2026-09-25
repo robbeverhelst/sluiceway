@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.0](https://github.com/sluiceway/sluiceway/compare/v0.38.0...v0.39.0) (2026-09-25)
+
+
+### Features
+
+* a row shows what a change costs, and a threshold demands a tick ([#255](https://github.com/sluiceway/sluiceway/issues/255)) ([1667591](https://github.com/sluiceway/sluiceway/commit/1667591a0cae2a48047a00ba99cadb7e5b12d9db))
+
 ## [0.38.0](https://github.com/sluiceway/sluiceway/compare/v0.37.0...v0.38.0) (2026-09-24)
 
 
