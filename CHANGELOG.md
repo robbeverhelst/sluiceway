@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.0](https://github.com/sluiceway/sluiceway/compare/v0.44.0...v0.45.0) (2026-09-25)
+
+
+### Features
+
+* the command line talks to the app: login, status, tick, settings ([#283](https://github.com/sluiceway/sluiceway/issues/283)) ([98de02a](https://github.com/sluiceway/sluiceway/commit/98de02a571976d7bb412469d93671396ac4c2a2b))
+
 ## [0.44.0](https://github.com/sluiceway/sluiceway/compare/v0.43.0...v0.44.0) (2026-09-25)
 
 
