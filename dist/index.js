@@ -47374,6 +47374,10 @@ function problemWords(issue3) {
       return `expected "write", "maintain", "admin" or a list of usernames, got ${show(issue3.value)}.`;
     case "not-a-deploy-trigger":
       return `expected "on-tick" or "on-merge", got ${show(issue3.value)}.`;
+    case "not-one-of":
+      return `expected one of ${issue3.choices.map((choice) => `"${choice}"`).join(", ")}, got ${show(issue3.value)}.`;
+    case "section-named-twice":
+      return `${show(issue3.section)} is already dashboard.sections[${issue3.first}]. Name each section once.`;
     case "not-an-event":
       return `${show(issue3.value)} is not an event. The events are: ${issue3.events.join(", ")}.`;
     case "not-a-phase-name":
@@ -48312,14 +48316,15 @@ function policiesNotRunLine(outcome, runUrl) {
 }
 function policyLines(row, options) {
   const { policies } = row;
+  const short = (options.detail ?? "full") !== "full";
   if (policies === undefined || policies.kind === "passed")
     return [];
   if (policies.kind === "not-run")
-    return [policiesNotRunLine(policies, row.runUrl)];
+    return short ? [] : [policiesNotRunLine(policies, row.runUrl)];
   const { failures } = policies.report;
   const lead = `:no_entry: **${policyWords(failures.length)} failed**, so this change has no box until it passes`;
   const preview = `[preview](${row.previewUrl ?? row.runUrl})`;
-  if (options.redact || (options.level ?? 0) >= 2) {
+  if (options.redact || short || (options.level ?? 0) >= 2) {
     return [`${lead}. They are named on the ${preview}.`];
   }
   const named = failures.slice(0, FAILURES_ON_A_ROW);
@@ -48343,8 +48348,11 @@ function pendingRow(row, options) {
   const drift = sortedDrift(row.diff);
   const driftCount = drift.length > 0 ? ` · ${driftCounts(drift)}` : "";
   const { creates, updates, tracking } = changeCounts(changes);
+  const detail = options.detail ?? "full";
+  const full = detail === "full";
+  const preview = detail === "names" ? "" : ` · [preview](${row.previewUrl ?? row.runUrl})`;
   const lines = [
-    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)}${driftCount} · [preview](${row.previewUrl ?? row.runUrl}) ${rowMarker({
+    `- ${box}**${escapeText(row.diff.stackId)}** · ${counts(changes)}${driftCount}${preview} ${rowMarker({
       stackId: row.diff.stackId,
       state: "pending",
       hash: row.hash,
@@ -48362,20 +48370,21 @@ function pendingRow(row, options) {
       tracking
     })}`
   ];
-  if (row.cost)
+  if (row.cost && full)
     lines.push(costLine(row.cost));
-  if (row.attribution)
+  if (row.attribution && full)
     lines.push(level >= 1 ? row.attribution.counted : row.attribution.full);
   if (row.failure)
     lines.push(failureLine(row.failure, options.timeZone));
   lines.push(...policyLines(row, options));
-  if (row.waitsOnMerge)
+  const notes = detail !== "names";
+  if (row.waitsOnMerge && notes)
     lines.push(onMergeNote(row.waitsOnMerge));
-  if (row.valueEveryRun)
+  if (row.valueEveryRun && notes)
     lines.push(VALUE_EVERY_RUN_NOTE);
-  if (row.pendingAgain)
+  if (row.pendingAgain && full)
     lines.push(pendingAgainLine(row.pendingAgain));
-  if (row.orphanTick && !options.readOnly && !policyFailed)
+  if (row.orphanTick && notes && !options.readOnly && !policyFailed)
     lines.push(ORPHAN_TICK_NOTE);
   if (options.redact || level >= 3) {
     const words = destroyWords(deletes.length, replaces.length);
@@ -48383,14 +48392,17 @@ function pendingRow(row, options) {
       const warning2 = options.redact ? `${words}.` : `${words}, too many to list here.`;
       const read = options.readOnly ? `Read the ${summary2}.` : `Read the ${summary2} before you tick.`;
       lines.push(`:warning: **${warning2}** ${read}`);
-    } else {
+    } else if (full) {
       lines.push(`Changes ${options.redact ? "are listed in the" : "not listed here, see the"} ${summary2}`);
     }
-    lines.push(...driftLines(drift, summary2, options), ...outsideFold(row.attribution, level));
+    if (full)
+      lines.push(...driftLines(drift, summary2, options), ...outsideFold(row.attribution, level));
     return lines;
   }
   for (const change of [...deletes, ...replaces])
     lines.push(`:warning: ${changeLine(change, { row: true })}`);
+  if (!full)
+    return lines;
   if (folded.length > 0) {
     const inside = plural2(folded.length, destroys > 0 ? "other change" : "change");
     if (level >= 2) {
@@ -48978,6 +48990,18 @@ function isTimeZone(name) {
   }
 }
 var RECENTLY_DEPLOYED_MAX = 50;
+var DASHBOARD_SECTIONS = [
+  "deploying",
+  "updates",
+  "pending",
+  "drifted",
+  "previewFailed",
+  "inSync",
+  "recentlyDeployed"
+];
+var IN_SYNC_SECTION = ["fold", "list", "off"];
+var DESTROY_ALERT = ["destroys", "always"];
+var PENDING_DETAIL = ["full", "compact", "names"];
 var LOOKBACK_MAX = 1000;
 var NAMES_MAX = 20;
 var configSchema = exports_external.strictObject({
@@ -48997,7 +49021,24 @@ var configSchema = exports_external.strictObject({
     timeZone: exports_external.string().superRefine((value, context) => {
       if (!isTimeZone(value))
         refuse(context, { kind: "not-a-time-zone", value });
-    }).describe("The IANA time zone every time on the dashboard is shown in, such as Europe/Brussels. A time that stands alone says its offset from UTC, and the line under Recently deployed names the zone. The markers keep UTC.").default("UTC")
+    }).describe("The IANA time zone every time on the dashboard is shown in, such as Europe/Brussels. A time that stands alone says its offset from UTC, and the line under Recently deployed names the zone. The markers keep UTC.").default("UTC"),
+    sections: exports_external.array(exports_external.enum(DASHBOARD_SECTIONS)).superRefine((sections, context) => {
+      sections.forEach((section, index) => {
+        const first = sections.indexOf(section);
+        if (first !== index)
+          refuse(context, { kind: "section-named-twice", section, first }, [index]);
+      });
+    }).describe("The order of the sections, top to bottom: deploying, updates, pending, drifted, previewFailed, inSync, recentlyDeployed. The ones named come first in this order, and a section left out follows in the default order. Leaving a section out does not hide it.").default([...DASHBOARD_SECTIONS]),
+    deployingSection: exports_external.boolean().describe("false takes the Deploying section off the page: its rows move to one closed fold at the end of the sections. The counts line and the header still count them.").default(true),
+    driftedSection: exports_external.boolean().describe("false takes the Drifted section off the page: its rows move to the closed fold at the end of the sections, with no repair all box. A drifted row with a failure line, or with a resource gone that the destroy alert names, stays open under the Drifted heading.").default(true),
+    inSyncSection: exports_external.enum(IN_SYNC_SECTION).describe("fold: the in sync rows in a fold, the default. list: every in sync row open. off: the section is off the page and its rows move to the closed fold at the end of the sections. A row with a failure line always stays open under the In sync heading.").default("fold"),
+    zeroCounts: exports_external.boolean().describe("false leaves a count of 0 out of the counts line. The pending count always stays.").default(true),
+    destroyAlert: exports_external.enum(DESTROY_ALERT).describe("destroys: the caution block above the pending rows is drawn when a pending stack deletes or replaces something, or a drifted stack has a resource gone. always: it is drawn on every body, and says so when nothing is destroyed. It cannot be turned off.").default("destroys"),
+    pendingDetail: exports_external.enum(PENDING_DETAIL).describe("How much a pending row shows under its first line. full: everything, the default. compact: the first line, and only the lines no setting hides (the failure line and every delete and replace line) and the ones that say why a row has no box or a tick would not go. names: the stack id and its counts, without the preview link, and only the lines no setting hides.").default("full"),
+    deployAll: exports_external.boolean().describe("false draws no deploy all box under the pending rows.").default(true),
+    repairAll: exports_external.boolean().describe("false draws no repair all box under the drifted rows.").default(true),
+    rescanBox: exports_external.boolean().describe("false draws no rescan box. A full scan is then started with Run workflow or the schedule.").default(true),
+    footer: exports_external.boolean().describe("false leaves out the small line with the version and the docs link.").default(true)
   }).prefault({}),
   tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
   deploys: exports_external.boolean().describe("false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.").default(true),
@@ -49164,6 +49205,9 @@ function classify(issue3, raw) {
   }
   if (inWindow && (key === "from" || key === "to") && value !== undefined) {
     return one({ kind: "not-a-clock-time", value });
+  }
+  if (issue3.code === "invalid_value" && path[0] === "dashboard") {
+    return one({ kind: "not-one-of", value, choices: issue3.values.map(String) });
   }
   if (issue3.code === "invalid_value" && path[0] === "notify") {
     return one({ kind: "not-an-event", value, events: NOTIFY_EVENTS });
@@ -60666,6 +60710,8 @@ function shortenedNote(sections) {
   return `> [!NOTE]
 > This dashboard is too large for one issue, so ${counts2} ${one ? "is" : "are"} shortened. The summary that a shortened row links to shows every change. Deletes and replaces are the last thing to be cut.`;
 }
+var NO_DESTROY_NOTE = `> [!NOTE]
+> No pending stack deletes or replaces resources.`;
 
 // src/core/waiting-run.ts
 var RUN_WAIT_MINUTES = 10;
@@ -60783,16 +60829,17 @@ function picture(state2, crates, signs, actionRef2) {
     "</p>"
   ];
 }
-function countsLine(counts2, dots) {
+function countsLine(counts2, dots, zeros = true) {
   const { pending, drifted, deploying, previewFailed, inSync, destroying } = counts2;
   const failed2 = counts2.failedDeploys;
   const dot = (kind, count) => dots ? `${count === 0 ? DOT_AT_ZERO : COUNT_DOT[kind]}&nbsp;` : "";
+  const shown3 = (count) => zeros || count > 0;
   const parts = [
     `${dot("pending", pending)}**${pending} pending**`,
     ...drifted > 0 ? [`${dot("drift", drifted)}${drifted} drifted`] : [],
-    `${dot("deploying", deploying)}${deploying} deploying`,
-    `${dot("preview-failed", previewFailed)}${previewFailed} preview failed`,
-    `${dot("in-sync", inSync)}${inSync} in sync`
+    ...shown3(deploying) ? [`${dot("deploying", deploying)}${deploying} deploying`] : [],
+    ...shown3(previewFailed) ? [`${dot("preview-failed", previewFailed)}${previewFailed} preview failed`] : [],
+    ...shown3(inSync) ? [`${dot("in-sync", inSync)}${inSync} in sync`] : []
   ];
   if (destroying > 0) {
     const words = destroying === 1 ? "stack deletes or replaces" : "stacks delete or replace";
@@ -60866,29 +60913,22 @@ function outsideLine(deploy, repoUrl, dots, year, timeZone) {
 function version2(actionRef2) {
   return /^[0-9a-f]{40,}$/.test(actionRef2) ? `\`${actionRef2.slice(0, 7)}\`` : escapeText(actionRef2);
 }
-function renderBody(input2) {
-  const facts = dashboardFacts(input2.rows);
-  const out = [rootMarker(input2.root)];
-  const counts2 = countsLine(facts.counts, input2.personality);
-  const scan = scanLine(input2.root, input2.repoUrl, input2.timeZone);
-  const running = scanRunningLine(input2.root, input2.repoUrl, input2.timeZone);
-  const runWaits = waitingRunLine(input2.root, input2.repoUrl, input2.timeZone);
-  const scanLines = [scan, running, runWaits].filter((line) => line !== undefined);
-  if (input2.personality)
-    out.push(picture(facts.headerState, facts.crates, facts.signs, input2.actionRef).join(`
-`), '<div align="center">', counts2, ...scanLines, "</div>");
-  else
-    out.push(counts2, ...scanLines);
-  const { pending, shortened } = facts;
-  if (shortened.pending + shortened.drift > 0) {
-    out.push(shortenedNote([
-      { section: "pending", shortened: shortened.pending, of: pending.length },
-      { section: "drifted", shortened: shortened.drift, of: facts.drift.length }
-    ]));
-  }
+function sectionOrder(layout) {
+  const named2 = layout.sections ?? [];
+  return [...named2, ...DASHBOARD_SECTIONS.filter((name) => !named2.includes(name))];
+}
+function deployingSection(facts, layout, off) {
   const { deploying } = facts;
-  if (deploying.length > 0)
-    out.push("## Deploying", blocks(deploying));
+  if (deploying.length === 0)
+    return [];
+  if (layout.deployingSection === false) {
+    off.push(...deploying);
+    return [];
+  }
+  return ["## Deploying", blocks(deploying)];
+}
+function updatesSection(input2) {
+  const out = [];
   const merges = [...input2.merges ?? []].filter((merge3, index, all) => all.findIndex((one) => one.pr === merge3.pr) === index).sort((a, b) => a.pr - b.pr);
   const waiting = [...input2.waiting ?? []].filter((line, index, all) => all.findIndex((one) => one.pr === line.pr) === index && !merges.some((merge3) => merge3.pr === line.pr)).sort((a, b) => a.pr - b.pr);
   if (merges.length > 0 || waiting.length > 0)
@@ -60907,39 +60947,73 @@ function renderBody(input2) {
     out.push(WAITING_ON_CHECKS_LINE, waiting.map((line) => line.text).join(`
 `));
   }
-  out.push("## Pending", pendingLine(input2, facts));
+  return out;
+}
+function bulkLines(input2, section) {
+  const wanted = section === "pending" ? input2.layout?.deployAll : input2.layout?.repairAll;
+  if (wanted === false)
+    return [];
+  const line = input2.bulk && sectionBulk(input2.bulk, input2.rows, section);
+  return line ? [renderBulkLine(line)] : [];
+}
+function pendingSection(input2, facts, layout) {
+  const out = ["## Pending", pendingLine(input2, facts)];
   if (facts.alert)
     out.push(facts.alert);
-  if (pending.length > 0)
-    out.push(blocks(pending));
-  const bulk = (section) => {
-    const line = input2.bulk && sectionBulk(input2.bulk, input2.rows, section);
-    return line ? [renderBulkLine(line)] : [];
-  };
-  out.push(...bulk("pending"));
+  else if (layout.destroyAlert === "always")
+    out.push(NO_DESTROY_NOTE);
+  if (facts.pending.length > 0)
+    out.push(blocks(facts.pending));
+  out.push(...bulkLines(input2, "pending"));
+  return out;
+}
+function driftedSection(input2, facts, layout, off) {
   const drifted = facts.drift;
-  if (drifted.length > 0)
-    out.push("## Drifted", DRIFTED_LINE, blocks(drifted), ...bulk("drift"));
+  if (drifted.length === 0)
+    return [];
+  if (layout.driftedSection === false) {
+    const open2 = drifted.filter((row) => row.failed || row.known && (row.gone ?? 0) > 0);
+    off.push(...drifted.filter((row) => !open2.includes(row)));
+    return open2.length > 0 ? ["## Drifted", DRIFTED_LINE, blocks(open2)] : [];
+  }
+  return ["## Drifted", DRIFTED_LINE, blocks(drifted), ...bulkLines(input2, "drift")];
+}
+function previewFailedSection(facts) {
   const { previewFailed } = facts;
-  if (previewFailed.length > 0)
-    out.push("## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed));
+  if (previewFailed.length === 0)
+    return [];
+  return ["## Preview failed", PREVIEW_FAILED_LINE, blocks(previewFailed)];
+}
+function inSyncSection(input2, facts, layout, off) {
+  const out = [];
+  const shown3 = layout.inSyncSection ?? "fold";
   const { inSync } = facts;
-  const ignored = [...input2.ignored ?? []].sort((a, b) => byCodeUnit18(a.stackId, b.stackId));
-  if (inSync.length > 0 || ignored.length > 0) {
-    const loud = inSync.filter((row) => row.failed);
-    const quiet = inSync.filter((row) => !row.failed);
-    out.push("## In sync");
+  const ignored = shown3 === "off" ? [] : [...input2.ignored ?? []].sort((a, b) => byCodeUnit18(a.stackId, b.stackId));
+  const loud = inSync.filter((row) => row.failed);
+  const quiet = inSync.filter((row) => !row.failed);
+  if (shown3 === "off")
+    off.push(...quiet);
+  if (loud.length === 0 && ignored.length === 0 && (shown3 === "off" || quiet.length === 0))
+    return out;
+  out.push("## In sync");
+  if (shown3 === "list") {
+    if (inSync.length > 0)
+      out.push(blocks([...loud, ...quiet]));
+  } else {
     if (loud.length > 0)
       out.push(blocks(loud));
-    if (quiet.length > 0) {
+    if (quiet.length > 0 && shown3 === "fold") {
       const summary2 = loud.length > 0 ? `${quiet.length} more in sync` : `${plural4(quiet.length, "stack")} in sync`;
       out.push(`<details><summary>${summary2}</summary>`, blocks(quiet), "</details>");
     }
-    if (ignored.length > 0) {
-      out.push(`<details><summary>${plural4(ignored.length, "stack")} left out by ignore</summary>`, ignored.map(({ stackId: stackId2, reason }) => `- ${escapeText(stackId2)} · ${escapeText(reason)}`).join(`
-`), "</details>");
-    }
   }
+  if (ignored.length > 0) {
+    out.push(`<details><summary>${plural4(ignored.length, "stack")} left out by ignore</summary>`, ignored.map(({ stackId: stackId2, reason }) => `- ${escapeText(stackId2)} · ${escapeText(reason)}`).join(`
+`), "</details>");
+  }
+  return out;
+}
+function recentSection(input2) {
   const outside = (input2.outsideDeploys ?? []).filter((deploy, index, all) => all.findIndex((one) => one.stackId === deploy.stackId && one.kind === deploy.kind && one.at.getTime() === deploy.at.getTime()) === index);
   const scanAt = new Date(input2.root.scanAt ?? "");
   const { timeZone } = input2;
@@ -60957,14 +61031,60 @@ function renderBody(input2) {
     }))
   ];
   const recent = newestTrail(entries, input2.recentLength);
-  if (recent.length > 0)
-    out.push("## Recently deployed", zoneLine(timeZone), recent.map((entry4) => entry4.line()).join(`
-`));
-  out.push("---");
-  if (!input2.readOnly)
-    out.push(`- [ ] Rescan all stacks ${RESCAN_MARKER}`);
-  out.push(`<sub>[Sluiceway](${ACTION_URL}) ${version2(input2.actionRef)} · [docs](${DOCS.home})</sub>`);
+  if (recent.length === 0)
+    return [];
+  return [
+    "## Recently deployed",
+    zoneLine(timeZone),
+    recent.map((entry4) => entry4.line()).join(`
+`)
+  ];
+}
+function renderBody(input2) {
+  const facts = dashboardFacts(input2.rows);
+  const layout = input2.layout ?? {};
+  const out = [rootMarker(input2.root)];
+  const counts2 = countsLine(facts.counts, input2.personality, layout.zeroCounts !== false);
+  const scan = scanLine(input2.root, input2.repoUrl, input2.timeZone);
+  const running = scanRunningLine(input2.root, input2.repoUrl, input2.timeZone);
+  const runWaits = waitingRunLine(input2.root, input2.repoUrl, input2.timeZone);
+  const scanLines = [scan, running, runWaits].filter((line) => line !== undefined);
+  if (input2.personality)
+    out.push(picture(facts.headerState, facts.crates, facts.signs, input2.actionRef).join(`
+`), '<div align="center">', counts2, ...scanLines, "</div>");
+  else
+    out.push(counts2, ...scanLines);
+  const { pending, shortened } = facts;
+  if (shortened.pending + shortened.drift > 0) {
+    out.push(shortenedNote([
+      { section: "pending", shortened: shortened.pending, of: pending.length },
+      { section: "drifted", shortened: shortened.drift, of: facts.drift.length }
+    ]));
+  }
+  const off = [];
+  const draw = {
+    deploying: () => deployingSection(facts, layout, off),
+    updates: () => updatesSection(input2),
+    pending: () => pendingSection(input2, facts, layout),
+    drifted: () => driftedSection(input2, facts, layout, off),
+    previewFailed: () => previewFailedSection(facts),
+    inSync: () => inSyncSection(input2, facts, layout, off),
+    recentlyDeployed: () => recentSection(input2)
+  };
+  for (const name of sectionOrder(layout))
+    out.push(...draw[name]());
+  if (off.length > 0) {
+    out.push(`<details><summary>${plural4(off.length, "stack")} in sections this dashboard does not show</summary>`, blocks(off), "</details>");
+  }
   const { unknown: unknown2 } = facts;
+  const rescan = !input2.readOnly && layout.rescanBox !== false;
+  const footer = layout.footer !== false;
+  if (rescan || footer || unknown2.length > 0)
+    out.push("---");
+  if (rescan)
+    out.push(`- [ ] Rescan all stacks ${RESCAN_MARKER}`);
+  if (footer)
+    out.push(`<sub>[Sluiceway](${ACTION_URL}) ${version2(input2.actionRef)} · [docs](${DOCS.home})</sub>`);
   if (unknown2.length > 0)
     out.push(blocks(unknown2));
   return out.join(`
@@ -60991,7 +61111,12 @@ function fitBody(input2, options = {}) {
   let spinning = input2.personality;
   const entries = input2.rows.map((row) => {
     const levels = row.state === "pending" || row.state === "drift" ? LEVELS : LEVELS.slice(0, 1);
-    const plain = { redact: input2.redact, readOnly: input2.readOnly, timeZone: input2.timeZone };
+    const plain = {
+      redact: input2.redact,
+      readOnly: input2.readOnly,
+      timeZone: input2.timeZone,
+      detail: input2.layout?.pendingDetail
+    };
     const blocks2 = levels.map((level) => rowBlock(row, { ...plain, level, actionRef: spinning ? input2.actionRef : undefined }));
     const still = row.state === "deploying" && spinning ? rowBlock(row, plain) : undefined;
     return { stackId: blocks2[0]?.stackId ?? "", blocks: blocks2, still, level: 0 };
@@ -62440,7 +62565,20 @@ function fit(writer, body2, aimAtTarget) {
     merges: body2.merges,
     waiting: body2.waiting,
     outsideDeploys: body2.outside,
-    bulk: { ...body2.bulk, on: writer.deploys && !dashboard.readOnly }
+    bulk: { ...body2.bulk, on: writer.deploys && !dashboard.readOnly },
+    layout: {
+      sections: dashboard.sections,
+      deployingSection: dashboard.deployingSection,
+      driftedSection: dashboard.driftedSection,
+      inSyncSection: dashboard.inSyncSection,
+      zeroCounts: dashboard.zeroCounts,
+      destroyAlert: dashboard.destroyAlert,
+      pendingDetail: dashboard.pendingDetail,
+      deployAll: dashboard.deployAll,
+      repairAll: dashboard.repairAll,
+      rescanBox: dashboard.rescanBox,
+      footer: dashboard.footer
+    }
   }, aimAtTarget ? writer.budget : { ...writer.budget, target: Number.POSITIVE_INFINITY });
 }
 function counted(last) {

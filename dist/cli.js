@@ -28192,6 +28192,10 @@ function problemWords(issue2) {
       return `expected "write", "maintain", "admin" or a list of usernames, got ${show(issue2.value)}.`;
     case "not-a-deploy-trigger":
       return `expected "on-tick" or "on-merge", got ${show(issue2.value)}.`;
+    case "not-one-of":
+      return `expected one of ${issue2.choices.map((choice) => `"${choice}"`).join(", ")}, got ${show(issue2.value)}.`;
+    case "section-named-twice":
+      return `${show(issue2.section)} is already dashboard.sections[${issue2.first}]. Name each section once.`;
     case "not-an-event":
       return `${show(issue2.value)} is not an event. The events are: ${issue2.events.join(", ")}.`;
     case "not-a-phase-name":
@@ -28632,6 +28636,18 @@ function isTimeZone(name) {
   }
 }
 var RECENTLY_DEPLOYED_MAX = 50;
+var DASHBOARD_SECTIONS = [
+  "deploying",
+  "updates",
+  "pending",
+  "drifted",
+  "previewFailed",
+  "inSync",
+  "recentlyDeployed"
+];
+var IN_SYNC_SECTION = ["fold", "list", "off"];
+var DESTROY_ALERT = ["destroys", "always"];
+var PENDING_DETAIL = ["full", "compact", "names"];
 var LOOKBACK_MAX = 1000;
 var NAMES_MAX = 20;
 var configSchema = exports_external.strictObject({
@@ -28651,7 +28667,24 @@ var configSchema = exports_external.strictObject({
     timeZone: exports_external.string().superRefine((value, context) => {
       if (!isTimeZone(value))
         refuse(context, { kind: "not-a-time-zone", value });
-    }).describe("The IANA time zone every time on the dashboard is shown in, such as Europe/Brussels. A time that stands alone says its offset from UTC, and the line under Recently deployed names the zone. The markers keep UTC.").default("UTC")
+    }).describe("The IANA time zone every time on the dashboard is shown in, such as Europe/Brussels. A time that stands alone says its offset from UTC, and the line under Recently deployed names the zone. The markers keep UTC.").default("UTC"),
+    sections: exports_external.array(exports_external.enum(DASHBOARD_SECTIONS)).superRefine((sections, context) => {
+      sections.forEach((section, index) => {
+        const first = sections.indexOf(section);
+        if (first !== index)
+          refuse(context, { kind: "section-named-twice", section, first }, [index]);
+      });
+    }).describe("The order of the sections, top to bottom: deploying, updates, pending, drifted, previewFailed, inSync, recentlyDeployed. The ones named come first in this order, and a section left out follows in the default order. Leaving a section out does not hide it.").default([...DASHBOARD_SECTIONS]),
+    deployingSection: exports_external.boolean().describe("false takes the Deploying section off the page: its rows move to one closed fold at the end of the sections. The counts line and the header still count them.").default(true),
+    driftedSection: exports_external.boolean().describe("false takes the Drifted section off the page: its rows move to the closed fold at the end of the sections, with no repair all box. A drifted row with a failure line, or with a resource gone that the destroy alert names, stays open under the Drifted heading.").default(true),
+    inSyncSection: exports_external.enum(IN_SYNC_SECTION).describe("fold: the in sync rows in a fold, the default. list: every in sync row open. off: the section is off the page and its rows move to the closed fold at the end of the sections. A row with a failure line always stays open under the In sync heading.").default("fold"),
+    zeroCounts: exports_external.boolean().describe("false leaves a count of 0 out of the counts line. The pending count always stays.").default(true),
+    destroyAlert: exports_external.enum(DESTROY_ALERT).describe("destroys: the caution block above the pending rows is drawn when a pending stack deletes or replaces something, or a drifted stack has a resource gone. always: it is drawn on every body, and says so when nothing is destroyed. It cannot be turned off.").default("destroys"),
+    pendingDetail: exports_external.enum(PENDING_DETAIL).describe("How much a pending row shows under its first line. full: everything, the default. compact: the first line, and only the lines no setting hides (the failure line and every delete and replace line) and the ones that say why a row has no box or a tick would not go. names: the stack id and its counts, without the preview link, and only the lines no setting hides.").default("full"),
+    deployAll: exports_external.boolean().describe("false draws no deploy all box under the pending rows.").default(true),
+    repairAll: exports_external.boolean().describe("false draws no repair all box under the drifted rows.").default(true),
+    rescanBox: exports_external.boolean().describe("false draws no rescan box. A full scan is then started with Run workflow or the schedule.").default(true),
+    footer: exports_external.boolean().describe("false leaves out the small line with the version and the docs link.").default(true)
   }).prefault({}),
   tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
   deploys: exports_external.boolean().describe("false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.").default(true),
@@ -28818,6 +28851,9 @@ function classify(issue2, raw) {
   }
   if (inWindow && (key === "from" || key === "to") && value !== undefined) {
     return one({ kind: "not-a-clock-time", value });
+  }
+  if (issue2.code === "invalid_value" && path[0] === "dashboard") {
+    return one({ kind: "not-one-of", value, choices: issue2.values.map(String) });
   }
   if (issue2.code === "invalid_value" && path[0] === "notify") {
     return one({ kind: "not-an-event", value, events: NOTIFY_EVENTS });
