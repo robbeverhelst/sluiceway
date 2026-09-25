@@ -61237,6 +61237,17 @@ function writeResultFile(outputs, log, mode, text8) {
   log.info(`Wrote the result file: ${path}`);
 }
 
+// src/github/workflow-ref.ts
+function readWorkflowRef(env) {
+  const value = env.GITHUB_WORKFLOW_REF ?? "";
+  const at = value.indexOf("@");
+  if (at < 0)
+    return;
+  const file2 = value.slice(0, at).split("/").at(-1) ?? "";
+  const ref = value.slice(at + 1);
+  return file2 === "" || ref === "" ? undefined : { file: file2, ref };
+}
+
 // src/render/notification.ts
 var NAMES_IN_A_NOTIFICATION = 10;
 var DOT = {
@@ -61840,6 +61851,143 @@ function rowAtLateRead(stack) {
   if (usableLive)
     return { row: "live" };
   return stack.again ? { row: "fresh" } : { row: "preview-first", why: "deploy-ended" };
+}
+
+// src/core/scan-plan.ts
+var COMPARE_FILE_CAP = 300;
+var COMMIT2 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+function narrowsOn(event, afterMerge = []) {
+  return event === "push" || event === "workflow_dispatch" && afterMerge.length > 0;
+}
+function comparisonBase(event, dashboard, markerVersion, afterMerge = []) {
+  if (!narrowsOn(event, afterMerge))
+    return { kind: "event", event };
+  if (dashboard === undefined)
+    return { kind: "no-dashboard" };
+  const { root } = dashboard;
+  if (root === undefined)
+    return { kind: "no-root-marker" };
+  if (root.version !== markerVersion)
+    return { kind: "other-version", version: root.version };
+  if (root.scanSha === undefined || !COMMIT2.test(root.scanSha))
+    return { kind: "no-scan-sha" };
+  return { kind: "compare", from: root.scanSha };
+}
+function changedPaths2(comparison) {
+  if (comparison.status !== "ahead" && comparison.status !== "identical") {
+    return { kind: "not-a-straight-line", status: comparison.status };
+  }
+  if (comparison.files.length >= COMPARE_FILE_CAP)
+    return { kind: "file-cap" };
+  return {
+    kind: "changed",
+    paths: comparison.files.flatMap(({ path, previousPath }) => previousPath === undefined ? [path] : [path, previousPath])
+  };
+}
+function treeChanges(base, head) {
+  const ids2 = (tree) => new Map(tree.filter(({ type }) => type !== "tree").map(({ path, sha }) => [path, sha]));
+  const before = ids2(base);
+  const after = ids2(head);
+  const changed = new Set;
+  for (const [path, sha] of before)
+    if (after.get(path) !== sha)
+      changed.add(path);
+  for (const [path, sha] of after)
+    if (before.get(path) !== sha)
+      changed.add(path);
+  return [...changed].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+}
+function planScan(stacks2, changed, unrelated, rows) {
+  const { claims, unclaimed } = claim2(stacks2, changed, unrelated);
+  if (unclaimed.length > 0)
+    return { kind: "full", why: { kind: "unclaimed", files: unclaimed } };
+  const states = new Map(rows.map((row) => [row.stackId, row.state]));
+  const previews = stacks2.flatMap(({ id }) => {
+    const files = claims.get(id);
+    if (files)
+      return [{ id, why: { kind: "claims", files } }];
+    if (!states.has(id))
+      return [{ id, why: { kind: "no-row" } }];
+    if (states.get(id) === "preview-failed")
+      return [{ id, why: { kind: "preview-failed" } }];
+    return [];
+  });
+  return { kind: "narrowed", previews };
+}
+function oneRowPerStack(discovered, fresh, live) {
+  const onDashboard = new Set(live);
+  const known = new Set(discovered);
+  const stale = discovered.filter((id) => !fresh.has(id));
+  return {
+    carried: stale.filter((id) => onDashboard.has(id)),
+    missing: stale.filter((id) => !onDashboard.has(id)),
+    dropped: [...onDashboard].filter((id) => !known.has(id))
+  };
+}
+function unclaimedToPlace(files) {
+  return files.filter((file2) => !isConfigFile(file2));
+}
+function isConfigFile(file2) {
+  return CONFIG_FILES.includes(file2);
+}
+function noClaimant(files) {
+  const [first = "", ...rest] = files;
+  return rest.length === 0 ? `no stack claims ${first}` : `no stack claims ${first} and ${rest.length} more changed ${rest.length === 1 ? "file" : "files"}`;
+}
+function fullScanReasonText(reason) {
+  switch (reason.kind) {
+    case "event":
+      return `the event is ${reason.event}, and only a push, or the scan resolve starts after a merge, gives a narrowed scan`;
+    case "no-dashboard":
+      return "there is no dashboard yet";
+    case "no-root-marker":
+      return "the dashboard has no root marker that can be read";
+    case "other-version":
+      return `the root marker of the dashboard has version ${reason.version}, which this version of Sluiceway does not write`;
+    case "no-scan-sha":
+      return "the root marker of the dashboard names no commit to compare from";
+    case "compare-failed":
+      return "GitHub did not give the comparison from the commit of the last scan";
+    case "not-a-straight-line":
+      return `the checked-out commit does not follow the commit of the last scan in a straight line (GitHub calls it ${JSON.stringify(reason.status)}), as after a force push or a re-run of an older run`;
+    case "file-cap":
+      return `the comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, and the trees of the two commits could not be compared, so files may be missing from it`;
+    case "unclaimed": {
+      const others = unclaimedToPlace(reason.files);
+      if (others.length === reason.files.length)
+        return noClaimant(others);
+      const file2 = reason.files.find(isConfigFile);
+      const changed = `${file2} changed, so every stack is previewed`;
+      return others.length === 0 ? changed : `${changed}, and ${noClaimant(others)}`;
+    }
+    case "does-not-fit":
+      return `the body does not fit in one issue with ${reason.carried} ${reason.carried === 1 ? "row" : "rows"} carried through, and only a fresh row can be shortened`;
+  }
+}
+
+// src/core/moved-since-checkout.ts
+function movedSinceCheckout({
+  comparison,
+  stack,
+  stacks: stacks2,
+  unrelated
+}) {
+  const changed = changedPaths2(comparison);
+  if (changed.kind === "not-a-straight-line" || changed.kind === "file-cap") {
+    return { kind: "moved", why: changed };
+  }
+  if (changed.kind !== "changed")
+    return { kind: "moved", why: { kind: "file-cap" } };
+  const { claims, unclaimed } = claim2(stacks2, changed.paths, unrelated);
+  const files = claims.get(stack);
+  if (files)
+    return { kind: "moved", why: { kind: "claims", files } };
+  if (unclaimed.length > 0)
+    return { kind: "moved", why: { kind: "unclaimed", files: unclaimed } };
+  return { kind: "still" };
+}
+function comparedRef(ref) {
+  return ref.replace(/^refs\/(heads|tags)\//, "");
 }
 
 // src/core/repo.ts
@@ -62816,6 +62964,14 @@ function movedComment({ login, stackId: stackId2, onMerge }) {
   }
   return `@${login} ticked **${escapeText(stackId2)}**, and the change moved since the tick, so nothing was deployed. ${MOVED_COMMENT_TAIL}`;
 }
+function branchMovedComment({ login, stackId: stackId2, onMerge }) {
+  const stack = `**${escapeText(stackId2)}**`;
+  const tail = "The next scan shows the change as it is now on its row.";
+  if (onMerge) {
+    return `@${login} merged a change that ${stack} deploys on merge, and a newer commit reached the branch before the deploy started, so nothing was deployed. ${tail} Tick it to deploy that.`;
+  }
+  return `@${login} ticked ${stack}, and a newer commit reached the branch before the deploy started, so nothing was deployed. ${tail} Tick it again to deploy that.`;
+}
 
 // src/render/preview-result.ts
 function previewRow(stackId2, result2, links2, failure2, options = {}) {
@@ -63132,11 +63288,42 @@ ${ALREADY_ENDED}
       }
     }
   }
+  if (ended && attempt2.branchMoved && attempt2.setup) {
+    const { setup } = attempt2;
+    try {
+      await dispatchScan(context3);
+    } catch (error63) {
+      failures.push(message(error63));
+    }
+    try {
+      const dashboard = await findDashboard(github, setup.config.dashboard.label);
+      if (dashboard) {
+        await github.createComment(dashboard.number, branchMovedComment({
+          login: payload.ticker,
+          stackId: id_,
+          ...payload.onMerge ? { onMerge: true } : {}
+        }));
+      }
+    } catch (error63) {
+      failures.push(`The comment to ${payload.ticker} about the newer commit could not be written: ${message(error63)}. The job needs the permission \`issues: write\`.`);
+    }
+  }
   if (attempt2.failed)
     failures.unshift(attempt2.failed);
   if (failures.length > 0)
     throw new ApplyFailedError(failures.join(`
 `));
+}
+async function dispatchScan(context3) {
+  const { workflow } = context3;
+  if (!workflow)
+    return;
+  try {
+    await context3.github.dispatchWorkflow(workflow.file, workflow.ref);
+    context3.log.info("A full scan was started, which shows the change as it is now on the row.");
+  } catch (error63) {
+    throw new Error(`A full scan could not be started: ${message(error63)}. The apply job needs the permission \`actions: write\`, and the workflow (${workflow.file}) needs a \`workflow_dispatch\` trigger that runs the scan (record 0017). The record is ended, and the next scan writes its row again.`);
+  }
 }
 function reasonOf(attempt2) {
   return attempt2.end.kind === "failed" ? attempt2.end.reason : undefined;
@@ -63186,6 +63373,9 @@ async function deploy(context3, repo, id, payload, runUrl4, progress) {
     const reason = { kind: "not-started" };
     return { end: { kind: "failed", reason }, failed: notDeployed(reason, ` ${message(error63)}`) };
   }
+  const moved = await sinceCheckout(context3, setup, id);
+  if (moved)
+    return moved;
   const envs = stackEnvFiles({ root: context3.root, env: context3.env, mask: context3.mask, log })([
     { id, envFile: setup.stack.envFile }
   ]);
@@ -63218,6 +63408,58 @@ async function deploy(context3, repo, id, payload, runUrl4, progress) {
   } finally {
     if (fresh.ok)
       await fresh.plan?.dispose();
+  }
+}
+async function sinceCheckout(context3, setup, id) {
+  const name = logGroupTitle(id);
+  const checkout = context3.sha.slice(0, 7);
+  const refused = (reason, why) => ({
+    end: { kind: "failed", reason },
+    failed: `${name} was not deployed: ${deployFailureText(reason)}. ${why}`,
+    summary: { kind: "not-deployed", reason: deployFailureText(reason) },
+    setup
+  });
+  if (!context3.workflow) {
+    return refused({ kind: "not-started" }, "GITHUB_WORKFLOW_REF is not set, so this job does not know which branch it runs on, and nothing says the branch did not move since the tick.");
+  }
+  const ref = comparedRef(context3.workflow.ref);
+  let comparison;
+  try {
+    comparison = await context3.github.compareCommits(context3.sha, ref);
+  } catch (error63) {
+    return refused({ kind: "not-started" }, `Comparing ${checkout}, the commit this run checked out, with ${ref} failed: ${message(error63)}. Without it nothing says the branch did not move since the tick. The job needs the permission \`contents: read\`.`);
+  }
+  const found = movedSinceCheckout({
+    comparison,
+    stack: id,
+    stacks: setup.stacks.map((one) => ({
+      id: stackId(one.stack),
+      path: one.stack.path,
+      inputs: one.inputs
+    })),
+    unrelated: setup.config.scan.unrelated
+  });
+  if (found.kind === "still") {
+    context3.log.info(`${ref} holds nothing newer for ${name} than ${checkout}, the commit this run checked out.`);
+    return;
+  }
+  return {
+    ...refused({ kind: "moved" }, `${movedText(found.why, { ref, checkout, name })} Nothing was previewed or deployed. A full scan is started, which shows the change as it is now on the row. Tick it again to deploy that.`),
+    branchMoved: true
+  };
+}
+function movedText(why, { ref, checkout, name }) {
+  const from = `${ref} moved on from ${checkout}, the commit this run checked out,`;
+  const files = (list) => list.length === 1 ? "a file" : "files";
+  switch (why.kind) {
+    case "claims":
+      return `${from} to a commit that changes ${files(why.files)} ${name} claims: ${why.files.join(", ")}.`;
+    case "unclaimed":
+      return `${from} to a commit that changes ${files(why.files)} no stack claims, so a scan of it previews every stack: ${why.files.join(", ")}.`;
+    case "not-a-straight-line":
+      return `${ref} is not a straight line on from ${checkout}, the commit this run checked out (GitHub says ${why.status}), so what it holds is not what was previewed.`;
+    case "file-cap":
+      return `${from} and the comparison lists the most files GitHub gives, so which stacks the newer commits change cannot be told.`;
   }
 }
 async function afterFreshPreview(context3, id, payload, runUrl4, progress, setup, previewed, options) {
@@ -63496,6 +63738,7 @@ async function runApply(directory, handed) {
     sha: job.sha,
     actionRef: readActionRef(env, directory, (path) => readFileSync11(path, "utf8")),
     deploymentId: inputs.deploymentId,
+    workflow: readWorkflowRef(env),
     dryRun: inputs.dryRun,
     event: readEventPayload(env, (path) => readFileSync11(path, "utf8")),
     outputs: handed?.step.outputs ?? actionsOutputs(env.RUNNER_TEMP),
@@ -65080,7 +65323,7 @@ async function resolveTicks(context3, handOn, report2, watch) {
     }
     if (root.version !== MARKER_VERSION) {
       log.info(`The dashboard is written in marker version ${root.version} and this is version ${MARKER_VERSION}. Its body is left alone, and a full scan is started to write it again.`);
-      report2.scanUrl = await dispatchScan(context3);
+      report2.scanUrl = await dispatchScan2(context3);
       report2.scanStarted = true;
       if (report2.scanUrl)
         log.info(`Started a full scan: ${report2.scanUrl}`);
@@ -65183,7 +65426,7 @@ async function resolveTicks(context3, handOn, report2, watch) {
   if (scan.kind !== "none") {
     const narrow = scan.kind === "after-merge" && scan.narrowed;
     try {
-      const scanUrl = await dispatchScan(context3, scan.kind === "after-merge" && scan.narrowed ? mergeScanInputs(scan.prs) : undefined);
+      const scanUrl = await dispatchScan2(context3, scan.kind === "after-merge" && scan.narrowed ? mergeScanInputs(scan.prs) : undefined);
       report2.scanUrl = scanUrl;
       report2.scanStarted = true;
       const at = scanUrl === undefined ? "." : `: ${scanUrl}`;
@@ -65516,7 +65759,7 @@ function workflowText(context3) {
     return "";
   }
 }
-async function dispatchScan(context3, inputs) {
+async function dispatchScan2(context3, inputs) {
   if (!context3.workflow) {
     throw new Error("A full scan could not be started: GITHUB_WORKFLOW_REF is not set, so this job does not know which workflow it belongs to.");
   }
@@ -65945,118 +66188,6 @@ var filesOnly = {
   readsFiles: readsFiles3,
   credentialNeeds: credentialNeeds3
 };
-
-// src/core/scan-plan.ts
-var COMPARE_FILE_CAP = 300;
-var COMMIT2 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-function narrowsOn(event, afterMerge = []) {
-  return event === "push" || event === "workflow_dispatch" && afterMerge.length > 0;
-}
-function comparisonBase(event, dashboard, markerVersion, afterMerge = []) {
-  if (!narrowsOn(event, afterMerge))
-    return { kind: "event", event };
-  if (dashboard === undefined)
-    return { kind: "no-dashboard" };
-  const { root } = dashboard;
-  if (root === undefined)
-    return { kind: "no-root-marker" };
-  if (root.version !== markerVersion)
-    return { kind: "other-version", version: root.version };
-  if (root.scanSha === undefined || !COMMIT2.test(root.scanSha))
-    return { kind: "no-scan-sha" };
-  return { kind: "compare", from: root.scanSha };
-}
-function changedPaths2(comparison) {
-  if (comparison.status !== "ahead" && comparison.status !== "identical") {
-    return { kind: "not-a-straight-line", status: comparison.status };
-  }
-  if (comparison.files.length >= COMPARE_FILE_CAP)
-    return { kind: "file-cap" };
-  return {
-    kind: "changed",
-    paths: comparison.files.flatMap(({ path, previousPath }) => previousPath === undefined ? [path] : [path, previousPath])
-  };
-}
-function treeChanges(base, head) {
-  const ids2 = (tree) => new Map(tree.filter(({ type }) => type !== "tree").map(({ path, sha }) => [path, sha]));
-  const before = ids2(base);
-  const after = ids2(head);
-  const changed = new Set;
-  for (const [path, sha] of before)
-    if (after.get(path) !== sha)
-      changed.add(path);
-  for (const [path, sha] of after)
-    if (before.get(path) !== sha)
-      changed.add(path);
-  return [...changed].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
-}
-function planScan(stacks2, changed, unrelated, rows) {
-  const { claims, unclaimed } = claim2(stacks2, changed, unrelated);
-  if (unclaimed.length > 0)
-    return { kind: "full", why: { kind: "unclaimed", files: unclaimed } };
-  const states = new Map(rows.map((row) => [row.stackId, row.state]));
-  const previews = stacks2.flatMap(({ id }) => {
-    const files = claims.get(id);
-    if (files)
-      return [{ id, why: { kind: "claims", files } }];
-    if (!states.has(id))
-      return [{ id, why: { kind: "no-row" } }];
-    if (states.get(id) === "preview-failed")
-      return [{ id, why: { kind: "preview-failed" } }];
-    return [];
-  });
-  return { kind: "narrowed", previews };
-}
-function oneRowPerStack(discovered, fresh, live) {
-  const onDashboard = new Set(live);
-  const known = new Set(discovered);
-  const stale = discovered.filter((id) => !fresh.has(id));
-  return {
-    carried: stale.filter((id) => onDashboard.has(id)),
-    missing: stale.filter((id) => !onDashboard.has(id)),
-    dropped: [...onDashboard].filter((id) => !known.has(id))
-  };
-}
-function unclaimedToPlace(files) {
-  return files.filter((file2) => !isConfigFile(file2));
-}
-function isConfigFile(file2) {
-  return CONFIG_FILES.includes(file2);
-}
-function noClaimant(files) {
-  const [first = "", ...rest] = files;
-  return rest.length === 0 ? `no stack claims ${first}` : `no stack claims ${first} and ${rest.length} more changed ${rest.length === 1 ? "file" : "files"}`;
-}
-function fullScanReasonText(reason) {
-  switch (reason.kind) {
-    case "event":
-      return `the event is ${reason.event}, and only a push, or the scan resolve starts after a merge, gives a narrowed scan`;
-    case "no-dashboard":
-      return "there is no dashboard yet";
-    case "no-root-marker":
-      return "the dashboard has no root marker that can be read";
-    case "other-version":
-      return `the root marker of the dashboard has version ${reason.version}, which this version of Sluiceway does not write`;
-    case "no-scan-sha":
-      return "the root marker of the dashboard names no commit to compare from";
-    case "compare-failed":
-      return "GitHub did not give the comparison from the commit of the last scan";
-    case "not-a-straight-line":
-      return `the checked-out commit does not follow the commit of the last scan in a straight line (GitHub calls it ${JSON.stringify(reason.status)}), as after a force push or a re-run of an older run`;
-    case "file-cap":
-      return `the comparison lists ${COMPARE_FILE_CAP} files, the most GitHub gives, and the trees of the two commits could not be compared, so files may be missing from it`;
-    case "unclaimed": {
-      const others = unclaimedToPlace(reason.files);
-      if (others.length === reason.files.length)
-        return noClaimant(others);
-      const file2 = reason.files.find(isConfigFile);
-      const changed = `${file2} changed, so every stack is previewed`;
-      return others.length === 0 ? changed : `${changed}, and ${noClaimant(others)}`;
-    }
-    case "does-not-fit":
-      return `the body does not fit in one issue with ${reason.carried} ${reason.carried === 1 ? "row" : "rows"} carried through, and only a fresh row can be shortened`;
-  }
-}
 
 // src/core/check.ts
 var SUGGESTIONS = ["docs/**"];
@@ -67534,19 +67665,6 @@ var pullRequestPreviewContext = (env, log, mask) => {
 
 // src/modes/resolve-job.ts
 import { readFileSync as readFileSync15 } from "node:fs";
-
-// src/github/workflow-ref.ts
-function readWorkflowRef(env) {
-  const value = env.GITHUB_WORKFLOW_REF ?? "";
-  const at = value.indexOf("@");
-  if (at < 0)
-    return;
-  const file2 = value.slice(0, at).split("/").at(-1) ?? "";
-  const ref = value.slice(at + 1);
-  return file2 === "" || ref === "" ? undefined : { file: file2, ref };
-}
-
-// src/modes/resolve-job.ts
 async function runResolve(directory, step3) {
   const startup = process.uptime() * 1000;
   const env = process.env;
@@ -69622,7 +69740,7 @@ async function settle3(context3) {
   if (ended > 0) {
     await writeFailureLines(context3, config2, { stacks: stacks2, ignored }, settled.ended);
   }
-  await dispatchScan2(context3);
+  await dispatchScan3(context3);
   if (ended > 0) {
     log.info("Started a full scan, which previews these stacks again and writes their rows with the fresh diff.");
   }
@@ -69727,7 +69845,7 @@ async function startedHere(context3, stacks2) {
   const hinted = new Set(rows.flatMap((row2) => row2.known && (isDeployingState(row2.state) || row2.ticked) ? [row2.stackId] : []));
   return stacks2.flatMap(({ stack, environment }) => hinted.has(stackId(stack)) ? [{ stackId: stackId(stack), environment }] : []);
 }
-async function dispatchScan2(context3) {
+async function dispatchScan3(context3) {
   if (!context3.workflow) {
     throw new Error("A full scan could not be started: GITHUB_WORKFLOW_REF is not set, so this job does not know which workflow it belongs to. The records are ended, and the next scan writes their rows again.");
   }
