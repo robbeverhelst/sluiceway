@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.42.0](https://github.com/sluiceway/sluiceway/compare/v0.41.0...v0.42.0) (2026-09-25)
+
+
+### Features
+
+* the row marker carries its counts and what a queued row waits behind, and the example is data ([#264](https://github.com/sluiceway/sluiceway/issues/264)) ([1cbfc30](https://github.com/sluiceway/sluiceway/commit/1cbfc300af2bc4ddb63442c45f9af5486214ad09))
+
 ## [0.41.0](https://github.com/sluiceway/sluiceway/compare/v0.40.0...v0.41.0) (2026-09-25)
 
 
