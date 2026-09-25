@@ -169,8 +169,11 @@ function worstCase(count: number) {
 // pushes, write, read back. A later try starts from that read back, and the
 // walk and the files are kept for the job, so it pays only for the records,
 // the write and the read back. After the loop, one read of the pinned issues
-// (slice 5.9). Before it, once a job, the queued runs (record 0086).
-const FIRST_TRY = 1 + 2 + 1 + 2 * 99 + 1 + LOOKBACK + 2 + 1;
+// (slice 5.9). Before it, once a job, the queued runs (record 0086), and
+// before the previews the first write that says a scan is running (record
+// 0108): find, read, one page of records, write, read back, with the walk
+// moved there and paid once.
+const FIRST_TRY = 5 + 1 + 2 + 1 + 2 * 99 + 1 + LOOKBACK + 2 + 1;
 const EVERY_OTHER_TRY = 1 + 2 * 99 + 2;
 // The preview pages, once per scan and before the write loop (record 0050):
 // one list of the commit's check runs, which holds 100 here, and one update
@@ -217,6 +220,9 @@ describe("the requests of a scan, counted against the API budget (record 0017)",
     // the body runs once for the create and once for the check, and each run
     // reads the deployment records (record 0004).
     expect(firstOf100).toEqual([
+      // Record 0108: the dashboard the scan would say it is running on,
+      // which is not there yet.
+      "listIssues",
       // Record 0086: the queued runs of the workflow, once a job.
       "listQueuedRuns",
       "listIssues",
@@ -227,9 +233,15 @@ describe("the requests of a scan, counted against the API budget (record 0017)",
       "getIssue",
       "listNewestDeployments",
     ]);
-    // Every scan after it: find, read, one page of records, write, read back,
+    // Every scan after it: the first write that says a scan is running
+    // (record 0108), then find, read, one page of records, write, read back,
     // and the read of the pinned issues (slice 5.9).
     expect(laterOf100).toEqual([
+      "listIssues",
+      "getIssue",
+      "listNewestDeployments",
+      "updateIssueBody",
+      "getIssue",
       "listQueuedRuns",
       "listIssues",
       "getIssue",
@@ -250,7 +262,7 @@ describe("the requests of a scan, counted against the API budget (record 0017)",
     const made = (request: string) => github.requests.filter((one) => one === request).length;
     // Record 0003: one page per environment name, then two requests for a
     // pending stack that is not on it and has a record.
-    expect(made("listNewestDeployments")).toBe(1);
+    expect(made("listNewestDeployments")).toBe(2);
     expect(made("newestDeploymentOfTask")).toBe(99);
     expect(made("latestDeploymentStatus")).toBe(99);
     // Record 0026: the walk once per job, and one request for each direct
@@ -272,8 +284,11 @@ describe("the requests of a scan, counted against the API budget (record 0017)",
       // back, so the write loop tries again from the read (record 0004).
       let wrote = false;
       let edited = 0;
+      let updates = 0;
       github.onRequest = (request) => {
-        if (request === "updateIssueBody") wrote = true;
+        // The first write of the scan, which says it is running, sticks
+        // (record 0108).
+        if (request === "updateIssueBody") wrote = ++updates > 1;
         else if (request === "getIssue" && wrote && edited < edits) {
           edited++;
           wrote = false;
@@ -284,8 +299,8 @@ describe("the requests of a scan, counted against the API budget (record 0017)",
       await scan(context);
 
       const made = (request: string) => github.requests.filter((one) => one === request).length;
-      expect(made("updateIssueBody")).toBe(1 + edits);
-      expect(made("listNewestDeployments")).toBe(1 + edits);
+      expect(made("updateIssueBody")).toBe(2 + edits);
+      expect(made("listNewestDeployments")).toBe(2 + edits);
       expect(made("walkCommits")).toBe(1);
       expect(made("listCommitFiles")).toBe(LOOKBACK);
       // The preview pages are written once, before the write loop.

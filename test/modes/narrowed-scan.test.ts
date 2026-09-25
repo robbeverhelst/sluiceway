@@ -668,6 +668,7 @@ describe("the job of a narrowed scan", () => {
       "This is a narrowed scan: it previews 2 of 4 stacks and keeps the rows of the other 2 as they are.",
       "network:dev is previewed: it claims network/Pulumi.yaml and 2 more changed files.",
       "network:prod is previewed: it claims network/Pulumi.yaml and 2 more changed files.",
+      "The dashboard says a scan is running, under the scan line, until this scan writes the body (record 0108): https://github.com/acme/infra/actions/runs/4242",
       "The pool is 1 preview at once, from the concurrency input.",
       "Previewing 2 stacks with a pool of 1 and a time limit of 10 minutes for each preview.",
       "Previewed network:dev in 0.5 s: pending",
@@ -709,7 +710,7 @@ describe("the job of a narrowed scan", () => {
     expect(scanned.log.warnings).toHaveLength(1);
   });
 
-  test("costs eleven requests: the first read, the comparison, the preview page of its pending stack, the queued runs of the workflow, the write loop with its list and its late read of the deployment records, and the read of the pinned issues", async () => {
+  test("costs sixteen requests: the first read, the comparison, the first write that says a scan is running, the preview page of its pending stack, the queued runs of the workflow, the write loop with its list and its late read of the deployment records, and the read of the pinned issues", async () => {
     const scanned = await pushed(TABLE, ahead("site/index.ts"), {
       next: { "site:prod": pending("site:prod", change("page")) },
     });
@@ -718,6 +719,13 @@ describe("the job of a narrowed scan", () => {
     expect(scanned.github.requests.slice(before)).toEqual([
       "listIssues",
       "compareCommits",
+      // Record 0108: the first write, which says a scan is running: find,
+      // read, the records of the trail, write, read back.
+      "listIssues",
+      "getIssue",
+      "listNewestDeployments",
+      "updateIssueBody",
+      "getIssue",
       // Record 0050: the commit's check runs, and the one page.
       "listCheckRuns",
       "createCheckRun",

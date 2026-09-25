@@ -31,6 +31,7 @@ import {
 } from "./marker.ts";
 import { MERGE_FOLD_AFTER } from "./merge-row.ts";
 import { type AttributionLines, INDENT, type Row, type RowOptions, renderRow } from "./row.ts";
+import { scanRunningLine } from "./scan-running.ts";
 import { minuteAt, trailMinute, yearIn, zoneLine } from "./time.ts";
 import {
   DRIFTED_LINE,
@@ -385,8 +386,11 @@ export function renderBody(input: BodyInput): string {
   // they are what record 0029 made them.
   const counts = countsLine(facts.counts, input.personality);
   const scan = scanLine(input.root, input.repoUrl, input.timeZone);
+  // A scan that is running comes right under the scan line, and a run that
+  // waits for a runner under that (records 0108 and 0086).
+  const running = scanRunningLine(input.root, input.repoUrl, input.timeZone);
   const runWaits = waitingRunLine(input.root, input.repoUrl, input.timeZone);
-  const scanLines = runWaits === undefined ? [scan] : [scan, runWaits];
+  const scanLines = [scan, running, runWaits].filter((line) => line !== undefined);
   if (input.personality)
     out.push(
       picture(facts.headerState, facts.crates, facts.signs, input.actionRef).join("\n"),

@@ -111,6 +111,21 @@ describe("a row swap", () => {
     });
   });
 
+  // Record 0108: only the scan writes that it is running, and only its own
+  // write at the end takes it away, so a swap carries it whatever run it is
+  // part of.
+  test("the line about a scan that is running is carried, in the run it names too", async () => {
+    const scanRunning = { run: "43", since: "2026-09-20T06:10:00.000Z" };
+    const github = new FakeGitHub();
+    const number = seed(github, bodyOf([rowBlock(inSync("app"))], { ...ROOT, scanRunning }));
+
+    await swapRows(writerFor(github, [], "43"), number, rows([deploying("app")]));
+
+    const body = github.issue(number).body;
+    expect(parseDashboard(body).root?.scanRunning).toEqual(scanRunning);
+    expect(body).toContain("A scan is running since 2026-09-20 06:10 UTC");
+  });
+
   test("the writer's row takes the place of its stack's block and every other block is carried byte for byte", async () => {
     const github = new FakeGitHub();
     const kept = rowBlock(inSync("app"));

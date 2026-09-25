@@ -68,6 +68,10 @@ export interface RootFacts {
   // A run of the workflow that has waited long for a runner (record 0086).
   // Only a scan finds one, and every other writer carries it.
   waitingRun?: WaitingRunFacts | undefined;
+  // A scan that is running (record 0108): written by the scan as its first
+  // act, carried by every other writer, and taken away by the scan's own
+  // write of the body at the end.
+  scanRunning?: ScanRunningFacts | undefined;
 }
 
 // The run that waited longest, when it started waiting (ISO 8601, UTC), and
@@ -76,6 +80,12 @@ export interface WaitingRunFacts {
   run: string;
   since: string;
   more: number;
+}
+
+// The run of the scan that is running, and when it started (ISO 8601, UTC).
+export interface ScanRunningFacts {
+  run: string;
+  since: string;
 }
 
 export interface RowFacts {
@@ -209,6 +219,12 @@ export function rootMarker(facts: RootFacts): string {
     );
     if (facts.waitingRun.more > 0) pairs.push(["run-waiting-more", String(facts.waitingRun.more)]);
   }
+  if (facts.scanRunning !== undefined) {
+    pairs.push(
+      ["scan-running", facts.scanRunning.run],
+      ["scan-running-since", facts.scanRunning.since],
+    );
+  }
   return marker("dashboard", pairs);
 }
 
@@ -297,6 +313,7 @@ export interface ParsedRoot {
   fullScanAt?: string | undefined;
   fullScanRun?: string | undefined;
   waitingRun?: WaitingRunFacts | undefined;
+  scanRunning?: ScanRunningFacts | undefined;
 }
 
 // A row block: every line from the one that ends in the open marker through
@@ -398,7 +415,16 @@ function readRoot(line: string): ParsedRoot | undefined {
     fullScanAt: pairs.get("full-scan-at"),
     fullScanRun: pairs.get("full-scan-run"),
     waitingRun: readWaitingRun(pairs),
+    scanRunning: readScanRunning(pairs),
   };
+}
+
+// Both the run and the time, or no running scan.
+function readScanRunning(pairs: Map<string, string>): ScanRunningFacts | undefined {
+  const run = pairs.get("scan-running");
+  const since = pairs.get("scan-running-since");
+  if (run === undefined || since === undefined) return undefined;
+  return { run, since };
 }
 
 // Both the run and the time, or no waiting run. A count that is not a whole

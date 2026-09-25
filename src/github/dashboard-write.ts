@@ -21,6 +21,7 @@ import {
   type ParsedWaiting,
   parseDashboard,
   type RootFacts,
+  type ScanRunningFacts,
 } from "../render/marker.ts";
 import { type DashboardCounts, dashboardCounts } from "../render/result-file.ts";
 import type { AttributionLines, Row } from "../render/row.ts";
@@ -85,6 +86,9 @@ export interface Rows {
   // facts it sweeps them by (record 0083). A swap draws them from the live
   // lines; a scan hands over the live lines it read.
   bulk?: Partial<Omit<BulkState, "on">> | undefined;
+  // A scan's first write says the scan is running (record 0108). Every other
+  // writer leaves it out and carries what the live root marker holds.
+  running?: ScanRunningFacts | undefined;
 }
 
 // A scan writes the root marker, and a row for every stack it knows and
@@ -149,13 +153,15 @@ export async function swapRows(
         fullScanAt: root.fullScanAt,
         fullScanRun: root.fullScanRun,
         waitingRun: carriedWaitingRun(root.waitingRun, writer.runId),
+        // Only the scan that wrote it takes it away (record 0108).
+        scanRunning: root.scanRunning,
       };
       const mine = await rows(live, kept);
       const drawn = fitted(
         fit(
           writer,
           {
-            root: kept,
+            root: mine.running ? { ...kept, scanRunning: mine.running } : kept,
             ...swapped(live, mine),
             facts: mine.facts,
             shipped: mine.shipped,

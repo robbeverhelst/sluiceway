@@ -234,7 +234,7 @@ describe("what the sweep costs and what it leaves alone", () => {
     expect(row(github, "a:prod")).toMatchObject({ state: "preview-failed", ticked: false });
   });
 
-  test("when the runs cannot be read the scan fails and the body stays as it was", async () => {
+  test("when the runs cannot be read the scan fails and the rows stay as they were, tick included", async () => {
     const { context, github } = harness(tableAdapter(TABLE));
     await scan(context);
     tick(github, "a:prod");
@@ -246,7 +246,14 @@ describe("what the sweep costs and what it leaves alone", () => {
     await expect(scan(context)).rejects.toThrow(
       "The runs of sluiceway.yml that an issue edit started could not be read: Resource not accessible by integration.",
     );
-    expect(dashboardBody(github)).toBe(before);
+    const after = dashboardBody(github);
+    expect(parseDashboard(after).rows.map((one) => one.text)).toEqual(
+      parseDashboard(before).rows.map((one) => one.text),
+    );
+    expect(row(github, "a:prod").ticked).toBe(true);
+    // The scan's first write said a scan is running, and a scan that dies
+    // before its write at the end leaves the line (record 0108).
+    expect(after).toContain("A scan is running since");
   });
 
   test("a body of another version is written again in this one, and its ticks are cleared with the note (record 0009)", async () => {

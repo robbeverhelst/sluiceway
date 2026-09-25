@@ -14,9 +14,11 @@ describe("the request count in the job log", () => {
     const adapter = tableAdapter({ "app:prod": pending("app:prod", change("bucket")) });
     const { context, github, log } = harness(adapter);
     await scan({ ...context, requests: () => github.requests.length });
-    expect(github.requests).toHaveLength(10);
+    // Ten of a first scan, and one for the dashboard it looks for before it
+    // says a scan is running, which is not there yet (record 0108).
+    expect(github.requests).toHaveLength(11);
     expect(log.lines.at(-1)).toBe(
-      "The scan made 10 requests to the GitHub API. GitHub allows the workflow token at least 1,000 an hour in a repo.",
+      "The scan made 11 requests to the GitHub API. GitHub allows the workflow token at least 1,000 an hour in a repo.",
     );
   });
 

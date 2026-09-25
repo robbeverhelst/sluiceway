@@ -18,7 +18,7 @@ import type { ProcessRunner } from "../adapters/process.ts";
 import { stripAnsi } from "../adapters/tool-run.ts";
 import type { Attribution } from "../core/attribution.ts";
 import { sharedFiles, suggestedUnrelated } from "../core/check.ts";
-import type { Config, ConfiguredStack } from "../core/config.ts";
+import type { Config, ConfiguredStack, IgnoredStack } from "../core/config.ts";
 import { type CostSettings, costFailureText, costSettings } from "../core/cost.ts";
 import { withReadDependencies } from "../core/dependencies.ts";
 import { windowState } from "../core/deploy-window.ts";
@@ -84,7 +84,7 @@ import { type Stack, stackId } from "../core/stack.ts";
 import type { Deploy } from "../core/tick-judgement.ts";
 import { valueFingerprint } from "../core/value-fingerprint.ts";
 import { type RunOfTheWorkflow, waitingRun } from "../core/waiting-run.ts";
-import { attributionSource } from "../github/attribution.ts";
+import { type AttributionSource, attributionSource } from "../github/attribution.ts";
 import { type DashboardResult, findDashboard } from "../github/dashboard.ts";
 import {
   type DashboardWriter,
@@ -92,6 +92,7 @@ import {
   type LiveDashboard,
   liveDashboard,
   type ScanAnswer,
+  swapRows,
   type Written,
   writeScan,
 } from "../github/dashboard-write.ts";
@@ -137,6 +138,7 @@ import { renderPreviewPage } from "../render/preview-page.ts";
 import { previewOutcome, previewSummary } from "../render/preview-result.ts";
 import { type DashboardCounts, scanResultFile } from "../render/result-file.ts";
 import { byCodeUnit, driftCounts, onMergeNote, plural } from "../render/row.ts";
+import { scanRunningLogLine } from "../render/scan-running.ts";
 import { renderSummary, type UnclaimedFiles } from "../render/summary.ts";
 import { waitingRunLogLine } from "../render/waiting-run.ts";
 import { previewBranches } from "./branch-preview.ts";
@@ -394,29 +396,6 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   const unclaimed = unclaimedFiles(plan, config);
   let next = planned ? stacks.filter(({ stack }) => planned.has(stackId(stack))) : stacks;
 
-  // The updates waiting to merge (record 0054): read once, before the slow
-  // work, and drawn at the late read, where the ticks are.
-  const listing = await listUpdates(context, config, stacks);
-  // With mergeAndDeploy.preview, each listed update as it would be after the
-  // merge (record 0071). The tools are checked first, as for any preview.
-  let versionChecked = false;
-  let branchPreviews = new Map<number, BranchPreview[]>();
-  if (listing.kind === "listed" && config.mergeAndDeploy.preview && listing.updates.length > 0) {
-    await checkVersion(
-      context,
-      stacks.map(({ stack }) => stack),
-    );
-    versionChecked = true;
-    branchPreviews = await previewBranches(context, stacks, listing.updates, envFiles);
-  }
-  // The records this scan opened for merged changes, handed to `apply`.
-  const handedOn: MatrixEntry[] = [];
-  // The stacks set to on-merge this scan opened a record for, so a later try
-  // of the write loop never opens a second one (record 0095), and the ones
-  // whose change waits for a tick after all, with why.
-  const openedOnMerge = new Set<string>();
-  let waitsOnMerge = new Map<string, OnMergeWait>();
-
   // Attribution (record 0026): walked once per job, shared by every stack,
   // and it never blocks.
   const attribution = attributionSource(
@@ -434,6 +413,46 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         `Attribution was left off the rows: ${message}. It only explains a row, so the scan goes on without it (record 0026).`,
       ),
   );
+
+  // The tools of every stack of the repo, once per job, before the dashboard
+  // is touched: a tool below the floor fails the job with nothing written.
+  let versionChecked = false;
+  if (next.length > 0) {
+    await checkVersion(
+      context,
+      stacks.map(({ stack }) => stack),
+    );
+    versionChecked = true;
+  }
+
+  // The scan says it is running, as its first act (record 0108): one write
+  // through the write loop, before any preview, that carries every row and
+  // puts one line under the scan line. It is a line and never a state: a
+  // write that fails leaves the line out and the scan goes on.
+  const firstWrite = await sayRunning(context, config, stacks, ignored, attribution, at);
+
+  // The updates waiting to merge (record 0054): read once, before the slow
+  // work, and drawn at the late read, where the ticks are.
+  const listing = await listUpdates(context, config, stacks);
+  // With mergeAndDeploy.preview, each listed update as it would be after the
+  // merge (record 0071). The tools are checked first, as for any preview.
+  let branchPreviews = new Map<number, BranchPreview[]>();
+  if (listing.kind === "listed" && config.mergeAndDeploy.preview && listing.updates.length > 0) {
+    await checkVersion(
+      context,
+      stacks.map(({ stack }) => stack),
+    );
+    versionChecked = true;
+    branchPreviews = await previewBranches(context, stacks, listing.updates, envFiles);
+  }
+  // The records this scan opened for merged changes, handed to `apply`.
+  const handedOn: MatrixEntry[] = [];
+  // The stacks set to on-merge this scan opened a record for, so a later try
+  // of the write loop never opens a second one (record 0095), and the ones
+  // whose change waits for a tick after all, with why.
+  const openedOnMerge = new Set<string>();
+  let waitsOnMerge = new Map<string, OnMergeWait>();
+
   let attributed: Attributed = new Map();
 
   const previewed = new Map<string, Previewed>();
@@ -446,7 +465,9 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   const prepared = new Set<string>();
   let lastPlaced: Placed | undefined;
   let written: Written & DashboardResult;
-  let startedFrom: string | undefined;
+  // The body this scan started from: the one before its first write, or the
+  // first late read when there was none.
+  let startedFrom: string | undefined = firstWrite?.before;
   // Stacks this scan previewed a second time for a deploy that ended under it.
   const again = new Set<string>();
   // The tools' own histories, read once the scan is full (record 0073).
@@ -683,7 +704,9 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
   report.attributed = attributed;
   report.dashboard = {
     url: dashboardUrl(context.repoUrl, written.number),
-    changed: written.written,
+    // Against the body before the first write, which said a scan was running
+    // (record 0108): the line alone is no change of the dashboard.
+    changed: firstWrite ? written.body !== firstWrite.before : written.written,
     // The counts line of the body as written, from its row markers.
     counts: written.counts,
   };
@@ -800,6 +823,78 @@ async function lateDeploys(
     throw new Error(
       `The deployment records could not be read: ${error instanceof Error ? error.message : error}. The scan job needs the permissions \`deployments: write\` and \`actions: read\` next to \`contents: read\` and \`issues: write\` (record 0003).`,
     );
+  }
+}
+
+// The scan's first write (record 0108): the line that says a scan is running,
+// on a dashboard that exists, through the write loop, before any preview.
+// The scan has no row of its own yet, so it is a row swap that swaps nothing:
+// every row is carried byte for byte, tick included, the trail is drawn from
+// the deployment records as they are, and the rescan box is written back
+// unticked. Only the scan's write at the end takes the line away. A
+// dashboard that is missing, closed or of another version gets no first
+// write, and a write that GitHub refuses is a line of the log: the line
+// decides nothing, and the scan goes on to its previews.
+async function sayRunning(
+  context: ScanContext,
+  config: Config,
+  stacks: ConfiguredStack[],
+  ignored: readonly IgnoredStack[],
+  attribution: AttributionSource,
+  at: string,
+): Promise<{ before: string } | undefined> {
+  const { log, github } = context;
+  const facts = { run: context.runId, since: at };
+  try {
+    const dashboard = await findDashboard(github, config.dashboard.label);
+    // A first scan has no dashboard to say it on: it creates one at the end.
+    if (!dashboard) return undefined;
+    let before: string | undefined;
+    const answer = await swapRows(
+      {
+        github,
+        runId: context.runId,
+        log,
+        repoUrl: context.repoUrl,
+        actionRef: context.actionRef,
+        dashboard: config.dashboard,
+        deploys: config.deploys,
+        ignored,
+        budget: context.limits?.body,
+      },
+      dashboard.number,
+      async (live) => {
+        before ??= live.body;
+        // The records as they are: a stack whose live row says deploying is
+        // read off the page as every writer reads it (record 0003), and
+        // nothing is settled or decided here.
+        const records = await readDeploymentRecords(
+          github,
+          stacks.map(({ environment }) => environment),
+          stacks
+            .map(({ stack, environment }) => ({ stackId: stackId(stack), environment }))
+            .filter(({ stackId: id }) => isDeployingState(live.first.get(id)?.state ?? "")),
+        );
+        const deploys = deployFacts(records);
+        const shipped = await attribution.ship(deploys.trail);
+        return { facts: deploys, shipped, rows: new Map(), running: facts };
+      },
+    );
+    if (before === undefined) return undefined;
+    if (!answer.fits) {
+      log.info(
+        `The dashboard could not say a scan is running: with the line the body would be ${answer.size.toLocaleString("en-US")} characters, over the limit. The scan goes on (record 0108).`,
+      );
+      return undefined;
+    }
+    if (!answer.written) return undefined;
+    log.info(scanRunningLogLine(facts, context.repoUrl));
+    return { before };
+  } catch (error) {
+    log.info(
+      `The dashboard could not say a scan is running: ${error instanceof Error ? error.message : error}. The scan goes on (record 0108).`,
+    );
+    return undefined;
   }
 }
 
