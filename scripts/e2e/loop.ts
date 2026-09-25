@@ -283,6 +283,43 @@ export function checkApply(
   return problems;
 }
 
+// A push that reached the branch after the commit the run checked out
+// (record 0111): `apply` refuses before its fresh preview, so the tool never
+// runs. The record ends as a moved change, the job is red, the row still says
+// deploying and has no line of the refusal, and a full scan is started.
+export function checkBranchMoved(
+  step: LoopStep,
+  expected: { stack: string; deployment: number },
+): string[] {
+  const { stack, deployment } = expected;
+  const problems = exitCode(step, false);
+  const record = step.records.find(({ id }) => id === deployment);
+  if (!record) problems.push(`Deployment record ${deployment} does not exist.`);
+  else {
+    problems.push(
+      ...statuses(record, ["queued", "in_progress", "error"], "the change moved since the tick"),
+    );
+  }
+  if (step.outputs.outcome !== "refused") {
+    problems.push(`The outcome output is ${step.outputs.outcome}, expected refused.`);
+  }
+  if (step.log.includes("the fresh preview")) problems.push("The job ran a fresh preview.");
+  if (step.newDispatches !== 1) {
+    problems.push(`The job started ${step.newDispatches} runs, expected one full scan.`);
+  }
+  if (step.newComments.length !== 1) {
+    problems.push(`The job wrote ${step.newComments.length} comments, expected one.`);
+  }
+  problems.push(...rowState(step.body, stack, "deploying"));
+  return problems;
+}
+
+// The row of a stack after the scan of a newer commit, whose deploy was
+// refused: pending with the change as it is now, and the failure line.
+export function checkPendingWithFailure(body: string, stack: string): string[] {
+  return [...rowState(body, stack, "pending"), ...failureLine(body, stack, true)];
+}
+
 // A rehearsal (record 0051): `apply` with `dry-run: true` previews, checks
 // the hash and deploys nothing. The record ends as inactive with its own
 // words, the job is green, the row is pending again with its box, and the

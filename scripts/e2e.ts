@@ -45,6 +45,12 @@
 //      merges a change to it, and the scan of the push hands it to apply in
 //      the same step, which deploys it with the real tool. Nobody ticks, and
 //      the trail says merged by alice.
+//  13. An outside record (record 0109): a record another writer opened, deployed
+//      by the run it dispatched, which skips its scan.
+//  14. A push between the tick and the deploy (record 0111): apply compares
+//      the commit it checked out with main, refuses as moved before the tool
+//      runs and starts a full scan, which shows the row pending with the push
+//      and the failure line.
 //
 // The tool only runs in a copy inside the work directory, against a file
 // backend made there, with an environment built from nothing. `node` on PATH
@@ -76,11 +82,13 @@ import {
 } from "./e2e/checks.ts";
 import {
   checkApply,
+  checkBranchMoved,
   checkDriftRepair,
   checkHandOff,
   checkMergeTick,
   checkNothingLeaks,
   checkOutsideRecord,
+  checkPendingWithFailure,
   checkQueued,
   checkRefusedTick,
   checkRehearsal,
@@ -205,6 +213,10 @@ interface StepOptions {
   // How the step names the action, and the directory the runner downloaded
   // it to. Without it the step is `uses: ./`, the checked out repo.
   action?: { ref: string; dir: string };
+  // The commit at the head of main while the step runs. Without it the
+  // branch holds the commit the step checked out, as when nothing was pushed
+  // since (record 0111).
+  branchHead?: string;
 }
 
 interface Stepped extends Observed {
@@ -226,6 +238,7 @@ async function step(mode: string | undefined, options: StepOptions): Promise<Ste
     eventPath = join(temp, `event-${stepNumber}.json`);
     writeFileSync(eventPath, JSON.stringify(options.payload));
   }
+  fake.seedBranch("main", options.branchHead ?? options.sha);
   const server = await startFakeGitHubServer(fake);
   const requestsBefore = fake.requests.length;
   // A page the step writes has links of its own run, so a page it updated
@@ -511,6 +524,8 @@ interface TickOptions {
   inputs?: Record<string, string>;
   // What happens between the edit and the start of the run.
   beforeRun?: () => Promise<void>;
+  // The commit the run checks out. SECOND_SHA without it.
+  sha?: string;
 }
 
 // A person ticks the box of a stack, and the edit starts a run.
@@ -531,7 +546,7 @@ async function tick(
   const what = options.mode === undefined ? "the one step" : options.mode;
   const resolved = await loopStep(options.mode, {
     runId,
-    sha: SECOND_SHA,
+    sha: options.sha ?? SECOND_SHA,
     event: "issues",
     payload,
     ...(options.inputs === undefined ? {} : { inputs: options.inputs }),
@@ -545,13 +560,15 @@ function applyStep(
   deployment: number,
   runAttempt = "1",
   inputs: Record<string, string> = {},
+  commits: { sha?: string; branchHead?: string } = {},
 ): Promise<LoopStep> {
   const attempt = runAttempt === "1" ? "" : `, attempt ${runAttempt}`;
   return loopStep("apply", {
     inputs: { "deployment-id": String(deployment), ...inputs },
     runId: issuesRun.runId,
     runAttempt,
-    sha: SECOND_SHA,
+    sha: commits.sha ?? SECOND_SHA,
+    ...(commits.branchHead === undefined ? {} : { branchHead: commits.branchHead }),
     event: "issues",
     payload: issuesRun.payload,
     title: `Run ${issuesRun.runId}: apply of deployment record ${deployment}${attempt}${inputs["dry-run"] === "true" ? ", a rehearsal" : ""}`,
@@ -1185,6 +1202,68 @@ good =
     ...(outsideStep.newComments.length === 0
       ? []
       : [`The run wrote comments: ${JSON.stringify(outsideStep.newComments)}.`]),
+  ]) && good;
+
+// 14. A push between the tick and the deploy (record 0111). alice ticks
+// app:prod in the split workflow, and before its apply job starts a push
+// changes the file app:prod reads its config from. The apply job checked out
+// the commit of the tick, so no fresh preview of it could show the push:
+// apply compares that commit with main, refuses as moved before the tool
+// runs, starts a full scan and tells alice. The scan of the newer commit
+// shows app:prod pending with the push and the failure line, never in sync.
+console.log("::group::A change to app:prod, ticked, then a push to it before apply");
+edit("app/Pulumi.prod.yml", "app:tier: business", "app:tier: enterprise");
+console.log("::endgroup::");
+const TICKED_SHA = "8888888888888888888888888888888888888888";
+const PUSHED_SHA = "9999999999999999999999999999999999999999";
+const beforePush = await scanStep(TICKED_SHA, "schedule");
+good =
+  report("The scan before the tick of app:prod", [
+    ...(beforePush.exitCode === 0 ? [] : [`The scan ended with exit code ${beforePush.exitCode}.`]),
+    ...(rowHash(dashboardBody(beforePush), "app:prod") === undefined
+      ? ["The row of app:prod is not pending with a hash."]
+      : []),
+  ]) && good;
+const appDeploysBeforePush = await deploysOf("app", "prod");
+const tickedBeforePush = await tick("app:prod", ALICE, { mode: "resolve", sha: TICKED_SHA });
+const [pushedEntry] = tickedBeforePush.matrix;
+// The push: main moves on, and the working copy holds what it pushed, for the
+// scan after it.
+edit("app/Pulumi.prod.yml", "app:tier: enterprise", "app:tier: platinum");
+fake.seedComparison(TICKED_SHA, PUSHED_SHA, {
+  status: "ahead",
+  files: [{ path: "app/Pulumi.prod.yml" }],
+});
+const refusedForPush =
+  pushedEntry === undefined
+    ? undefined
+    : await applyStep(
+        tickedBeforePush,
+        pushedEntry.deployment,
+        "1",
+        {},
+        {
+          sha: TICKED_SHA,
+          branchHead: PUSHED_SHA,
+        },
+      );
+const settledAfterPush = await settleStep(tickedBeforePush);
+const afterPush = await scanStep(PUSHED_SHA, "workflow_dispatch");
+good =
+  report("A push between the tick and the deploy", [
+    ...(pushedEntry === undefined ? ["resolve handed nothing on for app:prod."] : []),
+    ...(refusedForPush === undefined || pushedEntry === undefined
+      ? []
+      : checkBranchMoved(refusedForPush, {
+          stack: "app:prod",
+          deployment: pushedEntry.deployment,
+        })),
+    ...(settledAfterPush.exitCode === 0
+      ? []
+      : [`settle ended with exit code ${settledAfterPush.exitCode}.`]),
+    ...checkDeploys("app:prod", await deploysOf("app", "prod"), appDeploysBeforePush),
+    ...(afterPush.exitCode === 0 ? [] : [`The scan ended with exit code ${afterPush.exitCode}.`]),
+    ...checkPendingWithFailure(dashboardBody(afterPush), "app:prod"),
   ]) && good;
 
 console.log("::group::The dashboard after the narrowed scan");
