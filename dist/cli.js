@@ -8608,11 +8608,11 @@ var require_picomatch = __commonJS((exports, module) => {
       return { isMatch: false, output: "" };
     }
     const opts = options || {};
-    const format = opts.format || (posix ? utils.toPosixSlashes : null);
+    const format3 = opts.format || (posix ? utils.toPosixSlashes : null);
     let match = input2 === glob;
-    let output2 = match && format ? format(input2) : input2;
+    let output2 = match && format3 ? format3(input2) : input2;
     if (match === false) {
-      output2 = format ? format(input2) : input2;
+      output2 = format3 ? format3(input2) : input2;
       match = output2 === glob;
     }
     if (match === false || opts.capture === true) {
@@ -28141,6 +28141,95 @@ function windowProblem(window) {
   return to > from ? undefined : { kind: "window-ends-first", from: window.from, to: window.to };
 }
 var formats = new Map;
+function isUtc(timeZone) {
+  return timeZone === "UTC";
+}
+function format(timeZone) {
+  let found = formats.get(timeZone);
+  if (found === undefined) {
+    found = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+    formats.set(timeZone, found);
+  }
+  return found;
+}
+function wall(at, timeZone) {
+  if (isUtc(timeZone)) {
+    return {
+      year: at.getUTCFullYear(),
+      month: at.getUTCMonth() + 1,
+      day: at.getUTCDate(),
+      minutes: at.getUTCHours() * 60 + at.getUTCMinutes()
+    };
+  }
+  const parts = {};
+  for (const part of format(timeZone).formatToParts(at)) {
+    if (part.type !== "literal")
+      parts[part.type] = Number(part.value);
+  }
+  const { year = 0, month = 1, day = 1, hour = 0, minute = 0 } = parts;
+  return { year, month, day, minutes: hour * 60 + minute };
+}
+function offsetAt(at, timeZone) {
+  if (isUtc(timeZone))
+    return 0;
+  const clock = wall(at, timeZone);
+  const shown = Date.UTC(clock.year, clock.month - 1, clock.day, 0, clock.minutes);
+  const truncated = Math.floor(at.getTime() / 60000) * 60000;
+  return Math.round((shown - truncated) / 60000);
+}
+function instantOf(day, minutes, timeZone) {
+  const guess = Date.UTC(day.year, day.month - 1, day.day, 0, minutes);
+  if (isUtc(timeZone))
+    return guess;
+  const first = guess - offsetAt(new Date(guess), timeZone) * 60000;
+  const second = guess - offsetAt(new Date(first), timeZone) * 60000;
+  return second;
+}
+var DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)$/;
+function wallOf(text) {
+  const match = DATE_TIME.exec(text);
+  if (!match)
+    return;
+  const [year, month, day, hour, minute] = match.slice(1).map(Number);
+  const real = new Date(Date.UTC(year, month - 1, day));
+  if (real.getUTCMonth() !== month - 1 || real.getUTCDate() !== day)
+    return;
+  return { day: { year, month, day }, minutes: hour * 60 + minute };
+}
+function freezeProblem(freeze) {
+  for (const value of [freeze.from, freeze.to]) {
+    if (DATE_TIME.test(value) && wallOf(value) === undefined) {
+      return { kind: "not-a-date-time", value };
+    }
+  }
+  return freeze.to > freeze.from ? undefined : { kind: "freeze-ends-first", from: freeze.from, to: freeze.to };
+}
+function spanOf(freeze, timeZone) {
+  const from = wallOf(freeze.from);
+  const to = wallOf(freeze.to);
+  if (from === undefined || to === undefined)
+    return;
+  return {
+    starts: instantOf(from.day, from.minutes, timeZone),
+    ends: instantOf(to.day, to.minutes, timeZone)
+  };
+}
+var WEEK = 7 * 24 * 60 * 60000;
+function endedFreezes(freezes, now, timeZone) {
+  return freezes.flatMap((freeze) => {
+    const span = spanOf(freeze, timeZone);
+    return span !== undefined && span.ends <= now.getTime() ? [{ freeze, ended: new Date(span.ends) }] : [];
+  });
+}
 
 // src/render/config-problems.ts
 function configErrorText(file2, problems) {
@@ -28212,6 +28301,10 @@ function problemWords(issue2) {
       return `${show(issue2.value)} is not a clock time. Write HH:MM on a 24 hour clock in quotes, such as "09:00" or "17:30". "24:00" is the end of the day.`;
     case "window-ends-first":
       return `the window ends at "${issue2.to}", which is not after it starts at "${issue2.from}". A window over midnight is two windows: one to "24:00" and one from "00:00" on the next day.`;
+    case "not-a-date-time":
+      return `${show(issue2.value)} is not a date and a time. Write YYYY-MM-DDTHH:MM in the dashboard zone, such as "2026-12-20T00:00", with no zone and no seconds, on a day the calendar has.`;
+    case "freeze-ends-first":
+      return `the freeze ends at "${issue2.to}", which is not after it starts at "${issue2.from}".`;
     case "a-team":
       return `${show(issue2.value)} looks like a team. Teams are not supported yet. Use a level ("write", "maintain", "admin") or usernames.`;
     case "not-a-username":
@@ -28359,6 +28452,67 @@ var BULK_LINE = new RegExp(`^- \\[([ xX])\\] .*<!-- sluiceway:bulk${PAIRS} -->[ 
 
 // src/render/time.ts
 var formats2 = new Map;
+function format2(timeZone) {
+  let found = formats2.get(timeZone);
+  if (found === undefined) {
+    found = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+    formats2.set(timeZone, found);
+  }
+  return found;
+}
+function isUtc2(timeZone) {
+  return timeZone === undefined || timeZone === "UTC";
+}
+function wall2(at, timeZone) {
+  if (isUtc2(timeZone)) {
+    const iso = at.toISOString();
+    return {
+      year: at.getUTCFullYear(),
+      day: iso.slice(5, 10),
+      minute: iso.slice(11, 16),
+      offset: 0
+    };
+  }
+  const parts = {};
+  for (const part of format2(timeZone).formatToParts(at)) {
+    if (part.type !== "literal")
+      parts[part.type] = Number(part.value);
+  }
+  const { year = 0, month = 1, day = 1, hour = 0, minute = 0, second = 0 } = parts;
+  const shown = Date.UTC(year, month - 1, day, hour, minute, second);
+  const offset = Math.round((shown - Math.floor(at.getTime() / 1000) * 1000) / 60000);
+  const two = (value) => String(value).padStart(2, "0");
+  return {
+    year,
+    day: `${two(month)}-${two(day)}`,
+    minute: `${two(hour)}:${two(minute)}`,
+    offset
+  };
+}
+function fullDay(time3) {
+  return `${String(time3.year).padStart(4, "0")}-${time3.day}`;
+}
+function offsetName(offset) {
+  if (offset === 0)
+    return "UTC";
+  const sign = offset > 0 ? "+" : "-";
+  const hours = Math.floor(Math.abs(offset) / 60);
+  const minutes = Math.abs(offset) % 60;
+  return `UTC${sign}${hours}${minutes === 0 ? "" : `:${String(minutes).padStart(2, "0")}`}`;
+}
+function minuteAt(at, timeZone) {
+  const time3 = wall2(at, timeZone);
+  return `${fullDay(time3)} ${time3.minute} ${offsetName(time3.offset)}`;
+}
 
 // src/render/row.ts
 function plural2(count, word) {
@@ -28566,6 +28720,17 @@ var deployWindow = exports_external.strictObject({
     refuse(context, problem);
 });
 var deployWindows = exports_external.array(deployWindow);
+var DATE_TIME2 = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/;
+var dateTime = exports_external.string().regex(DATE_TIME2);
+var deployFreeze = exports_external.strictObject({
+  from: dateTime.describe("When the freeze starts, as YYYY-MM-DDTHH:MM in the dashboard zone, such as 2026-12-20T00:00."),
+  to: dateTime.describe("When it ends, as YYYY-MM-DDTHH:MM, after from. The end is outside it."),
+  reason: text.describe("Why nothing goes out, shown on the dashboard and on every row that waits for it.").optional()
+}).superRefine((freeze, context) => {
+  const problem = freezeProblem(freeze);
+  if (problem)
+    refuse(context, problem);
+});
 var policyPaths = exports_external.array(stackPath).transform((paths) => [...new Set(paths)]);
 var stackEntry = exports_external.strictObject({
   path: stackPath.describe("Directory of the stack, relative to the repo root."),
@@ -28690,6 +28855,7 @@ var configSchema = exports_external.strictObject({
   deploys: exports_external.boolean().describe("false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.").default(true),
   recordWriters: exports_external.array(author).transform((logins) => [...new Set(logins)]).describe("Logins, an app as name[bot], whose open deployment records that name a dispatched or scheduled run are deployed by that run. The writer is who GitHub records as the creator of the record. Empty hands none on.").default([]),
   deployWindows: deployWindows.describe("When the stacks of this repo may go out, in the dashboard zone: a list of windows, each with days of the week, a start and an end. A tick outside every window waits for the next one to open, and so does a deploy on merge. Empty, the default, is any time. A stacks entry sets its own with stacks[].deployWindows.").default([]),
+  freezes: exports_external.array(deployFreeze).describe("Periods when nothing goes out, in the dashboard zone: each a start and an end as YYYY-MM-DDTHH:MM and an optional reason. A tick, a deploy on merge and a destroy wait for the end, and a deploy window after it, and go out at the first moment both allow. Empty, the default, freezes nothing.").default([]),
   ignore: exports_external.array(ignoreEntry).describe("Globs matched against the stack id. An ignored stack has no row. An entry with a reason is listed with it under In sync.").default([]),
   scan: exports_external.strictObject({
     unrelated: globs.describe("Globs for files that claim nothing and force nothing, such as **/*.md.").default([]),
@@ -28851,6 +29017,9 @@ function classify(issue2, raw) {
   }
   if (inWindow && (key === "from" || key === "to") && value !== undefined) {
     return one({ kind: "not-a-clock-time", value });
+  }
+  if (path[0] === "freezes" && (key === "from" || key === "to") && value !== undefined) {
+    return one({ kind: "not-a-date-time", value });
   }
   if (issue2.code === "invalid_value" && path[0] === "dashboard") {
     return one({ kind: "not-one-of", value, choices: issue2.values.map(String) });
@@ -29043,6 +29212,7 @@ function applyConfig(config2, found) {
       ...valueFingerprint === undefined ? {} : { valueFingerprint },
       ...envFile === undefined ? {} : { envFile },
       ...windows.length === 0 ? {} : { deployWindows: windows },
+      ...config2.freezes.length === 0 ? {} : { freezes: config2.freezes },
       ...policies.length === 0 ? {} : { policies },
       ...createInBackend === true ? { createInBackend } : {},
       ...cost === undefined ? {} : { cost }
@@ -32264,6 +32434,7 @@ function checkParts(facts) {
   const { report: report2 } = facts;
   return [
     headerPart(facts.hasConfigFile, facts.recordWriters ?? []),
+    freezesPart(facts.endedFreezes ?? [], facts.timeZone),
     stacksPart(report2),
     discoveryPart(facts.discovery ?? []),
     phasesPart(report2.phases),
@@ -32284,6 +32455,20 @@ function headerPart(hasConfigFile2, recordWriters) {
 }
 function recordWritersText(recordWriters) {
   return `Record writers: ${recordWriters.join(", ")}. A deployment record one of them opens that names a dispatched or scheduled run is deployed by that run, through the fresh preview and the hash check (recordWriters).`;
+}
+function freezesPart(ended, timeZone) {
+  const text7 = ({ index, reason, ended: at }, markdown) => {
+    const key = markdown ? `\`freezes[${index}]\`` : `freezes[${index}]`;
+    const why = reason === undefined ? "" : ` (${markdown ? escapeText(reason) : reason})`;
+    return `${key}${why} ended ${minuteAt(at, timeZone)} and holds nothing any more. Take it out of sluiceway.yaml.`;
+  };
+  return {
+    log: ended.map((one) => ({
+      warning: text7(one, false),
+      title: "A deploy freeze already ended"
+    })),
+    summary: ended.length === 0 ? [] : ["### Deploy freezes", ...ended.map((one) => text7(one, true))]
+  };
 }
 function stacksPart({ stacks, phases }) {
   const found = foundText(stacks.length);
@@ -32683,7 +32868,13 @@ async function check2(context) {
     credentials: { stacks: needs, jobs: judgeJobs(needs, workflows.workflows, root) },
     unrelated: config2.scan.unrelated,
     hasConfigFile: hasConfigFile(root),
-    recordWriters: config2.recordWriters
+    recordWriters: config2.recordWriters,
+    endedFreezes: endedFreezes(config2.freezes, (context.now ?? (() => new Date))(), config2.dashboard.timeZone).map(({ freeze, ended }) => ({
+      index: config2.freezes.indexOf(freeze),
+      reason: freeze.reason,
+      ended
+    })),
+    timeZone: config2.dashboard.timeZone
   });
   for (const part of parts)
     write(log, part);

@@ -47315,13 +47315,115 @@ function instantOf(day, minutes, timeZone) {
   const second = guess - offsetAt(new Date(first), timeZone) * 60000;
   return second;
 }
-function queuedWindow(record2, windows, now, timeZone) {
-  const state = windowState(windows ?? [], now, timeZone);
-  if (record2.window)
-    return { opens: state.open ? undefined : state.opens };
+function queuedWindow(record2, windows, now, timeZone, freezes = []) {
+  const state = deployState(windows, freezes, now, timeZone);
+  const closed = (held) => ({
+    opens: held.opens,
+    ...held.freeze === undefined ? {} : { freeze: held.freeze }
+  });
+  if (record2.window) {
+    if (!state.open)
+      return closed(state);
+    return (windows ?? []).length === 0 ? { opens: undefined, anyTime: true } : { opens: undefined };
+  }
   if (record2.behind && record2.behind.length > 0 && !state.open)
-    return { opens: state.opens };
+    return closed(state);
   return;
+}
+var DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)$/;
+function wallOf(text) {
+  const match = DATE_TIME.exec(text);
+  if (!match)
+    return;
+  const [year, month, day, hour, minute] = match.slice(1).map(Number);
+  const real = new Date(Date.UTC(year, month - 1, day));
+  if (real.getUTCMonth() !== month - 1 || real.getUTCDate() !== day)
+    return;
+  return { day: { year, month, day }, minutes: hour * 60 + minute };
+}
+function freezeProblem(freeze) {
+  for (const value of [freeze.from, freeze.to]) {
+    if (DATE_TIME.test(value) && wallOf(value) === undefined) {
+      return { kind: "not-a-date-time", value };
+    }
+  }
+  return freeze.to > freeze.from ? undefined : { kind: "freeze-ends-first", from: freeze.from, to: freeze.to };
+}
+function spanOf(freeze, timeZone) {
+  const from = wallOf(freeze.from);
+  const to = wallOf(freeze.to);
+  if (from === undefined || to === undefined)
+    return;
+  return {
+    starts: instantOf(from.day, from.minutes, timeZone),
+    ends: instantOf(to.day, to.minutes, timeZone)
+  };
+}
+function heldAt(freezes, at, timeZone) {
+  const spans = freezes.flatMap((freeze) => {
+    const span = spanOf(freeze, timeZone);
+    return span === undefined ? [] : [{ freeze, ...span }];
+  });
+  let last;
+  let until = at;
+  for (;; ) {
+    const holding = spans.filter(({ starts, ends }) => starts <= until && until < ends);
+    if (holding.length === 0)
+      break;
+    for (const one of holding)
+      if (last === undefined || one.ends > last.ends)
+        last = one;
+    until = last?.ends ?? until;
+  }
+  if (last === undefined)
+    return;
+  return {
+    ...last.freeze.reason === undefined ? {} : { reason: last.freeze.reason },
+    ends: new Date(last.ends)
+  };
+}
+var TURNS = 64;
+function deployState(windows, freezes, now, timeZone) {
+  const held = heldAt(freezes ?? [], now.getTime(), timeZone);
+  const first = windowState(windows ?? [], now, timeZone);
+  if (held === undefined && first.open)
+    return { open: true };
+  let at = held?.ends ?? (first.open ? now : first.opens);
+  for (let turn = 0;at !== undefined && turn < TURNS; turn++) {
+    const frozen = heldAt(freezes ?? [], at.getTime(), timeZone);
+    if (frozen !== undefined) {
+      at = frozen.ends;
+      continue;
+    }
+    const window = windowState(windows ?? [], at, timeZone);
+    if (window.open)
+      break;
+    at = window.opens;
+  }
+  return { open: false, opens: at, ...held === undefined ? {} : { freeze: held } };
+}
+var WEEK = 7 * 24 * 60 * 60000;
+function shownFreezes(freezes, now, timeZone) {
+  const time3 = now.getTime();
+  return freezes.flatMap((freeze) => {
+    const span = spanOf(freeze, timeZone);
+    if (span === undefined || span.starts - WEEK > time3 || span.ends <= time3)
+      return [];
+    return [
+      {
+        ...freeze.reason === undefined ? {} : { reason: freeze.reason },
+        starts: new Date(span.starts),
+        ends: new Date(span.ends),
+        holds: span.starts <= time3
+      }
+    ];
+  }).sort((a, b) => a.starts.getTime() - b.starts.getTime());
+}
+function endedFreezes(freezes, now, timeZone) {
+  return freezes.flatMap((freeze) => {
+    const span = spanOf(freeze, timeZone);
+    return span !== undefined && span.ends <= now.getTime() ? [{ freeze, ended: new Date(span.ends) }] : [];
+  });
 }
 
 // src/render/config-problems.ts
@@ -47394,6 +47496,10 @@ function problemWords(issue3) {
       return `${show(issue3.value)} is not a clock time. Write HH:MM on a 24 hour clock in quotes, such as "09:00" or "17:30". "24:00" is the end of the day.`;
     case "window-ends-first":
       return `the window ends at "${issue3.to}", which is not after it starts at "${issue3.from}". A window over midnight is two windows: one to "24:00" and one from "00:00" on the next day.`;
+    case "not-a-date-time":
+      return `${show(issue3.value)} is not a date and a time. Write YYYY-MM-DDTHH:MM in the dashboard zone, such as "2026-12-20T00:00", with no zone and no seconds, on a day the calendar has.`;
+    case "freeze-ends-first":
+      return `the freeze ends at "${issue3.to}", which is not after it starts at "${issue3.from}".`;
     case "a-team":
       return `${show(issue3.value)} looks like a team. Teams are not supported yet. Use a level ("write", "maintain", "admin") or usernames.`;
     case "not-a-username":
@@ -48427,7 +48533,16 @@ function spinner(actionRef2, queued) {
   return `<picture><source media="(prefers-color-scheme: dark)" srcset="${file2("dark")}"><img alt="" width="${SPINNER_WIDTH}" height="${SPINNER_WIDTH}" src="${file2("light")}"></picture> `;
 }
 function windowWords(window, timeZone) {
-  return window.opens === undefined ? "the deploy window, which is open: the next scheduled run starts it" : `the deploy window, which opens ${minuteAt(window.opens, timeZone)}`;
+  const { freeze } = window;
+  if (freeze !== undefined) {
+    const reason = freeze.reason === undefined ? "" : ` (${escapeText(freeze.reason)})`;
+    const ends = `the end of the deploy freeze${reason} at ${minuteAt(freeze.ends, timeZone)}`;
+    return window.opens === undefined || window.opens.getTime() === freeze.ends.getTime() ? ends : `${ends}, and then for the deploy window, which opens ${minuteAt(window.opens, timeZone)}`;
+  }
+  if (window.opens === undefined) {
+    return window.anyTime ? "the next scheduled run, which starts it: nothing holds it now" : "the deploy window, which is open: the next scheduled run starts it";
+  }
+  return `the deploy window, which opens ${minuteAt(window.opens, timeZone)}`;
 }
 function deployingRow(row, options) {
   const behind = row.behind ?? [];
@@ -48920,6 +49035,17 @@ var deployWindow = exports_external.strictObject({
     refuse(context, problem);
 });
 var deployWindows = exports_external.array(deployWindow);
+var DATE_TIME2 = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/;
+var dateTime = exports_external.string().regex(DATE_TIME2);
+var deployFreeze = exports_external.strictObject({
+  from: dateTime.describe("When the freeze starts, as YYYY-MM-DDTHH:MM in the dashboard zone, such as 2026-12-20T00:00."),
+  to: dateTime.describe("When it ends, as YYYY-MM-DDTHH:MM, after from. The end is outside it."),
+  reason: text.describe("Why nothing goes out, shown on the dashboard and on every row that waits for it.").optional()
+}).superRefine((freeze, context) => {
+  const problem = freezeProblem(freeze);
+  if (problem)
+    refuse(context, problem);
+});
 var policyPaths = exports_external.array(stackPath).transform((paths) => [...new Set(paths)]);
 var stackEntry = exports_external.strictObject({
   path: stackPath.describe("Directory of the stack, relative to the repo root."),
@@ -49044,6 +49170,7 @@ var configSchema = exports_external.strictObject({
   deploys: exports_external.boolean().describe("false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.").default(true),
   recordWriters: exports_external.array(author).transform((logins) => [...new Set(logins)]).describe("Logins, an app as name[bot], whose open deployment records that name a dispatched or scheduled run are deployed by that run. The writer is who GitHub records as the creator of the record. Empty hands none on.").default([]),
   deployWindows: deployWindows.describe("When the stacks of this repo may go out, in the dashboard zone: a list of windows, each with days of the week, a start and an end. A tick outside every window waits for the next one to open, and so does a deploy on merge. Empty, the default, is any time. A stacks entry sets its own with stacks[].deployWindows.").default([]),
+  freezes: exports_external.array(deployFreeze).describe("Periods when nothing goes out, in the dashboard zone: each a start and an end as YYYY-MM-DDTHH:MM and an optional reason. A tick, a deploy on merge and a destroy wait for the end, and a deploy window after it, and go out at the first moment both allow. Empty, the default, freezes nothing.").default([]),
   ignore: exports_external.array(ignoreEntry).describe("Globs matched against the stack id. An ignored stack has no row. An entry with a reason is listed with it under In sync.").default([]),
   scan: exports_external.strictObject({
     unrelated: globs.describe("Globs for files that claim nothing and force nothing, such as **/*.md.").default([]),
@@ -49205,6 +49332,9 @@ function classify(issue3, raw) {
   }
   if (inWindow && (key === "from" || key === "to") && value !== undefined) {
     return one({ kind: "not-a-clock-time", value });
+  }
+  if (path[0] === "freezes" && (key === "from" || key === "to") && value !== undefined) {
+    return one({ kind: "not-a-date-time", value });
   }
   if (issue3.code === "invalid_value" && path[0] === "dashboard") {
     return one({ kind: "not-one-of", value, choices: issue3.values.map(String) });
@@ -49397,6 +49527,7 @@ function applyConfig(config2, found) {
       ...valueFingerprint === undefined ? {} : { valueFingerprint },
       ...envFile === undefined ? {} : { envFile },
       ...windows.length === 0 ? {} : { deployWindows: windows },
+      ...config2.freezes.length === 0 ? {} : { freezes: config2.freezes },
       ...policies.length === 0 ? {} : { policies },
       ...createInBackend === true ? { createInBackend } : {},
       ...cost === undefined ? {} : { cost }
@@ -60602,6 +60733,13 @@ var HEADER_DOT = {
   "in-sync": COUNT_DOT["in-sync"]
 };
 
+// src/render/freeze-line.ts
+function freezeLine(freeze, timeZone) {
+  const reason = freeze.reason === undefined ? "" : ` (${escapeText(freeze.reason)})`;
+  const ends = minuteAt(freeze.ends, timeZone);
+  return freeze.holds ? `Deploy freeze until ${ends}${reason}: every deploy waits for it to end.` : `Deploy freeze from ${minuteAt(freeze.starts, timeZone)} until ${ends}${reason}: every deploy waits while it holds.`;
+}
+
 // src/render/merge-row.ts
 var TITLE_LENGTH = 80;
 function shortenTitle(title) {
@@ -61048,7 +61186,8 @@ function renderBody(input2) {
   const scan = scanLine(input2.root, input2.repoUrl, input2.timeZone);
   const running = scanRunningLine(input2.root, input2.repoUrl, input2.timeZone);
   const runWaits = waitingRunLine(input2.root, input2.repoUrl, input2.timeZone);
-  const scanLines = [scan, running, runWaits].filter((line) => line !== undefined);
+  const freezes = (input2.freezes ?? []).map((freeze) => freezeLine(freeze, input2.timeZone));
+  const scanLines = [scan, running, runWaits, ...freezes].filter((line) => line !== undefined);
   if (input2.personality)
     out.push(picture(facts.headerState, facts.crates, facts.signs, input2.actionRef).join(`
 `), '<div align="center">', counts2, ...scanLines, "</div>");
@@ -61732,7 +61871,7 @@ var tickPayloadSchema = exports_external.strictObject({
   drift: exports_external.literal(true).optional().describe("The hash covers drift, and the deploy puts it back. Absent otherwise."),
   onMerge: exports_external.literal(true).optional().describe("The record was opened after the scan of a merge, for a stack set to deploy on merge. Absent otherwise."),
   fingerprint: exports_external.string().regex(/^[0-9a-f]{16}$/).optional().describe("The value fingerprint the tick approved: the first 16 hex characters of a SHA-256 over the values of the diff that the row did not show. The deploy goes out only when a fresh preview gives the same one. Absent on a record written before the key came, or with the check off for the stack."),
-  window: exports_external.literal(true).optional().describe("A queued record that waits for the stack's deploy window, which a run inside the window starts. Absent otherwise.")
+  window: exports_external.literal(true).optional().describe("A queued record that waits for a time and not for a stack: the stack's deploy window, or the end of a deploy freeze. The first run when both allow starts it. Absent otherwise.")
 }).describe("The record of a tick, a queued stack, a drift repair, a deploy on merge or a deploy that waits for its window.");
 var mergeRecordSchema = exports_external.strictObject({
   v,
@@ -62562,6 +62701,7 @@ function fit(writer, body2, aimAtTarget) {
     timeZone: dashboard.timeZone,
     readOnly: dashboard.readOnly,
     ignored: writer.ignored,
+    freezes: writer.freezes,
     merges: body2.merges,
     waiting: body2.waiting,
     outsideDeploys: body2.outside,
@@ -63346,7 +63486,7 @@ ${ALREADY_ENDED}
   }
   if (claim3.kind === "queued") {
     const { behind } = claim3;
-    throw new ApplyFailedError(behind ? `Deployment record ${id} of ${name} is queued behind ${behind.map(logGroupTitle).join(" and ")}. \`apply\` never deploys a queued record: a later \`resolve\` starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out. Nothing was deployed and the record was left alone.` : `Deployment record ${id} of ${name} waits for the deploy window of ${name}. \`apply\` never deploys a queued record: a run inside the window starts it. Nothing was deployed and the record was left alone.`);
+    throw new ApplyFailedError(behind ? `Deployment record ${id} of ${name} is queued behind ${behind.map(logGroupTitle).join(" and ")}. \`apply\` never deploys a queued record: a later \`resolve\` starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out. Nothing was deployed and the record was left alone.` : `Deployment record ${id} of ${name} waits for the deploy window of ${name} or the end of a deploy freeze (records 0104 and 0115). \`apply\` never deploys a queued record: the first run when both allow starts it. Nothing was deployed and the record was left alone.`);
   }
   const { payload } = claim3;
   report2.ticker = payload.ticker;
@@ -63809,6 +63949,7 @@ async function swapRow(context3, setup, id, make) {
     dashboard: setup.config.dashboard,
     deploys: setup.config.deploys,
     ignored: setup.ignored,
+    freezes: setup.config.freezes.length === 0 ? [] : shownFreezes(setup.config.freezes, context3.now(), setup.config.dashboard.timeZone),
     budget: context3.limits?.body
   }, dashboard.number, async (live) => {
     const facts = deployFacts(await readDeploymentRecords(github, setup.stacks.map(({ environment }) => environment), [{ stackId: id, environment: setup.stack.environment }]));
@@ -64656,9 +64797,14 @@ function judgeTicks(read5, lookedUp) {
     if (!stack || hash2 === undefined || ticker2 === undefined)
       return [];
     const fingerprint = fingerprints.get(id);
-    const window = behind === undefined ? windowState(stack.deployWindows ?? [], read5.clock.now, read5.clock.timeZone) : undefined;
+    const window = behind === undefined ? deployState(stack.deployWindows, stack.freezes, read5.clock.now, read5.clock.timeZone) : undefined;
     if (window && !window.open) {
-      findings.push({ kind: "window-closed", stackId: id, opens: window.opens });
+      findings.push({
+        kind: "window-closed",
+        stackId: id,
+        opens: window.opens,
+        ...window.freeze === undefined ? {} : { freeze: window.freeze }
+      });
     }
     return [
       {
@@ -65543,7 +65689,7 @@ async function resolveTicks(context3, handOn, report2, watch) {
       });
       if (record3.unfinished !== undefined)
         throw record3.unfinished;
-      log.info(behind ? `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.` : window ? `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued for the deploy window. A run inside the window starts it.` : `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued.`);
+      log.info(behind ? `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.` : window ? config2.freezes.length > 0 ? `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued for the deploy window or the end of a deploy freeze. The first run when both allow starts it.` : `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued for the deploy window. A run inside the window starts it.` : `${logGroupTitle(id)}: deployment record ${record3.deployment} is queued.`);
     } catch (error63) {
       failures.push(`The deployment record of ${logGroupTitle(id)} could not be written: ${message2(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). No further deploy was started, and the ticks that are left stay for the next run.`);
       break;
@@ -65665,6 +65811,9 @@ function findingText(finding, timeZone = "UTC") {
       return `${logGroupTitle(finding.stackId)} is ticked, and it depends on ${words.join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`;
     }
     case "window-closed":
+      if (finding.freeze !== undefined) {
+        return `${logGroupTitle(finding.stackId)} is ticked during a deploy freeze. Its deployment record waits for ${windowWords({ opens: finding.opens, freeze: finding.freeze }, timeZone)}, and the first run after that starts it.`;
+      }
       return `${logGroupTitle(finding.stackId)} is ticked outside its deploy window, ${finding.opens === undefined ? "and no window of it opens within a week" : `which opens ${minuteAt(finding.opens, timeZone)}`}. Its deployment record waits for the window, and a run inside the window starts it.`;
     case "confirm-stale": {
       const { tick, changes } = finding;
@@ -65942,6 +66091,7 @@ async function swapRows2(context3, config2, stacks2, ignored, issue3, swap) {
     dashboard: config2.dashboard,
     deploys: config2.deploys,
     ignored,
+    freezes: shownFreezes(config2.freezes, clockOf(context3)(), config2.dashboard.timeZone),
     budget: context3.limits?.body
   }, issue3, async (live, root) => {
     const droppedStacks = stacks2.filter(({ stack }) => swap.dropped.includes(stackId(stack)));
@@ -65969,7 +66119,7 @@ async function swapRows2(context3, config2, stacks2, ignored, issue3, swap) {
     const carried = new Map;
     const windows = new Map(stacks2.flatMap((one) => one.deployWindows ? [[stackId(one.stack), one.deployWindows]] : []));
     const now = clockOf(context3)();
-    const windowOf = (id, record3) => queuedWindow(record3, windows.get(id), now, config2.dashboard.timeZone);
+    const windowOf = (id, record3) => queuedWindow(record3, windows.get(id), now, config2.dashboard.timeZone, config2.freezes);
     for (const one of swap.started) {
       const old = live.first.get(one.stackId);
       rows.set(one.stackId, {
@@ -66050,12 +66200,12 @@ function withRowDependencies(context3, stacks2, rows) {
 async function startQueued(context3, repo, handOn, watch, report2) {
   const { log, github } = context3;
   const config2 = repo.config();
-  const windowed = config2.deployWindows.length > 0 || config2.stacks.some(({ deployWindows: deployWindows2 }) => (deployWindows2?.length ?? 0) > 0);
+  const windowed = config2.deployWindows.length > 0 || config2.freezes.length > 0 || config2.stacks.some(({ deployWindows: deployWindows2 }) => (deployWindows2?.length ?? 0) > 0);
   const chained = config2.stacks.some(({ dependsOn, phase }) => dependsOn !== undefined || phase !== undefined);
   const { stacks: stacks2, ignored } = byId(await repo.stacks());
   const all = [...stacks2.values()];
   const anyAuto = all.some(({ dependsOnAuto }) => dependsOnAuto);
-  const involved = windowed || chained ? all.filter(({ stack, dependsOn, deployWindows: deployWindows2 }) => anyAuto || dependsOn !== undefined || deployWindows2 !== undefined || all.some((other) => other.dependsOn?.includes(stackId(stack)) === true)) : [];
+  const involved = windowed || chained ? all.filter(({ stack, dependsOn, deployWindows: deployWindows2, freezes }) => anyAuto || dependsOn !== undefined || deployWindows2 !== undefined || freezes !== undefined || all.some((other) => other.dependsOn?.includes(stackId(stack)) === true)) : [];
   const settled = await watch.time("records", async () => settleEndedRuns(github, await readRecords(context3, all.map(({ environment }) => environment), involved), context3.repoUrl));
   for (const { stackId: id } of settled.ended) {
     log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
@@ -66083,6 +66233,11 @@ async function startQueued(context3, repo, handOn, watch, report2) {
       log.info(newest?.kind === "open" ? `Deployment record ${id} names this run, and ${logGroupTitle(stack)} is deploying under record ${newest.deployment}. It is left alone.` : `Deployment record ${id} names this run, and a newer record of ${logGroupTitle(stack)} already ended. It is left alone.`);
       continue;
     }
+    const frozen = deployState([], known.freezes, clockOf(context3)(), config2.dashboard.timeZone);
+    if (!frozen.open) {
+      log.info(`Deployment record ${id} names this run, and a deploy freeze holds ${logGroupTitle(stack)} until ${frozen.freeze === undefined ? "later" : minuteAt(frozen.freeze.ends, config2.dashboard.timeZone)}. Nothing passes a freeze, so it is left alone, and it ends as every open record of a run that is over does (record 0003).`);
+      continue;
+    }
     outside.push({
       stackId: stack,
       environment: known.environment,
@@ -66091,7 +66246,8 @@ async function startQueued(context3, repo, handOn, watch, report2) {
       ...newest.onMerge ? { onMerge: true } : {}
     });
   }
-  if (outside.length === 0 && !windowed && !chained) {
+  const leftWaiting = [...facts.byStack.values()].some((fact) => fact.kind === "open" && fact.window === true);
+  if (outside.length === 0 && !windowed && !chained && !leftWaiting) {
     log.info("The event that started this job is not about an issue, no open deployment record names this run, and no stack has dependsOn, a phase or a deploy window. Nothing to do.");
     return;
   }
@@ -66102,9 +66258,14 @@ async function startQueued(context3, repo, handOn, watch, report2) {
   for (const { id, fact } of waiting) {
     if (fact.behind && queueState(fact.behind, settled.records) !== "ready")
       continue;
-    const window = windowState(stacks2.get(id)?.deployWindows ?? [], now, timeZone);
+    const stack = stacks2.get(id);
+    const window = deployState(stack?.deployWindows, stack?.freezes, now, timeZone);
     if (window.open) {
       ready.push({ stackId: id, fact });
+      continue;
+    }
+    if (window.freeze !== undefined) {
+      log.info(`${logGroupTitle(id)}${fact.behind ? ": what it waited behind went out, and it" : ""} waits for ${windowWords({ opens: window.opens, freeze: window.freeze }, timeZone)}. Nothing starts it before then.`);
       continue;
     }
     const opens = window.opens === undefined ? "no window of it opens within a week" : `which opens ${minuteAt(window.opens, timeZone)}`;
@@ -66148,7 +66309,7 @@ async function startQueued(context3, repo, handOn, watch, report2) {
       });
       if (record3.unfinished !== undefined)
         throw record3.unfinished;
-      log.info(`${logGroupTitle(id)}: ${fact.behind ? "what it waited behind went out" : "its deploy window is open"}, so it starts now. Deployment record ${record3.deployment} is queued and takes over from record ${fact.deployment}.`);
+      log.info(`${logGroupTitle(id)}: ${fact.behind ? "what it waited behind went out" : (stack.deployWindows ?? []).length > 0 ? "its deploy window is open" : "no deploy window or freeze holds it now"}, so it starts now. Deployment record ${record3.deployment} is queued and takes over from record ${fact.deployment}.`);
     } catch (error63) {
       failures.push(`The deployment record of ${logGroupTitle(id)} could not be written: ${message2(error63)}. The resolve job needs the permission \`deployments: write\` (record 0003). No further deploy was started, and the queued stacks that are left wait for the next run.`);
       break;
@@ -66751,6 +66912,7 @@ function checkParts(facts) {
   const { report: report2 } = facts;
   return [
     headerPart(facts.hasConfigFile, facts.recordWriters ?? []),
+    freezesPart(facts.endedFreezes ?? [], facts.timeZone),
     stacksPart(report2),
     discoveryPart(facts.discovery ?? []),
     phasesPart(report2.phases),
@@ -66771,6 +66933,20 @@ function headerPart(hasConfigFile2, recordWriters) {
 }
 function recordWritersText(recordWriters) {
   return `Record writers: ${recordWriters.join(", ")}. A deployment record one of them opens that names a dispatched or scheduled run is deployed by that run, through the fresh preview and the hash check (recordWriters).`;
+}
+function freezesPart(ended, timeZone) {
+  const text9 = ({ index, reason, ended: at }, markdown) => {
+    const key = markdown ? `\`freezes[${index}]\`` : `freezes[${index}]`;
+    const why2 = reason === undefined ? "" : ` (${markdown ? escapeText(reason) : reason})`;
+    return `${key}${why2} ended ${minuteAt(at, timeZone)} and holds nothing any more. Take it out of sluiceway.yaml.`;
+  };
+  return {
+    log: ended.map((one) => ({
+      warning: text9(one, false),
+      title: "A deploy freeze already ended"
+    })),
+    summary: ended.length === 0 ? [] : ["### Deploy freezes", ...ended.map((one) => text9(one, true))]
+  };
 }
 function stacksPart({ stacks: stacks2, phases }) {
   const found = foundText(stacks2.length);
@@ -67170,7 +67346,13 @@ async function check2(context3) {
     credentials: { stacks: needs, jobs: judgeJobs(needs, workflows.workflows, root) },
     unrelated: config2.scan.unrelated,
     hasConfigFile: hasConfigFile(root),
-    recordWriters: config2.recordWriters
+    recordWriters: config2.recordWriters,
+    endedFreezes: endedFreezes(config2.freezes, (context3.now ?? (() => new Date))(), config2.dashboard.timeZone).map(({ freeze, ended }) => ({
+      index: config2.freezes.indexOf(freeze),
+      reason: freeze.reason,
+      ended
+    })),
+    timeZone: config2.dashboard.timeZone
   });
   for (const part of parts)
     write(log, part);
@@ -67915,13 +68097,14 @@ function onMergeDeploys(input2) {
     });
   }
   const environments = new Map(input2.stacks.map(({ id, environment }) => [id, environment]));
-  const windows = new Map(input2.stacks.map(({ id, deployWindows: deployWindows2 }) => [id, deployWindows2 ?? []]));
+  const times = new Map(input2.stacks.map((one) => [one.id, one]));
   const ticker2 = input2.mergedBy ?? "";
   const deploys = [
     ...plan.start.map((stackId2) => ({ stackId: stackId2, behind: undefined })),
     ...plan.queued
   ].map(({ stackId: stackId2, behind }) => {
-    const closed = behind === undefined && !windowState(windows.get(stackId2) ?? [], input2.clock.now, input2.clock.timeZone).open;
+    const one = times.get(stackId2);
+    const closed = behind === undefined && !deployState(one?.deployWindows, one?.freezes, input2.clock.now, input2.clock.timeZone).open;
     return {
       stackId: stackId2,
       environment: environments.get(stackId2) ?? "",
@@ -68098,7 +68281,7 @@ function placeRows(so, late) {
         attribution: attributed.get(id)?.lines,
         behind: fact.behind,
         ...fact.onMerge ? { onMerge: true } : {},
-        window: queuedWindow(fact, so.windows.byStack.get(id), so.windows.now, so.windows.timeZone)
+        window: queuedWindow(fact, so.windows.byStack.get(id), so.windows.now, so.windows.timeZone, so.windows.freezes)
       });
     } else if (liveRow) {
       if (ticked && decided.row === "live") {
@@ -68846,6 +69029,7 @@ async function scanning(context3, report2) {
       dashboard: config2.dashboard,
       deploys: config2.deploys,
       ignored,
+      freezes: config2.freezes.length === 0 ? [] : shownFreezes(config2.freezes, context3.now(), config2.dashboard.timeZone),
       budget: context3.limits?.body
     };
     if (histories === undefined && ids2.length > 0 && full) {
@@ -68873,7 +69057,8 @@ async function scanning(context3, report2) {
       windows: {
         byStack: new Map(stacks2.flatMap((one) => one.deployWindows ? [[stackId(one.stack), one.deployWindows]] : [])),
         now: startedAt,
-        timeZone: config2.dashboard.timeZone
+        timeZone: config2.dashboard.timeZone,
+        freezes: config2.freezes
       }
     };
     let answer;
@@ -68906,7 +69091,7 @@ async function scanning(context3, report2) {
         waitsOnMerge = onMerge.waits;
         const fresh = onMerge.deploys.filter(({ stackId: id }) => !openedOnMerge.has(id));
         if (fresh.length > 0) {
-          await handOnMerged(context3, fresh, handedOn, openedOnMerge);
+          await handOnMerged(context3, fresh, handedOn, openedOnMerge, config2.freezes.length > 0);
           context3.outputs?.set("matrix", matrixOutput(handedOn));
           deploys = await lateDeploys(context3, stacks2, previewed, live);
         }
@@ -69040,6 +69225,7 @@ async function sayRunning(context3, config2, stacks2, ignored, attribution, at) 
       dashboard: config2.dashboard,
       deploys: config2.deploys,
       ignored,
+      freezes: config2.freezes.length === 0 ? [] : shownFreezes(config2.freezes, context3.now(), config2.dashboard.timeZone),
       budget: context3.limits?.body
     }, dashboard.number, async (live) => {
       before ??= live.body;
@@ -69626,7 +69812,7 @@ async function handOffMerges(context3, config2, stacks2, previewed, waiting, han
     } else {
       await end({ kind: "merged" });
       const hash2 = diffHash(result2.diff);
-      const window = !windowState(stack.deployWindows ?? [], now, config2.dashboard.timeZone).open;
+      const window = !deployState(stack.deployWindows, stack.freezes, now, config2.dashboard.timeZone).open;
       try {
         const record4 = await openRecord(context3, {
           stackId: id,
@@ -69647,7 +69833,7 @@ async function handOffMerges(context3, config2, stacks2, previewed, waiting, han
         }
         if (record4.unfinished !== undefined)
           throw record4.unfinished;
-        log.info(window ? `#${fact.merge} is merged: deployment record ${record4.deployment} of ${name} with diff hash ${hash2}, ticked by ${fact.ticker}, waits for the deploy window, and a run inside the window starts it.` : `#${fact.merge} is merged: deployment record ${record4.deployment} of ${name} is queued with diff hash ${hash2}, ticked by ${fact.ticker}, and handed to apply.`);
+        log.info(window ? `#${fact.merge} is merged: deployment record ${record4.deployment} of ${name} with diff hash ${hash2}, ticked by ${fact.ticker}, waits for the deploy window${config2.freezes.length > 0 ? " or the end of a deploy freeze, and the first run when both allow starts it" : ", and a run inside the window starts it"}.` : `#${fact.merge} is merged: deployment record ${record4.deployment} of ${name} is queued with diff hash ${hash2}, ticked by ${fact.ticker}, and handed to apply.`);
       } catch (error63) {
         throw new Error(`#${fact.merge} is merged, and the deployment record that deploys ${name} could not be written: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permission \`deployments: write\` (record 0054). Nothing deploys: the row shows the stack as pending, and a tick deploys it.`);
       }
@@ -69703,6 +69889,7 @@ function onMergeInput(context3, config2, stacks2, previewed, live, facts, now) {
         dependsOn: dependsOn.get(id),
         phase: one.phase,
         deployWindows: one.deployWindows,
+        freezes: one.freezes,
         costThreshold: costSettings(config2.cost, one.cost).threshold
       };
     }),
@@ -69713,7 +69900,7 @@ function onMergeInput(context3, config2, stacks2, previewed, live, facts, now) {
     clock: { now, timeZone: config2.dashboard.timeZone }
   };
 }
-async function handOnMerged(context3, going, handedOn, opened) {
+async function handOnMerged(context3, going, handedOn, opened, freezes) {
   const { log } = context3;
   for (const one of going) {
     const name = logGroupTitle(one.stackId);
@@ -69739,7 +69926,7 @@ async function handOnMerged(context3, going, handedOn, opened) {
       }
       if (record4.unfinished !== undefined)
         throw record4.unfinished;
-      log.info(one.behind !== undefined ? `${name} deploys on merge: deployment record ${record4.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, is queued behind ${one.behind.map(logGroupTitle).join(" and ")}, and a later run starts it.` : one.window ? `${name} deploys on merge: deployment record ${record4.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, waits for the deploy window, and a run inside the window starts it.` : `${name} deploys on merge: deployment record ${record4.deployment} is queued with diff hash ${one.hash}, merged by ${one.ticker}, and handed to apply.`);
+      log.info(one.behind !== undefined ? `${name} deploys on merge: deployment record ${record4.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, is queued behind ${one.behind.map(logGroupTitle).join(" and ")}, and a later run starts it.` : one.window ? `${name} deploys on merge: deployment record ${record4.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, waits for the deploy window${freezes ? " or the end of a deploy freeze, and the first run when both allow starts it" : ", and a run inside the window starts it"}.` : `${name} deploys on merge: deployment record ${record4.deployment} is queued with diff hash ${one.hash}, merged by ${one.ticker}, and handed to apply.`);
     } catch (error63) {
       throw new Error(`The deployment record that deploys ${name} on merge could not be written: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permission \`deployments: write\` (record 0095). Nothing more deploys on merge in this run: the row shows the stack as pending, and a tick deploys it.`);
     }
@@ -69866,8 +70053,8 @@ async function settle3(context3) {
   const { records } = settled;
   const ended = settled.ended.length;
   const now = (context3.now ?? (() => new Date))();
-  const windows = new Map(stacks2.map((one) => [stackId(one.stack), one.deployWindows ?? []]));
-  const ready = [...deployFacts(records).byStack].flatMap(([stack, fact]) => fact.kind === "open" && fact.behind && queueState(fact.behind, records) === "ready" && windowState(windows.get(stack) ?? [], now, config2.dashboard.timeZone).open ? [stack] : []);
+  const times = new Map(stacks2.map((one) => [stackId(one.stack), one]));
+  const ready = [...deployFacts(records).byStack].flatMap(([stack, fact]) => fact.kind === "open" && fact.behind && queueState(fact.behind, records) === "ready" && deployState(times.get(stack)?.deployWindows, times.get(stack)?.freezes, now, config2.dashboard.timeZone).open ? [stack] : []);
   for (const stack of ready) {
     log.info(`${logGroupTitle(stack)} can start now: what it waited behind went out. Started the workflow again, and its resolve job starts it.`);
   }
@@ -69905,6 +70092,7 @@ async function writeFailureLines(context3, config2, repo, ended) {
       dashboard: config2.dashboard,
       deploys: config2.deploys,
       ignored: repo.ignored,
+      freezes: shownFreezes(config2.freezes, (context3.now ?? (() => new Date))(), config2.dashboard.timeZone),
       budget: context3.limits?.body
     }, dashboard.number, async (live, root) => {
       const facts = deployFacts(await readDeploymentRecords(github, repo.stacks.map(({ environment }) => environment), mine.map(({ stack, environment }) => ({ stackId: stackId(stack), environment }))));
