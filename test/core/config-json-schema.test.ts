@@ -52,6 +52,17 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "showValues",
       "recentlyDeployed",
       "timeZone",
+      "sections",
+      "deployingSection",
+      "driftedSection",
+      "inSyncSection",
+      "zeroCounts",
+      "destroyAlert",
+      "pendingDetail",
+      "deployAll",
+      "repairAll",
+      "rescanBox",
+      "footer",
     ]);
     expect(Object.keys(schema.properties?.attribution?.properties ?? {})).toEqual([
       "lookback",

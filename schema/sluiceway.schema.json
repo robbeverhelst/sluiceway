@@ -60,6 +60,95 @@
           "default": "UTC",
           "type": "string",
           "description": "The IANA time zone every time on the dashboard is shown in, such as Europe/Brussels. A time that stands alone says its offset from UTC, and the line under Recently deployed names the zone. The markers keep UTC."
+        },
+        "sections": {
+          "default": [
+            "deploying",
+            "updates",
+            "pending",
+            "drifted",
+            "previewFailed",
+            "inSync",
+            "recentlyDeployed"
+          ],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "deploying",
+              "updates",
+              "pending",
+              "drifted",
+              "previewFailed",
+              "inSync",
+              "recentlyDeployed"
+            ]
+          },
+          "description": "The order of the sections, top to bottom: deploying, updates, pending, drifted, previewFailed, inSync, recentlyDeployed. The ones named come first in this order, and a section left out follows in the default order. Leaving a section out does not hide it."
+        },
+        "deployingSection": {
+          "default": true,
+          "type": "boolean",
+          "description": "false takes the Deploying section off the page: its rows move to one closed fold at the end of the sections. The counts line and the header still count them."
+        },
+        "driftedSection": {
+          "default": true,
+          "type": "boolean",
+          "description": "false takes the Drifted section off the page: its rows move to the closed fold at the end of the sections, with no repair all box. A drifted row with a failure line, or with a resource gone that the destroy alert names, stays open under the Drifted heading."
+        },
+        "inSyncSection": {
+          "default": "fold",
+          "type": "string",
+          "enum": [
+            "fold",
+            "list",
+            "off"
+          ],
+          "description": "fold: the in sync rows in a fold, the default. list: every in sync row open. off: the section is off the page and its rows move to the closed fold at the end of the sections. A row with a failure line always stays open under the In sync heading."
+        },
+        "zeroCounts": {
+          "default": true,
+          "type": "boolean",
+          "description": "false leaves a count of 0 out of the counts line. The pending count always stays."
+        },
+        "destroyAlert": {
+          "default": "destroys",
+          "type": "string",
+          "enum": [
+            "destroys",
+            "always"
+          ],
+          "description": "destroys: the caution block above the pending rows is drawn when a pending stack deletes or replaces something, or a drifted stack has a resource gone. always: it is drawn on every body, and says so when nothing is destroyed. It cannot be turned off."
+        },
+        "pendingDetail": {
+          "default": "full",
+          "type": "string",
+          "enum": [
+            "full",
+            "compact",
+            "names"
+          ],
+          "description": "How much a pending row shows under its first line. full: everything, the default. compact: the first line, and only the lines no setting hides (the failure line and every delete and replace line) and the ones that say why a row has no box or a tick would not go. names: the stack id and its counts, without the preview link, and only the lines no setting hides."
+        },
+        "deployAll": {
+          "default": true,
+          "type": "boolean",
+          "description": "false draws no deploy all box under the pending rows."
+        },
+        "repairAll": {
+          "default": true,
+          "type": "boolean",
+          "description": "false draws no repair all box under the drifted rows."
+        },
+        "rescanBox": {
+          "default": true,
+          "type": "boolean",
+          "description": "false draws no rescan box. A full scan is then started with Run workflow or the schedule."
+        },
+        "footer": {
+          "default": true,
+          "type": "boolean",
+          "description": "false leaves out the small line with the version and the docs link."
         }
       },
       "additionalProperties": false

@@ -305,6 +305,24 @@ export function isTimeZone(name: string): boolean {
 // (record 0062).
 export const RECENTLY_DEPLOYED_MAX = 50;
 
+// The sections of the dashboard in the order of record 0063, the default of
+// `dashboard.sections` (record 0114).
+export const DASHBOARD_SECTIONS = [
+  "deploying",
+  "updates",
+  "pending",
+  "drifted",
+  "previewFailed",
+  "inSync",
+  "recentlyDeployed",
+] as const;
+export type DashboardSection = (typeof DASHBOARD_SECTIONS)[number];
+
+// The words of the layout keys that are not switches (record 0114).
+export const IN_SYNC_SECTION = ["fold", "list", "off"] as const;
+export const DESTROY_ALERT = ["destroys", "always"] as const;
+export const PENDING_DETAIL = ["full", "compact", "names"] as const;
+
 // The longest lookback and the most names `attribution` allows (record 0072).
 // Ten pages of the walk, and a line that still fits the size budget.
 export const LOOKBACK_MAX = 1000;
@@ -377,6 +395,77 @@ export const configSchema = z
             "The IANA time zone every time on the dashboard is shown in, such as Europe/Brussels. A time that stands alone says its offset from UTC, and the line under Recently deployed names the zone. The markers keep UTC.",
           )
           .default("UTC"),
+        // Slice 5.51 (record 0114): the layout keys. Each default is the
+        // dashboard as it was before them, so no dashboard moves on upgrade.
+        // None of them changes a marker, and none can hide a destroy, a
+        // preview failure or a failure line.
+        sections: z
+          .array(z.enum(DASHBOARD_SECTIONS))
+          .superRefine((sections, context) => {
+            sections.forEach((section, index) => {
+              const first = sections.indexOf(section);
+              if (first !== index)
+                refuse(context, { kind: "section-named-twice", section, first }, [index]);
+            });
+          })
+          .describe(
+            "The order of the sections, top to bottom: deploying, updates, pending, drifted, previewFailed, inSync, recentlyDeployed. The ones named come first in this order, and a section left out follows in the default order. Leaving a section out does not hide it.",
+          )
+          .default([...DASHBOARD_SECTIONS]),
+        deployingSection: z
+          .boolean()
+          .describe(
+            "false takes the Deploying section off the page: its rows move to one closed fold at the end of the sections. The counts line and the header still count them.",
+          )
+          .default(true),
+        driftedSection: z
+          .boolean()
+          .describe(
+            "false takes the Drifted section off the page: its rows move to the closed fold at the end of the sections, with no repair all box. A drifted row with a failure line, or with a resource gone that the destroy alert names, stays open under the Drifted heading.",
+          )
+          .default(true),
+        inSyncSection: z
+          .enum(IN_SYNC_SECTION)
+          .describe(
+            "fold: the in sync rows in a fold, the default. list: every in sync row open. off: the section is off the page and its rows move to the closed fold at the end of the sections. A row with a failure line always stays open under the In sync heading.",
+          )
+          .default("fold"),
+        zeroCounts: z
+          .boolean()
+          .describe(
+            "false leaves a count of 0 out of the counts line. The pending count always stays.",
+          )
+          .default(true),
+        destroyAlert: z
+          .enum(DESTROY_ALERT)
+          .describe(
+            "destroys: the caution block above the pending rows is drawn when a pending stack deletes or replaces something, or a drifted stack has a resource gone. always: it is drawn on every body, and says so when nothing is destroyed. It cannot be turned off.",
+          )
+          .default("destroys"),
+        pendingDetail: z
+          .enum(PENDING_DETAIL)
+          .describe(
+            "How much a pending row shows under its first line. full: everything, the default. compact: the first line, and only the lines no setting hides (the failure line and every delete and replace line) and the ones that say why a row has no box or a tick would not go. names: the stack id and its counts, without the preview link, and only the lines no setting hides.",
+          )
+          .default("full"),
+        deployAll: z
+          .boolean()
+          .describe("false draws no deploy all box under the pending rows.")
+          .default(true),
+        repairAll: z
+          .boolean()
+          .describe("false draws no repair all box under the drifted rows.")
+          .default(true),
+        rescanBox: z
+          .boolean()
+          .describe(
+            "false draws no rescan box. A full scan is then started with Run workflow or the schedule.",
+          )
+          .default(true),
+        footer: z
+          .boolean()
+          .describe("false leaves out the small line with the version and the docs link.")
+          .default(true),
       })
       .prefault({}),
     tickers: tickers
@@ -632,6 +721,9 @@ export type WhatIsWrong =
   | { kind: "option-without-tool"; option: string }
   | { kind: "same-entry"; first: number; stackId: string }
   | { kind: "phase-named-twice"; phase: string; first: number }
+  | { kind: "section-named-twice"; section: string; first: number }
+  // A word a layout key does not take (record 0114).
+  | { kind: "not-one-of"; value: unknown; choices: readonly string[] }
   | { kind: "unknown-phase"; phase: string; phases: readonly string[] }
   // Against the stacks discovery found.
   | { kind: "id-covers-no-stack"; id: string }
@@ -814,6 +906,9 @@ function classify(issue: Issue, raw: unknown): Found[] {
   }
   if (inWindow && (key === "from" || key === "to") && value !== undefined) {
     return one({ kind: "not-a-clock-time", value });
+  }
+  if (issue.code === "invalid_value" && path[0] === "dashboard") {
+    return one({ kind: "not-one-of", value, choices: issue.values.map(String) });
   }
   if (issue.code === "invalid_value" && path[0] === "notify") {
     return one({ kind: "not-an-event", value, events: NOTIFY_EVENTS });
