@@ -62439,6 +62439,12 @@ function openRecordsOfRun(records, runId2) {
 function deployableRecordsOfRun(records, runId2) {
   return openRecordsOfRun(records, runId2).filter(({ behind, window }) => behind === undefined && window === undefined);
 }
+function failureToWrite(stackId2, liveState, fact, outside, runId2) {
+  if (liveState === undefined || !isDeployingState(liveState))
+    return;
+  const failure2 = standingFailure(stackId2, fact, outside);
+  return failure2?.run === runId2 ? failure2 : undefined;
+}
 
 // src/github/deployments.ts
 async function readDeploymentRecords(github, environments, fallBack) {
@@ -69569,6 +69575,24 @@ async function runScan(directory, step3) {
 // src/modes/settle-job.ts
 import { readFileSync as readFileSync17 } from "node:fs";
 
+// src/render/settled-row.ts
+var SETTLED_ROW_WORDS = "no preview since its deploy ended, the next scan previews it";
+function settledRow(live, failure2, options = {}) {
+  const [, ...rest] = live.text.split(`
+`);
+  const first = `- **${escapeText(live.stackId)}** · ${SETTLED_ROW_WORDS} ${rowMarker({
+    stackId: live.stackId,
+    state: "preview-failed",
+    failed: true
+  })}`;
+  const text9 = [first, INDENT + failureLine(failure2, options.timeZone), ...rest].join(`
+`);
+  const [row2] = parseDashboard(text9).rows;
+  if (!row2)
+    throw new Error("A row block did not read back as a row block.");
+  return row2;
+}
+
 // src/modes/settle.ts
 function message4(error63) {
   return error63 instanceof Error ? error63.message : String(error63);
@@ -69579,7 +69603,7 @@ async function settle3(context3) {
   if (url2 !== undefined)
     context3.outputs?.set("dashboard-url", url2);
   const repo = openRepo(context3.root, context3.adapter);
-  const { stacks: stacks2 } = await repo.stacks();
+  const { stacks: stacks2, ignored } = await repo.stacks();
   const config2 = repo.config();
   const read5 = await readRecords2(context3, stacks2);
   const settled = await settleOwnRun(context3, read5);
@@ -69595,9 +69619,79 @@ async function settle3(context3) {
     log.info(settled.open === 0 ? `${DOT_AT_ZERO} No deployment record of this run is open. Every deploy it started reported a result.` : `${DOT_AT_ZERO} Every deploy this run started reported a result, and what is queued still waits.`);
     return;
   }
+  if (ended > 0) {
+    await writeFailureLines(context3, config2, { stacks: stacks2, ignored }, settled.ended);
+  }
   await dispatchScan2(context3);
   if (ended > 0) {
-    log.info("Started a full scan, which writes the rows of these stacks again with the failure line.");
+    log.info("Started a full scan, which previews these stacks again and writes their rows with the fresh diff.");
+  }
+}
+async function writeFailureLines(context3, config2, repo, ended) {
+  const { github, log } = context3;
+  const ids2 = new Set(ended.map(({ stackId: id }) => id));
+  const mine = repo.stacks.filter(({ stack }) => ids2.has(stackId(stack)));
+  if (mine.length === 0)
+    return;
+  const written = [];
+  try {
+    const dashboard = await findDashboard(github, config2.dashboard.label);
+    if (!dashboard) {
+      log.info("There is no open dashboard to write. The full scan writes the row.");
+      return;
+    }
+    const result2 = await swapRows({
+      github,
+      log,
+      runId: context3.runId,
+      repoUrl: context3.repoUrl,
+      actionRef: context3.actionRef,
+      dashboard: config2.dashboard,
+      deploys: config2.deploys,
+      ignored: repo.ignored,
+      budget: context3.limits?.body
+    }, dashboard.number, async (live, root) => {
+      const facts = deployFacts(await readDeploymentRecords(github, repo.stacks.map(({ environment }) => environment), mine.map(({ stack, environment }) => ({ stackId: stackId(stack), environment }))));
+      const carried = new Map;
+      for (const { stack } of mine) {
+        const id = stackId(stack);
+        const row2 = live.first.get(id);
+        const failure2 = failureToWrite(id, row2?.known ? row2.state : undefined, facts.byStack.get(id), live.outside, context3.runId);
+        if (!row2 || !failure2)
+          continue;
+        carried.set(id, settledRow(row2, {
+          reason: failure2.reason,
+          ticker: failure2.ticker,
+          at: failure2.at,
+          runUrl: runUrl3(context3.repoUrl, failure2.run, failure2.attempt),
+          ...failure2.onMerge ? { onMerge: true } : {}
+        }, { timeZone: config2.dashboard.timeZone }));
+      }
+      written.splice(0, written.length, ...[...carried.keys()].sort());
+      const shipped = await attributionSource(github, {
+        stacks: repo.stacks.map(({ stack, inputs }) => ({
+          id: stackId(stack),
+          path: stack.path,
+          inputs
+        })),
+        unrelated: config2.scan.unrelated,
+        repoUrl: context3.repoUrl,
+        scanSha: root.scanSha,
+        ...config2.attribution,
+        trailLength: config2.dashboard.recentlyDeployed
+      }, (why2) => log.info(`The trail was written without what its deploys shipped: ${why2}. It only explains the trail, so nothing else changes (record 0072).`)).ship(facts.trail);
+      return { facts, shipped, rows: new Map, carried };
+    });
+    if (!result2.fits) {
+      log.info(`With the failure line the dashboard body is ${result2.size.toLocaleString("en-US")} characters, over what GitHub keeps. Nothing was written. The full scan writes the row.`);
+      return;
+    }
+  } catch (error63) {
+    log.info(`The failure line could not be written on the row: ${message4(error63)}. The full scan writes the row.`);
+    return;
+  }
+  for (const id of written) {
+    log.info(`Wrote the failure line on the row of ${logGroupTitle(id)}, before the full scan previews it again (record 0113).`);
   }
 }
 async function settleOwnRun(context3, records) {
@@ -69645,7 +69739,7 @@ async function dispatchScan2(context3) {
 }
 
 // src/modes/settle-job.ts
-async function runSettle(step3) {
+async function runSettle(directory, step3) {
   const env = process.env;
   const token = readToken(getInput);
   const job = readJob(env);
@@ -69658,7 +69752,8 @@ async function runSettle(step3) {
     runId: job.runId,
     event: readEventPayload(env, (path) => readFileSync17(path, "utf8")),
     workflow: readWorkflowRef(env),
-    outputs: step3?.outputs ?? actionsOutputs(env.RUNNER_TEMP)
+    outputs: step3?.outputs ?? actionsOutputs(env.RUNNER_TEMP),
+    actionRef: readActionRef(env, directory, (path) => readFileSync17(path, "utf8"))
   });
 }
 
@@ -69681,7 +69776,7 @@ async function runAuto(directory) {
       scan: (step3) => runScan(directory, step3),
       resolve: (step3) => runResolve(directory, step3),
       apply: (deploymentId, step3) => runApply(directory, { deploymentId, step: step3 }),
-      settle: (step3) => runSettle(step3),
+      settle: (step3) => runSettle(directory, step3),
       check: (step3) => runCheck(backendContext, step3.log, pullRequestPreviewContext)
     }
   });
@@ -70368,7 +70463,7 @@ var handlers = {
   scan: runScan,
   resolve: async (directory) => void await runResolve(directory),
   apply: runApply,
-  settle: () => runSettle(),
+  settle: (directory) => runSettle(directory),
   check: () => runCheck(backendContext, undefined, pullRequestPreviewContext),
   init: runInit
 };
@@ -70396,7 +70491,7 @@ var isPost = globalThis.sluicewayPost === true;
 try {
   const mode = parseMode(getInput("mode"));
   if (isPost) {
-    await post(mode, (name) => getState(name), () => runSettle());
+    await post(mode, (name) => getState(name), () => runSettle(actionDirectory(import.meta.url)));
   } else {
     await run2(mode, actionDirectory(import.meta.url));
   }
