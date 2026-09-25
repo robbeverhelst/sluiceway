@@ -80,6 +80,7 @@ import {
   checkHandOff,
   checkMergeTick,
   checkNothingLeaks,
+  checkOutsideRecord,
   checkQueued,
   checkRefusedTick,
   checkRehearsal,
@@ -94,6 +95,7 @@ import {
   type MatrixEntry,
   matrixEntries,
   mergeRows,
+  rowHash,
   tickMerge,
   tickRow,
 } from "./e2e/loop.ts";
@@ -1112,6 +1114,61 @@ good =
     ...(onMerge.newComments.length === 0
       ? []
       : [`The push wrote comments: ${JSON.stringify(onMerge.newComments)}.`]),
+  ]) && good;
+
+// 13. An outside record (record 0109). A reader of the published shape opens
+// a deployment record of app:prod itself, with the diff hash of the row and a
+// ticker of its own word, and starts the workflow with a dispatch, naming the
+// run in the record. The one step resolves, which hands the record on as it
+// is, deploys it with the real tool through the fresh preview and the hash
+// check, settles, and skips its scan.
+console.log("::group::A change to app:prod, for a record another writer opens");
+edit("app/Pulumi.prod.yml", "app:tier: premium", "app:tier: business");
+console.log("::endgroup::");
+const OUTSIDE_SHA = "7777777777777777777777777777777777777777";
+const beforeOutside = await scanStep(OUTSIDE_SHA, "schedule");
+const outsideHash = rowHash(dashboardBody(beforeOutside), "app:prod");
+good =
+  report("The scan before the outside record", [
+    ...(beforeOutside.exitCode === 0
+      ? []
+      : [`The scan ended with exit code ${beforeOutside.exitCode}.`]),
+    ...(outsideHash === undefined ? ["The row of app:prod is not pending with a hash."] : []),
+  ]) && good;
+const appDeploysBefore = await deploysOf("app", "prod");
+runNumber++;
+const outsideRun = String(runNumber);
+// The writer found the run it started, and GitHub knows it while it runs.
+fake.seedRun(outsideRun, { completed: false });
+const outsideRecord = fake.seedDeployment({
+  task: "sluiceway:app:prod",
+  environment: "sluiceway",
+  sha: OUTSIDE_SHA,
+  payload: { v: 1, hash: outsideHash ?? "", ticker: "dave", run: outsideRun },
+  status: { state: "queued" },
+});
+const outsideStep = await loopStep(undefined, {
+  runId: outsideRun,
+  sha: OUTSIDE_SHA,
+  event: "workflow_dispatch",
+  payload: { ref: "refs/heads/main", inputs: {} },
+  title: `Run ${outsideRun}: the one step, dispatched by the writer of record ${outsideRecord.id}`,
+});
+fake.seedRun(outsideRun, { completed: true });
+good =
+  reportStep("The outside record: the run its writer dispatched", outsideStep, [
+    ...checkOutsideRecord(outsideStep, { stack: "app:prod", deployment: outsideRecord.id }),
+    ...checkApply(outsideStep, {
+      stack: "app:prod",
+      deployment: outsideRecord.id,
+      outcome: "deployed",
+    }),
+    ...checkSettle(outsideStep, { ended: undefined, before: outsideStep.records }),
+    ...checkTrail(outsideStep.body, "app:prod", "ticked by dave"),
+    ...checkDeploys("app:prod", await deploysOf("app", "prod"), appDeploysBefore + 1),
+    ...(outsideStep.newComments.length === 0
+      ? []
+      : [`The run wrote comments: ${JSON.stringify(outsideStep.newComments)}.`]),
   ]) && good;
 
 console.log("::group::The dashboard after the narrowed scan");

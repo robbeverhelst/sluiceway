@@ -564,3 +564,52 @@ export function checkHandOff(
   }
   return problems;
 }
+
+// The diff hash on a pending row, read the plain way: what a writer that
+// opens a deployment record of its own puts in the payload (record 0109).
+export function rowHash(body: string, stack: string): string | undefined {
+  for (const line of body.split("\n")) {
+    const marker = new RegExp(
+      `<!-- sluiceway:row stack="${escaped(stack)}" state="[^"]*" hash="([0-9a-f]{16})"`,
+    ).exec(line);
+    if (marker) return marker[1];
+  }
+  return undefined;
+}
+
+// An outside record (record 0109): a record another writer opened, naming the
+// run of a dispatch it made. `resolve` hands it on as it is, opens no record
+// of its own, and the run scans nothing after it. The deploy itself is
+// `checkApply`'s to check.
+export function checkOutsideRecord(
+  step: LoopStep,
+  expected: { stack: string; deployment: number },
+): string[] {
+  const { stack, deployment } = expected;
+  const problems: string[] = [];
+  const text = step.outputs.matrix;
+  const matrix = text === undefined ? [] : matrixEntries(text);
+  const [entry] = matrix;
+  if (matrix.length !== 1 || entry?.stack !== stack || entry.deployment !== deployment) {
+    problems.push(
+      `The matrix output is ${text}, expected one entry that hands on deployment record ${deployment} of ${stack}.`,
+    );
+  }
+  const newest = step.records.filter(({ task }) => task === `sluiceway:${stack}`).at(-1);
+  if (newest?.id !== deployment) {
+    problems.push(
+      `The newest record of ${stack} is ${newest?.id}, expected ${deployment}: the run opened a record of its own.`,
+    );
+  }
+  problems.push(
+    ...needLine(
+      step.log,
+      `${stack}: deployment record ${deployment} names this run and waits for nothing`,
+    ),
+    ...needLine(step.log, "The scan of this run is skipped: resolve handed on 1 deployment record"),
+  );
+  if (step.outputs.pending !== undefined) {
+    problems.push("The step set the pending output, so it scanned after all.");
+  }
+  return problems;
+}
