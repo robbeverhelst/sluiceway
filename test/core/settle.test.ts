@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DeploymentRecord } from "../../src/core/deployment.ts";
-import { openRecordsOfRun } from "../../src/core/settle.ts";
+import { deployableRecordsOfRun, openRecordsOfRun } from "../../src/core/settle.ts";
 
 const RUN = "5151";
 
@@ -101,5 +101,48 @@ describe("openRecordsOfRun", () => {
       payload: { v: 1, hash: "2b44350653e84a11", ticker: "alice", run: RUN, window: true },
     });
     expect(openRecordsOfRun([waiting], RUN)).toEqual([{ id: 1, stackId: "a:prod", window: true }]);
+  });
+});
+
+// Slice 5.44 (record 0109): a `resolve` that no issue edit started hands on
+// every open record that names its run and waits for nothing, so a record a
+// writer outside Sluiceway opened for a run it dispatched is deployed by that
+// run. The rule is the one `settle` reads by, minus what waits.
+describe("deployableRecordsOfRun", () => {
+  test("names an open record of this run that waits behind no stack and for no window", () => {
+    const records = [
+      record(2, { task: "sluiceway:b:prod", state: "queued" }),
+      record(1, { task: "sluiceway:a:prod" }),
+    ];
+    expect(deployableRecordsOfRun(records, RUN)).toEqual([
+      { id: 1, stackId: "a:prod" },
+      { id: 2, stackId: "b:prod" },
+    ]);
+  });
+
+  test("leaves a queued record behind a stack, one that waits for the window, and a merge record alone", () => {
+    const behind = record(1, {
+      state: "queued",
+      payload: { v: 1, hash: "2b44350653e84a11", ticker: "alice", run: RUN, behind: ["b:prod"] },
+    });
+    const window = record(2, {
+      state: "queued",
+      payload: { v: 1, hash: "2b44350653e84a11", ticker: "alice", run: RUN, window: true },
+    });
+    const merge = record(3, {
+      state: "queued",
+      payload: { v: 1, ticker: "alice", run: RUN, merge: 418 },
+    });
+    expect(deployableRecordsOfRun([behind, window, merge], RUN)).toEqual([]);
+  });
+
+  test("leaves a record of another run, one that ended, and one this version cannot read alone", () => {
+    const records = [
+      record(1, { payload: { v: 1, hash: "x", ticker: "bob", run: "4242" } }),
+      record(2, { state: "success" }),
+      record(3, { payload: { v: 2, hash: "x", ticker: "alice", run: RUN } }),
+      record(4, { task: "deploy" }),
+    ];
+    expect(deployableRecordsOfRun(records, RUN)).toEqual([]);
   });
 });

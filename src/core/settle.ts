@@ -36,3 +36,18 @@ export function openRecordsOfRun(
   }
   return [...found.values()].sort((a, b) => a.id - b.id);
 }
+
+// The open records of a run that `apply` may take (record 0109): each names
+// the run and waits behind no stack, for no window and for no scan. A
+// `resolve` that no issue edit started hands them on, so a record a writer
+// outside Sluiceway opened in the published shape (record 0096) for a run it
+// dispatched is deployed by that run, through the fresh preview and the hash
+// check as any record is. What waits is `startQueued`'s, not this.
+export function deployableRecordsOfRun(
+  records: readonly DeploymentRecord[],
+  runId: string,
+): OpenRecordOfRun[] {
+  return openRecordsOfRun(records, runId).filter(
+    ({ behind, window }) => behind === undefined && window === undefined,
+  );
+}
