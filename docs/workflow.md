@@ -180,7 +180,7 @@ What the step does on each event:
 | A push to the default branch | A scan of the stacks that claim a changed file. A push to any other branch ends with a notice. |
 | The schedule | `resolve`, which starts the stacks that waited for their [deploy window](configuration.md#deploywindowsdays) to open, then a full scan. |
 | An edit of the dashboard | The step checks who ticked each box (`resolve`), deploys each stack that passed, one after the other, and then gives a result to any deploy that did not report one (`settle`). |
-| `workflow_dispatch` | `resolve`, which starts the stacks that waited for another one to go out, then a full scan. The rescan box and a deploy that others wait for start the workflow this way. |
+| `workflow_dispatch` | `resolve`, which starts the stacks that waited for another one to go out and hands on a deployment record that [something else opened for this run](what-sluiceway-writes.md#opening-a-record-yourself), then a full scan. The rescan box and a deploy that others wait for start the workflow this way. A run that deployed records opened that way and nothing else skips its scan. |
 | An edit of any other issue, and any other event | Nothing. One notice on the run says why, and the run is green. |
 
 What the parts are for:
@@ -272,7 +272,7 @@ With [`dependsOn`](configuration.md#stacksdependson) or [`phases`](configuration
 - **`workflow_dispatch` stays.** Once a stack went out that others wait for, Sluiceway starts the workflow again, and `resolve` in that run starts the next layer, before its scan.
 - **`actions: write` stays**, which that dispatch needs.
 
-Without `dependsOn` or a phase, `resolve` on a dispatch finds nothing to do in a few seconds and asks GitHub nothing.
+Without `dependsOn` or a phase, `resolve` on a dispatch reads one page of deployment records per environment, for a [record something else opened for the run](what-sluiceway-writes.md#opening-a-record-yourself), finds nothing to do in a few seconds and asks GitHub nothing more.
 
 ## Pin a commit
 

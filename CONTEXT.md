@@ -73,7 +73,7 @@ The tool's own preview of a stack, values and all: Pulumi's preview JSON, the pl
 _Avoid_: Plan file (that is the saved plan), raw output, preview JSON
 
 **Auto mode**:
-What the action does when its step names no mode: it reads the event of the run and runs the modes that event asks for, one after the other in the same step. A push to the default branch scans, an edit of the dashboard resolves and then deploys and settles what it started, the schedule and a dispatch resolve and then scan, a pull request checks, and any other event ends with a notice.
+What the action does when its step names no mode: it reads the event of the run and runs the modes that event asks for, one after the other in the same step. A push to the default branch scans, an edit of the dashboard resolves and then deploys and settles what it started, the schedule and a dispatch resolve and then scan, unless the dispatched run deployed outside records alone, a pull request checks, and any other event ends with a notice.
 _Avoid_: Default mode, smart mode, magic mode, router
 
 **One-step workflow**:
@@ -305,6 +305,10 @@ _Avoid_: Wave, stage, batch, level
 **Outside deploy**:
 A deploy of a stack that did not go through a tick: from a laptop, a script or another pipeline. It is allowed, leaves no deployment record, and the next full scan brings the row back in line. A tick on the stale row finds nothing to deploy, and its record ends as a success that says so. Where the tool keeps a history of its deploys (Pulumi), a full scan finds it there and lists it on the trail with when and from which commit, never who.
 _Avoid_: Manual deploy, rogue deploy, out-of-band deploy
+
+**Outside record**:
+A deployment record that a writer other than Sluiceway opened in the published shape, naming the run of a dispatch it made, and carrying neither `behind` nor `window`. The `resolve` of that run hands it to `apply` as it hands on the record of a tick: the fresh preview and the hash check decide, the record is the lock, and the ticker on it is the writer's word. Opening one takes `deployments: write`, and the dispatch `actions: write`. A dispatched run that deployed outside records alone skips its scan.
+_Avoid_: External record, injected record, foreign record, manual deployment
 
 **Tool history**:
 The tool's own list of the deploys of one stack, whoever ran them, as Pulumi keeps it. A full scan reads the newest entries of it for every stack whose tool keeps one, and every deploy there that no deployment record of the stack ran is an outside deploy. Only when, what kind, the commit and the run are read, never a config value, a message or a person.

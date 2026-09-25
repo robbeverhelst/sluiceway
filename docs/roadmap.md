@@ -96,7 +96,8 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - Sweeping an orphan tick off a row without previewing its stack
 - The orphan tick sweep in a repo that keeps `scan` and `resolve` in two workflow files
 - A real `uses:` step against the fake GitHub server in the e2e workflow
-- Starting a deploy without a person ticking (unattended deploys of chosen stacks)
+- Starting a deploy without a person ticking, through an input of Sluiceway's own (unattended deploys of chosen stacks)
+- Checking who created an outside record against the tick rule
 - Telling authors that their merge is waiting for a deploy
 - The files of each change outside a stack, in the fold that names them
 - Looking past a failed record for an older success to start attribution from

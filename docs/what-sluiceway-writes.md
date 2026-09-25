@@ -252,6 +252,10 @@ A tick from the run, then records of a queued stack, a drift repair, a deploy on
 
 The REST API gives the payload as JSON. GraphQL gives it as a string that holds the JSON text of a JSON string, so decode it twice there.
 
+### Opening a record yourself
+
+Something other than Sluiceway can open a record in this shape, and the workflow then deploys it (record 0109). Create the deployment for the stack, in the stack's environment, with the `task` above, `auto_merge: false`, no required contexts, and a payload of `v`, `hash` (the diff hash on the row's marker), `ticker` (a login; it is your word, and the row and the trail show it) and `run`. The `run` is the id of a run you start with `workflow_dispatch`, so dispatch first, find the run, then open the record before that run's `resolve` reads the records. With the concurrency group's queue there is usually time, and a record that comes late is ended by a later render as one whose run is over. `resolve` in that run hands the record to `apply`, which previews the stack again and deploys only when the fresh preview gives the same hash, exactly as for a tick; a record with a hash the preview does not give ends as `error` and deploys nothing. A run that deployed such records and nothing else skips its scan, because the deploy wrote its own row. A record with `behind`, `window` or `merge`, one of a stack Sluiceway does not know, and one whose stack has a newer record are left alone. It takes `deployments: write` and `actions: write` on the repo, and the tick rule is not asked: the hash and the record are what guard the deploy.
+
 ## The result file and the outputs
 
 A `scan` and an `apply` write a result file under `RUNNER_TEMP`, `sluiceway-scan-result.json` or `sluiceway-apply-result.json`, and set the step output `result-file` to its path. Its schema, for both files, is [`schema/result-file.schema.json`](../schema/result-file.schema.json), and Sluiceway checks every file against it before writing one. The file holds what the job summary holds. Sluiceway sends it nowhere, and the runner removes it when the job ends.

@@ -206,7 +206,7 @@ With [`dependsOn`](configuration.md#stacksdependson) or [`phases`](configuration
 - **`resolve` runs on `workflow_dispatch`.** The `if:` of the `resolve` job lets a dispatched run through, not only an edit of the dashboard.
 - **`settle` has `actions: write`.** Once a stack went out that others are queued behind, `settle` starts the workflow again. The `resolve` job of that run starts the stacks that were queued behind it, the next layer.
 
-Without `dependsOn` or a phase, a dispatched `resolve` finds nothing to do in a few seconds and asks GitHub nothing.
+Without `dependsOn` or a phase, a dispatched `resolve` reads one page of deployment records per environment, for a [record something else opened for the run](what-sluiceway-writes.md#opening-a-record-yourself), finds nothing to do in a few seconds and asks GitHub nothing more.
 
 ## Deploy windows
 
