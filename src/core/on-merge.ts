@@ -5,7 +5,6 @@
 // its late read and opens the records it returns, as `resolve` opens the
 // records of a tick.
 
-import type { PreviewResult } from "../adapters/adapter.ts";
 import { isDestroy } from "../render/row.ts";
 import { type CostWait, costWait } from "./cost.ts";
 import { planDeploys } from "./dependencies.ts";
@@ -14,6 +13,7 @@ import type { Diff } from "./diff.ts";
 import { diffHash } from "./diff-hash.ts";
 import { type PhaseGroup, waitsByPhase } from "./phases.ts";
 import type { Deploy } from "./tick-judgement.ts";
+import type { PreviewResult } from "./tool-result.ts";
 import { valueFingerprint } from "./value-fingerprint.ts";
 
 // `stacks[].deploy`. The default is a tick.

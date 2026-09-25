@@ -7,7 +7,7 @@
 // report and the decision. The runner in src/policy/ starts the process.
 
 import { z } from "zod";
-import type { ToolRun } from "../adapters/tool-run.ts";
+import type { ToolRun } from "./tool-result.ts";
 
 // The first version whose report the fixtures were recorded with. The JSON
 // report, `--all-namespaces` and `--no-color` are the same on the newest one.

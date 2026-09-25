@@ -7,7 +7,6 @@
 // first, and returns to its late read after that. Nothing here reads or
 // writes: the scan does the preview, the read and the write.
 
-import type { PreviewResult, ToolDeploy } from "../adapters/adapter.ts";
 import { type RunLinks, runUrl } from "../render/links.ts";
 import type {
   ParsedBulk,
@@ -51,6 +50,7 @@ import { type TickAtLateRead, tickAtLateRead } from "./orphan-tick.ts";
 import { type OutsideDeploy, outsideDeploys, trailOutside } from "./outside-deploy.ts";
 import type { PolicyOutcome } from "./policy.ts";
 import { oneRowPerStack } from "./scan-plan.ts";
+import type { PreviewResult, ToolDeploy } from "./tool-result.ts";
 import { differsEveryRun, valueFingerprint } from "./value-fingerprint.ts";
 
 // One stack this scan previewed.

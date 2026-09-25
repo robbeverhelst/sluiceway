@@ -5,10 +5,10 @@
 // names, in Sluiceway's own words, and the values a row shows at paths that
 // `dashboard.showValues` lists (record 0052). Never the tool's text.
 
-import type { ToolDiffResult } from "../adapters/adapter.ts";
 import type { Change, Diff } from "../core/diff.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
 import type { PoolSize } from "../core/pool.ts";
+import type { ToolDiffResult } from "../core/tool-result.ts";
 import { orderChanges } from "./changes.ts";
 import {
   counts,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { PreviewResult } from "../../src/adapters/adapter.ts";
 import type { Change } from "../../src/core/diff.ts";
+import type { PreviewResult } from "../../src/core/tool-result.ts";
 import { renderPreviewPage } from "../../src/render/preview-page.ts";
 import {
   type PullRequestPreviewLinks,

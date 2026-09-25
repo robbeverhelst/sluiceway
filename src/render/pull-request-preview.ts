@@ -4,9 +4,9 @@
 // the repo's files or from its own preview, and no value (records 0021,
 // 0022). The tool's own words stay in the job log, one link away.
 
-import type { PreviewResult } from "../adapters/adapter.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
 import type { PreviewRefusal } from "../core/pull-request-preview.ts";
+import type { PreviewResult } from "../core/tool-result.ts";
 import type { CheckLogEntry, CheckPart } from "./check.ts";
 import { escapeText } from "./escape.ts";
 import { logGroupTitle } from "./log-text.ts";

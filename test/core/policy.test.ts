@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { ToolRun } from "../../src/adapters/tool-run.ts";
 import {
   CONFTEST_MINIMUM_VERSION,
   CONFTEST_VERSION_ARGV,
@@ -11,6 +10,7 @@ import {
   policyOutcome,
   policyRunFailureText,
 } from "../../src/core/policy.ts";
+import type { ToolRun } from "../../src/core/tool-result.ts";
 
 // Slice 5.41 (record 0106): Conftest is the policy runner, installed by the
 // workflow and started by Sluiceway against the preview document of a stack,

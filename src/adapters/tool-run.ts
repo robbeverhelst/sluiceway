@@ -1,4 +1,5 @@
 import type { PreviewFailureReason } from "../core/failure-reason.ts";
+import type { ToolRun } from "../core/tool-result.ts";
 import type { ProcessRunner, Run } from "./process.ts";
 
 // One run of a tool and what it came to: the tool's output, or a reason from
@@ -30,16 +31,8 @@ export interface ToolRunSpec extends ToolCommand {
   exitCodes?: ExitCodes | undefined;
 }
 
-export type ToolRun =
-  | {
-      ok: true;
-      exitCode: number;
-      stdout: string;
-      stderr: string;
-      // Set when a stream printed more than the runner holds (slice 5.9).
-      outputCutAt?: number;
-    }
-  | { ok: false; reason: PreviewFailureReason; stdout: string; stderr: string };
+// What the run came to lives in core/, which reads it (issue 245).
+export type { ToolRun } from "../core/tool-result.ts";
 
 // A run with a time limit: a preview, the drift check, the tool diff, a
 // preparation, a read of the tool's history or of its backend.

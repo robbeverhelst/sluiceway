@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { PreviewResult } from "../../src/adapters/adapter.ts";
+import type { PreviewResult } from "../../src/core/tool-result.ts";
 import { previewOutcome, previewRow } from "../../src/render/preview-result.ts";
 import { renderRow } from "../../src/render/row.ts";
 

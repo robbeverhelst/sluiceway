@@ -12,7 +12,7 @@ import {
   openTofuStacks,
   type PackageManager,
   type WorkflowFindings,
-} from "../adapters/init-findings.ts";
+} from "../core/init-findings.ts";
 import { MERGE_SCAN_INPUT } from "../core/merge-scan.ts";
 import { DOCS } from "./docs-site.ts";
 

@@ -8,11 +8,11 @@
 // keep that true: nothing deploys unless the fresh preview gives the diff hash
 // the tick approved.
 
-import type { ApplyResult, DriftResult, PreviewResult } from "../adapters/adapter.ts";
 import type { ApplyResultOutcome } from "../render/result-file.ts";
 import type { DeploymentPayload, RecordEnd } from "./deployment.ts";
 import { diffHash } from "./diff-hash.ts";
 import type { DeployFailureReason } from "./failure-reason.ts";
+import type { ApplyResult, DriftResult, PreviewResult } from "./tool-result.ts";
 import { differsEveryRun, valueFingerprint } from "./value-fingerprint.ts";
 
 // A record end that is a failure, with its reason from the fixed list.

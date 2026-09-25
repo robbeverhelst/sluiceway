@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { PreviewResult } from "../../src/adapters/adapter.ts";
 import type { DeployWindow } from "../../src/core/deploy-window.ts";
 import type { Change, Diff } from "../../src/core/diff.ts";
 import { diffHash } from "../../src/core/diff-hash.ts";
 import { type OnMergeInput, type OnMergeWait, onMergeDeploys } from "../../src/core/on-merge.ts";
+import type { PreviewResult } from "../../src/core/tool-result.ts";
 
 // Record 0095: a stack with `deploy: on-merge` whose row would be pending
 // after the scan of a merge deploys through the path a tick takes. What goes

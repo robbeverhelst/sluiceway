@@ -1,11 +1,11 @@
 // What a scan shows for one previewed stack, on its row and in the summary.
 // Both come from the same preview result, so they can never disagree.
 
-import type { PreviewResult } from "../adapters/adapter.ts";
 import { diffHash } from "../core/diff-hash.ts";
 import { previewFailureText } from "../core/failure-reason.ts";
 import { globOf } from "../core/glob.ts";
 import type { PolicyOutcome } from "../core/policy.ts";
+import type { PreviewResult } from "../core/tool-result.ts";
 import { valueFingerprint } from "../core/value-fingerprint.ts";
 import type { RunLinks } from "./links.ts";
 import type { FailureLine, Row } from "./row.ts";

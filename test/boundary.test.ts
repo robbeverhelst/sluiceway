@@ -8,20 +8,35 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 
 const SRC = resolve(import.meta.dir, "../src");
 const PURE_DIRS = ["core", "adapters", "render"];
+// The two a hosted version, or a reader of the published shape, takes as a
+// library: they reach no tool, not even the interface of one (issue 245).
+const LIBRARY_DIRS = ["core", "render"];
 const BANNED_PACKAGES = ["@actions/", "@octokit/"];
 const BANNED_PATHS = ["github", "modes", "notify", "cli", "main.ts", "mode.ts", "cli.ts"];
+const LIBRARY_BANNED_PATHS = [...BANNED_PATHS, "adapters"];
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 
-function violations(file: string, code: string): string[] {
+// The transpiler drops an `import type` and an `export type {} from` before
+// it scans, as a build would. A consumer who walks imports to prove a library
+// reaches nothing it should not walks those too, so they count here: each
+// becomes a plain import before the scan. `export type X = ...` has no
+// source and stays as it is.
+function withTypeImports(code: string): string {
+  return code
+    .replace(/\bimport\s+type\b/g, "import")
+    .replace(/\bexport\s+type\s*(?=[{*])/g, "export ");
+}
+
+function violations(file: string, code: string, bannedPaths = BANNED_PATHS): string[] {
   return transpiler
-    .scanImports(code)
+    .scanImports(withTypeImports(code))
     .map((imported) => imported.path)
     .filter((specifier) => {
       if (BANNED_PACKAGES.some((prefix) => specifier.startsWith(prefix))) return true;
       if (!specifier.startsWith(".")) return false;
       const target = relative(SRC, resolve(dirname(file), specifier));
-      return BANNED_PATHS.some((banned) => target === banned || target.startsWith(banned + sep));
+      return bannedPaths.some((banned) => target === banned || target.startsWith(banned + sep));
     });
 }
 
@@ -72,15 +87,53 @@ describe("the check itself", () => {
       'import "node:fs";\nimport "zod";\nimport "./types.ts";\nimport "../adapters/x.ts";\nimport "../render/row.ts";';
     expect(violations(file, code)).toEqual([]);
   });
+
+  // A type import costs nothing at run time, but a consumer that reuses
+  // core/ and render/ as a library and walks imports to prove it never
+  // reaches the glue or a tool walks type imports too (issue 245).
+  test("flags a type import and a type re-export", () => {
+    const code =
+      'import type { Port } from "../github/port.ts";\nimport { type Mode, run } from "../modes/scan.ts";\nexport type { Send } from "../notify/send.ts";';
+    expect(violations(file, code)).toEqual([
+      "../github/port.ts",
+      "../modes/scan.ts",
+      "../notify/send.ts",
+    ]);
+  });
+
+  test("flags an adapters file for core and render, not for adapters", () => {
+    const code = 'import type { PreviewResult } from "../adapters/adapter.ts";';
+    expect(violations(file, code, LIBRARY_BANNED_PATHS)).toEqual(["../adapters/adapter.ts"]);
+    expect(violations(join(SRC, "render", "row.ts"), code, LIBRARY_BANNED_PATHS)).toEqual([
+      "../adapters/adapter.ts",
+    ]);
+    expect(
+      violations(
+        join(SRC, "adapters", "pulumi", "tool.ts"),
+        'import type { Adapter } from "../adapter.ts";',
+      ),
+    ).toEqual([]);
+  });
 });
+
+function found(dir: string, bannedPaths: string[]): string[] {
+  return sourceFiles(join(SRC, dir)).flatMap((file) =>
+    violations(file, readFileSync(file, "utf8"), bannedPaths).map(
+      (specifier) => `${relative(SRC, file)} imports ${specifier}`,
+    ),
+  );
+}
 
 describe.each(PURE_DIRS)("src/%s", (dir) => {
   test("imports no GitHub or Actions glue", () => {
-    const found = sourceFiles(join(SRC, dir)).flatMap((file) =>
-      violations(file, readFileSync(file, "utf8")).map(
-        (specifier) => `${relative(SRC, file)} imports ${specifier}`,
-      ),
-    );
-    expect(found).toEqual([]);
+    expect(found(dir, BANNED_PATHS)).toEqual([]);
+  });
+});
+
+// The adapters import from core, never the other way (issue 245): what a
+// tool's run comes to is a core type, and an adapter fills it in.
+describe.each(LIBRARY_DIRS)("src/%s", (dir) => {
+  test("reaches no adapters file, not even by a type import", () => {
+    expect(found(dir, LIBRARY_BANNED_PATHS)).toEqual([]);
   });
 });

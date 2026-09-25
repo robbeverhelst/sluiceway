@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import type { ApplyResult, DriftResult, PreviewResult } from "../../src/adapters/adapter.ts";
 import {
   applyOutcome,
   deployEnd,
@@ -11,6 +10,7 @@ import {
 import { type RecordEnd, recordStatus, type StatusToWrite } from "../../src/core/deployment.ts";
 import type { Change, Diff } from "../../src/core/diff.ts";
 import { diffHash } from "../../src/core/diff-hash.ts";
+import type { ApplyResult, DriftResult, PreviewResult } from "../../src/core/tool-result.ts";
 import { valueFingerprint } from "../../src/core/value-fingerprint.ts";
 
 // The deploy gate as tables: no GitHub, no tool. Each case is a record, a

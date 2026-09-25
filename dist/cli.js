@@ -32703,6 +32703,19 @@ import { posix as posix4 } from "node:path";
 // src/core/env-file.ts
 var SECRET_REFERENCE = "op://";
 
+// src/core/init-findings.ts
+function openTofuStacks(root) {
+  if (root.varFiles.length === 0)
+    return [{}];
+  const [only] = root.varFiles;
+  if (root.varFiles.length === 1 && only !== undefined)
+    return [{ varFile: only }];
+  return root.varFiles.map((varFile) => ({ name: varFileName(varFile), varFile }));
+}
+function varFileName(file2) {
+  return file2.replace(/\.tfvars(\.json)?$/, "");
+}
+
 // src/adapters/init-findings.ts
 var SKIPPED4 = /(^|\/)(\.terraform|node_modules|\.git)(\/|$)/;
 function findDeclarable(files, read5, taken) {
@@ -32721,17 +32734,6 @@ function openTofuRoots(files, read5) {
     path,
     varFiles: files.filter((file2) => directoryOf(file2) === path).map((file2) => posix4.basename(file2)).filter((name) => /\.tfvars(\.json)?$/.test(name)).filter((name) => !/^terraform\.tfvars(\.json)?$|\.auto\.tfvars(\.json)?$/.test(name)).sort(byCodeUnit9)
   }));
-}
-function openTofuStacks(root) {
-  if (root.varFiles.length === 0)
-    return [{}];
-  const [only] = root.varFiles;
-  if (root.varFiles.length === 1 && only !== undefined)
-    return [{ varFile: only }];
-  return root.varFiles.map((varFile) => ({ name: varFileName(varFile), varFile }));
-}
-function varFileName(file2) {
-  return file2.replace(/\.tfvars(\.json)?$/, "");
 }
 function helmCharts(files, read5) {
   const charts = files.filter((file2) => /(^|\/)Chart\.yaml$/.test(file2) && !SKIPPED4.test(file2));
