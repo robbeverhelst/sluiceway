@@ -49,7 +49,13 @@ export const WRITTEN_PAGE = "docs/what-sluiceway-writes.md";
 // The marker keys a writer writes that the page leaves out on purpose (record
 // 0096): they may change or go without a new version. The page says why.
 export const LEFT_OUT = {
-  root: ["run-waiting", "run-waiting-since", "run-waiting-more"],
+  root: [
+    "run-waiting",
+    "run-waiting-since",
+    "run-waiting-more",
+    "scan-running",
+    "scan-running-since",
+  ],
   row: ["shortened"],
   merge: [],
   waiting: [],

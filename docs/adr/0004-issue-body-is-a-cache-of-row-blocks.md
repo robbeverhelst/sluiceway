@@ -1,5 +1,7 @@
 # The issue body is a cache of row blocks, written without a lock
 
+> Amended by 0108: a scan writes the body twice. Its first write, before any preview, is a row swap with no row of its own that says a scan is running on the root marker, and its write at the end takes that away.
+>
 > Amended by 0011: only a full scan regenerates every row. A narrowed scan swaps its own row blocks, as `resolve`, `apply` and `settle` do.
 >
 > Amended by 0035 (settled while building slice 2.6): `settle` swaps no row. It has no diff to render one from (0014), so it starts a full scan, which writes the row.

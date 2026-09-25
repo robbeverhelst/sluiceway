@@ -188,7 +188,7 @@ The time zone every time on the dashboard is shown in, as an IANA name such as `
 The zone belongs to the repo, not the reader: one issue is read by everyone, so it cannot follow a browser. Pick the zone the people who tick live in.
 
 - The line under the Recently deployed heading names the zone, `Times are in Europe/Brussels.`, and the times on the list leave it out.
-- A time that stands alone says its offset from UTC at that moment: the scan line (`on 2026-07-21 12:02 UTC+2`), the last full scan, the line about a run waiting for a runner, and the failure line on a row. A January time and a July time of one zone each say their own offset, because daylight saving changes it. A moment when the zone is at UTC, such as London in winter, says `UTC`.
+- A time that stands alone says its offset from UTC at that moment: the scan line (`on 2026-07-21 12:02 UTC+2`), the last full scan, the line about a scan that is running, the line about a run waiting for a runner, and the failure line on a row. A January time and a July time of one zone each say their own offset, because daylight saving changes it. A moment when the zone is at UTC, such as London in winter, says `UTC`.
 - The markers in the issue keep UTC. Changing the zone moves no row and no hash, and a body written under one zone reads the same under another. A row that the next scan does not draw again keeps its failure line in the zone it was written in, which is why that line says its offset.
 - A [deploy window](#deploywindowsdays) is written in this zone, and the time a queued row says the window opens at is in it too.
 

@@ -51703,6 +51703,9 @@ function rootMarker(facts) {
     if (facts.waitingRun.more > 0)
       pairs.push(["run-waiting-more", String(facts.waitingRun.more)]);
   }
+  if (facts.scanRunning !== undefined) {
+    pairs.push(["scan-running", facts.scanRunning.run], ["scan-running-since", facts.scanRunning.since]);
+  }
   return marker("dashboard", pairs);
 }
 function rowMarker(facts) {
@@ -51804,8 +51807,16 @@ function readRoot(line) {
     scanAt: pairs.get("scan-at"),
     fullScanAt: pairs.get("full-scan-at"),
     fullScanRun: pairs.get("full-scan-run"),
-    waitingRun: readWaitingRun(pairs)
+    waitingRun: readWaitingRun(pairs),
+    scanRunning: readScanRunning(pairs)
   };
+}
+function readScanRunning(pairs) {
+  const run = pairs.get("scan-running");
+  const since = pairs.get("scan-running-since");
+  if (run === undefined || since === undefined)
+    return;
+  return { run, since };
 }
 function readWaitingRun(pairs) {
   const run = pairs.get("run-waiting");
@@ -60534,6 +60545,23 @@ function tickedMergeBlock(row) {
   return readBack(row.text.replace(/^- \[ \] /, "- [x] "));
 }
 
+// src/render/scan-running.ts
+function runUrl(facts, repoUrl) {
+  return `${repoUrl}/actions/runs/${urlPart(facts.run)}`;
+}
+function scanRunningLine(root, repoUrl, timeZone) {
+  const facts = root.scanRunning;
+  if (facts === undefined)
+    return;
+  const since = new Date(facts.since);
+  if (Number.isNaN(since.getTime()))
+    return;
+  return `A scan is running since ${minuteAt(since, timeZone)} · [run](${runUrl(facts, repoUrl)})`;
+}
+function scanRunningLogLine(facts, repoUrl) {
+  return `The dashboard says a scan is running, under the scan line, until this scan writes the body (record 0108): ${runUrl(facts, repoUrl)}`;
+}
+
 // src/render/voice.ts
 var GOOD_NEWS = [
   "Gate closed, water calm. Nothing to deploy.",
@@ -60598,7 +60626,7 @@ function waited(facts, scanAt) {
   const minutes = Math.floor((new Date(scanAt).getTime() - new Date(facts.since).getTime()) / 60000);
   return Number.isNaN(minutes) || minutes < 0 ? undefined : minutes;
 }
-function runUrl(facts, repoUrl) {
+function runUrl2(facts, repoUrl) {
   return `${repoUrl}/actions/runs/${urlPart(facts.run)}`;
 }
 function waitingRunLine(root, repoUrl, timeZone) {
@@ -60610,7 +60638,7 @@ function waitingRunLine(root, repoUrl, timeZone) {
     return;
   const minutes = waited(facts, root.scanAt);
   const long = minutes === undefined ? "" : ` for ${duration3(minutes)},`;
-  const run = `[A run of this dashboard's workflow](${runUrl(facts, repoUrl)})`;
+  const run = `[A run of this dashboard's workflow](${runUrl2(facts, repoUrl)})`;
   const line = `${run} has been waiting for a runner${long} since ${minuteAt(since, timeZone)}.`;
   if (facts.more === 0)
     return line;
@@ -60620,7 +60648,7 @@ function waitingRunLine(root, repoUrl, timeZone) {
 function waitingRunLogLine(facts, scanAt, workflow, repoUrl) {
   const minutes = waited(facts, scanAt) ?? RUN_WAIT_MINUTES;
   const more = facts.more === 0 ? "" : ` ${plural3(facts.more, "more run")} of it waited ${RUN_WAIT_MINUTES} minutes or more too.`;
-  return `Run ${facts.run} of ${workflow} has been waiting for a runner for ${duration3(minutes)}.${more} The dashboard says so under the scan line until it starts (record 0086): ${runUrl(facts, repoUrl)}`;
+  return `Run ${facts.run} of ${workflow} has been waiting for a runner for ${duration3(minutes)}.${more} The dashboard says so under the scan line until it starts (record 0086): ${runUrl2(facts, repoUrl)}`;
 }
 
 // src/render/body.ts
@@ -60773,8 +60801,9 @@ function renderBody(input2) {
   const out = [rootMarker(input2.root)];
   const counts2 = countsLine(facts.counts, input2.personality);
   const scan = scanLine(input2.root, input2.repoUrl, input2.timeZone);
+  const running = scanRunningLine(input2.root, input2.repoUrl, input2.timeZone);
   const runWaits = waitingRunLine(input2.root, input2.repoUrl, input2.timeZone);
-  const scanLines = runWaits === undefined ? [scan] : [scan, runWaits];
+  const scanLines = [scan, running, runWaits].filter((line) => line !== undefined);
   if (input2.personality)
     out.push(picture(facts.headerState, facts.crates, facts.signs, input2.actionRef).join(`
 `), '<div align="center">', counts2, ...scanLines, "</div>");
@@ -61858,7 +61887,7 @@ function runLinks(run2) {
   const summary2 = `${base}/attempts/${run2.runAttempt}`;
   return { summary: summary2, log: run2.jobId === undefined ? summary2 : `${base}/job/${run2.jobId}` };
 }
-function runUrl2(repoUrl, run2, attempt2) {
+function runUrl3(repoUrl, run2, attempt2) {
   const base = `${repoUrl}/actions/runs/${run2}`;
   return attempt2 === undefined ? base : `${base}/attempts/${attempt2}`;
 }
@@ -62093,11 +62122,12 @@ async function swapRows(writer, issue3, rows) {
       scanAt: root.scanAt,
       fullScanAt: root.fullScanAt,
       fullScanRun: root.fullScanRun,
-      waitingRun: carriedWaitingRun(root.waitingRun, writer.runId)
+      waitingRun: carriedWaitingRun(root.waitingRun, writer.runId),
+      scanRunning: root.scanRunning
     };
     const mine = await rows(live, kept);
     const drawn = fitted(fit(writer, {
-      root: kept,
+      root: mine.running ? { ...kept, scanRunning: mine.running } : kept,
       ...swapped(live, mine),
       facts: mine.facts,
       shipped: mine.shipped,
@@ -62174,7 +62204,7 @@ function fit(writer, body2, aimAtTarget) {
       reason: entry4.reason,
       ticker: entry4.ticker,
       at: entry4.at,
-      runUrl: runUrl2(repoUrl, entry4.run, entry4.attempt),
+      runUrl: runUrl3(repoUrl, entry4.run, entry4.attempt),
       shipped: body2.shipped?.get(entry4),
       ...entry4.onMerge ? { onMerge: true } : {}
     })),
@@ -62360,7 +62390,7 @@ async function readDeploymentRecords(github, environments, fallBack) {
   return records;
 }
 function linkOf(writer) {
-  return runUrl2(writer.repoUrl, writer.runId, writer.runAttempt);
+  return runUrl3(writer.repoUrl, writer.runId, writer.runAttempt);
 }
 async function openRecord(writer, opening) {
   const { github } = writer;
@@ -62872,7 +62902,7 @@ async function notifyOutcome(context3, repo, report2) {
   const notification = applyNotification(report2.outcome ?? "failed", report2.stack, {
     repository: repositoryOf(context3.repoUrl),
     dashboardUrl: eventDashboardUrl(context3.repoUrl, context3.event),
-    runUrl: runUrl2(context3.repoUrl, context3.runId, context3.runAttempt)
+    runUrl: runUrl3(context3.repoUrl, context3.runId, context3.runAttempt)
   });
   if (!notification)
     return;
@@ -62944,7 +62974,7 @@ ${ALREADY_ENDED}
   const { payload } = claim3;
   report2.ticker = payload.ticker;
   report2.outcome = "failed";
-  const runUrl3 = runUrl2(context3.repoUrl, context3.runId, context3.runAttempt);
+  const runUrl4 = runUrl3(context3.repoUrl, context3.runId, context3.runAttempt);
   if (claim3.kind === "unclaimed") {
     throw new ApplyFailedError(`Deployment record ${id} of ${name} could not be marked in progress: ${message(claim3.error)}. Nothing was deployed. ${RECORD_PERMISSIONS}`);
   }
@@ -62952,7 +62982,7 @@ ${ALREADY_ENDED}
   const progress = { deploying: false };
   let attempt2;
   try {
-    attempt2 = await deploy(context3, repo, id_, payload, runUrl3, progress);
+    attempt2 = await deploy(context3, repo, id_, payload, runUrl4, progress);
   } catch (error63) {
     const end = unplannedEnd(progress.deploying);
     attempt2 = {
@@ -62980,7 +63010,7 @@ ${ALREADY_ENDED}
     await writeSummary(context3, renderApplySummary({
       stackId: id_,
       ticker: payload.ticker,
-      runUrl: runUrl3,
+      runUrl: runUrl4,
       outcome: attempt2.summary,
       ...payload.onMerge ? { onMerge: true } : {}
     }));
@@ -62995,7 +63025,7 @@ ${ALREADY_ENDED}
           reason: fact.reason,
           ticker: fact.ticker,
           at: fact.at,
-          runUrl: runUrl2(context3.repoUrl, fact.run, fact.attempt),
+          runUrl: runUrl3(context3.repoUrl, fact.run, fact.attempt),
           ...fact.onMerge ? { onMerge: true } : {}
         } : undefined;
         const row = previewRow(id_, made, runLinks(context3), failure2, {
@@ -63031,7 +63061,7 @@ function reasonOf(attempt2) {
 function applied(result2) {
   return result2.ok ? { kind: "diff", diff: result2.diff } : { kind: "preview-failed", reason: previewFailureText(result2.reason) };
 }
-async function deploy(context3, repo, id, payload, runUrl3, progress) {
+async function deploy(context3, repo, id, payload, runUrl4, progress) {
   const { log, adapter } = context3;
   const name = logGroupTitle(id);
   const notDeployed = (reason, why = "") => `${name} was not deployed: ${deployFailureText(reason)}.${why}`;
@@ -63101,13 +63131,13 @@ async function deploy(context3, repo, id, payload, runUrl3, progress) {
   };
   const fresh = unprepared ?? await adapter.preview(setup.stack.stack, { ...options, savePlan: true });
   try {
-    return await afterFreshPreview(context3, id, payload, runUrl3, progress, setup, fresh, options);
+    return await afterFreshPreview(context3, id, payload, runUrl4, progress, setup, fresh, options);
   } finally {
     if (fresh.ok)
       await fresh.plan?.dispose();
   }
 }
-async function afterFreshPreview(context3, id, payload, runUrl3, progress, setup, previewed, options) {
+async function afterFreshPreview(context3, id, payload, runUrl4, progress, setup, previewed, options) {
   const { log, adapter } = context3;
   const name = logGroupTitle(id);
   const notDeployed = (reason, why = "") => `${name} was not deployed: ${deployFailureText(reason)}.${why}`;
@@ -63195,7 +63225,7 @@ async function afterFreshPreview(context3, id, payload, runUrl3, progress, setup
       state: "deploying",
       stackId: id,
       ticker: payload.ticker,
-      runUrl: runUrl3,
+      runUrl: runUrl4,
       waiting: false,
       destroys: fresh.diff.changes.filter(isDestroy).length,
       deletes: fresh.diff.changes.filter((change3) => change3.op === "delete").length,
@@ -65371,8 +65401,8 @@ var NOBODY = {
   "end-of-history": "the tick is older than the edit history GitHub keeps",
   "not-in-newest-entry": "the body kept moving"
 };
-function runUrl3(context3) {
-  return runUrl2(context3.repoUrl, context3.runId, context3.runAttempt);
+function runUrl4(context3) {
+  return runUrl3(context3.repoUrl, context3.runId, context3.runAttempt);
 }
 function clockOf(context3) {
   return context3.now ?? (() => new Date);
@@ -65478,7 +65508,7 @@ async function swapRows2(context3, config2, stacks2, ignored, issue3, swap) {
         state: "deploying",
         stackId: one.stackId,
         ticker: one.ticker,
-        runUrl: runUrl3(context3),
+        runUrl: runUrl4(context3),
         waiting: true,
         destroys: old?.known ? old.destroys : 0,
         deletes: old?.known ? old.deletes : undefined,
@@ -65498,7 +65528,7 @@ async function swapRows2(context3, config2, stacks2, ignored, issue3, swap) {
           state: "deploying",
           stackId: id,
           ticker: fact.ticker,
-          runUrl: runUrl2(context3.repoUrl, fact.run, fact.attempt),
+          runUrl: runUrl3(context3.repoUrl, fact.run, fact.attempt),
           waiting: fact.waiting,
           destroys: row.destroys,
           deletes: row.deletes,
@@ -67650,7 +67680,7 @@ function placeRows(so, late) {
         state: "deploying",
         stackId: id,
         ticker: fact.ticker,
-        runUrl: runUrl2(so.repoUrl, fact.run, fact.attempt),
+        runUrl: runUrl3(so.repoUrl, fact.run, fact.attempt),
         waiting: fact.waiting,
         destroys: destroysOf(mine, liveRow),
         deletes: deletesOf(mine, liveRow),
@@ -67740,7 +67770,7 @@ function failureLine2(repoUrl, id, deployFact, outside) {
     reason: fact.reason,
     ticker: fact.ticker,
     at: fact.at,
-    runUrl: runUrl2(repoUrl, fact.run, fact.attempt),
+    runUrl: runUrl3(repoUrl, fact.run, fact.attempt),
     ...fact.onMerge ? { onMerge: true } : {}
   };
 }
@@ -68289,7 +68319,7 @@ function reportOutputs2(context3, report2) {
   if (!previewed || !startedAt)
     return;
   const text9 = scanResultFile({
-    run: runUrl2(context3.repoUrl, context3.runId, undefined),
+    run: runUrl3(context3.repoUrl, context3.runId, undefined),
     commit: context3.sha,
     milliseconds: context3.now().getTime() - startedAt.getTime(),
     dashboard,
@@ -68329,8 +68359,21 @@ async function scanning(context3, report2) {
   const planned = plan.kind === "full" ? undefined : new Set(plan.previews.map(({ id }) => id));
   const unclaimed = unclaimedFiles(plan, config2);
   let next = planned ? stacks2.filter(({ stack }) => planned.has(stackId(stack))) : stacks2;
-  const listing = await listUpdates(context3, config2, stacks2);
+  const attribution = attributionSource(context3.github, {
+    stacks: stacks2.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
+    unrelated: config2.scan.unrelated,
+    repoUrl: context3.repoUrl,
+    scanSha: context3.sha,
+    ...config2.attribution,
+    trailLength: config2.dashboard.recentlyDeployed
+  }, (message4) => log.info(`Attribution was left off the rows: ${message4}. It only explains a row, so the scan goes on without it (record 0026).`));
   let versionChecked = false;
+  if (next.length > 0) {
+    await checkVersion5(context3, stacks2.map(({ stack }) => stack));
+    versionChecked = true;
+  }
+  const firstWrite = await sayRunning(context3, config2, stacks2, ignored, attribution, at);
+  const listing = await listUpdates(context3, config2, stacks2);
   let branchPreviews = new Map;
   if (listing.kind === "listed" && config2.mergeAndDeploy.preview && listing.updates.length > 0) {
     await checkVersion5(context3, stacks2.map(({ stack }) => stack));
@@ -68340,14 +68383,6 @@ async function scanning(context3, report2) {
   const handedOn = [];
   const openedOnMerge = new Set;
   let waitsOnMerge = new Map;
-  const attribution = attributionSource(context3.github, {
-    stacks: stacks2.map(({ stack, inputs }) => ({ id: stackId(stack), path: stack.path, inputs })),
-    unrelated: config2.scan.unrelated,
-    repoUrl: context3.repoUrl,
-    scanSha: context3.sha,
-    ...config2.attribution,
-    trailLength: config2.dashboard.recentlyDeployed
-  }, (message4) => log.info(`Attribution was left off the rows: ${message4}. It only explains a row, so the scan goes on without it (record 0026).`));
   let attributed = new Map;
   const previewed = new Map;
   const pageUrls = new Map;
@@ -68356,7 +68391,7 @@ async function scanning(context3, report2) {
   const prepared = new Set;
   let lastPlaced;
   let written;
-  let startedFrom;
+  let startedFrom = firstWrite?.before;
   const again = new Set;
   let histories;
   let poolSaid = false;
@@ -68513,7 +68548,7 @@ async function scanning(context3, report2) {
   report2.attributed = attributed;
   report2.dashboard = {
     url: dashboardUrl(context3.repoUrl, written.number),
-    changed: written.written,
+    changed: firstWrite ? written.body !== firstWrite.before : written.written,
     counts: written.counts
   };
   await context3.notifier?.send(scanNotifications(startedFrom ?? "", written.body, {
@@ -68575,6 +68610,46 @@ async function lateDeploys(context3, stacks2, previewed, live) {
     };
   } catch (error63) {
     throw new Error(`The deployment records could not be read: ${error63 instanceof Error ? error63.message : error63}. The scan job needs the permissions \`deployments: write\` and \`actions: read\` next to \`contents: read\` and \`issues: write\` (record 0003).`);
+  }
+}
+async function sayRunning(context3, config2, stacks2, ignored, attribution, at) {
+  const { log, github } = context3;
+  const facts = { run: context3.runId, since: at };
+  try {
+    const dashboard = await findDashboard(github, config2.dashboard.label);
+    if (!dashboard)
+      return;
+    let before;
+    const answer = await swapRows({
+      github,
+      runId: context3.runId,
+      log,
+      repoUrl: context3.repoUrl,
+      actionRef: context3.actionRef,
+      dashboard: config2.dashboard,
+      deploys: config2.deploys,
+      ignored,
+      budget: context3.limits?.body
+    }, dashboard.number, async (live) => {
+      before ??= live.body;
+      const records = await readDeploymentRecords(github, stacks2.map(({ environment }) => environment), stacks2.map(({ stack, environment }) => ({ stackId: stackId(stack), environment })).filter(({ stackId: id }) => isDeployingState(live.first.get(id)?.state ?? "")));
+      const deploys = deployFacts(records);
+      const shipped = await attribution.ship(deploys.trail);
+      return { facts: deploys, shipped, rows: new Map, running: facts };
+    });
+    if (before === undefined)
+      return;
+    if (!answer.fits) {
+      log.info(`The dashboard could not say a scan is running: with the line the body would be ${answer.size.toLocaleString("en-US")} characters, over the limit. The scan goes on (record 0108).`);
+      return;
+    }
+    if (!answer.written)
+      return;
+    log.info(scanRunningLogLine(facts, context3.repoUrl));
+    return { before };
+  } catch (error63) {
+    log.info(`The dashboard could not say a scan is running: ${error63 instanceof Error ? error63.message : error63}. The scan goes on (record 0108).`);
+    return;
   }
 }
 async function findWaitingRun(context3, at) {

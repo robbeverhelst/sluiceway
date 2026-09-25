@@ -1,5 +1,7 @@
 # The edit history names the ticker, and the event is only a wake-up
 
+> Amended by 0108: the scan writes the rescan box back unticked in its first write, before the previews, so a person sees their tick taken at once. The sweep is untouched and runs at the late read of the write at the end.
+>
 > Amended by 0083: the walk reads the bulk box and the confirm box as ticks, and the scan sweeps a tick on either like an orphan tick. A confirm box is taken back by the second scan after it.
 >
 > Supersedes 0005.

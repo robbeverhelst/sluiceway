@@ -1,5 +1,7 @@
 # The body puts pending first and folds away only rows that need nothing
 
+> Amended by 0108: a scan that is running gets one line right under the scan line, from the root marker, above the line of 0086.
+>
 > Amended by 0089: every time on the dashboard is in the repo's zone, `dashboard.timeZone`, UTC by default. A time that stands alone ends in its offset from UTC, the line under Recently deployed names the zone, and the markers keep UTC.
 >
 > Amended by 0086: a run of the workflow that has waited ten minutes or more for a runner gets one line right under the scan line, from the root marker.

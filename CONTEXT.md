@@ -358,8 +358,12 @@ _Avoid_: Status line, timestamp, last updated
 A run of the dashboard's own workflow that GitHub has kept queued for ten minutes or more before a scan started, because no runner took its job. The next scan that does get a runner says so in one line right under the scan line, naming how long it waited and linking it, and counts any others. It says that the run waits for a runner, never why, and decides nothing. The line goes as soon as that run starts, or with the next scan after it ends.
 _Avoid_: Stuck run, hung run, stalled scan, queued run (queued is a row state)
 
+**Scan-running line**:
+The line right under the scan line that says a scan is running, since when, and links its run. The scan writes it as its first act, before any preview, through the write loop, carrying every row as it is and the rescan box unticked, and takes it away when it writes the body at the end. Every other writer carries it. A scan that dies leaves it, and the next scan replaces it. It is a fact on the root marker and not a state: nothing is decided from it, and the header does not change for it.
+_Avoid_: Progress line, in-progress banner, scan status, spinner (that is the crate on a deploying row)
+
 **Dashboard zone**:
-The time zone every time on the dashboard is shown in: UTC, or the IANA zone `dashboard.timeZone` names. It belongs to the repo, not the reader. The line under the trail names it, and a time that stands alone, on the scan line, the waiting-run line or a failure line, says its offset from UTC at that moment. The markers keep UTC.
+The time zone every time on the dashboard is shown in: UTC, or the IANA zone `dashboard.timeZone` names. It belongs to the repo, not the reader. The line under the trail names it, and a time that stands alone, on the scan line, the scan-running line, the waiting-run line or a failure line, says its offset from UTC at that moment. The markers keep UTC.
 _Avoid_: Local time, user time zone, timezone setting
 
 **Row state**:

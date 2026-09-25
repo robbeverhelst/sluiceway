@@ -112,6 +112,8 @@ No date and no order. Each waits for a user who asks, and none of them needs a b
 - A finer personality switch (the header without the voice, or the reverse)
 - A custom header image, or a palette setting
 - A drift picture with crates, or drift above pending in the header
+- A header picture for a scan that is running (the crate on the quay)
+- Taking the scan-running line back when a scan fails inside Sluiceway
 - Levels for deploying or failing (how many are deploying, how much failed)
 - More than 20 exact crates
 - The destroy sign painted on the wall right of the wordmark, or on a pole at the far right

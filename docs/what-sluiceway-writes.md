@@ -655,6 +655,7 @@ Every documented key is a promise, and each one costs a version to change, so th
 - **The text of the body**: rows, headings, the header, counts, notes, links and pictures. The markers carry the facts.
 - **`shortened`** on a row: how far the size budget shortened it, a note for the layout.
 - **`run-waiting`, `run-waiting-since` and `run-waiting-more`** on the root marker: a run of the workflow that waits for a runner, a hint about the runners and not a fact about a stack.
+- **`scan-running` and `scan-running-since`** on the root marker: a scan that is under way, written by the scan before its previews and taken away by its write at the end. A hint that the body is about to change, not a fact about a stack.
 - **`note`, `added`, `gone` and `moved`** on a bulk box, and **`confirm`, `stacks`, `hashes` and `scan-run`** on a confirm box: the hand-over between one tick and the next. A script must never tick a confirm box, so it has no reason to read one.
 - **The description of a deployment status.** The state is the fact, and the words are for people.
 - **Writing.** This page documents what to read. A tick is an edit of the issue by a person, and Sluiceway judges it by who made the edit ([security](security.md)).

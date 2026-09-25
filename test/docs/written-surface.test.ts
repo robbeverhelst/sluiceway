@@ -160,6 +160,7 @@ const WRITTEN_KEYS = {
       fullScanAt: "t",
       fullScanRun: "1",
       waitingRun: { run: "2", since: "t", more: 1 },
+      scanRunning: { run: "3", since: "t" },
     }),
   ),
   row: keysOf(

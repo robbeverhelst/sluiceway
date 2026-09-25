@@ -1,5 +1,7 @@
 # A run that waits long for a runner gets a line under the scan line
 
+> Amended by 0108: the line about a scan that is running sits between the scan line and this one, and this line is carried by the scan's first write like any other writer's.
+>
 > Amended by 0089: the time the line says the run has waited since is in the repo's zone, `dashboard.timeZone`, and ends in its offset from UTC, such as `UTC+2`. Without the key it is `UTC` as written here.
 
 > Amends 0009 (three optional keys on the root marker), 0017 (one more request per scan) and 0029 (a line under the scan line). Built as slice 5.22.

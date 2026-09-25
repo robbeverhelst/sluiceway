@@ -1,5 +1,7 @@
 # The bot is always the workflow's own token
 
+> Amended by 0108: every scan also writes the dashboard once before its previews, to say it is running: five requests, so the worst case becomes 411 requests on the first try and 813 with three.
+>
 > Amended by 0086: every scan also lists the queued runs of its own workflow, one request, so the worst case becomes 406 requests on the first try and 808 with three.
 >
 > Amended by 0025: `resolve` no longer uses `queue: max`. The first reason below still holds in a weaker form: with another token every re-render would start a `resolve` run that finds nothing to do.
