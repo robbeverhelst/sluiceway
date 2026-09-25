@@ -189,6 +189,115 @@ describe("the example as data", () => {
   });
 });
 
+// Slice 5.51 (record 0114): the generator draws the example under each
+// layout key, one test per key. Every redraw holds every row block of the
+// example, so every marker, and changes what its key says and nothing more.
+describe("the example under each layout key", () => {
+  const ref = exampleActionRef();
+  const every = parseDashboard(exampleBody())
+    .rows.map((row) => row.stackId)
+    .sort();
+  const redraw = (settings: Parameters<typeof exampleBody>[1]) => {
+    const body = exampleBody(ref, settings);
+    expect(
+      parseDashboard(body)
+        .rows.map((row) => row.stackId)
+        .sort(),
+    ).toEqual(every);
+    expect(body).not.toBe(exampleBody());
+    return body;
+  };
+  const sections = (body: string) => headings(body).filter((one) => one !== "Recently deployed");
+
+  test("the defaults named one by one draw the published example", () => {
+    expect(
+      exampleBody(ref, {
+        sections: [
+          "deploying",
+          "updates",
+          "pending",
+          "drifted",
+          "previewFailed",
+          "inSync",
+          "recentlyDeployed",
+        ],
+        deployingSection: true,
+        driftedSection: true,
+        inSyncSection: "fold",
+        zeroCounts: true,
+        destroyAlert: "destroys",
+        pendingDetail: "full",
+        deployAll: true,
+        repairAll: true,
+        rescanBox: true,
+        footer: true,
+      }),
+    ).toBe(exampleBody());
+  });
+
+  test("sections", () => {
+    const body = redraw({ sections: ["inSync", "pending"] });
+    expect(sections(body).slice(0, 3)).toEqual(["In sync", "Pending", "Deploying"]);
+  });
+
+  test("deployingSection", () => {
+    const body = redraw({ deployingSection: false });
+    expect(headings(body)).not.toContain("Deploying");
+    expect(body).toContain("in sections this dashboard does not show</summary>");
+  });
+
+  test("driftedSection", () => {
+    const body = redraw({ driftedSection: false });
+    expect(body).not.toContain("Repair all");
+    expect(body).not.toContain("**Confirm:**");
+  });
+
+  test("inSyncSection", () => {
+    expect(redraw({ inSyncSection: "list" })).not.toMatch(
+      /<summary>\d+ stacks? in sync<\/summary>/,
+    );
+    expect(redraw({ inSyncSection: "off" })).not.toContain("left out by ignore");
+  });
+
+  test("zeroCounts", () => {
+    // The example has no preview failure (record 0088).
+    expect(redraw({ zeroCounts: false })).not.toContain("0 preview failed");
+  });
+
+  test("destroyAlert", () => {
+    // The example has pending destroys, so always draws the caution it has.
+    expect(exampleBody(ref, { destroyAlert: "always" })).toBe(exampleBody());
+    expect(exampleBody()).toContain("> [!CAUTION]");
+  });
+
+  test("pendingDetail", () => {
+    const compact = redraw({ pendingDetail: "compact" });
+    expect(compact).toContain("<kbd>DELETE</kbd>");
+    // A pending row's attribution line goes; a deploying row keeps its own.
+    const pendingFrom = "  from #514 by erin, #511 by renovate&#91;bot&#93;";
+    expect(exampleBody()).toContain(pendingFrom);
+    expect(compact).not.toContain(pendingFrom);
+    const names = redraw({ pendingDetail: "names" });
+    expect(names).toContain("<kbd>DELETE</kbd>");
+  });
+
+  test("deployAll", () => {
+    expect(redraw({ deployAll: false })).not.toContain("Deploy all");
+  });
+
+  test("repairAll", () => {
+    expect(redraw({ repairAll: false })).not.toContain("**Confirm:**");
+  });
+
+  test("rescanBox", () => {
+    expect(redraw({ rescanBox: false })).not.toContain("Rescan all stacks");
+  });
+
+  test("footer", () => {
+    expect(redraw({ footer: false })).not.toContain("<sub>[Sluiceway]");
+  });
+});
+
 describe("the example dashboard in the README", () => {
   const readme = read("README.md");
   const span = readmeExampleSpan(readme);

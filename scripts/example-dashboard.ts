@@ -16,7 +16,7 @@ import type { IgnoredStack } from "../src/core/config.ts";
 import type { Change, Op, ShownValue, Tracking } from "../src/core/diff.ts";
 import { diffHash } from "../src/core/diff-hash.ts";
 import type { OutsideDeploy } from "../src/core/outside-deploy.ts";
-import { type RecentDeploy, renderBody, rowBlock } from "../src/render/body.ts";
+import { type BodyLayout, type RecentDeploy, renderBody, rowBlock } from "../src/render/body.ts";
 import { renderBulkLine } from "../src/render/bulk-box.ts";
 import { type BulkFacts, parseDashboard, type RootFacts } from "../src/render/marker.ts";
 import { type MergeRow, mergeBlock } from "../src/render/merge-row.ts";
@@ -419,14 +419,24 @@ export interface ExampleSettings {
   readOnly?: boolean | undefined;
 }
 
+// And the layout keys of `dashboard` (record 0114), each at its default when
+// absent.
+export type ExampleLayoutSettings = ExampleSettings & BodyLayout;
+
 // The body as a scan writes it into the dashboard issue.
 export function exampleBody(
   actionRef = exampleActionRef(),
-  settings: ExampleSettings = {},
+  settings: ExampleLayoutSettings = {},
 ): string {
-  const { redact, timeZone, readOnly } = settings;
-  const personality = settings.personality ?? true;
-  const rowOptions = { redact, readOnly, timeZone, actionRef: personality ? actionRef : undefined };
+  const { redact, timeZone, readOnly, personality: withPersonality, ...layout } = settings;
+  const personality = withPersonality ?? true;
+  const rowOptions = {
+    redact,
+    readOnly,
+    timeZone,
+    actionRef: personality ? actionRef : undefined,
+    detail: layout.pendingDetail,
+  };
   return renderBody({
     root: EXAMPLE.root,
     rows: EXAMPLE.rows.map((row) => rowBlock(row, rowOptions)),
@@ -444,6 +454,7 @@ export function exampleBody(
       on: !readOnly,
       live: parseDashboard(renderBulkLine({ ...EXAMPLE.confirm, ticked: false })).bulk,
     },
+    layout,
   });
 }
 
