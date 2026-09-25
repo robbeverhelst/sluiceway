@@ -1,5 +1,7 @@
 # Deletes and replaces sit open under the row, everything else is folded
 
+> Amended by 0113: one more row form, the row `settle` writes for a deploy it ended: `**id** · no preview since its deploy ended, the next scan previews it` with the state `preview-failed` and `failed="true"`, the failure line right under the first line and the lines of the deploying row carried under it.
+>
 > Amended by 0112: "HTML escaped" also writes `#` and `@` inside a span, the `-` of `GH-` before a digit inside a span, and a character reference for the dot of `www.` and the colon of `://`, because GitHub links an issue reference, a mention and a web address in a name otherwise.
 >
 > Amended by 0089: the failure line's time is in the repo's zone, `dashboard.timeZone`, and ends in its offset from UTC at that moment, such as `2026-07-21 12:02 UTC+2`. Without the key it is `UTC` as written here.

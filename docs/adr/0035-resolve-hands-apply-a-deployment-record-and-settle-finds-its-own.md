@@ -1,5 +1,7 @@
 # `resolve` hands `apply` a deployment record, and `settle` finds its own
 
+> Amended by 0113: `settle` writes the row of each deploy it ended, the live deploying block with its first line written again and the failure line under it, before it starts the full scan.
+>
 > Amended by 0056: `resolve` also runs on a dispatch of the workflow, where it starts the queued stacks that are ready, and `settle` starts the workflow again when one is. `apply` never deploys a queued record.
 >
 > Amended by 0054: `scan` sets `matrix` too, for the record it opens after a merge from the dashboard. It is `[]` on every other scan.
