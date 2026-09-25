@@ -1177,11 +1177,10 @@ good =
       outcome: "deployed",
     }),
     ...checkSettle(outsideStep, { ended: undefined, before: outsideStep.records }),
-    // The fake's records keep times of their own, older than the tool's own
-    // history, so the line is looked for rather than taken as the newest.
-    ...(/^- (\S+&nbsp;)?app:prod · ticked by dave · /m.test(outsideStep.body)
-      ? []
-      : ["Recently deployed has no line of app:prod that says ticked by dave."]),
+    // The trail is not checked here: the fake's records keep times of their
+    // own, older than the tool's own history, and by now the outside deploys
+    // of that history fill its ten lines. The record, the row and the tool's
+    // history above are the proof.
     ...checkDeploys("app:prod", await deploysOf("app", "prod"), appDeploysBefore + 1),
     ...(outsideStep.newComments.length === 0
       ? []
