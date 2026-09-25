@@ -47,7 +47,7 @@ For a stack set to on-merge, the merge is the ask:
 
 Every deploy on merge is traceable like a tick: its deployment record names the commit and the person, the row says `merged by`, and so does Recently deployed.
 
-A [deploy window](configuration.md#deploywindowsdays) changes when, never whether. A tick or a merge outside the window opens the record now, with what was approved, and the run inside the window deploys exactly that through the fresh preview and the hash check, or nothing. The window is read from `sluiceway.yaml` on the default branch, so widening it is a reviewed change, and a destroy on a stack set to on-merge waits for a tick whatever the window says ([record 0104](adr/0104-a-tick-outside-the-deploy-window-waits-for-it-instead-of-going-out.md)).
+A [deploy window](configuration.md#deploywindowsdays) changes when, never whether. A tick or a merge outside the window opens the record now, with what was approved, and the run inside the window deploys exactly that through the fresh preview and the hash check, or nothing. The window is read from `sluiceway.yaml` on the default branch, so widening it is a reviewed change, and a destroy on a stack set to on-merge waits for a tick whatever the window says ([record 0104](adr/0104-a-tick-outside-the-deploy-window-waits-for-it-instead-of-going-out.md)). A [deploy freeze](configuration.md#freezesfrom) is the same with dates, and nothing passes it: a ticked destroy, a deploy on merge and a record a record writer opened all wait for its end or are left alone ([record 0115](adr/0115-a-deploy-freeze-holds-every-deploy-until-it-ends-and-nothing-passes-it.md)).
 
 ## Who can tick
 

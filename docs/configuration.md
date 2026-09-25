@@ -467,6 +467,68 @@ sluiceway.yaml is not valid:
 - deployWindows[0]: the window ends at "06:00", which is not after it starts at "22:00". A window over midnight is two windows: one to "24:00" and one from "00:00" on the next day.
 ```
 
+### `freezes[].from`
+
+Default: none, which freezes nothing.
+
+A period when nothing goes out at all, for a sale, a release or the end of the year: a start, an end and why, in the [dashboard zone](#dashboardtimezone). While a freeze holds, every deploy from the dashboard waits for it to end, and the run after the end deploys it through the same fresh preview and hash check as any tick ([record 0115](adr/0115-a-deploy-freeze-holds-every-deploy-until-it-ends-and-nothing-passes-it.md)).
+
+```yaml
+dashboard:
+  timeZone: Europe/Brussels
+freezes:
+  - from: 2026-12-20T00:00
+    to: 2027-01-05T00:00
+    reason: Year-end freeze
+```
+
+- **A tick during a freeze waits.** The tick is judged now, by the tick rule and the dependencies as always, and the record is opened now with what the tick approved. The row says `queued for the end of the deploy freeze (Year-end freeze) at 2027-01-05 00:00 UTC+1 · ticked by alice`, with no box, and the stack counts as deploying. The first run of `resolve` after the end starts it: in the [one-step workflow](workflow.md) that is the scheduled run.
+- **Nothing passes a freeze.** A ticked destroy waits like any tick, and so does a drift repair, a [deploy on merge](#stacksdeploy), the deploy after a merge from the dashboard, and each stack a confirm box names. No `stacks` entry lifts a freeze: `stacks[].deployWindows: []` lifts the windows of its stacks and not a freeze. A deployment record that a [record writer](#recordwriters) opens during a freeze is left alone.
+- **A freeze and a [deploy window](#deploywindowsdays) together** let a stack go at the first moment both allow. A freeze that ends at midnight before a Tuesday, on a stack whose window opens at 09:00, goes out at 09:00, and the row says both.
+- **The dashboard names the freeze once**, on a line under the scan line with its end and its reason, while it holds and for the week before it starts: `Deploy freeze until 2027-01-05 00:00 UTC+1 (Year-end freeze): every deploy waits for it to end.`
+- **The freeze is read from the file on the default branch at that moment**, as `tickers` is. Ending a freeze early is a reviewed change that takes it out or moves its end, and what waited goes out with the next run.
+- **The [check](workflow.md#check-your-setup) warns about a freeze that already ended**, which holds nothing and can go.
+
+What it is not: a stop for deploys made outside the dashboard. An outside deploy is as allowed as ever. To stop every deploy until further notice, with no end date, use [`deploys: false`](#deploys).
+
+`from` is when the freeze starts, as `YYYY-MM-DDTHH:MM` on the wall of the dashboard zone, with no zone and no seconds: the zone is the dashboard's, and daylight saving is the zone's. The start is inside the freeze. Quotes are allowed and not needed.
+
+```yaml
+# Not valid: a date without a time
+freezes:
+  - from: 2026-12-20
+    to: 2027-01-05T00:00
+```
+
+```text
+sluiceway.yaml is not valid:
+- freezes[0].from: "2026-12-20" is not a date and a time. Write YYYY-MM-DDTHH:MM in the dashboard zone, such as "2026-12-20T00:00", with no zone and no seconds, on a day the calendar has.
+```
+
+### `freezes[].to`
+
+Default: none
+
+When the freeze ends, as `YYYY-MM-DDTHH:MM`, after `from`. The end is outside the freeze: a freeze to `2027-01-05T00:00` lets deploys go as the clock turns midnight.
+
+```yaml
+# Not valid: the end comes first
+freezes:
+  - from: 2027-01-05T00:00
+    to: 2026-12-20T00:00
+```
+
+```text
+sluiceway.yaml is not valid:
+- freezes[0]: the freeze ends at "2026-12-20T00:00", which is not after it starts at "2027-01-05T00:00".
+```
+
+### `freezes[].reason`
+
+Default: none
+
+Why nothing goes out, in a few words. The line under the scan line and every row that waits for the freeze show it, as plain text: an `@` or a `#` in it mentions and links nothing.
+
 ### `ignore`
 
 Default: `[]`
@@ -1411,5 +1473,5 @@ ticker: admin
 
 ```text
 sluiceway.yaml is not valid:
-- unknown key "ticker". Known keys here: dashboard, tickers, deploys, recordWriters, deployWindows, ignore, scan, drift, valueFingerprint, policies, cost, attribution, phases, stacks, discovery, mergeAndDeploy, notify.
+- unknown key "ticker". Known keys here: dashboard, tickers, deploys, recordWriters, deployWindows, freezes, ignore, scan, drift, valueFingerprint, policies, cost, attribution, phases, stacks, discovery, mergeAndDeploy, notify.
 ```

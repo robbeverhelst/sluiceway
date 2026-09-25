@@ -291,12 +291,16 @@ Pulumi's way for a program to read the outputs of another stack, by a name such 
 _Avoid_: Remote state (OpenTofu's word for something else), cross-stack link
 
 **Queued stack**:
-A ticked stack, or one that deploys on merge, whose deployment record waits behind its dependencies, because they were ticked in the same run or are deploying, or waits for its deploy window. Its row says "queued behind" them, or "queued for the deploy window" and when it opens, has no box and counts as deploying. It deploys in a later run once they went out and the window is open, under a record that carries what the tick approved, drift included, and never deploys when one of them did not.
+A ticked stack, or one that deploys on merge, whose deployment record waits behind its dependencies, because they were ticked in the same run or are deploying, or waits for its deploy window or the end of a deploy freeze. Its row says "queued behind" them, or "queued for the deploy window" and when it opens, or "queued for the end of the deploy freeze" and when it ends, has no box and counts as deploying. It deploys in a later run once they went out and the window is open, under a record that carries what the tick approved, drift included, and never deploys when one of them did not.
 _Avoid_: Blocked stack, waiting stack, pending stack (pending is a row state)
 
 **Deploy window**:
 When a stack may go out, as `deployWindows` in `sluiceway.yaml` writes it for the repo or for a stack: days of the week with a start and an end, in the dashboard zone. A tick outside every window is not refused: its record is opened now with what the tick approved and waits as a queued stack does, and the run that falls inside the window, the scheduled one, deploys it through the fresh preview and the hash check. A deploy on merge waits for it too. It is what this repo's file says, not a change freeze for a company.
-_Avoid_: Maintenance window, freeze, blackout, schedule (that is the workflow's trigger)
+_Avoid_: Maintenance window, freeze (that is a deploy freeze), blackout, schedule (that is the workflow's trigger)
+
+**Deploy freeze**:
+A period of the repo, as `freezes` in `sluiceway.yaml` writes it, from one date and clock time to another in the dashboard zone, when nothing goes out at all: a tick, a destroy, a drift repair, a deploy on merge and the deploy after a merge wait for its end as they wait for a deploy window, and no stack entry lifts it. A stack that also has windows goes at the first moment both allow. The dashboard names it once, under the scan line, while it holds and for the week before it starts, and every row that waits for it names it and its end.
+_Avoid_: Blackout, code freeze, change freeze, lock, pause
 
 **Layer**:
 The stacks of a dependency chain that deploy in one workflow run, because nothing they wait behind is still to go out. `settle` starts the workflow again after a layer, and that run's `resolve` starts the next one.
@@ -367,7 +371,7 @@ The line right under the scan line that says a scan is running, since when, and 
 _Avoid_: Progress line, in-progress banner, scan status, spinner (that is the crate on a deploying row)
 
 **Dashboard zone**:
-The time zone every time on the dashboard is shown in: UTC, or the IANA zone `dashboard.timeZone` names. It belongs to the repo, not the reader. The line under the trail names it, and a time that stands alone, on the scan line, the scan-running line, the waiting-run line or a failure line, says its offset from UTC at that moment. The markers keep UTC.
+The time zone every time on the dashboard is shown in: UTC, or the IANA zone `dashboard.timeZone` names. It belongs to the repo, not the reader. The line under the trail names it, and a time that stands alone, on the scan line, the scan-running line, the waiting-run line, the line of a deploy freeze or a failure line, says its offset from UTC at that moment. The markers keep UTC.
 _Avoid_: Local time, user time zone, timezone setting
 
 **Row state**:

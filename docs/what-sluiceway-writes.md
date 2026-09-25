@@ -76,7 +76,7 @@ One row per stack. Its state says where the row sits and is counted, and nothing
 | `updates` | How many updates |
 | `replaces` | How many replaces. The same number as `destroys` less `deletes` |
 | `tracking` | How many changes only touch the tool's record of a resource: an import, a forget or a move, with no op |
-| `behind` | On a queued row, the stack ids it waits behind, as its deployment record's `behind` names them (record 0110). Absent on a row that waits for its deploy window alone, and on a row written before the key came |
+| `behind` | On a queued row, the stack ids it waits behind, as its deployment record's `behind` names them (record 0110). Absent on a row that waits for its deploy window or a deploy freeze alone, and on a row written before the key came |
 
 A pending row from the run, the whole block:
 
@@ -271,7 +271,7 @@ Its schema is [`schema/deployment-payload.schema.json`](../schema/deployment-pay
 | `drift` | `true` when the hash covers drift, and the deploy puts the drift back |
 | `onMerge` | `true` on a record that the scan of a merge opened for a stack set to deploy on merge |
 | `fingerprint` | The value fingerprint the tick approved. The deploy goes out only when a fresh preview gives the same one, or none. Absent on a record written before the key came, or with `valueFingerprint` off for the stack |
-| `window` | `true` on a queued record that waits for the stack's [deploy window](configuration.md#deploywindowsdays) and for no stack. A run inside the window starts it under a record of its own, and this one ends as `inactive` |
+| `window` | `true` on a queued record that waits for a time and for no stack: the stack's [deploy window](configuration.md#deploywindowsdays), or the end of a [deploy freeze](configuration.md#freezesfrom) (record 0115). The record does not say which: the row and the run read the config of the moment. The first run when both allow starts it under a record of its own, and this one ends as `inactive` |
 | `merge` | The pull request a tick merged. Such a record has no hash and never deploys itself: the scan after the merge opens the record that does |
 
 A tick from the run, then records of a queued stack, a drift repair, a deploy on merge, a deploy that waits for its window and a merge, one per line:

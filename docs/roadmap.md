@@ -34,7 +34,6 @@ Every item, as `docs/later.md` lists it:
 No date and no order. Each waits for a user who asks, and none of them needs a breaking change. [docs/later.md](later.md#deferred-door-left-open) says why each one waited and where that was decided.
 
 - A break-glass tick that deploys outside the deploy window, visible on the trail and with a permission of its own
-- A freeze with an end date, for a sale or a release, next to the weekly deploy windows
 - The check warning about a split workflow whose `resolve` job does not run on the schedule while a stack has a deploy window
 - The soft policy failure: a `deny` a repo marks soft keeps the box and asks for a second person to tick
 - The check listing the policy paths of each stack, saying when one is not in the repo, and warning about a workflow with `policies` and no step that installs conftest
