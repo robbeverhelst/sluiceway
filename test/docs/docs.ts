@@ -24,6 +24,7 @@ export const USER_DOCS = [
   "docs/security.md",
   "docs/example-workflows.md",
   "docs/init.md",
+  "docs/command-line.md",
   "docs/what-sluiceway-writes.md",
 ];
 

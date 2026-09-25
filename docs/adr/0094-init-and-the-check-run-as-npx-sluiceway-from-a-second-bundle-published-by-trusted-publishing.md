@@ -2,6 +2,8 @@
 
 > Amends 0065 (a person runs init from the action's bundle, with `INPUT_MODE=init`). Built as slice 5.30, for issue 218.
 >
+> Amended by 0116 (slice 5.53): the command line also has commands that talk to the hosted app with a personal token, over HTTPS to the app alone and never to GitHub, and is released as standalone binaries too. init and the check still make no network call, and the arguments are still the only way in.
+>
 > Amended by slice 5.32: the probe of npm's exchange endpoint said yes on the first release, 0.28.0 (run 35884043091), and npm still refused the publish with `403 Forbidden - OIDC permission denied for this action`, which failed the release run. The exchange proves only that some trusted publisher matches the workflow, not that it may run `npm publish`. The probe is gone: the publish itself is the question, and a refusal that means npm does not trust the workflow yet is a warning.
 
 Record 0065 had a person start init with one command line: clone the release tag into a temporary directory and run `dist/index.js` with `INPUT_MODE=init`. It kept one thing to release. The owner read that line on 2026-09-23 and asked why it is not simply npx. Nobody pastes that line with a straight face: it clones a repo and sets a variable that exists for the Actions runner. The npm names `sluiceway` and `@sluiceway/sluiceway` were already reserved as 0.0.1 placeholders, and `docs/later.md` listed "`init` as an npm package or a command of its own". Issue 218 asked for it.

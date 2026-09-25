@@ -18,7 +18,7 @@ Like the [check](workflow.md#check-your-setup), `init` reads the files of your c
 
 When the files are written, `npx sluiceway check` says the same thing the check says in a pull request: which stacks it found, and whether `sluiceway.yaml` and the workflow are right. It needs no credentials either.
 
-The package runs `init` and the check and nothing else. `npx sluiceway scan`, `resolve`, `apply` and `settle` stop with a sentence: they need the run's identity and the workflow token, so they run only in the workflow. `npx sluiceway --help` lists the commands.
+Apart from `init` and the check, the package has commands that talk to the Sluiceway app with a token you make there, and never to GitHub: [the command line](command-line.md) explains them, `npm i -g sluiceway` and the binaries each release carries for a machine with no Node. `npx sluiceway scan`, `resolve`, `apply` and `settle` stop with a sentence: they need the run's identity and the workflow token, so they run only in the workflow. `npx sluiceway --help` lists the commands.
 
 ## What it looks at
 

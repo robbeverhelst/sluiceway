@@ -18,6 +18,7 @@ The manual for Sluiceway. The [README](../README.md) is the short version.
 - [Using the dashboard](using-the-dashboard.md): rows and ticks, reading the job log, and the limits.
 - [Security](security.md): what a tick promises, and the three setups.
 - [Notifications](notifications.md): the outputs and the result file, and recipes that tell people when something is pending or failed.
+- [The command line](command-line.md): `npx sluiceway`, `npm i -g sluiceway` and the binaries, and the commands that talk to the app: status, a stack's row, a tick, a rescan and settings, for you and your coding agent.
 - [Reference](reference.md): the modes, the inputs, the outputs and the requirements.
 - [What Sluiceway writes](what-sluiceway-writes.md): the markers in the dashboard, the deployment records and the result file, for scripts and agents that read them, and the rule for what may change.
 

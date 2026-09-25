@@ -93,8 +93,16 @@ A pass over the repo's files that writes a first workflow and, when there is non
 _Avoid_: Scaffold, generator, bootstrap, wizard, setup
 
 **Command line**:
-The `sluiceway` command a person runs on their own machine, from the npm package of the same name: `npx sluiceway init` and `npx sluiceway check`, and nothing else. It reads its arguments, never the environment, holds no token and reaches no GitHub API. Every other mode needs the run's identity and the workflow token, so the command line refuses it and points at the workflow. The package is released with the action, from the same tag and with the same version.
+The `sluiceway` command a person runs on their own machine, from the npm package of the same name or a standalone binary of a release: `init` and `check`, which read files and make no network call, and the commands that talk to the app with the person's personal token (`login`, `logout`, `status`, `stack`, `tick`, `rescan`, `settings`), which call the app alone and never a GitHub API. It reads its arguments, never the environment. Every mode of the action needs the run's identity and the workflow token, so the command line refuses it and points at the workflow. The package is released with the action, from the same tag and with the same version.
 _Avoid_: CLI tool, npx mode, local mode, runner (that is the machine a workflow runs on)
+
+**App**:
+The hosted Sluiceway app at `app.sluiceway.dev`, a GitHub App with an org-wide view, from a private repository. A control plane only: previews and deploys always run in the user's own runners. The command line talks to its API, `/api/v1`.
+_Avoid_: Server, backend (that is the tool's state), dashboard (that is the issue)
+
+**Personal token**:
+The token a person makes on their own page in the app, for one org and a set number of days, and gives to `sluiceway login`. It opens the app's API as that person and nothing on GitHub. The command line keeps it in the operating system's keychain, or in a file only the person can read.
+_Avoid_: API key, GitHub token, PAT, workflow token
 
 ### Diffs
 
@@ -336,7 +344,7 @@ _Avoid_: Dotenv, secrets file, `.env` (that is a name such a file may have), env
 
 **Bot**:
 The one GitHub identity Sluiceway acts as. It creates and edits the dashboard, writes comments and records deploys. It is never a ticker.
-_Avoid_: App, service account, Sluiceway user
+_Avoid_: App (that is the hosted app), service account, Sluiceway user
 
 **Write loop**:
 The one way any mode writes the dashboard body: read the live body, build the new one, skip the write when nothing would change, write, and read back to check. A write that did not stick is tried again from the read, at most three times.
