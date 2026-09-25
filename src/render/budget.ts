@@ -93,7 +93,14 @@ export function fitBody(input: BudgetInput, options: BudgetOptions = {}): Fitted
     // A drifted row shortens too (record 0055). Its levels 1 and 3 look like
     // 0 and 2, and the budget never picks a level that saves nothing.
     const levels = row.state === "pending" || row.state === "drift" ? LEVELS : LEVELS.slice(0, 1);
-    const plain = { redact: input.redact, readOnly: input.readOnly, timeZone: input.timeZone };
+    const plain = {
+      redact: input.redact,
+      readOnly: input.readOnly,
+      timeZone: input.timeZone,
+      // `dashboard.pendingDetail` (record 0114). At a shorter detail levels 1
+      // and 2 save nothing, and the budget never picks a level that does not.
+      detail: input.layout?.pendingDetail,
+    };
     const blocks = levels.map((level) =>
       rowBlock(row, { ...plain, level, actionRef: spinning ? input.actionRef : undefined }),
     );

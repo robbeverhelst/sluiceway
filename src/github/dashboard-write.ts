@@ -296,6 +296,21 @@ function fit(writer: DashboardWriter, body: Body, aimAtTarget: boolean): FittedB
       waiting: body.waiting,
       outsideDeploys: body.outside,
       bulk: { ...body.bulk, on: writer.deploys && !dashboard.readOnly },
+      // The layout keys (record 0114). Every writer draws the same layout, so
+      // a swap by `resolve`, `apply` or `settle` never moves a section.
+      layout: {
+        sections: dashboard.sections,
+        deployingSection: dashboard.deployingSection,
+        driftedSection: dashboard.driftedSection,
+        inSyncSection: dashboard.inSyncSection,
+        zeroCounts: dashboard.zeroCounts,
+        destroyAlert: dashboard.destroyAlert,
+        pendingDetail: dashboard.pendingDetail,
+        deployAll: dashboard.deployAll,
+        repairAll: dashboard.repairAll,
+        rescanBox: dashboard.rescanBox,
+        footer: dashboard.footer,
+      },
     },
     // The room between the target and the limit exists for a writer that
     // carries rows (record 0028).

@@ -98,3 +98,8 @@ export function shortenedNote(sections: readonly ShortenedSection[]): string {
     one ? "is" : "are"
   } shortened. The summary that a shortened row links to shows every change. Deletes and replaces are the last thing to be cut.`;
 }
+
+// The destroy alert of `dashboard.destroyAlert: always` on a body with nothing
+// to warn about (record 0114). A note and not a caution: a red block that
+// warns of nothing every day teaches people to read past it.
+export const NO_DESTROY_NOTE = "> [!NOTE]\n> No pending stack deletes or replaces resources.";
