@@ -939,6 +939,57 @@ describe("a tick outside the deploy window", () => {
   });
 });
 
+// Deploy freezes (record 0115): nothing passes one. A tick during a freeze
+// is judged as always and its record waits for the end, as a tick outside
+// a window waits for the window, whatever the stack's own windows say.
+describe("a tick during a deploy freeze", () => {
+  const FREEZE = { from: "2026-12-20T00:00", to: "2027-01-05T00:00", reason: "Year end" };
+  const frozen = stacksOf(
+    stack("a:prod", { freezes: [FREEZE] }),
+    stack("b:prod", { freezes: [FREEZE], dependsOn: ["a:prod"] }),
+  );
+  const CHRISTMAS = { now: new Date("2026-12-24T12:00:00Z"), timeZone: "Europe/Brussels" };
+  const ENDS = new Date("2027-01-04T23:00:00Z");
+
+  test("gets a record that waits, and the finding names the freeze and its end", () => {
+    const judgement = judged(read([by(row("a:prod", "ha"))], { stacks: frozen, clock: CHRISTMAS }));
+    expect(judgement.deploys).toEqual([
+      expect.objectContaining({ stackId: "a:prod", window: true }),
+    ]);
+    expect(judgement.findings).toContainEqual({
+      kind: "window-closed",
+      stackId: "a:prod",
+      opens: ENDS,
+      freeze: { reason: "Year end", ends: ENDS },
+    });
+    expect(judgement.clear).toEqual([]);
+  });
+
+  test("a chain's first layer waits for the end, and the next behind it as always", () => {
+    const judgement = judged(
+      read([by(row("b:prod", "hb")), by(row("a:prod", "ha"))], {
+        stacks: frozen,
+        rows: rowsIn("pending", "a:prod", "b:prod"),
+        clock: CHRISTMAS,
+      }),
+    );
+    expect(judgement.deploys).toEqual([
+      expect.objectContaining({ stackId: "a:prod", behind: undefined, window: true }),
+      expect.objectContaining({ stackId: "b:prod", behind: ["a:prod"] }),
+    ]);
+  });
+
+  test("after the freeze the record is what it always was", () => {
+    const judgement = judged(
+      read([by(row("a:prod", "ha"))], {
+        stacks: frozen,
+        clock: { now: new Date("2027-01-12T09:00:00Z"), timeZone: "Europe/Brussels" },
+      }),
+    );
+    expect("window" in (judgement.deploys[0] ?? {})).toBe(false);
+  });
+});
+
 // Record 0106: a row whose change fails a policy has no box. A tick on it can
 // only come from a hand-edited body, and deploys nothing: the box is cleared
 // with a note, nobody is looked up, and the job log says why.

@@ -35,6 +35,7 @@ import type {
 import { escapeText } from "./escape.ts";
 import { logGroupTitle } from "./log-text.ts";
 import { plural } from "./row.ts";
+import { minuteAt } from "./time.ts";
 
 const VALID = "The setup is valid.";
 const NO_CONFIG_FILE = "No sluiceway.yaml, so every setting is its default.";
@@ -477,6 +478,16 @@ export interface CheckFacts {
   hasConfigFile: boolean;
   // The recordWriters the config names (record 0109).
   recordWriters?: readonly string[] | undefined;
+  // The deploy freezes that already ended when the check ran (record 0115),
+  // by their place in the list, and the dashboard zone to say the end in.
+  endedFreezes?: readonly EndedFreeze[] | undefined;
+  timeZone?: string | undefined;
+}
+
+export interface EndedFreeze {
+  index: number;
+  reason?: string | undefined;
+  ended: Date;
 }
 
 // The parts of a valid setup that come from the files, in the order the job
@@ -485,6 +496,7 @@ export function checkParts(facts: CheckFacts): CheckPart[] {
   const { report } = facts;
   return [
     headerPart(facts.hasConfigFile, facts.recordWriters ?? []),
+    freezesPart(facts.endedFreezes ?? [], facts.timeZone),
     stacksPart(report),
     discoveryPart(facts.discovery ?? []),
     phasesPart(report.phases),
@@ -511,6 +523,24 @@ function headerPart(hasConfigFile: boolean, recordWriters: readonly string[]): C
 // the default and hands none on.
 function recordWritersText(recordWriters: readonly string[]): string {
   return `Record writers: ${recordWriters.join(", ")}. A deployment record one of them opens that names a dispatched or scheduled run is deployed by that run, through the fresh preview and the hash check (recordWriters).`;
+}
+
+// A freeze that already ended holds nothing (record 0115). It is a warning
+// and no error: the file stays valid, and the freeze can go.
+function freezesPart(ended: readonly EndedFreeze[], timeZone: string | undefined): CheckPart {
+  const text = ({ index, reason, ended: at }: EndedFreeze, markdown: boolean) => {
+    const key = markdown ? `\`freezes[${index}]\`` : `freezes[${index}]`;
+    const why = reason === undefined ? "" : ` (${markdown ? escapeText(reason) : reason})`;
+    return `${key}${why} ended ${minuteAt(at, timeZone)} and holds nothing any more. Take it out of sluiceway.yaml.`;
+  };
+  return {
+    log: ended.map((one) => ({
+      warning: text(one, false),
+      title: "A deploy freeze already ended",
+    })),
+    summary:
+      ended.length === 0 ? [] : ["### Deploy freezes", ...ended.map((one) => text(one, true))],
+  };
 }
 
 function stacksPart({ stacks, phases }: CheckReport): CheckPart {

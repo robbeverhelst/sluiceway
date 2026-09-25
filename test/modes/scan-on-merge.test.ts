@@ -222,4 +222,35 @@ stacks:
       `app:prod deploys on merge: deployment record 1 with diff hash ${diffHash({ stackId: "app:prod", changes: [change("motd")] })}, merged by alice, waits for the deploy window, and a run inside the window starts it.`,
     );
   });
+
+  // Deploy freezes (record 0115): the scan's clock, Monday 06:00 UTC, falls
+  // in a freeze, so the deploy on merge waits for its end, and the body
+  // names the freeze under the scan line.
+  test("during a deploy freeze the record waits for its end, and the row and the body name it", async () => {
+    const { github, matrix, body, log } = await scanned(
+      { "app:prod": pending("app:prod", change("motd")) },
+      {
+        config: `freezes:
+  - from: 2026-09-20T00:00
+    to: 2026-09-23T00:00
+    reason: Launch week
+stacks:
+  - path: app
+    deploy: on-merge
+`,
+      },
+    );
+
+    expect(matrix).toEqual([]);
+    expect(github.deployment(1).payload).toMatchObject({ onMerge: true, window: true });
+    expect(rows(body)["app:prod"]?.text.split("\n")[0]).toContain(
+      "· queued for the end of the deploy freeze (Launch week) at 2026-09-23 00:00 UTC · merged by alice ·",
+    );
+    expect(body).toContain(
+      "Deploy freeze until 2026-09-23 00:00 UTC (Launch week): every deploy waits for it to end.",
+    );
+    expect(log.lines).toContain(
+      `app:prod deploys on merge: deployment record 1 with diff hash ${diffHash({ stackId: "app:prod", changes: [change("motd")] })}, merged by alice, waits for the deploy window or the end of a deploy freeze, and the first run when both allow starts it.`,
+    );
+  });
 });

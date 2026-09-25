@@ -133,7 +133,7 @@ describe("a record that is not for this job", () => {
       status: { state: "queued" },
     });
     await expect(runApply(h)).rejects.toThrow(
-      "waits for the deploy window of a:prod. `apply` never deploys a queued record: a run inside the window starts it. Nothing was deployed and the record was left alone.",
+      "waits for the deploy window of a:prod or the end of a deploy freeze (records 0104 and 0115). `apply` never deploys a queued record: the first run when both allow starts it. Nothing was deployed and the record was left alone.",
     );
     expect(h.github.deploymentStatuses(id)).toHaveLength(1);
     expect(h.adapter.previewed).toEqual([]);

@@ -129,3 +129,22 @@ describe("settle after a layer", () => {
     expect(RESOLVE_RUN).toBe(h.context.runId);
   });
 });
+
+// Deploy freezes (record 0115): a run started during a freeze could not start
+// the next layer, so settle starts none.
+describe("settle after a layer, during a deploy freeze", () => {
+  test("starts no run, and leaves the queued records open", async () => {
+    const h = await scanned(TABLE, {
+      config: `${CHAIN}freezes:\n  - from: 2030-01-01T00:00\n    to: 2030-02-01T00:00\n`,
+    });
+    h.context.now = () => new Date("2029-12-30T10:00:00Z");
+    tick(h, ALICE, ["site:prod", "app:prod", "network:prod"]);
+    await wake(h);
+    h.github.addDeploymentStatus(first(h), { state: "success", autoInactive: false });
+
+    await settle({ ...settleContext(h), now: () => new Date("2030-01-10T10:00:00Z") });
+
+    expect(h.github.dispatches).toEqual([]);
+    expect(recordOf(h, "app:prod").status?.state).toBe("queued");
+  });
+});

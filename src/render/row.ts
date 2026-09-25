@@ -129,9 +129,10 @@ export interface DeployingRow {
   // The record was opened on merge, and `ticker` is whoever merged (record
   // 0095). The row says so, so it never reads as a tick.
   onMerge?: boolean | undefined;
-  // The record waits for the stack's deploy window (record 0104), or waits
-  // behind a stack while the window is closed. The row says when the window
-  // opens, in the dashboard zone, and its marker state is `queued`.
+  // The record waits for the stack's deploy window (record 0104) or the end
+  // of a deploy freeze (record 0115), or waits behind a stack while either
+  // holds it. The row says when it goes, in the dashboard zone, and its
+  // marker state is `queued`.
   window?: QueuedWindow | undefined;
 }
 
@@ -702,11 +703,25 @@ function spinner(actionRef: string, queued: boolean): string {
 
 // What a row says of the deploy window it waits for (record 0104): when it
 // opens, in the dashboard zone with its offset as every time that stands
-// alone (record 0089), or that it is open and the next run starts it.
-function windowWords(window: QueuedWindow, timeZone: string | undefined): string {
-  return window.opens === undefined
-    ? "the deploy window, which is open: the next scheduled run starts it"
-    : `the deploy window, which opens ${minuteAt(window.opens, timeZone)}`;
+// alone (record 0089), or that it is open and the next run starts it. A
+// deploy freeze that holds it (record 0115) comes first, with its reason as
+// plain text and its end, and the window after it only when the stack goes
+// later than the freeze ends.
+export function windowWords(window: QueuedWindow, timeZone: string | undefined): string {
+  const { freeze } = window;
+  if (freeze !== undefined) {
+    const reason = freeze.reason === undefined ? "" : ` (${escapeText(freeze.reason)})`;
+    const ends = `the end of the deploy freeze${reason} at ${minuteAt(freeze.ends, timeZone)}`;
+    return window.opens === undefined || window.opens.getTime() === freeze.ends.getTime()
+      ? ends
+      : `${ends}, and then for the deploy window, which opens ${minuteAt(window.opens, timeZone)}`;
+  }
+  if (window.opens === undefined) {
+    return window.anyTime
+      ? "the next scheduled run, which starts it: nothing holds it now"
+      : "the deploy window, which is open: the next scheduled run starts it";
+  }
+  return `the deploy window, which opens ${minuteAt(window.opens, timeZone)}`;
 }
 
 function deployingRow(row: DeployingRow, options: RowOptions): string[] {

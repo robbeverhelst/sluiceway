@@ -16,6 +16,7 @@ import { ToolVersionError } from "../adapters/adapter.ts";
 import type { ProcessRunner } from "../adapters/process.ts";
 import type { Config, ConfiguredStack, IgnoredStack } from "../core/config.ts";
 import { applyOutcome, deployEnd, deployGate, unplannedEnd } from "../core/deploy-gate.ts";
+import { shownFreezes } from "../core/deploy-window.ts";
 import {
   type DeployFacts,
   type DeploymentPayload,
@@ -285,7 +286,7 @@ async function applying(context: ApplyContext, repo: Repo, report: ApplyReport):
     throw new ApplyFailedError(
       behind
         ? `Deployment record ${id} of ${name} is queued behind ${behind.map(logGroupTitle).join(" and ")}. \`apply\` never deploys a queued record: a later \`resolve\` starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out. Nothing was deployed and the record was left alone.`
-        : `Deployment record ${id} of ${name} waits for the deploy window of ${name}. \`apply\` never deploys a queued record: a run inside the window starts it. Nothing was deployed and the record was left alone.`,
+        : `Deployment record ${id} of ${name} waits for the deploy window of ${name} or the end of a deploy freeze (records 0104 and 0115). \`apply\` never deploys a queued record: the first run when both allow starts it. Nothing was deployed and the record was left alone.`,
     );
   }
 
@@ -1026,6 +1027,13 @@ async function swapRow(
       dashboard: setup.config.dashboard,
       deploys: setup.config.deploys,
       ignored: setup.ignored,
+      // The deploy freezes (record 0115), by this job's clock.
+      // The clock is asked only when there is one, so the timings of a job
+      // without freezes are what they were.
+      freezes:
+        setup.config.freezes.length === 0
+          ? []
+          : shownFreezes(setup.config.freezes, context.now(), setup.config.dashboard.timeZone),
       budget: context.limits?.body,
     },
     dashboard.number,

@@ -37,6 +37,7 @@ function writerFor(github: FakeGitHub, lines: string[] = [], runId = "43"): Dash
     dashboard: parseConfig(undefined).dashboard,
     deploys: true,
     ignored: [],
+    freezes: [],
   };
 }
 

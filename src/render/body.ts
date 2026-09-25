@@ -9,6 +9,7 @@ import {
   type DashboardSection,
   type IgnoredStack,
 } from "../core/config.ts";
+import type { ShownFreeze } from "../core/deploy-window.ts";
 import type { OutsideDeploy } from "../core/outside-deploy.ts";
 import { renderBulkLine } from "./bulk-box.ts";
 import {
@@ -23,6 +24,7 @@ import {
 import { DOCS } from "./docs-site.ts";
 import { COUNT_DOT, DOT_AT_ZERO, RESULT_DOT } from "./dots.ts";
 import { escapeText } from "./escape.ts";
+import { freezeLine } from "./freeze-line.ts";
 import { mascotUrl, urlPart } from "./images.ts";
 import {
   outsideMarker,
@@ -128,6 +130,10 @@ export interface BodyInput {
   // absent, is the body as it was before them. They change what is drawn and
   // where, never a row block: every block handed in is in the body.
   layout?: BodyLayout | undefined;
+  // The deploy freezes that hold or start within a week (record 0115), as
+  // the writer's clock found them in the config. Each gets a line under the
+  // scan line. Absent or empty draws none.
+  freezes?: readonly ShownFreeze[] | undefined;
 }
 
 export type BodyLayout = Partial<
@@ -624,7 +630,10 @@ export function renderBody(input: BodyInput): string {
   // waits for a runner under that (records 0108 and 0086).
   const running = scanRunningLine(input.root, input.repoUrl, input.timeZone);
   const runWaits = waitingRunLine(input.root, input.repoUrl, input.timeZone);
-  const scanLines = [scan, running, runWaits].filter((line) => line !== undefined);
+  // A deploy freeze under them (record 0115): it lasts, where they come and
+  // go, so the lines that come and go stay right under the scan line.
+  const freezes = (input.freezes ?? []).map((freeze) => freezeLine(freeze, input.timeZone));
+  const scanLines = [scan, running, runWaits, ...freezes].filter((line) => line !== undefined);
   if (input.personality)
     out.push(
       picture(facts.headerState, facts.crates, facts.signs, input.actionRef).join("\n"),

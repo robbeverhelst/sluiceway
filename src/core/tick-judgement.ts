@@ -23,7 +23,7 @@ import type { MergeNote } from "../render/merge-row.ts";
 import { type BulkAct, bulkRows, sectionChanges } from "./bulk.ts";
 import type { ConfiguredStack } from "./config.ts";
 import { planDeploys } from "./dependencies.ts";
-import { windowState } from "./deploy-window.ts";
+import { deployState, type HeldFreeze } from "./deploy-window.ts";
 import type { DeployFact } from "./deployment.ts";
 import type { Tick as BodyTick, NobodyReason, Ticker } from "./edit-history.ts";
 import {
@@ -167,7 +167,14 @@ export type Finding =
     }
   // The stack's deploy window is closed (record 0104). The record waits for
   // it, and opens at `opens`, or at no known time when no window ever opens.
-  | { kind: "window-closed"; stackId: string; opens: Date | undefined }
+  // A deploy freeze holds it (record 0115): `freeze` names it and its end,
+  // and `opens` is the first moment the freeze and the window both allow.
+  | {
+      kind: "window-closed";
+      stackId: string;
+      opens: Date | undefined;
+      freeze?: HeldFreeze | undefined;
+    }
   // A confirm box whose rows changed since it was drawn deploys nothing, and
   // the bulk box asks for a fresh tick (record 0083).
   | {
@@ -601,14 +608,19 @@ export function judgeTicks(read: TicksRead, lookedUp: readonly LookedUp[]): Judg
     if (!stack || hash === undefined || ticker === undefined) return [];
     const fingerprint = fingerprints.get(id);
     // A stack that would start now waits for its deploy window when that is
-    // closed (record 0104). A stack behind another is judged against the
-    // window when it is started.
+    // closed (record 0104), and for the end of a deploy freeze (record 0115).
+    // A stack behind another is judged against both when it is started.
     const window =
       behind === undefined
-        ? windowState(stack.deployWindows ?? [], read.clock.now, read.clock.timeZone)
+        ? deployState(stack.deployWindows, stack.freezes, read.clock.now, read.clock.timeZone)
         : undefined;
     if (window && !window.open) {
-      findings.push({ kind: "window-closed", stackId: id, opens: window.opens });
+      findings.push({
+        kind: "window-closed",
+        stackId: id,
+        opens: window.opens,
+        ...(window.freeze === undefined ? {} : { freeze: window.freeze }),
+      });
     }
     return [
       {

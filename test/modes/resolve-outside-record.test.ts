@@ -250,3 +250,22 @@ describe("a resolve that no issue edit started, with nothing that names its run"
     );
   });
 });
+
+// Deploy freezes (record 0115): nothing passes a freeze, an outside record
+// neither. It is left alone with a line in the log.
+describe("an outside record during a deploy freeze", () => {
+  test("is left alone, and the log names the end of the freeze", async () => {
+    const h = await scanned(TABLE, {
+      config: `${WRITERS}freezes:\n  - from: 2026-09-01T00:00\n    to: 2026-10-01T00:00\n`,
+    });
+    h.context.now = () => new Date("2026-09-22T10:00:00Z");
+    const record = outsideRecord(h, "a:prod", { status: "queued" });
+
+    await wake(h, DISPATCH);
+
+    expect(matrix(h)).toEqual([]);
+    expect(h.log.lines).toContain(
+      `Deployment record ${record.id} names this run, and a deploy freeze holds a:prod until 2026-10-01 00:00 UTC. Nothing passes a freeze, so it is left alone, and it ends as every open record of a run that is over does (record 0003).`,
+    );
+  });
+});

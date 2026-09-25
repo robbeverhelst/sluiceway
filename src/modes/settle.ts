@@ -11,7 +11,7 @@
 import type { Adapter } from "../adapters/adapter.ts";
 import type { Config, ConfiguredStack, IgnoredStack } from "../core/config.ts";
 import { queueState } from "../core/dependencies.ts";
-import { windowState } from "../core/deploy-window.ts";
+import { deployState, shownFreezes } from "../core/deploy-window.ts";
 import { type DeploymentRecord, deployFacts } from "../core/deployment.ts";
 import { openRepo } from "../core/repo.ts";
 import { failureToWrite } from "../core/settle.ts";
@@ -93,12 +93,18 @@ export async function settle(context: SettleContext): Promise<void> {
   // hand `apply` a matrix any more, so it starts the workflow again, and the
   // `resolve` job of that run starts them.
   const now = (context.now ?? (() => new Date()))();
-  const windows = new Map(stacks.map((one) => [stackId(one.stack), one.deployWindows ?? []]));
+  // A deploy freeze holds the next layer too (record 0115).
+  const times = new Map(stacks.map((one) => [stackId(one.stack), one]));
   const ready = [...deployFacts(records).byStack].flatMap(([stack, fact]) =>
     fact.kind === "open" &&
     fact.behind &&
     queueState(fact.behind, records) === "ready" &&
-    windowState(windows.get(stack) ?? [], now, config.dashboard.timeZone).open
+    deployState(
+      times.get(stack)?.deployWindows,
+      times.get(stack)?.freezes,
+      now,
+      config.dashboard.timeZone,
+    ).open
       ? [stack]
       : [],
   );
@@ -162,6 +168,12 @@ async function writeFailureLines(
         dashboard: config.dashboard,
         deploys: config.deploys,
         ignored: repo.ignored,
+        // The deploy freezes (record 0115), by this job's clock.
+        freezes: shownFreezes(
+          config.freezes,
+          (context.now ?? (() => new Date()))(),
+          config.dashboard.timeZone,
+        ),
         budget: context.limits?.body,
       },
       dashboard.number,

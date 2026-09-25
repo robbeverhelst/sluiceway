@@ -12,7 +12,7 @@ import type { Adapter } from "../adapters/adapter.ts";
 import type { BulkAct } from "../core/bulk.ts";
 import type { Config, ConfiguredStack, IgnoredStack } from "../core/config.ts";
 import { queueState, withReadDependencies } from "../core/dependencies.ts";
-import { queuedWindow, windowState } from "../core/deploy-window.ts";
+import { deployState, queuedWindow, shownFreezes } from "../core/deploy-window.ts";
 import { deployFacts, lastDeployedCommit, taskStackId } from "../core/deployment.ts";
 import {
   type Tick as BodyTick,
@@ -89,7 +89,7 @@ import {
 import { clearMergeTick, type MergeNote } from "../render/merge-row.ts";
 import type { RefusedTick } from "../render/refused-ticks.ts";
 import { resolveSummary } from "../render/resolve-summary.ts";
-import { byCodeUnit, plural, type Row } from "../render/row.ts";
+import { byCodeUnit, plural, type Row, windowWords } from "../render/row.ts";
 import { minuteAt } from "../render/time.ts";
 import { type ResolvePart, resolveTimingLine } from "../render/timing.ts";
 
@@ -411,7 +411,9 @@ async function resolveTicks(
         behind
           ? `${logGroupTitle(id)}: deployment record ${record.deployment} is queued behind ${behind.map(logGroupTitle).join(" and ")}. A later run starts it once ${behind.length === 1 ? "that stack" : "those stacks"} went out.`
           : window
-            ? `${logGroupTitle(id)}: deployment record ${record.deployment} is queued for the deploy window. A run inside the window starts it.`
+            ? config.freezes.length > 0
+              ? `${logGroupTitle(id)}: deployment record ${record.deployment} is queued for the deploy window or the end of a deploy freeze. The first run when both allow starts it.`
+              : `${logGroupTitle(id)}: deployment record ${record.deployment} is queued for the deploy window. A run inside the window starts it.`
             : `${logGroupTitle(id)}: deployment record ${record.deployment} is queued.`,
       );
     } catch (error) {
@@ -601,6 +603,10 @@ function findingText(finding: Finding, timeZone = "UTC"): string {
       return `${logGroupTitle(finding.stackId)} is ticked, and it depends on ${words.join(" and ")}, which ${one ? "has a change" : "have changes"} waiting and ${one ? "is" : "are"} not ticked. The box is cleared.`;
     }
     case "window-closed":
+      // A deploy freeze holds it (record 0115): the words of its row.
+      if (finding.freeze !== undefined) {
+        return `${logGroupTitle(finding.stackId)} is ticked during a deploy freeze. Its deployment record waits for ${windowWords({ opens: finding.opens, freeze: finding.freeze }, timeZone)}, and the first run after that starts it.`;
+      }
       return `${logGroupTitle(finding.stackId)} is ticked outside its deploy window, ${finding.opens === undefined ? "and no window of it opens within a week" : `which opens ${minuteAt(finding.opens, timeZone)}`}. Its deployment record waits for the window, and a run inside the window starts it.`;
     case "confirm-stale": {
       const { tick, changes } = finding;
@@ -1036,6 +1042,8 @@ async function swapRows(
       dashboard: config.dashboard,
       deploys: config.deploys,
       ignored,
+      // The deploy freezes (record 0115), by this run's clock.
+      freezes: shownFreezes(config.freezes, clockOf(context)(), config.dashboard.timeZone),
       budget: context.limits?.body,
     },
     issue,
@@ -1094,7 +1102,7 @@ async function swapRows(
       );
       const now = clockOf(context)();
       const windowOf = (id: string, record: Parameters<typeof queuedWindow>[0]) =>
-        queuedWindow(record, windows.get(id), now, config.dashboard.timeZone);
+        queuedWindow(record, windows.get(id), now, config.dashboard.timeZone, config.freezes);
       // `destroys` is copied from the old marker, because the header needs it
       // and the row's text is never read (record 0031). A stack whose row was
       // deleted by hand since the tick is deploying all the same, and every
@@ -1228,9 +1236,11 @@ async function startQueued(
   const { log, github } = context;
   const config = repo.config();
   // A phase gives dependencies too (record 0067), and a deploy window makes
-  // a record wait as well (record 0104).
+  // a record wait as well (record 0104), and so does a deploy freeze (record
+  // 0115).
   const windowed =
     config.deployWindows.length > 0 ||
+    config.freezes.length > 0 ||
     config.stacks.some(({ deployWindows }) => (deployWindows?.length ?? 0) > 0);
   const chained = config.stacks.some(
     ({ dependsOn, phase }) => dependsOn !== undefined || phase !== undefined,
@@ -1245,10 +1255,11 @@ async function startQueued(
   const involved =
     windowed || chained
       ? all.filter(
-          ({ stack, dependsOn, deployWindows }) =>
+          ({ stack, dependsOn, deployWindows, freezes }) =>
             anyAuto ||
             dependsOn !== undefined ||
             deployWindows !== undefined ||
+            freezes !== undefined ||
             all.some((other) => other.dependsOn?.includes(stackId(stack)) === true),
         )
       : [];
@@ -1305,6 +1316,16 @@ async function startQueued(
       );
       continue;
     }
+    // Nothing passes a deploy freeze (record 0115), an outside record
+    // neither. It is left alone, and it ends as a record nobody handed on
+    // does; its writer opens a new one after the freeze.
+    const frozen = deployState([], known.freezes, clockOf(context)(), config.dashboard.timeZone);
+    if (!frozen.open) {
+      log.info(
+        `Deployment record ${id} names this run, and a deploy freeze holds ${logGroupTitle(stack)} until ${frozen.freeze === undefined ? "later" : minuteAt(frozen.freeze.ends, config.dashboard.timeZone)}. Nothing passes a freeze, so it is left alone, and it ends as every open record of a run that is over does (record 0003).`,
+      );
+      continue;
+    }
     outside.push({
       stackId: stack,
       environment: known.environment,
@@ -1313,7 +1334,12 @@ async function startQueued(
       ...(newest.onMerge ? { onMerge: true } : {}),
     });
   }
-  if (outside.length === 0 && !windowed && !chained) {
+  // A record that waited for a window or a freeze the repo has taken out
+  // since is started all the same: the config of this moment lets it go.
+  const leftWaiting = [...facts.byStack.values()].some(
+    (fact) => fact.kind === "open" && fact.window === true,
+  );
+  if (outside.length === 0 && !windowed && !chained && !leftWaiting) {
     log.info(
       "The event that started this job is not about an issue, no open deployment record names this run, and no stack has dependsOn, a phase or a deploy window. Nothing to do.",
     );
@@ -1332,9 +1358,17 @@ async function startQueued(
     // Behind stacks that are still going, or that did not go out, which
     // settleEndedRuns ended already: nothing to say.
     if (fact.behind && queueState(fact.behind, settled.records) !== "ready") continue;
-    const window = windowState(stacks.get(id)?.deployWindows ?? [], now, timeZone);
+    const stack = stacks.get(id);
+    const window = deployState(stack?.deployWindows, stack?.freezes, now, timeZone);
     if (window.open) {
       ready.push({ stackId: id, fact });
+      continue;
+    }
+    // A deploy freeze holds it (record 0115): the words of its row.
+    if (window.freeze !== undefined) {
+      log.info(
+        `${logGroupTitle(id)}${fact.behind ? ": what it waited behind went out, and it" : ""} waits for ${windowWords({ opens: window.opens, freeze: window.freeze }, timeZone)}. Nothing starts it before then.`,
+      );
       continue;
     }
     const opens =
@@ -1391,7 +1425,7 @@ async function startQueued(
       });
       if (record.unfinished !== undefined) throw record.unfinished;
       log.info(
-        `${logGroupTitle(id)}: ${fact.behind ? "what it waited behind went out" : "its deploy window is open"}, so it starts now. Deployment record ${record.deployment} is queued and takes over from record ${fact.deployment}.`,
+        `${logGroupTitle(id)}: ${fact.behind ? "what it waited behind went out" : (stack.deployWindows ?? []).length > 0 ? "its deploy window is open" : "no deploy window or freeze holds it now"}, so it starts now. Deployment record ${record.deployment} is queued and takes over from record ${fact.deployment}.`,
       );
     } catch (error) {
       failures.push(

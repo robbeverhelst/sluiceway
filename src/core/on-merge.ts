@@ -8,7 +8,7 @@
 import { isDestroy } from "../render/row.ts";
 import { type CostWait, costWait } from "./cost.ts";
 import { planDeploys } from "./dependencies.ts";
-import { type DeployWindow, windowState } from "./deploy-window.ts";
+import { type DeployFreeze, type DeployWindow, deployState } from "./deploy-window.ts";
 import type { Diff } from "./diff.ts";
 import { diffHash } from "./diff-hash.ts";
 import { type PhaseGroup, waitsByPhase } from "./phases.ts";
@@ -36,6 +36,8 @@ export interface OnMergeInput {
     phase?: string | undefined;
     // Its deploy windows (record 0104), when it has any.
     deployWindows?: readonly DeployWindow[] | undefined;
+    // The repo's deploy freezes (record 0115), when it has any.
+    freezes?: readonly DeployFreeze[] | undefined;
     // `cost.threshold` of the stack (record 0105), when one is set.
     costThreshold?: number | undefined;
   }[];
@@ -121,18 +123,19 @@ export function onMergeDeploys(input: OnMergeInput): OnMergeDecision {
   }
 
   const environments = new Map(input.stacks.map(({ id, environment }) => [id, environment]));
-  const windows = new Map(input.stacks.map(({ id, deployWindows }) => [id, deployWindows ?? []]));
+  const times = new Map(input.stacks.map((one) => [one.id, one]));
   const ticker = input.mergedBy ?? "";
   const deploys = [
     ...plan.start.map((stackId) => ({ stackId, behind: undefined })),
     ...plan.queued,
   ].map(({ stackId, behind }): Deploy => {
     // A stack that would go now waits for its deploy window when that is
-    // closed (record 0104), as a tick does. One behind another is held to
-    // the window when it is started.
+    // closed (record 0104), and for the end of a deploy freeze (record 0115),
+    // as a tick does. One behind another is held to both when it is started.
+    const one = times.get(stackId);
     const closed =
       behind === undefined &&
-      !windowState(windows.get(stackId) ?? [], input.clock.now, input.clock.timeZone).open;
+      !deployState(one?.deployWindows, one?.freezes, input.clock.now, input.clock.timeZone).open;
     return {
       stackId,
       environment: environments.get(stackId) ?? "",

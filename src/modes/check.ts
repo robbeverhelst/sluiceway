@@ -9,6 +9,7 @@ import { type BackendCheck, checkSetup } from "../core/check.ts";
 import { type Config, ConfigError, type ConfiguredStack } from "../core/config.ts";
 import { hasConfigFile, loadConfig } from "../core/config-file.ts";
 import { judgeJobs, type StackNeeds } from "../core/credentials.ts";
+import { endedFreezes } from "../core/deploy-window.ts";
 import { DiscoveryError, type DiscoveryNote } from "../core/discovery.ts";
 import type { StackEnvLoader } from "../core/env-file.ts";
 import { repoFiles } from "../core/repo-files.ts";
@@ -46,6 +47,9 @@ export interface CheckContext {
   // stacks the check found, and gives back its part of the log and the
   // summary. Without it the check previews nothing.
   pullRequestPreview?: (repo: { config: Config; stacks: ConfiguredStack[] }) => Promise<CheckPart>;
+  // The clock a deploy freeze that already ended is told by (record 0115).
+  // The machine's when a test gives none.
+  now?: () => Date;
 }
 
 export async function check(context: CheckContext): Promise<void> {
@@ -106,6 +110,16 @@ export async function check(context: CheckContext): Promise<void> {
     unrelated: config.scan.unrelated,
     hasConfigFile: hasConfigFile(root),
     recordWriters: config.recordWriters,
+    endedFreezes: endedFreezes(
+      config.freezes,
+      (context.now ?? (() => new Date()))(),
+      config.dashboard.timeZone,
+    ).map(({ freeze, ended }) => ({
+      index: config.freezes.indexOf(freeze),
+      reason: freeze.reason,
+      ended,
+    })),
+    timeZone: config.dashboard.timeZone,
   });
   for (const part of parts) write(log, part);
 

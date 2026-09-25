@@ -367,7 +367,7 @@ describe("a valid setup", () => {
 const CONFIG_MESSAGES: [string, string][] = [
   [
     "tickerz: write",
-    'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, recordWriters, deployWindows, ignore, scan, drift, valueFingerprint, policies, cost, attribution, phases, stacks, discovery, mergeAndDeploy, notify.',
+    'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, recordWriters, deployWindows, freezes, ignore, scan, drift, valueFingerprint, policies, cost, attribution, phases, stacks, discovery, mergeAndDeploy, notify.',
   ],
   [
     "stacks:\n  - path: network\n    dependsOn: [app]",
@@ -557,5 +557,50 @@ describe("the workflow files", () => {
     expect(log.warnings.map((warning) => warning.message)).toEqual([
       ".github/workflows/deploy-dashboard.yml scans, and no job in it resolves a tick, so a box on the dashboard does nothing. For a workflow that only scans, set dashboard.readOnly: true in sluiceway.yaml.",
     ]);
+  });
+});
+
+// Deploy freezes (record 0115): the loader checks each period, and the check
+// warns about one that already ended, which holds nothing any more.
+describe("deploy freezes", () => {
+  const config = [
+    'ignore: ["playground:*"]',
+    "dashboard:",
+    "  timeZone: Europe/Brussels",
+    "freezes:",
+    "  - from: 2026-01-01T00:00",
+    "    to: 2026-01-02T00:00",
+    "    reason: New year",
+    "  - from: 2026-12-20T00:00",
+    "    to: 2027-01-05T00:00",
+    "",
+  ].join("\n");
+  const at = (now: string) => async () => {
+    const log = rememberingLog();
+    await check({
+      root: repo({ ...FIXTURE, "sluiceway.yaml": config }),
+      adapter: tools,
+      log,
+      now: () => new Date(now),
+    });
+    return log;
+  };
+
+  test("a freeze that ended gets a warning with its end, and one to come gets none", async () => {
+    const log = await at("2026-09-25T10:00:00Z")();
+    const warned = log.warnings.filter((one) => one.title === "A deploy freeze already ended");
+    expect(warned).toEqual([
+      {
+        title: "A deploy freeze already ended",
+        message:
+          "freezes[0] (New year) ended 2026-01-02 00:00 UTC+1 and holds nothing any more. Take it out of sluiceway.yaml.",
+      },
+    ]);
+    expect(log.summaries.at(-1)).toContain("`freezes[0]` (New year) ended 2026-01-02 00:00 UTC+1");
+  });
+
+  test("with no freeze that ended, nothing is said", async () => {
+    const log = await at("2025-12-01T10:00:00Z")();
+    expect(log.warnings.map(({ title }) => title)).not.toContain("A deploy freeze already ended");
   });
 });

@@ -34,7 +34,7 @@ import {
 import { waitingBlock } from "../render/waiting-line.ts";
 import type { Attribution } from "./attribution.ts";
 import type { BulkState } from "./bulk.ts";
-import { type DeployWindow, queuedWindow } from "./deploy-window.ts";
+import { type DeployFreeze, type DeployWindow, queuedWindow } from "./deploy-window.ts";
 import {
   type DeployFact,
   type DeployFacts,
@@ -106,6 +106,8 @@ export interface ScanSoFar {
     byStack: ReadonlyMap<string, readonly DeployWindow[]>;
     now: Date;
     timeZone: string;
+    // The repo's deploy freezes (record 0115), which hold every stack.
+    freezes?: readonly DeployFreeze[] | undefined;
   };
 }
 
@@ -340,7 +342,13 @@ export function placeRows(so: ScanSoFar, late: LateRead): RowsAtLateRead {
         attribution: attributed.get(id)?.lines,
         behind: fact.behind,
         ...(fact.onMerge ? { onMerge: true } : {}),
-        window: queuedWindow(fact, so.windows.byStack.get(id), so.windows.now, so.windows.timeZone),
+        window: queuedWindow(
+          fact,
+          so.windows.byStack.get(id),
+          so.windows.now,
+          so.windows.timeZone,
+          so.windows.freezes,
+        ),
       });
     } else if (liveRow) {
       if (ticked && decided.row === "live") {

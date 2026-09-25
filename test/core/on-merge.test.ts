@@ -294,6 +294,33 @@ describe("onMergeDeploys", () => {
   // Deploy windows (record 0104): a deploy on merge waits for the window as a
   // tick does. Its record is opened now and waits, and a run inside the
   // window starts it. A destroy still waits for a tick, window or not.
+  // Deploy freezes (record 0115): a deploy on merge waits for the end of a
+  // freeze as it waits for a window.
+  describe("a deploy freeze", () => {
+    const FREEZE = { from: "2026-12-20T00:00", to: "2027-01-05T00:00", reason: "Year end" };
+    const frozen = [
+      { id: "app:prod", environment: "production", deploy: "on-merge" as const, freezes: [FREEZE] },
+    ];
+    const CHRISTMAS = { now: new Date("2026-12-24T12:00:00Z"), timeZone: "Europe/Brussels" };
+
+    test("during it the record waits, and nothing is handed on", () => {
+      const decided = onMergeDeploys(base({ stacks: frozen, clock: CHRISTMAS }));
+      expect(decided.deploys).toEqual([
+        expect.objectContaining({ stackId: "app:prod", behind: undefined, window: true }),
+      ]);
+    });
+
+    test("after it, it goes as before", () => {
+      const decided = onMergeDeploys(
+        base({
+          stacks: frozen,
+          clock: { now: new Date("2027-01-12T09:00:00Z"), timeZone: "Europe/Brussels" },
+        }),
+      );
+      expect("window" in (decided.deploys[0] ?? {})).toBe(false);
+    });
+  });
+
   describe("the deploy window", () => {
     const OFFICE_HOURS: DeployWindow[] = [
       { days: ["monday", "tuesday", "wednesday", "thursday"], from: "09:00", to: "17:00" },

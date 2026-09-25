@@ -325,6 +325,33 @@ deployWindows:
     );
   });
 
+  // Deploy freezes (record 0115): merge and deploy follows the same rule, so
+  // the deploy after the merge waits for the end of the freeze.
+  test("during a deploy freeze the record it opens waits for the end, and nothing is handed on", async () => {
+    const diff = pending("a:prod", change("release"));
+    const outputs = rememberingOutputs();
+    const { context, github } = harness(tableAdapter({ ...TABLE, "a:prod": diff }), {
+      config: `${CONFIG}freezes:
+  - from: 2026-09-20T00:00
+    to: 2026-09-23T00:00
+`,
+      outputs,
+    });
+    github.seedComparison(MERGED, SHA, { status: "ahead", files: [] });
+    const merge = seedMergeRecord(github);
+
+    await scan(context);
+
+    expect(github.deployment(merge.id + 1).payload).toMatchObject({
+      ticker: "alice",
+      window: true,
+    });
+    expect(JSON.parse(outputs.values.matrix ?? "")).toEqual([]);
+    expect(rows(dashboardBody(github))["a:prod"]?.text.split("\n")[0]).toContain(
+      "· queued for the end of the deploy freeze at 2026-09-23 00:00 UTC · ticked by alice ·",
+    );
+  });
+
   // Record 0055: the hash covers drift when this scan found some, so the
   // record says so and `apply` checks drift again before it compares.
   test("a record whose fresh diff holds drift says so", async () => {

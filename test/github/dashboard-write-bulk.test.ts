@@ -40,6 +40,7 @@ function writerFor(github: FakeGitHub, deploys = true): DashboardWriter {
     dashboard: parseConfig(undefined).dashboard,
     deploys,
     ignored: [],
+    freezes: [],
   };
 }
 

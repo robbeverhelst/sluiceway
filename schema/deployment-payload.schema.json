@@ -56,7 +56,7 @@
           "pattern": "^[0-9a-f]{16}$"
         },
         "window": {
-          "description": "A queued record that waits for the stack's deploy window, which a run inside the window starts. Absent otherwise.",
+          "description": "A queued record that waits for a time and not for a stack: the stack's deploy window, or the end of a deploy freeze. The first run when both allow starts it. Absent otherwise.",
           "type": "boolean",
           "const": true
         }

@@ -21,7 +21,7 @@ import { sharedFiles, suggestedUnrelated } from "../core/check.ts";
 import type { Config, ConfiguredStack, IgnoredStack } from "../core/config.ts";
 import { type CostSettings, costFailureText, costSettings } from "../core/cost.ts";
 import { withReadDependencies } from "../core/dependencies.ts";
-import { windowState } from "../core/deploy-window.ts";
+import { deployState, shownFreezes } from "../core/deploy-window.ts";
 import {
   type DeployFacts,
   deployFacts,
@@ -541,6 +541,11 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
       dashboard: config.dashboard,
       deploys: config.deploys,
       ignored,
+      // The deploy freezes (record 0115), by this scan's clock.
+      freezes:
+        config.freezes.length === 0
+          ? []
+          : shownFreezes(config.freezes, context.now(), config.dashboard.timeZone),
       budget: context.limits?.body,
     };
 
@@ -584,6 +589,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         ),
         now: startedAt,
         timeZone: config.dashboard.timeZone,
+        freezes: config.freezes,
       },
     };
 
@@ -641,7 +647,7 @@ async function scanning(context: ScanContext, report: ScanReport): Promise<void>
         waitsOnMerge = onMerge.waits;
         const fresh = onMerge.deploys.filter(({ stackId: id }) => !openedOnMerge.has(id));
         if (fresh.length > 0) {
-          await handOnMerged(context, fresh, handedOn, openedOnMerge);
+          await handOnMerged(context, fresh, handedOn, openedOnMerge, config.freezes.length > 0);
           context.outputs?.set("matrix", matrixOutput(handedOn));
           deploys = await lateDeploys(context, stacks, previewed, live);
         }
@@ -860,6 +866,11 @@ async function sayRunning(
         dashboard: config.dashboard,
         deploys: config.deploys,
         ignored,
+        // The deploy freezes (record 0115), by this scan's clock.
+        freezes:
+          config.freezes.length === 0
+            ? []
+            : shownFreezes(config.freezes, context.now(), config.dashboard.timeZone),
         budget: context.limits?.body,
       },
       dashboard.number,
@@ -1849,8 +1860,14 @@ async function handOffMerges(
       await end({ kind: "merged" });
       const hash = diffHash(result.diff);
       // The deploy after the merge is the ticker's, and it waits for the
-      // stack's deploy window as the tick would have (record 0104).
-      const window = !windowState(stack.deployWindows ?? [], now, config.dashboard.timeZone).open;
+      // stack's deploy window (record 0104) and the end of a deploy freeze
+      // (record 0115) as the tick would have.
+      const window = !deployState(
+        stack.deployWindows,
+        stack.freezes,
+        now,
+        config.dashboard.timeZone,
+      ).open;
       try {
         const record = await openRecord(context, {
           stackId: id,
@@ -1874,7 +1891,7 @@ async function handOffMerges(
         if (record.unfinished !== undefined) throw record.unfinished;
         log.info(
           window
-            ? `#${fact.merge} is merged: deployment record ${record.deployment} of ${name} with diff hash ${hash}, ticked by ${fact.ticker}, waits for the deploy window, and a run inside the window starts it.`
+            ? `#${fact.merge} is merged: deployment record ${record.deployment} of ${name} with diff hash ${hash}, ticked by ${fact.ticker}, waits for the deploy window${config.freezes.length > 0 ? " or the end of a deploy freeze, and the first run when both allow starts it" : ", and a run inside the window starts it"}.`
             : `#${fact.merge} is merged: deployment record ${record.deployment} of ${name} is queued with diff hash ${hash}, ticked by ${fact.ticker}, and handed to apply.`,
         );
       } catch (error) {
@@ -1943,6 +1960,7 @@ function onMergeInput(
         dependsOn: dependsOn.get(id),
         phase: one.phase,
         deployWindows: one.deployWindows,
+        freezes: one.freezes,
         costThreshold: costSettings(config.cost, one.cost).threshold,
       };
     }),
@@ -1963,6 +1981,9 @@ async function handOnMerged(
   going: readonly Deploy[],
   handedOn: MatrixEntry[],
   opened: Set<string>,
+  // The repo has deploy freezes (record 0115), so a record that waits may
+  // wait for one.
+  freezes: boolean,
 ): Promise<void> {
   const { log } = context;
   for (const one of going) {
@@ -1992,7 +2013,7 @@ async function handOnMerged(
         one.behind !== undefined
           ? `${name} deploys on merge: deployment record ${record.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, is queued behind ${one.behind.map(logGroupTitle).join(" and ")}, and a later run starts it.`
           : one.window
-            ? `${name} deploys on merge: deployment record ${record.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, waits for the deploy window, and a run inside the window starts it.`
+            ? `${name} deploys on merge: deployment record ${record.deployment} with diff hash ${one.hash}, merged by ${one.ticker}, waits for the deploy window${freezes ? " or the end of a deploy freeze, and the first run when both allow starts it" : ", and a run inside the window starts it"}.`
             : `${name} deploys on merge: deployment record ${record.deployment} is queued with diff hash ${one.hash}, merged by ${one.ticker}, and handed to apply.`,
       );
     } catch (error) {

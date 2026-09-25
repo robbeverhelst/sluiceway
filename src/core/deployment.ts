@@ -99,8 +99,9 @@ export interface DeploymentPayload {
   // on a record written before, or with the check off for the stack: a fresh
   // preview that gives one then refuses the deploy, the safe direction.
   fingerprint?: string | undefined;
-  // The record waits for the stack's deploy window (record 0104): a queued
-  // record that waits for a time and not for a stack. A run inside the window
+  // The record waits for the stack's deploy window (record 0104), or the end
+  // of a deploy freeze (record 0115): a queued record that waits for a time
+  // and not for a stack. A run inside the window
   // starts it under a record of its own. An added key, so the version stays
   // 1. A reader that does not know it reads an open deployment, which is what
   // it is.
@@ -171,7 +172,7 @@ const tickPayloadSchema = z
       .literal(true)
       .optional()
       .describe(
-        "A queued record that waits for the stack's deploy window, which a run inside the window starts. Absent otherwise.",
+        "A queued record that waits for a time and not for a stack: the stack's deploy window, or the end of a deploy freeze. The first run when both allow starts it. Absent otherwise.",
       ),
   })
   .describe(

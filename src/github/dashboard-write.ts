@@ -7,6 +7,7 @@
 
 import type { BulkState } from "../core/bulk.ts";
 import type { Config, IgnoredStack } from "../core/config.ts";
+import type { ShownFreeze } from "../core/deploy-window.ts";
 import type { DeployFacts, TrailEntry } from "../core/deployment.ts";
 import type { OutsideDeploy } from "../core/outside-deploy.ts";
 import { carriedWaitingRun } from "../core/waiting-run.ts";
@@ -46,6 +47,10 @@ export interface DashboardWriter {
   deploys: boolean;
   // Stacks an `ignore` entry with a reason leaves out (record 0051).
   ignored: readonly IgnoredStack[];
+  // The deploy freezes that hold or start within a week, by the writer's
+  // clock (record 0115). Every writer names them, so a swap never drops the
+  // freeze line.
+  freezes: readonly ShownFreeze[];
   // Only a test has a reason to set this.
   budget?: BudgetOptions | undefined;
 }
@@ -292,6 +297,7 @@ function fit(writer: DashboardWriter, body: Body, aimAtTarget: boolean): FittedB
       timeZone: dashboard.timeZone,
       readOnly: dashboard.readOnly,
       ignored: writer.ignored,
+      freezes: writer.freezes,
       merges: body.merges,
       waiting: body.waiting,
       outsideDeploys: body.outside,
