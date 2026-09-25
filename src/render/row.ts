@@ -414,7 +414,8 @@ function pendingAgainLine({ logUrl }: { logUrl?: string | undefined }): string {
     : `${PENDING_AGAIN_NOTE} Compare the tool's own diff in the [job log](${logUrl}).`;
 }
 
-function failureLine(failure: FailureLine, timeZone: string | undefined): string {
+// Also the line `settle` puts on the row of a deploy it ended (record 0113).
+export function failureLine(failure: FailureLine, timeZone: string | undefined): string {
   return `:x: last deploy failed: ${escapeText(failure.reason)} · ${failure.onMerge ? "merged" : "ticked"} by ${escapeText(
     failure.ticker,
   )} · ${minuteAt(failure.at, timeZone)} · [run](${failure.runUrl})`;
