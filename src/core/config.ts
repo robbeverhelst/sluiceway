@@ -391,6 +391,17 @@ export const configSchema = z
         "false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.",
       )
       .default(true),
+    // Outside records (record 0109): the logins whose open deployment records
+    // a resolve that no issue edit started hands on. The writer is GitHub's
+    // creator of the record, never a name in the payload. Empty, the
+    // default, hands none on.
+    recordWriters: z
+      .array(author)
+      .transform((logins) => [...new Set(logins)])
+      .describe(
+        "Logins, an app as name[bot], whose open deployment records that name a dispatched or scheduled run are deployed by that run. The writer is who GitHub records as the creator of the record. Empty hands none on.",
+      )
+      .default([]),
     // Deploy windows (record 0104): when a stack may go out, in the dashboard
     // zone. A tick outside a window is not refused: its record waits for the
     // window, and a run inside the window starts it. Empty is always.
@@ -810,7 +821,10 @@ function classify(issue: Issue, raw: unknown): Found[] {
   if (issue.code === "invalid_format" && (path[0] === "phases" || key === "phase")) {
     return one({ kind: "not-a-phase-name", value });
   }
-  if (issue.code === "invalid_format" && path[0] === "mergeAndDeploy") {
+  if (
+    issue.code === "invalid_format" &&
+    (path[0] === "mergeAndDeploy" || path[0] === "recordWriters")
+  ) {
     return one({ kind: "not-a-login", value });
   }
   // The other pattern in the schema is the username.

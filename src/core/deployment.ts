@@ -23,6 +23,10 @@ export interface Deployment {
   payload: unknown;
   // As GitHub writes it ("2026-09-21T08:52:10Z").
   createdAt: string;
+  // The login of whoever created it, as GitHub records it: the bot for a
+  // record of Sluiceway's, and the writer of an outside record (record
+  // 0109). Absent where the port did not read it.
+  creator?: string | undefined;
 }
 
 export interface DeploymentStatus {

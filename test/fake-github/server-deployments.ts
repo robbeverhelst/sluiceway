@@ -19,6 +19,7 @@ function apiDeployment(deployment: Deployment): unknown {
     ref: deployment.sha,
     payload: deployment.payload,
     created_at: deployment.createdAt,
+    creator: { login: deployment.creator ?? "github-actions[bot]" },
   };
 }
 
@@ -138,6 +139,7 @@ export async function deploymentsQuery(fake: FakeGitHub, variables: unknown): Pr
                 ? null
                 : JSON.stringify(JSON.stringify(record.payload)),
               createdAt: record.createdAt,
+              creator: { login: record.creator ?? "github-actions[bot]" },
               latestStatus: record.status
                 ? {
                     state: record.status.state.toUpperCase(),

@@ -1267,12 +1267,28 @@ async function startQueued(
     log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
   }
 
-  // The outside records (record 0109): a record of a stack discovery does
-  // not know, or of a stack whose newest record is another one, is left
-  // alone. It ends as any open record of a run that is over does.
+  // The outside records (record 0109): only one that a listed record writer
+  // opened, as GitHub names the creator, goes on. One that nobody listed
+  // opened, one of a stack discovery does not know, and one of a stack whose
+  // newest record is another one are left alone. Each ends as any open
+  // record of a run that is over does.
   const facts = deployFacts(settled.records);
+  const writers = new Set(config.recordWriters);
   const outside: Started[] = [];
   for (const { id, stackId: stack } of deployableRecordsOfRun(settled.records, context.runId)) {
+    const creator = settled.records.find((record) => record.id === id)?.creator;
+    if (writers.size === 0) {
+      log.info(
+        `Deployment record ${id} names this run, and recordWriters names nobody, so it is left alone: only a record that a listed writer opened is deployed (record 0109).`,
+      );
+      continue;
+    }
+    if (creator === undefined || !writers.has(creator.toLowerCase())) {
+      log.info(
+        `Deployment record ${id} names this run, and ${creator === undefined ? "GitHub names nobody who opened it" : `${creator} opened it, who is not in recordWriters`}. It is left alone.`,
+      );
+      continue;
+    }
     const known = stacks.get(stack);
     if (!known) {
       log.info(

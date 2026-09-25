@@ -577,6 +577,18 @@ export function rowHash(body: string, stack: string): string | undefined {
   return undefined;
 }
 
+// The value fingerprint on a pending row, read the same way, which the
+// writer copies too when the row has one (record 0102).
+export function rowFingerprint(body: string, stack: string): string | undefined {
+  for (const line of body.split("\n")) {
+    const marker = new RegExp(
+      `<!-- sluiceway:row stack="${escaped(stack)}" state="[^"]*" hash="[0-9a-f]{16}" fingerprint="([0-9a-f]{16})"`,
+    ).exec(line);
+    if (marker) return marker[1];
+  }
+  return undefined;
+}
+
 // An outside record (record 0109): a record another writer opened, naming the
 // run of a dispatch it made. `resolve` hands it on as it is, opens no record
 // of its own, and the run scans nothing after it. The deploy itself is

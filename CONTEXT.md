@@ -307,7 +307,7 @@ A deploy of a stack that did not go through a tick: from a laptop, a script or a
 _Avoid_: Manual deploy, rogue deploy, out-of-band deploy
 
 **Outside record**:
-A deployment record that a writer other than Sluiceway opened in the published shape, naming the run of a dispatch it made, and carrying neither `behind` nor `window`. The `resolve` of that run hands it to `apply` as it hands on the record of a tick: the fresh preview and the hash check decide, the record is the lock, and the ticker on it is the writer's word. Opening one takes `deployments: write`, and the dispatch `actions: write`. A dispatched run that deployed outside records alone skips its scan.
+A deployment record that a writer other than Sluiceway opened in the published shape, naming the run of a dispatch it made, and carrying neither `behind` nor `window`. The `resolve` of that run hands it to `apply` only when the login GitHub records as its creator is in `recordWriters`, the repo's reviewed list of who may open records; then the fresh preview and the hash check decide, the record is the lock, and the ticker on it is the writer's word. With the list empty, the default, every such record is left alone and the job log says so. A dispatched run that deployed outside records alone skips its scan.
 _Avoid_: External record, injected record, foreign record, manual deployment
 
 **Tool history**:

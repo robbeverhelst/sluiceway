@@ -26,6 +26,10 @@ const TABLE = {
 
 const DISPATCH = { ref: "refs/heads/main" };
 const OTHER_RUN = "7777";
+// The app that opens records, as GitHub names the creator, and the config
+// that lets its records through. The case differs on purpose.
+const WRITER = "Deploy-Bot[bot]";
+const WRITERS = "recordWriters:\n  - deploy-bot[bot]\n";
 
 const firstLine = (row: string | undefined) => row?.split("\n")[0] ?? "";
 
@@ -43,12 +47,19 @@ function hashOf(h: ResolveHarness, stack: string): string {
 function outsideRecord(
   h: ResolveHarness,
   stack: string,
-  overrides: { run?: string; hash?: string; payload?: unknown; status?: string } = {},
+  overrides: {
+    run?: string;
+    hash?: string;
+    payload?: unknown;
+    status?: string;
+    creator?: string;
+  } = {},
 ) {
   return h.github.seedDeployment({
     task: `sluiceway:${stack}`,
     environment: "sluiceway",
     sha: SHA,
+    creator: overrides.creator ?? WRITER,
     payload: overrides.payload ?? {
       v: 1,
       hash: overrides.hash ?? hashOf(h, stack),
@@ -61,7 +72,7 @@ function outsideRecord(
 
 describe("a resolve that no issue edit started, with a record that names its run", () => {
   test("hands the record on, writes the deploying row, and opens no record of its own", async () => {
-    const h = await scanned(TABLE);
+    const h = await scanned(TABLE, { config: WRITERS });
     const record = outsideRecord(h, "a:prod", { status: "queued" });
 
     await wake(h, DISPATCH);
@@ -82,7 +93,7 @@ describe("a resolve that no issue edit started, with a record that names its run
   });
 
   test("a record with no status yet is open, and is handed on the same way", async () => {
-    const h = await scanned(TABLE);
+    const h = await scanned(TABLE, { config: WRITERS });
     const record = outsideRecord(h, "a:prod");
 
     await wake(h, DISPATCH);
@@ -93,7 +104,7 @@ describe("a resolve that no issue edit started, with a record that names its run
   });
 
   test("the schedule's resolve hands it on too", async () => {
-    const h = await scanned(TABLE);
+    const h = await scanned(TABLE, { config: WRITERS });
     const record = outsideRecord(h, "a:prod", { status: "queued" });
 
     await wake(h, { schedule: "0 9 * * 1-5" });
@@ -104,7 +115,7 @@ describe("a resolve that no issue edit started, with a record that names its run
   });
 
   test("two records go on in stack id order, whatever order they were opened in", async () => {
-    const h = await scanned(TABLE);
+    const h = await scanned(TABLE, { config: WRITERS });
     const b = outsideRecord(h, "b:prod", { status: "queued" });
     const a = outsideRecord(h, "a:prod", { status: "queued" });
 
@@ -118,8 +129,34 @@ describe("a resolve that no issue edit started, with a record that names its run
 });
 
 describe("a record that names the run and is left alone", () => {
-  test("a record of another run", async () => {
+  test("with no recordWriters, every one, and the log says why", async () => {
     const h = await scanned(TABLE);
+    const record = outsideRecord(h, "a:prod", { status: "queued" });
+
+    await wake(h, DISPATCH);
+
+    expect(matrix(h)).toEqual([]);
+    expect(h.github.deployment(record.id).status?.state).toBe("queued");
+    expect(firstLine(rowsOf(h)["a:prod"])).toContain('state="pending"');
+    expect(h.log.lines).toContain(
+      `Deployment record ${record.id} names this run, and recordWriters names nobody, so it is left alone: only a record that a listed writer opened is deployed (record 0109).`,
+    );
+  });
+
+  test("a record that a writer the list does not name opened", async () => {
+    const h = await scanned(TABLE, { config: WRITERS });
+    const record = outsideRecord(h, "a:prod", { status: "queued", creator: "mallory" });
+
+    await wake(h, DISPATCH);
+
+    expect(matrix(h)).toEqual([]);
+    expect(h.log.lines).toContain(
+      `Deployment record ${record.id} names this run, and mallory opened it, who is not in recordWriters. It is left alone.`,
+    );
+  });
+
+  test("a record of another run", async () => {
+    const h = await scanned(TABLE, { config: WRITERS });
     h.github.seedRun(OTHER_RUN, { completed: false });
     outsideRecord(h, "a:prod", { run: OTHER_RUN, status: "queued" });
 
@@ -130,7 +167,7 @@ describe("a record that names the run and is left alone", () => {
   });
 
   test("a record whose payload this version cannot read", async () => {
-    const h = await scanned(TABLE);
+    const h = await scanned(TABLE, { config: WRITERS });
     outsideRecord(h, "a:prod", {
       payload: { v: 2, hash: hashOf(h, "a:prod"), ticker: "dave", run: RESOLVE_RUN },
       status: "queued",
@@ -143,11 +180,12 @@ describe("a record that names the run and is left alone", () => {
   });
 
   test("a record of a stack discovery does not know, with a line that says so", async () => {
-    const h = await scanned(TABLE);
+    const h = await scanned(TABLE, { config: WRITERS });
     const record = h.github.seedDeployment({
       task: "sluiceway:gone:prod",
       environment: "sluiceway",
       sha: SHA,
+      creator: WRITER,
       payload: { v: 1, hash: "0123456789abcdef", ticker: "dave", run: RESOLVE_RUN },
       status: { state: "queued" },
     });
@@ -162,7 +200,7 @@ describe("a record that names the run and is left alone", () => {
   });
 
   test("a record of a stack that is deploying under a newer record", async () => {
-    const h = await scanned(TABLE);
+    const h = await scanned(TABLE, { config: WRITERS });
     const outside = outsideRecord(h, "a:prod", { status: "queued" });
     h.github.seedRun(OTHER_RUN, { completed: false });
     const newer = outsideRecord(h, "a:prod", { run: OTHER_RUN, status: "in_progress" });
@@ -176,7 +214,9 @@ describe("a record that names the run and is left alone", () => {
   });
 
   test("a record that waits behind a stack starts as a queued stack does, not as an outside one", async () => {
-    const h = await scanned(TABLE, { config: "stacks:\n  - path: b\n    dependsOn: [a:prod]\n" });
+    const h = await scanned(TABLE, {
+      config: `${WRITERS}stacks:\n  - path: b\n    dependsOn: [a:prod]\n`,
+    });
     tick(h, ALICE, ["a:prod", "b:prod"]);
     await wake(h);
     const [first] = matrix(h) as { deployment: number }[];

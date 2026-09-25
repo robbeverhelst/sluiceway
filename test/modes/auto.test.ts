@@ -296,18 +296,21 @@ describe("auto mode on a dispatch with a record another writer opened for the ru
     return row.hash;
   }
 
+  const WRITERS = "recordWriters:\n  - deploy-bot[bot]\n";
+
   function outsideRecord(h: ResolveHarness, stack: string, hash = hashOf(h, stack)) {
     return h.github.seedDeployment({
       task: `sluiceway:${stack}`,
       environment: "sluiceway",
       sha: SHA,
+      creator: "deploy-bot[bot]",
       payload: { v: 1, hash, ticker: "dave", run: RESOLVE_RUN },
       status: { state: "queued" },
     });
   }
 
   test("deploys the record, settles, and skips the scan with a line that says why", async () => {
-    const h = await scanned(TABLE);
+    const h = await scanned(TABLE, { config: WRITERS });
     const record = outsideRecord(h, "a:prod");
     const w = wired(h, "workflow_dispatch", { ref: "refs/heads/main", inputs: {} });
     await auto(w.context);
@@ -325,7 +328,7 @@ describe("auto mode on a dispatch with a record another writer opened for the ru
   });
 
   test("a record with a hash the fresh preview does not give deploys nothing, and the step is red", async () => {
-    const h = await scanned(TABLE);
+    const h = await scanned(TABLE, { config: WRITERS });
     const record = outsideRecord(h, "a:prod", "0000000000000000");
     const w = wired(h, "workflow_dispatch", { ref: "refs/heads/main" });
 
@@ -340,7 +343,7 @@ describe("auto mode on a dispatch with a record another writer opened for the ru
   });
 
   test("a dispatch that names the merged pull requests scans as before", async () => {
-    const h = await scanned(TABLE);
+    const h = await scanned(TABLE, { config: WRITERS });
     const record = outsideRecord(h, "a:prod");
     const w = wired(h, "workflow_dispatch", {
       ref: "refs/heads/main",
@@ -352,7 +355,7 @@ describe("auto mode on a dispatch with a record another writer opened for the ru
   });
 
   test("the schedule deploys the record and scans as before", async () => {
-    const h = await scanned(TABLE);
+    const h = await scanned(TABLE, { config: WRITERS });
     const record = outsideRecord(h, "a:prod");
     const w = wired(h, "schedule", { schedule: "0 9 * * 1-5" });
     await auto(w.context);
@@ -363,7 +366,7 @@ describe("auto mode on a dispatch with a record another writer opened for the ru
   test("a dispatch that also starts a queued stack scans, as the next layer always did", async () => {
     const h = await scanned(
       { ...TABLE, "c:prod": pending("c:prod", change("cache")) },
-      { config: "stacks:\n  - path: b\n    dependsOn: [a:prod]\n" },
+      { config: `${WRITERS}stacks:\n  - path: b\n    dependsOn: [a:prod]\n` },
     );
     tick(h, ALICE, ["a:prod", "b:prod"]);
     await resolve({ ...h.context, event: h.github.deliverEvent() });

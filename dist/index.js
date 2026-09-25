@@ -53031,6 +53031,7 @@ var configSchema = exports_external.strictObject({
   }).prefault({}),
   tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
   deploys: exports_external.boolean().describe("false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.").default(true),
+  recordWriters: exports_external.array(author).transform((logins) => [...new Set(logins)]).describe("Logins, an app as name[bot], whose open deployment records that name a dispatched or scheduled run are deployed by that run. The writer is who GitHub records as the creator of the record. Empty hands none on.").default([]),
   deployWindows: deployWindows.describe("When the stacks of this repo may go out, in the dashboard zone: a list of windows, each with days of the week, a start and an end. A tick outside every window waits for the next one to open, and so does a deploy on merge. Empty, the default, is any time. A stacks entry sets its own with stacks[].deployWindows.").default([]),
   ignore: exports_external.array(ignoreEntry).describe("Globs matched against the stack id. An ignored stack has no row. An entry with a reason is listed with it under In sync.").default([]),
   scan: exports_external.strictObject({
@@ -53200,7 +53201,7 @@ function classify(issue3, raw) {
   if (issue3.code === "invalid_format" && (path[0] === "phases" || key === "phase")) {
     return one({ kind: "not-a-phase-name", value });
   }
-  if (issue3.code === "invalid_format" && path[0] === "mergeAndDeploy") {
+  if (issue3.code === "invalid_format" && (path[0] === "mergeAndDeploy" || path[0] === "recordWriters")) {
     return one({ kind: "not-a-login", value });
   }
   if (issue3.code === "invalid_format") {
@@ -59564,6 +59565,9 @@ var NEWEST_DEPLOYMENTS = `query ($owner: String!, $repo: String!, $environment: 
         commitOid
         payload
         createdAt
+        creator {
+          login
+        }
         latestStatus {
           state
           description
@@ -59597,7 +59601,8 @@ function toDeployment(deployment) {
     environment: deployment.environment,
     sha: deployment.sha,
     payload: parsePayload(deployment.payload),
-    createdAt: deployment.created_at
+    createdAt: deployment.created_at,
+    ...deployment.creator?.login ? { creator: deployment.creator.login } : {}
   };
 }
 function toStatus(status) {
@@ -59655,6 +59660,7 @@ function deploymentCalls(octokit, repo) {
           sha: node2.commitOid,
           payload: parsePayload(node2.payload),
           createdAt: node2.createdAt,
+          ...node2.creator?.login ? { creator: node2.creator.login } : {},
           status: node2.latestStatus ? withSucceededAt({
             state: node2.latestStatus.state.toLowerCase(),
             description: node2.latestStatus.description ?? "",
@@ -65609,8 +65615,18 @@ async function startQueued(context3, repo, handOn, watch, report2) {
     log.info(`Ended the open deployment of ${logGroupTitle(id)}: it can never start now.`);
   }
   const facts = deployFacts(settled.records);
+  const writers = new Set(config2.recordWriters);
   const outside = [];
   for (const { id, stackId: stack } of deployableRecordsOfRun(settled.records, context3.runId)) {
+    const creator = settled.records.find((record3) => record3.id === id)?.creator;
+    if (writers.size === 0) {
+      log.info(`Deployment record ${id} names this run, and recordWriters names nobody, so it is left alone: only a record that a listed writer opened is deployed (record 0109).`);
+      continue;
+    }
+    if (creator === undefined || !writers.has(creator.toLowerCase())) {
+      log.info(`Deployment record ${id} names this run, and ${creator === undefined ? "GitHub names nobody who opened it" : `${creator} opened it, who is not in recordWriters`}. It is left alone.`);
+      continue;
+    }
     const known = stacks2.get(stack);
     if (!known) {
       log.info(`Deployment record ${id} names this run, and discovery does not know its stack, ${logGroupTitle(stack)}. It is left alone, and it ends as every open record of a run that is over does (record 0003).`);
@@ -66400,7 +66416,7 @@ function scansSomewhere(workflows) {
 function checkParts(facts) {
   const { report: report2 } = facts;
   return [
-    headerPart(facts.hasConfigFile),
+    headerPart(facts.hasConfigFile, facts.recordWriters ?? []),
     stacksPart(report2),
     discoveryPart(facts.discovery ?? []),
     phasesPart(report2.phases),
@@ -66411,12 +66427,16 @@ function checkParts(facts) {
     credentialsPart(facts.credentials)
   ];
 }
-function headerPart(hasConfigFile2) {
+function headerPart(hasConfigFile2, recordWriters) {
   const noFile = hasConfigFile2 ? [] : [NO_CONFIG_FILE];
+  const writers = recordWriters.length === 0 ? [] : [recordWritersText(recordWriters)];
   return {
-    log: noFile.map((text9) => ({ info: text9 })),
-    summary: ["## Sluiceway check", VALID, ...noFile]
+    log: [...noFile, ...writers].map((text9) => ({ info: text9 })),
+    summary: ["## Sluiceway check", VALID, ...noFile, ...writers]
   };
+}
+function recordWritersText(recordWriters) {
+  return `Record writers: ${recordWriters.join(", ")}. A deployment record one of them opens that names a dispatched or scheduled run is deployed by that run, through the fresh preview and the hash check (recordWriters).`;
 }
 function stacksPart({ stacks: stacks2, phases }) {
   const found = foundText(stacks2.length);
@@ -66815,7 +66835,8 @@ async function check2(context3) {
     workflows,
     credentials: { stacks: needs, jobs: judgeJobs(needs, workflows.workflows, root) },
     unrelated: config2.scan.unrelated,
-    hasConfigFile: hasConfigFile(root)
+    hasConfigFile: hasConfigFile(root),
+    recordWriters: config2.recordWriters
   });
   for (const part of parts)
     write(log, part);

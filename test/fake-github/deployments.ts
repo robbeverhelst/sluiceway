@@ -16,6 +16,8 @@ import { FakeGitHubError } from "./fake-github.ts";
 
 export const SEED_SHA = "0123456789abcdef0123456789abcdef01234567";
 export const SEED_PAYLOAD = { v: 1, hash: "2b44350653e84a11", ticker: "alice", run: "4242" };
+// Who GitHub names as the creator of a record the workflow token wrote.
+export const BOT_CREATOR = "github-actions[bot]";
 
 const PAGE_SIZE = 100;
 // How many requests still see `success` before the flip lands.
@@ -28,6 +30,8 @@ export interface SeedDeployment {
   payload?: unknown;
   createdAt?: string;
   status?: { state: string; description?: string; createdAt?: string };
+  // The login GitHub records as the creator. The bot without it.
+  creator?: string;
 }
 
 export interface FakeStatus {
@@ -75,6 +79,7 @@ export class FakeDeployments {
       sha: deployment.sha ?? SEED_SHA,
       payload: structuredClone("payload" in deployment ? deployment.payload : SEED_PAYLOAD),
       createdAt: ("createdAt" in deployment ? deployment.createdAt : undefined) ?? this.now(),
+      creator: ("creator" in deployment ? deployment.creator : undefined) ?? BOT_CREATOR,
     };
     this.#records.set(id, { deployment: created, statuses: [] });
     return structuredClone(created);

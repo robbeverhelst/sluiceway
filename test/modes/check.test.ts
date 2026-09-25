@@ -337,6 +337,22 @@ describe("a valid setup", () => {
     );
   });
 
+  // Record 0109: the check names who may open a record that a dispatched run
+  // deploys, and says nothing when the list is empty.
+  test("names the record writers the config lists, and nothing without them", async () => {
+    const line =
+      "Record writers: deploy-bot[bot], alice. A deployment record one of them opens that names a dispatched or scheduled run is deployed by that run, through the fresh preview and the hash check (recordWriters).";
+    const listed = await run({
+      ...FIXTURE,
+      "sluiceway.yaml": "recordWriters:\n  - deploy-bot[bot]\n  - alice\n",
+    });
+    expect(listed.error).toBeUndefined();
+    expect(listed.log.lines).toContain(line);
+    expect(listed.summary).toContain(line);
+    const plain = await run(FIXTURE);
+    expect(plain.summary).not.toContain("Record writers");
+  });
+
   test("a repo with no sluiceway.yaml and no stacks is valid", async () => {
     const { log, error, summary } = await run({ "README.md": "" });
     expect(error).toBeUndefined();
@@ -351,7 +367,7 @@ describe("a valid setup", () => {
 const CONFIG_MESSAGES: [string, string][] = [
   [
     "tickerz: write",
-    'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, deployWindows, ignore, scan, drift, valueFingerprint, policies, cost, attribution, phases, stacks, discovery, mergeAndDeploy, notify.',
+    'unknown key "tickerz". Known keys here: dashboard, tickers, deploys, recordWriters, deployWindows, ignore, scan, drift, valueFingerprint, policies, cost, attribution, phases, stacks, discovery, mergeAndDeploy, notify.',
   ],
   [
     "stacks:\n  - path: network\n    dependsOn: [app]",

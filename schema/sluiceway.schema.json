@@ -90,6 +90,14 @@
       "type": "boolean",
       "description": "false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on."
     },
+    "recordWriters": {
+      "description": "Logins, an app as name[bot], whose open deployment records that name a dispatched or scheduled run are deployed by that run. The writer is who GitHub records as the creator of the record. Empty hands none on.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]+(\\[bot\\])?$"
+      }
+    },
     "deployWindows": {
       "default": [],
       "type": "array",

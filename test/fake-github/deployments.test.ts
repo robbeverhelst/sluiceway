@@ -67,6 +67,7 @@ for (const [way, portOf] of ways) {
         sha: SHA,
         payload: PAYLOAD,
         createdAt: "2026-01-01T00:00:01Z",
+        creator: "github-actions[bot]",
       });
       expect(await port.listNewestDeployments("sluiceway")).toEqual({
         records: [{ ...created, status: undefined }],
@@ -253,6 +254,7 @@ describe("the test's own hands on deployment records", () => {
       sha: SHA,
       payload: PAYLOAD,
       createdAt: "2026-09-21T08:50:00Z",
+      creator: "github-actions[bot]",
       status: { state: "success", description: "", createdAt: "2026-09-21T08:52:10Z" },
     });
     expect(fake.requests).toEqual([]);

@@ -105,6 +105,7 @@ export async function check(context: CheckContext): Promise<void> {
     credentials: { stacks: needs, jobs: judgeJobs(needs, workflows.workflows, root) },
     unrelated: config.scan.unrelated,
     hasConfigFile: hasConfigFile(root),
+    recordWriters: config.recordWriters,
   });
   for (const part of parts) write(log, part);
 

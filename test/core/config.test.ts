@@ -16,6 +16,7 @@ const DEFAULTS: Config = {
   },
   tickers: "write",
   deploys: true,
+  recordWriters: [],
   deployWindows: [],
   ignore: [],
   scan: { unrelated: [], logDiff: false },
@@ -88,6 +89,7 @@ phases: [infrastructure, applications]
       },
       tickers: "admin",
       deploys: true,
+      recordWriters: [],
       deployWindows: [],
       ignore: ["**/*:dev"],
       scan: { unrelated: ["**/*.md"], logDiff: false },
@@ -121,6 +123,7 @@ const TOP_KEYS = [
   "dashboard",
   "tickers",
   "deploys",
+  "recordWriters",
   "deployWindows",
   "ignore",
   "scan",
@@ -604,7 +607,7 @@ describe("a file that is not a mapping", () => {
 describe("the error", () => {
   test("names the file and lists every problem in words, top to bottom", () => {
     expect(() => parseConfig("tickerz: admin\ndashboard:\n  pin: 1\n")).toThrow(
-      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, deployWindows, ignore, scan, drift, valueFingerprint, policies, cost, attribution, phases, stacks, discovery, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
+      'sluiceway.yaml is not valid:\n- unknown key "tickerz". Known keys here: dashboard, tickers, deploys, recordWriters, deployWindows, ignore, scan, drift, valueFingerprint, policies, cost, attribution, phases, stacks, discovery, mergeAndDeploy, notify.\n- dashboard.pin: expected true or false, got 1.',
     );
   });
 
@@ -709,6 +712,29 @@ describe("deploys", () => {
   test("takes true or false and nothing else", () => {
     expect(issues('deploys: "off"\n')).toEqual([
       { kind: "wrong-type", expected: "boolean", value: "off", path: ["deploys"] },
+    ]);
+  });
+});
+
+// Slice 5.44 (record 0109): the logins whose open deployment records a
+// dispatched or scheduled run deploys. Nobody by default.
+describe("recordWriters", () => {
+  test("names nobody unless the file does", () => {
+    expect(parseConfig(undefined).recordWriters).toEqual([]);
+    expect(parseConfig("recordWriters: []\n").recordWriters).toEqual([]);
+  });
+
+  test("takes logins of people and of apps, kept once each in lower case", () => {
+    expect(
+      parseConfig("recordWriters:\n  - Deploy-Bot[bot]\n  - alice\n  - deploy-bot[bot]\n")
+        .recordWriters,
+    ).toEqual(["deploy-bot[bot]", "alice"]);
+  });
+
+  test("a login with an @ or a slash is refused", () => {
+    expect(issues("recordWriters: ['@alice', org/bots]\n")).toEqual([
+      { kind: "not-a-login", value: "@alice", path: ["recordWriters", 0] },
+      { kind: "not-a-login", value: "org/bots", path: ["recordWriters", 1] },
     ]);
   });
 });

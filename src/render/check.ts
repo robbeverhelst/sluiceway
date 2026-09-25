@@ -475,6 +475,8 @@ export interface CheckFacts {
   // The scan.unrelated globs the config has.
   unrelated: string[];
   hasConfigFile: boolean;
+  // The recordWriters the config names (record 0109).
+  recordWriters?: readonly string[] | undefined;
 }
 
 // The parts of a valid setup that come from the files, in the order the job
@@ -482,7 +484,7 @@ export interface CheckFacts {
 export function checkParts(facts: CheckFacts): CheckPart[] {
   const { report } = facts;
   return [
-    headerPart(facts.hasConfigFile),
+    headerPart(facts.hasConfigFile, facts.recordWriters ?? []),
     stacksPart(report),
     discoveryPart(facts.discovery ?? []),
     phasesPart(report.phases),
@@ -495,12 +497,20 @@ export function checkParts(facts: CheckFacts): CheckPart[] {
 }
 
 // The verdict opens the summary. The job log says it last, in closingPart.
-function headerPart(hasConfigFile: boolean): CheckPart {
+function headerPart(hasConfigFile: boolean, recordWriters: readonly string[]): CheckPart {
   const noFile = hasConfigFile ? [] : [NO_CONFIG_FILE];
+  const writers = recordWriters.length === 0 ? [] : [recordWritersText(recordWriters)];
   return {
-    log: noFile.map((text) => ({ info: text })),
-    summary: ["## Sluiceway check", VALID, ...noFile],
+    log: [...noFile, ...writers].map((text) => ({ info: text })),
+    summary: ["## Sluiceway check", VALID, ...noFile, ...writers],
   };
+}
+
+// Who may open a deployment record that a dispatched or scheduled run
+// deploys (record 0109). Nothing is said when the list is empty, which is
+// the default and hands none on.
+function recordWritersText(recordWriters: readonly string[]): string {
+  return `Record writers: ${recordWriters.join(", ")}. A deployment record one of them opens that names a dispatched or scheduled run is deployed by that run, through the fresh preview and the hash check (recordWriters).`;
 }
 
 function stacksPart({ stacks, phases }: CheckReport): CheckPart {

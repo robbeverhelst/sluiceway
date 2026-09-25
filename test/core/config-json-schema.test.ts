@@ -25,6 +25,7 @@ describe("the JSON schema of sluiceway.yaml", () => {
       "dashboard",
       "tickers",
       "deploys",
+      "recordWriters",
       "deployWindows",
       "ignore",
       "scan",

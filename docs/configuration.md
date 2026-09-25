@@ -251,6 +251,17 @@ deploys: false
 
 Setting it back to `true` (or taking the line out) is all it takes to deploy again. A tick that was cleared needs a fresh tick.
 
+### `recordWriters`
+
+Default: `[]`
+
+Logins whose deployment records the workflow deploys without a tick: an app as `name[bot]`, a person as their login. Something that reads [what Sluiceway writes](what-sluiceway-writes.md#opening-a-record-yourself) can open a deployment record of a stack itself, with the diff hash of the row, and start the workflow with a dispatch, naming the run in the record. The `resolve` of that run hands such a record to `apply` only when the login GitHub records as the record's creator is on this list; a record that anyone else opened is left alone, and the job log says so. Nothing in the payload of the record decides it. `apply` then previews the stack again and deploys only when the fresh preview gives the same hash, exactly as for a tick, and the record's ticker is the writer's word on the row and the trail. Empty, the default, hands no such record on, and the dashboard behaves as it did before the key came. The list is the repo's reviewed word on who may open records: the tick rule cannot judge a bot, which has no access level of its own, and a change to this file goes through review where a record and a dispatch do not.
+
+```yaml
+recordWriters:
+  - deploy-bot[bot]
+```
+
 ### `deployWindows[].days`
 
 Default: none, which is any time.
@@ -1287,5 +1298,5 @@ ticker: admin
 
 ```text
 sluiceway.yaml is not valid:
-- unknown key "ticker". Known keys here: dashboard, tickers, deploys, deployWindows, ignore, scan, drift, valueFingerprint, policies, cost, attribution, phases, stacks, discovery, mergeAndDeploy, notify.
+- unknown key "ticker". Known keys here: dashboard, tickers, deploys, recordWriters, deployWindows, ignore, scan, drift, valueFingerprint, policies, cost, attribution, phases, stacks, discovery, mergeAndDeploy, notify.
 ```

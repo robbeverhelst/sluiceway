@@ -32,6 +32,9 @@ const NEWEST_DEPLOYMENTS = `query ($owner: String!, $repo: String!, $environment
         commitOid
         payload
         createdAt
+        creator {
+          login
+        }
         latestStatus {
           state
           description
@@ -55,6 +58,7 @@ interface ApiDeployment {
   sha: string;
   payload: unknown;
   created_at: string;
+  creator?: { login: string } | null;
 }
 
 interface ApiStatus {
@@ -70,6 +74,7 @@ interface DeploymentNode {
   commitOid: string;
   payload: string | null;
   createdAt: string;
+  creator?: { login: string } | null;
   latestStatus: { state: string; description: string | null; createdAt: string } | null;
   // Newest first, as GitHub lists them (seen in the lab repo on 2026-09-22).
   statuses?: { nodes: ({ state: string; createdAt: string } | null)[] | null } | null;
@@ -104,6 +109,7 @@ function toDeployment(deployment: ApiDeployment): Deployment {
     sha: deployment.sha,
     payload: parsePayload(deployment.payload),
     createdAt: deployment.created_at,
+    ...(deployment.creator?.login ? { creator: deployment.creator.login } : {}),
   };
 }
 
@@ -182,6 +188,7 @@ export function deploymentCalls(
                 sha: node.commitOid,
                 payload: parsePayload(node.payload),
                 createdAt: node.createdAt,
+                ...(node.creator?.login ? { creator: node.creator.login } : {}),
                 status: node.latestStatus
                   ? withSucceededAt(
                       {

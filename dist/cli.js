@@ -28640,6 +28640,7 @@ var configSchema = exports_external.strictObject({
   }).prefault({}),
   tickers: tickers.describe("Default tick rule: write, maintain, admin, or a list of usernames. A list narrows and never widens: a person on it still needs write access.").default("write"),
   deploys: exports_external.boolean().describe("false stops every deploy: resolve clears every ticked box with a note and starts nothing, and apply ends a deploy that was already started before the tool runs. Scans go on.").default(true),
+  recordWriters: exports_external.array(author).transform((logins) => [...new Set(logins)]).describe("Logins, an app as name[bot], whose open deployment records that name a dispatched or scheduled run are deployed by that run. The writer is who GitHub records as the creator of the record. Empty hands none on.").default([]),
   deployWindows: deployWindows.describe("When the stacks of this repo may go out, in the dashboard zone: a list of windows, each with days of the week, a start and an end. A tick outside every window waits for the next one to open, and so does a deploy on merge. Empty, the default, is any time. A stacks entry sets its own with stacks[].deployWindows.").default([]),
   ignore: exports_external.array(ignoreEntry).describe("Globs matched against the stack id. An ignored stack has no row. An entry with a reason is listed with it under In sync.").default([]),
   scan: exports_external.strictObject({
@@ -28809,7 +28810,7 @@ function classify(issue2, raw) {
   if (issue2.code === "invalid_format" && (path[0] === "phases" || key === "phase")) {
     return one({ kind: "not-a-phase-name", value });
   }
-  if (issue2.code === "invalid_format" && path[0] === "mergeAndDeploy") {
+  if (issue2.code === "invalid_format" && (path[0] === "mergeAndDeploy" || path[0] === "recordWriters")) {
     return one({ kind: "not-a-login", value });
   }
   if (issue2.code === "invalid_format") {
@@ -32209,7 +32210,7 @@ function scansSomewhere(workflows) {
 function checkParts(facts) {
   const { report: report2 } = facts;
   return [
-    headerPart(facts.hasConfigFile),
+    headerPart(facts.hasConfigFile, facts.recordWriters ?? []),
     stacksPart(report2),
     discoveryPart(facts.discovery ?? []),
     phasesPart(report2.phases),
@@ -32220,12 +32221,16 @@ function checkParts(facts) {
     credentialsPart(facts.credentials)
   ];
 }
-function headerPart(hasConfigFile2) {
+function headerPart(hasConfigFile2, recordWriters) {
   const noFile = hasConfigFile2 ? [] : [NO_CONFIG_FILE];
+  const writers = recordWriters.length === 0 ? [] : [recordWritersText(recordWriters)];
   return {
-    log: noFile.map((text7) => ({ info: text7 })),
-    summary: ["## Sluiceway check", VALID, ...noFile]
+    log: [...noFile, ...writers].map((text7) => ({ info: text7 })),
+    summary: ["## Sluiceway check", VALID, ...noFile, ...writers]
   };
+}
+function recordWritersText(recordWriters) {
+  return `Record writers: ${recordWriters.join(", ")}. A deployment record one of them opens that names a dispatched or scheduled run is deployed by that run, through the fresh preview and the hash check (recordWriters).`;
 }
 function stacksPart({ stacks, phases }) {
   const found = foundText(stacks.length);
@@ -32624,7 +32629,8 @@ async function check2(context) {
     workflows,
     credentials: { stacks: needs, jobs: judgeJobs(needs, workflows.workflows, root) },
     unrelated: config2.scan.unrelated,
-    hasConfigFile: hasConfigFile(root)
+    hasConfigFile: hasConfigFile(root),
+    recordWriters: config2.recordWriters
   });
   for (const part of parts)
     write(log, part);

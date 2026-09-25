@@ -52,6 +52,7 @@ function apiDeployment(over: Record<string, unknown> = {}) {
     ref: SHA,
     payload: PAYLOAD,
     created_at: "2026-09-21T18:51:58Z",
+    creator: { login: "github-actions[bot]" },
     ...over,
   };
 }
@@ -74,6 +75,7 @@ describe("creating a deployment record", () => {
       sha: SHA,
       payload: PAYLOAD,
       createdAt: "2026-09-21T18:51:58Z",
+      creator: "github-actions[bot]",
     });
     expect(sent).toEqual([
       {
@@ -164,6 +166,27 @@ describe("the newest deployment records of an environment", () => {
       ...over,
     };
   }
+
+  // Record 0109: who opened a record is read from GitHub, never the payload.
+  test("reads who created each record, and leaves it out when GitHub names nobody", async () => {
+    const { port, sent } = portThatAnswers([
+      {
+        json: {
+          data: {
+            repository: {
+              deployments: {
+                pageInfo: { hasNextPage: false },
+                nodes: [node({ creator: { login: "deploy-bot[bot]" } }), node({ creator: null })],
+              },
+            },
+          },
+        },
+      },
+    ]);
+    const { records } = await port.listNewestDeployments("sluiceway");
+    expect(records.map(({ creator }) => creator)).toEqual(["deploy-bot[bot]", undefined]);
+    expect(String((sent[0]?.body as { query?: string } | undefined)?.query)).toContain("creator {");
+  });
 
   test("one GraphQL request for one page of 100, newest first", async () => {
     const { port, sent } = portThatAnswers([
@@ -331,6 +354,7 @@ describe("the REST fall back for a stack that is not on the page", () => {
       sha: SHA,
       payload: PAYLOAD,
       createdAt: "2026-09-21T18:51:58Z",
+      creator: "github-actions[bot]",
     });
     expect(sent).toEqual([
       {
@@ -410,6 +434,7 @@ describe("one record by its id", () => {
       sha: SHA,
       payload: PAYLOAD,
       createdAt: "2026-09-21T18:51:58Z",
+      creator: "github-actions[bot]",
     });
     expect(sent).toEqual([
       {

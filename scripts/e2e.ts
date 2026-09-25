@@ -95,6 +95,7 @@ import {
   type MatrixEntry,
   matrixEntries,
   mergeRows,
+  rowFingerprint,
   rowHash,
   tickMerge,
   tickRow,
@@ -1124,10 +1125,14 @@ good =
 // check, settles, and skips its scan.
 console.log("::group::A change to app:prod, for a record another writer opens");
 edit("app/Pulumi.prod.yml", "app:tier: premium", "app:tier: business");
+// The repo names the app that may open records (record 0109).
+appendFileSync(configFile, "\nrecordWriters:\n  - deploy-bot[bot]\n");
+console.log(readFileSync(configFile, "utf8"));
 console.log("::endgroup::");
 const OUTSIDE_SHA = "7777777777777777777777777777777777777777";
 const beforeOutside = await scanStep(OUTSIDE_SHA, "schedule");
 const outsideHash = rowHash(dashboardBody(beforeOutside), "app:prod");
+const outsideFingerprint = rowFingerprint(dashboardBody(beforeOutside), "app:prod");
 good =
   report("The scan before the outside record", [
     ...(beforeOutside.exitCode === 0
@@ -1144,7 +1149,15 @@ const outsideRecord = fake.seedDeployment({
   task: "sluiceway:app:prod",
   environment: "sluiceway",
   sha: OUTSIDE_SHA,
-  payload: { v: 1, hash: outsideHash ?? "", ticker: "dave", run: outsideRun },
+  // The writer is the app GitHub names as the creator. The ticker is its word.
+  creator: "deploy-bot[bot]",
+  payload: {
+    v: 1,
+    hash: outsideHash ?? "",
+    ticker: "dave",
+    run: outsideRun,
+    ...(outsideFingerprint === undefined ? {} : { fingerprint: outsideFingerprint }),
+  },
   status: { state: "queued" },
 });
 const outsideStep = await loopStep(undefined, {
