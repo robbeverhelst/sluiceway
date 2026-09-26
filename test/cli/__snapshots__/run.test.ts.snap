@@ -33,7 +33,7 @@ With the Sluiceway app, as the person whose token it is:
                            sets them.
 
 These call the app alone, over HTTPS, and never GitHub. --json answers in
-JSON, and --app <address> names another app than https://app.sluiceway.dev.
+JSON, and --app <address> names another app than https://console.sluiceway.dev.
 Exit codes: 0 done, 1 failed, 2 not understood, 3 not signed in, 4 not
 found, 5 refused, 6 try again later."
 `;

@@ -32,7 +32,12 @@ export type Command =
   | { command: "refused"; mode: string }
   | { command: "usage"; message: string };
 
-export const DEFAULT_APP = "https://app.sluiceway.dev";
+export const DEFAULT_APP = "https://console.sluiceway.dev";
+
+// Where the app answered before it moved to DEFAULT_APP. It still answers
+// /api/v1 for a while, so `--app` with it works as given; a token kept for it
+// is read for DEFAULT_APP and kept under DEFAULT_APP at the next save.
+export const FORMER_APP = "https://app.sluiceway.dev";
 
 const RUNNER_MODES = new Set(["scan", "resolve", "apply", "settle", "auto"]);
 const APP_COMMANDS = new Set(["login", "logout", "status", "stack", "tick", "rescan", "settings"]);

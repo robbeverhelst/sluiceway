@@ -88,12 +88,12 @@ describe("login", () => {
     expect(err).toEqual([]);
     expect(code).toBe(EXIT.ok);
     expect(out).toEqual([
-      "Signed in to https://app.sluiceway.dev as alice, for acme, with the token laptop, which works until 2026-12-25T00:00:00Z.",
+      "Signed in to https://console.sluiceway.dev as alice, for acme, with the token laptop, which works until 2026-12-25T00:00:00Z.",
       "The token is kept in the test keychain.",
     ]);
     expect(kept.get(app.origin)).toBe(TOKEN);
     expect(app.calls.map((call) => `${call.method} ${call.url}`)).toEqual([
-      "GET https://app.sluiceway.dev/api/v1/me",
+      "GET https://console.sluiceway.dev/api/v1/me",
     ]);
     expect(app.calls[0]?.authorization).toBe(`Bearer ${TOKEN}`);
     expect(app.calls[0]?.userAgent).toBe("sluiceway/0.45.0");
@@ -114,7 +114,7 @@ describe("login", () => {
     const { code, err } = await run(["login"]);
     expect(code).toBe(EXIT.usage);
     expect(err).toEqual([
-      "That is not a Sluiceway token: one starts with sluiceway_. Make one on https://app.sluiceway.dev/settings/tokens.",
+      "That is not a Sluiceway token: one starts with sluiceway_. Make one on https://console.sluiceway.dev/settings/tokens.",
     ]);
     expect(app.calls).toEqual([]);
   });
@@ -124,7 +124,7 @@ describe("login", () => {
     const { code, err } = await run(["login"]);
     expect(code).toBe(EXIT.usage);
     expect(err).toEqual([
-      "No token was given. Make one on https://app.sluiceway.dev/settings/tokens and paste it, or pipe it in.",
+      "No token was given. Make one on https://console.sluiceway.dev/settings/tokens and paste it, or pipe it in.",
     ]);
     expect(app.calls).toEqual([]);
   });
@@ -134,7 +134,7 @@ describe("login", () => {
     const { code, out } = await run(["login", "--json"]);
     expect(code).toBe(EXIT.ok);
     expect(JSON.parse(out.join("\n"))).toEqual({
-      app: "https://app.sluiceway.dev",
+      app: "https://console.sluiceway.dev",
       login: "alice",
       org: "acme",
       token: { name: "laptop", expiresAt: "2026-12-25T00:00:00Z" },
@@ -155,8 +155,8 @@ describe("logout", () => {
     const { code, out } = await run(["logout"]);
     expect(code).toBe(EXIT.ok);
     expect(out).toEqual([
-      "Signed out of https://app.sluiceway.dev: the token is gone from the test keychain.",
-      "It still works until it expires. Revoke it on https://app.sluiceway.dev/settings/tokens to stop it now.",
+      "Signed out of https://console.sluiceway.dev: the token is gone from the test keychain.",
+      "It still works until it expires. Revoke it on https://console.sluiceway.dev/settings/tokens to stop it now.",
     ]);
     expect(kept.size).toBe(0);
     expect(app.calls).toEqual([]);
@@ -166,7 +166,7 @@ describe("logout", () => {
     const { run } = await setup({ signedIn: false });
     const { code, out } = await run(["logout"]);
     expect(code).toBe(EXIT.ok);
-    expect(out).toEqual(["There was no token for https://app.sluiceway.dev."]);
+    expect(out).toEqual(["There was no token for https://console.sluiceway.dev."]);
   });
 });
 
@@ -176,7 +176,7 @@ describe("a command with no token", () => {
     const { code, err } = await run(["status"]);
     expect(code).toBe(EXIT.signedOut);
     expect(err).toEqual([
-      "Not signed in to https://app.sluiceway.dev. Make a token on https://app.sluiceway.dev/settings/tokens, then run sluiceway login.",
+      "Not signed in to https://console.sluiceway.dev. Make a token on https://console.sluiceway.dev/settings/tokens, then run sluiceway login.",
     ]);
     expect(app.calls).toEqual([]);
   });
@@ -187,7 +187,7 @@ describe("a command with no token", () => {
     expect(code).toBe(EXIT.signedOut);
     expect(JSON.parse(out.join("\n"))).toEqual({
       error:
-        "Not signed in to https://app.sluiceway.dev. Make a token on https://app.sluiceway.dev/settings/tokens, then run sluiceway login.",
+        "Not signed in to https://console.sluiceway.dev. Make a token on https://console.sluiceway.dev/settings/tokens, then run sluiceway login.",
       code: "not-signed-in",
       exit: EXIT.signedOut,
     });
@@ -574,7 +574,7 @@ describe("what the app says when it cannot answer", () => {
     });
     const { code, err } = await go(["status"]);
     expect(code).toBe(EXIT.failed);
-    expect(err).toEqual(["Could not reach https://app.sluiceway.dev: connect ECONNREFUSED"]);
+    expect(err).toEqual(["Could not reach https://console.sluiceway.dev: connect ECONNREFUSED"]);
   });
 
   test("an answer that is not the app's JSON", async () => {
@@ -588,7 +588,9 @@ describe("what the app says when it cannot answer", () => {
     });
     const { code, err } = await go(["status"]);
     expect(code).toBe(EXIT.failed);
-    expect(err).toEqual(["https://app.sluiceway.dev answered 502, and not with the app's words."]);
+    expect(err).toEqual([
+      "https://console.sluiceway.dev answered 502, and not with the app's words.",
+    ]);
   });
 });
 
@@ -613,7 +615,7 @@ describe("where the command line reaches", () => {
     await run(["settings", "infra", "set", "tickers=admin"]);
     expect(app.calls.length).toBeGreaterThan(10);
     for (const call of app.calls) {
-      expect(new URL(call.url).origin).toBe("https://app.sluiceway.dev");
+      expect(new URL(call.url).origin).toBe("https://console.sluiceway.dev");
       expect(call.authorization).toBe(`Bearer ${TOKEN}`);
     }
   });

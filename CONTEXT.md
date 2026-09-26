@@ -97,7 +97,7 @@ The `sluiceway` command a person runs on their own machine, from the npm package
 _Avoid_: CLI tool, npx mode, local mode, runner (that is the machine a workflow runs on)
 
 **App**:
-The hosted Sluiceway app at `app.sluiceway.dev`, a GitHub App with an org-wide view, from a private repository. A control plane only: previews and deploys always run in the user's own runners. The command line talks to its API, `/api/v1`.
+The hosted Sluiceway app at `console.sluiceway.dev` (formerly `app.sluiceway.dev`), a GitHub App with an org-wide view, from a private repository. A control plane only: previews and deploys always run in the user's own runners. The command line talks to its API, `/api/v1`.
 _Avoid_: Server, backend (that is the tool's state), dashboard (that is the issue)
 
 **Personal token**:

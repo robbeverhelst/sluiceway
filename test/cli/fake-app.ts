@@ -131,7 +131,7 @@ export function stackLine(
   return { stack, repo: "acme/infra", state, word, destroys: false, line: "", at: null, ...extra };
 }
 
-export function fakeApp(origin = "https://app.sluiceway.dev"): FakeApp {
+export function fakeApp(origin = "https://console.sluiceway.dev"): FakeApp {
   const calls: Call[] = [];
   const repoLine = {
     name: "acme/infra",

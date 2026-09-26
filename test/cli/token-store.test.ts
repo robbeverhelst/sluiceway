@@ -9,7 +9,8 @@ import { type CommandRun, fileStore, tokenStore } from "../../src/cli/token-stor
 // only the person can read. The keychain's own command is the one process
 // the command line starts, and the token never is one of its arguments.
 
-const APP = "https://app.sluiceway.dev";
+const APP = "https://console.sluiceway.dev";
+const FORMER = "https://app.sluiceway.dev";
 const OTHER = "http://127.0.0.1:4000";
 const TOKEN = "sluiceway_AAAAbbbbCCCCddddEEEEffffGGGGhhhhIIIIjjjjKKK";
 
@@ -195,5 +196,71 @@ describe("falling back to the file", () => {
       "the macOS keychain",
       join(dir, "sluiceway", "tokens.json"),
     ]);
+  });
+});
+
+// The app moved from app.sluiceway.dev to console.sluiceway.dev (record 0116,
+// amended). A token kept under the former address still signs in to the
+// default app, and the next login keeps it under the new address alone.
+describe("a token kept under the app's former address", () => {
+  test("is read for the default app, in the keychain and in the file", async () => {
+    const keychain = fakeKeychain("security");
+    keychain.items.set(FORMER, TOKEN);
+    const store = tokenStore({ platform: "darwin", configDir: configDir(), run: keychain.run });
+    expect(await store.read(APP)).toBe(TOKEN);
+
+    const dir = configDir();
+    await fileStore(dir).write(FORMER, "sluiceway_file");
+    const file = tokenStore({ platform: "win32", configDir: dir, run: noCommands });
+    expect(await file.read(APP)).toBe("sluiceway_file");
+  });
+
+  test("the new address's own token comes first", async () => {
+    const keychain = fakeKeychain("security");
+    keychain.items.set(FORMER, "sluiceway_old");
+    keychain.items.set(APP, TOKEN);
+    const store = tokenStore({ platform: "darwin", configDir: configDir(), run: keychain.run });
+    expect(await store.read(APP)).toBe(TOKEN);
+  });
+
+  test("the next save keeps it under the new address and takes the former one out", async () => {
+    const keychain = fakeKeychain("security");
+    const dir = configDir();
+    keychain.items.set(FORMER, "sluiceway_old");
+    await fileStore(dir).write(FORMER, "sluiceway_old");
+    const store = tokenStore({ platform: "darwin", configDir: dir, run: keychain.run });
+    await store.write(APP, TOKEN);
+    expect([...keychain.items]).toEqual([[APP, TOKEN]]);
+    expect(existsSync(join(dir, "sluiceway", "tokens.json"))).toBe(false);
+
+    const fileDir = configDir();
+    await fileStore(fileDir).write(FORMER, "sluiceway_old");
+    await fileStore(fileDir).write(OTHER, "sluiceway_other");
+    const file = tokenStore({ platform: "win32", configDir: fileDir, run: noCommands });
+    await file.write(APP, TOKEN);
+    expect(JSON.parse(readFileSync(join(fileDir, "sluiceway", "tokens.json"), "utf8"))).toEqual({
+      [OTHER]: "sluiceway_other",
+      [APP]: TOKEN,
+    });
+  });
+
+  test("logout from the default app takes it out too, and names each place once", async () => {
+    const keychain = fakeKeychain("security");
+    const dir = configDir();
+    keychain.items.set(FORMER, "sluiceway_old");
+    keychain.items.set(APP, TOKEN);
+    const store = tokenStore({ platform: "darwin", configDir: dir, run: keychain.run });
+    expect(await store.remove(APP)).toEqual(["the macOS keychain"]);
+    expect(keychain.items.size).toBe(0);
+  });
+
+  test("an explicit --app with the former address keeps its own token", async () => {
+    const keychain = fakeKeychain("security");
+    const store = tokenStore({ platform: "darwin", configDir: configDir(), run: keychain.run });
+    await store.write(APP, TOKEN);
+    expect(await store.read(FORMER)).toBeUndefined();
+    await store.write(FORMER, "sluiceway_old");
+    expect(await store.read(FORMER)).toBe("sluiceway_old");
+    expect(await store.read(APP)).toBe(TOKEN);
   });
 });

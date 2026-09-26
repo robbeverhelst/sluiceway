@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://app.sluiceway.dev"
+      "url": "https://console.sluiceway.dev"
     }
   ],
   "security": [

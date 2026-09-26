@@ -34000,7 +34000,8 @@ function pullRequest(answer) {
 }
 
 // src/cli/args.ts
-var DEFAULT_APP = "https://app.sluiceway.dev";
+var DEFAULT_APP = "https://console.sluiceway.dev";
+var FORMER_APP = "https://app.sluiceway.dev";
 var RUNNER_MODES = new Set(["scan", "resolve", "apply", "settle", "auto"]);
 var APP_COMMANDS = new Set(["login", "logout", "status", "stack", "tick", "rescan", "settings"]);
 function parseArgs(argv) {
@@ -34349,24 +34350,39 @@ function tokenStore(options) {
   const file2 = filePlace(options.configDir);
   const keychain = options.platform === "darwin" ? macKeychain(options.run) : options.platform === "linux" ? secretService(options.run) : undefined;
   const places = keychain === undefined ? [file2] : [keychain, file2];
+  const readAt = (app) => {
+    for (const place of places) {
+      const token = place.read(app);
+      if (token !== undefined)
+        return token;
+    }
+    return;
+  };
+  const removeAt = (app) => places.filter((place) => place.remove(app)).map((place) => place.where);
+  const addresses = (app) => app === DEFAULT_APP ? [app, FORMER_APP] : [app];
   return {
     read: async (app) => {
-      for (const place of places) {
-        const token = place.read(app);
+      for (const address of addresses(app)) {
+        const token = readAt(address);
         if (token !== undefined)
           return token;
       }
       return;
     },
     write: async (app, token) => {
+      let where2;
       if (keychain?.write(app, token)) {
         file2.remove(app);
-        return keychain.where;
+        where2 = keychain.where;
+      } else {
+        file2.write(app, token);
+        where2 = file2.where;
       }
-      file2.write(app, token);
-      return file2.where;
+      for (const address of addresses(app).slice(1))
+        removeAt(address);
+      return where2;
     },
-    remove: async (app) => places.filter((place) => place.remove(app)).map((place) => place.where)
+    remove: async (app) => [...new Set(addresses(app).flatMap(removeAt))]
   };
 }
 

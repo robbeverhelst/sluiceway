@@ -2,6 +2,8 @@
 // operating system's keychain where there is one, and otherwise a file under
 // the person's config directory that only they can read. One token per app
 // address, so a token for a test app never takes the place of the real one.
+// The app moved from FORMER_APP to DEFAULT_APP: a token kept under the former
+// address is the default app's until the next login keeps it under the new one.
 //
 // The keychain's own command (`security` on macOS, `secret-tool` on Linux) is
 // the one process the command line starts. The token goes to it on stdin and
@@ -9,6 +11,7 @@
 
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { DEFAULT_APP, FORMER_APP } from "./args.ts";
 
 export interface TokenStore {
   read(app: string): Promise<string | undefined>;
@@ -153,22 +156,37 @@ export function tokenStore(options: {
         ? secretService(options.run)
         : undefined;
   const places = keychain === undefined ? [file] : [keychain, file];
+  const readAt = (app: string): string | undefined => {
+    for (const place of places) {
+      const token = place.read(app);
+      if (token !== undefined) return token;
+    }
+    return undefined;
+  };
+  const removeAt = (app: string): string[] =>
+    places.filter((place) => place.remove(app)).map((place) => place.where);
+  // The addresses a token for this app may be kept under, the app's own first.
+  const addresses = (app: string): string[] => (app === DEFAULT_APP ? [app, FORMER_APP] : [app]);
   return {
     read: async (app) => {
-      for (const place of places) {
-        const token = place.read(app);
+      for (const address of addresses(app)) {
+        const token = readAt(address);
         if (token !== undefined) return token;
       }
       return undefined;
     },
     write: async (app, token) => {
+      let where: string;
       if (keychain?.write(app, token)) {
         file.remove(app);
-        return keychain.where;
+        where = keychain.where;
+      } else {
+        file.write(app, token);
+        where = file.where;
       }
-      file.write(app, token);
-      return file.where;
+      for (const address of addresses(app).slice(1)) removeAt(address);
+      return where;
     },
-    remove: async (app) => places.filter((place) => place.remove(app)).map((place) => place.where),
+    remove: async (app) => [...new Set(addresses(app).flatMap(removeAt))],
   };
 }

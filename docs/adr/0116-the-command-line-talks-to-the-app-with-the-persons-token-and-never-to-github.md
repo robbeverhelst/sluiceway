@@ -37,3 +37,7 @@ Record 0094 made the command line two commands that read files and nothing else.
 - `CONTEXT.md` amends **Command line** and adds **App** and **Personal token**.
 - `docs/command-line.md` documents the package, the binaries and every command; `docs/init.md` points at it. The README gains a link to it when the docs site has the page.
 - On 2026-09-26 `https://app.sluiceway.dev/api/v1/openapi.json` answered 404: the app's API was merged and not yet deployed. The commands were built from the app's source, and are first proven against the real app once it is.
+
+## Amended, 2026-09-26
+
+The owner moved the app from `https://app.sluiceway.dev` to `https://console.sluiceway.dev`; the app keeps the old address answering `/api/v1` for a transition. The command line's default app is now `https://console.sluiceway.dev`. `--app https://app.sluiceway.dev` still works as given, with its own token. A token kept under the old address is read for the default app when none is kept under the new one, and the next `login` to the default app keeps the token under the new address and takes the old entry out of every place; `logout` takes out both. The `servers` line of `test/fixtures/app/openapi.json` names the new address ahead of the app's own document.

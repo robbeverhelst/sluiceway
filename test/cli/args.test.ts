@@ -100,7 +100,7 @@ describe("usage errors", () => {
 // Slice 5.53 (record 0116): the commands that talk to the app, each with
 // --json for an agent and --app for another address.
 describe("the commands that talk to the app", () => {
-  const APP = "https://app.sluiceway.dev";
+  const APP = "https://console.sluiceway.dev";
 
   test("login and logout", () => {
     expect(parseArgs(["login"])).toEqual({ command: "login", app: APP, json: false });
@@ -191,6 +191,12 @@ describe("the commands that talk to the app", () => {
     });
     expect(parseArgs(["status", "--app=https://app.example.com/"])).toMatchObject({
       app: "https://app.example.com",
+    });
+  });
+
+  test("the app's former address still works when named", () => {
+    expect(parseArgs(["status", "--app", "https://app.sluiceway.dev"])).toMatchObject({
+      app: "https://app.sluiceway.dev",
     });
   });
 

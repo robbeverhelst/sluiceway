@@ -3,7 +3,7 @@
 `sluiceway` is a command you run on your own machine. It does two kinds of things:
 
 - **`init` and `check`** read the files of your clone and nothing else: no credentials, no token, no network. [Start with init](init.md) explains them.
-- **`login`, `status`, `stack`, `tick`, `rescan` and `settings`** talk to the Sluiceway app at `app.sluiceway.dev` with a personal token you make there. They let you, or a coding agent you give the token to, see your stacks, read a stack's preview, tick, ask for a scan and change settings from a terminal.
+- **`login`, `status`, `stack`, `tick`, `rescan` and `settings`** talk to the Sluiceway app at `console.sluiceway.dev` with a personal token you make there. They let you, or a coding agent you give the token to, see your stacks, read a stack's preview, tick, ask for a scan and change settings from a terminal.
 
 `scan`, `resolve`, `apply` and `settle` run only in the workflow: they need the run's identity and the workflow token, and the command line stops at them with a sentence.
 
@@ -49,7 +49,7 @@ On macOS, use `shasum -a 256 --check --ignore-missing SHA256SUMS`. The macOS bin
 
 ## Sign in to the app
 
-Make a token in the app on your own page, **Tokens** (`https://app.sluiceway.dev/settings/tokens`). A token is for one org and works for 30, 90 or 365 days, and the app shows it once. Then:
+Make a token in the app on your own page, **Tokens** (`https://console.sluiceway.dev/settings/tokens`). A token is for one org and works for 30, 90 or 365 days, and the app shows it once. Then:
 
 ```sh
 sluiceway login
@@ -62,6 +62,8 @@ It asks for the token and does not show what you type. A script pipes it in inst
 - **macOS**: the keychain, under the service `sluiceway`.
 - **Linux**: the Secret Service keyring (GNOME Keyring, KWallet) through `secret-tool`, when there is one.
 - **Otherwise, and on Windows**: `sluiceway/tokens.json` under your config directory (`$XDG_CONFIG_HOME` or `~/.config`, and `%APPDATA%` on Windows), readable by you alone.
+
+The app used to answer at `app.sluiceway.dev`. A token you kept for that address still signs you in, and the next `sluiceway login` keeps it under `console.sluiceway.dev` and takes the old entry out. `--app https://app.sluiceway.dev` still works while the old address answers.
 
 `sluiceway logout` takes the token out of every place it is kept. It still works until it expires: revoke it on the Tokens page to stop it at once.
 
@@ -108,7 +110,7 @@ To set text that reads as JSON, such as the title `true`, quote it as JSON: `'da
 
 ## For agents and scripts
 
-Every command that talks to the app takes `--json`. It prints one JSON document on stdout: the app's answer as it came, for a tick `{ "tick": ..., "deploy": ... }`, and on a failure `{ "error", "code", "exit" }`. The answers are the app's API, version 1, described at `https://app.sluiceway.dev/api/v1/openapi.json`.
+Every command that talks to the app takes `--json`. It prints one JSON document on stdout: the app's answer as it came, for a tick `{ "tick": ..., "deploy": ... }`, and on a failure `{ "error", "code", "exit" }`. The answers are the app's API, version 1, described at `https://console.sluiceway.dev/api/v1/openapi.json`.
 
 The exit code says how it ended:
 
@@ -126,4 +128,4 @@ The app allows 120 reads and 10 writes a minute per token.
 
 ## Where it connects
 
-`init` and `check` make no network call. The app's commands make HTTPS calls to the app alone, with the token you gave, and never to GitHub: the app does what GitHub needs, as you, by its own rules. The token goes nowhere else, and a redirect is refused. `--app <address>` names another app than `https://app.sluiceway.dev`, such as one for a test; it must be `https`, or `http` to this machine only. The one other process the command line starts is the keychain's own command, `security` or `secret-tool`, which gets the token on stdin.
+`init` and `check` make no network call. The app's commands make HTTPS calls to the app alone, with the token you gave, and never to GitHub: the app does what GitHub needs, as you, by its own rules. The token goes nowhere else, and a redirect is refused. `--app <address>` names another app than `https://console.sluiceway.dev`, such as one for a test; it must be `https`, or `http` to this machine only. The one other process the command line starts is the keychain's own command, `security` or `secret-tool`, which gets the token on stdin.
