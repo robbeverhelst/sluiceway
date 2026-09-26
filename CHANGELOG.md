@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.0](https://github.com/sluiceway/sluiceway/compare/v0.45.0...v0.46.0) (2026-09-26)
+
+
+### Features
+
+* the command line talks to console.sluiceway.dev ([#285](https://github.com/sluiceway/sluiceway/issues/285)) ([f06df2a](https://github.com/sluiceway/sluiceway/commit/f06df2add62a2a0b9608fb7d0e92c905612e27df))
+
 ## [0.45.0](https://github.com/sluiceway/sluiceway/compare/v0.44.0...v0.45.0) (2026-09-25)
 
 
